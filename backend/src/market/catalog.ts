@@ -1,4 +1,5 @@
 import type { CatalogResponse, ChartType, Instrument } from "../types.js";
+import { fetchDynamicCrypto } from "./dynamicCrypto.js";
 import { timeframes } from "./timeframes.js";
 
 export const chartTypes: ChartType[] = ["candles", "heikin", "bars", "line", "area", "baseline", "renko"];
@@ -73,8 +74,8 @@ const cryptoInstruments: Instrument[] = [
   crypto("ENA", "Ethena", 0.55, 4)
 ];
 
-export const instruments: Instrument[] = [
-  ...cryptoInstruments,
+/** Curated forex / stock / index instruments — always present, never fetched. */
+const otherInstruments: Instrument[] = [
   {
     symbol: "EURUSD",
     displayName: "Euro / US Dollar",
@@ -167,10 +168,47 @@ export const instruments: Instrument[] = [
   }
 ];
 
+/**
+ * Live catalog, read synchronously by getCatalog()/findInstrument(). Seeded with
+ * the curated crypto + other instruments so the app works before (and if)
+ * initCatalog() ever runs or fails. initCatalog() replaces the crypto slice with
+ * the exchanges' full USDT-spot universe.
+ */
+export const instruments: Instrument[] = [...cryptoInstruments, ...otherInstruments];
+
+let catalogReady = false;
+
+/**
+ * Populate the crypto slice from the exchanges once at startup. Idempotent and
+ * fail-safe: on fetch failure/timeout the curated fallback already in place is
+ * kept, so this never leaves the catalog empty. Safe to call fire-and-forget.
+ */
+export async function initCatalog(attempt = 0): Promise<void> {
+  if (catalogReady) return;
+  const dynamic = await fetchDynamicCrypto();
+  if (dynamic.length > 0) {
+    // Replace the whole array contents in place so the exported reference (held
+    // by importers) stays valid.
+    instruments.length = 0;
+    instruments.push(...dynamic, ...otherInstruments);
+    catalogReady = true;
+    return;
+  }
+  // Empty result (rate-limited / offline). Keep the curated fallback already in
+  // place and retry a few times before giving up, so a transient startup blip
+  // self-heals without ever leaving the catalog empty.
+  if (attempt < 3) {
+    setTimeout(() => void initCatalog(attempt + 1), 30_000);
+  } else {
+    catalogReady = true;
+  }
+}
+
 export function getCatalog(): CatalogResponse {
   return { instruments, timeframes, chartTypes };
 }
 
 export function findInstrument(symbol: string) {
-  return instruments.find((instrument) => instrument.symbol === symbol.toUpperCase());
+  const target = symbol.toUpperCase();
+  return instruments.find((instrument) => instrument.symbol === target);
 }

@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import type { Candle, Instrument, Timeframe } from "../types.js";
 import { binanceIntervals } from "../market/timeframes.js";
+import { fetchWithRetry } from "./http.js";
 import type { CandleRange, MarketProvider, MarketSubscription } from "./provider.js";
 
 type BinanceKline = [
@@ -47,7 +48,7 @@ export class BinanceProvider implements MarketProvider {
     if (range.endTime !== undefined) url.searchParams.set("endTime", String(range.endTime));
     if (range.startTime !== undefined) url.searchParams.set("startTime", String(range.startTime));
 
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url);
     if (!response.ok) {
       throw new Error(`Binance HTTP ${response.status}`);
     }

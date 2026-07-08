@@ -2,6 +2,7 @@ import type { Candle, Instrument, Timeframe } from "../types.js";
 import { BinanceProvider } from "./binance.js";
 import { BybitProvider } from "./bybit.js";
 import { CandleCache } from "./cache.js";
+import { readCandles, saveCandles, storedRange } from "./candleStore.js";
 import type { CandleRange, MarketProvider, MarketSubscription } from "./provider.js";
 import { SyntheticProvider } from "./synthetic.js";
 
@@ -34,9 +35,26 @@ export class ProviderRouter implements MarketProvider {
     if (cached) return cached;
 
     const provider = this.primary(instrument, exchange);
+    const persistable = provider !== this.synthetic;
+
+    // Deep-history fast path: a request paging into the past that the persistent
+    // store can already satisfy in full is served from disk — instant, and
+    // resilient if the exchange REST is throttled or down. Live/tip requests and
+    // synthetic instruments always fall through to the provider below.
+    if (isHistory && persistable) {
+      const stored = this.fromStore(source, instrument, timeframe, range);
+      if (stored) {
+        this.cache.set(cacheKey, stored, now, isHistory);
+        return stored;
+      }
+    }
+
     let candles: Candle[];
     try {
       candles = await provider.getCandles(instrument, timeframe, range);
+      // Persist real exchange bars (fire-and-forget). Never persist synthetic or
+      // fallback data — guard on the provider and on each candle's source.
+      if (persistable) this.persist(source, instrument, timeframe, candles);
     } catch (error) {
       if (strict) throw error;
       const fallback = await this.synthetic.getCandles(instrument, timeframe, range);
@@ -47,6 +65,45 @@ export class ProviderRouter implements MarketProvider {
     }
     this.cache.set(cacheKey, candles, now, isHistory);
     return candles;
+  }
+
+  /**
+   * Return a full page of stored history for a past window, or undefined when
+   * the store cannot fully satisfy it (so the caller hits REST instead). "Full"
+   * means we either have `limit` bars at/below endTime, or the window already
+   * reaches the oldest bar we hold (no older data exists to fetch). Any store
+   * error degrades to undefined — the request simply falls through to REST.
+   */
+  private fromStore(source: string, instrument: Instrument, timeframe: Timeframe, range: CandleRange): Candle[] | undefined {
+    try {
+      const rows = readCandles(source, instrument.symbol, timeframe, {
+        startTime: range.startTime,
+        endTime: range.endTime,
+        limit: range.limit
+      });
+      if (rows.length === 0) return undefined;
+      if (rows.length >= range.limit) return rows;
+      // Fewer than a full page: only trust it if we've reached the oldest stored
+      // bar for this series (nothing older to page into) and no startTime floor
+      // is cutting the window short.
+      if (range.startTime !== undefined) return undefined;
+      const bounds = storedRange(source, instrument.symbol, timeframe);
+      if (bounds && rows[0].time <= bounds.min) return rows;
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Fire-and-forget persistence of real exchange candles; errors are swallowed. */
+  private persist(source: string, instrument: Instrument, timeframe: Timeframe, candles: Candle[]): void {
+    try {
+      // Belt-and-braces: drop anything not sourced from a real exchange feed.
+      const real = candles.filter((c) => !c.source || !c.source.startsWith("Fallback"));
+      if (real.length > 0) saveCandles(source, instrument.symbol, timeframe, real);
+    } catch {
+      // Never let a store write break the request path.
+    }
   }
 
   async subscribe(

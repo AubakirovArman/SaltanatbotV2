@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import type { Candle, Instrument, Timeframe } from "../types.js";
 import { bybitIntervals } from "../market/timeframes.js";
+import { fetchWithRetry } from "./http.js";
 import type { CandleRange, MarketProvider, MarketSubscription } from "./provider.js";
 
 type BybitKline = [string, string, string, string, string, string, string];
@@ -33,7 +34,7 @@ export class BybitProvider implements MarketProvider {
     if (range.endTime !== undefined) url.searchParams.set("end", String(range.endTime));
     if (range.startTime !== undefined) url.searchParams.set("start", String(range.startTime));
 
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url);
     if (!response.ok) throw new Error(`Bybit HTTP ${response.status}`);
     const payload = (await response.json()) as { retCode: number; retMsg: string; result?: { list?: BybitKline[] } };
     if (payload.retCode !== 0) throw new Error(`Bybit: ${payload.retMsg}`);
