@@ -7,6 +7,7 @@
 **A self-hosted, open-source crypto trading terminal.**
 Live charts · a no-code visual strategy builder · one-click backtests · paper & live trading.
 
+[![CI](https://github.com/AubakirovArman/SaltanatbotV2/actions/workflows/ci.yml/badge.svg)](https://github.com/AubakirovArman/SaltanatbotV2/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-14b8a6.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-24%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
@@ -37,10 +38,10 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 
 ### 📈 Charting
 - Custom **canvas chart engine** (no heavy chart library) with its own viewport / time-scale coordinate system.
-- Chart types: **candles, Heikin-Ashi, bars, line, area, baseline, renko**.
-- Indicators: **SMA, EMA, Bollinger Bands, RSI, MACD** and arrow **signal** overlays (e.g. EMA crossovers).
-- Crosshair with OHLC legend, volume histogram, drawing tools, and **lazy-loaded history** on scroll-back.
-- Overlay a saved strategy directly on the chart: its **plotted indicator lines** plus **buy/sell signal points** and simulated trades.
+- Chart types: **candles, Heikin-Ashi, bars, line, area, baseline, renko**. Ten timeframes from **1m to 1M**.
+- Indicators: **SMA, EMA, Bollinger, RSI, MACD, VWAP, ATR, Stochastic, OBV** and arrow **signal** overlays (e.g. EMA crossovers).
+- **Price alerts** (browser notification + sound), crosshair with OHLC legend, volume histogram, drawing tools, and **lazy-loaded history** on scroll-back.
+- Watchlist with **favorites** and **%-change sorting**; overlay a saved strategy directly on the chart with its **plotted indicator lines**, **buy/sell signal points** and simulated trades.
 
 ### 🧱 Visual strategy builder + backtester
 - **Blockly** no-code builder — snap together Market / Indicators / Math / Logic / Time / Signals / Risk & Size / State & Alerts blocks.
@@ -117,6 +118,18 @@ PORT=4180 HOST=127.0.0.1 npm start        # loopback by default; set HOST=0.0.0.
 > **git-ignored** and must never be committed. For a paper-only public demo, run with `DEMO_MODE=1`.
 > See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
+### …or with Docker
+
+```bash
+# Builds both workspaces and runs the backend (which serves the SPA) on :4180.
+# backend/data (DB + secrets) is a persistent named volume.
+docker compose up --build          # open → http://localhost:4180
+```
+
+The access token is printed in the container logs (`docker compose logs`), or set `AUTH_TOKEN` in your environment first. Pass `DEMO_MODE=1` for a paper-only public demo.
+
+**Tests & CI:** `npm test` (Vitest — command parser, paper engine, backtest honesty, evaluator parity) and `npm run lint` / `npm run check` run in [CI](.github/workflows/ci.yml) on every push.
+
 ---
 
 ## Documentation
@@ -128,6 +141,7 @@ PORT=4180 HOST=127.0.0.1 npm start        # loopback by default; set HOST=0.0.0.
 | [**Strategies & backtesting**](docs/STRATEGIES.md) | Building from blocks, the IR, `runBacktest` / `previewStrategy`, sharing, and live parity |
 | [**Trading & command language**](docs/TRADING.md) | The Trade tab, all 14 Antares-style actions, paper/Binance/Bybit modes, notifications |
 | [**Configuration & deployment**](docs/CONFIGURATION.md) | Env vars, runtime data, exchange keys, encryption, production & hardening checklist |
+| [**Roadmap**](docs/ROADMAP.md) | What has shipped and what's next |
 | [**Contributing**](CONTRIBUTING.md) | Dev setup, repo conventions, and how to add instruments / blocks / commands |
 
 ---
