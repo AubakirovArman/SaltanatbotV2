@@ -48,6 +48,39 @@ export function createDefaultIndicators(): IndicatorConfig[] {
       signalColor: "#f7c948",
       histogramUp: "#23c97a",
       histogramDown: "#ef5350"
+    },
+    {
+      id: "vwap-20",
+      kind: "vwap",
+      label: "VWAP",
+      enabled: false,
+      period: 20,
+      color: "#ff9e64"
+    },
+    {
+      id: "atr-14",
+      kind: "atr",
+      label: "ATR",
+      enabled: false,
+      period: 14,
+      color: "#e0af68"
+    },
+    {
+      id: "stoch-14",
+      kind: "stochastic",
+      label: "Stochastic",
+      enabled: false,
+      period: 14,
+      smooth: 3,
+      color: "#7dcfff",
+      signalColor: "#f7768e"
+    },
+    {
+      id: "obv",
+      kind: "obv",
+      label: "OBV",
+      enabled: false,
+      color: "#9ece6a"
     }
   ];
 }

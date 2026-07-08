@@ -67,6 +67,10 @@ const statusLabels: Record<ConnectionState, string> = {
   connecting: "sync"
 };
 
+/** Timeframes shown inline in the compact top-bar segment. The rest live in the
+ * "more" dropdown so every timeframe stays selectable without cluttering the bar. */
+const COMPACT_TIMEFRAMES: Timeframe[] = ["5m", "15m", "1h", "4h", "1d", "1w"];
+
 export function TopBar({
   catalog,
   instrument,
@@ -106,19 +110,7 @@ export function TopBar({
 
       <span className="divider-v" aria-hidden="true" />
 
-      <div className="segmented timeframes" aria-label="Timeframe">
-        {catalog?.timeframes.map((item) => (
-          <button
-            type="button"
-            key={item}
-            className={item === timeframe ? "active" : ""}
-            onClick={() => onTimeframeChange(item)}
-            aria-pressed={item === timeframe}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
+      <TimeframeControl catalog={catalog} timeframe={timeframe} onTimeframeChange={onTimeframeChange} />
 
       <ChartTypeMenu catalog={catalog} chartType={chartType} onChartTypeChange={onChartTypeChange} />
 
@@ -193,6 +185,93 @@ export function TopBar({
         </div>
       </div>
     </header>
+  );
+}
+
+function TimeframeControl({
+  catalog,
+  timeframe,
+  onTimeframeChange
+}: {
+  catalog?: CatalogResponse;
+  timeframe: Timeframe;
+  onTimeframeChange: (timeframe: Timeframe) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  const all = catalog?.timeframes ?? [];
+  const inline = all.filter((tf) => COMPACT_TIMEFRAMES.includes(tf));
+  // Anything not shown inline (30m, 2h, 1M, plus 1m) lives in the dropdown.
+  const extra = all.filter((tf) => !COMPACT_TIMEFRAMES.includes(tf));
+  const activeInExtra = extra.includes(timeframe);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="timeframe-control" ref={wrapRef}>
+      <div className="segmented timeframes" aria-label="Timeframe">
+        {inline.map((item) => (
+          <button
+            type="button"
+            key={item}
+            className={item === timeframe ? "active" : ""}
+            onClick={() => onTimeframeChange(item)}
+            aria-pressed={item === timeframe}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+      {extra.length > 0 && (
+        <div className="timeframe-more-wrap">
+          <button
+            type="button"
+            className={`charttype-button timeframe-more ${activeInExtra ? "active" : ""}`}
+            onClick={() => setOpen((value) => !value)}
+            title="More timeframes"
+            aria-haspopup="menu"
+            aria-expanded={open}
+          >
+            <span>{activeInExtra ? timeframe : "···"}</span>
+            <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+          {open && (
+            <div className="charttype-menu timeframe-menu" role="menu">
+              {extra.map((item) => (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={item === timeframe}
+                  key={item}
+                  className={item === timeframe ? "active" : ""}
+                  onClick={() => {
+                    onTimeframeChange(item);
+                    setOpen(false);
+                  }}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

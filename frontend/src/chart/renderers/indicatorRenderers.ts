@@ -1,4 +1,4 @@
-import type { BollingerPoint, MacdPoint, SeriesPoint } from "../indicatorTypes";
+import type { BollingerPoint, MacdPoint, SeriesPoint, StochasticPoint } from "../indicatorTypes";
 import type { ChartTheme, PlotArea, PriceScale } from "../types";
 
 interface LineInput {
@@ -113,6 +113,78 @@ export function drawMacdPanel(
     scale,
     step,
     color: colors.signal
+  });
+}
+
+export function drawStochasticPanel(
+  ctx: CanvasRenderingContext2D,
+  panel: PlotArea,
+  points: StochasticPoint[],
+  start: number,
+  end: number,
+  colors: { k: string; d: string },
+  theme: ChartTheme
+) {
+  const scale = fixedScale(panel, 0, 100);
+  drawPanelFrame(ctx, panel, theme, "Stoch");
+  drawThreshold(ctx, panel, scale, 80, theme.down, "80");
+  drawThreshold(ctx, panel, scale, 20, theme.up, "20");
+  const step = panel.width / Math.max(1, end - start);
+  drawSeriesLine(ctx, {
+    points: points.map((point) => ({ time: point.time, value: point.k })),
+    start,
+    end,
+    plot: panel,
+    scale,
+    step,
+    color: colors.k,
+    width: 1.7
+  });
+  drawSeriesLine(ctx, {
+    points: points.map((point) => ({ time: point.time, value: point.d })),
+    start,
+    end,
+    plot: panel,
+    scale,
+    step,
+    color: colors.d,
+    width: 1.4
+  });
+}
+
+/** Auto-scaled single-series oscillator panel (ATR, OBV). */
+export function drawOscillatorPanel(
+  ctx: CanvasRenderingContext2D,
+  panel: PlotArea,
+  points: SeriesPoint[],
+  start: number,
+  end: number,
+  color: string,
+  theme: ChartTheme,
+  label: string
+) {
+  const visible = points.slice(start, end);
+  const finite = visible.map((point) => point.value).filter((value): value is number => Number.isFinite(value));
+  drawPanelFrame(ctx, panel, theme, label);
+  if (finite.length === 0) return;
+  let min = Math.min(...finite);
+  let max = Math.max(...finite);
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
+  const pad = (max - min) * 0.08;
+  const scale = fixedScale(panel, min - pad, max + pad);
+  if (min < 0 && max > 0) drawThreshold(ctx, panel, scale, 0, theme.muted, "0");
+  drawSeriesLine(ctx, {
+    points,
+    start,
+    end,
+    plot: panel,
+    scale,
+    step: panel.width / Math.max(1, end - start),
+    color,
+    width: 1.7
   });
 }
 

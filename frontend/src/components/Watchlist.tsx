@@ -1,6 +1,8 @@
-import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ArrowDownUp, ArrowDownWideNarrow, ArrowUpNarrowWide, Search, Star } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SparklineSeries } from "../api/marketClient";
+import { loadFavorites, storeFavorites } from "../market/favorites";
+import { loadWatchlistSort, storeWatchlistSort, type WatchlistSort } from "../market/watchlistPrefs";
 import type { AssetClass, Candle, DataExchange, Instrument } from "../types";
 
 interface WatchlistProps {
@@ -29,6 +31,14 @@ const exchanges: Array<{ id: DataExchange; label: string }> = [
   { id: "bybit", label: "Bybit" }
 ];
 
+// Sort cycles: A→Z, then % desc (top gainers), then % asc (top losers).
+const sortCycle: WatchlistSort[] = ["symbol", "change-desc", "change-asc"];
+const sortMeta: Record<WatchlistSort, { label: string; Icon: typeof ArrowDownUp }> = {
+  symbol: { label: "A → Z", Icon: ArrowDownUp },
+  "change-desc": { label: "% high → low", Icon: ArrowDownWideNarrow },
+  "change-asc": { label: "% low → high", Icon: ArrowUpNarrowWide }
+};
+
 export function Watchlist({
   instruments,
   selectedSymbol,
@@ -41,32 +51,92 @@ export function Watchlist({
   onSelectExchange
 }: WatchlistProps) {
   const [query, setQuery] = useState("");
+  const [favorites, setFavorites] = useState<string[]>(() => loadFavorites());
+  const [sort, setSort] = useState<WatchlistSort>(() => loadWatchlistSort());
   const showExchange = useMemo(
     () => instruments.some((instrument) => instrument.assetClass === "crypto"),
     [instruments]
   );
+
+  useEffect(() => {
+    storeFavorites(favorites);
+  }, [favorites]);
+  useEffect(() => {
+    storeWatchlistSort(sort);
+  }, [sort]);
+
+  const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
+  const toggleFavorite = useCallback((symbol: string) => {
+    setFavorites((current) =>
+      current.includes(symbol) ? current.filter((item) => item !== symbol) : [...current, symbol]
+    );
+  }, []);
+  const cycleSort = useCallback(() => {
+    setSort((current) => sortCycle[(sortCycle.indexOf(current) + 1) % sortCycle.length]);
+  }, []);
+
+  const changeFor = useCallback(
+    (instrument: Instrument) => {
+      const active = instrument.symbol === selectedSymbol;
+      if (active && latest) return ((latest.close - latest.open) / latest.open) * 100;
+      return sparklines?.[instrument.symbol]?.changePct;
+    },
+    [latest, selectedSymbol, sparklines]
+  );
+
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return instruments;
-    return instruments.filter((instrument) =>
-      [
-        instrument.symbol,
-        instrument.displayName,
-        instrument.exchange,
-        instrument.assetClass,
-        instrument.currency
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalized)
-    );
-  }, [instruments, query]);
+    const matches = !normalized
+      ? instruments
+      : instruments.filter((instrument) =>
+          [
+            instrument.symbol,
+            instrument.displayName,
+            instrument.exchange,
+            instrument.assetClass,
+            instrument.currency
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(normalized)
+        );
+
+    // Pinned symbols always float to the top; the chosen sort orders within each group.
+    const compare = (a: Instrument, b: Instrument) => {
+      const aFav = favoriteSet.has(a.symbol);
+      const bFav = favoriteSet.has(b.symbol);
+      if (aFav !== bFav) return aFav ? -1 : 1;
+      if (sort === "symbol") return a.symbol.localeCompare(b.symbol);
+      // Missing % (no sparkline yet) sinks to the bottom of its group.
+      const aChange = changeFor(a);
+      const bChange = changeFor(b);
+      if (aChange === undefined && bChange === undefined) return a.symbol.localeCompare(b.symbol);
+      if (aChange === undefined) return 1;
+      if (bChange === undefined) return -1;
+      return sort === "change-desc" ? bChange - aChange : aChange - bChange;
+    };
+    return [...matches].sort(compare);
+  }, [instruments, query, favoriteSet, sort, changeFor]);
 
   return (
     <aside className="watchlist">
       <div className="panel-header">
         <strong>Markets</strong>
-        <span>{filtered.length} symbols</span>
+        <div className="panel-header-meta">
+          <span>{filtered.length} symbols</span>
+          <button
+            type="button"
+            className="watchlist-sort"
+            onClick={cycleSort}
+            title={`Sort: ${sortMeta[sort].label}`}
+            aria-label={`Change sort. Currently ${sortMeta[sort].label}`}
+          >
+            {(() => {
+              const { Icon } = sortMeta[sort];
+              return <Icon size={13} strokeWidth={1.75} aria-hidden="true" />;
+            })()}
+          </button>
+        </div>
       </div>
 
       <label className="market-search">
@@ -119,28 +189,43 @@ export function Watchlist({
           const spark = sparklines?.[instrument.symbol];
           const price = active && latest ? latest.close : spark?.last ?? instrument.basePrice;
           const change = active && latest ? ((latest.close - latest.open) / latest.open) * 100 : spark?.changePct;
+          const pinned = favoriteSet.has(instrument.symbol);
           return (
-            <button
-              type="button"
-              className={`symbol-row ${active ? "active" : ""}`}
-              onClick={() => onSelectSymbol(instrument.symbol)}
+            <div
+              className={`symbol-row ${active ? "active" : ""} ${pinned ? "pinned" : ""}`}
               key={instrument.symbol}
               title={`${instrument.displayName} · ${instrument.exchange}`}
-              aria-pressed={active}
             >
-              <strong className="symbol-ticker">{instrument.symbol}</strong>
-              {spark && spark.points.length > 1 ? (
-                <Sparkline points={spark.points} up={(change ?? 0) >= 0} />
-              ) : (
-                <span className="sparkline-empty" aria-hidden="true" />
-              )}
-              <span className="symbol-quote">
-                <span className="symbol-price num">{price.toFixed(instrument.decimals)}</span>
-                <span className={`symbol-change num ${change !== undefined && change < 0 ? "down" : "up"}`}>
-                  {change === undefined ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
+              <button
+                type="button"
+                className={`symbol-star ${pinned ? "active" : ""}`}
+                onClick={() => toggleFavorite(instrument.symbol)}
+                aria-pressed={pinned}
+                aria-label={`${pinned ? "Unpin" : "Pin"} ${instrument.symbol}`}
+                title={pinned ? "Unpin" : "Pin to top"}
+              >
+                <Star size={13} strokeWidth={1.75} fill={pinned ? "currentColor" : "none"} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="symbol-select"
+                onClick={() => onSelectSymbol(instrument.symbol)}
+                aria-pressed={active}
+              >
+                <strong className="symbol-ticker">{instrument.symbol}</strong>
+                {spark && spark.points.length > 1 ? (
+                  <Sparkline points={spark.points} up={(change ?? 0) >= 0} />
+                ) : (
+                  <span className="sparkline-empty" aria-hidden="true" />
+                )}
+                <span className="symbol-quote">
+                  <span className="symbol-price num">{price.toFixed(instrument.decimals)}</span>
+                  <span className={`symbol-change num ${change !== undefined && change < 0 ? "down" : "up"}`}>
+                    {change === undefined ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
+                  </span>
                 </span>
-              </span>
-            </button>
+              </button>
+            </div>
           );
         })}
         {filtered.length === 0 && (

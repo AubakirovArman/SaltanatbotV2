@@ -1,3 +1,7 @@
+import { Bell, RotateCcw, X } from "lucide-react";
+import { useState } from "react";
+import type { PriceAlert } from "../market/alerts";
+import type { NewAlertInput } from "../hooks/usePriceAlerts";
 import type { Candle, Instrument } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
 
@@ -8,6 +12,10 @@ interface StatsPanelProps {
   connection: ConnectionState;
   message: string;
   latencyMs?: number;
+  alerts: PriceAlert[];
+  onAddAlert: (input: NewAlertInput) => void;
+  onRemoveAlert: (id: string) => void;
+  onResetAlert: (id: string) => void;
 }
 
 export function StatsPanel({
@@ -16,7 +24,11 @@ export function StatsPanel({
   provider,
   connection,
   message,
-  latencyMs
+  latencyMs,
+  alerts,
+  onAddAlert,
+  onRemoveAlert,
+  onResetAlert
 }: StatsPanelProps) {
   const latest = candles.at(-1);
   const previous = candles.at(-2);
@@ -48,6 +60,15 @@ export function StatsPanel({
         <StatRow label="Volume" value={compact(latest?.volume)} />
       </section>
 
+      <AlertsSection
+        instrument={instrument}
+        price={latest?.close}
+        alerts={alerts.filter((alert) => alert.symbol === instrument.symbol)}
+        onAddAlert={onAddAlert}
+        onRemoveAlert={onRemoveAlert}
+        onResetAlert={onResetAlert}
+      />
+
       <section>
         <div className="panel-header">
           <strong>Feed</strong>
@@ -61,6 +82,87 @@ export function StatsPanel({
         </div>
       </section>
     </aside>
+  );
+}
+
+function AlertsSection({
+  instrument,
+  price,
+  alerts,
+  onAddAlert,
+  onRemoveAlert,
+  onResetAlert
+}: {
+  instrument: Instrument;
+  price?: number;
+  alerts: PriceAlert[];
+  onAddAlert: (input: NewAlertInput) => void;
+  onRemoveAlert: (id: string) => void;
+  onResetAlert: (id: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+
+  const submit = () => {
+    const value = Number(draft);
+    if (!Number.isFinite(value) || value <= 0) return;
+    // Direction is inferred from where the target sits relative to the last price.
+    const direction = price !== undefined && value < price ? "below" : "above";
+    onAddAlert({ symbol: instrument.symbol, price: value, direction });
+    setDraft("");
+  };
+
+  return (
+    <section className="alerts-section" aria-label="Price alerts">
+      <div className="panel-header">
+        <strong>Alerts</strong>
+        <span>{alerts.length ? `${alerts.length} on ${instrument.symbol}` : instrument.symbol}</span>
+      </div>
+      <form
+        className="alert-add"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
+        <Bell size={13} strokeWidth={1.75} aria-hidden="true" />
+        <input
+          type="number"
+          className="num"
+          inputMode="decimal"
+          step="any"
+          min={0}
+          value={draft}
+          placeholder={price !== undefined ? price.toFixed(instrument.decimals) : "Price"}
+          aria-label={`Alert price for ${instrument.symbol}`}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <button type="submit" disabled={!draft.trim()}>
+          Add
+        </button>
+      </form>
+      {alerts.length > 0 && (
+        <ul className="alert-list">
+          {alerts
+            .slice()
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .map((alert) => (
+              <li key={alert.id} className={`alert-item ${alert.triggered ? "triggered" : ""}`}>
+                <span className={`alert-dir ${alert.direction}`}>{alert.direction === "above" ? "▲" : "▼"}</span>
+                <span className="alert-price num">{alert.price.toFixed(instrument.decimals)}</span>
+                <span className="alert-state">{alert.triggered ? "hit" : "armed"}</span>
+                {alert.triggered && (
+                  <button type="button" aria-label="Re-arm alert" title="Re-arm" onClick={() => onResetAlert(alert.id)}>
+                    <RotateCcw size={12} aria-hidden="true" />
+                  </button>
+                )}
+                <button type="button" aria-label="Remove alert" title="Remove" onClick={() => onRemoveAlert(alert.id)}>
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

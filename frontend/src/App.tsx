@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import type { IndicatorConfig } from "./chart/indicatorTypes";
 import type { ChartMarker, ChartPlot, ChartTrade } from "./chart/types";
+import { AlertToasts } from "./components/AlertToasts";
 import { ChartCanvas } from "./components/ChartCanvas";
 import { CommandPalette, type Command } from "./components/CommandPalette";
 import { StatsPanel } from "./components/StatsPanel";
@@ -8,6 +9,7 @@ import { TopBar } from "./components/TopBar";
 import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
 import { useMarketStream } from "./hooks/useMarketStream";
+import { usePriceAlerts } from "./hooks/usePriceAlerts";
 import { useSparklines } from "./hooks/useSparklines";
 import type { StrategyArtifact, StrategyArtifactKind } from "./strategy/library";
 import { createNewArtifact, indicatorArtifactId, indicatorToArtifact } from "./strategy/library";
@@ -132,6 +134,24 @@ export default function App() {
 
   const allSymbols = useMemo(() => catalog?.instruments.map((item) => item.symbol) ?? [], [catalog]);
   const sparklines = useSparklines(allSymbols, timeframe, cryptoExchange);
+
+  // Live price map for alert detection: the active symbol streams tick-by-tick, other
+  // symbols fall back to the periodically-refreshed sparkline `last`.
+  const latestClose = stream.candles.at(-1)?.close;
+  const prices = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const [sym, series] of Object.entries(sparklines)) {
+      if (series?.last != null) map[sym] = series.last;
+    }
+    if (latestClose !== undefined) map[symbol] = latestClose;
+    return map;
+  }, [sparklines, latestClose, symbol]);
+
+  const decimalsFor = useCallback(
+    (sym: string) => catalog?.instruments.find((item) => item.symbol === sym)?.decimals ?? 2,
+    [catalog]
+  );
+  const priceAlerts = usePriceAlerts(prices, decimalsFor);
 
   const chartStrategies = useMemo(
     () => strategyLibrary.filter((item) => item.kind === "strategy").map((item) => ({ id: item.id, name: item.name, description: item.description })),
@@ -347,12 +367,17 @@ export default function App() {
             connection={stream.connection}
             message={stream.message}
             latencyMs={stream.latencyMs}
+            alerts={priceAlerts.alerts}
+            onAddAlert={priceAlerts.addAlert}
+            onRemoveAlert={priceAlerts.removeAlert}
+            onResetAlert={priceAlerts.resetAlert}
           />
         )}
         {mode === "chart" && !rightOpen && <span aria-hidden="true" />}
       </main>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+      <AlertToasts toasts={priceAlerts.toasts} decimalsFor={decimalsFor} onDismiss={priceAlerts.dismissToast} />
     </div>
   );
 }

@@ -92,13 +92,29 @@ export function indicatorArtifactId(indicatorId: string) {
 function indicatorXml(indicator: IndicatorConfig) {
   if (indicator.kind === "bollinger") return bollingerXml(indicator);
   if (indicator.kind === "macd") return macdXml(indicator);
+  if (indicator.kind === "rsi") {
+    return singlePlotXml({
+      name: `${indicator.label} ${indicator.period}`,
+      label: `${indicator.label} ${indicator.period}`,
+      color: indicator.color,
+      value: rsiValue(indicator.period)
+    });
+  }
+  if (indicator.kind === "sma" || indicator.kind === "ema") {
+    return singlePlotXml({
+      name: `${indicator.label} ${indicator.period}`,
+      label: `${indicator.label} ${indicator.period}`,
+      color: indicator.color,
+      value: maValue(indicator.kind, indicator.period)
+    });
+  }
+  // VWAP / ATR / Stochastic / OBV have no dedicated Blockly block yet — seed the
+  // editable logic with a close-price plot so the artifact stays valid/editable.
   return singlePlotXml({
-    name: `${indicator.label} ${indicator.period}`,
-    label: `${indicator.label} ${indicator.period}`,
+    name: indicator.label,
+    label: indicator.label,
     color: indicator.color,
-    value: indicator.kind === "rsi"
-      ? rsiValue(indicator.period)
-      : maValue(indicator.kind, indicator.period)
+    value: closeBlock()
   });
 }
 
@@ -200,6 +216,8 @@ function closeBlock() {
 function indicatorSummaryText(indicator: IndicatorConfig) {
   if (indicator.kind === "macd") return `${indicator.fast}/${indicator.slow}/${indicator.signal}`;
   if (indicator.kind === "bollinger") return `${indicator.period}, dev ${indicator.deviation}`;
+  if (indicator.kind === "stochastic") return `${indicator.period}, smooth ${indicator.smooth}`;
+  if (indicator.kind === "obv") return "cumulative";
   return `${indicator.period}`;
 }
 

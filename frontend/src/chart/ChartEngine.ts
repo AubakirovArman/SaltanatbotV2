@@ -1,17 +1,21 @@
 import type { Candle } from "../types";
-import { bollinger, ema, macd, rsi, sma } from "./indicatorMath";
+import { atr, bollinger, ema, macd, obv, rsi, sma, stochastic, vwap } from "./indicatorMath";
 import { isIndicatorVisible } from "./indicatorTypes";
 import type {
   BollingerConfig,
   IndicatorConfig,
   MacdConfig,
-  PeriodIndicatorConfig
+  ObvConfig,
+  PeriodIndicatorConfig,
+  StochasticConfig
 } from "./indicatorTypes";
 import {
   drawBollinger,
   drawMacdPanel,
+  drawOscillatorPanel,
   drawRsiPanel,
-  drawSeriesLine
+  drawSeriesLine,
+  drawStochasticPanel
 } from "./renderers/indicatorRenderers";
 import { drawDrawings } from "./renderers/drawingRenderers";
 import { drawBars } from "./renderers/bars";
@@ -56,7 +60,12 @@ export function drawChart(options: DrawChartOptions) {
 
   const priceMode: PriceMode = view.priceMode ?? "linear";
   const lowerIndicators = indicators.filter((indicator) =>
-    isIndicatorVisible(indicator) && (indicator.kind === "rsi" || indicator.kind === "macd")
+    isIndicatorVisible(indicator) &&
+    (indicator.kind === "rsi" ||
+      indicator.kind === "macd" ||
+      indicator.kind === "stochastic" ||
+      indicator.kind === "atr" ||
+      indicator.kind === "obv")
   );
   const volumeHeight = showVolume ? Math.min(90, Math.max(52, height * 0.13)) : 0;
   const lowerHeight = lowerIndicators.length > 0
@@ -141,9 +150,11 @@ function makePanel(plot: PlotArea, top: number, panelHeight: number): PlotArea {
 }
 
 type ComputedIndicator =
-  | { config: PeriodIndicatorConfig; kind: "sma" | "ema" | "rsi"; points: ReturnType<typeof sma> }
+  | { config: PeriodIndicatorConfig; kind: "sma" | "ema" | "rsi" | "vwap" | "atr"; points: ReturnType<typeof sma> }
   | { config: BollingerConfig; kind: "bollinger"; points: ReturnType<typeof bollinger> }
-  | { config: MacdConfig; kind: "macd"; points: ReturnType<typeof macd> };
+  | { config: MacdConfig; kind: "macd"; points: ReturnType<typeof macd> }
+  | { config: StochasticConfig; kind: "stochastic"; points: ReturnType<typeof stochastic> }
+  | { config: ObvConfig; kind: "obv"; points: ReturnType<typeof obv> };
 
 function computeIndicators(candles: Candle[], configs: IndicatorConfig[]): ComputedIndicator[] {
   return configs.filter(isIndicatorVisible).map((config): ComputedIndicator => {
@@ -154,10 +165,18 @@ function computeIndicators(candles: Candle[], configs: IndicatorConfig[]): Compu
         return { config, kind: config.kind, points: ema(candles, config.period) };
       case "rsi":
         return { config, kind: config.kind, points: rsi(candles, config.period) };
+      case "vwap":
+        return { config, kind: config.kind, points: vwap(candles, config.period) };
+      case "atr":
+        return { config, kind: config.kind, points: atr(candles, config.period) };
       case "bollinger":
         return { config, kind: config.kind, points: bollinger(candles, config.period, config.deviation) };
       case "macd":
         return { config, kind: config.kind, points: macd(candles, config.fast, config.slow, config.signal) };
+      case "stochastic":
+        return { config, kind: config.kind, points: stochastic(candles, config.period, config.smooth) };
+      case "obv":
+        return { config, kind: config.kind, points: obv(candles) };
     }
   });
 }
@@ -170,7 +189,7 @@ function collectMainValues(computed: ComputedIndicator[], start: number, end: nu
         .flatMap((point) => [point.middle, point.upper, point.lower])
         .filter(isNumber);
     }
-    if (indicator.kind === "sma" || indicator.kind === "ema") {
+    if (indicator.kind === "sma" || indicator.kind === "ema" || indicator.kind === "vwap") {
       return indicator.points.slice(start, end).map((point) => point.value).filter(isNumber);
     }
     return [];
@@ -187,7 +206,7 @@ function drawMainIndicators(
   step: number
 ) {
   computed.forEach((indicator) => {
-    if (indicator.kind === "sma" || indicator.kind === "ema") {
+    if (indicator.kind === "sma" || indicator.kind === "ema" || indicator.kind === "vwap") {
       drawSeriesLine(ctx, { points: indicator.points, start, end, plot, scale, step, color: indicator.config.color });
     }
     if (indicator.kind === "bollinger") {
@@ -224,6 +243,18 @@ function drawLowerPanels(
         up: indicator.config.histogramUp,
         down: indicator.config.histogramDown
       }, theme);
+    }
+    if (indicator.kind === "stochastic") {
+      drawStochasticPanel(ctx, panel, indicator.points, start, end, {
+        k: indicator.config.color,
+        d: indicator.config.signalColor
+      }, theme);
+    }
+    if (indicator.kind === "atr") {
+      drawOscillatorPanel(ctx, panel, indicator.points, start, end, indicator.config.color, theme, "ATR");
+    }
+    if (indicator.kind === "obv") {
+      drawOscillatorPanel(ctx, panel, indicator.points, start, end, indicator.config.color, theme, "OBV");
     }
   });
 }

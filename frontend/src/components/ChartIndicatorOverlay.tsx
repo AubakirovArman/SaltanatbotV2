@@ -5,7 +5,8 @@ import type {
   BollingerConfig,
   IndicatorConfig,
   MacdConfig,
-  PeriodIndicatorConfig
+  PeriodIndicatorConfig,
+  StochasticConfig
 } from "../chart/indicatorTypes";
 
 export interface StrategyMenuItem {
@@ -177,10 +178,16 @@ function IndicatorEditor({
         {indicator.kind === "bollinger" && (
           <NumberField label="Dev" value={indicator.deviation} min={0.5} max={5} step={0.1} onChange={(deviation) => onUpdate({ deviation })} />
         )}
+        {indicator.kind === "stochastic" && (
+          <NumberField label="Smooth" value={indicator.smooth} min={1} max={20} onChange={(smooth) => onUpdate({ smooth })} />
+        )}
         {indicator.kind === "macd" && <MacdFields indicator={indicator} onUpdate={onUpdate} />}
         <ColorField label="Line" value={indicator.color} onChange={(color) => onUpdate({ color })} />
         {indicator.kind === "bollinger" && (
           <ColorField label="Band" value={indicator.bandColor} onChange={(bandColor) => onUpdate({ bandColor })} />
+        )}
+        {indicator.kind === "stochastic" && (
+          <ColorField label="%D" value={indicator.signalColor} onChange={(signalColor) => onUpdate({ signalColor })} />
         )}
         {indicator.kind === "macd" && (
           <>
@@ -255,7 +262,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   );
 }
 
-function hasPeriod(indicator: IndicatorConfig): indicator is PeriodIndicatorConfig | BollingerConfig {
+function hasPeriod(indicator: IndicatorConfig): indicator is PeriodIndicatorConfig | BollingerConfig | StochasticConfig {
   return "period" in indicator;
 }
 

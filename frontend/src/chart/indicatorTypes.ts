@@ -1,4 +1,4 @@
-export type IndicatorKind = "sma" | "ema" | "bollinger" | "rsi" | "macd";
+export type IndicatorKind = "sma" | "ema" | "bollinger" | "rsi" | "macd" | "vwap" | "atr" | "stochastic" | "obv";
 
 export interface BaseIndicatorConfig {
   id: string;
@@ -11,8 +11,19 @@ export interface BaseIndicatorConfig {
 }
 
 export interface PeriodIndicatorConfig extends BaseIndicatorConfig {
-  kind: "sma" | "ema" | "rsi";
+  kind: "sma" | "ema" | "rsi" | "vwap" | "atr";
   period: number;
+}
+
+export interface StochasticConfig extends BaseIndicatorConfig {
+  kind: "stochastic";
+  period: number;
+  smooth: number;
+  signalColor: string;
+}
+
+export interface ObvConfig extends BaseIndicatorConfig {
+  kind: "obv";
 }
 
 export interface BollingerConfig extends BaseIndicatorConfig {
@@ -32,7 +43,12 @@ export interface MacdConfig extends BaseIndicatorConfig {
   histogramDown: string;
 }
 
-export type IndicatorConfig = PeriodIndicatorConfig | BollingerConfig | MacdConfig;
+export type IndicatorConfig =
+  | PeriodIndicatorConfig
+  | BollingerConfig
+  | MacdConfig
+  | StochasticConfig
+  | ObvConfig;
 
 export function isIndicatorVisible(indicator: IndicatorConfig) {
   return indicator.enabled && indicator.visible !== false;
@@ -55,4 +71,10 @@ export interface MacdPoint {
   macd?: number;
   signal?: number;
   histogram?: number;
+}
+
+export interface StochasticPoint {
+  time: number;
+  k?: number;
+  d?: number;
 }

@@ -1,6 +1,6 @@
 export type AssetClass = "crypto" | "forex" | "stock" | "index";
 
-export type Timeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
+export type Timeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "1d" | "1w" | "1M";
 
 export interface Instrument {
   symbol: string;

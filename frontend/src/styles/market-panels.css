@@ -44,6 +44,30 @@ small {
   line-height: 1.25;
 }
 
+.panel-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.watchlist-sort {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 22px;
+  block-size: 22px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.watchlist-sort:hover {
+  color: var(--text);
+  border-color: var(--line);
+}
+
 .market-search {
   display: flex;
   align-items: center;
@@ -136,26 +160,13 @@ small {
   margin-inline: -8px;
 }
 
-/* One dense row per symbol: ticker | sparkline | price-over-change. */
+/* One dense row per symbol: star | (ticker | sparkline | price-over-change). */
 .symbol-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px auto;
-  gap: 8px;
+  display: flex;
   align-items: center;
-  text-align: start;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  padding: 3px 10px;
-  cursor: pointer;
+  gap: 2px;
+  padding-inline-start: 4px;
   min-block-size: 34px;
-}
-
-.symbol-quote {
-  display: grid;
-  gap: 0;
-  justify-items: end;
-  line-height: var(--lh-tight);
 }
 
 .symbol-row:hover {
@@ -167,7 +178,57 @@ small {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.symbol-row .sparkline {
+.symbol-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  inline-size: 22px;
+  block-size: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--dim);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.symbol-row:hover .symbol-star,
+.symbol-row .symbol-star.active {
+  opacity: 1;
+}
+
+.symbol-star:hover {
+  color: var(--text);
+}
+
+.symbol-star.active {
+  color: var(--accent);
+}
+
+.symbol-select {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px auto;
+  gap: 8px;
+  align-items: center;
+  flex: 1;
+  min-inline-size: 0;
+  text-align: start;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 3px 10px 3px 6px;
+  cursor: pointer;
+}
+
+.symbol-quote {
+  display: grid;
+  gap: 0;
+  justify-items: end;
+  line-height: var(--lh-tight);
+}
+
+.symbol-select .sparkline {
   inline-size: 44px;
   block-size: 16px;
   opacity: 0.7;
@@ -286,4 +347,193 @@ small {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-inline-size: 150px;
+}
+
+/* Price alerts. */
+.alerts-section {
+  display: grid;
+  gap: 6px;
+}
+
+.alert-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  block-size: var(--ctl-h);
+  padding: 0 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--dim);
+}
+
+.alert-add:focus-within {
+  border-color: var(--accent);
+}
+
+.alert-add input {
+  flex: 1;
+  min-inline-size: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-md);
+  outline: none;
+}
+
+.alert-add button {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 3px 8px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.alert-add button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.alert-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alert-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-block-size: 26px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.alert-item:hover {
+  background: var(--hover);
+}
+
+.alert-item.triggered {
+  opacity: 0.72;
+}
+
+.alert-dir {
+  font-size: var(--fs-sm);
+}
+
+.alert-dir.above {
+  color: var(--up);
+}
+
+.alert-dir.below {
+  color: var(--down);
+}
+
+.alert-price {
+  flex: 1;
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+
+.alert-state {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.alert-item button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 20px;
+  block-size: 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.alert-item button:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+/* Toast stack (fixed to the viewport, above all panels). */
+.alert-toasts {
+  position: fixed;
+  inset-block-end: 16px;
+  inset-inline-end: 16px;
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  max-inline-size: min(320px, calc(100vw - 32px));
+}
+
+.alert-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+}
+
+.alert-toast.above {
+  border-inline-start-color: var(--up);
+}
+
+.alert-toast.below {
+  border-inline-start-color: var(--down);
+}
+
+.alert-toast > svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.alert-toast-body {
+  display: grid;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.alert-toast-body strong {
+  font-size: var(--fs-md);
+  font-weight: 650;
+}
+
+.alert-toast-body span {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.alert-toast > button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 22px;
+  block-size: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.alert-toast > button:hover {
+  color: var(--text);
+  background: var(--hover);
 }

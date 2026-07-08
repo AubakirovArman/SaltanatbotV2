@@ -205,6 +205,42 @@
   color: var(--accent);
 }
 
+/* Timeframe segment + overflow dropdown. */
+.timeframe-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.timeframe-more-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.timeframe-more {
+  gap: 4px;
+  padding: 0 7px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeframe-more.active {
+  color: var(--accent);
+  border-color: var(--accent-soft);
+  background: var(--accent-soft);
+}
+
+.timeframe-menu {
+  min-inline-size: 96px;
+}
+
+.timeframe-menu button {
+  justify-content: flex-start;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .topbar-actions {
   flex: 0 0 auto;
   margin-inline-start: auto;
