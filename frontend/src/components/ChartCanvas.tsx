@@ -24,12 +24,14 @@ import {
   type ShapeTool
 } from "../chart/drawings";
 import { drawChart, setChartTheme } from "../chart/ChartEngine";
+import { compareColor } from "../chart/compareColors";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
-import type { ChartMarker, ChartPlot, ChartTrade, PriceMode, Viewport } from "../chart/types";
+import type { ChartMarker, ChartPlot, ChartTrade, CompareLegendSnapshot, CompareSeries, PriceMode, Viewport } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { Candle, ChartType, Instrument, Timeframe } from "../types";
 import { ChartIndicatorOverlay, type StrategyMenuItem } from "./ChartIndicatorOverlay";
+import { CompareControl, type CompareCandidate } from "./CompareControl";
 
 interface ChartCanvasProps {
   candles: Candle[];
@@ -51,7 +53,17 @@ interface ChartCanvasProps {
   onNeedHistory?: () => void;
   /** When set, scroll the viewport so this time lands in view. */
   focusTime?: number;
+  /** Compare overlay: other symbols' candles keyed by symbol. */
+  compareSeries?: Record<string, Candle[]>;
+  /** Ordered list of compare symbols (drives color assignment + legend order). */
+  compareSymbols?: string[];
+  /** Catalog symbols selectable in the Compare picker. */
+  compareCandidates?: CompareCandidate[];
+  onAddCompare?: (symbol: string) => void;
+  onRemoveCompare?: (symbol: string) => void;
 }
+
+const MAX_COMPARE = 3;
 
 type Interaction =
   | { mode: "pan"; startClientX: number; startOffset: number }
@@ -78,7 +90,12 @@ export function ChartCanvas({
   plots,
   theme,
   onNeedHistory,
-  focusTime
+  focusTime,
+  compareSeries,
+  compareSymbols,
+  compareCandidates,
+  onAddCompare,
+  onRemoveCompare
 }: ChartCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number>();
@@ -101,9 +118,19 @@ export function ChartCanvas({
     crosshair?: { x: number; y: number };
     priceMode: PriceMode;
   }>({ zoom: 1, offset: 0, priceMode: "linear" });
+  const [compareLegend, setCompareLegend] = useState<CompareLegendSnapshot[]>([]);
 
   const latest = candles.at(-1);
   drawingsRef.current = drawings;
+
+  // Assemble the compare overlay: attach a stable per-slot color to each symbol
+  // that actually has data. Order follows `compareSymbols` so colors are stable.
+  const compare = useMemo<CompareSeries[]>(() => {
+    if (!compareSymbols || compareSymbols.length === 0 || !compareSeries) return [];
+    return compareSymbols
+      .map((symbol, index) => ({ symbol, color: compareColor(index), candles: compareSeries[symbol] ?? [] }))
+      .filter((entry) => entry.candles.length > 0);
+  }, [compareSymbols, compareSeries]);
 
   // Load / persist drawings per symbol.
   useEffect(() => {
@@ -169,15 +196,20 @@ export function ChartCanvas({
         trades,
         plots,
         showVolume,
+        compare,
+        baseSymbol: instrument.symbol,
         onViewport: (viewport) => {
           viewportRef.current = viewport;
+        },
+        onCompareLegend: (entries) => {
+          setCompareLegend((current) => (sameLegend(current, entries) ? current : entries));
         }
       });
     };
     cancelAnimationFrame(frameRef.current ?? 0);
     frameRef.current = requestAnimationFrame(render);
     return () => cancelAnimationFrame(frameRef.current ?? 0);
-  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, signals, trades, plots, selectedId, showVolume, theme, view]);
+  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, instrument.symbol, signals, trades, plots, compare, selectedId, showVolume, theme, view]);
 
   // Lazy-load older history when the viewport nears the left (oldest) edge.
   useEffect(() => {
@@ -322,6 +354,16 @@ export function ChartCanvas({
           activeStrategyId={activeStrategyId}
           onAddStrategy={onAddStrategy}
         />
+        {onAddCompare && onRemoveCompare && (
+          <CompareControl
+            candidates={compareCandidates ?? []}
+            active={compareSymbols ?? []}
+            max={MAX_COMPARE}
+            legend={compareLegend}
+            onAdd={onAddCompare}
+            onRemove={onRemoveCompare}
+          />
+        )}
         <button
           type="button"
           className="scale-toggle"
@@ -474,6 +516,25 @@ function moveDrawing(drawing: DrawingObject, part: number | "body", next: Anchor
 
 function clampIndex(index: number, length: number) {
   return Math.max(0, Math.min(length - 1, index));
+}
+
+/** Skip a legend state update when nothing a viewer would notice changed. */
+function sameLegend(a: CompareLegendSnapshot[], b: CompareLegendSnapshot[]) {
+  if (a.length !== b.length) return false;
+  return a.every((entry, index) => {
+    const other = b[index];
+    return (
+      entry.symbol === other.symbol &&
+      entry.color === other.color &&
+      entry.base === other.base &&
+      roundPct(entry.pct) === roundPct(other.pct)
+    );
+  });
+}
+
+function roundPct(pct?: number) {
+  if (pct === undefined || !Number.isFinite(pct)) return undefined;
+  return Math.round(pct * 100) / 100;
 }
 
 function formatVolume(volume: number) {

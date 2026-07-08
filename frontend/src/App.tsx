@@ -8,6 +8,7 @@ import { StatsPanel } from "./components/StatsPanel";
 import { TopBar } from "./components/TopBar";
 import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
+import { useCompareSeries } from "./hooks/useCompareSeries";
 import { useMarketStream } from "./hooks/useMarketStream";
 import { usePriceAlerts } from "./hooks/usePriceAlerts";
 import { useSparklines } from "./hooks/useSparklines";
@@ -25,6 +26,9 @@ import type { AssetClass, ChartType, DataExchange, Instrument, Timeframe } from 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
 const initialWorkspaceState = loadInitialWorkspaceState();
+
+/** Max simultaneous compare-overlay symbols. */
+const MAX_COMPARE = 3;
 
 const fallbackInstrument: Instrument = {
   symbol: "BTCUSDT",
@@ -67,7 +71,10 @@ export default function App() {
   const [leftOpen, setLeftOpen] = useState(() => readPanel("mf:panel:left", true));
   const [rightOpen, setRightOpen] = useState(() => readPanel("mf:panel:right", true));
   const [workspaces, setWorkspaces] = useState<Workspace[]>(() => loadWorkspaces());
+  const [compareSymbols, setCompareSymbols] = useState<string[]>(() => loadCompare());
   const stream = useMarketStream(symbol, timeframe, cryptoExchange);
+  // Fetch the compare symbols on the same timeframe/exchange as the base chart.
+  const compareSeries = useCompareSeries(compareSymbols, timeframe, cryptoExchange);
 
   useEffect(() => {
     saveWorkspaces(workspaces);
@@ -83,6 +90,14 @@ export default function App() {
 
   useEffect(() => writePanel("mf:panel:left", leftOpen), [leftOpen]);
   useEffect(() => writePanel("mf:panel:right", rightOpen), [rightOpen]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("sbv2:compare", JSON.stringify(compareSymbols));
+    } catch {
+      // ignore storage failures
+    }
+  }, [compareSymbols]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -142,6 +157,31 @@ export default function App() {
 
   const allSymbols = useMemo(() => catalog?.instruments.map((item) => item.symbol) ?? [], [catalog]);
   const sparklines = useSparklines(allSymbols, timeframe, cryptoExchange);
+
+  // Compare picker candidates — every catalog symbol except the active base one.
+  const compareCandidates = useMemo(
+    () =>
+      (catalog?.instruments ?? [])
+        .filter((item) => item.symbol !== symbol)
+        .map((item) => ({ symbol: item.symbol, displayName: item.displayName })),
+    [catalog, symbol]
+  );
+
+  const addCompare = useCallback((sym: string) => {
+    setCompareSymbols((current) =>
+      current.includes(sym) || current.length >= MAX_COMPARE ? current : [...current, sym]
+    );
+  }, []);
+  const removeCompare = useCallback((sym: string) => {
+    setCompareSymbols((current) => current.filter((item) => item !== sym));
+  }, []);
+
+  // Never compare the base symbol against itself — drop it if it becomes active.
+  useEffect(() => {
+    setCompareSymbols((current) =>
+      current.includes(symbol) ? current.filter((item) => item !== symbol) : current
+    );
+  }, [symbol]);
 
   // Live price map for alert detection: the active symbol streams tick-by-tick, other
   // symbols fall back to the periodically-refreshed sparkline `last`.
@@ -386,6 +426,11 @@ export default function App() {
               focusTime={activeOverlay ? chartFocus : undefined}
               theme={theme}
               onNeedHistory={stream.loadOlder}
+              compareSeries={compareSeries}
+              compareSymbols={compareSymbols}
+              compareCandidates={compareCandidates}
+              onAddCompare={addCompare}
+              onRemoveCompare={removeCompare}
             />
           )}
           {mode === "trade" && (
@@ -469,6 +514,19 @@ function writePanel(key: string, open: boolean) {
     window.localStorage.setItem(key, open ? "1" : "0");
   } catch {
     // ignore
+  }
+}
+
+/** Load persisted compare symbols, tolerating missing / malformed storage. */
+function loadCompare(): string[] {
+  try {
+    const raw = window.localStorage.getItem("sbv2:compare");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string").slice(0, MAX_COMPARE);
+  } catch {
+    return [];
   }
 }
 

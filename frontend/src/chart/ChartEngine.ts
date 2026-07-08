@@ -26,6 +26,7 @@ import { drawVolume } from "./renderers/volume";
 import { drawMarkers } from "./renderers/markers";
 import { drawTradeOverlay } from "./renderers/tradeOverlay";
 import { drawStrategyPlots } from "./renderers/strategyPlots";
+import { drawCompareSeries } from "./renderers/compareSeries";
 import { toHeikinAshi } from "./heikinAshi";
 import { computePlot, niceTicks, priceScale, visibleCandles } from "./scales";
 import { buildViewport } from "./viewport";
@@ -52,7 +53,7 @@ export function drawChart(options: DrawChartOptions) {
   const {
     ctx, width, height, candles, chartType, decimals, view, indicators,
     drawings, draftDrawing, signals, trades, plots, showVolume, onViewport,
-    selectedDrawingId, hoveredDrawingId
+    selectedDrawingId, hoveredDrawingId, compare, onCompareLegend
   } = options;
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = theme.background;
@@ -112,6 +113,22 @@ export function drawChart(options: DrawChartOptions) {
   if (chartType === "area" || chartType === "baseline") drawLineArea(renderContext, true);
   if (chartType === "renko") drawRenko(renderContext, bricks);
   drawMainIndicators(ctx, computed, start, end, plot, scale, viewport.barSpacing);
+
+  // Compare overlay: normalized %-change lines for other symbols on the price
+  // pane. Drawn against `visible.data` (the base's visible window) so it
+  // re-bases to the first visible bar as you pan/zoom.
+  if (compare && compare.length > 0) {
+    const legend = drawCompareSeries(ctx, viewport, {
+      baseVisible: visible.data,
+      baseSymbol: options.baseSymbol ?? "",
+      baseColor: theme.accent,
+      series: compare,
+      theme
+    });
+    onCompareLegend?.(legend);
+  } else {
+    onCompareLegend?.([]);
+  }
 
   let panelTop = plot.bottom + 22;
   if (showVolume) {

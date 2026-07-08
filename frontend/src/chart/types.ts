@@ -90,8 +90,22 @@ export interface DrawChartOptions {
   /** Indicator lines the overlaid strategy plots. */
   plots?: ChartPlot[];
   showVolume?: boolean;
+  /** Symbols overlaid on the price pane, normalized to % change (Compare). */
+  compare?: CompareSeries[];
+  /** The base chart's symbol — labels the base line in the compare legend. */
+  baseSymbol?: string;
   /** Called with the viewport built for this frame, for pointer math. */
   onViewport?: (viewport: Viewport) => void;
+  /** Called with the compare legend (symbol · %change · color) each frame. */
+  onCompareLegend?: (entries: CompareLegendSnapshot[]) => void;
+}
+
+/** Legend row emitted by the compare renderer for the React overlay. */
+export interface CompareLegendSnapshot {
+  symbol: string;
+  color: string;
+  pct?: number;
+  base: boolean;
 }
 
 export interface DraftDrawing {
@@ -111,6 +125,17 @@ export interface ChartPlot {
   label: string;
   color: string;
   points: { time: number; value: number }[];
+}
+
+/**
+ * One symbol overlaid on the price pane for relative-performance comparison.
+ * `candles` is the raw series for the same timeframe/exchange as the base chart;
+ * the compare renderer normalizes it to % change from the first visible bar.
+ */
+export interface CompareSeries {
+  symbol: string;
+  color: string;
+  candles: Candle[];
 }
 
 /** One executed trade drawn on the price pane: entry → exit with a reason. */

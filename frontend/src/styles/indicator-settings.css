@@ -297,3 +297,187 @@
   line-height: 1.45;
   white-space: pre-wrap;
 }
+
+/* --- Compare overlay control (symbol comparison, % change) --- */
+.compare-control {
+  position: absolute;
+  inset-block-start: 62px;
+  inset-inline-start: 8px;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  max-inline-size: min(760px, calc(100% - 24px));
+  pointer-events: none;
+}
+
+.compare-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-inline-size: 0;
+}
+
+.compare-add,
+.compare-chip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 86%, transparent);
+  color: var(--text);
+  backdrop-filter: blur(8px);
+  font: inherit;
+}
+
+.compare-add {
+  gap: 4px;
+  padding: 0 7px;
+  cursor: pointer;
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.compare-add:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.compare-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.compare-chip {
+  gap: 4px;
+  padding: 0 4px 0 7px;
+  font-size: var(--fs-xs);
+}
+
+.compare-chip strong {
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  line-height: 1;
+}
+
+.compare-chip small {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--dim);
+}
+
+.compare-chip small.up {
+  color: var(--up);
+}
+
+.compare-chip small.down {
+  color: var(--down);
+}
+
+.compare-dot {
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+}
+
+.compare-chip button {
+  display: inline-grid;
+  place-content: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.compare-chip button:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.compare-menu {
+  pointer-events: auto;
+  inline-size: min(300px, calc(100dvw - 32px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(14px);
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+}
+
+.compare-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  min-block-size: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.compare-search input {
+  flex: 1;
+  min-inline-size: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.compare-menu-list {
+  display: grid;
+  gap: 2px;
+  max-block-size: 300px;
+  overflow-y: auto;
+}
+
+.compare-menu-list button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  min-block-size: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  padding: 0 8px;
+  text-align: start;
+  cursor: pointer;
+  font: inherit;
+}
+
+.compare-menu-list button:hover {
+  background: var(--accent-soft);
+}
+
+.compare-menu-list strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.compare-menu-list small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compare-menu-list p {
+  margin: 0;
+  padding: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
