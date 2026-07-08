@@ -40,25 +40,26 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - Custom **canvas chart engine** (no heavy chart library) with its own viewport / time-scale coordinate system.
 - Chart types: **candles, Heikin-Ashi, bars, line, area, baseline, renko**. Ten timeframes from **1m to 1M**.
 - Indicators: **SMA, EMA, Bollinger, RSI, MACD, VWAP, ATR, Stochastic, OBV** and arrow **signal** overlays (e.g. EMA crossovers).
-- **Price alerts** (browser notification + sound), crosshair with OHLC legend, volume histogram, drawing tools, and **lazy-loaded history** on scroll-back.
-- Watchlist with **favorites** and **%-change sorting**; overlay a saved strategy directly on the chart with its **plotted indicator lines**, **buy/sell signal points** and simulated trades.
+- **Price alerts** (browser notification + sound), **symbol compare** overlay, crosshair with OHLC legend, volume histogram, drawing tools, and **lazy-loaded history** on scroll-back.
+- Watchlist with **favorites** and **%-change sorting**; **saved workspaces** (named chart layouts); overlay a saved strategy directly on the chart with its **plotted indicator lines**, **buy/sell signal points** and simulated trades.
 
 ### 🧱 Visual strategy builder + backtester
-- **Blockly** no-code builder — snap together Market / Indicators / Math / Logic / Time / Signals / Risk & Size / State & Alerts blocks.
+- **Blockly** no-code builder — snap together Market / Indicators / Math / Logic / Time / Signals / Risk & Size / State & Alerts blocks. Start from a **template gallery**.
 - Blocks compile to a safe **JSON intermediate representation (IR)** — **no `eval`, ever**.
-- **One-click backtest** with configurable quote market, timeframe, bar count, starting capital, fee % and shorting.
-- Metrics + trade markers on the chart; share a strategy as a single **URL** (import as a remixable copy).
+- **Trustworthy backtests**: next-bar-open fills, gap-aware stops, slippage/funding costs, warm-up exclusion, Monte Carlo robustness, drawdown/MAE-MFE, and a **parameter optimizer with walk-forward** (in-/out-of-sample, Web Worker).
+- Metrics + trade markers on the chart; share a strategy as a **URL** or a **`.strategy` file** (import as a remixable copy).
 
 ### 🤖 Paper & live trading
 - Run any saved strategy as a bot in **paper** (default), **Binance**, or **Bybit** mode.
 - Strategy signals are translated into an **Antares-style command language**: `param=value;` params, `::` command chaining, `pause` / `randpause`, `!`/`^` flags and **14 order actions** (market/limit/stop/take-profit, partial closes, reverses, and more).
-- Built-in **paper order engine** with pending limit/stop/TP orders and tick-based fills at real market prices.
+- Built-in **paper order engine** with pending limit/stop/TP orders and tick-based fills at real market prices; live orders round to exchange filters and place **exchange-side protective stops**.
+- **Cross-bot portfolio view**, per-bot risk caps + a **kill switch**, and **two-way Telegram control** (`/status` `/stop` `/start` `/kill`).
 - **Telegram & VK** notifications on start/stop/open/close/error/signal.
 
 ### 🔀 Multi-exchange market data
-- **Binance** and **Bybit** public providers (REST klines + live WebSocket), plus a deterministic **synthetic** feed for FX/stocks/indices and offline demos.
+- **Binance** and **Bybit** public providers (REST klines + live WebSocket) with **auto-reconnect + gap backfill**, plus a deterministic **synthetic** feed for FX/stocks/indices.
+- **~200 USDT-spot pairs** discovered dynamically from the exchanges (curated fallback), a **persistent SQLite candle store** for deep history, and rate-limit-aware fetching.
 - Pick the crypto **data source** (Binance ⇄ Bybit) right in the Markets panel — the whole chart, sparklines and stream re-point instantly.
-- Automatic **fallback** to synthetic data if an exchange is unreachable, with a small in-memory **candle cache**.
 
 ### 🔒 Local-first & secure
 - Exchange API keys are **encrypted at rest** with AES-256-GCM (`node:crypto`) — they are **never** sent back to the browser and never leave your machine.
