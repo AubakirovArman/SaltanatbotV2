@@ -1,0 +1,89 @@
+@media (max-width: 1280px) {
+  .workspace {
+    grid-template-columns: 216px minmax(0, 1fr) 232px;
+  }
+
+  .workspace.left-closed {
+    grid-template-columns: 0 minmax(0, 1fr) 232px;
+  }
+
+  .workspace.right-closed {
+    grid-template-columns: 216px minmax(0, 1fr) 0;
+  }
+
+  .strategy-grid {
+    grid-template-columns: minmax(180px, 208px) minmax(0, 1fr) minmax(256px, 292px);
+  }
+
+  .brand strong {
+    display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .chart-types {
+    display: none;
+  }
+
+  .mode-tabs button span {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding-block: 6px;
+  }
+
+  .terminal-shell {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .workspace,
+  .workspace.left-closed,
+  .workspace.right-closed {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(150px, 24dvh) minmax(0, 1fr);
+  }
+
+  .stats-panel {
+    display: none;
+  }
+
+  .watchlist {
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--line);
+  }
+
+  .symbol-list {
+    min-block-size: 0;
+  }
+
+  .tool-rail {
+    display: none;
+  }
+
+  .chart-surface {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .strategy-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(124px, 20dvh) minmax(0, 1fr) minmax(180px, 28dvh);
+  }
+
+  .blockly-host {
+    min-block-size: 0;
+  }
+
+  .strategy-library {
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--line);
+  }
+
+  .code-preview {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--line);
+  }
+}

@@ -1,0 +1,9 @@
+@import "./styles/base.css";
+@import "./styles/terminal.css";
+@import "./styles/market-panels.css";
+@import "./styles/chart-panel.css";
+@import "./styles/indicator-settings.css";
+@import "./styles/strategy.css";
+@import "./styles/trading.css";
+@import "./styles/command-palette.css";
+@import "./styles/responsive.css";

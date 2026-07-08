@@ -1,0 +1,299 @@
+.chart-indicator-overlay {
+  position: absolute;
+  inset-block-start: 32px;
+  inset-inline-start: 8px;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  max-inline-size: min(760px, calc(100% - 24px));
+  pointer-events: none;
+}
+
+.indicator-strip,
+.indicator-chip,
+.indicator-editor-head,
+.indicator-logic div,
+.indicator-logic span {
+  display: flex;
+  align-items: center;
+}
+
+.indicator-strip {
+  gap: 6px;
+  flex-wrap: wrap;
+  min-inline-size: 0;
+}
+
+.chart-indicator-overlay button,
+.indicator-editor input {
+  font: inherit;
+}
+
+.indicator-add,
+.indicator-chip {
+  pointer-events: auto;
+  min-block-size: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 86%, transparent);
+  color: var(--text);
+  backdrop-filter: blur(8px);
+}
+
+.indicator-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  cursor: pointer;
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.indicator-add:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.indicator-chip {
+  gap: 4px;
+  padding: 0 4px 0 7px;
+  font-size: var(--fs-xs);
+}
+
+.indicator-chip.muted {
+  opacity: 0.58;
+}
+
+.indicator-chip.editing {
+  border-color: var(--accent);
+}
+
+.indicator-chip strong {
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  line-height: 1;
+}
+
+.indicator-chip small {
+  color: var(--dim);
+  font-size: 9px;
+  font-family: var(--font-mono);
+}
+
+.indicator-dot {
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+}
+
+.indicator-chip button,
+.indicator-editor-head button {
+  display: inline-grid;
+  place-content: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.indicator-chip button:hover,
+.indicator-editor-head button:hover,
+.indicator-logic button:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.indicator-menu,
+.indicator-editor {
+  pointer-events: auto;
+  inline-size: min(340px, calc(100dvw - 32px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(14px);
+}
+
+.indicator-menu {
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  max-block-size: 380px;
+  overflow-y: auto;
+}
+
+.menu-group-title {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  color: var(--dim);
+  padding: 6px 8px 2px;
+}
+
+.menu-group-title:not(:first-child) {
+  border-block-start: 1px solid var(--line-soft);
+  margin-block-start: 4px;
+}
+
+.indicator-menu button.menu-strategy {
+  grid-template-columns: 14px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 2px 8px;
+  align-items: center;
+  min-block-size: 40px;
+}
+
+.indicator-menu button.menu-strategy svg {
+  grid-row: 1 / span 2;
+  color: var(--accent);
+}
+
+.indicator-menu button.menu-strategy small {
+  grid-column: 2;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.indicator-menu button.menu-strategy.active {
+  background: var(--accent-soft);
+}
+
+.indicator-menu button {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-block-size: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  padding: 0 8px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.indicator-menu button:hover {
+  background: var(--accent-soft);
+}
+
+.indicator-menu button span {
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+}
+
+.indicator-menu strong {
+  font-size: 12px;
+}
+
+.indicator-menu p,
+.indicator-menu small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.indicator-menu p {
+  margin: 0;
+  padding: 8px;
+}
+
+.indicator-editor {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.indicator-editor-head {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.indicator-editor-head strong {
+  font-size: 13px;
+}
+
+.indicator-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.indicator-editor label {
+  display: grid;
+  gap: 4px;
+}
+
+.indicator-editor label span,
+.indicator-logic span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.indicator-editor input[type="number"],
+.indicator-editor input[type="color"] {
+  inline-size: 100%;
+  min-block-size: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.indicator-editor input[type="number"] {
+  padding: 0 8px;
+}
+
+.indicator-editor input[type="color"] {
+  padding: 2px;
+}
+
+.indicator-logic {
+  display: grid;
+  gap: 5px;
+}
+
+.indicator-logic div {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.indicator-logic span {
+  gap: 5px;
+}
+
+.indicator-logic button {
+  min-block-size: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 0 8px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.indicator-logic pre {
+  margin: 0;
+  max-block-size: 104px;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--bg);
+  color: #dce7ef;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}

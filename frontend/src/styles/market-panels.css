@@ -1,0 +1,289 @@
+.watchlist,
+.stats-panel {
+  display: grid;
+  gap: 8px;
+  min-block-size: 0;
+  min-inline-size: 0;
+  padding: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.watchlist {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  border-inline-end: 1px solid var(--line);
+}
+
+.stats-panel {
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  padding-inline: 12px;
+  border-inline-start: 1px solid var(--line);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-block-size: 20px;
+}
+
+.panel-header strong {
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.panel-header span,
+small {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  line-height: 1.25;
+}
+
+.market-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  block-size: var(--ctl-h);
+  padding: 0 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--dim);
+}
+
+.market-search:focus-within {
+  border-color: var(--accent);
+}
+
+.market-search input {
+  flex: 1;
+  min-inline-size: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-md);
+  outline: none;
+}
+
+.market-search input::placeholder {
+  color: var(--dim);
+}
+
+.asset-tabs button {
+  font-size: var(--fs-xs);
+  padding: 0 7px;
+  block-size: var(--ctl-h-sm);
+}
+
+/* Crypto data-source toggle: which exchange live prices come from. */
+.exchange-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exchange-select-label {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.exchange-select-options {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.exchange-select-options button {
+  flex: 1;
+  min-block-size: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.exchange-select-options button:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.exchange-select-options button.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.symbol-list {
+  display: grid;
+  align-content: start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-block-size: 0;
+  margin-inline: -8px;
+}
+
+/* One dense row per symbol: ticker | sparkline | price-over-change. */
+.symbol-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px auto;
+  gap: 8px;
+  align-items: center;
+  text-align: start;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 3px 10px;
+  cursor: pointer;
+  min-block-size: 34px;
+}
+
+.symbol-quote {
+  display: grid;
+  gap: 0;
+  justify-items: end;
+  line-height: var(--lh-tight);
+}
+
+.symbol-row:hover {
+  background: var(--hover);
+}
+
+.symbol-row.active {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.symbol-row .sparkline {
+  inline-size: 44px;
+  block-size: 16px;
+  opacity: 0.7;
+}
+
+.sparkline-empty {
+  inline-size: 44px;
+}
+
+.symbol-ticker {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.symbol-price {
+  text-align: end;
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+
+.symbol-change {
+  text-align: end;
+  font-size: var(--fs-xs);
+}
+
+.empty-state {
+  display: grid;
+  gap: 4px;
+  padding: 14px 8px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.empty-state strong {
+  color: var(--text);
+  font-size: var(--fs-md);
+}
+
+/* ---- Right panel: instrument quote + feed ---- */
+
+.quote-meta {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  padding-block-end: 2px;
+}
+
+.quote-block {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0 8px;
+  border-block-end: 1px solid var(--line-soft);
+}
+
+.quote-block strong {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+}
+
+.quote-block em {
+  font-style: normal;
+  font-size: var(--fs-md);
+}
+
+/* Label-left / value-right hairline table. */
+.stat-table {
+  display: grid;
+}
+
+.stat-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-block-size: 22px;
+  padding: 3px 0;
+}
+
+.stat-row span {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.stat-row strong {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  text-align: end;
+}
+
+.feed-list {
+  display: grid;
+}
+
+.feed-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-block-size: 22px;
+  padding: 3px 0;
+}
+
+.feed-row span {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.feed-row strong {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-inline-size: 150px;
+}

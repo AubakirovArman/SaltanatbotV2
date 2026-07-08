@@ -1,0 +1,66 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SaltanatbotV2 elephant logo">
+  <defs>
+    <linearGradient id="badge" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F172A"/>
+      <stop offset="0.55" stop-color="#0F3D3A"/>
+      <stop offset="1" stop-color="#115E59"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.32" cy="0.26" r="0.9">
+      <stop offset="0" stop-color="#2DD4BF" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#2DD4BF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Badge -->
+  <rect x="0" y="0" width="512" height="512" rx="116" fill="url(#badge)"/>
+  <rect x="0" y="0" width="512" height="512" rx="116" fill="url(#glow)"/>
+  <rect x="6" y="6" width="500" height="500" rx="110" fill="none" stroke="#5EEAD4" stroke-opacity="0.18" stroke-width="2"/>
+
+  <!-- Elephant, facing right, trunk raised (good fortune / bullish) -->
+  <g>
+    <!-- Legs -->
+    <rect x="150" y="352" width="44" height="98" rx="21" fill="#D7DCE3"/>
+    <rect x="206" y="356" width="44" height="94" rx="21" fill="#E8EAED"/>
+    <rect x="300" y="356" width="44" height="94" rx="21" fill="#D7DCE3"/>
+    <rect x="356" y="352" width="44" height="98" rx="21" fill="#E8EAED"/>
+
+    <!-- Tail -->
+    <path d="M126 300 C 96 316, 92 348, 108 372" fill="none" stroke="#D7DCE3" stroke-width="12" stroke-linecap="round"/>
+    <circle cx="108" cy="376" r="9" fill="#D7DCE3"/>
+
+    <!-- Body + head -->
+    <ellipse cx="232" cy="308" rx="140" ry="104" fill="#E8EAED"/>
+    <circle cx="352" cy="286" r="92" fill="#E8EAED"/>
+
+    <!-- Raised trunk -->
+    <path d="M392 250
+             C 415 198, 430 160, 456 150
+             Q 486 140, 480 176
+             C 476 200, 462 208, 452 196
+             C 448 190, 452 176, 462 172
+             C 448 176, 440 210, 452 244
+             C 430 276, 414 292, 400 300
+             Z" fill="#E8EAED"/>
+
+    <!-- Ear -->
+    <ellipse cx="330" cy="256" rx="56" ry="66" fill="#D2D8DF"/>
+    <ellipse cx="336" cy="262" rx="34" ry="44" fill="#B9C1CB"/>
+
+    <!-- Tusk -->
+    <path d="M398 336 C 410 356, 404 372, 388 372 C 398 360, 396 348, 386 340 Z" fill="#FFFFFF"/>
+
+    <!-- Eye -->
+    <circle cx="372" cy="268" r="10" fill="#0F172A"/>
+    <circle cx="375" cy="265" r="3" fill="#E8EAED"/>
+  </g>
+
+  <!-- Candlesticks rising toward the trunk -->
+  <g stroke-linecap="round">
+    <line x1="196" y1="150" x2="196" y2="214" stroke="#16A34A" stroke-width="6"/>
+    <rect x="184" y="168" width="24" height="34" rx="5" fill="#22C55E"/>
+    <line x1="244" y1="126" x2="244" y2="206" stroke="#16A34A" stroke-width="6"/>
+    <rect x="232" y="142" width="24" height="46" rx="5" fill="#22C55E"/>
+    <line x1="292" y1="150" x2="292" y2="196" stroke="#DC2626" stroke-width="6"/>
+    <rect x="280" y="158" width="24" height="24" rx="5" fill="#EF4444"/>
+  </g>
+</svg>

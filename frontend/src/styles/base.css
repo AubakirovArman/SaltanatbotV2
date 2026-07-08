@@ -1,0 +1,186 @@
+:root {
+  color-scheme: dark;
+  /* System-only stacks: predictable rendering, no webfont flash. */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  /* Type scale — strictly five steps: 10 / 11 / 12 / 13 / 20. */
+  --fs-xs: 10px;   /* uppercase micro-labels, table heads, axis ticks */
+  --fs-sm: 11px;   /* secondary text, legend, hints, chips */
+  --fs-md: 12px;   /* base UI: buttons, inputs, list rows */
+  --fs-lg: 13px;   /* panel titles, tickers, metric values */
+  --fs-xl: 20px;   /* the one big number: last quote */
+  --lh-tight: 1.2;
+  --ls-caps: 0.06em;
+  /* Control metrics. */
+  --ctl-h-sm: 24px;
+  --ctl-h: 28px;
+  --ctl-h-lg: 32px;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --row-h: 28px;
+
+  font-family: var(--font-ui);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  background: #0b0d10;
+  color: #e8eef4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+
+  --bg: #0b0d10;
+  --panel: #10141a;
+  --panel-soft: #151a21;
+  --line: #222933;
+  --line-soft: #1a2027;
+  --hover: rgba(154, 167, 179, 0.07);
+  --text: #e8eef4;
+  --muted: #8b99a6;
+  --dim: #66747f;
+  --accent: #4db6ff;
+  --accent-soft: rgba(77, 182, 255, 0.12);
+  --accent-line: rgba(77, 182, 255, 0.45);
+  --up: #26a69a;
+  --down: #ef5350;
+  --up-soft: rgba(38, 166, 154, 0.10);
+  --down-soft: rgba(239, 83, 80, 0.10);
+  --warn: #f7c948;
+  --warn-soft: rgba(247, 201, 72, 0.08);
+  --overlay: rgba(16, 20, 25, 0.85);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.5);
+  --chart-bg: #0b0d10;
+  --chart-panel: #10141a;
+  --chart-grid: rgba(134, 150, 166, 0.10);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  background: #f2f4f7;
+  color: #1a232c;
+  --bg: #f2f4f7;
+  --panel: #ffffff;
+  --panel-soft: #f4f6f9;
+  --line: #dde3ea;
+  --line-soft: #e9edf2;
+  --hover: rgba(60, 75, 90, 0.06);
+  --text: #1a232c;
+  --muted: #5f6d7a;
+  --dim: #8a97a3;
+  --accent: #1273c4;
+  --accent-soft: rgba(18, 115, 196, 0.09);
+  --accent-line: rgba(18, 115, 196, 0.4);
+  --up: #089981;
+  --down: #e1443a;
+  --up-soft: rgba(8, 153, 129, 0.08);
+  --down-soft: rgba(225, 68, 58, 0.08);
+  --overlay: rgba(255, 255, 255, 0.88);
+  --shadow-pop: 0 8px 24px rgba(20, 35, 50, 0.12);
+  --shadow-modal: 0 24px 60px rgba(20, 35, 50, 0.18);
+  --chart-bg: #ffffff;
+  --chart-panel: #f4f6f9;
+  --chart-grid: rgba(30, 45, 60, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  block-size: 100%;
+  margin: 0;
+  overflow: clip;
+}
+
+body {
+  inline-size: 100%;
+  font-size: var(--fs-md);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* Every live/comparable number reads as data: mono + tabular. */
+.num,
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* Thin, quiet scrollbars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+*::-webkit-scrollbar {
+  inline-size: 10px;
+  block-size: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 5px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--dim);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.connected {
+  color: var(--up);
+}
+
+.fallback {
+  color: var(--warn);
+}
+
+.error,
+.down {
+  color: var(--down);
+}
+
+.up {
+  color: var(--up);
+}
+
+.sr-only {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

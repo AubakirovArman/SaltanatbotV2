@@ -1,0 +1,226 @@
+.chart-panel {
+  position: relative;
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: grid;
+  overflow: hidden;
+}
+
+.chart-surface {
+  min-block-size: 0;
+  min-inline-size: 0;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  background: var(--chart-bg);
+  overflow: hidden;
+}
+
+/* Vertical drawing-tool rail, TradingView-style. */
+.tool-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0;
+  border-inline-end: 1px solid var(--line);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.tool-rail button {
+  display: inline-grid;
+  place-content: center;
+  inline-size: 28px;
+  block-size: 28px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tool-rail button:hover {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.tool-rail button.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.tool-rail .ic-up {
+  color: var(--up);
+}
+
+.tool-rail .ic-down {
+  color: var(--down);
+}
+
+.rail-divider {
+  inline-size: 18px;
+  block-size: 1px;
+  background: var(--line-soft);
+  margin-block: 4px;
+}
+
+.rail-spacer {
+  flex: 1;
+}
+
+.tool-rail .rail-trash:hover {
+  color: var(--down);
+  background: var(--down-soft);
+}
+
+/* Price-scale mode toggle, pinned by the price axis like TV. */
+.scale-toggle {
+  position: absolute;
+  inset-block-end: 4px;
+  inset-inline-end: 8px;
+  z-index: 2;
+  min-block-size: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 80%, transparent);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scale-toggle:hover {
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.chart-stage {
+  position: relative;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+.chart-canvas {
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 0;
+  display: block;
+  touch-action: none;
+}
+
+.chart-canvas.drawing {
+  cursor: crosshair;
+}
+
+/* Single legend line: identity + OHLC. No plaque — TV-style text over chart. */
+.chart-legend {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-start: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  white-space: nowrap;
+  text-shadow: 0 0 4px var(--chart-bg), 0 0 8px var(--chart-bg);
+}
+
+.legend-symbol {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-ui);
+}
+
+.legend-symbol b {
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.legend-symbol i {
+  font-style: normal;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.chart-legend b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.chart-legend .vol {
+  color: var(--dim);
+}
+
+/* Attached-strategy chip: identity + counts + remove. */
+.strategy-chip {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-end: 84px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 4px 3px 8px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--chart-bg) 82%, transparent);
+  backdrop-filter: blur(6px);
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+
+.strategy-chip svg {
+  color: var(--accent);
+}
+
+.strategy-chip b {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.strategy-chip button {
+  display: inline-grid;
+  place-content: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.strategy-chip button:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.loading-banner,
+.error-banner {
+  position: absolute;
+  inset-block-start: 40px;
+  inset-inline-start: 48px;
+  z-index: 2;
+  padding: 6px 9px;
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+
+.error-banner {
+  color: #ffc0bd;
+  border-color: rgba(239, 83, 80, 0.45);
+}

@@ -1,0 +1,106 @@
+.cmdk-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  justify-items: center;
+  align-items: start;
+  padding-block-start: 14vh;
+  background: rgba(4, 7, 10, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.cmdk {
+  inline-size: min(560px, calc(100vw - 32px));
+  max-block-size: 62vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.cmdk > input {
+  padding: 11px 14px;
+  border: none;
+  border-block-end: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-lg);
+  outline: none;
+  box-shadow: none;
+}
+
+.cmdk-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+}
+
+.cmdk-list button {
+  inline-size: 100%;
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-block-size: 30px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+  font-size: var(--fs-md);
+}
+
+.cmdk-list button.active {
+  background: var(--accent-soft);
+}
+
+.cmdk-group {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  color: var(--dim);
+}
+
+.cmdk-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmdk-hint {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.cmdk-empty {
+  margin: 8px;
+  padding: 24px 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  text-align: center;
+  color: var(--dim);
+  font-size: var(--fs-md);
+}
+
+.cmdk-footer {
+  display: flex;
+  gap: 12px;
+  padding: 7px 12px;
+  border-block-start: 1px solid var(--line);
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.cmdk-footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

@@ -1,0 +1,39 @@
+# ── Dependencies ──────────────────────────────────────────────
+node_modules/
+.npm/
+
+# ── Build output ──────────────────────────────────────────────
+dist/
+build/
+*.tsbuildinfo
+
+# ── Secrets & runtime data (NEVER COMMIT) ─────────────────────
+# The backend stores its AES encryption key and the SQLite trading
+# database (which holds encrypted exchange API keys) under data/.
+backend/data/
+data/
+*.secret
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+
+# ── Logs & temp ───────────────────────────────────────────────
+*.log
+logs/
+tmp/
+.cache/
+
+# ── Internal dev artifacts (kept local, not published) ────────
+audits/
+IMPROVEMENT_PLAN.md
+
+# ── Editor / OS ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
