@@ -5,9 +5,11 @@ import type {
   ExecOrder,
   ExecResult,
   MarketType,
+  PendingOrder,
   PositionState
 } from "../types.js";
 import type { ExchangeKeys } from "./binance.js";
+import { bybitFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
 
 /**
  * Bybit adapter (v5 unified API). `linear` category for USDT futures, `spot`
@@ -64,6 +66,28 @@ export class BybitAdapter implements ExchangeAdapter {
     };
   }
 
+  async orders(symbol?: string): Promise<PendingOrder[]> {
+    const params: Record<string, unknown> = { category: this.category };
+    if (symbol) params.symbol = symbol;
+    else if (this.category === "linear") params.settleCoin = "USDT"; // Bybit requires symbol OR settleCoin for linear.
+    const data = (await this.signed("GET", "/v5/order/realtime", params)) as {
+      result: { list: Array<{ symbol: string; orderId: string; orderLinkId?: string; side: string; orderType: string; qty: string; price?: string; triggerPrice?: string; reduceOnly?: boolean; timeInForce?: string; createdTime?: string }> };
+    };
+    return (data.result.list ?? []).map((row) => ({
+      id: row.orderId,
+      clientId: row.orderLinkId || undefined,
+      symbol: row.symbol,
+      side: row.side === "Sell" ? "sell" : "buy",
+      type: row.triggerPrice && Number(row.triggerPrice) > 0 ? (row.orderType === "Limit" ? "stop_limit" : "stop_market") : row.orderType === "Limit" ? "limit" : "market",
+      qty: Number(row.qty),
+      price: row.price ? Number(row.price) || undefined : undefined,
+      trgPrice: row.triggerPrice ? Number(row.triggerPrice) || undefined : undefined,
+      reduceOnly: !!row.reduceOnly,
+      tif: (row.timeInForce as PendingOrder["tif"]) ?? "GTC",
+      createdAt: row.createdTime ? Number(row.createdTime) : Date.now()
+    }));
+  }
+
   async execute(order: ExecOrder): Promise<ExecResult> {
     try {
       switch (order.action) {
@@ -102,8 +126,11 @@ export class BybitAdapter implements ExchangeAdapter {
       await this.signed("POST", "/v5/position/set-leverage", { category: this.category, symbol: order.symbol, buyLeverage: String(order.leverage), sellLeverage: String(order.leverage) }).catch(() => undefined);
     }
     const price = await this.price(order.symbol);
-    const qty = this.resolveQty(order, price);
-    await this.createOrder(order, order.side === "sell" ? "Sell" : "Buy", qty, price, order.reduceOnly ?? false);
+    const filters = await bybitFilters(order.symbol, this.market).catch(() => undefined);
+    const qty = roundToStep(this.resolveQty(order, price), filters?.stepSize);
+    const violation = checkMinimums(qty, order.type === "limit" ? order.price ?? price : price, filters);
+    if (violation) return { ok: false, message: `Order rejected on ${order.symbol}: ${violation}`, fills: [] };
+    await this.createOrder(order, order.side === "sell" ? "Sell" : "Buy", qty, price, order.reduceOnly ?? false, filters);
     return { ok: true, message: `Placed ${order.type} ${order.side} ${qty} ${order.symbol}`, fills: [], position: await this.position(order.symbol), account: await this.account() };
   }
 
@@ -140,17 +167,19 @@ export class BybitAdapter implements ExchangeAdapter {
     return 0;
   }
 
-  private async createOrder(order: ExecOrder, side: "Buy" | "Sell", qty: number, price: number, reduceOnly: boolean) {
+  private async createOrder(order: ExecOrder, side: "Buy" | "Sell", qty: number, price: number, reduceOnly: boolean, filters?: SymbolFilters) {
+    // Close/turnover paths call directly without filters — fetch on demand.
+    const flt = filters ?? (await bybitFilters(order.symbol, this.market).catch(() => undefined));
     const params: Record<string, unknown> = {
       category: this.category,
       symbol: order.symbol,
       side,
-      qty: qty.toFixed(6).replace(/\.?0+$/, ""),
+      qty: fmtNum(roundToStep(qty, flt?.stepSize)),
       orderType: order.type === "limit" ? "Limit" : "Market"
     };
-    if (order.type === "limit" && order.price) { params.price = String(order.price); params.timeInForce = order.tif ?? "GTC"; }
+    if (order.type === "limit" && order.price) { params.price = fmtNum(roundToTick(order.price, flt?.tickSize)); params.timeInForce = order.tif ?? "GTC"; }
     if (order.type.includes("stop") || order.type.includes("tp")) {
-      params.triggerPrice = String(order.trgPrice ?? price);
+      params.triggerPrice = fmtNum(roundToTick(order.trgPrice ?? price, flt?.tickSize));
       params.triggerDirection = side === "Sell" ? 2 : 1;
       params.orderType = "Market";
     }
@@ -192,4 +221,9 @@ export class BybitAdapter implements ExchangeAdapter {
     if (json.retCode !== 0) throw new Error(`Bybit: ${json.retMsg}`);
     return json;
   }
+}
+
+/** Trim trailing zeros; Bybit rejects e.g. "1.500000" for a whole-number step. */
+function fmtNum(value: number): string {
+  return value.toFixed(8).replace(/\.?0+$/, "");
 }

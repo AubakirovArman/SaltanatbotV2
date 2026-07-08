@@ -178,6 +178,31 @@ export interface ExecResult {
   data?: unknown;
 }
 
+/** One exchange account's aggregated live state (deduped across bots). */
+export interface PortfolioExchange {
+  /** Adapter id + market, e.g. "binance:futures". Also the dedupe key. */
+  id: string;
+  exchange: ExchangeId;
+  market: MarketType;
+  equity: number;
+  balance: number;
+  currency: string;
+  positions: PositionState[];
+  openOrders: PendingOrder[];
+  /** Present when the account/position/orders read failed for this exchange. */
+  error?: string;
+}
+
+/** Cross-bot portfolio summary returned by GET /api/trade/portfolio. */
+export interface PortfolioSummary {
+  exchanges: PortfolioExchange[];
+  /** Realized PnL booked today, keyed by botId (running bots only). */
+  realizedTodayByBot: Record<string, number>;
+  totalRealizedToday: number;
+  /** Paper bots' isolated sim state (never aggregated with live accounts). */
+  paper: Array<{ botId: string; name: string; symbol: string; equity: number; balance: number; position: PositionState | null; openOrders: PendingOrder[] }>;
+}
+
 export interface ExchangeAdapter {
   readonly id: ExchangeId;
   readonly market: MarketType;

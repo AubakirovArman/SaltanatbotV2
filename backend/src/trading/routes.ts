@@ -119,6 +119,16 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
     res.json({ bots: listBots().map(withStatus) });
   });
 
+  // Cross-bot portfolio: live account equity/positions/orders (deduped by
+  // exchange) plus today's realized PnL. Fail-safe — never throws to the client.
+  router.get("/portfolio", async (_req, res) => {
+    try {
+      res.json(await engine.portfolio());
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "portfolio failed" });
+    }
+  });
+
   router.post("/bots", (req, res) => {
     const parsed = botBodySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -183,7 +193,8 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
       }
     }
     try {
-      await engine.start(bot);
+      const override = (req.body as { override?: boolean })?.override === true;
+      await engine.start(bot, { override });
       res.json({ ok: true, bot: withStatus(bot) });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to start" });

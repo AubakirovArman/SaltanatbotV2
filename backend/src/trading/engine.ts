@@ -4,6 +4,7 @@ import { findInstrument } from "../market/catalog.js";
 import { ProviderRouter } from "../providers/router.js";
 import type { MarketSubscription } from "../providers/provider.js";
 import { commandToExec, formatExec, parseMessageSet } from "./commands.js";
+import { findLiveCollision } from "./collision.js";
 import { atrValue, evaluateBar, type BarIntents } from "./strategy/evaluator.js";
 import { PaperAdapter, type PaperState } from "./exchange/paper.js";
 import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
@@ -17,6 +18,8 @@ import type {
   ExecOrder,
   ExecResult,
   FillRecord,
+  PortfolioExchange,
+  PortfolioSummary,
   PositionState
 } from "./types.js";
 
@@ -77,10 +80,28 @@ export class TradingEngine {
     };
   }
 
-  async start(config: BotConfig) {
+  /**
+   * Detect a live-on-live collision: another RUNNING live bot on the same
+   * exchange+symbol would fight this one (its close flattens the shared
+   * position, its cancelAll cancels the other's orders). Paper bots are
+   * isolated sims and never collide. Returns the offending bot's config, if any.
+   */
+  liveCollision(config: BotConfig): BotConfig | undefined {
+    return findLiveCollision(config, [...this.running.values()].map((bot) => bot.config));
+  }
+
+  async start(config: BotConfig, options: { override?: boolean } = {}) {
     if (this.running.has(config.id)) return;
     const instrument = findInstrument(config.symbol);
     if (!instrument) throw new Error(`Unknown symbol: ${config.symbol}`);
+
+    // Guard against two live bots fighting over one exchange+symbol.
+    if (!options.override) {
+      const clash = this.liveCollision(config);
+      if (clash) {
+        throw new Error(`A live bot is already running on ${config.exchange} ${config.symbol} ("${clash.name}"). Stop it first or pass override to run both.`);
+      }
+    }
 
     const adapter = this.buildAdapter(config, () => this.running.get(config.id)?.price ?? 0);
     const bot: RunningBot = { config, adapter, instrument, buffer: [], price: 0, vars: new Map() };
@@ -151,7 +172,8 @@ export class TradingEngine {
     for (const config of listBots()) {
       if (config.status !== "running" || this.running.has(config.id)) continue;
       try {
-        await this.start(config);
+        // Bypass the collision guard on resume — these were legitimately running.
+        await this.start(config, { override: true });
         this.log(config.id, "info", "Resumed after restart");
       } catch (error) {
         this.log(config.id, "error", `Resume failed: ${error instanceof Error ? error.message : error}`);
@@ -172,6 +194,86 @@ export class TradingEngine {
   async orders(id: string) {
     const bot = this.running.get(id);
     return bot?.adapter.orders ? bot.adapter.orders(bot.config.symbol) : [];
+  }
+
+  /**
+   * Cross-bot portfolio snapshot. Live accounts (id !== "paper") are deduped by
+   * exchange+market so two bots on one account aren't double-counted; each
+   * account's equity/positions/open-orders are read once. Paper bots are kept
+   * separate (isolated sims). Every adapter call is guarded so one failing
+   * exchange degrades to an `error` field instead of breaking the response.
+   */
+  async portfolio(): Promise<PortfolioSummary> {
+    const realizedTodayByBot: Record<string, number> = {};
+    let totalRealizedToday = 0;
+    const paper: PortfolioSummary["paper"] = [];
+
+    // Group running live bots by exchange+market; collect their symbols.
+    const groups = new Map<string, { adapter: ExchangeAdapter; symbols: Set<string> }>();
+
+    for (const bot of this.running.values()) {
+      const realized = this.realizedToday(bot.config.id);
+      realizedTodayByBot[bot.config.id] = realized;
+      totalRealizedToday += realized;
+
+      if (bot.adapter.id === "paper") {
+        const state = bot.paper?.getState();
+        paper.push({
+          botId: bot.config.id,
+          name: bot.config.name,
+          symbol: bot.config.symbol,
+          equity: (await bot.adapter.account().catch(() => undefined))?.equity ?? state?.balance ?? 0,
+          balance: state?.balance ?? 0,
+          position: state?.position ?? null,
+          openOrders: state?.orders ?? []
+        });
+        continue;
+      }
+
+      const key = `${bot.adapter.id}:${bot.adapter.market}`;
+      const group = groups.get(key) ?? { adapter: bot.adapter, symbols: new Set<string>() };
+      group.symbols.add(bot.config.symbol);
+      groups.set(key, group);
+    }
+
+    const exchanges: PortfolioExchange[] = [];
+    for (const [id, group] of groups) {
+      const entry: PortfolioExchange = {
+        id,
+        exchange: group.adapter.id,
+        market: group.adapter.market,
+        equity: 0,
+        balance: 0,
+        currency: "USDT",
+        positions: [],
+        openOrders: []
+      };
+      try {
+        const account = await group.adapter.account();
+        entry.equity = account.equity;
+        entry.balance = account.balance;
+        entry.currency = account.currency;
+      } catch (error) {
+        entry.error = error instanceof Error ? error.message : "account read failed";
+      }
+      // One position + open-order read per traded symbol on this account.
+      for (const symbol of group.symbols) {
+        try {
+          const pos = await group.adapter.position(symbol);
+          if (pos) entry.positions.push(pos);
+        } catch {
+          // A single symbol failing shouldn't drop the whole account.
+        }
+        try {
+          if (group.adapter.orders) entry.openOrders.push(...(await group.adapter.orders(symbol)));
+        } catch {
+          // Ignore open-order read failure for this symbol.
+        }
+      }
+      exchanges.push(entry);
+    }
+
+    return { exchanges, realizedTodayByBot, totalRealizedToday, paper };
   }
 
   /**

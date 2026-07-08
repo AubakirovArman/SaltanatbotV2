@@ -5,8 +5,11 @@ import type {
   ExecOrder,
   ExecResult,
   MarketType,
+  OrderType,
+  PendingOrder,
   PositionState
 } from "../types.js";
+import { binanceFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
 
 export interface ExchangeKeys {
   apiKey: string;
@@ -76,6 +79,36 @@ export class BinanceAdapter implements ExchangeAdapter {
     };
   }
 
+  async orders(symbol?: string): Promise<PendingOrder[]> {
+    const path = this.market === "futures" ? "/fapi/v1/openOrders" : "/api/v3/openOrders";
+    const rows = (await this.signed("GET", path, symbol ? { symbol } : {})) as Array<{
+      symbol: string;
+      clientOrderId?: string;
+      orderId: number;
+      side: string;
+      type: string;
+      origQty: string;
+      price: string;
+      stopPrice?: string;
+      reduceOnly?: boolean;
+      timeInForce?: string;
+      time?: number;
+    }>;
+    return rows.map((row) => ({
+      id: String(row.orderId),
+      clientId: row.clientOrderId,
+      symbol: row.symbol,
+      side: row.side === "SELL" ? "sell" : "buy",
+      type: mapBinanceType(row.type),
+      qty: Number(row.origQty),
+      price: Number(row.price) || undefined,
+      trgPrice: row.stopPrice ? Number(row.stopPrice) || undefined : undefined,
+      reduceOnly: !!row.reduceOnly,
+      tif: (row.timeInForce as PendingOrder["tif"]) ?? "GTC",
+      createdAt: row.time ?? Date.now()
+    }));
+  }
+
   async execute(order: ExecOrder): Promise<ExecResult> {
     try {
       switch (order.action) {
@@ -115,15 +148,20 @@ export class BinanceAdapter implements ExchangeAdapter {
       await this.signed("POST", "/fapi/v1/leverage", { symbol: order.symbol, leverage: String(Math.round(order.leverage)) }).catch(() => undefined);
     }
     const price = await this.price(order.symbol);
-    const qty = this.resolveQty(order, price);
-    await this.placeOrder(order, side, qty, price);
+    const filters = await binanceFilters(order.symbol, this.market).catch(() => undefined);
+    const rawQty = this.resolveQty(order, price);
+    const qty = roundToStep(rawQty, filters?.stepSize);
+    // Reject exchange-filter violations up front with a clear reason.
+    const violation = checkMinimums(qty, order.type === "limit" ? order.price ?? price : price, filters);
+    if (violation) return { ok: false, message: `Order rejected on ${order.symbol}: ${violation}`, fills: [] };
+    await this.placeOrder(order, side, qty, price, filters);
     // Attached protection (single stop / first TP) for futures.
     if (this.market === "futures" && (order.stop || order.takeProfits?.length)) {
       const closeSide = side === "BUY" ? "SELL" : "BUY";
       if (order.stop) {
         const trg = order.stop.basis === "price" ? order.stop.value : side === "BUY" ? price * (1 - order.stop.value / 100) : price * (1 + order.stop.value / 100);
         try {
-          await this.signed("POST", "/fapi/v1/order", { symbol: order.symbol, side: closeSide, type: "STOP_MARKET", stopPrice: trg.toFixed(2), closePosition: "true" });
+          await this.signed("POST", "/fapi/v1/order", { symbol: order.symbol, side: closeSide, type: "STOP_MARKET", stopPrice: fmtPrice(trg, filters), closePosition: "true" });
         } catch (error) {
           // Fail loud: an unprotected position is worse than none. Close it and report.
           await this.placeMarket(order.symbol, closeSide, qty, true).catch(() => undefined);
@@ -133,19 +171,19 @@ export class BinanceAdapter implements ExchangeAdapter {
       }
       for (const tp of order.takeProfits ?? []) {
         const trg = tp.priceBasis === "price" ? tp.price : side === "BUY" ? price * (1 + tp.price / 100) : price * (1 - tp.price / 100);
-        await this.signed("POST", "/fapi/v1/order", { symbol: order.symbol, side: closeSide, type: "TAKE_PROFIT_MARKET", stopPrice: trg.toFixed(2), quantity: trimQty(qty * (tp.qtyBasis === "abs" ? 1 : tp.qty / 100)), reduceOnly: "true" }).catch(() => undefined);
+        const tpQty = roundToStep(qty * (tp.qtyBasis === "abs" ? 1 : tp.qty / 100), filters?.stepSize);
+        await this.signed("POST", "/fapi/v1/order", { symbol: order.symbol, side: closeSide, type: "TAKE_PROFIT_MARKET", stopPrice: fmtPrice(trg, filters), quantity: fmtQty(tpQty, filters), reduceOnly: "true" }).catch(() => undefined);
       }
     }
     return { ok: true, message: `Placed ${order.type} ${side} ${qty} ${order.symbol}`, fills: [], position: await this.position(order.symbol), account: await this.account() };
   }
 
-  private async placeOrder(order: ExecOrder, side: "BUY" | "SELL", qty: number, price: number) {
+  private async placeOrder(order: ExecOrder, side: "BUY" | "SELL", qty: number, price: number, filters?: SymbolFilters) {
     const path = this.market === "futures" ? "/fapi/v1/order" : "/api/v3/order";
-    const type = order.type.toUpperCase();
-    const params: Record<string, string> = { symbol: order.symbol, side, quantity: trimQty(qty) };
+    const params: Record<string, string> = { symbol: order.symbol, side, quantity: fmtQty(qty, filters) };
     if (order.type === "market") params.type = "MARKET";
-    else if (order.type === "limit") { params.type = "LIMIT"; params.price = String(order.price ?? price); params.timeInForce = order.tif ?? "GTC"; }
-    else { params.type = order.type.includes("stop") ? "STOP_MARKET" : "TAKE_PROFIT_MARKET"; params.stopPrice = String(order.trgPrice ?? price); }
+    else if (order.type === "limit") { params.type = "LIMIT"; params.price = fmtPrice(order.price ?? price, filters); params.timeInForce = order.tif ?? "GTC"; }
+    else { params.type = order.type.includes("stop") ? "STOP_MARKET" : "TAKE_PROFIT_MARKET"; params.stopPrice = fmtPrice(order.trgPrice ?? price, filters); }
     if (this.market === "futures" && order.reduceOnly) params.reduceOnly = "true";
     if (order.clientId) params.newClientOrderId = order.clientId;
     return this.signed("POST", path, params);
@@ -193,7 +231,9 @@ export class BinanceAdapter implements ExchangeAdapter {
 
   private async placeMarket(symbol: string, side: "BUY" | "SELL", qty: number, reduceOnly: boolean) {
     const path = this.market === "futures" ? "/fapi/v1/order" : "/api/v3/order";
-    const params: Record<string, string> = { symbol, side, type: "MARKET", quantity: trimQty(qty) };
+    const filters = await binanceFilters(symbol, this.market).catch(() => undefined);
+    const rounded = roundToStep(qty, filters?.stepSize);
+    const params: Record<string, string> = { symbol, side, type: "MARKET", quantity: fmtQty(rounded, filters) };
     if (this.market === "futures" && reduceOnly) params.reduceOnly = "true";
     return this.signed("POST", path, params);
   }
@@ -210,6 +250,30 @@ export class BinanceAdapter implements ExchangeAdapter {
   }
 }
 
+/** Format qty for the wire: snap to stepSize when known, else the legacy 6-dp trim. */
+function fmtQty(qty: number, filters?: SymbolFilters): string {
+  const snapped = roundToStep(qty, filters?.stepSize);
+  return trimQty(snapped);
+}
+
+/** Format a price for the wire: snap to tickSize when known, else legacy 2-dp. */
+function fmtPrice(price: number, filters?: SymbolFilters): string {
+  if (filters?.tickSize) return trimQty(roundToTick(price, filters.tickSize));
+  return price.toFixed(2);
+}
+
 function trimQty(qty: number): string {
-  return qty.toFixed(6).replace(/\.?0+$/, "");
+  return qty.toFixed(8).replace(/\.?0+$/, "");
+}
+
+/** Map a Binance order type string to our OrderType enum for portfolio display. */
+function mapBinanceType(type: string): OrderType {
+  switch (type) {
+    case "LIMIT": return "limit";
+    case "STOP": case "STOP_LOSS_LIMIT": return "stop_limit";
+    case "STOP_MARKET": case "STOP_LOSS": return "stop_market";
+    case "TAKE_PROFIT": case "TAKE_PROFIT_LIMIT": return "tp_limit";
+    case "TAKE_PROFIT_MARKET": return "tp_market";
+    default: return "market";
+  }
 }
