@@ -75,7 +75,19 @@ interface StrategyLabProps {
   onShowOnChart?: (symbol: string, timeframe: Timeframe) => void;
 }
 
-const BAR_CHOICES = [500, 1000, 3000, 5000, 10000];
+const BAR_CHOICES = [500, 1000, 3000, 5000, 10000, 20000, 50000];
+
+/** Cost presets set commission + slippage together to match a venue/instrument tier. */
+const COST_PRESETS: { id: string; label: string; commissionPct: number; slippagePct: number }[] = [
+  { id: "majors", label: "Majors / taker", commissionPct: 0.04, slippagePct: 0.02 },
+  { id: "altcoin", label: "Altcoin", commissionPct: 0.075, slippagePct: 0.08 },
+  { id: "custom", label: "Custom", commissionPct: NaN, slippagePct: NaN }
+];
+
+function matchPreset(commissionPct: number, slippagePct: number): string {
+  const hit = COST_PRESETS.find((p) => p.commissionPct === commissionPct && p.slippagePct === slippagePct);
+  return hit ? hit.id : "custom";
+}
 
 export function StrategyLab({
   artifacts,
@@ -356,14 +368,44 @@ export function StrategyLab({
                 onChange={(event) => setConfig((current) => ({ ...current, initialCapital: Number(event.target.value) || 0 }))} />
             </label>
             <label>
-              Fee %
-              <input type="number" value={config.commissionPct} min={0} step={0.01}
-                onChange={(event) => setConfig((current) => ({ ...current, commissionPct: Number(event.target.value) || 0 }))} />
+              Cost preset
+              <select
+                value={matchPreset(config.commissionPct, config.slippagePct ?? 0)}
+                onChange={(event) => {
+                  const preset = COST_PRESETS.find((p) => p.id === event.target.value);
+                  if (!preset || preset.id === "custom") return;
+                  setConfig((current) => ({ ...current, commissionPct: preset.commissionPct, slippagePct: preset.slippagePct }));
+                }}
+              >
+                {COST_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>{preset.label}</option>
+                ))}
+              </select>
             </label>
             <label className="check">
               <input type="checkbox" checked={config.allowShort}
                 onChange={(event) => setConfig((current) => ({ ...current, allowShort: event.target.checked }))} />
               Shorts
+            </label>
+          </div>
+          <div className="config-row">
+            <label>
+              Fee %
+              <input type="number" value={config.commissionPct} min={0} step={0.01}
+                onChange={(event) => setConfig((current) => ({ ...current, commissionPct: Number(event.target.value) || 0 }))} />
+            </label>
+            <label>
+              Slippage %
+              <input type="number" value={config.slippagePct ?? 0} min={0} step={0.01}
+                onChange={(event) => setConfig((current) => ({ ...current, slippagePct: Number(event.target.value) || 0 }))} />
+            </label>
+            <label>
+              Fills
+              <select value={config.fillTiming ?? "next_open"}
+                onChange={(event) => setConfig((current) => ({ ...current, fillTiming: event.target.value as "next_open" | "same_close" }))}>
+                <option value="next_open">Next open</option>
+                <option value="same_close">Same close</option>
+              </select>
             </label>
           </div>
 
@@ -379,6 +421,7 @@ export function StrategyLab({
             <BacktestReport
               result={result}
               decimals={decimals}
+              config={config}
               onShowOnChart={onShowOnChart ? () => onShowOnChart(btSymbol, btTimeframe) : undefined}
             />
           ) : (

@@ -25,13 +25,27 @@ export interface BacktestConfig {
   commissionPct: number;
   slippagePct: number;
   allowShort: boolean;
+  /**
+   * When are entry/exit SIGNAL fills executed?
+   *  - 'next_open' (default): fill on the next bar's open. This matches the live
+   *    engine, which can only act AFTER a bar has closed — no look-ahead.
+   *  - 'same_close': legacy behaviour, fill on the signalling bar's own close.
+   */
+  fillTiming?: "next_open" | "same_close";
+  /** Max notional as a multiple of equity. Entries above this are clipped/rejected. */
+  maxLeverage?: number;
+  /** Quantity is rounded down to this step (0 disables rounding). */
+  qtyStep?: number;
 }
 
 export const DEFAULT_CONFIG: BacktestConfig = {
   initialCapital: 10_000,
   commissionPct: 0.05,
   slippagePct: 0.02,
-  allowShort: true
+  allowShort: true,
+  fillTiming: "next_open",
+  maxLeverage: 5,
+  qtyStep: 0
 };
 
 export interface Trade {
@@ -45,7 +59,13 @@ export interface Trade {
   qty: number;
   pnl: number;
   pnlPct: number;
-  reason: "signal" | "stop" | "target" | "close";
+  reason: "signal" | "stop" | "target" | "close" | "liquidation";
+  /** Bars the position was held (exitIndex - entryIndex). */
+  barsHeld: number;
+  /** Max adverse excursion: worst unrealised loss while open, as % of entry notional. */
+  maePct: number;
+  /** Max favorable excursion: best unrealised gain while open, as % of entry notional. */
+  mfePct: number;
 }
 
 export interface EquityPoint {
@@ -75,6 +95,20 @@ export interface BacktestMetrics {
   expectancy: number;
   timeInMarketPct: number;
   finalEquity: number;
+  /** Average MAE / MFE across trades, as % of entry notional. */
+  avgMaePct: number;
+  avgMfePct: number;
+  /** True if the run stopped early because the account was liquidated. */
+  liquidated: boolean;
+}
+
+/** The effective window over which metrics/equity were measured (post warm-up). */
+export interface TestedRange {
+  fromTime: number;
+  toTime: number;
+  bars: number;
+  /** Bars skipped as indicator warm-up before measurement began. */
+  warmupBars: number;
 }
 
 export interface BacktestResult {
@@ -86,7 +120,10 @@ export interface BacktestResult {
   /** Arrow signals from `signal_marker` blocks (no trade). */
   signals: TradeMarker[];
   alerts: { time: number; message: string }[];
+  /** Non-fatal issues encountered while sizing/executing (skipped entries, clips, liquidation). */
+  warnings: { time: number; message: string }[];
   metrics: BacktestMetrics;
+  tested: TestedRange;
 }
 
 interface Runtime {
@@ -107,6 +144,9 @@ interface Position {
   stopPrice?: number;
   targetPrice?: number;
   trail?: { mode: "percent" | "atr"; value: number };
+  /** Worst / best unrealised PnL seen while open (absolute currency). */
+  maeAbs: number;
+  mfeAbs: number;
 }
 
 interface Intents {
@@ -121,6 +161,10 @@ interface Intents {
 }
 
 export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestConfig = DEFAULT_CONFIG): BacktestResult {
+  // Merge caller config over defaults so new optional fields always have a value.
+  const cfg: Required<BacktestConfig> = { ...DEFAULT_CONFIG, ...config } as Required<BacktestConfig>;
+  const nextOpen = cfg.fillTiming !== "same_close";
+
   const rt: Runtime = {
     candles,
     n: candles.length,
@@ -135,11 +179,18 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
   const markers: TradeMarker[] = [];
   const signals: TradeMarker[] = [];
   const alerts: { time: number; message: string }[] = [];
+  const warnings: { time: number; message: string }[] = [];
 
   let equity = config.initialCapital;
   let position: Position | null = null;
   let sizing: Intents["size"] = { mode: "equity_pct", value: 100 };
   let barsInMarket = 0;
+  let liquidated = false;
+
+  // Warm-up: indicators are NaN until enough history accrues. Metrics/equity are
+  // only measured from `warmup` onward so the flat opening bars don't dilute
+  // Sharpe / time-in-market / drawdown denominators.
+  const warmup = Math.min(rt.n, computeWarmup(ir));
 
   const closePosition = (index: number, price: number, reason: Trade["reason"]) => {
     if (!position) return;
@@ -147,6 +198,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     const commission = position.qty * (position.entryPrice + price) * (config.commissionPct / 100);
     const pnl = gross - commission;
     equity += pnl;
+    const notional = position.entryPrice * position.qty || 1;
     trades.push({
       direction: position.dir,
       entryIndex: position.entryIndex,
@@ -157,20 +209,83 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
       exitPrice: price,
       qty: position.qty,
       pnl,
-      pnlPct: (pnl / (position.entryPrice * position.qty || 1)) * 100,
-      reason
+      pnlPct: (pnl / notional) * 100,
+      reason,
+      barsHeld: index - position.entryIndex,
+      maePct: (position.maeAbs / notional) * 100,
+      mfePct: (position.mfeAbs / notional) * 100
     });
     markers.push({ time: candles[index].time, price, kind: "exit", label: `Exit ${price.toFixed(2)}` });
     position = null;
   };
 
+  // Pending signal fill carried to the next bar's open (next_open timing).
+  let pendingEntry: { dir: "long" | "short"; stop: Intents["stop"]; target: Intents["target"]; trail: Intents["trail"]; size: NonNullable<Intents["size"]> } | null = null;
+  let pendingExit = false;
+
+  // Returns the opened position (or null if the entry was skipped/rejected).
+  const openPosition = (dir: "long" | "short", fill: number, index: number, stopI: Intents["stop"], targetI: Intents["target"], trailI: Intents["trail"], size: NonNullable<Intents["size"]>): Position | null => {
+    let stopPrice = stopI ? resolveStop(dir, fill, stopI, rt.atr14[index]) : undefined;
+    if (trailI && stopPrice === undefined) {
+      // Seed the trailing stop from the entry bar so risk is bounded immediately.
+      const atr = rt.atr14[index] || 0;
+      stopPrice = trailI.mode === "percent"
+        ? (dir === "long" ? fill * (1 - trailI.value / 100) : fill * (1 + trailI.value / 100))
+        : (dir === "long" ? fill - atr * trailI.value : fill + atr * trailI.value);
+    }
+    const targetPrice = targetI ? resolveTarget(dir, fill, targetI, rt.atr14[index]) : undefined;
+    const sized = resolveSize(size, equity, fill, stopPrice, cfg);
+    if (sized.warning) warnings.push({ time: candles[index].time, message: sized.warning });
+    const qty = sized.qty;
+    if (qty > 0 && Number.isFinite(qty)) {
+      markers.push({
+        time: candles[index].time,
+        price: fill,
+        kind: dir === "long" ? "buy" : "sell",
+        label: `${dir === "long" ? "Long" : "Short"} ${fill.toFixed(2)}`
+      });
+      return { dir, qty, entryPrice: fill, entryIndex: index, entryTime: candles[index].time, stopPrice, targetPrice, trail: trailI, maeAbs: 0, mfeAbs: 0 };
+    }
+    return null;
+  };
+
   for (let i = 0; i < rt.n; i += 1) {
     const candle = candles[i];
 
-    // 1. Trailing stop ratchets with price, then intrabar stop / target
-    //    (stops checked first) on bars after entry.
+    // 0. Fill any signal intent carried from the previous bar at THIS bar's open
+    //    (next_open timing — mirrors the live engine acting only after a close).
+    if (nextOpen) {
+      if (position && pendingExit) {
+        closePosition(i, applySlippage(candle.open, position.dir, false, cfg), "signal");
+      }
+      pendingExit = false;
+      if (!position && pendingEntry) {
+        const fill = applySlippage(candle.open, pendingEntry.dir, true, cfg);
+        position = openPosition(pendingEntry.dir, fill, i, pendingEntry.stop, pendingEntry.target, pendingEntry.trail, pendingEntry.size);
+      }
+      pendingEntry = null;
+    }
+
+    // 1. Intrabar stop / target on bars after entry.
+    //    Intrabar assumption: we have NO path knowledge within a bar. We assume
+    //    the STOP is reached before the TARGET (pessimistic), and we test the
+    //    stop as it stood at BAR OPEN — the trail only ratchets forward for the
+    //    NEXT bar, avoiding the look-ahead of ratcheting on this bar's high/low
+    //    and then testing this bar's low/high against the tightened stop.
     if (position && i > position.entryIndex) {
-      if (position.trail) {
+      if (position.stopPrice !== undefined && stopHit(position, candle)) {
+        // Gap-aware: if price gaps through the stop, the real fill is the open,
+        // not the stop level. Stops are MARKET orders → apply slippage.
+        const raw = position.dir === "long" ? Math.min(candle.open, position.stopPrice) : Math.max(candle.open, position.stopPrice);
+        closePosition(i, applySlippage(raw, position.dir, false, cfg), "stop");
+      } else if (position && position.targetPrice !== undefined && targetHit(position, candle)) {
+        // Targets are LIMIT orders → fill at the limit, but gap-aware in the
+        // favourable direction (a gap through the limit fills at the better open).
+        const raw = position.dir === "long" ? Math.max(candle.open, position.targetPrice) : Math.min(candle.open, position.targetPrice);
+        closePosition(i, raw, "target");
+      }
+      // Ratchet the trailing stop from THIS bar's extreme for use on the NEXT bar.
+      if (position && position.trail) {
         const atr = rt.atr14[i] || 0;
         if (position.dir === "long") {
           const candidate = position.trail.mode === "percent"
@@ -184,16 +299,28 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
           position.stopPrice = Math.min(position.stopPrice ?? Infinity, candidate);
         }
       }
-      if (position.stopPrice !== undefined && stopHit(position, candle)) {
-        closePosition(i, position.stopPrice, "stop");
-      } else if (position && position.targetPrice !== undefined && targetHit(position, candle)) {
-        closePosition(i, position.targetPrice, "target");
+    }
+
+    // 1b. Track MAE / MFE and simulate liquidation against intrabar extremes.
+    if (position) {
+      const worstPrice = position.dir === "long" ? candle.low : candle.high;
+      const bestPrice = position.dir === "long" ? candle.high : candle.low;
+      const worst = unrealized(position, worstPrice);
+      const best = unrealized(position, bestPrice);
+      position.maeAbs = Math.min(position.maeAbs, worst);
+      position.mfeAbs = Math.max(position.mfeAbs, best);
+      // Liquidation: if realised equity + worst-case unrealised is wiped out,
+      // force-close at the point equity hits zero and stop trading.
+      if (equity + worst <= 0) {
+        warnings.push({ time: candle.time, message: "Account liquidated — equity reached zero." });
+        closePosition(i, worstPrice, "liquidation");
+        liquidated = true;
       }
     }
 
     // 2. Evaluate the strategy body to gather intents for this bar.
     const intents: Intents = { exit: false, alerts: [], markers: [] };
-    execStatements(ir.body, i, rt, intents);
+    if (!liquidated) execStatements(ir.body, i, rt, intents);
     if (intents.size) sizing = intents.size;
     for (const alert of intents.alerts) alerts.push({ time: candle.time, message: alert.message });
     for (const marker of intents.markers) {
@@ -205,36 +332,31 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
       });
     }
 
-    // 3. Signal exit at close.
-    if (position && intents.exit) {
-      closePosition(i, applySlippage(candle.close, position.dir, false, config), "signal");
-    }
-
-    // 4. Entry at close when flat.
-    if (!position && intents.entry) {
-      const dir = intents.entry;
-      if (dir === "short" && !config.allowShort) {
-        // skip disallowed shorts
-      } else {
-        const fill = applySlippage(candle.close, dir, true, config);
-        let stopPrice = intents.stop ? resolveStop(dir, fill, intents.stop, rt.atr14[i]) : undefined;
-        if (intents.trail && stopPrice === undefined) {
-          // Seed the trailing stop from the entry bar so risk is bounded immediately.
-          const atr = rt.atr14[i] || 0;
-          stopPrice = intents.trail.mode === "percent"
-            ? (dir === "long" ? fill * (1 - intents.trail.value / 100) : fill * (1 + intents.trail.value / 100))
-            : (dir === "long" ? fill - atr * intents.trail.value : fill + atr * intents.trail.value);
+    if (!liquidated) {
+      if (nextOpen) {
+        // Carry intent; it fills at the NEXT bar's open (or is dropped at end of data).
+        if (position && intents.exit) pendingExit = true;
+        if (!position && intents.entry && !pendingExit) {
+          const dir = intents.entry;
+          if (dir === "short" && !cfg.allowShort) {
+            // skip disallowed shorts
+          } else {
+            pendingEntry = { dir, stop: intents.stop, target: intents.target, trail: intents.trail, size: sizing };
+          }
         }
-        const targetPrice = intents.target ? resolveTarget(dir, fill, intents.target, rt.atr14[i]) : undefined;
-        const qty = resolveSize(sizing, equity, fill, stopPrice);
-        if (qty > 0 && Number.isFinite(qty)) {
-          position = { dir, qty, entryPrice: fill, entryIndex: i, entryTime: candle.time, stopPrice, targetPrice, trail: intents.trail };
-          markers.push({
-            time: candle.time,
-            price: fill,
-            kind: dir === "long" ? "buy" : "sell",
-            label: `${dir === "long" ? "Long" : "Short"} ${fill.toFixed(2)}`
-          });
+      } else {
+        // Legacy same-close timing: fill on this bar's close.
+        if (position && intents.exit) {
+          closePosition(i, applySlippage(candle.close, position.dir, false, cfg), "signal");
+        }
+        if (!position && intents.entry) {
+          const dir = intents.entry;
+          if (dir === "short" && !cfg.allowShort) {
+            // skip disallowed shorts
+          } else {
+            const fill = applySlippage(candle.close, dir, true, cfg);
+            position = openPosition(dir, fill, i, intents.stop, intents.target, intents.trail, sizing);
+          }
         }
       }
     }
@@ -243,11 +365,21 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     equityCurve.push({ time: candle.time, equity: equity + unrealized(position, candle.close) });
   }
 
-  // Close any open position at the last bar for reporting.
+  // Close any open position at the last bar for reporting (slippage on the forced close).
   if (position && rt.n > 0) {
-    closePosition(rt.n - 1, candles[rt.n - 1].close, "close");
+    closePosition(rt.n - 1, applySlippage(candles[rt.n - 1].close, position.dir, false, cfg), "close");
     equityCurve[equityCurve.length - 1] = { time: candles[rt.n - 1].time, equity };
   }
+
+  // Restrict the measured equity curve to the post-warm-up window. Trades are
+  // already gated by warm-up (indicators are NaN, so no entries fire earlier).
+  const measured = equityCurve.slice(warmup);
+  const tested: TestedRange = {
+    fromTime: measured[0]?.time ?? candles[0]?.time ?? 0,
+    toTime: measured.at(-1)?.time ?? candles.at(-1)?.time ?? 0,
+    bars: measured.length,
+    warmupBars: warmup
+  };
 
   return {
     name: ir.name,
@@ -256,8 +388,123 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     markers,
     signals,
     alerts,
-    metrics: computeMetrics(trades, equityCurve, config, barsInMarket, rt.n, candles)
+    warnings,
+    metrics: computeMetrics(trades, measured, config, barsInMarket, measured.length, candles, liquidated),
+    tested
   };
+}
+
+/**
+ * Estimate the indicator warm-up (max lookback) of a strategy from its IR by
+ * walking every expression and taking the largest constant period. Dynamic
+ * periods can't be folded, so we fall back to a safe default of 200 bars.
+ */
+function computeWarmup(ir: StrategyIR): number {
+  const params = new Map(ir.inputs.map((input) => [input.name, input.value]));
+  const SAFE_DEFAULT = 200;
+  let dynamic = false;
+
+  const foldConst = (expr: NumExpr): number => {
+    switch (expr.k) {
+      case "num": return expr.v;
+      case "input": return params.get(expr.name) ?? NaN;
+      case "arith": {
+        const a = foldConst(expr.a);
+        const b = foldConst(expr.b);
+        switch (expr.op) {
+          case "+": return a + b;
+          case "-": return a - b;
+          case "*": return a * b;
+          case "/": return b === 0 ? NaN : a / b;
+          case "%": return b === 0 ? NaN : a % b;
+        }
+        return NaN;
+      }
+      case "unary": {
+        const a = foldConst(expr.a);
+        switch (expr.op) {
+          case "neg": return -a;
+          case "abs": return Math.abs(a);
+          case "round": return Math.round(a);
+          case "floor": return Math.floor(a);
+          case "ceil": return Math.ceil(a);
+        }
+        return a;
+      }
+      default: return NaN;
+    }
+  };
+
+  const period = (expr: NumExpr): number => {
+    const v = foldConst(expr);
+    if (!Number.isFinite(v)) { dynamic = true; return 0; }
+    return Math.max(1, Math.round(v));
+  };
+
+  let max = 0;
+  const visitNum = (expr: NumExpr) => {
+    switch (expr.k) {
+      case "price":
+        if (expr.offset) max = Math.max(max, expr.offset);
+        break;
+      case "ma": case "rsi": case "atr": case "stdev": case "extreme": case "change":
+      case "wpr": case "cci": case "roc":
+        max = Math.max(max, period(expr.period));
+        if ("source" in expr) visitNum(expr.source);
+        break;
+      case "bollinger":
+        max = Math.max(max, period(expr.period));
+        visitNum(expr.source);
+        break;
+      case "macd":
+        max = Math.max(max, period(expr.slow) + period(expr.signal));
+        visitNum(expr.source);
+        break;
+      case "stoch":
+        max = Math.max(max, period(expr.period) + period(expr.smooth));
+        break;
+      case "minmax": case "arith":
+        visitNum(expr.a); visitNum(expr.b);
+        break;
+      case "unary":
+        visitNum(expr.a);
+        break;
+    }
+  };
+  const visitBool = (expr: BoolExpr) => {
+    switch (expr.k) {
+      case "compare": case "cross":
+        visitNum(expr.a); visitNum(expr.b);
+        break;
+      case "logic":
+        visitBool(expr.a); visitBool(expr.b);
+        break;
+      case "not":
+        visitBool(expr.a);
+        break;
+      case "trend":
+        max = Math.max(max, period(expr.period));
+        visitNum(expr.source);
+        break;
+      case "between":
+        visitNum(expr.value); visitNum(expr.low); visitNum(expr.high);
+        break;
+    }
+  };
+  const walk = (stmts: Stmt[]) => {
+    for (const stmt of stmts) {
+      switch (stmt.k) {
+        case "entry": case "exit": case "marker": case "alert": visitBool(stmt.when); break;
+        case "stop": case "target": case "trail": case "size": case "setvar": visitNum(stmt.value); break;
+        case "plot": visitNum(stmt.value); break;
+        case "if": visitBool(stmt.cond); walk(stmt.then); break;
+      }
+    }
+  };
+  walk(ir.body);
+
+  if (dynamic) return SAFE_DEFAULT;
+  return Math.max(max, 1);
 }
 
 export interface PlotSeries {
@@ -591,15 +838,53 @@ function resolveTarget(dir: "long" | "short", entry: number, target: NonNullable
   return dir === "long" ? entry + distance : entry - distance;
 }
 
-function resolveSize(sizing: NonNullable<Intents["size"]>, equity: number, price: number, stopPrice?: number): number {
-  if (sizing.mode === "units") return sizing.value;
-  if (sizing.mode === "risk_pct") {
+interface SizeResult {
+  qty: number;
+  warning?: string;
+}
+
+function resolveSize(
+  sizing: NonNullable<Intents["size"]>,
+  equity: number,
+  price: number,
+  stopPrice: number | undefined,
+  cfg: Required<BacktestConfig>
+): SizeResult {
+  if (price <= 0 || !Number.isFinite(price)) return { qty: 0 };
+
+  let qty: number;
+  if (sizing.mode === "units") {
+    qty = sizing.value;
+  } else if (sizing.mode === "risk_pct") {
     if (stopPrice !== undefined && Math.abs(price - stopPrice) > 0) {
-      return (equity * (sizing.value / 100)) / Math.abs(price - stopPrice);
+      qty = (equity * (sizing.value / 100)) / Math.abs(price - stopPrice);
+    } else {
+      // No stop → risk is unbounded, so we can't size by risk. Skip the entry
+      // rather than silently taking a ~100%-equity position (old behaviour).
+      return { qty: 0, warning: "Skipped risk_pct entry: no stop set, so risk-based size is undefined." };
     }
-    return (equity * 1.0) / price; // no stop → fall back to full equity notional
+  } else {
+    qty = (equity * (sizing.value / 100)) / price;
   }
-  return (equity * (sizing.value / 100)) / price;
+
+  if (!(qty > 0) || !Number.isFinite(qty)) return { qty: 0 };
+
+  // Margin guardrail: cap notional at equity * maxLeverage.
+  let warning: string | undefined;
+  const maxNotional = equity * cfg.maxLeverage;
+  if (price * qty > maxNotional && maxNotional > 0) {
+    const capped = maxNotional / price;
+    warning = `Position clipped to ${cfg.maxLeverage}x leverage (requested notional exceeded margin).`;
+    qty = capped;
+  }
+
+  // Round quantity down to a sane step so fills aren't infinitely divisible.
+  if (cfg.qtyStep > 0) {
+    qty = Math.floor(qty / cfg.qtyStep) * cfg.qtyStep;
+    if (!(qty > 0)) return { qty: 0, warning };
+  }
+
+  return { qty, warning };
 }
 
 function stopHit(position: Position, candle: Candle): boolean {
@@ -625,16 +910,18 @@ function computeMetrics(
   config: BacktestConfig,
   barsInMarket: number,
   n: number,
-  candles: Candle[]
+  candles: Candle[],
+  liquidated: boolean
 ): BacktestMetrics {
+  const startEquity = equityCurve[0]?.equity ?? config.initialCapital;
   const finalEquity = equityCurve.at(-1)?.equity ?? config.initialCapital;
-  const netProfit = finalEquity - config.initialCapital;
+  const netProfit = finalEquity - startEquity;
   const wins = trades.filter((trade) => trade.pnl > 0);
   const losses = trades.filter((trade) => trade.pnl <= 0);
   const grossProfit = wins.reduce((sum, trade) => sum + trade.pnl, 0);
   const grossLoss = Math.abs(losses.reduce((sum, trade) => sum + trade.pnl, 0));
 
-  let peak = equityCurve[0]?.equity ?? config.initialCapital;
+  let peak = startEquity;
   let maxDrawdown = 0;
   let maxDrawdownPct = 0;
   for (const point of equityCurve) {
@@ -657,9 +944,12 @@ function computeMetrics(
   const barsPerYear = (365 * 24 * 3600 * 1000) / barMs;
   const sharpe = stdReturn > 0 ? (meanReturn / stdReturn) * Math.sqrt(barsPerYear) : 0;
 
+  const avgMaePct = trades.length ? trades.reduce((sum, trade) => sum + trade.maePct, 0) / trades.length : 0;
+  const avgMfePct = trades.length ? trades.reduce((sum, trade) => sum + trade.mfePct, 0) / trades.length : 0;
+
   return {
     netProfit,
-    netProfitPct: (netProfit / config.initialCapital) * 100,
+    netProfitPct: startEquity > 0 ? (netProfit / startEquity) * 100 : 0,
     totalTrades: trades.length,
     wins: wins.length,
     losses: losses.length,
@@ -670,8 +960,11 @@ function computeMetrics(
     sharpe,
     avgTrade: trades.length ? netProfit / trades.length : 0,
     expectancy: trades.length ? trades.reduce((sum, trade) => sum + trade.pnl, 0) / trades.length : 0,
-    timeInMarketPct: n > 0 ? (barsInMarket / n) * 100 : 0,
-    finalEquity
+    timeInMarketPct: n > 0 ? (Math.min(barsInMarket, n) / n) * 100 : 0,
+    finalEquity,
+    avgMaePct,
+    avgMfePct,
+    liquidated
   };
 }
 

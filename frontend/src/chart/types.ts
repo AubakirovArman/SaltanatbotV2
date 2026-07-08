@@ -120,7 +120,7 @@ export interface ChartTrade {
   exitTime: number;
   exitPrice: number;
   direction: "long" | "short";
-  reason: "signal" | "stop" | "target" | "close";
+  reason: "signal" | "stop" | "target" | "close" | "liquidation";
   pnl: number;
 }
 

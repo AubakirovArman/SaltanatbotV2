@@ -457,6 +457,88 @@
   font-family: var(--font-ui);
 }
 
+/* Wider trade table with %, bars, MAE/MFE and sortable headers. */
+.trade-table.wide .trade-row {
+  grid-template-columns: 34px 1fr 1fr 1fr 44px 40px 44px 44px 52px;
+}
+
+.trade-table.wide .trade-row span:nth-child(n + 2):nth-child(-n + 8) {
+  text-align: end;
+}
+
+.trade-row .th {
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  text-align: end;
+  cursor: pointer;
+}
+
+.trade-row .th:hover {
+  color: var(--text);
+}
+
+/* Cost / warm-up assumptions strip under the metric grid. */
+.assumptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.assumptions .warn-count {
+  color: var(--warn);
+  cursor: help;
+}
+
+/* Monte Carlo stats block. */
+.montecarlo {
+  display: grid;
+  gap: 6px;
+}
+
+.mc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.mc-cell {
+  display: grid;
+  gap: 1px;
+  padding: 5px 8px;
+  background: var(--panel);
+}
+
+.mc-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-md, 13px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-value.up { color: var(--up); }
+.mc-value.down { color: var(--down); }
+
+.equity-curve.underwater svg {
+  block-size: 52px;
+}
+
 .strategy-actions {
   display: flex;
   align-items: center;

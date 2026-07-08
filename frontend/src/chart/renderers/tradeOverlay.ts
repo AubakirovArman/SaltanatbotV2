@@ -4,7 +4,8 @@ const REASON_LABEL: Record<ChartTrade["reason"], string> = {
   target: "TP",
   stop: "SL",
   signal: "EXIT",
-  close: "END"
+  close: "END",
+  liquidation: "LIQ"
 };
 
 /**
