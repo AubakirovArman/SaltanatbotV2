@@ -1,4 +1,4 @@
-import { AlertTriangle, Code2, FileJson, Loader2, Play, Plus, Save, Share2, Workflow } from "lucide-react";
+import { AlertTriangle, Code2, FileJson, Loader2, Play, Plus, Save, Share2, SlidersHorizontal, Workflow } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import * as Blockly from "blockly/core";
 import * as En from "blockly/msg/en";
@@ -8,8 +8,11 @@ import { compileWorkspace } from "../strategy/compile";
 import { buildShareUrl } from "../strategy/share";
 import { irToText } from "../strategy/irText";
 import { DEFAULT_CONFIG, runBacktest, type BacktestConfig, type BacktestResult } from "../strategy/backtest";
+import { cloneWithInputs, type Objective, type OptimizeResult, type OptimizeSpec, type ParamSpec, type WalkForwardResult } from "../strategy/optimizer";
+import { runOptimizeInWorker, runWalkForwardInWorker } from "../strategy/optimizerClient";
 import type { StrategyArtifact, StrategyArtifactKind } from "../strategy/library";
-import type { CatalogResponse, Timeframe } from "../types";
+import type { StrategyIR } from "../strategy/ir";
+import type { Candle, CatalogResponse, Timeframe } from "../types";
 import { BacktestReport } from "./BacktestReport";
 
 const blocklyMessages = Object.fromEntries(
@@ -89,6 +92,80 @@ function matchPreset(commissionPct: number, slippagePct: number): string {
   return hit ? hit.id : "custom";
 }
 
+const OBJECTIVES: { id: Objective; label: string }[] = [
+  { id: "netProfit", label: "Net profit" },
+  { id: "sharpe", label: "Sharpe" },
+  { id: "profitFactor", label: "Profit factor" },
+  { id: "returnOverDd", label: "Return / MaxDD" }
+];
+
+/** How a single swept input is edited in the UI (enabled + range). */
+interface AxisState {
+  name: string;
+  enabled: boolean;
+  min: number;
+  max: number;
+  step: number;
+}
+
+interface OptSpecState {
+  objective: Objective;
+  trainFrac: number;
+  axes: AxisState[];
+}
+
+/** Seed an editable sweep spec from a strategy's inputs (up to 3 pre-enabled). */
+function initOptSpec(ir: StrategyIR): OptSpecState {
+  const axes: AxisState[] = ir.inputs.map((input, i) => {
+    const base = input.value;
+    // Default a sensible symmetric range around the current value.
+    const span = Math.max(Math.abs(base) * 0.5, base === 0 ? 5 : 1);
+    const step = niceStep(span);
+    return {
+      name: input.name,
+      enabled: i < 1, // enable the first input by default
+      min: round4(base - span),
+      max: round4(base + span),
+      step
+    };
+  });
+  return { objective: "netProfit", trainFrac: 0.7, axes };
+}
+
+function niceStep(span: number): number {
+  const raw = span / 5;
+  if (raw <= 0) return 1;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const norm = raw / mag;
+  const nice = norm >= 5 ? 5 : norm >= 2 ? 2 : 1;
+  return round4(nice * mag);
+}
+
+function round4(v: number): number {
+  return Number.parseFloat(v.toFixed(4));
+}
+
+/** Translate the editable spec into the pure OptimizeSpec the core consumes. */
+function buildSpec(state: OptSpecState): OptimizeSpec {
+  const params: ParamSpec[] = state.axes
+    .filter((axis) => axis.enabled)
+    .slice(0, 3)
+    .map((axis) => ({ name: axis.name, min: axis.min, max: axis.max, step: axis.step > 0 ? axis.step : 1 }));
+  return { params, objective: state.objective, trainFrac: state.trainFrac };
+}
+
+/** Count the grid combos an editable spec would enumerate (for the UI hint). */
+function comboCount(state: OptSpecState): number {
+  let total = 1;
+  for (const axis of state.axes) {
+    if (!axis.enabled) continue;
+    const step = axis.step > 0 ? axis.step : 1;
+    const n = axis.max >= axis.min ? Math.floor((axis.max - axis.min) / step + 1e-9) + 1 : 1;
+    total *= Math.max(1, n);
+  }
+  return total;
+}
+
 export function StrategyLab({
   artifacts,
   activeArtifactId,
@@ -111,6 +188,7 @@ export function StrategyLab({
   const activeRef = useRef<StrategyArtifact>();
 
   const [preview, setPreview] = useState("");
+  const [strategyInputs, setStrategyInputs] = useState<StrategyIR["inputs"]>([]);
   const [jsonSize, setJsonSize] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const [initError, setInitError] = useState<string>();
@@ -122,6 +200,18 @@ export function StrategyLab({
   const [btTimeframe, setBtTimeframe] = useState<Timeframe>(initialTimeframe);
   const [btBars, setBtBars] = useState(1000);
   const [running, setRunning] = useState(false);
+
+  // Optimizer state.
+  const [optOpen, setOptOpen] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optProgress, setOptProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  const [optSpec, setOptSpec] = useState<OptSpecState | null>(null);
+  const [optimizeResult, setOptimizeResult] = useState<OptimizeResult>();
+  const [walkForwardOn, setWalkForwardOn] = useState(false);
+  const [optFolds, setOptFolds] = useState(4);
+  const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult>();
+  const optCandlesRef = useRef<Candle[]>([]);
+  const optIrRef = useRef<StrategyIR>();
 
   const btInstrument = catalog?.instruments.find((item) => item.symbol === btSymbol);
   const decimals = btInstrument?.decimals ?? 2;
@@ -163,6 +253,7 @@ export function StrategyLab({
     const doPreview = () => {
       const compiled = compileWorkspace(workspace);
       setPreview(compiled.ir ? irToText(compiled.ir) : "");
+      setStrategyInputs(compiled.ir ? compiled.ir.inputs : []);
       setErrors(compiled.errors);
       setJsonSize(JSON.stringify(Blockly.serialization.workspaces.save(workspace)).length);
     };
@@ -216,6 +307,15 @@ export function StrategyLab({
     workspaceRef.current?.setTheme(theme === "light" ? forgeLight : forgeDark);
   }, [theme]);
 
+  // (Re)seed the optimizer sweep spec whenever the SET of numeric inputs changes
+  // (added/removed/renamed) — not on every value tweak, so edited ranges stick.
+  const inputKey = strategyInputs.map((input) => input.name).join("|");
+  useEffect(() => {
+    if (strategyInputs.length === 0) { setOptSpec(null); return; }
+    setOptSpec(initOptSpec({ name: "", inputs: strategyInputs, body: [] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputKey]);
+
   // Load the active artifact into the workspace when the selection changes.
   useEffect(() => {
     const workspace = workspaceRef.current;
@@ -252,6 +352,22 @@ export function StrategyLab({
     setSavedAt(Date.now());
   };
 
+  // Fetch `btBars` of history for the selected market/interval, paging back as
+  // needed. Shared by the plain backtest and the optimizer so both run on the
+  // exact same candle window.
+  const fetchHistory = async (): Promise<Candle[]> => {
+    const chunk = Math.min(btBars, 1000);
+    let candles = (await getCandles(btSymbol, btTimeframe, chunk)).candles;
+    while (candles.length < btBars && candles.length > 0) {
+      const oldest = candles[0].time;
+      const older = (await getCandles(btSymbol, btTimeframe, 1000, oldest - 1)).candles
+        .filter((candle) => candle.time < oldest);
+      if (older.length === 0) break;
+      candles = [...older, ...candles];
+    }
+    return candles.slice(-btBars);
+  };
+
   const runNow = async () => {
     const workspace = workspaceRef.current;
     if (!workspace || running) return;
@@ -264,29 +380,77 @@ export function StrategyLab({
     setErrors(compiled.errors);
     setRunning(true);
     try {
-      // Backtests fetch their own history for the selected market and interval.
-      const chunk = Math.min(btBars, 1000);
-      let candles = (await getCandles(btSymbol, btTimeframe, chunk)).candles;
-      while (candles.length < btBars && candles.length > 0) {
-        const oldest = candles[0].time;
-        const older = (await getCandles(btSymbol, btTimeframe, 1000, oldest - 1)).candles
-          .filter((candle) => candle.time < oldest);
-        if (older.length === 0) break;
-        candles = [...older, ...candles];
-      }
-      candles = candles.slice(-btBars);
+      const candles = await fetchHistory();
       if (candles.length < 30) {
         setErrors([...compiled.errors, "Not enough history for this market/interval."]);
         return;
       }
       const backtest = runBacktest(compiled.ir, candles, config);
       setResult(backtest);
+      setOptimizeResult(undefined);
       onApplyResult?.(backtest, btSymbol, btTimeframe);
     } catch (cause) {
       setErrors([...compiled.errors, cause instanceof Error ? cause.message : "History request failed."]);
     } finally {
       setRunning(false);
     }
+  };
+
+  // Run the parameter optimizer (grid + OOS, optionally walk-forward) in a
+  // worker, then render either the ranked table or a normal backtest of the
+  // combo the user clicked.
+  const optimizeNow = async () => {
+    const workspace = workspaceRef.current;
+    if (!workspace || running || optimizing) return;
+    const compiled = compileWorkspace(workspace);
+    if (!compiled.ir || compiled.ir.inputs.length === 0 || !optSpec) {
+      setErrors(compiled.errors.length ? compiled.errors : ["This strategy has no numeric inputs to optimize."]);
+      return;
+    }
+    const spec = buildSpec(optSpec);
+    if (spec.params.length === 0) {
+      setErrors([...compiled.errors, "Pick at least one input to sweep."]);
+      return;
+    }
+    setErrors(compiled.errors);
+    setOptimizing(true);
+    setOptProgress({ done: 0, total: 0 });
+    setResult(undefined);
+    setOptimizeResult(undefined);
+    setWalkForwardResult(undefined);
+    try {
+      const candles = await fetchHistory();
+      if (candles.length < 60) {
+        setErrors([...compiled.errors, "Need at least 60 bars to split into in-sample / out-of-sample."]);
+        return;
+      }
+      optCandlesRef.current = candles;
+      optIrRef.current = compiled.ir;
+      const onProgress = (done: number, total: number) => setOptProgress({ done, total });
+      if (walkForwardOn) {
+        const wf = await runWalkForwardInWorker(compiled.ir, candles, config, spec, { folds: optFolds }, onProgress);
+        setWalkForwardResult(wf);
+      }
+      const opt = await runOptimizeInWorker(compiled.ir, candles, config, spec, onProgress);
+      setOptimizeResult(opt);
+    } catch (cause) {
+      setErrors([...compiled.errors, cause instanceof Error ? cause.message : "Optimization failed."]);
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  // Re-run a full backtest on the whole window with a chosen combo's params and
+  // show it via the normal BacktestReport.
+  const applyCombo = (params: Record<string, number>) => {
+    const ir = optIrRef.current;
+    const candles = optCandlesRef.current;
+    if (!ir || !candles.length) return;
+    const cloned = cloneWithInputs(ir, params);
+    const backtest = runBacktest(cloned, candles, config);
+    setResult(backtest);
+    setOptimizeResult(undefined);
+    onApplyResult?.(backtest, btSymbol, btTimeframe);
   };
 
   const shareNow = () => {
@@ -323,9 +487,18 @@ export function StrategyLab({
             <span>{activeArtifact?.kind ?? ""}</span>
           </div>
           <div className="backtest-controls">
-            <button type="button" className="run-button" onClick={runNow} disabled={running}>
+            <button type="button" className="run-button" onClick={runNow} disabled={running || optimizing}>
               {running ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}
               {running ? "Loading history…" : "Run backtest"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOptOpen((v) => !v)}
+              disabled={strategyInputs.length === 0}
+              className={optOpen ? "shared" : ""}
+              title={strategyInputs.length === 0 ? "Add a numeric input block to enable optimization" : "Optimize parameters"}
+            >
+              <SlidersHorizontal size={15} aria-hidden="true" />
             </button>
             <button type="button" onClick={shareNow} title="Copy share link" className={shareState === "copied" ? "shared" : ""}>
               <Share2 size={15} aria-hidden="true" />
@@ -334,6 +507,9 @@ export function StrategyLab({
               <Save size={15} aria-hidden="true" />
             </button>
           </div>
+          {strategyInputs.length === 0 && optOpen && (
+            <div className="opt-hint">This strategy has no numeric inputs to optimize. Add an input block first.</div>
+          )}
           {shareState === "copied" && <div className="share-toast">Share link copied to clipboard</div>}
           <div className="config-row">
             <label>
@@ -399,6 +575,11 @@ export function StrategyLab({
               <input type="number" value={config.slippagePct ?? 0} min={0} step={0.01}
                 onChange={(event) => setConfig((current) => ({ ...current, slippagePct: Number(event.target.value) || 0 }))} />
             </label>
+            <label title="Perp funding / borrow cost per 8h a position is held (pro-rated to each bar)">
+              Funding %/8h
+              <input type="number" value={config.fundingRatePctPer8h ?? 0} step={0.001}
+                onChange={(event) => setConfig((current) => ({ ...current, fundingRatePctPer8h: Number(event.target.value) || 0 }))} />
+            </label>
             <label>
               Fills
               <select value={config.fillTiming ?? "next_open"}
@@ -408,6 +589,25 @@ export function StrategyLab({
               </select>
             </label>
           </div>
+
+          {optOpen && optSpec && (
+            <OptimizePanel
+              spec={optSpec}
+              inputs={strategyInputs}
+              onSpecChange={setOptSpec}
+              onRun={optimizeNow}
+              optimizing={optimizing}
+              progress={optProgress}
+              walkForwardOn={walkForwardOn}
+              onToggleWalkForward={setWalkForwardOn}
+              folds={optFolds}
+              onFoldsChange={setOptFolds}
+              result={optimizeResult}
+              walkForwardResult={walkForwardResult}
+              onApplyCombo={applyCombo}
+              decimals={decimals}
+            />
+          )}
 
           {errors.length > 0 && (
             <div className="strategy-warnings" role="status">
@@ -442,6 +642,230 @@ export function StrategyLab({
       </div>
     </section>
   );
+}
+
+const MAX_COMBOS = 2000;
+
+function OptimizePanel({
+  spec,
+  inputs,
+  onSpecChange,
+  onRun,
+  optimizing,
+  progress,
+  walkForwardOn,
+  onToggleWalkForward,
+  folds,
+  onFoldsChange,
+  result,
+  walkForwardResult,
+  onApplyCombo,
+  decimals
+}: {
+  spec: OptSpecState;
+  inputs: StrategyIR["inputs"];
+  onSpecChange: (spec: OptSpecState) => void;
+  onRun: () => void;
+  optimizing: boolean;
+  progress: { done: number; total: number };
+  walkForwardOn: boolean;
+  onToggleWalkForward: (on: boolean) => void;
+  folds: number;
+  onFoldsChange: (n: number) => void;
+  result?: OptimizeResult;
+  walkForwardResult?: WalkForwardResult;
+  onApplyCombo: (params: Record<string, number>) => void;
+  decimals: number;
+}) {
+  const enabledCount = spec.axes.filter((axis) => axis.enabled).length;
+  const combos = comboCount(spec);
+  const pct = progress.total > 0 ? Math.min(100, (progress.done / progress.total) * 100) : 0;
+
+  const patchAxis = (name: string, patch: Partial<AxisState>) => {
+    onSpecChange({
+      ...spec,
+      axes: spec.axes.map((axis) => {
+        if (axis.name !== name) return axis;
+        // Enforce the 1–3 sweep cap when enabling a new axis.
+        if (patch.enabled && !axis.enabled && enabledCount >= 3) return axis;
+        return { ...axis, ...patch };
+      })
+    });
+  };
+
+  return (
+    <div className="optimizer">
+      <div className="panel-header small">
+        <strong><SlidersHorizontal size={13} aria-hidden="true" /> Optimizer</strong>
+        <span>{combos > MAX_COMBOS ? `${MAX_COMBOS}+ combos` : `${combos} combo${combos === 1 ? "" : "s"}`}</span>
+      </div>
+
+      <div className="opt-axes">
+        {inputs.map((input) => {
+          const axis = spec.axes.find((a) => a.name === input.name);
+          if (!axis) return null;
+          const disabled = !axis.enabled && enabledCount >= 3;
+          return (
+            <div key={input.name} className={axis.enabled ? "opt-axis on" : "opt-axis"}>
+              <label className="opt-axis-toggle" title={disabled ? "Up to 3 parameters at once" : undefined}>
+                <input
+                  type="checkbox"
+                  checked={axis.enabled}
+                  disabled={disabled}
+                  onChange={(event) => patchAxis(input.name, { enabled: event.target.checked })}
+                />
+                <span className="opt-axis-name">{input.name}</span>
+                <span className="opt-axis-cur">= {input.value}</span>
+              </label>
+              {axis.enabled && (
+                <div className="opt-axis-range">
+                  <label>min<input type="number" value={axis.min}
+                    onChange={(event) => patchAxis(input.name, { min: Number(event.target.value) })} /></label>
+                  <label>max<input type="number" value={axis.max}
+                    onChange={(event) => patchAxis(input.name, { max: Number(event.target.value) })} /></label>
+                  <label>step<input type="number" value={axis.step} min={0}
+                    onChange={(event) => patchAxis(input.name, { step: Number(event.target.value) })} /></label>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="config-row">
+        <label>
+          Objective
+          <select value={spec.objective} onChange={(event) => onSpecChange({ ...spec, objective: event.target.value as Objective })}>
+            {OBJECTIVES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        </label>
+        <label>
+          Train %
+          <input type="number" value={Math.round(spec.trainFrac * 100)} min={20} max={90} step={5}
+            onChange={(event) => onSpecChange({ ...spec, trainFrac: clamp01((Number(event.target.value) || 70) / 100) })} />
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={walkForwardOn} onChange={(event) => onToggleWalkForward(event.target.checked)} />
+          Walk-fwd
+        </label>
+        {walkForwardOn && (
+          <label>
+            Folds
+            <input type="number" value={folds} min={2} max={12} step={1}
+              onChange={(event) => onFoldsChange(Math.max(2, Math.min(12, Number(event.target.value) || 4)))} />
+          </label>
+        )}
+      </div>
+
+      {combos > MAX_COMBOS && (
+        <div className="opt-hint">Grid has {combos.toLocaleString()} combos — only the first {MAX_COMBOS.toLocaleString()} will be evaluated. Widen the step to shrink the grid.</div>
+      )}
+
+      <button type="button" className="run-button" onClick={onRun} disabled={optimizing || enabledCount === 0}>
+        {optimizing ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <SlidersHorizontal size={15} aria-hidden="true" />}
+        {optimizing ? (progress.total ? `Optimizing… ${progress.done}/${progress.total}` : "Optimizing…") : "Run optimizer"}
+      </button>
+
+      {optimizing && (
+        <div className="opt-progress"><div className="opt-progress-bar" style={{ inlineSize: `${pct}%` }} /></div>
+      )}
+
+      {result && !optimizing && <OptimizeResults result={result} onApplyCombo={onApplyCombo} />}
+      {walkForwardOn && walkForwardResult && !optimizing && <WalkForwardResults wf={walkForwardResult} decimals={decimals} />}
+    </div>
+  );
+}
+
+function OptimizeResults({ result, onApplyCombo }: { result: OptimizeResult; onApplyCombo: (params: Record<string, number>) => void }) {
+  const rows = result.ranked.slice(0, 20);
+  const keys = result.ranked[0] ? Object.keys(result.ranked[0].params) : [];
+  return (
+    <div className="opt-results">
+      <div className="panel-header small">
+        <strong>Ranked · {objectiveLabel(result.objective)}</strong>
+        <span>{result.evaluated}/{result.totalCombos}{result.truncated ? " (capped)" : ""}</span>
+      </div>
+      <div className="opt-table" role="table">
+        <div className="opt-row head" role="row">
+          <span>{keys.join(" · ") || "params"}</span>
+          <span title="In-sample objective score">IS</span>
+          <span title="Out-of-sample objective score">OOS</span>
+          <span />
+        </div>
+        {rows.map((row, i) => (
+          <div className="opt-row" role="row" key={i}>
+            <span className="opt-params">{keys.map((k) => row.params[k]).join(" · ")}</span>
+            <span className="opt-score">{fmtScore(row.score)}</span>
+            <span className={`opt-score ${row.outScore === undefined ? "" : row.outScore >= 0 ? "up" : "down"}`}>
+              {row.outScore === undefined ? "—" : fmtScore(row.outScore)}
+            </span>
+            <button type="button" className="link-button" onClick={() => onApplyCombo(row.params)}>Apply</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WalkForwardResults({ wf, decimals }: { wf: WalkForwardResult; decimals: number }) {
+  if (wf.folds.length === 0) {
+    return <div className="opt-hint">Not enough history to build walk-forward folds. Increase bars or reduce folds.</div>;
+  }
+  const agg = wf.aggregate;
+  const keys = Object.keys(wf.folds[0].params);
+  return (
+    <div className="opt-results">
+      <div className="panel-header small">
+        <strong>Walk-forward · {wf.folds.length} folds</strong>
+        {agg && <span className={agg.netProfit >= 0 ? "up" : "down"}>OOS {agg.netProfit >= 0 ? "+" : ""}{agg.netProfit.toFixed(2)}</span>}
+      </div>
+      <div className="opt-table wf" role="table">
+        <div className="opt-row head" role="row">
+          <span>#</span>
+          <span>{keys.join(" · ") || "params"}</span>
+          <span title="Out-of-sample net profit">OOS net</span>
+          <span title="Out-of-sample trades">Trades</span>
+          <span title="Out-of-sample win rate">Win%</span>
+        </div>
+        {wf.folds.map((fold) => (
+          <div className="opt-row" role="row" key={fold.fold}>
+            <span>{fold.fold + 1}</span>
+            <span className="opt-params">{keys.map((k) => fold.params[k]).join(" · ")}</span>
+            <span className={fold.outSample.netProfit >= 0 ? "up" : "down"}>
+              {fold.outSample.netProfit >= 0 ? "+" : ""}{fold.outSample.netProfit.toFixed(2)}
+            </span>
+            <span>{fold.outSample.totalTrades}</span>
+            <span>{fold.outSample.winRate.toFixed(0)}%</span>
+          </div>
+        ))}
+      </div>
+      {agg && (
+        <div className="assumptions">
+          <span>OOS trades {agg.totalTrades}</span>
+          <span>Win {agg.winRate.toFixed(0)}%</span>
+          <span>PF {Number.isFinite(agg.profitFactor) ? agg.profitFactor.toFixed(2) : "∞"}</span>
+          <span>Max DD {agg.maxDrawdownPct.toFixed(1)}%</span>
+          <span title="Final stitched OOS equity">Final {agg.finalEquity.toFixed(decimals === 0 ? 0 : 2)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function objectiveLabel(objective: Objective): string {
+  return OBJECTIVES.find((o) => o.id === objective)?.label ?? objective;
+}
+
+function fmtScore(v: number): string {
+  if (!Number.isFinite(v)) return v > 0 ? "∞" : "−∞";
+  const abs = Math.abs(v);
+  if (abs >= 1000) return v.toFixed(0);
+  if (abs >= 1) return v.toFixed(2);
+  return v.toFixed(3);
+}
+
+function clamp01(v: number): number {
+  return Math.min(0.95, Math.max(0.05, v));
 }
 
 function StrategyLibrary({

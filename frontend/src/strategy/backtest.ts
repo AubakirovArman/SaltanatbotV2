@@ -36,6 +36,14 @@ export interface BacktestConfig {
   maxLeverage?: number;
   /** Quantity is rounded down to this step (0 disables rounding). */
   qtyStep?: number;
+  /**
+   * Perp funding / borrow cost, expressed as a percentage of position notional
+   * charged every 8 hours a position is held. Pro-rated to each bar's duration.
+   * Default 0 (no funding), so behaviour is unchanged unless explicitly set.
+   * A positive rate is a cost paid by the open position (long or short) — it is
+   * always deducted from equity, modelling the average carry drag of holding.
+   */
+  fundingRatePctPer8h?: number;
 }
 
 export const DEFAULT_CONFIG: BacktestConfig = {
@@ -45,7 +53,8 @@ export const DEFAULT_CONFIG: BacktestConfig = {
   allowShort: true,
   fillTiming: "next_open",
   maxLeverage: 5,
-  qtyStep: 0
+  qtyStep: 0,
+  fundingRatePctPer8h: 0
 };
 
 export interface Trade {
@@ -98,6 +107,8 @@ export interface BacktestMetrics {
   /** Average MAE / MFE across trades, as % of entry notional. */
   avgMaePct: number;
   avgMfePct: number;
+  /** Total funding / borrow cost paid across all held bars (currency, >= 0). */
+  fundingPaid: number;
   /** True if the run stopped early because the account was liquidated. */
   liquidated: boolean;
 }
@@ -186,6 +197,14 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
   let sizing: Intents["size"] = { mode: "equity_pct", value: 100 };
   let barsInMarket = 0;
   let liquidated = false;
+  let fundingPaid = 0;
+
+  // Bar duration (ms) inferred from the candle spacing — the same value used to
+  // annualise Sharpe. Funding is pro-rated to this bar length: a rate quoted per
+  // 8h applies over `barMs / 8h` of that period each bar a position is open.
+  const EIGHT_HOURS_MS = 8 * 3600 * 1000;
+  const barMs = rt.n > 1 ? medianDelta(candles) : 60_000;
+  const fundingBarFraction = (cfg.fundingRatePctPer8h / 100) * (barMs / EIGHT_HOURS_MS);
 
   // Warm-up: indicators are NaN until enough history accrues. Metrics/equity are
   // only measured from `warmup` onward so the flat opening bars don't dilute
@@ -361,7 +380,18 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
       }
     }
 
-    if (position) barsInMarket += 1;
+    if (position) {
+      barsInMarket += 1;
+      // Accrue funding / borrow cost for holding this bar, charged against the
+      // position's notional at the bar close and deducted from realised equity.
+      if (fundingBarFraction !== 0) {
+        const cost = position.qty * candle.close * fundingBarFraction;
+        if (Number.isFinite(cost) && cost !== 0) {
+          equity -= cost;
+          fundingPaid += cost;
+        }
+      }
+    }
     equityCurve.push({ time: candle.time, equity: equity + unrealized(position, candle.close) });
   }
 
@@ -389,7 +419,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     signals,
     alerts,
     warnings,
-    metrics: computeMetrics(trades, measured, config, barsInMarket, measured.length, candles, liquidated),
+    metrics: computeMetrics(trades, measured, config, barsInMarket, measured.length, candles, liquidated, fundingPaid),
     tested
   };
 }
@@ -911,7 +941,8 @@ function computeMetrics(
   barsInMarket: number,
   n: number,
   candles: Candle[],
-  liquidated: boolean
+  liquidated: boolean,
+  fundingPaid = 0
 ): BacktestMetrics {
   const startEquity = equityCurve[0]?.equity ?? config.initialCapital;
   const finalEquity = equityCurve.at(-1)?.equity ?? config.initialCapital;
@@ -964,6 +995,7 @@ function computeMetrics(
     finalEquity,
     avgMaePct,
     avgMfePct,
+    fundingPaid,
     liquidated
   };
 }

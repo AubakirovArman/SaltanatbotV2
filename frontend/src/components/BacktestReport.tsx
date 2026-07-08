@@ -53,6 +53,9 @@ export function BacktestReport({ result, decimals, config, onShowOnChart }: Back
         <Metric label="Time in market" value={`${metrics.timeInMarketPct.toFixed(0)}%`} />
         <Metric label="Avg MAE" value={`${metrics.avgMaePct.toFixed(2)}%`} tone="down" />
         <Metric label="Avg MFE" value={`${metrics.avgMfePct.toFixed(2)}%`} tone="up" />
+        {(config?.fundingRatePctPer8h ?? 0) !== 0 && (
+          <Metric label="Funding paid" value={`-${metrics.fundingPaid.toFixed(2)}`} tone="down" sub={`${config?.fundingRatePctPer8h}%/8h`} />
+        )}
       </div>
 
       <AssumptionsBar result={result} tested={tested} config={config} />
@@ -72,13 +75,14 @@ function AssumptionsBar({ result, tested, config }: { result: BacktestResult; te
   const slip = config?.slippagePct ?? 0.02;
   const lev = config?.maxLeverage ?? 5;
   const timing = config?.fillTiming ?? "next_open";
+  const funding = config?.fundingRatePctPer8h ?? 0;
   return (
     <div className="assumptions">
       <span title="Bars measured after indicator warm-up">
         Tested {fmt0(tested.bars)} bars · warm-up {fmt0(tested.warmupBars)}
       </span>
       <span>{fmtRange(tested.fromTime, tested.toTime)}</span>
-      <span>Fee {fee}% · slip {slip}% · {lev}x max · {timing === "next_open" ? "next-open fills" : "close fills"}</span>
+      <span>Fee {fee}% · slip {slip}% · {lev}x max · {timing === "next_open" ? "next-open fills" : "close fills"}{funding !== 0 ? ` · funding ${funding}%/8h` : ""}</span>
       {result.warnings.length > 0 && (
         <span className="warn-count" title={result.warnings.slice(-6).map((w) => w.message).join("\n")}>
           {result.warnings.length} warning{result.warnings.length === 1 ? "" : "s"}
