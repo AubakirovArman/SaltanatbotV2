@@ -8,17 +8,21 @@ import {
   ChevronDown,
   Command,
   GitCommitVertical,
+  LayoutDashboard,
   LineChart,
   Moon,
   PanelLeft,
   PanelRight,
+  Plus,
   Radio,
   Sun,
+  Trash2,
   Workflow
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CatalogResponse, ChartType, Instrument, Timeframe } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
+import type { Workspace } from "../workspace/workspaces";
 
 interface TopBarProps {
   catalog?: CatalogResponse;
@@ -30,6 +34,10 @@ interface TopBarProps {
   theme: "dark" | "light";
   leftOpen: boolean;
   rightOpen: boolean;
+  workspaces: Workspace[];
+  onSaveWorkspace: (name: string) => void;
+  onApplyWorkspace: (id: string) => void;
+  onDeleteWorkspace: (id: string) => void;
   onTimeframeChange: (timeframe: Timeframe) => void;
   onChartTypeChange: (chartType: ChartType) => void;
   onModeChange: (mode: "chart" | "strategy" | "trade") => void;
@@ -81,6 +89,10 @@ export function TopBar({
   theme,
   leftOpen,
   rightOpen,
+  workspaces,
+  onSaveWorkspace,
+  onApplyWorkspace,
+  onDeleteWorkspace,
   onTimeframeChange,
   onChartTypeChange,
   onModeChange,
@@ -173,6 +185,12 @@ export function TopBar({
             </button>
           </>
         )}
+        <WorkspacesMenu
+          workspaces={workspaces}
+          onSave={onSaveWorkspace}
+          onApply={onApplyWorkspace}
+          onDelete={onDeleteWorkspace}
+        />
         <button type="button" className="icon-button" onClick={onOpenPalette} title="Command palette (⌘K)" aria-label="Open command palette">
           <Command size={14} strokeWidth={1.75} aria-hidden="true" />
         </button>
@@ -338,6 +356,105 @@ function ChartTypeMenu({
               </button>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkspacesMenu({
+  workspaces,
+  onSave,
+  onApply,
+  onDelete
+}: {
+  workspaces: Workspace[];
+  onSave: (name: string) => void;
+  onApply: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const saveCurrent = () => {
+    const name = window.prompt("Save current layout as…");
+    if (name === null) return;
+    if (name.trim()) onSave(name);
+  };
+
+  return (
+    <div className="charttype-menu-wrap workspaces-menu-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        className="icon-button"
+        onClick={() => setOpen((value) => !value)}
+        title="Saved workspaces"
+        aria-label="Saved workspaces"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <LayoutDashboard size={15} strokeWidth={1.75} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="charttype-menu workspaces-menu" role="menu">
+          <button
+            type="button"
+            className="workspace-save"
+            onClick={() => {
+              saveCurrent();
+              setOpen(false);
+            }}
+          >
+            <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+            Save current as…
+          </button>
+          {workspaces.length === 0 ? (
+            <div className="workspace-empty">No saved workspaces yet.</div>
+          ) : (
+            <div className="workspace-list">
+              {workspaces.map((workspace) => (
+                <div className="workspace-row" key={workspace.id}>
+                  <button
+                    type="button"
+                    className="workspace-apply"
+                    onClick={() => {
+                      onApply(workspace.id);
+                      setOpen(false);
+                    }}
+                    title={`${workspace.symbol} · ${workspace.timeframe} · ${workspace.chartType}`}
+                  >
+                    <strong>{workspace.name}</strong>
+                    <span>{workspace.symbol} · {workspace.timeframe} · {workspace.chartType}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="workspace-delete"
+                    onClick={() => onDelete(workspace.id)}
+                    title="Delete workspace"
+                    aria-label={`Delete workspace ${workspace.name}`}
+                  >
+                    <Trash2 size={13} strokeWidth={1.75} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -342,6 +342,102 @@
   }
 }
 
+/* Saved workspaces dropdown (right-anchored so it never overflows the bar). */
+.workspaces-menu {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+  min-inline-size: 232px;
+  max-inline-size: 288px;
+}
+
+.workspace-save {
+  justify-content: flex-start;
+  font-weight: 600;
+}
+
+.workspace-empty {
+  padding: 6px 8px;
+  color: var(--dim);
+  font-size: var(--fs-sm);
+}
+
+.workspace-list {
+  display: grid;
+  gap: 2px;
+  max-block-size: 320px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-block-start: 2px;
+  margin-block-start: 2px;
+  border-block-start: 1px solid var(--line-soft);
+}
+
+.workspace-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.workspace-row:hover {
+  background: var(--hover);
+}
+
+.workspace-apply {
+  display: grid;
+  gap: 1px;
+  min-block-size: 32px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+}
+
+.workspace-apply strong {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-apply span {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-delete {
+  inline-size: 26px;
+  block-size: 26px;
+  margin-inline-end: 4px;
+  display: inline-grid;
+  place-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.workspace-row:hover .workspace-delete,
+.workspace-delete:focus-visible {
+  opacity: 1;
+}
+
+.workspace-delete:hover {
+  color: var(--down);
+  background: var(--hover);
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr) 260px;

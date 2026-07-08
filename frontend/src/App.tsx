@@ -13,6 +13,9 @@ import { usePriceAlerts } from "./hooks/usePriceAlerts";
 import { useSparklines } from "./hooks/useSparklines";
 import type { StrategyArtifact, StrategyArtifactKind } from "./strategy/library";
 import { createNewArtifact, indicatorArtifactId, indicatorToArtifact } from "./strategy/library";
+import type { StrategyTemplate } from "./strategy/templates";
+import type { Workspace } from "./workspace/workspaces";
+import { applyIndicatorSelection, captureWorkspace, loadWorkspaces, saveWorkspaces } from "./workspace/workspaces";
 import { loadStrategyLab, warmStrategyLab } from "./strategy/loadStrategyLab";
 import { loadTradingView, warmTradingView } from "./trading/loadTradingView";
 import { clearShareHash, readSharedFromHash } from "./strategy/share";
@@ -63,7 +66,12 @@ export default function App() {
   );
   const [leftOpen, setLeftOpen] = useState(() => readPanel("mf:panel:left", true));
   const [rightOpen, setRightOpen] = useState(() => readPanel("mf:panel:right", true));
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(() => loadWorkspaces());
   const stream = useMarketStream(symbol, timeframe, cryptoExchange);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
 
   useEffect(() => {
     try {
@@ -247,6 +255,65 @@ export default function App() {
     warmStrategyLab();
   };
 
+  // Instantiate a gallery template as a fresh, editable copy (never mutating the
+  // read-only template) and select it.
+  const useTemplate = (template: StrategyTemplate) => {
+    const now = Date.now();
+    const artifact: StrategyArtifact = {
+      id: `strategy:tpl-copy-${now}`,
+      kind: "strategy",
+      name: dedupeName(template.name, strategyLibrary),
+      description: template.description,
+      xml: template.xml,
+      code: "",
+      createdAt: now,
+      updatedAt: now
+    };
+    setStrategyLibrary((current) => [artifact, ...current]);
+    setActiveArtifactId(artifact.id);
+    warmStrategyLab();
+  };
+
+  // Add a validated .strategy import as a new editable artifact, deduping its name.
+  const importStrategy = (input: { name: string; description: string; xml: string }) => {
+    const now = Date.now();
+    const artifact: StrategyArtifact = {
+      id: `strategy:import-${now}`,
+      kind: "strategy",
+      name: dedupeName(input.name, strategyLibrary),
+      description: input.description || "Imported strategy.",
+      xml: input.xml,
+      code: "",
+      createdAt: now,
+      updatedAt: now
+    };
+    setStrategyLibrary((current) => [artifact, ...current]);
+    setActiveArtifactId(artifact.id);
+    warmStrategyLab();
+  };
+
+  // --- Saved workspaces (named chart layouts) ---
+  const saveWorkspace = (name: string) => {
+    const workspace = captureWorkspace(name, { symbol, timeframe, chartType, cryptoExchange, indicators, theme });
+    setWorkspaces((current) => [workspace, ...current]);
+  };
+
+  const applyWorkspace = (id: string) => {
+    const workspace = workspaces.find((item) => item.id === id);
+    if (!workspace) return;
+    setSymbol(workspace.symbol);
+    setTimeframe(workspace.timeframe);
+    setChartType(workspace.chartType);
+    setCryptoExchange(workspace.cryptoExchange);
+    setTheme(workspace.theme);
+    setIndicators((current) => applyIndicatorSelection(current, workspace.enabledIndicators));
+    setMode("chart");
+  };
+
+  const deleteWorkspace = (id: string) => {
+    setWorkspaces((current) => current.filter((item) => item.id !== id));
+  };
+
   return (
     <div className="terminal-shell">
       <TopBar
@@ -259,6 +326,10 @@ export default function App() {
         theme={theme}
         leftOpen={leftOpen}
         rightOpen={rightOpen}
+        workspaces={workspaces}
+        onSaveWorkspace={saveWorkspace}
+        onApplyWorkspace={applyWorkspace}
+        onDeleteWorkspace={deleteWorkspace}
         onTimeframeChange={setTimeframe}
         onChartTypeChange={setChartType}
         onModeChange={setMode}
@@ -330,6 +401,8 @@ export default function App() {
                 onSelectArtifact={setActiveArtifactId}
                 onCreateArtifact={createArtifact}
                 onSaveArtifact={saveStrategyArtifact}
+                onUseTemplate={useTemplate}
+                onImportStrategy={importStrategy}
                 catalog={catalog}
                 initialSymbol={symbol}
                 initialTimeframe={timeframe}
@@ -397,6 +470,15 @@ function writePanel(key: string, open: boolean) {
   } catch {
     // ignore
   }
+}
+
+/** Append " (n)" until the name is unique within the library. */
+function dedupeName(name: string, items: StrategyArtifact[]): string {
+  const taken = new Set(items.map((item) => item.name));
+  if (!taken.has(name)) return name;
+  let n = 2;
+  while (taken.has(`${name} (${n})`)) n += 1;
+  return `${name} (${n})`;
 }
 
 function upsertArtifact(items: StrategyArtifact[], artifact: StrategyArtifact) {
