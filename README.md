@@ -105,14 +105,17 @@ npm start
 #    open → http://localhost:4180
 ```
 
-Configure the host/port with environment variables:
+Configure the host/port/token with environment variables (defaults shown):
 
 ```bash
-PORT=4180 HOST=0.0.0.0 npm start
+PORT=4180 HOST=127.0.0.1 npm start        # loopback by default; set HOST=0.0.0.0 to expose
 ```
 
-> **First run creates `backend/data/`** — an AES key file (`.secret`) and a SQLite database (`trading.db`).
-> Both are **git-ignored** and must never be committed. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+> **First run creates `backend/data/`** — an AES key (`.secret`), an access token (`.authtoken`),
+> and a SQLite database (`trading.db`). The backend **prints the access token** on first start; you
+> enter it once to unlock the Trade tab (or set your own via `AUTH_TOKEN`). All of `backend/data/` is
+> **git-ignored** and must never be committed. For a paper-only public demo, run with `DEMO_MODE=1`.
+> See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ---
 
@@ -154,9 +157,10 @@ SaltanatbotV2/
 
 ## Security & responsible use
 
-- **Paper mode is the default.** Live trading only happens with API keys **you** add; those keys are AES-256-GCM encrypted on disk and never returned to the browser.
-- **Never commit `backend/data/`** (enforced by `.gitignore`). It holds your encryption key and database.
-- When exposing the server beyond `localhost`, put it behind a **reverse proxy with TLS** and a firewall. See the hardening checklist in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+- **The trading API requires an access token.** On first run the backend prints a token (also saved to `backend/data/.authtoken`, or set your own with `AUTH_TOKEN`) — you enter it once to unlock the **Trade** tab. Public market-data/chart endpoints stay open; everything under `/api/trade` and the trade socket are gated. Foreign browser origins are blocked by a CORS allowlist.
+- **Binds to `127.0.0.1` by default.** Set `HOST=0.0.0.0` deliberately, and only behind a **reverse proxy with TLS** + firewall. See the hardening checklist in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+- **Live trading is disarmed and double-confirmed.** Paper mode is the default; live orders need a global arm toggle **and** a per-bot confirmation, and there's a one-click **kill switch**. Run `DEMO_MODE=1` for a paper-only public demo. Per-bot caps (max notional, max daily loss) act as circuit breakers.
+- **Your keys stay yours.** Exchange API keys are AES-256-GCM encrypted on disk and never returned to the browser. **Never commit `backend/data/`** (enforced by `.gitignore`) — it holds your encryption key, token, and database. Use trade-only keys without withdrawal permission.
 
 > ⚠️ **Disclaimer.** SaltanatbotV2 is provided as-is for research and educational purposes. Trading cryptocurrencies carries substantial risk. Nothing here is financial advice — you are solely responsible for any orders placed with your keys. Test on paper first.
 

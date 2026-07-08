@@ -43,13 +43,19 @@ interface Runtime {
  * Evaluate the strategy IR at bar `index` over `candles`, returning the raw
  * intents produced on that bar. This is the exact same evaluation the backtest
  * engine uses, so live signals match backtested ones bar-for-bar.
+ *
+ * `vars` is the persistent variable store: the frontend backtester keeps one
+ * store for the whole run, so `setvar` state (counters, saved levels) survives
+ * across bars. Live callers must pass the SAME map every bar for parity —
+ * omitting it (fresh map per bar) makes stateful strategies behave differently.
+ * The series cache is always per-call (candles grow each bar, so it can't persist).
  */
-export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number): BarIntents {
+export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, vars?: Map<string, number>): BarIntents {
   const rt: Runtime = {
     candles,
     n: candles.length,
     params: new Map(ir.inputs.map((input) => [input.name, input.value])),
-    vars: new Map(),
+    vars: vars ?? new Map(),
     seriesCache: new Map()
   };
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };

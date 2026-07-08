@@ -51,6 +51,8 @@ interface RunningBot {
   sub?: MarketSubscription;
   price: number;
   managed?: Managed;
+  /** Persistent `setvar` store — survives across bars for backtest/live parity. */
+  vars: Map<string, number>;
 }
 
 export class TradingEngine {
@@ -81,7 +83,7 @@ export class TradingEngine {
     if (!instrument) throw new Error(`Unknown symbol: ${config.symbol}`);
 
     const adapter = this.buildAdapter(config, () => this.running.get(config.id)?.price ?? 0);
-    const bot: RunningBot = { config, adapter, instrument, buffer: [], price: 0 };
+    const bot: RunningBot = { config, adapter, instrument, buffer: [], price: 0, vars: new Map() };
     if (adapter instanceof PaperAdapter) {
       bot.paper = adapter;
       const saved = getSetting<PaperState>(`paper:${config.id}`);
@@ -263,7 +265,7 @@ export class TradingEngine {
   private async onClosedBar(bot: RunningBot, index: number) {
     let intents: BarIntents;
     try {
-      intents = evaluateBar(bot.config.ir, bot.buffer, index);
+      intents = evaluateBar(bot.config.ir, bot.buffer, index, bot.vars);
     } catch (error) {
       this.log(bot.config.id, "error", `Strategy error: ${error instanceof Error ? error.message : error}`);
       return;

@@ -4,39 +4,46 @@ SaltanatbotV2 is configured almost entirely at runtime, through the app itself, 
 
 ## Environment variables
 
-The backend reads exactly two environment variables in `backend/src/server.ts`:
+The backend reads these environment variables in `backend/src/server.ts` / `backend/src/auth.ts`:
 
-| Variable | Default     | Purpose                                             |
-| -------- | ----------- | --------------------------------------------------- |
-| `PORT`   | `4180`      | TCP port the HTTP + WebSocket server listens on.    |
-| `HOST`   | `0.0.0.0`   | Interface the server binds to (all interfaces).     |
+| Variable          | Default       | Purpose                                                                                 |
+| ----------------- | ------------- | --------------------------------------------------------------------------------------- |
+| `PORT`            | `4180`        | TCP port the HTTP + WebSocket server listens on.                                        |
+| `HOST`            | `127.0.0.1`   | Interface the server binds to. Loopback by default (fail-safe). Set `0.0.0.0` to expose. |
+| `AUTH_TOKEN`      | *(auto)*      | Access token guarding the trading API. If unset, one is generated to `backend/data/.authtoken` and printed on first run. |
+| `DEMO_MODE`       | *(off)*       | `1`/`true` disables exchange keys and live trading — paper only. For public demos.       |
+| `ALLOWED_ORIGINS` | dev localhost | Comma-separated CORS allowlist for cross-origin browser access. Same-origin always works. |
 
-The relevant code:
-
-```ts
-const port = Number(process.env.PORT ?? 4180);
-const host = process.env.HOST ?? "0.0.0.0";
-```
-
-On startup the server logs its bind address:
-
-```
-SaltanatbotV2 backend listening on http://0.0.0.0:4180
-```
-
-To run on a different port:
+To run on a different port, exposed on all interfaces, with a fixed token:
 
 ```bash
-PORT=8080 npm start
+PORT=8080 HOST=0.0.0.0 AUTH_TOKEN="your-long-random-secret" npm start
 ```
 
-To bind only to loopback (recommended when a reverse proxy sits in front — see [Security hardening](#security-hardening)):
+On first run (no `AUTH_TOKEN` set) the server prints the generated token — you need it to log in to the **Trade** tab:
 
-```bash
-HOST=127.0.0.1 npm start
+```
+SaltanatbotV2 backend listening on http://127.0.0.1:4180
+
+🔑 Trading API access token (needed to log in to the Trade tab):
+      me4sf4pput33ncUEfkctnlrEu3vViIWN
+   Stored in backend/data/.authtoken · override with the AUTH_TOKEN env var.
 ```
 
-> **`.env.example` is optional; config is primarily runtime.** There is no required `.env` file. The two variables above are the only ones the backend consults, and both have sensible defaults. All secrets are configured in the UI and stored encrypted (see below), never in environment variables or plaintext files. The repository's `.gitignore` already ignores `.env` and `.env.*` (while allowing a committed `.env.example`), so you may add one for convenience, but it is not needed to run the app.
+If you bind to a non-loopback address, the server prints a warning to put it behind a reverse proxy with TLS (see [Security hardening](#security-hardening)).
+
+> **Public market data is open; the trading API is not.** `/api/candles`, `/api/sparklines`, `/api/catalog` and the `/stream` market socket need no token (they only serve public candles). Everything under `/api/trade` and the `/trade-stream` socket require the access token. Exchange keys and notification tokens are still entered in the UI and stored encrypted — never in environment variables.
+
+> **`.env` is git-ignored** (with a committed `.env.example` allowed). Secrets belong in the encrypted store or `AUTH_TOKEN`, not committed files.
+
+### Live-trading arming
+
+Live trading (Binance/Bybit) is **disarmed by default**. Even with valid API keys, a live bot will not start until you:
+
+1. Enable **Arm live trading** in the Trade → Settings panel (persisted server-side), and
+2. Confirm the live-start prompt on the bot (`confirmLive`).
+
+The **kill switch** (Trade → Settings) stops every running bot and disarms live trading instantly. `DEMO_MODE=1` forces paper-only regardless of these settings.
 
 ### Development ports
 
@@ -243,12 +250,12 @@ Point your process manager (systemd, pm2, Docker, etc.) at this command, ensure 
 
 ## Security hardening
 
-The backend defaults to `HOST=0.0.0.0` and enables permissive CORS (`app.use(cors())`), which is convenient for local development but **not** appropriate for direct public exposure. Before putting this server on the public internet, work through the checklist below.
+The backend now defaults to the safe posture: it binds to `127.0.0.1`, the trading API requires an access token, and CORS is an allowlist (foreign origins get no `Access-Control-Allow-Origin`). Live trading is disarmed by default. Still, before putting this server on the public internet, work through the checklist below.
 
-- [ ] **Terminate TLS at a reverse proxy.** Run the app bound to loopback (`HOST=127.0.0.1`) and place nginx / Caddy / Traefik in front to handle HTTPS and to proxy both HTTP (`/api/*`) and the WebSocket upgrades (`/stream`, `/trade-stream`). The app itself serves plain HTTP.
+- [ ] **Terminate TLS at a reverse proxy.** Keep the app bound to loopback (`HOST=127.0.0.1`, the default) and place nginx / Caddy / Traefik in front to handle HTTPS and to proxy both HTTP (`/api/*`) and the WebSocket upgrades (`/stream`, `/trade-stream`). The app itself serves plain HTTP.
 - [ ] **Restrict network exposure with a firewall.** Only expose the proxy's `443` (and optionally `80` for redirect). Do not expose the backend's `4180` directly; block it at the host firewall / security group.
-- [ ] **Add your own authentication at the proxy.** The API has no built-in auth — anyone who can reach it can create bots, submit exchange keys, and start trading. Put access control (mTLS, basic auth, an SSO gateway, or an allowlist) in front of it.
-- [ ] **Tighten CORS for real origins.** The default `cors()` allows any origin. If the API is reachable cross-origin, restrict it to your known frontend origin(s).
+- [ ] **Keep the access token secret.** The trading API and `/trade-stream` require it. Set a long random `AUTH_TOKEN` in production (don't rely on the auto-generated `backend/data/.authtoken` if you ship the data dir around), and never paste it into cross-origin sites. A defense-in-depth auth layer at the proxy is still welcome.
+- [ ] **Set `ALLOWED_ORIGINS` if the API is reached cross-origin.** Same-origin (the bundled SPA) needs nothing. Leave it unset for the default same-origin deployment.
 - [ ] **Never commit `backend/data/`.** It contains `.secret` (the encryption key seed) and `trading.db` (encrypted API keys and tokens). It is gitignored — keep it that way, and treat backups of it as secret material.
 - [ ] **Protect `.secret` file permissions.** It is written `0600`; ensure the deployment user owns it and no other account can read it.
 - [ ] **Use exchange API keys with least privilege.** Prefer trade-only keys without withdrawal permission, and IP-allowlist them at the exchange where possible.
