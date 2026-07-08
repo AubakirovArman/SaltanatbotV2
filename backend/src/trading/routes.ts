@@ -8,6 +8,7 @@ import type { ProviderRouter } from "../providers/router.js";
 import { TradingEngine, type TradeEvent } from "./engine.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
 import { getNotifyConfig, testNotify, type NotifyConfig } from "./notifications.js";
+import { TelegramControl } from "./telegramControl.js";
 import { deleteBot, initStore, listBots, listFills, listLogs, getSetting, setSetting, upsertBot } from "./store.js";
 import type { Timeframe } from "../types.js";
 import type { BotConfig, ExchangeId } from "./types.js";
@@ -45,7 +46,13 @@ const commandBodySchema = z.object({
 
 const notifyBodySchema = z.object({
   telegram: z
-    .object({ enabled: z.boolean().optional(), token: z.string().max(256).optional(), chatId: z.string().max(64).optional() })
+    .object({
+      enabled: z.boolean().optional(),
+      token: z.string().max(256).optional(),
+      chatId: z.string().max(64).optional(),
+      // Inbound two-way control toggle. Omitted = follow `enabled`.
+      control: z.boolean().optional()
+    })
     .optional(),
   vk: z
     .object({ enabled: z.boolean().optional(), token: z.string().max(512).optional(), peerId: z.string().max(64).optional() })
@@ -56,6 +63,8 @@ export interface TradingApi {
   router: Router;
   wss: WebSocketServer;
   engine: TradingEngine;
+  /** Inbound Telegram control channel — start()/stop() from the server lifecycle. */
+  telegramControl: TelegramControl;
 }
 
 export function createTradingApi(provider: ProviderRouter): TradingApi {
@@ -76,6 +85,10 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
   };
 
   const engine = new TradingEngine(provider, broadcast);
+  // Inbound Telegram control. No-op until a token+chatId are configured and
+  // Telegram is enabled; refresh()'d by POST /notify so a UI toggle takes effect
+  // without a restart. Started from server.ts after listen().
+  const telegramControl = new TelegramControl(engine);
   const router = Router();
 
   const withStatus = (bot: BotConfig): BotConfig => ({
@@ -258,7 +271,12 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
   router.get("/notify", (_req, res) => {
     const config = getNotifyConfig();
     res.json({
-      telegram: { enabled: config.telegram.enabled, chatId: config.telegram.chatId, hasToken: !!config.telegram.token },
+      telegram: {
+        enabled: config.telegram.enabled,
+        chatId: config.telegram.chatId,
+        hasToken: !!config.telegram.token,
+        control: config.telegram.control
+      },
       vk: { enabled: config.vk.enabled, peerId: config.vk.peerId, hasToken: !!config.vk.token }
     });
   });
@@ -275,7 +293,8 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
       telegram: {
         enabled: body.telegram?.enabled ?? current.telegram.enabled,
         token: body.telegram?.token || current.telegram.token,
-        chatId: body.telegram?.chatId ?? current.telegram.chatId
+        chatId: body.telegram?.chatId ?? current.telegram.chatId,
+        control: body.telegram?.control ?? current.telegram.control
       },
       vk: {
         enabled: body.vk?.enabled ?? current.vk.enabled,
@@ -284,6 +303,8 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
       }
     };
     setSetting("notify", next, true);
+    // Enabling/disabling Telegram in the UI activates/stops control live.
+    telegramControl.refresh();
     res.json({ ok: true });
   });
 
@@ -291,7 +312,7 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
     res.json(await testNotify());
   });
 
-  return { router, wss, engine };
+  return { router, wss, engine, telegramControl };
 }
 
 function hasKeys(exchange: ExchangeId): boolean {

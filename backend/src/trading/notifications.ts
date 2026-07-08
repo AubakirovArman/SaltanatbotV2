@@ -4,6 +4,13 @@ export interface TelegramConfig {
   enabled: boolean;
   token: string;
   chatId: string;
+  /**
+   * Enable INBOUND two-way control (the Telegram poller that lets the operator
+   * command bots from chat). Optional and backward-compatible: when omitted the
+   * control channel follows `enabled`. Set it false to keep outbound
+   * notifications on while disabling remote control.
+   */
+  control?: boolean;
 }
 
 export interface VkConfig {
@@ -24,6 +31,17 @@ export const DEFAULT_NOTIFY: NotifyConfig = {
 
 export function getNotifyConfig(): NotifyConfig {
   return getSetting<NotifyConfig>("notify") ?? DEFAULT_NOTIFY;
+}
+
+/**
+ * Whether inbound Telegram control should be active: the channel must be
+ * configured (token + chatId) and enabled. Control follows `enabled` unless the
+ * optional `control` flag is set explicitly (`false` keeps outbound-only).
+ */
+export function isTelegramControlEnabled(config: TelegramConfig = getNotifyConfig().telegram): boolean {
+  if (!config.token || !config.chatId) return false;
+  if (!config.enabled) return false;
+  return config.control ?? true;
 }
 
 export type NotifyEvent = "start" | "stop" | "open" | "close" | "error" | "signal";

@@ -260,11 +260,16 @@ server.listen(port, host, () => {
   }
   // Bring back bots that were running before the last shutdown/crash.
   void trading.engine.resume();
+  // Start the inbound Telegram control poller. No-op unless a token+chatId are
+  // configured and Telegram is enabled; it can also be activated later from the
+  // UI (POST /notify calls refresh()).
+  trading.telegramControl.start();
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     // Preserve desired status so running bots resume on the next start.
+    trading.telegramControl.stop();
     trading.engine.shutdown();
     server.close(() => process.exit(0));
   });
