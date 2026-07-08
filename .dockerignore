@@ -1,0 +1,45 @@
+# Dependencies — reinstalled cleanly via `npm ci` in the build stage.
+node_modules
+**/node_modules
+
+# Build output — regenerated in the image.
+dist
+**/dist
+build
+**/build
+*.tsbuildinfo
+
+# Runtime data & secrets — NEVER copy into the image. The SQLite DB and the AES
+# encryption key (holding encrypted exchange API keys) live here and must be a
+# mounted persistent volume at runtime, not part of the image layers.
+backend/data
+data
+*.secret
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+
+# VCS & CI.
+.git
+.gitignore
+.github
+
+# Internal / dev artifacts and docs (not needed to run the server).
+audits
+IMPROVEMENT_PLAN.md
+*.md
+docs
+
+# Tests & tooling config (build doesn't need them).
+**/tests
+**/*.test.ts
+vitest.config.ts
+biome.json
+
+# Editor / OS cruft.
+.DS_Store
+.idea
+.vscode
+*.log

@@ -11,9 +11,14 @@
     "dev": "concurrently -n backend,frontend -c cyan,green \"npm --workspace backend run dev\" \"npm --workspace frontend run dev -- --host 0.0.0.0\"",
     "build": "npm --workspaces run build",
     "start": "npm --workspace backend run start",
-    "check": "npm --workspaces run check"
+    "check": "npm --workspaces run check",
+    "test": "vitest run",
+    "lint": "biome check --formatter-enabled=false --assists-enabled=false .",
+    "format": "biome format --write ."
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "@biomejs/biome": "^1.9.4",
+    "concurrently": "^9.2.1",
+    "vitest": "^2.1.9"
   }
 }

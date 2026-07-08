@@ -1,0 +1,45 @@
+# SaltanatbotV2 — single-service compose for the trading terminal.
+#
+# The backend serves both the JSON/WebSocket API and the built frontend SPA.
+#
+# IMPORTANT: backend/data holds the SQLite trading DB AND the AES encryption key
+# that protects stored exchange API keys. It MUST be a persistent named volume
+# (mounted below) so it survives container recreation — and must NEVER be baked
+# into the image. Losing this volume means losing the encrypted keys and bot state.
+
+services:
+  saltanatbotv2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: saltanatbotv2:latest
+    restart: unless-stopped
+    ports:
+      # host:container — change the host side (left) to expose a different port.
+      - "${PORT:-4180}:4180"
+    environment:
+      # Access token gating the trading API and trade WebSocket. If unset, the
+      # backend auto-generates one on first run and prints it to the logs.
+      AUTH_TOKEN: ${AUTH_TOKEN:-}
+      # Port the server binds inside the container (matches the EXPOSE/mapping).
+      PORT: 4180
+      # HOST is fixed to 0.0.0.0 in the image so the mapped port is reachable.
+      # Set DEMO_MODE=1 to disable exchange keys and live trading.
+      DEMO_MODE: ${DEMO_MODE:-}
+      # Comma-separated CORS allowlist for cross-origin dev/proxy setups.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+    volumes:
+      # Persist the SQLite DB + secrets across recreations. Container path matches
+      # the backend's data dir (resolved relative to backend/dist at runtime).
+      - saltanat-data:/app/backend/data
+    healthcheck:
+      # The health endpoint is unauthenticated and cheap.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4180/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  saltanat-data:
+    driver: local

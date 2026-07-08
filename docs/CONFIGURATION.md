@@ -26,7 +26,7 @@ On first run (no `AUTH_TOKEN` set) the server prints the generated token — you
 SaltanatbotV2 backend listening on http://127.0.0.1:4180
 
 🔑 Trading API access token (needed to log in to the Trade tab):
-      me4sf4pput33ncUEfkctnlrEu3vViIWN
+      qN7x2Lp9wR4tKv8mZ3bYc6Hs1Fd0Ea5   ← example only; yours will differ
    Stored in backend/data/.authtoken · override with the AUTH_TOKEN env var.
 ```
 
