@@ -20,6 +20,7 @@ import { compileXmlToIr } from "../strategy/compileArtifact";
 import type { StrategyArtifact } from "../strategy/library";
 import type { CatalogResponse } from "../types";
 import {
+  checkAuth,
   createTradeSocket,
   deleteBot,
   getFills,
@@ -28,14 +29,19 @@ import {
   getLogs,
   getNotify,
   getOrders,
+  getSettings,
+  killAll,
   listBots,
   saveBot,
   saveKeys,
   saveNotify,
   sendCommand,
+  setLiveTrading,
+  setToken,
   startBot,
   stopBot,
   testNotify,
+  type AuthState,
   type ExchangeId,
   type Fill,
   type LiveState,
@@ -62,6 +68,8 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
   const [orders, setOrders] = useState<Record<string, PendingOrder[]>>({});
   const [fills, setFills] = useState<Record<string, Fill[]>>({});
   const [logs, setLogs] = useState<Record<string, LogRow[]>>({});
+  const [auth, setAuth] = useState<AuthState | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const liveRef = useRef(live);
   liveRef.current = live;
 
@@ -69,7 +77,18 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
     listBots().then(setBots).catch(() => undefined);
   }, []);
 
+  // Verify the stored access token before showing the trading surface.
   useEffect(() => {
+    checkAuth()
+      .then((state) => setAuth(state))
+      .catch(() => setAuth(null))
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  const authed = !!auth?.ok;
+
+  useEffect(() => {
+    if (!authed) return;
     refreshBots();
     const socket = createTradeSocket();
     socket.onmessage = (event) => {
@@ -88,7 +107,7 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
       }
     };
     return () => socket.close();
-  }, [refreshBots]);
+  }, [authed, refreshBots]);
 
   // Poll the live state of the selected running bot for price / equity / uPnL.
   const selectedId = view.kind === "bot" ? view.id : undefined;
@@ -112,6 +131,17 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
     getLive(id).then((state) => setLive((current) => ({ ...current, [id]: state }))).catch(() => undefined);
     getOrders(id).then((rows) => setOrders((current) => ({ ...current, [id]: rows }))).catch(() => undefined);
   };
+
+  if (!authChecked) {
+    return <section className="trading trade-gate-wrap"><p className="empty-note">Checking access…</p></section>;
+  }
+  if (!authed) {
+    return (
+      <section className="trading trade-gate-wrap">
+        <TokenGate onAuthed={(state) => { setAuth(state); setAuthChecked(true); }} />
+      </section>
+    );
+  }
 
   return (
     <section className="trading">
@@ -169,6 +199,50 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
         )}
       </div>
     </section>
+  );
+}
+
+function TokenGate({ onAuthed }: { onAuthed: (state: AuthState) => void }) {
+  const [token, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  const submit = async () => {
+    if (!token.trim()) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const state = await checkAuth(token.trim());
+      setToken(token.trim());
+      onAuthed(state);
+    } catch {
+      setError("Invalid access token.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="trade-gate">
+      <KeyRound size={26} aria-hidden="true" />
+      <h2>Trading is locked</h2>
+      <p>
+        The Trade tab controls real orders, so it needs the access token. Find it in the backend
+        console on first run (or set it via the <code>AUTH_TOKEN</code> env var).
+      </p>
+      <input
+        type="password"
+        value={token}
+        placeholder="Access token"
+        autoFocus
+        onChange={(event) => setInput(event.target.value)}
+        onKeyDown={(event) => event.key === "Enter" && submit()}
+      />
+      {error && <span className="trade-gate-error">{error}</span>}
+      <button type="button" className="run-button" onClick={submit} disabled={busy || !token.trim()}>
+        {busy ? "Checking…" : "Unlock"}
+      </button>
+    </div>
   );
 }
 
@@ -351,19 +425,32 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
   const uPnl = position && live ? (position.side === "long" ? position.qty * (live.price - position.entryPrice) : position.qty * (position.entryPrice - live.price)) : 0;
 
   const toggle = async () => {
-    if (bot.status === "running") await stopBot(bot.id);
-    else {
-      const res = await startBot(bot.id);
-      if (!res.ok && res.error) setCmdOut(res.error);
+    try {
+      if (bot.status === "running") {
+        await stopBot(bot.id);
+      } else if (bot.exchange !== "paper") {
+        if (!window.confirm(`Start LIVE trading on ${bot.exchange} with REAL funds?`)) return;
+        const res = await startBot(bot.id, true);
+        if (!res.ok && res.error) setCmdOut(res.error);
+      } else {
+        const res = await startBot(bot.id);
+        if (!res.ok && res.error) setCmdOut(res.error);
+      }
+    } catch (error) {
+      setCmdOut(error instanceof Error ? error.message : "Failed to start");
     }
     onChanged();
   };
 
-  const runCommand = async (input: string) => {
+  const runCommand = async (input: string, dryRun = false) => {
     if (!input.trim()) return;
-    const res = await sendCommand(bot.id, input);
-    setCmdOut(res.message);
-    if (input === command) setCommand("");
+    try {
+      const res = await sendCommand(bot.id, input, dryRun);
+      setCmdOut(res.message);
+      if (input === command && !dryRun) setCommand("");
+    } catch (error) {
+      setCmdOut(error instanceof Error ? error.message : "Command failed");
+    }
   };
 
   return (
@@ -415,6 +502,7 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
             disabled={bot.status !== "running"}
           />
           <button type="button" title="Save command" className="console-save" onClick={() => command.trim() && openEditor(undefined, command)} disabled={!command.trim()}><Save size={14} aria-hidden="true" /></button>
+          <button type="button" className="console-dry" title="Dry run (preview without executing)" onClick={() => runCommand(command, true)} disabled={bot.status !== "running" || !command.trim()}>Dry</button>
           <button type="button" onClick={() => runCommand(command)} disabled={bot.status !== "running"}><Send size={14} aria-hidden="true" /></button>
         </div>
         {cmdOut && <div className="trade-console-out num">{cmdOut}</div>}
@@ -534,14 +622,66 @@ function Card({ label, value, sub, tone }: { label: string; value: string; sub?:
 function SettingsPanel() {
   const [keys, setKeys] = useState<{ binance: boolean; bybit: boolean }>({ binance: false, bybit: false });
   const [notifyStatus, setNotifyStatus] = useState<NotifyStatus>();
+  const [settings, setSettings] = useState<AuthState>();
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     getKeys().then(setKeys).catch(() => undefined);
     getNotify().then(setNotifyStatus).catch(() => undefined);
+    getSettings().then(setSettings).catch(() => undefined);
   }, []);
+
+  const toggleLive = async (next: boolean) => {
+    setBusy(true);
+    try {
+      await setLiveTrading(next);
+      setSettings((s) => (s ? { ...s, liveTradingEnabled: next } : s));
+    } catch {
+      // ignore
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const kill = async () => {
+    if (!window.confirm("Stop ALL bots and disarm live trading now?")) return;
+    setBusy(true);
+    try {
+      await killAll();
+      setSettings((s) => (s ? { ...s, liveTradingEnabled: false } : s));
+    } catch {
+      // ignore
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="trade-settings">
+      <div className="panel-header"><strong><AlertTriangle size={14} aria-hidden="true" /> Live trading</strong></div>
+      {settings?.demo ? (
+        <p className="settings-note">Running in demo mode — only paper trading is available.</p>
+      ) : (
+        <>
+          <p className="settings-note">
+            Live trading places real orders with your exchange keys. It is disarmed by default; arm it only
+            when you intend to trade for real. The kill switch stops every bot and disarms instantly.
+          </p>
+          <label className="live-arm-row">
+            <input
+              type="checkbox"
+              checked={settings?.liveTradingEnabled ?? false}
+              disabled={busy}
+              onChange={(event) => toggleLive(event.target.checked)}
+            />
+            <span>Arm live trading{settings?.liveTradingEnabled ? " — ARMED" : ""}</span>
+          </label>
+          <button type="button" className="kill-switch" onClick={kill} disabled={busy}>
+            <XOctagon size={14} aria-hidden="true" /> Kill switch — stop all bots
+          </button>
+        </>
+      )}
+
       <div className="panel-header"><strong><KeyRound size={14} aria-hidden="true" /> Exchange API keys</strong></div>
       <p className="settings-note">Keys are stored encrypted on the server (never sent back to the browser). Use read+trade permissions, no withdrawals. IP-whitelist recommended.</p>
       <KeyForm exchange="binance" configured={keys.binance} onSaved={() => getKeys().then(setKeys)} />

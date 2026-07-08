@@ -98,24 +98,78 @@ export interface NotifyStatus {
 }
 
 const BASE = "/api/trade";
+const TOKEN_KEY = "sbv2:token";
+
+export class AuthError extends Error {
+  constructor(message = "Unauthorized") {
+    super(message);
+    this.name = "AuthError";
+  }
+}
+
+export function getToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setToken(token: string) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // ignore storage failures
+  }
+}
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
   const res = await fetch(BASE + path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) }
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {})
+    }
   });
+  if (res.status === 401) throw new AuthError();
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
   return res.json() as Promise<T>;
 }
+
+export interface AuthState {
+  ok: boolean;
+  demo: boolean;
+  liveTradingEnabled: boolean;
+}
+
+/** Verify a token (defaults to the stored one) against the backend. */
+export async function checkAuth(token?: string): Promise<AuthState> {
+  const use = token ?? getToken();
+  const res = await fetch(`${BASE}/auth`, {
+    headers: use ? { Authorization: `Bearer ${use}` } : {}
+  });
+  if (res.status === 401) throw new AuthError();
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<AuthState>;
+}
+
+export const getSettings = () => req<AuthState>("/settings");
+export const setLiveTrading = (liveTradingEnabled: boolean) =>
+  req<{ liveTradingEnabled: boolean }>("/settings", { method: "POST", body: JSON.stringify({ liveTradingEnabled }) });
+export const killAll = () => req<{ ok: boolean }>("/kill", { method: "POST" });
 
 export const listBots = () => req<{ bots: TradingBot[] }>("/bots").then((r) => r.bots);
 export const saveBot = (bot: Partial<TradingBot>) =>
   req<{ bot: TradingBot }>("/bots", { method: "POST", body: JSON.stringify(bot) }).then((r) => r.bot);
 export const deleteBot = (id: string) => req(`/bots/${id}`, { method: "DELETE" });
-export const startBot = (id: string) => req<{ ok: boolean; error?: string }>(`/bots/${id}/start`, { method: "POST" });
+export const startBot = (id: string, confirmLive = false) =>
+  req<{ ok: boolean; error?: string }>(`/bots/${id}/start`, { method: "POST", body: JSON.stringify({ confirmLive }) });
 export const stopBot = (id: string) => req(`/bots/${id}/stop`, { method: "POST" });
-export const sendCommand = (id: string, command: string) =>
-  req<{ ok: boolean; message: string }>(`/bots/${id}/command`, { method: "POST", body: JSON.stringify({ command }) });
+export const sendCommand = (id: string, command: string, dryRun = false) =>
+  req<{ ok: boolean; message: string }>(`/bots/${id}/command`, { method: "POST", body: JSON.stringify({ command, dryRun }) });
 export const getFills = (id: string) => req<{ fills: Fill[] }>(`/bots/${id}/fills`).then((r) => r.fills);
 export const getLogs = (id: string) => req<{ logs: LogRow[] }>(`/bots/${id}/logs`).then((r) => r.logs);
 export const getLive = (id: string) => req<LiveState>(`/bots/${id}/live`);
@@ -129,5 +183,7 @@ export const testNotify = () => req<{ ok: boolean; message: string }>("/notify/t
 
 export function createTradeSocket(): WebSocket {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  return new WebSocket(`${protocol}://${window.location.host}/trade-stream`);
+  const token = getToken();
+  const query = token ? `?token=${encodeURIComponent(token)}` : "";
+  return new WebSocket(`${protocol}://${window.location.host}/trade-stream${query}`);
 }

@@ -640,6 +640,95 @@
   line-height: 1.45;
 }
 
+/* ── Access-token gate ─────────────────────────────────────── */
+.trade-gate-wrap {
+  display: grid;
+  grid-template-columns: 1fr;
+  place-items: center;
+}
+
+.trade-gate {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-inline-size: 380px;
+  padding: 28px 24px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.trade-gate h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  color: var(--text);
+}
+
+.trade-gate p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.trade-gate input {
+  inline-size: 100%;
+  block-size: var(--ctl-h);
+  padding: 0 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.trade-gate input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.trade-gate .run-button {
+  inline-size: 100%;
+  justify-content: center;
+}
+
+.trade-gate-error {
+  color: var(--down, #ef5350);
+  font-size: var(--fs-sm);
+}
+
+/* ── Live-trading arm + kill switch ────────────────────────── */
+.live-arm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.kill-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: start;
+  padding: 6px 12px;
+  border: 1px solid var(--down, #ef5350);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--down, #ef5350) 12%, transparent);
+  color: var(--down, #ef5350);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.kill-switch:hover {
+  background: color-mix(in srgb, var(--down, #ef5350) 22%, transparent);
+}
+
+.console-dry {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  padding: 0 8px;
+  color: var(--muted);
+}
+
 .key-form {
   display: grid;
   gap: 6px;

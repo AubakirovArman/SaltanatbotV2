@@ -3,13 +3,13 @@ import type { Candle, Instrument, Timeframe } from "../types.js";
 import { findInstrument } from "../market/catalog.js";
 import { ProviderRouter } from "../providers/router.js";
 import type { MarketSubscription } from "../providers/provider.js";
-import { commandToExec, parseMessageSet } from "./commands.js";
+import { commandToExec, formatExec, parseMessageSet } from "./commands.js";
 import { atrValue, evaluateBar, type BarIntents } from "./strategy/evaluator.js";
 import { PaperAdapter, type PaperState } from "./exchange/paper.js";
 import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
 import { BybitAdapter } from "./exchange/bybit.js";
 import { notify } from "./notifications.js";
-import { getSetting, insertFill, insertLog, setSetting, upsertBot } from "./store.js";
+import { getSetting, insertFill, insertLog, listBots, listFills, setSetting, upsertBot } from "./store.js";
 import type {
   AccountState,
   BotConfig,
@@ -88,8 +88,11 @@ export class TradingEngine {
       if (saved) adapter.setState(saved);
     }
 
+    // Live bots must never see synthetic fallback data — trade on real prices only.
+    const strict = config.exchange !== "paper";
+
     // Seed history so indicators have warmup.
-    const seed = await this.provider.getCandles(instrument, config.timeframe, { limit: SEED_BARS });
+    const seed = await this.provider.getCandles(instrument, config.timeframe, { limit: SEED_BARS }, { strict });
     bot.buffer = seed.slice(-BUFFER_CAP);
     bot.price = bot.buffer.at(-1)?.close ?? 0;
 
@@ -97,7 +100,8 @@ export class TradingEngine {
       instrument,
       config.timeframe,
       (candle) => this.onCandle(config.id, candle),
-      (message) => this.log(config.id, "info", message)
+      (message) => this.log(config.id, message.toLowerCase().includes("error") || message.toLowerCase().includes("closed") ? "warn" : "info", message),
+      { strict }
     );
 
     this.running.set(config.id, bot);
@@ -127,13 +131,53 @@ export class TradingEngine {
     for (const id of [...this.running.keys()]) this.stop(id);
   }
 
+  /**
+   * Tear down runtime on process exit WITHOUT flipping desired status, so bots
+   * whose status is "running" come back automatically on the next boot (resume).
+   * Use stop()/stopAll() for an intentional stop that should persist.
+   */
+  shutdown() {
+    for (const bot of this.running.values()) {
+      bot.sub?.close();
+      if (bot.paper) this.persistPaper(bot);
+    }
+    this.running.clear();
+  }
+
+  /** Restart bots that were running before the process stopped (called on boot). */
+  async resume() {
+    for (const config of listBots()) {
+      if (config.status !== "running" || this.running.has(config.id)) continue;
+      try {
+        await this.start(config);
+        this.log(config.id, "info", "Resumed after restart");
+      } catch (error) {
+        this.log(config.id, "error", `Resume failed: ${error instanceof Error ? error.message : error}`);
+        config.status = "stopped";
+        upsertBot(config);
+      }
+    }
+  }
+
+  /** Realized PnL booked so far in the current UTC day, for the daily-loss guard. */
+  private realizedToday(botId: string): number {
+    const startOfDay = Math.floor(Date.now() / 86_400_000) * 86_400_000;
+    return listFills(botId, 500)
+      .filter((fill) => fill.ts >= startOfDay)
+      .reduce((sum, fill) => sum + fill.realizedPnl, 0);
+  }
+
   async orders(id: string) {
     const bot = this.running.get(id);
     return bot?.adapter.orders ? bot.adapter.orders(bot.config.symbol) : [];
   }
 
-  /** Execute a raw Antares message set (chained commands with pauses). */
-  async manualCommand(id: string, input: string): Promise<{ ok: boolean; message: string }> {
+  /**
+   * Execute a raw Antares message set (chained commands with pauses).
+   * With `dryRun`, nothing is sent to the exchange — each command is parsed and
+   * echoed back as a resolved order so the operator can preview it first.
+   */
+  async manualCommand(id: string, input: string, dryRun = false): Promise<{ ok: boolean; message: string }> {
     const bot = this.running.get(id);
     if (!bot) return { ok: false, message: "Bot is not running" };
     try {
@@ -143,13 +187,17 @@ export class TradingEngine {
         if (step.command) {
           const exec = commandToExec(step.command);
           if (!exec.symbol) exec.symbol = bot.config.symbol;
+          if (dryRun) {
+            messages.push(`would ${formatExec(exec)}`);
+            continue;
+          }
           const result = await bot.adapter.execute(exec);
           this.applyResult(bot, result, exec.reason);
           messages.push(result.message);
         }
-        if (step.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(step.delayMs, 10_000)));
+        if (!dryRun && step.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(step.delayMs, 10_000)));
       }
-      return { ok: true, message: messages.join(" · ") || "Done" };
+      return { ok: true, message: (dryRun ? "Dry run — " : "") + (messages.join(" · ") || "Done") };
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : "Command failed" };
     }
@@ -246,20 +294,42 @@ export class TradingEngine {
   private async openPosition(bot: RunningBot, intents: BarIntents, index: number) {
     const dir = intents.entry!;
     const price = bot.price;
+    const isLive = bot.adapter.id !== "paper";
+
+    // Daily-loss circuit breaker: stop the bot for the day once the cap is hit.
+    const dailyCap = bot.config.maxDailyLossQuote ?? 0;
+    if (dailyCap > 0 && this.realizedToday(bot.config.id) <= -dailyCap) {
+      this.log(bot.config.id, "warn", `Daily loss limit (${dailyCap}) reached — stopping bot`);
+      void notify({ event: "error", bot: bot.config.name, symbol: bot.config.symbol, text: `Daily loss limit reached — bot stopped` });
+      this.stop(bot.config.id);
+      return;
+    }
+
     const account = await bot.adapter.account().catch(() => ({ balance: 0, equity: 0, currency: "USDT" }));
     const equity = account.equity || bot.config.sizeValue;
     const atr = atrValue(bot.buffer, 14, index) || 0;
 
     const stop = this.resolvePrice(intents.stop, dir, price, atr);
     const target = this.resolveTarget(intents.target, dir, price, atr);
-    const qty = this.resolveQty(bot, intents, price, equity, stop);
+    let qty = this.resolveQty(bot, intents, price, equity, stop);
     if (!qty || qty <= 0) {
       this.log(bot.config.id, "warn", "Entry skipped — computed size is zero");
       return;
     }
 
-    // The engine manages stop/target/trailing itself (intrabar), so it opens a
-    // plain position and does not attach exchange-side protective orders here.
+    // Cap notional exposure per the bot's risk limit.
+    const notionalCap = bot.config.maxPositionQuote ?? 0;
+    if (notionalCap > 0 && qty * price > notionalCap) {
+      const capped = notionalCap / price;
+      this.log(bot.config.id, "warn", `Size capped to ${notionalCap} quote (was ${round(qty * price)})`);
+      qty = capped;
+    }
+
+    // For a live futures entry without a trailing stop, place the protective
+    // stop/target ON THE EXCHANGE so the position survives a crash/disconnect.
+    // Otherwise the engine manages stop/target/trailing locally (intrabar).
+    const exchangeManaged = isLive && bot.config.market === "futures" && !intents.trail && (stop !== undefined || target !== undefined);
+
     const order: ExecOrder = {
       action: bot.config.market === "spot" ? "neworder" : "open",
       market: bot.config.market,
@@ -268,17 +338,26 @@ export class TradingEngine {
       type: "market",
       qty,
       leverage: bot.config.leverage,
+      clientId: `${bot.config.id.slice(0, 8)}-o-${bot.buffer.at(-1)?.time ?? Date.now()}`,
       reason: "signal:entry"
     };
+    if (exchangeManaged) {
+      if (stop !== undefined) order.stop = { basis: "price", value: stop };
+      if (target !== undefined) order.takeProfits = [{ priceBasis: "price", price: target, qtyBasis: "percent", qty: 100 }];
+    }
+
     const result = await bot.adapter.execute(order);
     if (result.ok) {
-      bot.managed = { side: dir, entry: bot.price, stop, target, trail: intents.trail };
+      // When the exchange holds the SL/TP, don't also manage them locally (avoids double-close).
+      bot.managed = exchangeManaged
+        ? { side: dir, entry: bot.price }
+        : { side: dir, entry: bot.price, stop, target, trail: intents.trail };
     } else {
       this.log(bot.config.id, "error", `Open failed: ${result.message}`);
     }
     this.applyResult(bot, result, "signal:entry");
     if (result.ok) {
-      await notify({ event: "open", bot: bot.config.name, symbol: bot.config.symbol, text: `Opened ${dir.toUpperCase()} ${qty} @ ${round(price)}${stop ? ` · SL ${round(stop)}` : ""}${target ? ` · TP ${round(target)}` : ""}` });
+      await notify({ event: "open", bot: bot.config.name, symbol: bot.config.symbol, text: `Opened ${dir.toUpperCase()} ${round(qty)} @ ${round(price)}${stop ? ` · SL ${round(stop)}` : ""}${target ? ` · TP ${round(target)}` : ""}` });
     }
   }
 
@@ -292,6 +371,7 @@ export class TradingEngine {
       type: "market",
       closePct: 100,
       reduceOnly: true,
+      clientId: `${bot.config.id.slice(0, 8)}-c-${bot.buffer.at(-1)?.time ?? Date.now()}`,
       reason: `signal:${reason}`
     };
     const result = await bot.adapter.execute(order);

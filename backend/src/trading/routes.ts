@@ -1,12 +1,56 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { WebSocket, WebSocketServer } from "ws";
+import { z } from "zod";
+import { isDemoMode } from "../auth.js";
+import { timeframes } from "../market/timeframes.js";
 import type { ProviderRouter } from "../providers/router.js";
 import { TradingEngine, type TradeEvent } from "./engine.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
 import { getNotifyConfig, testNotify, type NotifyConfig } from "./notifications.js";
 import { deleteBot, initStore, listBots, listFills, listLogs, getSetting, setSetting, upsertBot } from "./store.js";
+import type { Timeframe } from "../types.js";
 import type { BotConfig, ExchangeId } from "./types.js";
+
+const timeframeEnum = z.enum(timeframes as [Timeframe, ...Timeframe[]]);
+
+const botBodySchema = z.object({
+  id: z.string().optional(),
+  name: z.string().max(120).optional(),
+  strategyName: z.string().max(120).optional(),
+  ir: z.record(z.string(), z.unknown()).refine((v) => v && typeof v === "object", "ir must be an object"),
+  symbol: z.string().min(1).max(30),
+  timeframe: timeframeEnum,
+  exchange: z.enum(["paper", "binance", "bybit"]).default("paper"),
+  market: z.enum(["spot", "futures"]).default("spot"),
+  sizeMode: z.enum(["quote", "base", "equity_pct", "risk_pct"]).default("quote"),
+  sizeValue: z.coerce.number().positive().finite().max(1_000_000_000),
+  leverage: z.coerce.number().int().min(1).max(125).default(1),
+  notifyMarkers: z.boolean().default(false),
+  // Live-trading risk caps (0/undefined = unlimited; enforced by the engine).
+  maxPositionQuote: z.coerce.number().nonnegative().finite().max(1_000_000_000).optional(),
+  maxDailyLossQuote: z.coerce.number().nonnegative().finite().max(1_000_000_000).optional()
+});
+
+const keysBodySchema = z.object({
+  exchange: z.enum(["binance", "bybit"]),
+  apiKey: z.string().trim().min(8).max(256),
+  apiSecret: z.string().trim().min(8).max(256)
+});
+
+const commandBodySchema = z.object({
+  command: z.string().min(1).max(2000),
+  dryRun: z.boolean().optional()
+});
+
+const notifyBodySchema = z.object({
+  telegram: z
+    .object({ enabled: z.boolean().optional(), token: z.string().max(256).optional(), chatId: z.string().max(64).optional() })
+    .optional(),
+  vk: z
+    .object({ enabled: z.boolean().optional(), token: z.string().max(512).optional(), peerId: z.string().max(64).optional() })
+    .optional()
+});
 
 export interface TradingApi {
   router: Router;
@@ -39,14 +83,51 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
     status: engine.isRunning(bot.id) ? "running" : "stopped"
   });
 
+  const liveEnabled = () => getSetting<boolean>("liveTradingEnabled") === true;
+
+  // Lets the frontend verify a stored token and learn whether live trading is armed.
+  router.get("/auth", (_req, res) => {
+    res.json({ ok: true, demo: isDemoMode(), liveTradingEnabled: liveEnabled() });
+  });
+
+  router.get("/settings", (_req, res) => {
+    res.json({ demo: isDemoMode(), liveTradingEnabled: liveEnabled() });
+  });
+
+  router.post("/settings", (req, res) => {
+    const parsed = z.object({ liveTradingEnabled: z.boolean() }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    if (isDemoMode() && parsed.data.liveTradingEnabled) {
+      res.status(403).json({ error: "Live trading is disabled in DEMO_MODE." });
+      return;
+    }
+    setSetting("liveTradingEnabled", parsed.data.liveTradingEnabled);
+    res.json({ liveTradingEnabled: parsed.data.liveTradingEnabled });
+  });
+
+  // Global kill switch: stop every bot and disarm live trading.
+  router.post("/kill", (_req, res) => {
+    engine.stopAll();
+    setSetting("liveTradingEnabled", false);
+    res.json({ ok: true });
+  });
+
   router.get("/bots", (_req, res) => {
     res.json({ bots: listBots().map(withStatus) });
   });
 
   router.post("/bots", (req, res) => {
-    const body = req.body as Partial<BotConfig>;
-    if (!body.symbol || !body.ir || !body.timeframe) {
-      res.status(400).json({ error: "symbol, timeframe and ir are required" });
+    const parsed = botBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    const body = parsed.data;
+    if (isDemoMode() && body.exchange !== "paper") {
+      res.status(403).json({ error: "Only paper trading is available in DEMO_MODE." });
       return;
     }
     const now = Date.now();
@@ -55,15 +136,17 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
       id: body.id ?? randomUUID(),
       name: body.name?.trim() || body.strategyName || "Bot",
       strategyName: body.strategyName ?? "Strategy",
-      ir: body.ir,
+      ir: body.ir as unknown as BotConfig["ir"],
       symbol: body.symbol.toUpperCase(),
       timeframe: body.timeframe,
-      exchange: (body.exchange ?? "paper") as ExchangeId,
-      market: body.market === "spot" ? "spot" : "futures",
-      sizeMode: body.sizeMode ?? "quote",
-      sizeValue: body.sizeValue ?? 100,
-      leverage: Math.max(1, body.leverage ?? 1),
-      notifyMarkers: body.notifyMarkers ?? false,
+      exchange: body.exchange as ExchangeId,
+      market: body.market,
+      sizeMode: body.sizeMode,
+      sizeValue: body.sizeValue,
+      leverage: body.leverage,
+      notifyMarkers: body.notifyMarkers,
+      maxPositionQuote: body.maxPositionQuote,
+      maxDailyLossQuote: body.maxDailyLossQuote,
       status: "stopped",
       createdAt: existing?.createdAt ?? now,
       updatedAt: now
@@ -84,6 +167,21 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
       res.status(404).json({ error: "Bot not found" });
       return;
     }
+    // Live trading is double-gated: a global arm flag AND per-request confirmation.
+    if (bot.exchange !== "paper") {
+      if (isDemoMode()) {
+        res.status(403).json({ error: "Live trading is disabled in DEMO_MODE." });
+        return;
+      }
+      if (!liveEnabled()) {
+        res.status(403).json({ error: "Live trading is not armed. Enable it in Trade settings first." });
+        return;
+      }
+      if ((req.body as { confirmLive?: boolean })?.confirmLive !== true) {
+        res.status(428).json({ error: "Live start requires confirmLive:true.", needsConfirm: true });
+        return;
+      }
+    }
     try {
       await engine.start(bot);
       res.json({ ok: true, bot: withStatus(bot) });
@@ -98,12 +196,12 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
   });
 
   router.post("/bots/:id/command", async (req, res) => {
-    const command = (req.body as { command?: string }).command;
-    if (!command) {
-      res.status(400).json({ error: "command is required" });
+    const parsed = commandBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
       return;
     }
-    const result = await engine.manualCommand(req.params.id, command);
+    const result = await engine.manualCommand(req.params.id, parsed.data.command, parsed.data.dryRun === true);
     res.json(result);
   });
 
@@ -132,12 +230,16 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
   });
 
   router.post("/keys", (req, res) => {
-    const body = req.body as { exchange?: ExchangeId; apiKey?: string; apiSecret?: string };
-    if (body.exchange !== "binance" && body.exchange !== "bybit") {
-      res.status(400).json({ error: "exchange must be binance or bybit" });
+    if (isDemoMode()) {
+      res.status(403).json({ error: "Exchange keys cannot be stored in DEMO_MODE." });
       return;
     }
-    setSetting(`keys:${body.exchange}`, { apiKey: body.apiKey ?? "", apiSecret: body.apiSecret ?? "" }, true);
+    const parsed = keysBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    setSetting(`keys:${parsed.data.exchange}`, { apiKey: parsed.data.apiKey, apiSecret: parsed.data.apiSecret }, true);
     res.json({ ok: true });
   });
 
@@ -151,7 +253,12 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
   });
 
   router.post("/notify", (req, res) => {
-    const body = req.body as Partial<NotifyConfig>;
+    const parsed = notifyBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    const body = parsed.data as Partial<NotifyConfig>;
     const current = getNotifyConfig();
     const next: NotifyConfig = {
       telegram: {

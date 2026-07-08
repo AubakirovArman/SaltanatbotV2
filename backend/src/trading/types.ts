@@ -70,6 +70,9 @@ export interface BotConfig {
   leverage: number;
   /** Notify on signals that don't open trades (marker blocks). */
   notifyMarkers: boolean;
+  /** Live risk caps (quote currency). 0/undefined = unlimited. */
+  maxPositionQuote?: number;
+  maxDailyLossQuote?: number;
   status: BotStatus;
   createdAt: number;
   updatedAt: number;

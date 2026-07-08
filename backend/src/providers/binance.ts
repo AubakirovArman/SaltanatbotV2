@@ -66,39 +66,65 @@ export class BinanceProvider implements MarketProvider {
       throw new Error(`Unsupported Binance timeframe: ${timeframe}`);
     }
 
-    const stream = `${instrument.symbol.toLowerCase()}@kline_${interval}`;
-    const socket = new WebSocket(`wss://stream.binance.com:9443/ws/${stream}`);
+    const url = `wss://stream.binance.com:9443/ws/${instrument.symbol.toLowerCase()}@kline_${interval}`;
     let closed = false;
+    let socket: WebSocket;
+    let attempts = 0;
+    let lastTime = 0;
+    let reconnectTimer: NodeJS.Timeout | undefined;
 
-    socket.on("open", () => onStatus?.("Binance websocket connected"));
-    socket.on("message", (buffer) => {
-      const data = JSON.parse(buffer.toString()) as BinanceStreamMessage;
-      if (data.e !== "kline") return;
-      onCandle({
-        time: data.k.t,
-        open: Number(data.k.o),
-        high: Number(data.k.h),
-        low: Number(data.k.l),
-        close: Number(data.k.c),
-        volume: Number(data.k.v),
-        final: data.k.x,
-        source: this.name
+    // On reconnect, pull any bars that closed while we were disconnected so the
+    // consumer's buffer has no gap (critical for stop/target detection).
+    const backfill = async () => {
+      if (lastTime === 0) return;
+      try {
+        const missed = await this.getCandles(instrument, timeframe, { limit: 1000, startTime: lastTime });
+        for (const candle of missed) if (candle.time >= lastTime) onCandle(candle);
+      } catch {
+        // A failed backfill is non-fatal — live bars will resume regardless.
+      }
+    };
+
+    const connect = () => {
+      socket = new WebSocket(url);
+      socket.on("open", () => {
+        const reconnected = attempts > 0;
+        attempts = 0;
+        onStatus?.(reconnected ? "Binance websocket reconnected" : "Binance websocket connected");
+        if (reconnected) void backfill();
       });
-    });
-    socket.on("error", (error) => {
-      if (!closed) {
-        onStatus?.(`Binance websocket error: ${error.message}`);
-      }
-    });
-    socket.on("close", () => {
-      if (!closed) {
-        onStatus?.("Binance websocket closed");
-      }
-    });
+      socket.on("message", (buffer) => {
+        const data = JSON.parse(buffer.toString()) as BinanceStreamMessage;
+        if (data.e !== "kline") return;
+        lastTime = data.k.t;
+        onCandle({
+          time: data.k.t,
+          open: Number(data.k.o),
+          high: Number(data.k.h),
+          low: Number(data.k.l),
+          close: Number(data.k.c),
+          volume: Number(data.k.v),
+          final: data.k.x,
+          source: this.name
+        });
+      });
+      socket.on("error", (error) => {
+        if (!closed) onStatus?.(`Binance websocket error: ${error.message}`);
+      });
+      socket.on("close", () => {
+        if (closed) return;
+        attempts += 1;
+        const delay = Math.min(30_000, 1000 * 2 ** attempts) + Math.floor(Math.random() * 500);
+        onStatus?.(`Binance websocket closed — reconnecting in ${Math.round(delay / 1000)}s`);
+        reconnectTimer = setTimeout(connect, delay);
+      });
+    };
+    connect();
 
     return {
       close: () => {
         closed = true;
+        if (reconnectTimer) clearTimeout(reconnectTimer);
         socket.close();
       }
     };

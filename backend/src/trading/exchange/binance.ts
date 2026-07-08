@@ -122,7 +122,14 @@ export class BinanceAdapter implements ExchangeAdapter {
       const closeSide = side === "BUY" ? "SELL" : "BUY";
       if (order.stop) {
         const trg = order.stop.basis === "price" ? order.stop.value : side === "BUY" ? price * (1 - order.stop.value / 100) : price * (1 + order.stop.value / 100);
-        await this.signed("POST", "/fapi/v1/order", { symbol: order.symbol, side: closeSide, type: "STOP_MARKET", stopPrice: trg.toFixed(2), closePosition: "true" }).catch(() => undefined);
+        try {
+          await this.signed("POST", "/fapi/v1/order", { symbol: order.symbol, side: closeSide, type: "STOP_MARKET", stopPrice: trg.toFixed(2), closePosition: "true" });
+        } catch (error) {
+          // Fail loud: an unprotected position is worse than none. Close it and report.
+          await this.placeMarket(order.symbol, closeSide, qty, true).catch(() => undefined);
+          const message = error instanceof Error ? error.message : "stop rejected";
+          return { ok: false, message: `Stop-loss rejected (${message}) — entry closed for safety`, fills: [], position: await this.position(order.symbol).catch(() => null), account: await this.account().catch(() => undefined) };
+        }
       }
       for (const tp of order.takeProfits ?? []) {
         const trg = tp.priceBasis === "price" ? tp.price : side === "BUY" ? price * (1 + tp.price / 100) : price * (1 - tp.price / 100);
