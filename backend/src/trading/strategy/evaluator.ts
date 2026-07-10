@@ -29,7 +29,15 @@ export interface BarIntents {
   size?: { mode: "units" | "equity_pct" | "risk_pct"; value: number };
   alerts: { message: string }[];
   markers: { dir: "up" | "down"; label: string }[];
+  /** Set when the bar hit the per-bar op budget and execution was truncated. */
+  budgetExceeded?: boolean;
 }
+
+/** Hard per-bar execution budget: bounds total statement/loop work so live stays
+ *  deterministic. MUST equal the frontend backtester's constant for parity. */
+const MAX_OPS_PER_BAR = 10_000;
+/** Max iterations a single `repeat` can request (also clamped by the op budget). */
+const MAX_REPEAT = 1000;
 
 interface Runtime {
   candles: Candle[];
@@ -37,6 +45,9 @@ interface Runtime {
   params: Map<string, number>;
   vars: Map<string, number>;
   seriesCache: Map<string, number[]>;
+  /** Statements/iterations executed this bar; guarded against MAX_OPS_PER_BAR. */
+  ops: number;
+  budgetHit: boolean;
 }
 
 /**
@@ -56,10 +67,13 @@ export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, va
     n: candles.length,
     params: new Map(ir.inputs.map((input) => [input.name, input.value])),
     vars: vars ?? new Map(),
-    seriesCache: new Map()
+    seriesCache: new Map(),
+    ops: 0,
+    budgetHit: false
   };
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };
   execStatements(ir.body, index, rt, intents);
+  if (rt.budgetHit) intents.budgetExceeded = true;
   return intents;
 }
 
@@ -75,7 +89,9 @@ export function runInit(ir: StrategyIR, candles: Candle[], vars: Map<string, num
     n: candles.length,
     params: new Map(ir.inputs.map((input) => [input.name, input.value])),
     vars,
-    seriesCache: new Map()
+    seriesCache: new Map(),
+    ops: 0,
+    budgetHit: false
   };
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };
   for (const stmt of ir.init) execStatement(stmt, 0, rt, intents);
@@ -88,7 +104,14 @@ export function atrValue(candles: Candle[], period: number, index: number): numb
 }
 
 function execStatements(stmts: Stmt[], i: number, rt: Runtime, intents: BarIntents) {
-  for (const stmt of stmts) execStatement(stmt, i, rt, intents);
+  for (const stmt of stmts) {
+    if (rt.ops >= MAX_OPS_PER_BAR) {
+      rt.budgetHit = true;
+      return;
+    }
+    rt.ops += 1;
+    execStatement(stmt, i, rt, intents);
+  }
 }
 
 function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) {
@@ -136,6 +159,32 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) 
         }
       }
       if (!matched && stmt.else) execStatements(stmt.else, i, rt, intents);
+      break;
+    }
+    case "repeat": {
+      const raw = Math.round(evalNum(stmt.count, i, rt));
+      const n = Number.isFinite(raw) ? Math.max(0, Math.min(MAX_REPEAT, raw)) : 0;
+      for (let k = 0; k < n; k += 1) {
+        if (rt.ops >= MAX_OPS_PER_BAR) {
+          rt.budgetHit = true;
+          break;
+        }
+        rt.ops += 1;
+        execStatements(stmt.body, i, rt, intents);
+      }
+      break;
+    }
+    case "while": {
+      let iter = 0;
+      while (iter < stmt.cap && evalBool(stmt.cond, i, rt)) {
+        if (rt.ops >= MAX_OPS_PER_BAR) {
+          rt.budgetHit = true;
+          break;
+        }
+        rt.ops += 1;
+        execStatements(stmt.body, i, rt, intents);
+        iter += 1;
+      }
       break;
     }
   }

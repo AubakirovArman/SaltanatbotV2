@@ -526,7 +526,9 @@ export const strategyToolbox = {
       colour: "#bd58a4",
       contents: [
         { kind: "block", type: "flow_if" },
-        { kind: "block", type: "controls_if" }
+        { kind: "block", type: "controls_if" },
+        { kind: "block", type: "controls_repeat_ext" },
+        { kind: "block", type: "controls_whileUntil" }
       ]
     },
     {

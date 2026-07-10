@@ -445,6 +445,9 @@ export class TradingEngine {
       this.log(bot.config.id, "error", `Strategy error: ${error instanceof Error ? error.message : error}`);
       return;
     }
+    if (intents.budgetExceeded) {
+      this.log(bot.config.id, "warn", "Per-bar execution budget hit — a loop was truncated this bar.");
+    }
 
     for (const marker of intents.markers) {
       this.broadcast({ type: "signal", botId: bot.config.id, signal: { dir: marker.dir, label: marker.label, price: bot.price, ts: Date.now() } });

@@ -81,7 +81,9 @@ const stmt: z.ZodType<unknown> = z.lazy(() =>
         elifs: z.array(z.object({ cond: boolExpr, then: z.array(stmt).max(MAX_ARRAY) }).strict()).max(MAX_ARRAY).optional(),
         else: z.array(stmt).max(MAX_ARRAY).optional()
       })
-      .strict()
+      .strict(),
+    z.object({ k: z.literal("repeat"), count: numExpr, body: z.array(stmt).max(MAX_ARRAY) }).strict(),
+    z.object({ k: z.literal("while"), cond: boolExpr, body: z.array(stmt).max(MAX_ARRAY), cap: z.number().int().min(1).max(1000) }).strict()
   ])
 );
 

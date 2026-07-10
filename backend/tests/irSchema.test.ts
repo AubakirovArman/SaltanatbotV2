@@ -73,6 +73,20 @@ describe("parseStrategyIR", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("accepts repeat and while loop nodes; rejects an over-cap while", () => {
+    const ok = parseStrategyIR({
+      name: "loops",
+      inputs: [],
+      body: [
+        { k: "repeat", count: { k: "num", v: 10 }, body: [{ k: "setvar", name: "n", value: { k: "num", v: 1 } }] },
+        { k: "while", cond: { k: "bool", v: true }, cap: 100, body: [{ k: "setvar", name: "n", value: { k: "num", v: 2 } }] }
+      ]
+    });
+    expect(ok.ok).toBe(true);
+    const bad = parseStrategyIR({ name: "x", inputs: [], body: [{ k: "while", cond: { k: "bool", v: true }, cap: 999999, body: [] }] });
+    expect(bad.ok).toBe(false);
+  });
+
   it("accepts a legacy IR with no version field", () => {
     const { v, ...legacy } = validIR as typeof validIR & { v?: number };
     expect(parseStrategyIR(legacy).ok).toBe(true);

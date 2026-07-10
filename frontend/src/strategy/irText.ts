@@ -37,6 +37,10 @@ function stmtText(stmt: Stmt, depth: number): string[] {
       if (stmt.else) out.push(`${pad}else:`, ...stmt.else.flatMap((inner) => stmtText(inner, depth + 1)));
       return out;
     }
+    case "repeat":
+      return [`${pad}repeat ${numText(stmt.count)}x:`, ...stmt.body.flatMap((inner) => stmtText(inner, depth + 1))];
+    case "while":
+      return [`${pad}while ${boolText(stmt.cond)} (max ${stmt.cap}):`, ...stmt.body.flatMap((inner) => stmtText(inner, depth + 1))];
   }
 }
 

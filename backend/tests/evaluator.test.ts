@@ -104,6 +104,53 @@ describe("runInit — on-start initialization", () => {
   });
 });
 
+describe("evaluateBar — bounded loops (repeat / while) + op budget", () => {
+  const oneBar = [candle(0, 100)];
+  const inc = (name: string): StrategyIR["body"][number] => ({
+    k: "setvar",
+    name,
+    value: { k: "arith", op: "+", a: { k: "var", name }, b: { k: "num", v: 1 } },
+  });
+
+  it("repeat runs the body N times", () => {
+    const ir: StrategyIR = { name: "r", inputs: [], body: [{ k: "repeat", count: { k: "num", v: 5 }, body: [inc("count")] }] };
+    const vars = new Map<string, number>();
+    evaluateBar(ir, oneBar, 0, vars);
+    expect(vars.get("count")).toBe(5);
+  });
+
+  it("while stops when the condition turns false", () => {
+    const ir: StrategyIR = {
+      name: "w",
+      inputs: [],
+      body: [{ k: "while", cond: { k: "compare", op: "<", a: { k: "var", name: "count" }, b: { k: "num", v: 3 } }, cap: 1000, body: [inc("count")] }],
+    };
+    const vars = new Map<string, number>();
+    evaluateBar(ir, oneBar, 0, vars);
+    expect(vars.get("count")).toBe(3);
+  });
+
+  it("while is bounded by its cap even if the condition never turns false", () => {
+    const ir: StrategyIR = { name: "w2", inputs: [], body: [{ k: "while", cond: { k: "bool", v: true }, cap: 5, body: [inc("count")] }] };
+    const vars = new Map<string, number>();
+    const intents = evaluateBar(ir, oneBar, 0, vars);
+    expect(vars.get("count")).toBe(5);
+    expect(intents.budgetExceeded).toBeFalsy();
+  });
+
+  it("truncates and flags when the per-bar op budget is exceeded", () => {
+    const ir: StrategyIR = {
+      name: "b",
+      inputs: [],
+      body: [{ k: "repeat", count: { k: "num", v: 1000 }, body: [{ k: "repeat", count: { k: "num", v: 1000 }, body: [inc("count")] }] }],
+    };
+    const vars = new Map<string, number>();
+    const intents = evaluateBar(ir, oneBar, 0, vars);
+    expect(intents.budgetExceeded).toBe(true);
+    expect(vars.get("count") as number).toBeLessThan(1_000_000); // stopped well before 1M
+  });
+});
+
 describe("evaluateBar — if / else-if / else routing", () => {
   const ir: StrategyIR = {
     name: "if-else",

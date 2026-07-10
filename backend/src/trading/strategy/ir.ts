@@ -47,7 +47,9 @@ export type Stmt =
   | { k: "alert"; message: string; when: BoolExpr }
   | { k: "plot"; value: NumExpr; label: string; color: string }
   | { k: "marker"; dir: "up" | "down"; label: string; when: BoolExpr }
-  | { k: "if"; cond: BoolExpr; then: Stmt[]; elifs?: { cond: BoolExpr; then: Stmt[] }[]; else?: Stmt[] };
+  | { k: "if"; cond: BoolExpr; then: Stmt[]; elifs?: { cond: BoolExpr; then: Stmt[] }[]; else?: Stmt[] }
+  | { k: "repeat"; count: NumExpr; body: Stmt[] }
+  | { k: "while"; cond: BoolExpr; body: Stmt[]; cap: number };
 
 export interface StrategyInput {
   name: string;

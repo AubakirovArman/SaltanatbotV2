@@ -137,6 +137,14 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
       if (elseStmts.length) node.else = elseStmts;
       return node;
     }
+    case "controls_repeat_ext":
+      return { k: "repeat", count: numInput(block, "TIMES", ctx), body: compileStatements(block.getInputTargetBlock("DO"), ctx) };
+    case "controls_whileUntil": {
+      const cond = boolInput(block, "BOOL", ctx);
+      const until = block.getFieldValue("MODE") === "UNTIL";
+      // Bounded by a hard iteration cap (and the per-bar op budget) for deterministic live execution.
+      return { k: "while", cond: until ? { k: "not", a: cond } : cond, body: compileStatements(block.getInputTargetBlock("DO"), ctx), cap: 1000 };
+    }
     case "plot_series":
       return {
         k: "plot",
