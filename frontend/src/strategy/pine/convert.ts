@@ -35,6 +35,11 @@ const PRICE_FIELDS = new Set(["open", "high", "low", "close", "volume", "hl2", "
 const NAN_NUM: NumExpr = { k: "arith", op: "/", a: { k: "num", v: 0 }, b: { k: "num", v: 0 } };
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const PLOT_CALLS = new Set(["plot", "hline", "plotshape", "plotchar"]);
+const PINE_NAMESPACES = new Set([
+  "array", "barstate", "box", "chart", "color", "display", "extend", "hline", "input", "label", "line", "linefill",
+  "location", "map", "math", "matrix", "plot", "polyline", "position", "request", "shape", "size", "str", "strategy",
+  "syminfo", "table", "ta", "timeframe", "xloc", "yloc"
+]);
 /** Drawing-object constructors (label.new, line.new, box.new, …). */
 const DRAWING_NEW_RE = /^(label|line|linefill|box|table|polyline)\.new$/;
 /** Drawing-object mutators/removers whose effects we can't track (skipped with a warning). */
@@ -187,127 +192,129 @@ class Converter {
   }
 
   private assign(name: string, value: PineExpr, declaredVar: boolean): Stmt[] {
-    this.checkName(name);
+    const target = this.storageName(name);
+    this.checkName(target);
     // input.*() bindings become strategy inputs regardless of mutability.
     if (value.t === "call" && (value.callee.startsWith("input.") || value.callee === "input")) {
-      this.registerInput(name, value);
+      this.registerInput(target, value);
       return [];
     }
     // `p = plot(...)` binds a plot handle for later fill(p, other, ...).
     if (value.t === "call" && PLOT_CALLS.has(value.callee)) {
       const out = this.exprStatement(value);
-      this.plotHandles.add(name);
+      this.plotHandles.add(target);
       const plot = out.find((node): node is Extract<Stmt, { k: "plot" }> => node.k === "plot");
-      if (plot) this.plotHandleValues.set(name, { value: plot.value, pane: plot.pane ?? "price", label: plot.label });
+      if (plot) this.plotHandleValues.set(target, { value: plot.value, pane: plot.pane ?? "price", label: plot.label });
       return out;
     }
     // `l = line.new(...)` — draws AND binds a handle. Emit the mapped drawing (or a
     // skip-warning) and remember the handle so later set_*/delete calls are understood.
     if (value.t === "call" && DRAWING_NEW_RE.test(value.callee)) {
-      this.drawingHandles.add(name);
+      this.drawingHandles.add(target);
       return this.exprStatement(value);
     }
     if (this.isDrawingCollectionIdent(value)) {
-      this.collectionVars.add(name);
+      this.collectionVars.add(target);
       this.warnOnce("drawall", "Drawing object collections (box.all/label.all/line.all) are imported as opaque visual state.");
       return [];
     }
     if (value.t === "call" && isCollectionConstructor(value.callee)) {
-      this.registerCollection(name, value);
+      this.registerCollection(target, value);
       return [];
     }
     if (value.t === "call" && isObjectConstructor(value.callee)) {
-      this.opaqueVars.add(name);
+      this.opaqueVars.add(target);
       this.warnOnce("objects", "User-defined Pine objects are imported as opaque visual state; scalar plots are preserved where possible.");
       return [];
     }
     // Color-valued bindings (`col = trendUp ? color.lime : color.red`) are cosmetic —
     // record the resolved color (if constant) and drop the binding.
     if (this.isColorExpr(value)) {
-      this.colorVars.set(name, this.colorOf(value));
+      this.colorVars.set(target, this.colorOf(value));
       return [];
     }
     // String constants (`string GROUP = "Main"`, mode names, concatenations) — bind
     // as compile-time strings so comparisons against them fold to constants.
     const str = this.strVal(value);
     if (str !== undefined) {
-      if (this.reassigned.has(name)) {
-        this.env.set(name, { t: "str", v: str });
+      if (this.reassigned.has(name) || this.reassigned.has(target)) {
+        this.env.set(target, { t: "str", v: str });
         this.warnOnce("mutstr", "Mutable text/style variables are fixed to their imported values; drawing style edits are cosmetic.");
         return [];
       }
-      this.env.set(name, { t: "str", v: str });
+      this.env.set(target, { t: "str", v: str });
       return [];
     }
-    const mutable = declaredVar || this.reassigned.has(name);
+    const mutable = declaredVar || this.reassigned.has(name) || this.reassigned.has(target);
     if (!mutable) {
-      this.env.set(name, this.val(value));
+      this.env.set(target, this.val(value));
       return [];
     }
     // Numeric ternary initializer for a mutable maps losslessly to if/else setvars.
     if (value.t === "ternary" && !isBoolExpr(value, this.boolVars, this.env)) {
-      this.numVars.add(name);
-      return [this.ternaryToIf(name, value)];
+      this.numVars.add(target);
+      return [this.ternaryToIf(target, value)];
     }
     const val = this.val(value);
     if (val.t === "str") {
-      this.env.set(name, val);
+      this.env.set(target, val);
       this.warnOnce("mutstr", "Mutable text/style variables are fixed to their imported values; drawing style edits are cosmetic.");
       return [];
     }
     if (val.t === "bool") {
-      this.boolVars.add(name);
+      this.boolVars.add(target);
       if (declaredVar) {
-        this.init.push({ k: "setvar", name, value: boolToNum(val.e) });
-        if (val.e.k !== "bool") this.warn(`var "${name}" initialized to false — series initializers run per-bar in Pine but once here.`);
+        this.init.push({ k: "setvar", name: target, value: boolToNum(val.e) });
+        if (val.e.k !== "bool") this.warn(`var "${target}" initialized to false — series initializers run per-bar in Pine but once here.`);
         return [];
       }
-      return [{ k: "setvarb", name, value: val.e }];
+      return [{ k: "setvarb", name: target, value: val.e }];
     }
-    this.numVars.add(name);
+    this.numVars.add(target);
     if (declaredVar) {
       if (!isConstNum(val.e)) {
-        this.warn(`var "${name}" is initialized from the first history bar here (Pine uses the first live bar).`);
+        this.warn(`var "${target}" is initialized from the first history bar here (Pine uses the first live bar).`);
       }
-      this.init.push({ k: "setvar", name, value: val.e });
+      this.init.push({ k: "setvar", name: target, value: val.e });
       return [];
     }
-    return [{ k: "setvar", name, value: val.e }];
+    return [{ k: "setvar", name: target, value: val.e }];
   }
 
   private setMutable(name: string, value: PineExpr): Stmt[] {
-    this.checkName(name);
+    const target = this.storageName(name);
+    this.checkName(target);
     if (value.t === "call" && DRAWING_NEW_RE.test(value.callee)) {
-      this.drawingHandles.add(name);
+      this.drawingHandles.add(target);
       return this.exprStatement(value);
     }
     if (value.t === "call" && isCollectionConstructor(value.callee)) {
-      this.registerCollection(name, value);
+      this.registerCollection(target, value);
       return [];
     }
     if (value.t === "call" && isObjectConstructor(value.callee)) {
-      this.opaqueVars.add(name);
+      this.opaqueVars.add(target);
       this.warnOnce("objects", "User-defined Pine objects are imported as opaque visual state; scalar plots are preserved where possible.");
       return [];
     }
     if (value.t === "ternary" && !isBoolExpr(value, this.boolVars, this.env)) {
-      this.numVars.add(name);
-      return [this.ternaryToIf(name, value)];
+      this.numVars.add(target);
+      return [this.ternaryToIf(target, value)];
     }
     const val = this.val(value);
     if (val.t === "str") {
-      this.env.set(name, val);
+      this.env.set(target, val);
       this.warnOnce("mutstr", "Mutable text/style variables are fixed to their imported values; drawing style edits are cosmetic.");
       return [];
     }
-    if (this.boolVars.has(name) || (val.t === "bool" && !this.numVars.has(name))) {
-      if (val.t !== "bool") throw new PineConvertError(`Variable "${name}" mixes boolean and numeric values.`);
-      this.boolVars.add(name);
-      return [{ k: "setvarb", name, value: val.e }];
+    if (this.boolVars.has(target) || (val.t === "bool" && !this.numVars.has(target))) {
+      if (val.t !== "bool") throw new PineConvertError(`Variable "${target}" mixes boolean and numeric values.`);
+      this.boolVars.add(target);
+      return [{ k: "setvarb", name: target, value: val.e }];
     }
-    if (val.t !== "num") throw new PineConvertError(`Variable "${name}" mixes boolean and numeric values.`);
-    this.numVars.add(name);
-    return [{ k: "setvar", name, value: val.e }];
+    if (val.t !== "num") throw new PineConvertError(`Variable "${target}" mixes boolean and numeric values.`);
+    this.numVars.add(target);
+    return [{ k: "setvar", name: target, value: val.e }];
   }
 
   /** `x := c ? a : b` → if c { x = a } else { x = b } (audit: lossless mapping). */
@@ -1060,18 +1067,20 @@ class Converter {
   }
 
   private numIdent(name: string): NumExpr {
-    const bound = this.env.get(name);
+    const target = this.storageName(name, false);
+    const bound = this.boundValue(name);
     if (bound) {
       if (bound.t === "str") throw new PineConvertError(`"${name}" is a text value ("${bound.v}"), not a number.`);
       if (bound.t !== "num") throw new PineConvertError(`"${name}" is a condition, not a number.`);
       return bound.e;
     }
-    if (this.collectionVars.has(name) || this.opaqueVars.has(name)) {
+    if (this.collectionVars.has(name) || this.opaqueVars.has(name) || this.collectionVars.has(target) || this.opaqueVars.has(target)) {
       this.warnOnce("opaqueread", "Reads from imported collection/object state return na unless mapped to a scalar plot.");
       return NAN_NUM;
     }
     if (PRICE_FIELDS.has(name)) return { k: "price", field: name as never };
     if (this.numVars.has(name)) return { k: "var", name };
+    if (target !== name && this.numVars.has(target)) return { k: "var", name: target };
     const constant = MATH_CONSTS[name];
     if (constant !== undefined) return { k: "num", v: constant };
     // `ta.tr` / `ta.vwap` are built-in series used without parentheses.
@@ -1131,9 +1140,9 @@ class Converter {
       this.warnOnce("drawread", "Drawing/table/chart object values are imported as opaque visual state; reads return na.");
       return NAN_NUM;
     }
-    if (this.plotHandles.has(name)) throw new PineConvertError(`"${name}" is a plot handle — it can't be used as a value.`);
+    if (this.plotHandles.has(name) || this.plotHandles.has(target)) throw new PineConvertError(`"${name}" is a plot handle — it can't be used as a value.`);
     // Drawing handles read as values (the `if na(l)` first-bar idiom) → na.
-    if (this.drawingHandles.has(name)) {
+    if (this.drawingHandles.has(name) || this.drawingHandles.has(target)) {
       this.warnOnce("handleread", `Drawing handles ("${name}") have no value here — reads yield na.`);
       return NAN_NUM;
     }
@@ -1147,6 +1156,11 @@ class Converter {
     }
     // `na` as a numeric value → NaN (0/0). nz()/na()/isfinite handling all treat it correctly.
     if (name === "na") return NAN_NUM;
+    if (target !== name && isUserObjectFieldName(name)) {
+      this.warnOnce("objstate", "User-defined object fields are flattened into scalar state variables; collection/object fidelity is approximate.");
+      this.numVars.add(target);
+      return { k: "var", name: target };
+    }
     throw new PineConvertError(`Unknown identifier "${name}" — it was never assigned (or its definition was skipped).`);
   }
 
@@ -1558,6 +1572,7 @@ class Converter {
       case "tuplelit":
         throw new PineConvertError("A tuple ([a, b]) can't be used as a condition.");
       case "ident": {
+        const target = this.storageName(expr.name, false);
         if (expr.name === "true") return { k: "bool", v: true };
         if (expr.name === "false") return { k: "bool", v: false };
         if (expr.name.startsWith("barstate.")) {
@@ -1572,16 +1587,24 @@ class Converter {
           // input.bool used as a condition: != 0.
           return { k: "compare", op: "!=", a: { k: "input", name: expr.name }, b: { k: "num", v: 0 } };
         }
-        const bound = this.env.get(expr.name);
+        const bound = this.boundValue(expr.name);
         if (bound) {
           if (bound.t === "str") throw new PineConvertError(`"${expr.name}" is a text value ("${bound.v}"), not a condition.`);
           if (bound.t === "num") return { k: "compare", op: "!=", a: bound.e, b: { k: "num", v: 0 } };
           return bound.e;
         }
         if (this.boolVars.has(expr.name)) return { k: "varb", name: expr.name };
-        if (this.collectionVars.has(expr.name) || this.opaqueVars.has(expr.name)) {
+        if (target !== expr.name && this.boolVars.has(target)) return { k: "varb", name: target };
+        if (this.numVars.has(expr.name)) return { k: "compare", op: "!=", a: { k: "var", name: expr.name }, b: { k: "num", v: 0 } };
+        if (target !== expr.name && this.numVars.has(target)) return { k: "compare", op: "!=", a: { k: "var", name: target }, b: { k: "num", v: 0 } };
+        if (this.collectionVars.has(expr.name) || this.opaqueVars.has(expr.name) || this.collectionVars.has(target) || this.opaqueVars.has(target)) {
           this.warnOnce("opaqueread", "Reads from imported collection/object state return na unless mapped to a scalar plot.");
           return { k: "bool", v: false };
+        }
+        if (target !== expr.name && isUserObjectFieldName(expr.name)) {
+          this.warnOnce("objstate", "User-defined object fields are flattened into scalar state variables; collection/object fidelity is approximate.");
+          this.boolVars.add(target);
+          return { k: "varb", name: target };
         }
         throw new PineConvertError(`Unknown condition "${expr.name}".`);
       }
@@ -1614,9 +1637,12 @@ class Converter {
           }
           // String comparisons (mode selectors vs frozen input.string) fold to constants.
           const strA = this.strVal(expr.a);
-          if (strA !== undefined) {
-            const strB = this.strVal(expr.b);
-            if (strB === undefined) throw new PineConvertError("A text value can only be compared with another text value.");
+          const strB = this.strVal(expr.b);
+          if (strA !== undefined || strB !== undefined) {
+            if (strA === undefined || strB === undefined) {
+              this.warnOnce("objtextcmp", "Text comparisons against opaque object fields are approximated during import.");
+              return { k: "bool", v: expr.op === "!=" };
+            }
             return { k: "bool", v: expr.op === "==" ? strA === strB : strA !== strB };
           }
         }
@@ -1758,6 +1784,7 @@ class Converter {
       const index = arg(args, 0, "index")?.value;
       return this.collectionGet(receiver, index);
     }
+    if (method === "first" || method === "last") return this.collectionGet(receiver, { t: "num", v: method === "first" ? 0 : -1 });
     if (method === "indexof") return { k: "num", v: 0 };
     if (method === "max" || method === "sum") return { k: "num", v: 1 };
     if (method === "min") return { k: "num", v: 0 };
@@ -1798,6 +1825,7 @@ class Converter {
 
   private methodFallback(method: string): NumExpr {
     if (method === "size" || method === "rows" || method === "columns" || method === "indexof") return { k: "num", v: 0 };
+    if (method === "first" || method === "last") return NAN_NUM;
     if (method === "range" || method === "sum" || method === "max") return { k: "num", v: 1 };
     if (method === "min") return { k: "num", v: 0 };
     return NAN_NUM;
@@ -1844,7 +1872,7 @@ class Converter {
     if (expr.t === "ident" && expr.name.startsWith("color.")) return COLOR_HEX[expr.name.slice(6)] ?? "#4db6ff";
     if (expr.t === "ident" && this.colorVars.has(expr.name)) return this.colorVars.get(expr.name);
     if (expr.t === "ident") {
-      const bound = this.env.get(expr.name);
+      const bound = this.boundValue(expr.name);
       if (bound?.t === "str" && /^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/.test(bound.v)) return bound.v.slice(0, 7);
     }
     if (expr.t === "call" && expr.callee === "color.rgb") {
@@ -1870,8 +1898,9 @@ class Converter {
     if (expr.t === "str") return expr.v;
     if (expr.t === "field" || expr.t === "method") return undefined;
     if (expr.t === "ident") {
-      const bound = this.env.get(expr.name);
-      if (!bound && this.colorVars.has(expr.name)) return this.colorVars.get(expr.name) ?? "#4db6ff";
+      const target = this.storageName(expr.name, false);
+      const bound = this.boundValue(expr.name);
+      if (!bound && (this.colorVars.has(expr.name) || this.colorVars.has(target))) return this.colorVars.get(expr.name) ?? this.colorVars.get(target) ?? "#4db6ff";
       if (!bound && isCosmeticConst(expr.name)) return expr.name;
       if (!bound && (expr.name === "syminfo.ticker" || expr.name === "syminfo.tickerid")) return "current";
       if (!bound && expr.name === "timeframe.period") return "chart";
@@ -1881,7 +1910,7 @@ class Converter {
       const def = arg(expr.args, 0, "defval")?.value;
       return def ? this.strVal(def) : undefined;
     }
-    if (expr.t === "call" && expr.callee === "str.tostring") {
+    if (expr.t === "call" && (expr.callee === "str.tostring" || expr.callee === "str.format")) {
       this.warnOnce("dyntext", "Dynamic string formatting is cosmetic during import and may be omitted from labels.");
       return "";
     }
@@ -1890,6 +1919,19 @@ class Converter {
       return value.t === "str" ? value.v : undefined;
     }
     if (expr.t === "call" && expr.callee.startsWith("color.")) return this.colorOf(expr);
+    if (expr.t === "ternary") {
+      const a = this.strVal(expr.a);
+      const b = this.strVal(expr.b);
+      if (a === undefined || b === undefined) return undefined;
+      try {
+        const cond = this.bool(expr.cond);
+        if (cond.k === "bool") return cond.v ? a : b;
+      } catch (cause) {
+        if (!(cause instanceof PineConvertError)) throw cause;
+      }
+      this.warnOnce("strternary", "Dynamic text ternaries are fixed to their imported branch; text state is cosmetic in the strategy engine.");
+      return a;
+    }
     if (expr.t === "binary" && expr.op === "+") {
       const a = this.strVal(expr.a);
       if (a === undefined) return undefined;
@@ -1922,6 +1964,21 @@ class Converter {
   private checkName(name: string): void {
     if (!NAME_RE.test(name)) throw new PineConvertError(`Identifier "${name}" has unsupported characters.`);
     if (PRICE_FIELDS.has(name)) throw new PineConvertError(`"${name}" is a built-in price name and can't be reassigned.`);
+  }
+
+  private storageName(name: string, warn = true): string {
+    if (!isUserObjectFieldName(name)) return name;
+    if (warn) {
+      this.warnOnce(
+        "objstate",
+        "User-defined object fields are flattened into scalar state variables; collection/object fidelity is approximate."
+      );
+    }
+    return name.replace(/\./g, "_");
+  }
+
+  private boundValue(name: string): Val | undefined {
+    return this.env.get(name) ?? this.env.get(this.storageName(name, false));
   }
 
   private warn(message: string): void {
@@ -2044,12 +2101,20 @@ function isCosmeticConst(name: string): boolean {
     name.startsWith("barmerge.") ||
     name.startsWith("extend.") ||
     name.startsWith("position.") ||
+    name.startsWith("xloc.") ||
+    name.startsWith("yloc.") ||
     name.startsWith("plot.style_")
   );
 }
 
+function isUserObjectFieldName(name: string): boolean {
+  if (!name.includes(".")) return false;
+  const head = name.split(".")[0];
+  return !PINE_NAMESPACES.has(head);
+}
+
 const COLLECTION_METHODS = new Set([
-  "size", "length", "get", "set", "push", "pop", "shift", "unshift", "clear", "remove", "insert",
+  "size", "length", "get", "first", "last", "set", "push", "pop", "shift", "unshift", "clear", "remove", "insert",
   "max", "min", "sum", "range", "sort", "reverse", "slice", "indexof", "includes",
   "rows", "columns", "add_row", "add_col", "put", "delete"
 ]);

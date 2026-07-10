@@ -70,6 +70,7 @@ export function tokenize(source: string): Token[] {
       // A line ending in an operator/comma continues onto the next line — except
       // `=>`, which ends a function header whose body is the following indented block.
       const prev = tokens.at(-1);
+      if (prev && prev.type === "ident" && (prev.text === "and" || prev.text === "or")) continue;
       if (prev && prev.type === "op" && prev.text !== ")" && prev.text !== "]" && prev.text !== "=>") continue;
       push("newline", String(indent));
       continue;

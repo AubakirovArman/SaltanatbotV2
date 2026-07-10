@@ -160,6 +160,21 @@ plotshape(n > 2, "n")`);
     });
     expect(sawWhile).toBe(true);
   });
+
+  it("accepts if conditions where and/or is split onto its own continuation line", () => {
+    const ir = roundTrips(`//@version=6
+indicator("continued if", overlay=true)
+if (
+    close > open
+    )
+    and
+    (
+    high > low
+    )
+    plotshape(true, "ok")`);
+
+    expect(json(ir)).toContain('"marker"');
+  });
 });
 
 describe("Pine v6: switch", () => {
@@ -220,6 +235,18 @@ v = close > 100 ? 3 : close > 50 ? 2 : 1
 plot(v, "v")`);
     const j = json(ir);
     expect(j.match(/"cond"/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("string ternary selectors stay compile-time text instead of numeric series", () => {
+    const ir = roundTrips(`//@version=6
+indicator("String Ternary")
+BULL = "Bull"
+BEAR = "Bear"
+mode = input.string(BULL, "Mode", options=[BULL, BEAR])
+category = mode == BULL ? "Peak" : "Trough"
+plotshape(category == "Peak", "peak")`);
+
+    expect(json(ir)).toContain('"marker"');
   });
 
   it("nz(x) and nz(x, y) map to the nz node", () => {
@@ -427,6 +454,27 @@ describe("Pine v6: opaque visual/collection constructs import with warnings", ()
       expect(compiled.errors.filter((e) => !e.includes("no entry rule"))).toHaveLength(0);
     });
   }
+});
+
+describe("Pine v6: user object field state", () => {
+  it("flattens mutable object fields instead of rejecting dotted identifiers", () => {
+    const result = importPineScript(`//@version=6
+indicator("Object State")
+type state
+    float level
+    bool active
+var state s = state.new()
+s.level := high
+s.active := close > open
+plot(s.level, "level")
+plotshape(s.active, "active")`);
+
+    expect(result.ok, result.ok ? "" : result.error).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings.join(" ")).toMatch(/flattened|object fields/i);
+    const compiled = compileXmlToIr(result.xml);
+    expect(compiled.errors.filter((e) => !e.includes("no entry rule"))).toHaveLength(0);
+  });
 });
 
 describe("Pine v6 corpus: robustness + breadth", () => {
