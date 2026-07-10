@@ -52,6 +52,7 @@ function bodyHit(viewport: Viewport, drawing: DrawingObject, x: number, y: numbe
   const pts = projectAnchors(viewport, drawing.points);
   switch (drawing.tool) {
     case "trendline":
+    case "measure":
       return pts.length >= 2 && distanceToSegment(x, y, pts[0], pts[1]) <= LINE_TOLERANCE;
     case "ray":
       return pts.length >= 2 && distanceToSegment(x, y, pts[0], rayExit(pts[0], sub(pts[1], pts[0]), plot)) <= LINE_TOLERANCE;
