@@ -149,6 +149,23 @@ describe("previewStrategy runs bar-major (setvar state accumulates)", () => {
   });
 });
 
+describe("backtest exposes a variable trace", () => {
+  it("records a per-bar snapshot of strategy variables", () => {
+    const ir: StrategyIR = {
+      name: "counter",
+      inputs: [],
+      body: [
+        { k: "setvar", name: "count", value: { k: "arith", op: "+", a: { k: "var", name: "count" }, b: { k: "num", v: 1 } } },
+        { k: "entry", direction: "long", when: { k: "bool", v: false } },
+      ],
+    };
+    const candles = Array.from({ length: 6 }, (_, i) => candle(i * MIN, 100, 101, 99, 100));
+    const result = runBacktest(ir, candles, noFriction);
+    expect(result.varTrace).toBeDefined();
+    expect(result.varTrace?.at(-1)?.vars.count).toBe(6); // +1 each of 6 bars
+  });
+});
+
 describe("ctx reads drive backtest behaviour", () => {
   it("exits after N bars in position via bars_in_position", () => {
     const ir: StrategyIR = {
