@@ -157,6 +157,10 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) 
       if (evalBool(stmt.when, i, rt)) intents.markers.push({ dir: stmt.dir, label: stmt.label });
       break;
     case "plot":
+    case "box":
+    case "vline":
+    case "ray":
+      // Display-only chart drawings — nothing to do in the live engine.
       break;
     case "if": {
       if (evalBool(stmt.cond, i, rt)) {

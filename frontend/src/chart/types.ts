@@ -89,6 +89,8 @@ export interface DrawChartOptions {
   trades?: ChartTrade[];
   /** Indicator lines the overlaid strategy plots. */
   plots?: ChartPlot[];
+  /** Drawing overlays from the strategy (boxes / vlines / levels). */
+  shapes?: ChartShapes;
   /** Active price alerts for the current symbol, drawn as horizontal lines. */
   alerts?: ChartAlert[];
   /** Live bot positions on the current symbol, drawn as entry lines. */
@@ -134,6 +136,14 @@ export interface ChartPlot {
   points: { time: number; value: number }[];
   /** Overlaid on the price pane (default) or drawn in a separate sub-pane. */
   pane?: "price" | "sub";
+}
+
+/** Strategy drawing overlays (boxes / vertical lines / horizontal rays). Non-finite
+ *  box edges mean "full pane height" (bgcolor-style background shading). */
+export interface ChartShapes {
+  boxes: { t1: number; t2: number; top: number; bottom: number; color: string; label?: string }[];
+  vlines: { time: number; color: string; label?: string }[];
+  rays: { time: number; price: number; color: string; label?: string }[];
 }
 
 /** A price alert drawn on the chart as a horizontal line. */

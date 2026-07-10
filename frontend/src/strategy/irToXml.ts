@@ -81,6 +81,16 @@ function stmtXml(stmt: Stmt, next: string, d: Defaults): string {
       );
     case "marker":
       return block("signal_marker", field("DIR", stmt.dir) + field("LABEL", stmt.label) + value("WHEN", boolXml(stmt.when, d)), next);
+    case "box":
+      return block(
+        "draw_box",
+        field("LABEL", stmt.label) + field("COLOR", stmt.color) + value("TOP", numXml(stmt.top, d)) + value("BOTTOM", numXml(stmt.bottom, d)) + value("WHEN", boolXml(stmt.when, d)),
+        next
+      );
+    case "vline":
+      return block("draw_vline", field("LABEL", stmt.label) + field("COLOR", stmt.color) + value("WHEN", boolXml(stmt.when, d)), next);
+    case "ray":
+      return block("draw_ray", field("LABEL", stmt.label) + field("COLOR", stmt.color) + value("PRICE", numXml(stmt.price, d)) + value("WHEN", boolXml(stmt.when, d)), next);
     case "if": {
       const elifs = stmt.elifs ?? [];
       const hasElse = !!stmt.else?.length;

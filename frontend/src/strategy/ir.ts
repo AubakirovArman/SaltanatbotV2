@@ -73,6 +73,14 @@ export type Stmt =
   | { k: "alert"; message: string; when: BoolExpr; args?: Record<string, NumExpr> }
   | { k: "plot"; value: NumExpr; label: string; color: string; pane?: "price" | "sub" }
   | { k: "marker"; dir: "up" | "down"; label: string; when: BoolExpr }
+  /* Display-only chart drawings (ignored by the live engine, like plot):
+     box  — a shaded rectangle spanning each consecutive run of bars where `when`
+            holds; top/bottom evaluated per bar (NaN = full pane height, bgcolor-style)
+     vline — a vertical line on every bar where `when` fires
+     ray  — a horizontal level starting where `when` fires, extending right */
+  | { k: "box"; top: NumExpr; bottom: NumExpr; when: BoolExpr; label: string; color: string }
+  | { k: "vline"; when: BoolExpr; label: string; color: string }
+  | { k: "ray"; price: NumExpr; when: BoolExpr; label: string; color: string }
   | { k: "if"; cond: BoolExpr; then: Stmt[]; elifs?: { cond: BoolExpr; then: Stmt[] }[]; else?: Stmt[] }
   | { k: "repeat"; count: NumExpr; body: Stmt[] }
   | { k: "while"; cond: BoolExpr; body: Stmt[]; cap: number }

@@ -53,7 +53,23 @@ const ir = {
   ]
 };
 
+const drawingIr = {
+  name: "drawings",
+  inputs: [],
+  v: 2,
+  body: [
+    { k: "box", top: { k: "price", field: "high" }, bottom: { k: "price", field: "low" }, when: { k: "bool", v: true }, label: "zone", color: "#26a69a" },
+    { k: "vline", when: { k: "bool", v: true }, label: "", color: "#8f9bb3" },
+    { k: "ray", price: { k: "num", v: 100 }, when: { k: "bool", v: true }, label: "R", color: "#f7c948" }
+  ]
+};
+
 describe("backend schema accepts Pine v6 IR nodes", () => {
+  it("accepts display-only drawing statements (box/vline/ray)", () => {
+    const result = parseStrategyIR(drawingIr);
+    expect(result.ok, result.ok ? "" : (result as { error: string }).error).toBe(true);
+  });
+
   it("parses cond/nz/cum/barssince/varprev/histn/for/isna/rma/sign", () => {
     const result = parseStrategyIR(ir);
     expect(result.ok, result.ok ? "" : (result as { error: string }).error).toBe(true);

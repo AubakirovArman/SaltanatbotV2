@@ -29,7 +29,7 @@ import { drawChart, setChartTheme } from "../chart/ChartEngine";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import { visibleCandles } from "../chart/scales";
-import type { ChartLivePosition, ChartMarker, ChartPlot, ChartTrade, CompareLegendSnapshot, CompareOverlayConfig, CompareSeries, PriceMode, Viewport } from "../chart/types";
+import type { ChartLivePosition, ChartMarker, ChartPlot, ChartShapes, ChartTrade, CompareLegendSnapshot, CompareOverlayConfig, CompareSeries, PriceMode, Viewport } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { PriceAlert } from "../market/alerts";
 import type { Candle, ChartType, Instrument, Timeframe } from "../types";
@@ -52,6 +52,7 @@ interface ChartCanvasProps {
   activeStrategyId?: string;
   onAddStrategy?: (id: string) => void;
   plots?: ChartPlot[];
+  shapes?: ChartShapes;
   /** Active price alerts (all symbols); the chart draws ones for its symbol. */
   alerts?: PriceAlert[];
   /** Create a price alert at a chart price (from the right-click menu). */
@@ -102,6 +103,7 @@ export function ChartCanvas({
   activeStrategyId,
   onAddStrategy,
   plots,
+  shapes,
   alerts,
   onAddAlert,
   livePositions,
@@ -251,6 +253,7 @@ export function ChartCanvas({
         signals,
         trades,
         plots,
+        shapes,
         alerts: chartAlerts,
         livePositions,
         showVolume,
@@ -267,7 +270,7 @@ export function ChartCanvas({
     cancelAnimationFrame(frameRef.current ?? 0);
     frameRef.current = requestAnimationFrame(render);
     return () => cancelAnimationFrame(frameRef.current ?? 0);
-  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, instrument.symbol, signals, trades, plots, chartAlerts, livePositions, compare, selectedId, showVolume, theme, view]);
+  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, instrument.symbol, signals, trades, plots, shapes, chartAlerts, livePositions, compare, selectedId, showVolume, theme, view]);
 
   // Lazy-load older history when the viewport nears the left (oldest) edge.
   useEffect(() => {

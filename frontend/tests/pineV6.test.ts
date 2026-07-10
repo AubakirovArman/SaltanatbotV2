@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { runBacktest, DEFAULT_CONFIG, type BacktestConfig } from "../src/strategy/backtest";
+import { runBacktest, previewStrategy, DEFAULT_CONFIG, type BacktestConfig } from "../src/strategy/backtest";
 import { compileXmlToIr } from "../src/strategy/compileArtifact";
 import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "../src/strategy/ir";
 import { importPineScript } from "../src/strategy/pine";
@@ -462,6 +462,56 @@ plot(maVal, "ma", color=#26a69a)`);
       expect(result.ok, `should reject: ${c.src.split("\n")[2]}`).toBe(false);
       if (!result.ok) expect(result.error).toMatch(c.match);
     }
+  });
+
+  // Chart drawing primitives: box/vline/ray statements render in the preview and
+  // round-trip through Blockly; bgcolor(cond ? color : na) converts to shading.
+  it("bgcolor conditional shading converts to a full-height box and previews as runs", () => {
+    const ir = roundTrips(`//@version=6
+indicator("Shade", overlay=true)
+bull = close > open
+bgcolor(bull ? color.new(color.green, 85) : na)
+plot(close, "c")`);
+    const boxes = ir.body.filter((s) => s.k === "box");
+    expect(boxes).toHaveLength(1);
+    // 2 bull bars, 1 bear, 2 bull → two shaded runs.
+    const candles = [
+      candle(0, 100, 102, 99, 101), candle(1, 101, 103, 100, 102), candle(2, 102, 103, 99, 100),
+      candle(3, 100, 103, 99, 102), candle(4, 102, 105, 101, 104)
+    ];
+    const preview = previewStrategy(ir, candles);
+    expect(preview.shapes.boxes).toHaveLength(2);
+    expect(preview.shapes.boxes[0].t1).toBe(candles[0].time);
+    expect(preview.shapes.boxes[0].t2).toBe(candles[1].time);
+    // bgcolor boxes shade the full pane: non-finite edges.
+    expect(Number.isFinite(preview.shapes.boxes[0].top)).toBe(false);
+  });
+
+  it("box tracks run extremes; vline and ray anchor at their firing bars", () => {
+    const ir: StrategyIR = {
+      name: "draw",
+      inputs: [],
+      v: 2,
+      body: [
+        { k: "box", top: { k: "price", field: "high" }, bottom: { k: "price", field: "low" }, when: { k: "compare", op: ">", a: { k: "price", field: "close" }, b: { k: "price", field: "open" } }, label: "zone", color: "#26a69a" },
+        { k: "vline", when: { k: "compare", op: "<", a: { k: "price", field: "close" }, b: { k: "price", field: "open" } }, label: "", color: "#8f9bb3" },
+        { k: "ray", price: { k: "price", field: "high" }, when: { k: "compare", op: "<", a: { k: "price", field: "close" }, b: { k: "price", field: "open" } }, label: "R", color: "#f7c948" }
+      ]
+    };
+    const candles = [
+      candle(0, 100, 105, 99, 104), candle(1, 104, 110, 103, 108), candle(2, 108, 109, 101, 102),
+      candle(3, 102, 107, 101, 106)
+    ];
+    const preview = previewStrategy(ir, candles);
+    // Bull run bars 0-1 → one box spanning both with high=110, low=99; bar 3 opens a second run.
+    expect(preview.shapes.boxes).toHaveLength(2);
+    expect(preview.shapes.boxes[0].top).toBe(110);
+    expect(preview.shapes.boxes[0].bottom).toBe(99);
+    // Bar 2 is the only bear bar → one vline + one ray at its high.
+    expect(preview.shapes.vlines).toHaveLength(1);
+    expect(preview.shapes.vlines[0].time).toBe(candles[2].time);
+    expect(preview.shapes.rays).toHaveLength(1);
+    expect(preview.shapes.rays[0].price).toBe(109);
   });
 
   // Mirrors what the import dialog does for a mixed paste + multi-file batch: convert

@@ -232,6 +232,48 @@ export function registerStrategyBlocks() {
       colour: "#2f9e77",
       tooltip: "Plot a custom series on the chart."
     },
+    {
+      type: "draw_box",
+      message0: "box from %1 to %2 while %3 label %4 color %5",
+      args0: [
+        { type: "input_value", name: "TOP", check: "Number" },
+        { type: "input_value", name: "BOTTOM", check: "Number" },
+        { type: "input_value", name: "WHEN", check: "Boolean" },
+        { type: "field_input", name: "LABEL", text: "zone" },
+        { type: "field_input", name: "COLOR", text: "#26a69a" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: "#2f9e77",
+      tooltip: "Shade a box over every run of bars where the condition holds (e.g. a session/killzone: high..low while in-session)."
+    },
+    {
+      type: "draw_vline",
+      message0: "vertical line when %1 label %2 color %3",
+      args0: [
+        { type: "input_value", name: "WHEN", check: "Boolean" },
+        { type: "field_input", name: "LABEL", text: "" },
+        { type: "field_input", name: "COLOR", text: "#8f9bb3" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: "#2f9e77",
+      tooltip: "Draw a vertical line on each bar where the condition fires."
+    },
+    {
+      type: "draw_ray",
+      message0: "level %1 when %2 label %3 color %4",
+      args0: [
+        { type: "input_value", name: "PRICE", check: "Number" },
+        { type: "input_value", name: "WHEN", check: "Boolean" },
+        { type: "field_input", name: "LABEL", text: "level" },
+        { type: "field_input", name: "COLOR", text: "#f7c948" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: "#2f9e77",
+      tooltip: "Draw a horizontal level starting where the condition fires, extending right (support/resistance)."
+    },
     // ---- Params ----
     {
       type: "param_number",
@@ -679,7 +721,10 @@ export const strategyToolbox = {
         { kind: "block", type: "series_shift" },
         { kind: "block", type: "series_cum" },
         { kind: "block", type: "series_barssince" },
-        { kind: "block", type: "plot_series" }
+        { kind: "block", type: "plot_series" },
+        { kind: "block", type: "draw_box" },
+        { kind: "block", type: "draw_vline" },
+        { kind: "block", type: "draw_ray" }
       ]
     },
     {

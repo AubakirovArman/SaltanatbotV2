@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { compareColor } from "./chart/compareColors";
 import type { IndicatorConfig } from "./chart/indicatorTypes";
-import type { ChartMarker, ChartPlot, ChartTrade, CompareChartType, CompareOverlayConfig } from "./chart/types";
+import type { ChartMarker, ChartPlot, ChartShapes, ChartTrade, CompareChartType, CompareOverlayConfig } from "./chart/types";
 import { AlertToasts } from "./components/AlertToasts";
 import { ChartCanvas } from "./components/ChartCanvas";
 import { CommandPalette, type Command } from "./components/CommandPalette";
@@ -64,6 +64,7 @@ export default function App() {
     signals: ChartMarker[];
     trades: ChartTrade[];
     plots?: ChartPlot[];
+    shapes?: ChartShapes;
     symbol: string;
     timeframe: Timeframe;
   }>();
@@ -241,7 +242,7 @@ export default function App() {
     // Show the strategy's plotted lines + every signal point, plus the trades it took.
     const preview = backtest.previewStrategy(compiled.ir, stream.candles);
     const result = backtest.runBacktest(compiled.ir, stream.candles, backtest.DEFAULT_CONFIG);
-    setOverlay({ id, name: artifact.name, plots: preview.plots, signals: preview.signals, trades: result.trades, symbol, timeframe });
+    setOverlay({ id, name: artifact.name, plots: preview.plots, shapes: preview.shapes, signals: preview.signals, trades: result.trades, symbol, timeframe });
     const times = [...preview.signals.map((s) => s.time), ...result.trades.map((t) => t.exitTime)];
     setChartFocus(times.length ? Math.max(...times) : Date.now());
   };
@@ -500,6 +501,7 @@ export default function App() {
               signals={activeOverlay?.signals}
               trades={activeOverlay?.trades}
               plots={activeOverlay?.plots}
+              shapes={activeOverlay?.shapes}
               alerts={priceAlerts.alerts}
               onAddAlert={(price) =>
                 priceAlerts.addAlert({

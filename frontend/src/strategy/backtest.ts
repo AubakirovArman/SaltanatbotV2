@@ -564,6 +564,9 @@ function computeWarmup(ir: StrategyIR): number {
         case "entry": case "exit": case "marker": case "alert": visitBool(stmt.when); break;
         case "stop": case "target": case "trail": case "size": case "setvar": visitNum(stmt.value); break;
         case "plot": visitNum(stmt.value); break;
+        case "box": visitNum(stmt.top); visitNum(stmt.bottom); visitBool(stmt.when); break;
+        case "vline": visitBool(stmt.when); break;
+        case "ray": visitNum(stmt.price); visitBool(stmt.when); break;
         case "if": visitBool(stmt.cond); walk(stmt.then); break;
       }
     }
@@ -582,13 +585,46 @@ export interface PlotSeries {
   pane?: "price" | "sub";
 }
 
+/** A shaded rectangle over a run of consecutive bars. Non-finite top/bottom = the
+ *  full pane height (bgcolor-style background shading). */
+export interface ShapeBox {
+  t1: number;
+  t2: number;
+  top: number;
+  bottom: number;
+  color: string;
+  label?: string;
+}
+export interface ShapeVLine {
+  time: number;
+  color: string;
+  label?: string;
+}
+/** A horizontal level anchored where its condition fired, extending right. */
+export interface ShapeRay {
+  time: number;
+  price: number;
+  color: string;
+  label?: string;
+}
+export interface ShapeOverlays {
+  boxes: ShapeBox[];
+  vlines: ShapeVLine[];
+  rays: ShapeRay[];
+}
+
+/** Render-safety caps for drawing overlays (a hostile/buggy strategy can fire every bar). */
+const MAX_BOXES = 500;
+const MAX_VLINES = 500;
+const MAX_RAYS = 200;
+
 /**
  * Analyse a strategy on history WITHOUT position gating: return every plotted
  * indicator line and every bar where an entry / exit / marker condition fires.
  * This is what "add strategy to chart" shows — the lines it uses and all the
  * signal points, so you can see how it would have triggered.
  */
-export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: PlotSeries[]; signals: TradeMarker[] } {
+export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: PlotSeries[]; signals: TradeMarker[]; shapes: ShapeOverlays } {
   const rt: Runtime = {
     candles,
     n: candles.length,
@@ -603,6 +639,15 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
   };
   runInit(ir, rt);
   const signals: TradeMarker[] = [];
+  const shapes: ShapeOverlays = { boxes: [], vlines: [], rays: [] };
+  // Open box runs: one per box statement, extended while its condition stays true
+  // on consecutive bars and flushed when the run breaks (or at the end of history).
+  const boxRuns = new Map<Stmt, { t1: number; t2: number; top: number; bottom: number; lastBar: number }>();
+  const flushBox = (stmt: Extract<Stmt, { k: "box" }>, run: { t1: number; t2: number; top: number; bottom: number }) => {
+    if (shapes.boxes.length < MAX_BOXES) {
+      shapes.boxes.push({ t1: run.t1, t2: run.t2, top: run.top, bottom: run.bottom, color: stmt.color, label: stmt.label || undefined });
+    }
+  };
 
   // Pre-register plots in AST order so their series keep a stable order even when
   // a plot lives inside an `if` that first fires on a late bar.
@@ -647,6 +692,34 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
         case "marker":
           if (i >= 1 && evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: stmt.dir === "up" ? candles[i].low : candles[i].high, kind: stmt.dir === "up" ? "buy" : "sell", label: stmt.label });
           break;
+        case "box": {
+          if (!evalBool(stmt.when, i, rt)) break;
+          const top = evalNum(stmt.top, i, rt);
+          const bottom = evalNum(stmt.bottom, i, rt);
+          const run = boxRuns.get(stmt);
+          if (run && run.lastBar === i - 1) {
+            run.t2 = candles[i].time;
+            // NaN edges stay NaN (full-height shading); finite edges track the run's extremes.
+            run.top = Math.max(run.top, top);
+            run.bottom = Math.min(run.bottom, bottom);
+            run.lastBar = i;
+          } else {
+            if (run) flushBox(stmt as Extract<Stmt, { k: "box" }>, run);
+            boxRuns.set(stmt, { t1: candles[i].time, t2: candles[i].time, top, bottom, lastBar: i });
+          }
+          break;
+        }
+        case "vline":
+          if (evalBool(stmt.when, i, rt) && shapes.vlines.length < MAX_VLINES) {
+            shapes.vlines.push({ time: candles[i].time, color: stmt.color, label: stmt.label || undefined });
+          }
+          break;
+        case "ray": {
+          if (!evalBool(stmt.when, i, rt) || shapes.rays.length >= MAX_RAYS) break;
+          const price = evalNum(stmt.price, i, rt);
+          if (Number.isFinite(price)) shapes.rays.push({ time: candles[i].time, price, color: stmt.color, label: stmt.label || undefined });
+          break;
+        }
         case "if": {
           if (evalBool(stmt.cond, i, rt)) {
             execBar(stmt.then, i);
@@ -721,8 +794,10 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
     execBar(ir.body, i);
   }
 
+  for (const [stmt, run] of boxRuns) flushBox(stmt as Extract<Stmt, { k: "box" }>, run);
+
   const plots = [...plotMap.values()].filter((plot) => plot.points.length > 0);
-  return { plots, signals };
+  return { plots, signals, shapes };
 }
 
 // ---------- statement execution ----------
@@ -812,6 +887,10 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: Intents) {
       if (evalBool(stmt.when, i, rt)) intents.alerts.push({ message: renderAlert(stmt.message, stmt.args, i, rt) });
       break;
     case "plot":
+    case "box":
+    case "vline":
+    case "ray":
+      // Display-only chart drawings — realized only in previewStrategy.
       break;
     case "if": {
       if (evalBool(stmt.cond, i, rt)) {

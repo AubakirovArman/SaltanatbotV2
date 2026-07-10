@@ -450,11 +450,27 @@ class Converter {
         else this.warn("strategy.exit had no stop=/limit= — nothing converted.");
         return out;
       }
+      case "bgcolor": {
+        // bgcolor(cond ? color : na) — background shading → a full-height box while
+        // the condition holds. Non-conditional/unresolvable colors stay display-skips.
+        const colorArg = arg(args, 0, "color");
+        if (colorArg?.value.t === "ternary") {
+          const { cond, a, b } = colorArg.value;
+          const aIsNa = isNaIdent(a);
+          const bIsNa = isNaIdent(b);
+          if (aIsNa !== bIsNa) {
+            const when = aIsNa ? ({ k: "not", a: this.bool(cond) } as BoolExpr) : this.bool(cond);
+            const hex = this.colorOf(aIsNa ? b : a) ?? "#8f9bb3";
+            return [{ k: "box", top: NAN_NUM, bottom: NAN_NUM, when, label: "", color: hex }];
+          }
+        }
+        this.warn("Skipped bgcolor() — only conditional shading (cond ? color : na) is convertible.");
+        return [];
+      }
       case "runtime.error":
       case "strategy.cancel":
       case "strategy.cancel_all":
       case "fill":
-      case "bgcolor":
       case "barcolor":
       case "plotcandle":
       case "plotbar":

@@ -232,6 +232,31 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
         color: (block.getFieldValue("COLOR") as string) || "#4db6ff",
         pane: block.getFieldValue("PANE") === "sub" ? "sub" : "price"
       };
+    case "draw_box":
+      // Display-only (like plot): scalar per-bar evaluation, stateful reads allowed.
+      return {
+        k: "box",
+        top: numInput(block, "TOP", ctx),
+        bottom: numInput(block, "BOTTOM", ctx),
+        when: boolInput(block, "WHEN", ctx),
+        label: (block.getFieldValue("LABEL") as string) ?? "",
+        color: (block.getFieldValue("COLOR") as string) || "#26a69a"
+      };
+    case "draw_vline":
+      return {
+        k: "vline",
+        when: boolInput(block, "WHEN", ctx),
+        label: (block.getFieldValue("LABEL") as string) ?? "",
+        color: (block.getFieldValue("COLOR") as string) || "#8f9bb3"
+      };
+    case "draw_ray":
+      return {
+        k: "ray",
+        price: numInput(block, "PRICE", ctx),
+        when: boolInput(block, "WHEN", ctx),
+        label: (block.getFieldValue("LABEL") as string) ?? "",
+        color: (block.getFieldValue("COLOR") as string) || "#f7c948"
+      };
     default:
       ctx.errors.push(`Unsupported action block: ${block.type}`);
       return undefined;

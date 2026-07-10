@@ -27,6 +27,7 @@ import { drawMarkers } from "./renderers/markers";
 import { drawTradeOverlay } from "./renderers/tradeOverlay";
 import { drawAlertLines } from "./renderers/alertLines";
 import { drawLivePositions } from "./renderers/livePositions";
+import { drawShapes } from "./renderers/shapes";
 import { drawStrategyPlots, drawSubPlots } from "./renderers/strategyPlots";
 import { drawCompareSeries } from "./renderers/compareSeries";
 import { toHeikinAshi } from "./heikinAshi";
@@ -54,7 +55,7 @@ export function setChartTheme(next: Partial<typeof theme>) {
 export function drawChart(options: DrawChartOptions) {
   const {
     ctx, width, height, candles, chartType, decimals, view, indicators,
-    drawings, draftDrawing, signals, trades, plots, alerts, livePositions, showVolume, onViewport,
+    drawings, draftDrawing, signals, trades, plots, shapes, alerts, livePositions, showVolume, onViewport,
     selectedDrawingId, hoveredDrawingId, compare, onCompareLegend
   } = options;
   ctx.clearRect(0, 0, width, height);
@@ -153,6 +154,7 @@ export function drawChart(options: DrawChartOptions) {
     hoveredId: hoveredDrawingId,
     decimals
   });
+  if (shapes && (shapes.boxes.length > 0 || shapes.vlines.length > 0 || shapes.rays.length > 0)) drawShapes(ctx, viewport, shapes);
   if (pricePlots.length > 0) drawStrategyPlots(ctx, viewport, pricePlots);
   if (alerts && alerts.length > 0) drawAlertLines(ctx, viewport, alerts, decimals);
   if (livePositions && livePositions.length > 0) drawLivePositions(ctx, viewport, livePositions, decimals);
