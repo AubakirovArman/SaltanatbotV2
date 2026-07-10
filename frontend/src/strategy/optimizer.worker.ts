@@ -2,6 +2,7 @@
 import type { Candle } from "../types";
 import type { BacktestConfig } from "./backtest";
 import type { StrategyIR } from "./ir";
+import type { SecurityDataContext } from "./securityData";
 import {
   optimize,
   walkForward,
@@ -25,6 +26,7 @@ export interface OptimizeRequest {
   candles: Candle[];
   config: BacktestConfig;
   spec: OptimizeSpec;
+  securityData?: SecurityDataContext;
 }
 
 export interface WalkForwardRequest {
@@ -34,6 +36,7 @@ export interface WalkForwardRequest {
   config: BacktestConfig;
   spec: OptimizeSpec;
   options: WalkForwardOptions;
+  securityData?: SecurityDataContext;
 }
 
 export type WorkerRequest = OptimizeRequest | WalkForwardRequest;
@@ -54,11 +57,11 @@ ctx.addEventListener("message", (event: MessageEvent<WorkerRequest>) => {
       ctx.postMessage(msg);
     };
     if (req.kind === "optimize") {
-      const result = optimize(req.ir, req.candles, req.config, req.spec, onProgress);
+      const result = optimize(req.ir, req.candles, req.config, req.spec, onProgress, req.securityData);
       const msg: WorkerResponse = { kind: "optimize-result", result };
       ctx.postMessage(msg);
     } else if (req.kind === "walkforward") {
-      const result = walkForward(req.ir, req.candles, req.config, req.spec, req.options, onProgress);
+      const result = walkForward(req.ir, req.candles, req.config, req.spec, req.options, onProgress, req.securityData);
       const msg: WorkerResponse = { kind: "walkforward-result", result };
       ctx.postMessage(msg);
     }

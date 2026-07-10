@@ -1,6 +1,7 @@
 import type { Candle } from "../types";
 import { DEFAULT_CONFIG, runBacktest, type BacktestConfig, type BacktestMetrics, type BacktestResult } from "./backtest";
 import type { StrategyIR } from "./ir";
+import type { SecurityDataContext } from "./securityData";
 
 /**
  * Parameter optimizer with in-sample / out-of-sample separation and rolling
@@ -172,7 +173,8 @@ export function optimize(
   candles: Candle[],
   config: BacktestConfig,
   spec: OptimizeSpec,
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  securityData?: SecurityDataContext
 ): OptimizeResult {
   const objective = spec.objective;
   const trainFrac = spec.trainFrac ?? DEFAULT_TRAIN_FRAC;
@@ -202,7 +204,7 @@ export function optimize(
   for (let i = 0; i < combos.length; i += 1) {
     const combo = combos[i];
     const cloned = cloneWithInputs(ir, combo);
-    const run = runBacktest(cloned, train, config);
+    const run = runBacktest(cloned, train, config, securityData);
     ranked.push({ params: combo, score: scoreMetrics(run.metrics, objective), inSample: run.metrics });
     onProgress?.(i + 1, combos.length);
   }
@@ -216,7 +218,7 @@ export function optimize(
   for (let i = 0; i < topN; i += 1) {
     if (test.length < 2) break;
     const cloned = cloneWithInputs(ir, ranked[i].params);
-    const run = runBacktest(cloned, test, config);
+    const run = runBacktest(cloned, test, config, securityData);
     ranked[i].outSample = run.metrics;
     ranked[i].outScore = scoreMetrics(run.metrics, objective);
     if (i === 0) bestOutSampleRun = run;
@@ -300,7 +302,8 @@ export function walkForward(
   config: BacktestConfig,
   spec: OptimizeSpec,
   options: WalkForwardOptions = {},
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  securityData?: SecurityDataContext
 ): WalkForwardResult {
   const foldCount = Math.max(2, Math.floor(options.folds ?? 4));
   const foldTrainFrac = Math.min(0.9, Math.max(0.1, options.foldTrainFrac ?? spec.trainFrac ?? DEFAULT_TRAIN_FRAC));
@@ -327,7 +330,7 @@ export function walkForward(
     if (window.length < 4) continue;
 
     const foldSpec: OptimizeSpec = { ...spec, trainFrac: foldTrainFrac };
-    const opt = optimize(ir, window, { ...config, initialCapital: runningEquity }, foldSpec);
+    const opt = optimize(ir, window, { ...config, initialCapital: runningEquity }, foldSpec, undefined, securityData);
     const best = opt.best;
     if (!best) continue;
 
@@ -335,7 +338,7 @@ export function walkForward(
     if (test.length < 2) continue;
 
     const cloned = cloneWithInputs(ir, best.params);
-    const oosRun = runBacktest(cloned, test, { ...config, initialCapital: runningEquity });
+    const oosRun = runBacktest(cloned, test, { ...config, initialCapital: runningEquity }, securityData);
 
     for (const point of oosRun.equityCurve) stitchedEquity.push(point);
     for (const trade of oosRun.trades) stitchedTrades.push(trade);

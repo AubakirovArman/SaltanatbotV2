@@ -13,6 +13,8 @@ import { irToText } from "../strategy/irText";
 import { DEFAULT_CONFIG, runBacktest, previewStrategy, type BacktestConfig, type BacktestResult, type PlotSeries, type ShapeOverlays } from "../strategy/backtest";
 import { cloneWithInputs, type Objective, type OptimizeResult, type OptimizeSpec, type ParamSpec, type WalkForwardResult } from "../strategy/optimizer";
 import { runOptimizeInWorker, runWalkForwardInWorker } from "../strategy/optimizerClient";
+import { loadSecurityDataForIr } from "../strategy/securityLoader";
+import type { SecurityDataContext } from "../strategy/securityData";
 import type { StrategyArtifact, StrategyArtifactKind } from "../strategy/library";
 import { strategyTemplates, type StrategyTemplate, type TemplateCategory } from "../strategy/templates";
 import { downloadStrategyFile, parseStrategyFile } from "../strategy/strategyFile";
@@ -216,6 +218,7 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
   const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult>();
   const optCandlesRef = useRef<Candle[]>([]);
   const optIrRef = useRef<StrategyIR>();
+  const optSecurityRef = useRef<SecurityDataContext>({});
 
   const btInstrument = catalog?.instruments.find((item) => item.symbol === btSymbol);
   const decimals = btInstrument?.decimals ?? 2;
@@ -395,10 +398,15 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
         setErrors([...compiled.errors, "Not enough history for this market/interval."]);
         return;
       }
-      const backtest = runBacktest(compiled.ir, candles, config);
+      const securityData = await loadSecurityDataForIr(compiled.ir, {
+        symbol: btSymbol,
+        timeframe: btTimeframe,
+        chartCandles: candles
+      });
+      const backtest = runBacktest(compiled.ir, candles, config, securityData);
       setResult(backtest);
       setOptimizeResult(undefined);
-      const visuals = previewStrategy(compiled.ir, candles);
+      const visuals = previewStrategy(compiled.ir, candles, securityData);
       onApplyResult?.(backtest, btSymbol, btTimeframe, { plots: visuals.plots, shapes: visuals.shapes });
     } catch (cause) {
       setErrors([...compiled.errors, cause instanceof Error ? cause.message : "History request failed."]);
@@ -437,12 +445,18 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
       }
       optCandlesRef.current = candles;
       optIrRef.current = compiled.ir;
+      const securityData = await loadSecurityDataForIr(compiled.ir, {
+        symbol: btSymbol,
+        timeframe: btTimeframe,
+        chartCandles: candles
+      });
+      optSecurityRef.current = securityData;
       const onProgress = (done: number, total: number) => setOptProgress({ done, total });
       if (walkForwardOn) {
-        const wf = await runWalkForwardInWorker(compiled.ir, candles, config, spec, { folds: optFolds }, onProgress);
+        const wf = await runWalkForwardInWorker(compiled.ir, candles, config, spec, { folds: optFolds }, onProgress, securityData);
         setWalkForwardResult(wf);
       }
-      const opt = await runOptimizeInWorker(compiled.ir, candles, config, spec, onProgress);
+      const opt = await runOptimizeInWorker(compiled.ir, candles, config, spec, onProgress, securityData);
       setOptimizeResult(opt);
     } catch (cause) {
       setErrors([...compiled.errors, cause instanceof Error ? cause.message : "Optimization failed."]);
@@ -458,10 +472,11 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
     const candles = optCandlesRef.current;
     if (!ir || !candles.length) return;
     const cloned = cloneWithInputs(ir, params);
-    const backtest = runBacktest(cloned, candles, config);
+    const securityData = optSecurityRef.current;
+    const backtest = runBacktest(cloned, candles, config, securityData);
     setResult(backtest);
     setOptimizeResult(undefined);
-    const visuals = previewStrategy(cloned, candles);
+    const visuals = previewStrategy(cloned, candles, securityData);
     onApplyResult?.(backtest, btSymbol, btTimeframe, { plots: visuals.plots, shapes: visuals.shapes });
   };
 

@@ -1,6 +1,7 @@
 import type { Candle } from "../types";
 import type { BacktestConfig } from "./backtest";
 import type { StrategyIR } from "./ir";
+import type { SecurityDataContext } from "./securityData";
 import {
   optimize,
   walkForward,
@@ -36,12 +37,13 @@ export function runOptimizeInWorker(
   candles: Candle[],
   config: BacktestConfig,
   spec: OptimizeSpec,
-  onProgress?: Progress
+  onProgress?: Progress,
+  securityData?: SecurityDataContext
 ): Promise<OptimizeResult> {
   const worker = makeWorker();
   if (!worker) {
     // No worker available — run synchronously on the main thread.
-    return Promise.resolve().then(() => optimize(ir, candles, config, spec, onProgress));
+    return Promise.resolve().then(() => optimize(ir, candles, config, spec, onProgress, securityData));
   }
   return new Promise<OptimizeResult>((resolve, reject) => {
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
@@ -54,12 +56,12 @@ export function runOptimizeInWorker(
       // Worker crashed (e.g. import failure) — fall back to the main thread.
       worker.terminate();
       try {
-        resolve(optimize(ir, candles, config, spec, onProgress));
+        resolve(optimize(ir, candles, config, spec, onProgress, securityData));
       } catch (cause) {
         reject(cause instanceof Error ? cause : new Error(String(event.message ?? cause)));
       }
     };
-    const req: WorkerRequest = { kind: "optimize", ir, candles, config, spec };
+    const req: WorkerRequest = { kind: "optimize", ir, candles, config, spec, securityData };
     worker.postMessage(req);
   });
 }
@@ -70,11 +72,12 @@ export function runWalkForwardInWorker(
   config: BacktestConfig,
   spec: OptimizeSpec,
   options: WalkForwardOptions,
-  onProgress?: Progress
+  onProgress?: Progress,
+  securityData?: SecurityDataContext
 ): Promise<WalkForwardResult> {
   const worker = makeWorker();
   if (!worker) {
-    return Promise.resolve().then(() => walkForward(ir, candles, config, spec, options, onProgress));
+    return Promise.resolve().then(() => walkForward(ir, candles, config, spec, options, onProgress, securityData));
   }
   return new Promise<WalkForwardResult>((resolve, reject) => {
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
@@ -86,12 +89,12 @@ export function runWalkForwardInWorker(
     worker.onerror = (event) => {
       worker.terminate();
       try {
-        resolve(walkForward(ir, candles, config, spec, options, onProgress));
+        resolve(walkForward(ir, candles, config, spec, options, onProgress, securityData));
       } catch (cause) {
         reject(cause instanceof Error ? cause : new Error(String(event.message ?? cause)));
       }
     };
-    const req: WorkerRequest = { kind: "walkforward", ir, candles, config, spec, options };
+    const req: WorkerRequest = { kind: "walkforward", ir, candles, config, spec, options, securityData };
     worker.postMessage(req);
   });
 }

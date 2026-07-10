@@ -233,15 +233,22 @@ export default function App() {
   const addStrategyToChart = async (id: string) => {
     const artifact = strategyLibrary.find((item) => item.id === id);
     if (!artifact) return;
-    const [{ compileXmlToIr }, backtest] = await Promise.all([
+    const [{ compileXmlToIr }, backtest, { loadSecurityDataForIr }] = await Promise.all([
       import("./strategy/compileArtifact"),
-      import("./strategy/backtest")
+      import("./strategy/backtest"),
+      import("./strategy/securityLoader")
     ]);
     const compiled = compileXmlToIr(artifact.xml);
     if (!compiled.ir) return;
+    const securityData = await loadSecurityDataForIr(compiled.ir, {
+      symbol,
+      timeframe,
+      chartCandles: stream.candles,
+      exchange: cryptoExchange
+    });
     // Show the strategy's plotted lines + every signal point, plus the trades it took.
-    const preview = backtest.previewStrategy(compiled.ir, stream.candles);
-    const result = backtest.runBacktest(compiled.ir, stream.candles, backtest.DEFAULT_CONFIG);
+    const preview = backtest.previewStrategy(compiled.ir, stream.candles, securityData);
+    const result = backtest.runBacktest(compiled.ir, stream.candles, backtest.DEFAULT_CONFIG, securityData);
     setOverlay({ id, name: artifact.name, plots: preview.plots, shapes: preview.shapes, signals: preview.signals, trades: result.trades, symbol, timeframe });
     const times = [...preview.signals.map((s) => s.time), ...result.trades.map((t) => t.exitTime)];
     setChartFocus(times.length ? Math.max(...times) : Date.now());
