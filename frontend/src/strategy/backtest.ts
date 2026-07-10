@@ -1,5 +1,6 @@
 import type { Candle } from "../types";
 import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "./ir";
+import { alignSecuritySeries, getSecurityCandles, type SecurityDataContext } from "./securityData";
 import {
   almaSeries,
   atr as atrSeries,
@@ -170,6 +171,8 @@ interface Runtime {
   budgetHit: boolean;
   /** Position/PnL runtime context, refreshed each bar (ctx reads). */
   ctx: Record<string, number>;
+  /** Optional external candles for request.security() expressions. */
+  securityData?: SecurityDataContext;
 }
 
 /** Hard per-bar execution budget. MUST equal the backend evaluator's constant
@@ -203,7 +206,7 @@ interface Intents {
   markers: { dir: "up" | "down"; label: string }[];
 }
 
-export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestConfig = DEFAULT_CONFIG): BacktestResult {
+export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestConfig = DEFAULT_CONFIG, securityData?: SecurityDataContext): BacktestResult {
   // Merge caller config over defaults so new optional fields always have a value.
   const cfg: Required<BacktestConfig> = { ...DEFAULT_CONFIG, ...config } as Required<BacktestConfig>;
   const nextOpen = cfg.fillTiming !== "same_close";
@@ -218,7 +221,8 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     atr14: candles.length ? atrSeries(candles, 14) : [],
     ops: 0,
     budgetHit: false,
-    ctx: {}
+    ctx: {},
+    securityData
   };
   runInit(ir, rt);
 
@@ -684,7 +688,7 @@ const MAX_RAYS = 200;
  * This is what "add strategy to chart" shows — the lines it uses and all the
  * signal points, so you can see how it would have triggered.
  */
-export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: PlotSeries[]; signals: TradeMarker[]; shapes: ShapeOverlays } {
+export function previewStrategy(ir: StrategyIR, candles: Candle[], securityData?: SecurityDataContext): { plots: PlotSeries[]; signals: TradeMarker[]; shapes: ShapeOverlays } {
   const rt: Runtime = {
     candles,
     n: candles.length,
@@ -695,7 +699,8 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
     atr14: candles.length ? atrSeries(candles, 14) : [],
     ops: 0,
     budgetHit: false,
-    ctx: {}
+    ctx: {},
+    securityData
   };
   runInit(ir, rt);
   const signals: TradeMarker[] = [];
@@ -1188,10 +1193,7 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
     case "time":
       return timeSeries(rt.candles, expr.session, expr.timezone);
     case "security":
-      // Placeholder execution: Pine's request.security() requires another market
-      // context. Until the runtime supplies one, evaluate the requested expression
-      // on the current chart so imported scripts remain inspectable/editable.
-      return getSeries(expr.source, rt);
+      return securitySeries(expr, rt);
     case "cond": {
       const ca = getSeries(expr.a, rt);
       const cb = getSeries(expr.b, rt);
@@ -1351,6 +1353,21 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
     case "correlation":
       return correlationSeries(getSeries(expr.a, rt), getSeries(expr.b, rt), Math.max(2, Math.round(constNum(expr.period, rt))));
   }
+}
+
+function securitySeries(expr: Extract<NumExpr, { k: "security" }>, rt: Runtime): number[] {
+  const external = getSecurityCandles(rt.securityData, expr.symbol, expr.timeframe);
+  if (!external?.length) return getSeries(expr.source, rt);
+  const child: Runtime = {
+    ...rt,
+    candles: external,
+    n: external.length,
+    vars: new Map(),
+    varsPrev: new Map(),
+    seriesCache: new Map(),
+    atr14: external.length ? atrSeries(external, 14) : []
+  };
+  return alignSecuritySeries(rt.candles, external, getSeries(expr.source, child));
 }
 
 function timeSeries(candles: Candle[], session?: string, timezone?: string): number[] {

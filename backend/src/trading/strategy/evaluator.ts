@@ -1,5 +1,6 @@
 import type { Candle } from "../../types.js";
 import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "./ir.js";
+import { alignSecuritySeries, getSecurityCandles, type SecurityDataContext } from "./securityData.js";
 import {
   almaSeries,
   atr as atrSeries,
@@ -66,6 +67,8 @@ interface Runtime {
   budgetHit: boolean;
   /** Position/PnL runtime context supplied per bar by the caller (ctx reads). */
   ctx: Record<string, number>;
+  /** Optional external candles for request.security() expressions. */
+  securityData?: SecurityDataContext;
   /** Snapshot of vars at the START of the bar — reads for `varprev` (x[1] on a var). */
   varsPrev: Map<string, number>;
 }
@@ -81,7 +84,14 @@ interface Runtime {
  * omitting it (fresh map per bar) makes stateful strategies behave differently.
  * The series cache is always per-call (candles grow each bar, so it can't persist).
  */
-export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, vars?: Map<string, number>, ctx?: Record<string, number>): BarIntents {
+export function evaluateBar(
+  ir: StrategyIR,
+  candles: Candle[],
+  index: number,
+  vars?: Map<string, number>,
+  ctx?: Record<string, number>,
+  securityData?: SecurityDataContext
+): BarIntents {
   const rt: Runtime = {
     candles,
     n: candles.length,
@@ -91,7 +101,8 @@ export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, va
     varsPrev: new Map(),
     ops: 0,
     budgetHit: false,
-    ctx: ctx ?? {}
+    ctx: ctx ?? {},
+    securityData
   };
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };
   rt.varsPrev = new Map(rt.vars);
@@ -383,10 +394,7 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
     case "time":
       return timeSeries(rt.candles, expr.session, expr.timezone);
     case "security":
-      // Placeholder execution: Pine's request.security() requires another market
-      // context. Until the runtime supplies one, evaluate the requested expression
-      // on the current chart so imported scripts remain inspectable/editable.
-      return getSeries(expr.source, rt);
+      return securitySeries(expr, rt);
     case "cond": {
       const ca = getSeries(expr.a, rt);
       const cb = getSeries(expr.b, rt);
@@ -546,6 +554,20 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
     case "correlation":
       return correlationSeries(getSeries(expr.a, rt), getSeries(expr.b, rt), Math.max(2, Math.round(constNum(expr.period, rt))));
   }
+}
+
+function securitySeries(expr: Extract<NumExpr, { k: "security" }>, rt: Runtime): number[] {
+  const external = getSecurityCandles(rt.securityData, expr.symbol, expr.timeframe);
+  if (!external?.length) return getSeries(expr.source, rt);
+  const child: Runtime = {
+    ...rt,
+    candles: external,
+    n: external.length,
+    vars: new Map(),
+    varsPrev: new Map(),
+    seriesCache: new Map()
+  };
+  return alignSecuritySeries(rt.candles, external, getSeries(expr.source, child));
 }
 
 function timeSeries(candles: Candle[], session?: string, timezone?: string): number[] {

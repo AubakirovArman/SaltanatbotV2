@@ -84,7 +84,7 @@ export function registerStrategyBlocks() {
       ],
       output: "Number",
       colour: "#4285b4",
-      tooltip: "Pine request.security(): external symbol/timeframe series. Currently falls back to current chart data until multi-series data is loaded."
+      tooltip: "Pine request.security(): external symbol/timeframe series. Uses attached external candles when available, otherwise falls back to current chart data."
     },
     // ---- Indicators ----
     {

@@ -16,7 +16,7 @@ export const blockCatalog: Record<string, BlockDoc> = {
   market_price: { category: "Market", title: "Market price", body: "The current bar's price field: close/open/high/low/volume, or the averages hl2, hlc3, ohlc4." },
   market_price_offset: { category: "Market", title: "Price N bars ago", body: "A price field from a past bar (offset back from the current bar)." },
   market_time: { category: "Market", title: "Bar time", body: "Pine time(): bar timestamp, optionally filtered by a session string such as 0930-1600:23456." },
-  market_security: { category: "Market", title: "External series", body: "Pine request.security(): value from another symbol or timeframe. Current runtime uses chart-data fallback until multi-series data is attached." },
+  market_security: { category: "Market", title: "External series", body: "Pine request.security(): value from another symbol or timeframe. Backtests/previews use attached external candles when available, otherwise chart-data fallback." },
 
   // Indicators
   indicator_ma: { category: "Indicators", title: "Moving average", body: "SMA / EMA / WMA / VWMA of a source over a period.", example: "EMA(21) of close" },

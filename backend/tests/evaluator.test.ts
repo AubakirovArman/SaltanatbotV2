@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluateBar, runInit } from "../src/trading/strategy/evaluator.js";
 import type { StrategyIR } from "../src/trading/strategy/ir.js";
+import { securitySeriesKey } from "../src/trading/strategy/securityData.js";
 import type { Candle } from "../src/types.js";
 
 /**
@@ -137,6 +138,34 @@ describe("evaluateBar — rolling aggregates (agg) and shift", () => {
     expect(vars.get("avg3")).toBe(40); // (30+40+50)/3
     expect(vars.get("sum2")).toBe(90); // 40+50
     expect(vars.get("back2")).toBe(30); // close 2 bars before bar 4
+  });
+});
+
+describe("evaluateBar — request.security external data context", () => {
+  const bars = [1, 1, 1, 1].map((c, i) => candle(i * MIN, c));
+  const htf = [candle(0 * MIN, 10), candle(2 * MIN, 20)];
+  const ir: StrategyIR = {
+    name: "security-entry",
+    inputs: [],
+    body: [
+      {
+        k: "entry",
+        direction: "long",
+        when: {
+          k: "compare",
+          op: ">",
+          a: { k: "security", symbol: "current", timeframe: "D", source: { k: "price", field: "close" } },
+          b: { k: "num", v: 15 },
+        },
+      },
+    ],
+  };
+
+  it("uses the latest external candle at or before the chart bar time", () => {
+    const data = { [securitySeriesKey("current", "D")]: htf };
+    expect(evaluateBar(ir, bars, 1, undefined, undefined, data).entry).toBeUndefined();
+    expect(evaluateBar(ir, bars, 2, undefined, undefined, data).entry).toBe("long");
+    expect(evaluateBar(ir, bars, 3, undefined, undefined, data).entry).toBe("long");
   });
 });
 

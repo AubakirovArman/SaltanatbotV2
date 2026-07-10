@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type BacktestConfig, DEFAULT_CONFIG, previewStrategy, runBacktest } from "../src/strategy/backtest";
 import type { StrategyIR } from "../src/strategy/ir";
+import { securitySeriesKey } from "../src/strategy/securityData";
 import type { Candle } from "../src/types";
 
 /**
@@ -146,6 +147,25 @@ describe("previewStrategy runs bar-major (setvar state accumulates)", () => {
     const { plots } = previewStrategy(ir, candles);
     expect(plots).toHaveLength(1);
     expect(plots[0].points.map((p) => p.value)).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe("request.security external data context", () => {
+  it("aligns attached external candles by time using the latest known source bar", () => {
+    const ir: StrategyIR = {
+      name: "security-preview",
+      inputs: [],
+      body: [{ k: "plot", label: "htf", color: "#fff", value: { k: "security", symbol: "current", timeframe: "D", source: { k: "price", field: "close" } } }],
+    };
+    const chart = [1, 2, 3, 4].map((c, i) => candle(i * MIN, c, c + 1, c - 1, c));
+    const daily = [
+      candle(0 * MIN, 10, 11, 9, 10),
+      candle(2 * MIN, 20, 21, 19, 20),
+    ];
+
+    const { plots } = previewStrategy(ir, chart, { [securitySeriesKey("current", "D")]: daily });
+
+    expect(plots[0].points.map((p) => p.value)).toEqual([10, 10, 20, 20]);
   });
 });
 

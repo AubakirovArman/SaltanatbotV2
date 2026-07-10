@@ -343,7 +343,7 @@ htf = request.security(syminfo.tickerid, "D", ta.rsi(close, 14))
 plot(htf, "daily rsi")`);
     expect(result.ok, result.ok ? "" : result.error).toBe(true);
     if (!result.ok) return;
-    expect(result.warnings.join(" ")).toMatch(/request\.security|external-series|current chart/i);
+    expect(result.warnings.join(" ")).toMatch(/request\.security|external-series|external candles|current chart/i);
     const compiled = compileXmlToIr(result.xml);
     expect(compiled.errors.filter((e) => !e.includes("no entry rule"))).toHaveLength(0);
     const ir = convertPine(`//@version=6
@@ -693,6 +693,6 @@ plot(ta.percentrank(close, 14), "pr")`);
     const ok = results.filter((r): r is Extract<typeof r, { ok: true }> => r.ok);
     expect(ok).toHaveLength(3);
     expect(ok.map((r) => `${r.kind}:${r.name}`)).toEqual(["indicator:Fast RSI", "strategy:Cross Bot", "indicator:HTF"]);
-    expect(ok[2].warnings.join(" ")).toMatch(/request\.security|external-series|current chart/i);
+    expect(ok[2].warnings.join(" ")).toMatch(/request\.security|external-series|external candles|current chart/i);
   });
 });
