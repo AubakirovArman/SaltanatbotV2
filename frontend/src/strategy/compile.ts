@@ -1,38 +1,68 @@
 import * as Blockly from "blockly/core";
-import type { BoolExpr, MaKind, NumExpr, Stmt, StrategyInput, StrategyIR } from "./ir";
+import { IR_VERSION } from "./ir";
+import type { BoolExpr, CtxKey, MaKind, NumExpr, Stmt, StrategyInput, StrategyIR } from "./ir";
 import type { PriceField } from "./ta";
 
 interface Ctx {
   inputs: Map<string, StrategyInput>;
   errors: string[];
+  /** Variable names written by a `set variable` block anywhere in the strategy. */
   vars: Set<string>;
+  /** Variable names read by a `get variable` block — checked against `vars`. */
+  usedVars: Set<string>;
 }
 
 export interface CompileResult {
   ir?: StrategyIR;
   errors: string[];
+  /** Non-blocking advisories (e.g. reading a variable that is never set). */
+  warnings?: string[];
 }
 
 /** Compile a Blockly workspace into a safe JSON-IR (no eval, no code strings). */
 export function compileWorkspace(workspace: Blockly.Workspace): CompileResult {
-  const ctx: Ctx = { inputs: new Map(), errors: [], vars: new Set() };
+  const ctx: Ctx = { inputs: new Map(), errors: [], vars: new Set(), usedVars: new Set() };
   const root = workspace.getTopBlocks(true).find((block) => block.type === "strategy_start");
   if (!root) {
     return { errors: ["Add a Strategy block to define entry rules."] };
   }
   const name = (root.getFieldValue("NAME") as string) || "Untitled strategy";
+  // "On start (once)" section — only `set variable` blocks are meaningful here.
+  const initStmts = compileStatements(root.getInputTargetBlock("INIT"), ctx);
+  for (const stmt of initStmts) {
+    if (stmt.k !== "setvar") ctx.errors.push("The 'on start' section only accepts 'set variable' blocks.");
+  }
+  const init = initStmts.filter((stmt): stmt is Extract<Stmt, { k: "setvar" }> => stmt.k === "setvar");
   const body = compileStatements(root.getInputTargetBlock("RULES"), ctx);
 
-  const hasEntry = body.some((stmt) => stmt.k === "entry" || (stmt.k === "if" && stmt.then.some((s) => s.k === "entry")));
-  const hasMarker = body.some((stmt) => stmt.k === "marker" || (stmt.k === "if" && stmt.then.some((s) => s.k === "marker")));
+  const hasEntry = containsStmt(body, "entry");
+  const hasMarker = containsStmt(body, "marker");
   if (!hasEntry && !hasMarker) {
     ctx.errors.push("Strategy has no entry rule — add a Buy/Sell, Entry, or Mark signal.");
   }
 
+  // Reading a variable that is never set reads 0 silently — flag the likely typo.
+  const warnings: string[] = [];
+  for (const name of ctx.usedVars) {
+    if (!ctx.vars.has(name)) warnings.push(`Variable "${name}" is read but never set — it will always be 0.`);
+  }
+
   return {
-    ir: { name, inputs: [...ctx.inputs.values()], body },
-    errors: ctx.errors
+    ir: { name, inputs: [...ctx.inputs.values()], body, init: init.length ? init : undefined, v: IR_VERSION },
+    errors: ctx.errors,
+    warnings: warnings.length ? warnings : undefined
   };
+}
+
+/** Whether any statement (recursing into if/elseif/else branches) has the given kind. */
+function containsStmt(stmts: Stmt[], kind: "entry" | "marker"): boolean {
+  return stmts.some((stmt) => {
+    if (stmt.k === kind) return true;
+    if (stmt.k === "if") {
+      return containsStmt(stmt.then, kind) || (stmt.elifs?.some((clause) => containsStmt(clause.then, kind)) ?? false) || (stmt.else ? containsStmt(stmt.else, kind) : false);
+    }
+    return false;
+  });
 }
 
 function compileStatements(first: Blockly.Block | null, ctx: Ctx): Stmt[] {
@@ -82,14 +112,43 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
       ctx.vars.add(varName);
       return { k: "setvar", name: varName, value: numInput(block, "VALUE", ctx) };
     }
+    case "var_change": {
+      // Desugar "change x by n" to "set x = x + n" — no new IR node needed.
+      const varName = (block.getFieldValue("NAME") as string) || "x";
+      ctx.vars.add(varName);
+      return { k: "setvar", name: varName, value: { k: "arith", op: "+", a: { k: "var", name: varName }, b: numInput(block, "BY", ctx) } };
+    }
     case "alert_message":
       return { k: "alert", message: (block.getFieldValue("TEXT") as string) || "alert", when: boolInput(block, "WHEN", ctx) };
     case "flow_if":
       return { k: "if", cond: boolInput(block, "COND", ctx), then: compileStatements(block.getInputTargetBlock("DO"), ctx) };
+    case "controls_if": {
+      // Blockly's built-in if/else-if/else block: IF0/DO0, IF1/DO1, …, ELSE.
+      const clauses: { cond: BoolExpr; then: Stmt[] }[] = [];
+      let idx = 0;
+      while (block.getInput(`IF${idx}`)) {
+        clauses.push({ cond: boolInput(block, `IF${idx}`, ctx), then: compileStatements(block.getInputTargetBlock(`DO${idx}`), ctx) });
+        idx += 1;
+      }
+      if (!clauses.length) return undefined;
+      const elseStmts = block.getInput("ELSE") ? compileStatements(block.getInputTargetBlock("ELSE"), ctx) : [];
+      const node: Extract<Stmt, { k: "if" }> = { k: "if", cond: clauses[0].cond, then: clauses[0].then };
+      if (clauses.length > 1) node.elifs = clauses.slice(1);
+      if (elseStmts.length) node.else = elseStmts;
+      return node;
+    }
+    case "controls_repeat_ext":
+      return { k: "repeat", count: numInput(block, "TIMES", ctx), body: compileStatements(block.getInputTargetBlock("DO"), ctx) };
+    case "controls_whileUntil": {
+      const cond = boolInput(block, "BOOL", ctx);
+      const until = block.getFieldValue("MODE") === "UNTIL";
+      // Bounded by a hard iteration cap (and the per-bar op budget) for deterministic live execution.
+      return { k: "while", cond: until ? { k: "not", a: cond } : cond, body: compileStatements(block.getInputTargetBlock("DO"), ctx), cap: 1000 };
+    }
     case "plot_series":
       return {
         k: "plot",
-        value: numInput(block, "VALUE", ctx),
+        value: numInput(block, "VALUE", ctx, true),
         label: (block.getFieldValue("LABEL") as string) || "series",
         color: (block.getFieldValue("COLOR") as string) || "#4db6ff"
       };
@@ -99,67 +158,76 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
   }
 }
 
-function compileNum(block: Blockly.Block | null, ctx: Ctx): NumExpr {
+/**
+ * Compile a numeric block. `vec` marks a "vectorized" position — one whose value
+ * is computed as a whole aligned series (indicator source/period, cross/trend
+ * operands, minmax operands, plot value). A `get variable` in such a position
+ * evaluates to an all-NaN series (a variable has only its latest scalar value,
+ * not a per-bar history), so we reject it at compile time instead of silently
+ * producing NaN. `vec` is inherited through arith/round and forced on for
+ * indicator/series inputs.
+ */
+function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr {
   if (!block) return { k: "num", v: 0 };
   switch (block.type) {
     case "math_number":
       return { k: "num", v: Number(block.getFieldValue("NUM")) || 0 };
     case "math_arithmetic": {
       const op = arithOp(block.getFieldValue("OP"), ctx);
-      return { k: "arith", op, a: numInput(block, "A", ctx), b: numInput(block, "B", ctx) };
+      return { k: "arith", op, a: numInput(block, "A", ctx, vec), b: numInput(block, "B", ctx, vec) };
     }
     case "math_round": {
       const map: Record<string, "round" | "floor" | "ceil"> = { ROUND: "round", ROUNDUP: "ceil", ROUNDDOWN: "floor" };
-      return { k: "unary", op: map[block.getFieldValue("OP")] ?? "round", a: numInput(block, "NUM", ctx) };
+      return { k: "unary", op: map[block.getFieldValue("OP")] ?? "round", a: numInput(block, "NUM", ctx, vec) };
     }
     case "market_price":
       return { k: "price", field: priceField(block.getFieldValue("FIELD")) };
     case "market_price_offset":
       return { k: "price", field: priceField(block.getFieldValue("FIELD")), offset: Math.max(0, Number(block.getFieldValue("BARS")) || 0) };
     case "indicator_ma":
-      return { k: "ma", kind: (block.getFieldValue("KIND") as MaKind) ?? "sma", period: numInput(block, "PERIOD", ctx), source: numInput(block, "SOURCE", ctx) };
+      return { k: "ma", kind: (block.getFieldValue("KIND") as MaKind) ?? "sma", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "indicator_rsi":
-      return { k: "rsi", period: numInput(block, "PERIOD", ctx), source: numInput(block, "SOURCE", ctx) };
+      return { k: "rsi", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "indicator_bollinger":
       return {
         k: "bollinger",
         band: (block.getFieldValue("BAND") as "upper" | "middle" | "lower") ?? "middle",
-        period: numInput(block, "PERIOD", ctx),
-        dev: numInput(block, "DEV", ctx),
-        source: numInput(block, "SOURCE", ctx)
+        period: numInput(block, "PERIOD", ctx, true),
+        dev: numInput(block, "DEV", ctx, true),
+        source: numInput(block, "SOURCE", ctx, true)
       };
     case "indicator_macd":
       return {
         k: "macd",
         line: (block.getFieldValue("LINE") as "macd" | "signal" | "histogram") ?? "macd",
-        fast: numInput(block, "FAST", ctx),
-        slow: numInput(block, "SLOW", ctx),
-        signal: numInput(block, "SIGNAL", ctx),
-        source: numInput(block, "SOURCE", ctx)
+        fast: numInput(block, "FAST", ctx, true),
+        slow: numInput(block, "SLOW", ctx, true),
+        signal: numInput(block, "SIGNAL", ctx, true),
+        source: numInput(block, "SOURCE", ctx, true)
       };
     case "indicator_atr":
-      return { k: "atr", period: numInput(block, "PERIOD", ctx) };
+      return { k: "atr", period: numInput(block, "PERIOD", ctx, true) };
     case "indicator_stdev":
-      return { k: "stdev", period: numInput(block, "PERIOD", ctx), source: numInput(block, "SOURCE", ctx) };
+      return { k: "stdev", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "indicator_extreme":
-      return { k: "extreme", kind: block.getFieldValue("KIND") === "lowest" ? "lowest" : "highest", period: numInput(block, "PERIOD", ctx), source: numInput(block, "SOURCE", ctx) };
+      return { k: "extreme", kind: block.getFieldValue("KIND") === "lowest" ? "lowest" : "highest", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "indicator_change":
-      return { k: "change", period: numInput(block, "PERIOD", ctx), source: numInput(block, "SOURCE", ctx) };
+      return { k: "change", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "indicator_stoch":
       return {
         k: "stoch",
         line: block.getFieldValue("LINE") === "d" ? "d" : "k",
-        period: numInput(block, "PERIOD", ctx),
+        period: numInput(block, "PERIOD", ctx, true),
         smooth: { k: "num", v: Math.max(1, Number(block.getFieldValue("SMOOTH")) || 3) }
       };
     case "indicator_wpr":
-      return { k: "wpr", period: numInput(block, "PERIOD", ctx) };
+      return { k: "wpr", period: numInput(block, "PERIOD", ctx, true) };
     case "indicator_cci":
-      return { k: "cci", period: numInput(block, "PERIOD", ctx) };
+      return { k: "cci", period: numInput(block, "PERIOD", ctx, true) };
     case "indicator_roc":
-      return { k: "roc", period: numInput(block, "PERIOD", ctx), source: numInput(block, "SOURCE", ctx) };
+      return { k: "roc", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "math_minmax":
-      return { k: "minmax", op: block.getFieldValue("OP") === "min" ? "min" : "max", a: numInput(block, "A", ctx), b: numInput(block, "B", ctx) };
+      return { k: "minmax", op: block.getFieldValue("OP") === "min" ? "min" : "max", a: numInput(block, "A", ctx, true), b: numInput(block, "B", ctx, true) };
     case "param_number": {
       const paramName = (block.getFieldValue("NAME") as string) || "param";
       if (!ctx.inputs.has(paramName)) {
@@ -167,8 +235,20 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx): NumExpr {
       }
       return { k: "input", name: paramName };
     }
-    case "var_get":
-      return { k: "var", name: (block.getFieldValue("NAME") as string) || "x" };
+    case "var_get": {
+      const varName = (block.getFieldValue("NAME") as string) || "x";
+      ctx.usedVars.add(varName);
+      if (vec) {
+        ctx.errors.push(`Variable "${varName}" can't be used inside an indicator, cross, or series input — a variable has only its latest value, not a history.`);
+      }
+      return { k: "var", name: varName };
+    }
+    case "ctx_read": {
+      const keys: CtxKey[] = ["position_dir", "entry_price", "unrealized_pnl", "unrealized_pnl_pct", "bars_in_position"];
+      const key = block.getFieldValue("FIELD") as CtxKey;
+      if (vec) ctx.errors.push("Position/PnL reads can't be used inside an indicator or series input — they are single values, not history.");
+      return { k: "ctx", key: keys.includes(key) ? key : "position_dir" };
+    }
     default:
       ctx.errors.push(`Unsupported value block: ${block.type}`);
       return { k: "num", v: 0 };
@@ -191,11 +271,16 @@ function compileBool(block: Blockly.Block | null, ctx: Ctx): BoolExpr {
     case "logic_negate":
       return { k: "not", a: boolInput(block, "BOOL", ctx) };
     case "cross_event":
-      return { k: "cross", dir: block.getFieldValue("DIRECTION") === "below" ? "below" : "above", a: numInput(block, "A", ctx), b: numInput(block, "B", ctx) };
+      return { k: "cross", dir: block.getFieldValue("DIRECTION") === "below" ? "below" : "above", a: numInput(block, "A", ctx, true), b: numInput(block, "B", ctx, true) };
     case "series_trend":
-      return { k: "trend", dir: block.getFieldValue("DIR") === "falling" ? "falling" : "rising", period: numInput(block, "PERIOD", ctx), source: numInput(block, "SOURCE", ctx) };
+      return { k: "trend", dir: block.getFieldValue("DIR") === "falling" ? "falling" : "rising", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "value_between":
       return { k: "between", value: numInput(block, "VALUE", ctx), low: numInput(block, "LOW", ctx), high: numInput(block, "HIGH", ctx) };
+    case "position_is": {
+      const state = block.getFieldValue("STATE");
+      const target = state === "long" ? 1 : state === "short" ? -1 : 0;
+      return { k: "compare", op: "==", a: { k: "ctx", key: "position_dir" }, b: { k: "num", v: target } };
+    }
     case "time_session":
       return { k: "session", start: Number(block.getFieldValue("START")) || 0, end: Number(block.getFieldValue("END")) || 23 };
     case "time_dayofweek":
@@ -206,20 +291,21 @@ function compileBool(block: Blockly.Block | null, ctx: Ctx): BoolExpr {
   }
 }
 
-function numInput(block: Blockly.Block, name: string, ctx: Ctx): NumExpr {
-  return compileNum(block.getInputTargetBlock(name), ctx);
+function numInput(block: Blockly.Block, name: string, ctx: Ctx, vec = false): NumExpr {
+  return compileNum(block.getInputTargetBlock(name), ctx, vec);
 }
 
 function boolInput(block: Blockly.Block, name: string, ctx: Ctx): BoolExpr {
   return compileBool(block.getInputTargetBlock(name), ctx);
 }
 
-function arithOp(field: string, ctx: Ctx): "+" | "-" | "*" | "/" | "%" {
+function arithOp(field: string, ctx: Ctx): "+" | "-" | "*" | "/" | "%" | "^" {
   switch (field) {
     case "ADD": return "+";
     case "MINUS": return "-";
     case "MULTIPLY": return "*";
     case "DIVIDE": return "/";
+    case "POWER": return "^";
     default:
       ctx.errors.push(`Unsupported math operator: ${field}`);
       return "+";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateBar } from "../src/trading/strategy/evaluator.js";
+import { evaluateBar, runInit } from "../src/trading/strategy/evaluator.js";
 import type { StrategyIR } from "../src/trading/strategy/ir.js";
 import type { Candle } from "../src/types.js";
 
@@ -83,6 +83,125 @@ describe("evaluateBar — EMA/SMA cross intents on golden bars", () => {
     const first = signalBars(emaCrossIR, golden);
     const second = signalBars(emaCrossIR, golden);
     expect(first).toEqual(second);
+  });
+});
+
+describe("runInit — on-start initialization", () => {
+  it("seeds vars once before the first bar; per-bar rules build on the seed", () => {
+    const ir: StrategyIR = {
+      name: "init-counter",
+      inputs: [],
+      init: [{ k: "setvar", name: "count", value: { k: "num", v: 10 } }],
+      body: [{ k: "setvar", name: "count", value: { k: "arith", op: "+", a: { k: "var", name: "count" }, b: { k: "num", v: 1 } } }],
+    };
+    const vars = new Map<string, number>();
+    runInit(ir, golden, vars);
+    expect(vars.get("count")).toBe(10);
+    evaluateBar(ir, golden, 0, vars);
+    expect(vars.get("count")).toBe(11);
+    evaluateBar(ir, golden, 1, vars);
+    expect(vars.get("count")).toBe(12);
+  });
+});
+
+describe("evaluateBar — runtime position/PnL context (ctx reads)", () => {
+  const oneBar = [candle(0, 100)];
+  const ir: StrategyIR = {
+    name: "ctx",
+    inputs: [],
+    body: [
+      { k: "exit", when: { k: "compare", op: "<", a: { k: "ctx", key: "unrealized_pnl_pct" }, b: { k: "num", v: -2 } } },
+      { k: "entry", direction: "long", when: { k: "compare", op: "==", a: { k: "ctx", key: "position_dir" }, b: { k: "num", v: 0 } } },
+    ],
+  };
+
+  it("enters only when flat and exits a losing position via ctx", () => {
+    // Flat: position_dir 0 → entry fires; pnl_pct 0 → no exit.
+    const flat = evaluateBar(ir, oneBar, 0, undefined, {});
+    expect(flat.entry).toBe("long");
+    expect(flat.exit).toBe(false);
+    // Losing long: position_dir 1 (no re-entry), pnl_pct -3 → exit.
+    const losing = evaluateBar(ir, oneBar, 0, undefined, { position_dir: 1, unrealized_pnl_pct: -3 });
+    expect(losing.entry).toBeUndefined();
+    expect(losing.exit).toBe(true);
+  });
+});
+
+describe("evaluateBar — bounded loops (repeat / while) + op budget", () => {
+  const oneBar = [candle(0, 100)];
+  const inc = (name: string): StrategyIR["body"][number] => ({
+    k: "setvar",
+    name,
+    value: { k: "arith", op: "+", a: { k: "var", name }, b: { k: "num", v: 1 } },
+  });
+
+  it("repeat runs the body N times", () => {
+    const ir: StrategyIR = { name: "r", inputs: [], body: [{ k: "repeat", count: { k: "num", v: 5 }, body: [inc("count")] }] };
+    const vars = new Map<string, number>();
+    evaluateBar(ir, oneBar, 0, vars);
+    expect(vars.get("count")).toBe(5);
+  });
+
+  it("while stops when the condition turns false", () => {
+    const ir: StrategyIR = {
+      name: "w",
+      inputs: [],
+      body: [{ k: "while", cond: { k: "compare", op: "<", a: { k: "var", name: "count" }, b: { k: "num", v: 3 } }, cap: 1000, body: [inc("count")] }],
+    };
+    const vars = new Map<string, number>();
+    evaluateBar(ir, oneBar, 0, vars);
+    expect(vars.get("count")).toBe(3);
+  });
+
+  it("while is bounded by its cap even if the condition never turns false", () => {
+    const ir: StrategyIR = { name: "w2", inputs: [], body: [{ k: "while", cond: { k: "bool", v: true }, cap: 5, body: [inc("count")] }] };
+    const vars = new Map<string, number>();
+    const intents = evaluateBar(ir, oneBar, 0, vars);
+    expect(vars.get("count")).toBe(5);
+    expect(intents.budgetExceeded).toBeFalsy();
+  });
+
+  it("truncates and flags when the per-bar op budget is exceeded", () => {
+    const ir: StrategyIR = {
+      name: "b",
+      inputs: [],
+      body: [{ k: "repeat", count: { k: "num", v: 1000 }, body: [{ k: "repeat", count: { k: "num", v: 1000 }, body: [inc("count")] }] }],
+    };
+    const vars = new Map<string, number>();
+    const intents = evaluateBar(ir, oneBar, 0, vars);
+    expect(intents.budgetExceeded).toBe(true);
+    expect(vars.get("count") as number).toBeLessThan(1_000_000); // stopped well before 1M
+  });
+});
+
+describe("evaluateBar — if / else-if / else routing", () => {
+  const ir: StrategyIR = {
+    name: "if-else",
+    inputs: [],
+    body: [
+      {
+        k: "if",
+        cond: { k: "compare", op: ">", a: { k: "price", field: "close" }, b: { k: "num", v: 100 } },
+        then: [{ k: "entry", direction: "long", when: { k: "bool", v: true } }],
+        elifs: [
+          {
+            cond: { k: "compare", op: "<", a: { k: "price", field: "close" }, b: { k: "num", v: 90 } },
+            then: [{ k: "entry", direction: "short", when: { k: "bool", v: true } }],
+          },
+        ],
+        else: [{ k: "setvar", name: "flat", value: { k: "num", v: 1 } }],
+      },
+    ],
+  };
+  const bars = [105, 85, 95].map((c, i) => candle(i * MIN, c));
+
+  it("runs the first matching branch, else-if, then falls through to else", () => {
+    const vars = new Map<string, number>();
+    expect(evaluateBar(ir, bars, 0, vars).entry).toBe("long"); // close 105 > 100
+    expect(evaluateBar(ir, bars, 1, vars).entry).toBe("short"); // close 85 < 90
+    const last = evaluateBar(ir, bars, 2, vars); // close 95 → else
+    expect(last.entry).toBeUndefined();
+    expect(vars.get("flat")).toBe(1);
   });
 });
 

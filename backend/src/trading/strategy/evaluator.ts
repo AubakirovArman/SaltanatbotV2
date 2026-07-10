@@ -29,7 +29,15 @@ export interface BarIntents {
   size?: { mode: "units" | "equity_pct" | "risk_pct"; value: number };
   alerts: { message: string }[];
   markers: { dir: "up" | "down"; label: string }[];
+  /** Set when the bar hit the per-bar op budget and execution was truncated. */
+  budgetExceeded?: boolean;
 }
+
+/** Hard per-bar execution budget: bounds total statement/loop work so live stays
+ *  deterministic. MUST equal the frontend backtester's constant for parity. */
+const MAX_OPS_PER_BAR = 10_000;
+/** Max iterations a single `repeat` can request (also clamped by the op budget). */
+const MAX_REPEAT = 1000;
 
 interface Runtime {
   candles: Candle[];
@@ -37,6 +45,11 @@ interface Runtime {
   params: Map<string, number>;
   vars: Map<string, number>;
   seriesCache: Map<string, number[]>;
+  /** Statements/iterations executed this bar; guarded against MAX_OPS_PER_BAR. */
+  ops: number;
+  budgetHit: boolean;
+  /** Position/PnL runtime context supplied per bar by the caller (ctx reads). */
+  ctx: Record<string, number>;
 }
 
 /**
@@ -50,17 +63,42 @@ interface Runtime {
  * omitting it (fresh map per bar) makes stateful strategies behave differently.
  * The series cache is always per-call (candles grow each bar, so it can't persist).
  */
-export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, vars?: Map<string, number>): BarIntents {
+export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, vars?: Map<string, number>, ctx?: Record<string, number>): BarIntents {
   const rt: Runtime = {
     candles,
     n: candles.length,
     params: new Map(ir.inputs.map((input) => [input.name, input.value])),
     vars: vars ?? new Map(),
-    seriesCache: new Map()
+    seriesCache: new Map(),
+    ops: 0,
+    budgetHit: false,
+    ctx: ctx ?? {}
   };
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };
   execStatements(ir.body, index, rt, intents);
+  if (rt.budgetHit) intents.budgetExceeded = true;
   return intents;
+}
+
+/**
+ * Run the strategy's one-time `init` (on-start) statements, mutating `vars`.
+ * Called once when a bot first starts (not on resume, where state is restored).
+ * init is setvar-only, evaluated against the first available bar.
+ */
+export function runInit(ir: StrategyIR, candles: Candle[], vars: Map<string, number>): void {
+  if (!ir.init?.length) return;
+  const rt: Runtime = {
+    candles,
+    n: candles.length,
+    params: new Map(ir.inputs.map((input) => [input.name, input.value])),
+    vars,
+    seriesCache: new Map(),
+    ops: 0,
+    budgetHit: false,
+    ctx: {}
+  };
+  const intents: BarIntents = { exit: false, alerts: [], markers: [] };
+  for (const stmt of ir.init) execStatement(stmt, 0, rt, intents);
 }
 
 /** Current ATR(period) value at a bar — used by the engine for atr-based stops. */
@@ -70,7 +108,14 @@ export function atrValue(candles: Candle[], period: number, index: number): numb
 }
 
 function execStatements(stmts: Stmt[], i: number, rt: Runtime, intents: BarIntents) {
-  for (const stmt of stmts) execStatement(stmt, i, rt, intents);
+  for (const stmt of stmts) {
+    if (rt.ops >= MAX_OPS_PER_BAR) {
+      rt.budgetHit = true;
+      return;
+    }
+    rt.ops += 1;
+    execStatement(stmt, i, rt, intents);
+  }
 }
 
 function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) {
@@ -104,9 +149,48 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) 
       break;
     case "plot":
       break;
-    case "if":
-      if (evalBool(stmt.cond, i, rt)) execStatements(stmt.then, i, rt, intents);
+    case "if": {
+      if (evalBool(stmt.cond, i, rt)) {
+        execStatements(stmt.then, i, rt, intents);
+        break;
+      }
+      let matched = false;
+      for (const clause of stmt.elifs ?? []) {
+        if (evalBool(clause.cond, i, rt)) {
+          execStatements(clause.then, i, rt, intents);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched && stmt.else) execStatements(stmt.else, i, rt, intents);
       break;
+    }
+    case "repeat": {
+      const raw = Math.round(evalNum(stmt.count, i, rt));
+      const n = Number.isFinite(raw) ? Math.max(0, Math.min(MAX_REPEAT, raw)) : 0;
+      for (let k = 0; k < n; k += 1) {
+        if (rt.ops >= MAX_OPS_PER_BAR) {
+          rt.budgetHit = true;
+          break;
+        }
+        rt.ops += 1;
+        execStatements(stmt.body, i, rt, intents);
+      }
+      break;
+    }
+    case "while": {
+      let iter = 0;
+      while (iter < stmt.cap && evalBool(stmt.cond, i, rt)) {
+        if (rt.ops >= MAX_OPS_PER_BAR) {
+          rt.budgetHit = true;
+          break;
+        }
+        rt.ops += 1;
+        execStatements(stmt.body, i, rt, intents);
+        iter += 1;
+      }
+      break;
+    }
   }
 }
 
@@ -114,6 +198,8 @@ function evalNum(expr: NumExpr, i: number, rt: Runtime): number {
   switch (expr.k) {
     case "var":
       return rt.vars.get(expr.name) ?? 0;
+    case "ctx":
+      return rt.ctx[expr.key] ?? 0;
     case "arith": {
       const a = evalNum(expr.a, i, rt);
       const b = evalNum(expr.b, i, rt);
@@ -203,6 +289,8 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
       return new Array<number>(n).fill(rt.params.get(expr.name) ?? 0);
     case "var":
       return new Array<number>(n).fill(NaN);
+    case "ctx":
+      return new Array<number>(n).fill(rt.ctx[expr.key] ?? 0);
     case "price": {
       const base = sourceSeries(rt.candles, expr.field);
       if (!expr.offset) return base;
@@ -270,13 +358,14 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
   }
 }
 
-function applyArith(op: "+" | "-" | "*" | "/" | "%", a: number, b: number): number {
+function applyArith(op: "+" | "-" | "*" | "/" | "%" | "^", a: number, b: number): number {
   switch (op) {
     case "+": return a + b;
     case "-": return a - b;
     case "*": return a * b;
     case "/": return b === 0 ? NaN : a / b;
     case "%": return b === 0 ? NaN : a % b;
+    case "^": return a ** b;
   }
 }
 

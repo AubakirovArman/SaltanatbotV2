@@ -7,6 +7,10 @@ export function irToText(ir: StrategyIR): string {
   if (ir.inputs.length) {
     lines.push(`inputs: ${ir.inputs.map((input) => `${input.name}=${input.value}`).join(", ")}`);
   }
+  if (ir.init?.length) {
+    lines.push("on start:");
+    for (const stmt of ir.init) lines.push(...stmtText(stmt, 1));
+  }
   lines.push("rules:");
   for (const stmt of ir.body) lines.push(...stmtText(stmt, 1));
   return lines.join("\n");
@@ -25,8 +29,18 @@ function stmtText(stmt: Stmt, depth: number): string[] {
     case "setvar": return [`${pad}set ${stmt.name} = ${numText(stmt.value)}`];
     case "alert": return [`${pad}alert "${stmt.message}" when ${boolText(stmt.when)}`];
     case "plot": return [`${pad}plot ${numText(stmt.value)} as "${stmt.label}"`];
-    case "if":
-      return [`${pad}if ${boolText(stmt.cond)}:`, ...stmt.then.flatMap((inner) => stmtText(inner, depth + 1))];
+    case "if": {
+      const out = [`${pad}if ${boolText(stmt.cond)}:`, ...stmt.then.flatMap((inner) => stmtText(inner, depth + 1))];
+      for (const clause of stmt.elifs ?? []) {
+        out.push(`${pad}else if ${boolText(clause.cond)}:`, ...clause.then.flatMap((inner) => stmtText(inner, depth + 1)));
+      }
+      if (stmt.else) out.push(`${pad}else:`, ...stmt.else.flatMap((inner) => stmtText(inner, depth + 1)));
+      return out;
+    }
+    case "repeat":
+      return [`${pad}repeat ${numText(stmt.count)}x:`, ...stmt.body.flatMap((inner) => stmtText(inner, depth + 1))];
+    case "while":
+      return [`${pad}while ${boolText(stmt.cond)} (max ${stmt.cap}):`, ...stmt.body.flatMap((inner) => stmtText(inner, depth + 1))];
   }
 }
 
@@ -51,6 +65,7 @@ function numText(expr: NumExpr): string {
     case "minmax": return `${expr.op}(${numText(expr.a)}, ${numText(expr.b)})`;
     case "arith": return `(${numText(expr.a)} ${expr.op} ${numText(expr.b)})`;
     case "unary": return `${expr.op}(${numText(expr.a)})`;
+    case "ctx": return `pos.${expr.key}`;
   }
 }
 

@@ -19,13 +19,14 @@ export function registerStrategyBlocks() {
   Blockly.defineBlocksWithJsonArray([
     {
       type: "strategy_start",
-      message0: "strategy %1 rules %2",
+      message0: "strategy %1 on start (once) %2 rules %3",
       args0: [
         { type: "field_input", name: "NAME", text: "Momentum Breakout" },
+        { type: "input_statement", name: "INIT" },
         { type: "input_statement", name: "RULES" }
       ],
       colour: "#5f7285",
-      tooltip: "Entry point for a strategy or indicator graph."
+      tooltip: "Entry point. 'On start' runs once at bot start (set initial variables); 'rules' run every bar."
     },
     // ---- Market ----
     {
@@ -216,6 +217,35 @@ export function registerStrategyBlocks() {
       colour: "#6d72c9",
       tooltip: "Take the larger or smaller of two values."
     },
+    // ---- Position & PnL ----
+    {
+      type: "ctx_read",
+      message0: "position %1",
+      args0: [
+        {
+          type: "field_dropdown",
+          name: "FIELD",
+          options: [
+            ["direction (+1/-1/0)", "position_dir"],
+            ["entry price", "entry_price"],
+            ["unrealized PnL", "unrealized_pnl"],
+            ["unrealized PnL %", "unrealized_pnl_pct"],
+            ["bars in trade", "bars_in_position"]
+          ]
+        }
+      ],
+      output: "Number",
+      colour: "#3d9970",
+      tooltip: "Read the current position / PnL state (0 when flat)."
+    },
+    {
+      type: "position_is",
+      message0: "position is %1",
+      args0: [{ type: "field_dropdown", name: "STATE", options: [["long", "long"], ["short", "short"], ["flat", "flat"]] }],
+      output: "Boolean",
+      colour: "#3d9970",
+      tooltip: "True when the current position matches long / short / flat."
+    },
     // ---- Logic ----
     {
       type: "cross_event",
@@ -393,6 +423,18 @@ export function registerStrategyBlocks() {
       tooltip: "Store a value in a named variable for this bar."
     },
     {
+      type: "var_change",
+      message0: "change %1 by %2",
+      args0: [
+        { type: "field_input", name: "NAME", text: "counter" },
+        { type: "input_value", name: "BY", check: "Number" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: "#9469c9",
+      tooltip: "Increment (or decrement) a stored variable by an amount."
+    },
+    {
       type: "var_get",
       message0: "var %1",
       args0: [{ type: "field_input", name: "NAME", text: "counter" }],
@@ -476,6 +518,15 @@ export const strategyToolbox = {
     },
     {
       kind: "category",
+      name: "Position & PnL",
+      colour: "#3d9970",
+      contents: [
+        { kind: "block", type: "ctx_read" },
+        { kind: "block", type: "position_is" }
+      ]
+    },
+    {
+      kind: "category",
       name: "Logic",
       colour: "#b28f36",
       contents: [
@@ -504,8 +555,18 @@ export const strategyToolbox = {
       contents: [
         { kind: "block", type: "signal_entry" },
         { kind: "block", type: "signal_exit" },
-        { kind: "block", type: "signal_marker" },
-        { kind: "block", type: "flow_if" }
+        { kind: "block", type: "signal_marker" }
+      ]
+    },
+    {
+      kind: "category",
+      name: "Flow",
+      colour: "#bd58a4",
+      contents: [
+        { kind: "block", type: "flow_if" },
+        { kind: "block", type: "controls_if" },
+        { kind: "block", type: "controls_repeat_ext" },
+        { kind: "block", type: "controls_whileUntil" }
       ]
     },
     {
@@ -525,6 +586,7 @@ export const strategyToolbox = {
       colour: "#9469c9",
       contents: [
         { kind: "block", type: "var_set" },
+        { kind: "block", type: "var_change" },
         { kind: "block", type: "var_get" },
         { kind: "block", type: "alert_message" }
       ]

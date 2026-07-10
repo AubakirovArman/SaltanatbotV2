@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type BacktestConfig, DEFAULT_CONFIG, runBacktest } from "../src/strategy/backtest";
+import { type BacktestConfig, DEFAULT_CONFIG, previewStrategy, runBacktest } from "../src/strategy/backtest";
 import type { StrategyIR } from "../src/strategy/ir";
 import type { Candle } from "../src/types";
 
@@ -127,6 +127,46 @@ describe("known crossover produces the expected trade", () => {
     expect(result.trades[0].entryIndex).toBe(4);
     expect(result.trades[0].entryPrice).toBe(111);
     expect(result.trades[0].direction).toBe("long");
+  });
+});
+
+describe("previewStrategy runs bar-major (setvar state accumulates)", () => {
+  it("plots a per-bar counter that increments across bars", () => {
+    // Each bar: count = count + 1; then plot count. State must carry across bars,
+    // which the old statement-major preview (that never ran setvar) could not do.
+    const ir: StrategyIR = {
+      name: "counter",
+      inputs: [],
+      body: [
+        { k: "setvar", name: "count", value: { k: "arith", op: "+", a: { k: "var", name: "count" }, b: { k: "num", v: 1 } } },
+        { k: "plot", value: { k: "var", name: "count" }, label: "count", color: "#fff" },
+      ],
+    };
+    const candles = [100, 101, 102, 103].map((c, i) => candle(i * MIN, c, c + 1, c - 1, c));
+    const { plots } = previewStrategy(ir, candles);
+    expect(plots).toHaveLength(1);
+    expect(plots[0].points.map((p) => p.value)).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe("ctx reads drive backtest behaviour", () => {
+  it("exits after N bars in position via bars_in_position", () => {
+    const ir: StrategyIR = {
+      name: "ctx-hold",
+      inputs: [],
+      body: [
+        { k: "entry", direction: "long", when: { k: "compare", op: "==", a: { k: "ctx", key: "position_dir" }, b: { k: "num", v: 0 } } },
+        { k: "exit", when: { k: "compare", op: ">=", a: { k: "ctx", key: "bars_in_position" }, b: { k: "num", v: 3 } } },
+        { k: "size", mode: "units", value: { k: "num", v: 1 } },
+      ],
+    };
+    const candles = Array.from({ length: 10 }, (_, i) => candle(i * MIN, 100 + i, 101 + i, 99 + i, 100 + i));
+    const result = runBacktest(ir, candles, { ...noFriction, fillTiming: "next_open" });
+    expect(result.trades.length).toBeGreaterThanOrEqual(1);
+    // Entry fills at bar 1; held until bars_in_position >= 3 (bar 4 signal → fills bar 5).
+    expect(result.trades[0].entryIndex).toBe(1);
+    expect(result.trades[0].reason).toBe("signal");
+    expect(result.trades[0].exitIndex).toBe(5);
   });
 });
 

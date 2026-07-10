@@ -65,6 +65,13 @@ export function deleteBot(id: string) {
   db.prepare("DELETE FROM bots WHERE id = ?").run(id);
   db.prepare("DELETE FROM fills WHERE botId = ?").run(id);
   db.prepare("DELETE FROM logs WHERE botId = ?").run(id);
+  // Drop this bot's persisted paper-sim and durable strategy state.
+  db.prepare("DELETE FROM settings WHERE key = ? OR key = ?").run(`paper:${id}`, `state:${id}`);
+}
+
+/** Remove a single setting (e.g. resetting a bot's durable strategy state). */
+export function deleteSetting(key: string) {
+  db.prepare("DELETE FROM settings WHERE key = ?").run(key);
 }
 
 // ---------- fills (trade journal) ----------

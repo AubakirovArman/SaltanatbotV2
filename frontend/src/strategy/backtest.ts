@@ -144,7 +144,18 @@ interface Runtime {
   vars: Map<string, number>;
   seriesCache: Map<string, number[]>;
   atr14: number[];
+  /** Per-bar statement/iteration counter, guarded against MAX_OPS_PER_BAR. */
+  ops: number;
+  budgetHit: boolean;
+  /** Position/PnL runtime context, refreshed each bar (ctx reads). */
+  ctx: Record<string, number>;
 }
+
+/** Hard per-bar execution budget. MUST equal the backend evaluator's constant
+ *  (backend/src/trading/strategy/evaluator.ts) for backtest/live parity. */
+const MAX_OPS_PER_BAR = 10_000;
+/** Max iterations a single `repeat` can request (also clamped by the op budget). */
+const MAX_REPEAT = 1000;
 
 interface Position {
   dir: "long" | "short";
@@ -182,8 +193,12 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     params: new Map(ir.inputs.map((input) => [input.name, input.value])),
     vars: new Map(),
     seriesCache: new Map(),
-    atr14: candles.length ? atrSeries(candles, 14) : []
+    atr14: candles.length ? atrSeries(candles, 14) : [],
+    ops: 0,
+    budgetHit: false,
+    ctx: {}
   };
+  runInit(ir, rt);
 
   const trades: Trade[] = [];
   const equityCurve: EquityPoint[] = [];
@@ -198,6 +213,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
   let barsInMarket = 0;
   let liquidated = false;
   let fundingPaid = 0;
+  let budgetWarned = false;
 
   // Bar duration (ms) inferred from the candle spacing — the same value used to
   // annualise Sharpe. Funding is pro-rated to this bar length: a rate quoted per
@@ -339,7 +355,14 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
 
     // 2. Evaluate the strategy body to gather intents for this bar.
     const intents: Intents = { exit: false, alerts: [], markers: [] };
+    rt.ops = 0;
+    rt.budgetHit = false;
+    rt.ctx = buildPositionCtx(position, candle.close, i);
     if (!liquidated) execStatements(ir.body, i, rt, intents);
+    if (rt.budgetHit && !budgetWarned) {
+      warnings.push({ time: candle.time, message: `A loop hit the per-bar execution budget (${MAX_OPS_PER_BAR}) and was truncated.` });
+      budgetWarned = true;
+    }
     if (intents.size) sizing = intents.size;
     for (const alert of intents.alerts) alerts.push({ time: candle.time, message: alert.message });
     for (const marker of intents.markers) {
@@ -556,47 +579,144 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
     params: new Map(ir.inputs.map((input) => [input.name, input.value])),
     vars: new Map(),
     seriesCache: new Map(),
-    atr14: candles.length ? atrSeries(candles, 14) : []
+    atr14: candles.length ? atrSeries(candles, 14) : [],
+    ops: 0,
+    budgetHit: false,
+    ctx: {}
   };
-  const plots: PlotSeries[] = [];
+  runInit(ir, rt);
   const signals: TradeMarker[] = [];
 
-  const walk = (stmts: Stmt[]) => {
+  // Pre-register plots in AST order so their series keep a stable order even when
+  // a plot lives inside an `if` that first fires on a late bar.
+  const plotMap = new Map<Stmt, PlotSeries>();
+  const registerPlots = (stmts: Stmt[]) => {
     for (const stmt of stmts) {
-      if (stmt.k === "plot") {
-        const series = getSeries(stmt.value, rt);
-        plots.push({
-          label: stmt.label,
-          color: stmt.color,
-          points: candles.map((candle, i) => ({ time: candle.time, value: series[i] })).filter((point) => Number.isFinite(point.value))
-        });
-      } else if (stmt.k === "entry") {
-        for (let i = 1; i < candles.length; i += 1) {
-          if (evalBool(stmt.when, i, rt)) {
-            signals.push({ time: candles[i].time, price: stmt.direction === "long" ? candles[i].low : candles[i].high, kind: stmt.direction === "long" ? "buy" : "sell", label: stmt.direction === "long" ? "Buy" : "Sell" });
+      if (stmt.k === "plot") plotMap.set(stmt, { label: stmt.label, color: stmt.color, points: [] });
+      else if (stmt.k === "if") {
+        registerPlots(stmt.then);
+        for (const clause of stmt.elifs ?? []) registerPlots(clause.then);
+        if (stmt.else) registerPlots(stmt.else);
+      } else if (stmt.k === "repeat" || stmt.k === "while") registerPlots(stmt.body);
+    }
+  };
+  registerPlots(ir.body);
+
+  // Execute bar-by-bar (statements in order) so `setvar` state accumulates and any
+  // stateful expression previews exactly as it would in the backtest — walking
+  // statement-by-statement (the old approach) never ran setvar and mis-ordered state.
+  const execBar = (stmts: Stmt[], i: number) => {
+    for (const stmt of stmts) {
+      if (rt.ops >= MAX_OPS_PER_BAR) {
+        rt.budgetHit = true;
+        return;
+      }
+      rt.ops += 1;
+      switch (stmt.k) {
+        case "setvar":
+          rt.vars.set(stmt.name, evalNum(stmt.value, i, rt));
+          break;
+        case "plot": {
+          const value = evalNum(stmt.value, i, rt);
+          if (Number.isFinite(value)) (plotMap.get(stmt) as PlotSeries).points.push({ time: candles[i].time, value });
+          break;
+        }
+        case "entry":
+          if (i >= 1 && evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: stmt.direction === "long" ? candles[i].low : candles[i].high, kind: stmt.direction === "long" ? "buy" : "sell", label: stmt.direction === "long" ? "Buy" : "Sell" });
+          break;
+        case "exit":
+          if (i >= 1 && evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: candles[i].high, kind: "exit", label: "Exit" });
+          break;
+        case "marker":
+          if (i >= 1 && evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: stmt.dir === "up" ? candles[i].low : candles[i].high, kind: stmt.dir === "up" ? "buy" : "sell", label: stmt.label });
+          break;
+        case "if": {
+          if (evalBool(stmt.cond, i, rt)) {
+            execBar(stmt.then, i);
+            break;
           }
+          let matched = false;
+          for (const clause of stmt.elifs ?? []) {
+            if (evalBool(clause.cond, i, rt)) {
+              execBar(clause.then, i);
+              matched = true;
+              break;
+            }
+          }
+          if (!matched && stmt.else) execBar(stmt.else, i);
+          break;
         }
-      } else if (stmt.k === "exit") {
-        for (let i = 1; i < candles.length; i += 1) {
-          if (evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: candles[i].high, kind: "exit", label: "Exit" });
+        case "repeat": {
+          const raw = Math.round(evalNum(stmt.count, i, rt));
+          const n = Number.isFinite(raw) ? Math.max(0, Math.min(MAX_REPEAT, raw)) : 0;
+          for (let k = 0; k < n; k += 1) {
+            if (rt.ops >= MAX_OPS_PER_BAR) {
+              rt.budgetHit = true;
+              break;
+            }
+            rt.ops += 1;
+            execBar(stmt.body, i);
+          }
+          break;
         }
-      } else if (stmt.k === "marker") {
-        for (let i = 1; i < candles.length; i += 1) {
-          if (evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: stmt.dir === "up" ? candles[i].low : candles[i].high, kind: stmt.dir === "up" ? "buy" : "sell", label: stmt.label });
+        case "while": {
+          let iter = 0;
+          while (iter < stmt.cap && evalBool(stmt.cond, i, rt)) {
+            if (rt.ops >= MAX_OPS_PER_BAR) {
+              rt.budgetHit = true;
+              break;
+            }
+            rt.ops += 1;
+            execBar(stmt.body, i);
+            iter += 1;
+          }
+          break;
         }
-      } else if (stmt.k === "if") {
-        walk(stmt.then);
+        // stop/target/trail/size/alert have no chart preview — skipped here.
       }
     }
   };
-  walk(ir.body);
+  for (let i = 0; i < candles.length; i += 1) {
+    rt.ops = 0;
+    rt.budgetHit = false;
+    execBar(ir.body, i);
+  }
+
+  const plots = [...plotMap.values()].filter((plot) => plot.points.length > 0);
   return { plots, signals };
 }
 
 // ---------- statement execution ----------
 
+/** Build the per-bar position/PnL context for `ctx` reads. Flat → {} (all reads 0). */
+function buildPositionCtx(position: Position | null, price: number, i: number): Record<string, number> {
+  if (!position) return {};
+  const move = position.dir === "long" ? price - position.entryPrice : position.entryPrice - price;
+  return {
+    position_dir: position.dir === "long" ? 1 : -1,
+    entry_price: position.entryPrice,
+    unrealized_pnl: position.qty * move,
+    unrealized_pnl_pct: position.entryPrice ? (move / position.entryPrice) * 100 : 0,
+    bars_in_position: i - position.entryIndex
+  };
+}
+
+/** Run one-time on-start init statements (setvar-only) into rt.vars before the first bar. */
+function runInit(ir: StrategyIR, rt: Runtime) {
+  if (!ir.init?.length) return;
+  const intents: Intents = { exit: false, alerts: [], markers: [] };
+  for (const stmt of ir.init) execStatement(stmt, 0, rt, intents);
+}
+
 function execStatements(stmts: Stmt[], i: number, rt: Runtime, intents: Intents) {
-  for (const stmt of stmts) execStatement(stmt, i, rt, intents);
+  for (const stmt of stmts) {
+    if (rt.ops >= MAX_OPS_PER_BAR) {
+      rt.budgetHit = true;
+      return;
+    }
+    rt.ops += 1;
+    execStatement(stmt, i, rt, intents);
+  }
 }
 
 function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: Intents) {
@@ -630,9 +750,48 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: Intents) {
       break;
     case "plot":
       break;
-    case "if":
-      if (evalBool(stmt.cond, i, rt)) execStatements(stmt.then, i, rt, intents);
+    case "if": {
+      if (evalBool(stmt.cond, i, rt)) {
+        execStatements(stmt.then, i, rt, intents);
+        break;
+      }
+      let matched = false;
+      for (const clause of stmt.elifs ?? []) {
+        if (evalBool(clause.cond, i, rt)) {
+          execStatements(clause.then, i, rt, intents);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched && stmt.else) execStatements(stmt.else, i, rt, intents);
       break;
+    }
+    case "repeat": {
+      const raw = Math.round(evalNum(stmt.count, i, rt));
+      const n = Number.isFinite(raw) ? Math.max(0, Math.min(MAX_REPEAT, raw)) : 0;
+      for (let k = 0; k < n; k += 1) {
+        if (rt.ops >= MAX_OPS_PER_BAR) {
+          rt.budgetHit = true;
+          break;
+        }
+        rt.ops += 1;
+        execStatements(stmt.body, i, rt, intents);
+      }
+      break;
+    }
+    case "while": {
+      let iter = 0;
+      while (iter < stmt.cap && evalBool(stmt.cond, i, rt)) {
+        if (rt.ops >= MAX_OPS_PER_BAR) {
+          rt.budgetHit = true;
+          break;
+        }
+        rt.ops += 1;
+        execStatements(stmt.body, i, rt, intents);
+        iter += 1;
+      }
+      break;
+    }
   }
 }
 
@@ -642,6 +801,8 @@ function evalNum(expr: NumExpr, i: number, rt: Runtime): number {
   switch (expr.k) {
     case "var":
       return rt.vars.get(expr.name) ?? 0;
+    case "ctx":
+      return rt.ctx[expr.key] ?? 0;
     case "arith": {
       const a = evalNum(expr.a, i, rt);
       const b = evalNum(expr.b, i, rt);
@@ -651,6 +812,7 @@ function evalNum(expr: NumExpr, i: number, rt: Runtime): number {
         case "*": return a * b;
         case "/": return b === 0 ? NaN : a / b;
         case "%": return b === 0 ? NaN : a % b;
+        case "^": return a ** b;
       }
       return NaN;
     }
@@ -748,6 +910,8 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
       return new Array<number>(n).fill(rt.params.get(expr.name) ?? 0);
     case "var":
       return new Array<number>(n).fill(NaN);
+    case "ctx":
+      return new Array<number>(n).fill(rt.ctx[expr.key] ?? 0);
     case "price": {
       const base = sourceSeries(rt.candles, expr.field);
       if (!expr.offset) return base;
@@ -815,13 +979,14 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
   }
 }
 
-function applyArith(op: "+" | "-" | "*" | "/" | "%", a: number, b: number): number {
+function applyArith(op: "+" | "-" | "*" | "/" | "%" | "^", a: number, b: number): number {
   switch (op) {
     case "+": return a + b;
     case "-": return a - b;
     case "*": return a * b;
     case "/": return b === 0 ? NaN : a / b;
     case "%": return b === 0 ? NaN : a % b;
+    case "^": return a ** b;
   }
 }
 

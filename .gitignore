@@ -23,6 +23,7 @@ data/
 # ── Logs & temp ───────────────────────────────────────────────
 *.log
 logs/
+runtime-logs/
 tmp/
 .cache/
 

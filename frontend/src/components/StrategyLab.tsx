@@ -17,9 +17,7 @@ import type { StrategyIR } from "../strategy/ir";
 import type { Candle, CatalogResponse, Timeframe } from "../types";
 import { BacktestReport } from "./BacktestReport";
 
-const blocklyMessages = Object.fromEntries(
-  Object.entries(En).filter((entry): entry is [string, string] => typeof entry[1] === "string")
-);
+const blocklyMessages = Object.fromEntries(Object.entries(En).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 let localeReady = false;
 
 const blocklyFont = {
@@ -172,21 +170,7 @@ function comboCount(state: OptSpecState): number {
   return total;
 }
 
-export function StrategyLab({
-  artifacts,
-  activeArtifactId,
-  onSelectArtifact,
-  onCreateArtifact,
-  onSaveArtifact,
-  onUseTemplate,
-  onImportStrategy,
-  catalog,
-  initialSymbol,
-  initialTimeframe,
-  theme = "dark",
-  onApplyResult,
-  onShowOnChart
-}: StrategyLabProps) {
+export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onCreateArtifact, onSaveArtifact, onUseTemplate, onImportStrategy, catalog, initialSymbol, initialTimeframe, theme = "dark", onApplyResult, onShowOnChart }: StrategyLabProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const workspaceRef = useRef<Blockly.WorkspaceSvg | null>(null);
   const previewRef = useRef<() => void>(() => undefined);
@@ -294,10 +278,7 @@ export function StrategyLab({
     workspace.addChangeListener(onChange);
     observer = new ResizeObserver(() => Blockly.svgResize(workspace));
     observer.observe(container);
-    requestAnimationFrame(() => {
-      Blockly.svgResize(workspace);
-      requestAnimationFrame(() => workspace.zoomToFit());
-    });
+    requestAnimationFrame(() => fitWorkspaceView(workspace));
 
     return () => {
       window.clearTimeout(previewTimer.current);
@@ -319,7 +300,10 @@ export function StrategyLab({
   // (added/removed/renamed) — not on every value tweak, so edited ranges stick.
   const inputKey = strategyInputs.map((input) => input.name).join("|");
   useEffect(() => {
-    if (strategyInputs.length === 0) { setOptSpec(null); return; }
+    if (strategyInputs.length === 0) {
+      setOptSpec(null);
+      return;
+    }
     setOptSpec(initOptSpec({ name: "", inputs: strategyInputs, body: [] }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inputKey]);
@@ -335,8 +319,7 @@ export function StrategyLab({
       setSavedAt(undefined);
       setResult(undefined);
       requestAnimationFrame(() => {
-        Blockly.svgResize(workspace);
-        workspace.zoomToFit();
+        fitWorkspaceView(workspace);
         previewRef.current();
       });
     } catch (cause) {
@@ -368,8 +351,7 @@ export function StrategyLab({
     let candles = (await getCandles(btSymbol, btTimeframe, chunk)).candles;
     while (candles.length < btBars && candles.length > 0) {
       const oldest = candles[0].time;
-      const older = (await getCandles(btSymbol, btTimeframe, 1000, oldest - 1)).candles
-        .filter((candle) => candle.time < oldest);
+      const older = (await getCandles(btSymbol, btTimeframe, 1000, oldest - 1)).candles.filter((candle) => candle.time < oldest);
       if (older.length === 0) break;
       candles = [...older, ...candles];
     }
@@ -380,12 +362,14 @@ export function StrategyLab({
     const workspace = workspaceRef.current;
     if (!workspace || running) return;
     const compiled = compileWorkspace(workspace);
-    if (!compiled.ir) {
+    // Refuse to backtest a strategy with compile errors — the IR may be missing
+    // dropped blocks, so its results would be misleading.
+    if (!compiled.ir || compiled.errors.length) {
       setErrors(compiled.errors.length ? compiled.errors : ["Nothing to run."]);
       setResult(undefined);
       return;
     }
-    setErrors(compiled.errors);
+    setErrors([]);
     setRunning(true);
     try {
       const candles = await fetchHistory();
@@ -411,7 +395,7 @@ export function StrategyLab({
     const workspace = workspaceRef.current;
     if (!workspace || running || optimizing) return;
     const compiled = compileWorkspace(workspace);
-    if (!compiled.ir || compiled.ir.inputs.length === 0 || !optSpec) {
+    if (!compiled.ir || compiled.errors.length || compiled.ir.inputs.length === 0 || !optSpec) {
       setErrors(compiled.errors.length ? compiled.errors : ["This strategy has no numeric inputs to optimize."]);
       return;
     }
@@ -478,14 +462,7 @@ export function StrategyLab({
   return (
     <section className="strategy-lab">
       <div className="strategy-grid">
-        <StrategyLibrary
-          artifacts={artifacts}
-          activeId={activeArtifact?.id}
-          onSelect={onSelectArtifact}
-          onCreate={onCreateArtifact}
-          onUseTemplate={onUseTemplate}
-          onImportStrategy={onImportStrategy}
-        />
+        <StrategyLibrary artifacts={artifacts} activeId={activeArtifact?.id} onSelect={onSelectArtifact} onCreate={onCreateArtifact} onUseTemplate={onUseTemplate} onImportStrategy={onImportStrategy} />
         <div className="blockly-shell">
           <div className="blockly-host" ref={containerRef} />
           {initError && (
@@ -506,13 +483,7 @@ export function StrategyLab({
               {running ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}
               {running ? "Loading history…" : "Run backtest"}
             </button>
-            <button
-              type="button"
-              onClick={() => setOptOpen((v) => !v)}
-              disabled={strategyInputs.length === 0}
-              className={optOpen ? "shared" : ""}
-              title={strategyInputs.length === 0 ? "Add a numeric input block to enable optimization" : "Optimize parameters"}
-            >
+            <button type="button" onClick={() => setOptOpen((v) => !v)} disabled={strategyInputs.length === 0} className={optOpen ? "shared" : ""} title={strategyInputs.length === 0 ? "Add a numeric input block to enable optimization" : "Optimize parameters"}>
               <SlidersHorizontal size={15} aria-hidden="true" />
             </button>
             <button type="button" onClick={shareNow} title="Copy share link" className={shareState === "copied" ? "shared" : ""}>
@@ -522,16 +493,16 @@ export function StrategyLab({
               <Save size={15} aria-hidden="true" />
             </button>
           </div>
-          {strategyInputs.length === 0 && optOpen && (
-            <div className="opt-hint">This strategy has no numeric inputs to optimize. Add an input block first.</div>
-          )}
+          {strategyInputs.length === 0 && optOpen && <div className="opt-hint">This strategy has no numeric inputs to optimize. Add an input block first.</div>}
           {shareState === "copied" && <div className="share-toast">Share link copied to clipboard</div>}
           <div className="config-row">
             <label>
               Market
               <select value={btSymbol} onChange={(event) => setBtSymbol(event.target.value)}>
                 {(catalog?.instruments ?? []).map((item) => (
-                  <option key={item.symbol} value={item.symbol}>{item.symbol}</option>
+                  <option key={item.symbol} value={item.symbol}>
+                    {item.symbol}
+                  </option>
                 ))}
               </select>
             </label>
@@ -539,7 +510,9 @@ export function StrategyLab({
               Interval
               <select value={btTimeframe} onChange={(event) => setBtTimeframe(event.target.value as Timeframe)}>
                 {(catalog?.timeframes ?? []).map((item) => (
-                  <option key={item} value={item}>{item}</option>
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
                 ))}
               </select>
             </label>
@@ -547,7 +520,9 @@ export function StrategyLab({
               Bars
               <select value={btBars} onChange={(event) => setBtBars(Number(event.target.value))}>
                 {BAR_CHOICES.map((count) => (
-                  <option key={count} value={count}>{count}</option>
+                  <option key={count} value={count}>
+                    {count}
+                  </option>
                 ))}
               </select>
             </label>
@@ -555,8 +530,7 @@ export function StrategyLab({
           <div className="config-row">
             <label>
               Capital
-              <input type="number" value={config.initialCapital} min={100} step={100}
-                onChange={(event) => setConfig((current) => ({ ...current, initialCapital: Number(event.target.value) || 0 }))} />
+              <input type="number" value={config.initialCapital} min={100} step={100} onChange={(event) => setConfig((current) => ({ ...current, initialCapital: Number(event.target.value) || 0 }))} />
             </label>
             <label>
               Cost preset
@@ -569,36 +543,33 @@ export function StrategyLab({
                 }}
               >
                 {COST_PRESETS.map((preset) => (
-                  <option key={preset.id} value={preset.id}>{preset.label}</option>
+                  <option key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </option>
                 ))}
               </select>
             </label>
             <label className="check">
-              <input type="checkbox" checked={config.allowShort}
-                onChange={(event) => setConfig((current) => ({ ...current, allowShort: event.target.checked }))} />
+              <input type="checkbox" checked={config.allowShort} onChange={(event) => setConfig((current) => ({ ...current, allowShort: event.target.checked }))} />
               Shorts
             </label>
           </div>
           <div className="config-row">
             <label>
               Fee %
-              <input type="number" value={config.commissionPct} min={0} step={0.01}
-                onChange={(event) => setConfig((current) => ({ ...current, commissionPct: Number(event.target.value) || 0 }))} />
+              <input type="number" value={config.commissionPct} min={0} step={0.01} onChange={(event) => setConfig((current) => ({ ...current, commissionPct: Number(event.target.value) || 0 }))} />
             </label>
             <label>
               Slippage %
-              <input type="number" value={config.slippagePct ?? 0} min={0} step={0.01}
-                onChange={(event) => setConfig((current) => ({ ...current, slippagePct: Number(event.target.value) || 0 }))} />
+              <input type="number" value={config.slippagePct ?? 0} min={0} step={0.01} onChange={(event) => setConfig((current) => ({ ...current, slippagePct: Number(event.target.value) || 0 }))} />
             </label>
             <label title="Perp funding / borrow cost per 8h a position is held (pro-rated to each bar)">
               Funding %/8h
-              <input type="number" value={config.fundingRatePctPer8h ?? 0} step={0.001}
-                onChange={(event) => setConfig((current) => ({ ...current, fundingRatePctPer8h: Number(event.target.value) || 0 }))} />
+              <input type="number" value={config.fundingRatePctPer8h ?? 0} step={0.001} onChange={(event) => setConfig((current) => ({ ...current, fundingRatePctPer8h: Number(event.target.value) || 0 }))} />
             </label>
             <label>
               Fills
-              <select value={config.fillTiming ?? "next_open"}
-                onChange={(event) => setConfig((current) => ({ ...current, fillTiming: event.target.value as "next_open" | "same_close" }))}>
+              <select value={config.fillTiming ?? "next_open"} onChange={(event) => setConfig((current) => ({ ...current, fillTiming: event.target.value as "next_open" | "same_close" }))}>
                 <option value="next_open">Next open</option>
                 <option value="same_close">Same close</option>
               </select>
@@ -627,22 +598,21 @@ export function StrategyLab({
           {errors.length > 0 && (
             <div className="strategy-warnings" role="status">
               {errors.map((message, index) => (
-                <span key={index}><AlertTriangle size={12} aria-hidden="true" /> {message}</span>
+                <span key={index}>
+                  <AlertTriangle size={12} aria-hidden="true" /> {message}
+                </span>
               ))}
             </div>
           )}
 
           {result ? (
-            <BacktestReport
-              result={result}
-              decimals={decimals}
-              config={config}
-              onShowOnChart={onShowOnChart ? () => onShowOnChart(btSymbol, btTimeframe) : undefined}
-            />
+            <BacktestReport result={result} decimals={decimals} config={config} onShowOnChart={onShowOnChart ? () => onShowOnChart(btSymbol, btTimeframe) : undefined} />
           ) : (
             <>
               <div className="panel-header">
-                <strong><Code2 size={15} aria-hidden="true" /> Preview</strong>
+                <strong>
+                  <Code2 size={15} aria-hidden="true" /> Preview
+                </strong>
                 <span>{jsonSize} bytes</span>
               </div>
               <pre>{preview || "Connect blocks to compile a strategy."}</pre>
@@ -711,7 +681,9 @@ function OptimizePanel({
   return (
     <div className="optimizer">
       <div className="panel-header small">
-        <strong><SlidersHorizontal size={13} aria-hidden="true" /> Optimizer</strong>
+        <strong>
+          <SlidersHorizontal size={13} aria-hidden="true" /> Optimizer
+        </strong>
         <span>{combos > MAX_COMBOS ? `${MAX_COMBOS}+ combos` : `${combos} combo${combos === 1 ? "" : "s"}`}</span>
       </div>
 
@@ -723,23 +695,24 @@ function OptimizePanel({
           return (
             <div key={input.name} className={axis.enabled ? "opt-axis on" : "opt-axis"}>
               <label className="opt-axis-toggle" title={disabled ? "Up to 3 parameters at once" : undefined}>
-                <input
-                  type="checkbox"
-                  checked={axis.enabled}
-                  disabled={disabled}
-                  onChange={(event) => patchAxis(input.name, { enabled: event.target.checked })}
-                />
+                <input type="checkbox" checked={axis.enabled} disabled={disabled} onChange={(event) => patchAxis(input.name, { enabled: event.target.checked })} />
                 <span className="opt-axis-name">{input.name}</span>
                 <span className="opt-axis-cur">= {input.value}</span>
               </label>
               {axis.enabled && (
                 <div className="opt-axis-range">
-                  <label>min<input type="number" value={axis.min}
-                    onChange={(event) => patchAxis(input.name, { min: Number(event.target.value) })} /></label>
-                  <label>max<input type="number" value={axis.max}
-                    onChange={(event) => patchAxis(input.name, { max: Number(event.target.value) })} /></label>
-                  <label>step<input type="number" value={axis.step} min={0}
-                    onChange={(event) => patchAxis(input.name, { step: Number(event.target.value) })} /></label>
+                  <label>
+                    min
+                    <input type="number" value={axis.min} onChange={(event) => patchAxis(input.name, { min: Number(event.target.value) })} />
+                  </label>
+                  <label>
+                    max
+                    <input type="number" value={axis.max} onChange={(event) => patchAxis(input.name, { max: Number(event.target.value) })} />
+                  </label>
+                  <label>
+                    step
+                    <input type="number" value={axis.step} min={0} onChange={(event) => patchAxis(input.name, { step: Number(event.target.value) })} />
+                  </label>
                 </div>
               )}
             </div>
@@ -751,13 +724,16 @@ function OptimizePanel({
         <label>
           Objective
           <select value={spec.objective} onChange={(event) => onSpecChange({ ...spec, objective: event.target.value as Objective })}>
-            {OBJECTIVES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            {OBJECTIVES.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
           </select>
         </label>
         <label>
           Train %
-          <input type="number" value={Math.round(spec.trainFrac * 100)} min={20} max={90} step={5}
-            onChange={(event) => onSpecChange({ ...spec, trainFrac: clamp01((Number(event.target.value) || 70) / 100) })} />
+          <input type="number" value={Math.round(spec.trainFrac * 100)} min={20} max={90} step={5} onChange={(event) => onSpecChange({ ...spec, trainFrac: clamp01((Number(event.target.value) || 70) / 100) })} />
         </label>
         <label className="check">
           <input type="checkbox" checked={walkForwardOn} onChange={(event) => onToggleWalkForward(event.target.checked)} />
@@ -766,14 +742,15 @@ function OptimizePanel({
         {walkForwardOn && (
           <label>
             Folds
-            <input type="number" value={folds} min={2} max={12} step={1}
-              onChange={(event) => onFoldsChange(Math.max(2, Math.min(12, Number(event.target.value) || 4)))} />
+            <input type="number" value={folds} min={2} max={12} step={1} onChange={(event) => onFoldsChange(Math.max(2, Math.min(12, Number(event.target.value) || 4)))} />
           </label>
         )}
       </div>
 
       {combos > MAX_COMBOS && (
-        <div className="opt-hint">Grid has {combos.toLocaleString()} combos — only the first {MAX_COMBOS.toLocaleString()} will be evaluated. Widen the step to shrink the grid.</div>
+        <div className="opt-hint">
+          Grid has {combos.toLocaleString()} combos — only the first {MAX_COMBOS.toLocaleString()} will be evaluated. Widen the step to shrink the grid.
+        </div>
       )}
 
       <button type="button" className="run-button" onClick={onRun} disabled={optimizing || enabledCount === 0}>
@@ -782,7 +759,9 @@ function OptimizePanel({
       </button>
 
       {optimizing && (
-        <div className="opt-progress"><div className="opt-progress-bar" style={{ inlineSize: `${pct}%` }} /></div>
+        <div className="opt-progress">
+          <div className="opt-progress-bar" style={{ inlineSize: `${pct}%` }} />
+        </div>
       )}
 
       {result && !optimizing && <OptimizeResults result={result} onApplyCombo={onApplyCombo} />}
@@ -798,7 +777,10 @@ function OptimizeResults({ result, onApplyCombo }: { result: OptimizeResult; onA
     <div className="opt-results">
       <div className="panel-header small">
         <strong>Ranked · {objectiveLabel(result.objective)}</strong>
-        <span>{result.evaluated}/{result.totalCombos}{result.truncated ? " (capped)" : ""}</span>
+        <span>
+          {result.evaluated}/{result.totalCombos}
+          {result.truncated ? " (capped)" : ""}
+        </span>
       </div>
       <div className="opt-table" role="table">
         <div className="opt-row head" role="row">
@@ -811,10 +793,10 @@ function OptimizeResults({ result, onApplyCombo }: { result: OptimizeResult; onA
           <div className="opt-row" role="row" key={i}>
             <span className="opt-params">{keys.map((k) => row.params[k]).join(" · ")}</span>
             <span className="opt-score">{fmtScore(row.score)}</span>
-            <span className={`opt-score ${row.outScore === undefined ? "" : row.outScore >= 0 ? "up" : "down"}`}>
-              {row.outScore === undefined ? "—" : fmtScore(row.outScore)}
-            </span>
-            <button type="button" className="link-button" onClick={() => onApplyCombo(row.params)}>Apply</button>
+            <span className={`opt-score ${row.outScore === undefined ? "" : row.outScore >= 0 ? "up" : "down"}`}>{row.outScore === undefined ? "—" : fmtScore(row.outScore)}</span>
+            <button type="button" className="link-button" onClick={() => onApplyCombo(row.params)}>
+              Apply
+            </button>
           </div>
         ))}
       </div>
@@ -832,7 +814,12 @@ function WalkForwardResults({ wf, decimals }: { wf: WalkForwardResult; decimals:
     <div className="opt-results">
       <div className="panel-header small">
         <strong>Walk-forward · {wf.folds.length} folds</strong>
-        {agg && <span className={agg.netProfit >= 0 ? "up" : "down"}>OOS {agg.netProfit >= 0 ? "+" : ""}{agg.netProfit.toFixed(2)}</span>}
+        {agg && (
+          <span className={agg.netProfit >= 0 ? "up" : "down"}>
+            OOS {agg.netProfit >= 0 ? "+" : ""}
+            {agg.netProfit.toFixed(2)}
+          </span>
+        )}
       </div>
       <div className="opt-table wf" role="table">
         <div className="opt-row head" role="row">
@@ -847,7 +834,8 @@ function WalkForwardResults({ wf, decimals }: { wf: WalkForwardResult; decimals:
             <span>{fold.fold + 1}</span>
             <span className="opt-params">{keys.map((k) => fold.params[k]).join(" · ")}</span>
             <span className={fold.outSample.netProfit >= 0 ? "up" : "down"}>
-              {fold.outSample.netProfit >= 0 ? "+" : ""}{fold.outSample.netProfit.toFixed(2)}
+              {fold.outSample.netProfit >= 0 ? "+" : ""}
+              {fold.outSample.netProfit.toFixed(2)}
             </span>
             <span>{fold.outSample.totalTrades}</span>
             <span>{fold.outSample.winRate.toFixed(0)}%</span>
@@ -945,7 +933,11 @@ function StrategyLibrary({
           event.target.value = "";
         }}
       />
-      {importError && <div className="import-error" role="alert">{importError}</div>}
+      {importError && (
+        <div className="import-error" role="alert">
+          {importError}
+        </div>
+      )}
       <LibraryGroup title="Indicators" items={indicators} activeId={activeId} onSelect={onSelect} />
       <LibraryGroup title="Strategies" items={strategies} activeId={activeId} onSelect={onSelect} />
       {galleryOpen && (
@@ -1030,7 +1022,9 @@ function TemplateGallery({
     <div className="gallery-backdrop" role="dialog" aria-modal="true" aria-label="Strategy template gallery" onClick={onClose}>
       <div className="gallery-modal" onClick={(event) => event.stopPropagation()}>
         <div className="gallery-head">
-          <strong><LayoutGrid size={15} aria-hidden="true" /> Strategy Gallery</strong>
+          <strong>
+            <LayoutGrid size={15} aria-hidden="true" /> Strategy Gallery
+          </strong>
           <button type="button" className="icon-button" onClick={onClose} title="Close" aria-label="Close gallery">
             <X size={15} aria-hidden="true" />
           </button>
@@ -1038,7 +1032,10 @@ function TemplateGallery({
         <div className="gallery-body">
           {categories.map((group) => (
             <section key={group.category} className="gallery-group">
-              <div className="panel-header"><strong>{group.category}</strong><span>{group.items.length}</span></div>
+              <div className="panel-header">
+                <strong>{group.category}</strong>
+                <span>{group.items.length}</span>
+              </div>
               <div className="gallery-cards">
                 {group.items.map((template) => (
                   <article key={template.id} className="gallery-card">
@@ -1046,10 +1043,14 @@ function TemplateGallery({
                     <p>{template.description}</p>
                     <div className="gallery-tags">
                       {template.tags.map((tag) => (
-                        <span key={tag} className="gallery-tag">{tag}</span>
+                        <span key={tag} className="gallery-tag">
+                          {tag}
+                        </span>
                       ))}
                     </div>
-                    <button type="button" className="gallery-use" onClick={() => onUse(template)}>Use</button>
+                    <button type="button" className="gallery-use" onClick={() => onUse(template)}>
+                      Use
+                    </button>
                   </article>
                 ))}
               </div>
@@ -1064,4 +1065,12 @@ function TemplateGallery({
 function extractWorkspaceName(workspace: Blockly.WorkspaceSvg) {
   const root = workspace.getTopBlocks(false).find((block) => block.type === "strategy_start");
   return root?.getFieldValue("NAME") as string | undefined;
+}
+
+function fitWorkspaceView(workspace: Blockly.WorkspaceSvg) {
+  Blockly.svgResize(workspace);
+  requestAnimationFrame(() => {
+    workspace.zoomToFit();
+    workspace.scrollCenter();
+  });
 }
