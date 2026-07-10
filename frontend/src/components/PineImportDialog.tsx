@@ -42,13 +42,16 @@ export function PineImportDialog({ onClose, onImport }: PineImportDialogProps) {
           </button>
         </div>
         <p className="pine-hint">
-          Paste a TradingView Pine Script. <code>indicator()</code> scripts become indicators, <code>strategy()</code> scripts become
-          strategies — editable as blocks. Unsupported pieces are reported below.
+          Paste a TradingView Pine Script (v4–v6). <code>indicator()</code> scripts become indicators, <code>strategy()</code> scripts
+          become strategies — editable as blocks. Functions, <code>for</code>/<code>while</code> loops, <code>switch</code>, ternaries,
+          most <code>ta.*</code>/<code>math.*</code>, and <code>nz</code>/<code>na</code> are supported. Anything that can't run in a
+          per-bar engine (request.security, arrays/matrices, look-ahead pivots, drawings) is rejected with a clear reason; fidelity
+          notes are listed below.
         </p>
         <textarea
           value={source}
           onChange={(event) => setSource(event.target.value)}
-          placeholder={'//@version=5\nstrategy("My strategy", overlay=true)\n...'}
+          placeholder={'//@version=6\nstrategy("My strategy", overlay=true)\n...'}
           rows={12}
           spellCheck={false}
         />

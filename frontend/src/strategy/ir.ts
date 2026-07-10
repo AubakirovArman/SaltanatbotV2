@@ -1,6 +1,6 @@
 import type { PriceField } from "./ta";
 
-export type MaKind = "sma" | "ema" | "wma" | "vwma";
+export type MaKind = "sma" | "ema" | "wma" | "vwma" | "rma";
 
 /** Numeric expression — evaluates to a number on every bar. */
 export type NumExpr =
@@ -22,10 +22,16 @@ export type NumExpr =
   | { k: "roc"; period: NumExpr; source: NumExpr }
   | { k: "minmax"; op: "min" | "max"; a: NumExpr; b: NumExpr }
   | { k: "arith"; op: "+" | "-" | "*" | "/" | "%" | "^"; a: NumExpr; b: NumExpr }
-  | { k: "unary"; op: "neg" | "abs" | "round" | "floor" | "ceil"; a: NumExpr }
+  | { k: "unary"; op: "neg" | "abs" | "round" | "floor" | "ceil" | "sign" | "log" | "log10" | "exp" | "sqrt"; a: NumExpr }
   | { k: "agg"; fn: "sum" | "avg" | "min" | "max" | "stdev" | "median"; src: NumExpr; period: NumExpr }
   | { k: "shift"; src: NumExpr; offset: number }
-  | { k: "ctx"; key: CtxKey };
+  | { k: "ctx"; key: CtxKey }
+  | { k: "cond"; cond: BoolExpr; a: NumExpr; b: NumExpr }
+  | { k: "nz"; a: NumExpr; b: NumExpr }
+  | { k: "cum"; src: NumExpr }
+  | { k: "barssince"; cond: BoolExpr }
+  | { k: "varprev"; name: string }
+  | { k: "histn"; field: PriceField; offset: NumExpr };
 
 /** Runtime-context reads: the current position/PnL state, supplied per bar by the
  *  backtester and the live engine. Scalar-only (never a series). */
@@ -52,7 +58,8 @@ export type BoolExpr =
   | { k: "between"; value: NumExpr; low: NumExpr; high: NumExpr }
   | { k: "session"; start: number; end: number }
   | { k: "dayofweek"; day: number }
-  | { k: "varb"; name: string };
+  | { k: "varb"; name: string }
+  | { k: "isna"; a: NumExpr };
 
 export type Stmt =
   | { k: "entry"; direction: "long" | "short"; when: BoolExpr }
@@ -68,7 +75,8 @@ export type Stmt =
   | { k: "marker"; dir: "up" | "down"; label: string; when: BoolExpr }
   | { k: "if"; cond: BoolExpr; then: Stmt[]; elifs?: { cond: BoolExpr; then: Stmt[] }[]; else?: Stmt[] }
   | { k: "repeat"; count: NumExpr; body: Stmt[] }
-  | { k: "while"; cond: BoolExpr; body: Stmt[]; cap: number };
+  | { k: "while"; cond: BoolExpr; body: Stmt[]; cap: number }
+  | { k: "for"; var: string; from: NumExpr; to: NumExpr; step: NumExpr; body: Stmt[]; cap: number };
 
 export interface StrategyInput {
   name: string;
@@ -88,11 +96,11 @@ export interface StrategyIR {
 }
 
 /** Current IR schema version stamped on newly compiled strategies. */
-export const IR_VERSION = 1;
+export const IR_VERSION = 2;
 
 const NUM_KINDS = new Set([
   "num", "input", "var", "price", "ma", "rsi", "bollinger", "macd", "atr", "stdev", "extreme", "change",
-  "stoch", "wpr", "cci", "roc", "minmax", "arith", "unary", "ctx", "agg", "shift"
+  "stoch", "wpr", "cci", "roc", "minmax", "arith", "unary", "ctx", "agg", "shift", "cond", "nz", "cum", "barssince", "varprev", "histn"
 ]);
 
 export function isNumExpr(expr: NumExpr | BoolExpr): expr is NumExpr {

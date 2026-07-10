@@ -4,20 +4,23 @@ export type PriceField = "open" | "high" | "low" | "close" | "volume" | "hl2" | 
 
 const NaNArray = (n: number) => new Array<number>(n).fill(NaN);
 
+/** One candle's value for a price field (incl. the hl2/hlc3/ohlc4 composites). */
+export function priceAt(candle: Candle, field: PriceField): number {
+  switch (field) {
+    case "open": return candle.open;
+    case "high": return candle.high;
+    case "low": return candle.low;
+    case "volume": return candle.volume;
+    case "hl2": return (candle.high + candle.low) / 2;
+    case "hlc3": return (candle.high + candle.low + candle.close) / 3;
+    case "ohlc4": return (candle.open + candle.high + candle.low + candle.close) / 4;
+    case "close":
+    default: return candle.close;
+  }
+}
+
 export function sourceSeries(candles: Candle[], field: PriceField): number[] {
-  return candles.map((candle) => {
-    switch (field) {
-      case "open": return candle.open;
-      case "high": return candle.high;
-      case "low": return candle.low;
-      case "volume": return candle.volume;
-      case "hl2": return (candle.high + candle.low) / 2;
-      case "hlc3": return (candle.high + candle.low + candle.close) / 3;
-      case "ohlc4": return (candle.open + candle.high + candle.low + candle.close) / 4;
-      case "close":
-      default: return candle.close;
-    }
-  });
+  return candles.map((candle) => priceAt(candle, field));
 }
 
 export function sma(src: number[], period: number): number[] {

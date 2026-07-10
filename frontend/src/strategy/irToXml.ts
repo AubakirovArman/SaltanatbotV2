@@ -99,6 +99,12 @@ function stmtXml(stmt: Stmt, next: string, d: Defaults): string {
       return block("controls_repeat_ext", value("TIMES", numXml(stmt.count, d)) + statement("DO", chain(stmt.body, d)), next);
     case "while":
       return block("controls_whileUntil", field("MODE", "WHILE") + value("BOOL", boolXml(stmt.cond, d)) + statement("DO", chain(stmt.body, d)), next);
+    case "for":
+      return block(
+        "for_range",
+        field("NAME", stmt.var) + value("FROM", numXml(stmt.from, d)) + value("TO", numXml(stmt.to, d)) + value("BY", numXml(stmt.step, d)) + statement("DO", chain(stmt.body, d)),
+        next
+      );
   }
 }
 
@@ -157,6 +163,18 @@ function numXml(expr: NumExpr, d: Defaults): string {
       return block("series_shift", value("SOURCE", numXml(expr.src, d)) + field("OFFSET", expr.offset), "");
     case "ctx":
       return block("ctx_read", field("FIELD", expr.key), "");
+    case "cond":
+      return block("math_cond", value("COND", boolXml(expr.cond, d)) + value("A", numXml(expr.a, d)) + value("B", numXml(expr.b, d)), "");
+    case "nz":
+      return block("math_nz", value("A", numXml(expr.a, d)) + value("B", numXml(expr.b, d)), "");
+    case "cum":
+      return block("series_cum", value("SOURCE", numXml(expr.src, d)), "");
+    case "barssince":
+      return block("series_barssince", value("COND", boolXml(expr.cond, d)), "");
+    case "varprev":
+      return block("var_prev", field("NAME", expr.name), "");
+    case "histn":
+      return block("market_hist_dyn", field("FIELD", expr.field) + value("OFFSET", numXml(expr.offset, d)), "");
     case "arith": {
       if (expr.op === "%") {
         return block("math_modulo", value("A", numXml(expr.a, d)) + value("B", numXml(expr.b, d)), "");
@@ -165,7 +183,8 @@ function numXml(expr: NumExpr, d: Defaults): string {
       return block("math_arithmetic", field("OP", map[expr.op]) + value("A", numXml(expr.a, d)) + value("B", numXml(expr.b, d)), "");
     }
     case "unary": {
-      if (expr.op === "abs" || expr.op === "neg") {
+      const single = new Set(["abs", "neg", "sign", "sqrt", "log", "log10", "exp"]);
+      if (single.has(expr.op)) {
         return block("math_single_op", field("OP", expr.op) + value("NUM", numXml(expr.a, d)), "");
       }
       const map: Record<string, string> = { round: "ROUND", ceil: "ROUNDUP", floor: "ROUNDDOWN" };
@@ -203,6 +222,8 @@ function boolXml(expr: BoolExpr, d: Defaults): string {
       return block("time_session", field("START", expr.start) + field("END", expr.end), "");
     case "dayofweek":
       return block("time_dayofweek", field("DAY", expr.day), "");
+    case "isna":
+      return block("logic_isna", value("A", numXml(expr.a, d)), "");
     case "varb":
       return block("varb_get", field("NAME", expr.name), "");
   }

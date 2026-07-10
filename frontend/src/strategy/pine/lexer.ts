@@ -62,9 +62,10 @@ export function tokenize(source: string): Token[] {
       // Blank line or comment-only line: skip entirely (don't break statements).
       if (i >= source.length || source[i] === "\n" || (source[i] === "/" && source[i + 1] === "/")) continue;
       if (depth > 0) continue; // inside brackets → continuation
-      // A line ending in an operator/comma continues onto the next line.
+      // A line ending in an operator/comma continues onto the next line — except
+      // `=>`, which ends a function header whose body is the following indented block.
       const prev = tokens.at(-1);
-      if (prev && prev.type === "op" && prev.text !== ")" && prev.text !== "]") continue;
+      if (prev && prev.type === "op" && prev.text !== ")" && prev.text !== "]" && prev.text !== "=>") continue;
       push("newline", String(indent));
       continue;
     }

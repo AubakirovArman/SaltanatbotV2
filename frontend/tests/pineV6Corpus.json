@@ -1,0 +1,359 @@
+{
+ "scripts": [
+  {
+   "title": "Simple RSI Overbought/Oversold",
+   "kind": "indicator",
+   "features": [
+    "ta.rsi",
+    "hline",
+    "plot",
+    "input.int",
+    "overlay=false"
+   ],
+   "source": "//@version=6\nindicator(\"Simple RSI\", overlay=false)\nlen = input.int(14, \"RSI Length\", minval=1)\nsrc = input.source(close, \"Source\")\nrsiVal = ta.rsi(src, len)\nupper = input.int(70, \"Overbought\")\nlower = input.int(30, \"Oversold\")\nplot(rsiVal, \"RSI\", color=color.new(color.purple, 0), linewidth=2)\nhline(upper, \"Overbought\", color=color.red)\nhline(lower, \"Oversold\", color=color.green)\nhline(50, \"Midline\", color=color.gray, linestyle=hline.style_dotted)\nbgcolor(rsiVal > upper ? color.new(color.red, 90) : rsiVal < lower ? color.new(color.green, 90) : na)"
+  },
+  {
+   "title": "EMA Ribbon Trend",
+   "kind": "indicator",
+   "features": [
+    "ta.ema",
+    "multiple plots",
+    "color logic",
+    "overlay=true"
+   ],
+   "source": "//@version=6\nindicator(\"EMA Ribbon\", overlay=true)\ne1 = ta.ema(close, 8)\ne2 = ta.ema(close, 13)\ne3 = ta.ema(close, 21)\ne4 = ta.ema(close, 34)\ne5 = ta.ema(close, 55)\ntrendUp = e1 > e2 and e2 > e3 and e3 > e4 and e4 > e5\ncol = trendUp ? color.lime : color.orange\nplot(e1, \"EMA8\", color=col)\nplot(e2, \"EMA13\", color=col)\nplot(e3, \"EMA21\", color=col)\nplot(e4, \"EMA34\", color=col)\nplot(e5, \"EMA55\", color=col)"
+  },
+  {
+   "title": "MACD Histogram Cross",
+   "kind": "indicator",
+   "features": [
+    "ta.macd",
+    "ta.crossover",
+    "plot histogram",
+    "alertcondition",
+    "color.from_gradient"
+   ],
+   "source": "//@version=6\nindicator(\"MACD Cross\", overlay=false)\nfast = input.int(12, \"Fast\")\nslow = input.int(26, \"Slow\")\nsig = input.int(9, \"Signal\")\n[macdLine, signalLine, hist] = ta.macd(close, fast, slow, sig)\nhistCol = hist >= 0 ? (hist[1] < hist ? color.lime : color.green) : (hist[1] > hist ? color.red : color.maroon)\nplot(hist, \"Hist\", style=plot.style_columns, color=histCol)\nplot(macdLine, \"MACD\", color=color.blue)\nplot(signalLine, \"Signal\", color=color.orange)\nalertcondition(ta.crossover(macdLine, signalLine), \"MACD Bull\", \"MACD crossed up\")\nalertcondition(ta.crossunder(macdLine, signalLine), \"MACD Bear\", \"MACD crossed down\")"
+  },
+  {
+   "title": "Bollinger Bands %B",
+   "kind": "indicator",
+   "features": [
+    "ta.sma",
+    "ta.stdev",
+    "user function multi-line",
+    "plot fill"
+   ],
+   "source": "//@version=6\nindicator(\"BB Percent B\", overlay=false)\nlength = input.int(20, \"Length\")\nmult = input.float(2.0, \"StdDev Mult\")\nbb(src, len, m) =>\n    basis = ta.sma(src, len)\n    dev = m * ta.stdev(src, len)\n    upper = basis + dev\n    lower = basis - dev\n    [upper, lower]\n[u, l] = bb(close, length, mult)\npctB = (close - l) / (u - l)\nplot(pctB, \"%B\", color=color.teal, linewidth=2)\nhline(1.0, \"Top\", color=color.red)\nhline(0.0, \"Bottom\", color=color.green)\nhline(0.5, \"Mid\", color=color.gray)"
+  },
+  {
+   "title": "Stochastic %K %D",
+   "kind": "indicator",
+   "features": [
+    "ta.stoch",
+    "ta.sma",
+    "input.int",
+    "plot",
+    "hline fill"
+   ],
+   "source": "//@version=6\nindicator(\"Stochastic\", overlay=false)\nkLen = input.int(14, \"%K Length\")\nkSmooth = input.int(3, \"%K Smoothing\")\ndSmooth = input.int(3, \"%D Smoothing\")\nk = ta.sma(ta.stoch(close, high, low, kLen), kSmooth)\nd = ta.sma(k, dSmooth)\nplot(k, \"%K\", color=color.blue)\nplot(d, \"%D\", color=color.orange)\ntop = hline(80)\nbot = hline(20)\nfill(top, bot, color=color.new(color.blue, 92))"
+  },
+  {
+   "title": "ADX Directional Trend",
+   "kind": "indicator",
+   "features": [
+    "ta.dmi",
+    "numeric ternary",
+    "plot",
+    "threshold coloring"
+   ],
+   "source": "//@version=6\nindicator(\"ADX Trend Strength\", overlay=false)\nlen = input.int(14, \"DI Length\")\nadxLen = input.int(14, \"ADX Smoothing\")\n[diPlus, diMinus, adx] = ta.dmi(len, adxLen)\nstrongCol = adx > 25 ? color.white : color.gray\nplot(adx, \"ADX\", color=strongCol, linewidth=2)\nplot(diPlus, \"+DI\", color=color.green)\nplot(diMinus, \"-DI\", color=color.red)\nhline(25, \"Trend Threshold\", color=color.yellow, linestyle=hline.style_dashed)"
+  },
+  {
+   "title": "Supertrend Overlay",
+   "kind": "indicator",
+   "features": [
+    "ta.supertrend",
+    "plot direction",
+    "fill",
+    "plotshape signals"
+   ],
+   "source": "//@version=6\nindicator(\"Supertrend\", overlay=true)\nfactor = input.float(3.0, \"Factor\")\natrPeriod = input.int(10, \"ATR Length\")\n[supertrend, direction] = ta.supertrend(factor, atrPeriod)\nupTrend = plot(direction < 0 ? supertrend : na, \"Up\", color=color.green, style=plot.style_linebr)\ndnTrend = plot(direction > 0 ? supertrend : na, \"Down\", color=color.red, style=plot.style_linebr)\nbuySig = direction < 0 and direction[1] > 0\nsellSig = direction > 0 and direction[1] < 0\nplotshape(buySig, \"Buy\", shape.triangleup, location.belowbar, color.green, size=size.small)\nplotshape(sellSig, \"Sell\", shape.triangledown, location.abovebar, color.red, size=size.small)"
+  },
+  {
+   "title": "RSI Divergence Strategy",
+   "kind": "strategy",
+   "features": [
+    "ta.rsi",
+    "strategy.entry",
+    "strategy.exit",
+    "strategy.close",
+    "position_size"
+   ],
+   "source": "//@version=6\nstrategy(\"RSI Reversal\", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)\nlen = input.int(14, \"RSI Length\")\nrsiVal = ta.rsi(close, len)\nlongCond = ta.crossover(rsiVal, 30)\nshortCond = ta.crossunder(rsiVal, 70)\nif longCond\n    strategy.entry(\"Long\", strategy.long)\nif shortCond and strategy.position_size > 0\n    strategy.close(\"Long\")\nstrategy.exit(\"Stop\", \"Long\", stop=strategy.position_avg_price * 0.97, limit=strategy.position_avg_price * 1.06)\nplot(rsiVal, \"RSI\", display=display.data_window)"
+  },
+  {
+   "title": "EMA Crossover Strategy with Stop",
+   "kind": "strategy",
+   "features": [
+    "ta.ema",
+    "ta.crossover",
+    "strategy.entry",
+    "strategy.exit stop/limit",
+    "openprofit"
+   ],
+   "source": "//@version=6\nstrategy(\"EMA Cross\", overlay=true)\nfastLen = input.int(9, \"Fast EMA\")\nslowLen = input.int(21, \"Slow EMA\")\nfast = ta.ema(close, fastLen)\nslow = ta.ema(close, slowLen)\nlongSig = ta.crossover(fast, slow)\nshortSig = ta.crossunder(fast, slow)\nif longSig\n    strategy.entry(\"L\", strategy.long)\nif shortSig\n    strategy.entry(\"S\", strategy.short)\nlongStop = strategy.position_avg_price * 0.98\nlongTP = strategy.position_avg_price * 1.04\nstrategy.exit(\"XL\", \"L\", stop=longStop, limit=longTP)\nplot(fast, color=color.aqua)\nplot(slow, color=color.orange)\nplot(strategy.openprofit, \"Open PnL\", display=display.data_window)"
+  },
+  {
+   "title": "Bollinger Band Breakout Strategy",
+   "kind": "strategy",
+   "features": [
+    "ta.sma",
+    "ta.stdev",
+    "switch",
+    "strategy.entry",
+    "strategy.exit"
+   ],
+   "source": "//@version=6\nstrategy(\"BB Breakout\", overlay=true)\nlen = input.int(20)\nmult = input.float(2.0)\nmode = input.string(\"Breakout\", \"Mode\", options=[\"Breakout\", \"Reversion\"])\nbasis = ta.sma(close, len)\ndev = mult * ta.stdev(close, len)\nupper = basis + dev\nlower = basis - dev\nlongCond = switch mode\n    \"Breakout\" => ta.crossover(close, upper)\n    \"Reversion\" => ta.crossover(close, lower)\n    => false\nif longCond\n    strategy.entry(\"Long\", strategy.long)\nstrategy.exit(\"Exit\", \"Long\", stop=lower, limit=upper)\nplot(basis, color=color.blue)\nplot(upper, color=color.gray)\nplot(lower, color=color.gray)"
+  },
+  {
+   "title": "Single-Line Function Library Demo",
+   "kind": "indicator",
+   "features": [
+    "single-line => functions",
+    "ta.ema",
+    "function composition",
+    "plot"
+   ],
+   "source": "//@version=6\nindicator(\"Func Demo\", overlay=true)\nmidpoint(h, l) => (h + l) / 2\nweighted(c, o) => (c * 2 + o) / 3\ndetrend(src, len) => src - ta.ema(src, len)\nmp = midpoint(high, low)\nwt = weighted(close, open)\ndt = detrend(close, 20)\nplot(mp, \"Midpoint\", color=color.blue)\nplot(wt, \"Weighted\", color=color.orange)\nplot(ta.ema(close, 20) + dt, \"Reconstructed\", color=color.new(color.gray, 60))"
+  },
+  {
+   "title": "Recursive Zero-Lag Filter",
+   "kind": "indicator",
+   "features": [
+    "recursive x := nz(x[1])",
+    "nz",
+    "ta.ema",
+    "numeric ternary"
+   ],
+   "source": "//@version=6\nindicator(\"Zero Lag EMA\", overlay=true)\nlength = input.int(21, \"Length\")\nalpha = 2.0 / (length + 1)\nvar float zlema = na\nema1 = ta.ema(close, length)\nlag = ema1 - ta.ema(ema1, length)\nsrc = close + lag\nzlema := na(zlema[1]) ? src : alpha * src + (1 - alpha) * nz(zlema[1])\nplot(zlema, \"ZLEMA\", color=color.fuchsia, linewidth=2)\nplot(ema1, \"EMA\", color=color.new(color.gray, 50))"
+  },
+  {
+   "title": "Custom Recursive Smoother (RMA style)",
+   "kind": "indicator",
+   "features": [
+    "recursive nz(x[1])",
+    "ta.rma comparison",
+    "user function",
+    "for loop seed"
+   ],
+   "source": "//@version=6\nindicator(\"Manual RMA vs ta.rma\", overlay=false)\nlen = input.int(14, \"Length\")\nmyRma(src, length) =>\n    a = 1.0 / length\n    var float sm = na\n    sm := na(sm[1]) ? ta.sma(src, length) : a * src + (1 - a) * nz(sm[1])\n    sm\nmine = myRma(close, len)\nbuiltin = ta.rma(close, len)\nplot(mine, \"Manual RMA\", color=color.blue, linewidth=2)\nplot(builtin, \"ta.rma\", color=color.new(color.red, 40))\nplot(mine - builtin, \"Diff\", color=color.gray, display=display.data_window)"
+  },
+  {
+   "title": "Bars Since Last Signal Counter",
+   "kind": "indicator",
+   "features": [
+    "ta.barssince",
+    "ta.crossover",
+    "plot",
+    "label lifetime"
+   ],
+   "source": "//@version=6\nindicator(\"Bars Since Cross\", overlay=false)\nfast = ta.ema(close, 12)\nslow = ta.ema(close, 26)\nbullCross = ta.crossover(fast, slow)\nbearCross = ta.crossunder(fast, slow)\nbarsSinceBull = ta.barssince(bullCross)\nbarsSinceBear = ta.barssince(bearCross)\nsinceLast = math.min(nz(barsSinceBull, 9999), nz(barsSinceBear, 9999))\nplot(sinceLast, \"Bars Since Any Cross\", style=plot.style_columns, color=barsSinceBull < barsSinceBear ? color.green : color.red)"
+  },
+  {
+   "title": "ValueWhen Pivot Reference",
+   "kind": "indicator",
+   "features": [
+    "ta.valuewhen",
+    "ta.highest",
+    "ta.lowest",
+    "plot lines"
+   ],
+   "source": "//@version=6\nindicator(\"ValueWhen Levels\", overlay=true)\nlen = input.int(20, \"Lookback\")\nisHigh = high == ta.highest(high, len)\nisLow = low == ta.lowest(low, len)\nlastSwingHigh = ta.valuewhen(isHigh, high, 0)\nlastSwingLow = ta.valuewhen(isLow, low, 0)\nprevSwingHigh = ta.valuewhen(isHigh, high, 1)\nplot(lastSwingHigh, \"Swing High\", color=color.red, style=plot.style_stepline)\nplot(lastSwingLow, \"Swing Low\", color=color.green, style=plot.style_stepline)\nplot(prevSwingHigh, \"Prev High\", color=color.new(color.red, 60), style=plot.style_stepline)"
+  },
+  {
+   "title": "Cumulative Volume Delta Proxy",
+   "kind": "indicator",
+   "features": [
+    "ta.cum",
+    "numeric ternary",
+    "volume",
+    "plot area"
+   ],
+   "source": "//@version=6\nindicator(\"Cumulative Delta Proxy\", overlay=false)\ndelta = close > open ? volume : close < open ? -volume : 0.0\ncvd = ta.cum(delta)\nsmoothed = ta.ema(cvd, 21)\nplot(cvd, \"CVD\", color=cvd >= 0 ? color.green : color.red, style=plot.style_area, color=color.new(color.green, 70))\nplot(smoothed, \"CVD EMA\", color=color.white, linewidth=2)\nhline(0, \"Zero\", color=color.gray)"
+  },
+  {
+   "title": "Hull Moving Average Trend",
+   "kind": "indicator",
+   "features": [
+    "ta.hma",
+    "color by slope",
+    "plotshape",
+    "alertcondition"
+   ],
+   "source": "//@version=6\nindicator(\"HMA Trend\", overlay=true)\nlen = input.int(55, \"HMA Length\")\nhma = ta.hma(close, len)\nrising = hma > hma[1]\ncol = rising ? color.lime : color.red\nplot(hma, \"HMA\", color=col, linewidth=3)\nflipUp = rising and not rising[1]\nflipDn = not rising and rising[1]\nplotshape(flipUp, \"Turn Up\", shape.circle, location.belowbar, color.green, size=size.tiny)\nplotshape(flipDn, \"Turn Down\", shape.circle, location.abovebar, color.red, size=size.tiny)\nalertcondition(flipUp, \"HMA Up\", \"HMA turned up\")\nalertcondition(flipDn, \"HMA Down\", \"HMA turned down\")"
+  },
+  {
+   "title": "Standard Deviation Volatility Bands",
+   "kind": "indicator",
+   "features": [
+    "ta.dev",
+    "ta.sma",
+    "ta.linreg",
+    "fill"
+   ],
+   "source": "//@version=6\nindicator(\"Deviation Bands\", overlay=true)\nlen = input.int(20, \"Length\")\nbasis = ta.linreg(close, len, 0)\ndeviation = ta.dev(close, len)\nupper = basis + 1.5 * deviation\nlower = basis - 1.5 * deviation\nb = plot(basis, \"Regression\", color=color.blue)\nu = plot(upper, \"Upper\", color=color.new(color.blue, 50))\nl = plot(lower, \"Lower\", color=color.new(color.blue, 50))\nfill(u, l, color=color.new(color.blue, 90))"
+  },
+  {
+   "title": "Linear Regression Channel Slope",
+   "kind": "indicator",
+   "features": [
+    "ta.linreg",
+    "slope math",
+    "numeric ternary",
+    "plot"
+   ],
+   "source": "//@version=6\nindicator(\"LinReg Slope\", overlay=false)\nlen = input.int(50, \"Length\")\nlr = ta.linreg(close, len, 0)\nlrPrev = ta.linreg(close, len, 1)\nslope = lr - lrPrev\nnormSlope = slope / ta.atr(len) * 100\ncol = normSlope > 0 ? color.new(color.green, 20) : color.new(color.red, 20)\nplot(normSlope, \"Normalized Slope\", style=plot.style_columns, color=col)\nhline(0, color=color.gray)"
+  },
+  {
+   "title": "For-Loop Momentum Sum",
+   "kind": "indicator",
+   "features": [
+    "for loop scalar accumulation",
+    "input.int",
+    "plot",
+    "normalization"
+   ],
+   "source": "//@version=6\nindicator(\"Rolling Momentum Sum\", overlay=false)\nlength = input.int(20, \"Window\")\nfloat momSum = 0.0\nfor i = 0 to length - 1\n    momSum += close[i] > close[i + 1] ? 1 : -1\nnormalized = momSum / length\nplot(normalized, \"Momentum Balance\", color=normalized > 0 ? color.green : color.red, style=plot.style_histogram)\nhline(0.5, color=color.new(color.green, 70))\nhline(-0.5, color=color.new(color.red, 70))\nhline(0, color=color.gray)"
+  },
+  {
+   "title": "For-Loop Weighted Average Price",
+   "kind": "indicator",
+   "features": [
+    "for loop accumulation",
+    "weighted sum",
+    "ta.wma comparison",
+    "overlay"
+   ],
+   "source": "//@version=6\nindicator(\"Manual WMA\", overlay=true)\nlen = input.int(20, \"Length\")\nfloat num = 0.0\nfloat den = 0.0\nfor i = 0 to len - 1\n    weight = len - i\n    num += close[i] * weight\n    den += weight\nmyWma = num / den\nplot(myWma, \"Manual WMA\", color=color.orange, linewidth=2)\nplot(ta.wma(close, len), \"ta.wma\", color=color.new(color.blue, 50))"
+  },
+  {
+   "title": "Trend Score Aggregator",
+   "kind": "indicator",
+   "features": [
+    "multiple ta calls",
+    "numeric ternary chain",
+    "for loop",
+    "switch"
+   ],
+   "source": "//@version=6\nindicator(\"Trend Score\", overlay=false)\nscore = 0\nscore += close > ta.ema(close, 20) ? 1 : -1\nscore += close > ta.ema(close, 50) ? 1 : -1\nscore += close > ta.ema(close, 200) ? 1 : -1\nscore += ta.rsi(close, 14) > 50 ? 1 : -1\nscore += ta.macd(close, 12, 26, 9) > 0 ? 1 : -1\nlabelCol = switch\n    score >= 3 => color.green\n    score <= -3 => color.red\n    => color.gray\nplot(score, \"Score\", style=plot.style_columns, color=labelCol)\nhline(0, color=color.gray)"
+  },
+  {
+   "title": "ATR Trailing Stop Strategy",
+   "kind": "strategy",
+   "features": [
+    "ta.atr",
+    "recursive stop nz",
+    "strategy.entry",
+    "strategy.exit",
+    "position_size"
+   ],
+   "source": "//@version=6\nstrategy(\"ATR Trailing Stop\", overlay=true)\natrLen = input.int(14, \"ATR Length\")\nmult = input.float(3.0, \"Multiplier\")\natr = ta.atr(atrLen)\nvar float trail = na\nlongMa = ta.ema(close, 50)\ngoLong = ta.crossover(close, longMa)\nif goLong and strategy.position_size == 0\n    strategy.entry(\"Long\", strategy.long)\n    trail := close - atr * mult\nif strategy.position_size > 0\n    trail := math.max(nz(trail[1]), close - atr * mult)\n    strategy.exit(\"Trail\", \"Long\", stop=trail)\nplot(strategy.position_size > 0 ? trail : na, \"Trail\", color=color.red, style=plot.style_linebr)"
+  },
+  {
+   "title": "Donchian Channel Breakout Strategy",
+   "kind": "strategy",
+   "features": [
+    "ta.highest",
+    "ta.lowest",
+    "strategy.entry",
+    "strategy.exit",
+    "alertcondition"
+   ],
+   "source": "//@version=6\nstrategy(\"Donchian Breakout\", overlay=true)\nlen = input.int(20, \"Channel Length\")\nupper = ta.highest(high, len)[1]\nlower = ta.lowest(low, len)[1]\nmid = (upper + lower) / 2\nlongCond = high > upper\nexitCond = low < mid\nif longCond\n    strategy.entry(\"Long\", strategy.long)\nif exitCond\n    strategy.close(\"Long\")\nstrategy.exit(\"Protect\", \"Long\", stop=lower)\nplot(upper, \"Upper\", color=color.green)\nplot(lower, \"Lower\", color=color.red)\nplot(mid, \"Mid\", color=color.gray)\nalertcondition(longCond, \"Breakout\", \"Donchian breakout long\")"
+  },
+  {
+   "title": "Keltner Channel Squeeze",
+   "kind": "indicator",
+   "features": [
+    "ta.ema",
+    "ta.atr",
+    "ta.sma",
+    "ta.stdev",
+    "squeeze logic",
+    "plotshape"
+   ],
+   "source": "//@version=6\nindicator(\"Keltner Squeeze\", overlay=true)\nlen = input.int(20)\nbbMult = input.float(2.0)\nkcMult = input.float(1.5)\nbasis = ta.sma(close, len)\ndev = bbMult * ta.stdev(close, len)\nbbUpper = basis + dev\nbbLower = basis - dev\nkcRange = kcMult * ta.atr(len)\nkcUpper = basis + kcRange\nkcLower = basis - kcRange\nsqueezeOn = bbLower > kcLower and bbUpper < kcUpper\nplot(basis, \"Basis\", color=color.blue)\nplotshape(squeezeOn, \"Squeeze\", shape.circle, location.bottom, color.yellow, size=size.tiny)\nbgcolor(squeezeOn ? color.new(color.yellow, 90) : na)"
+  },
+  {
+   "title": "Volume Weighted MACD (v5)",
+   "kind": "indicator",
+   "features": [
+    "//@version=5",
+    "ta.vwma",
+    "ta.ema",
+    "user function",
+    "plot histogram"
+   ],
+   "source": "//@version=5\nindicator(\"VW-MACD\", overlay=false)\nfast = input.int(12)\nslow = input.int(26)\nsig = input.int(9)\nvwmacd(src, f, s) =>\n    fastLine = ta.vwma(src, f)\n    slowLine = ta.vwma(src, s)\n    fastLine - slowLine\nmacdLine = vwmacd(close, fast, slow)\nsignalLine = ta.ema(macdLine, sig)\nhist = macdLine - signalLine\nplot(hist, \"Hist\", style=plot.style_columns, color=hist >= 0 ? color.green : color.red)\nplot(macdLine, \"VW-MACD\", color=color.blue)\nplot(signalLine, \"Signal\", color=color.orange)"
+  },
+  {
+   "title": "Pivot Point Standard Levels (v4)",
+   "kind": "indicator",
+   "features": [
+    "//@version=4",
+    "security same-symbol",
+    "recursive-free levels",
+    "plot stepline"
+   ],
+   "source": "//@version=4\nstudy(\"Daily Pivots\", overlay=true)\nprevHigh = security(syminfo.tickerid, \"D\", high[1], lookahead=barmerge.lookahead_off)\nprevLow = security(syminfo.tickerid, \"D\", low[1], lookahead=barmerge.lookahead_off)\nprevClose = security(syminfo.tickerid, \"D\", close[1], lookahead=barmerge.lookahead_off)\npivot = (prevHigh + prevLow + prevClose) / 3\nr1 = 2 * pivot - prevLow\ns1 = 2 * pivot - prevHigh\nplot(pivot, \"P\", color=color.yellow, style=plot.style_stepline)\nplot(r1, \"R1\", color=color.red, style=plot.style_stepline)\nplot(s1, \"S1\", color=color.green, style=plot.style_stepline)"
+  },
+  {
+   "title": "Multi-Timeframe RSI (REJECT - request.security MTF)",
+   "kind": "indicator",
+   "features": [
+    "request.security MTF",
+    "lookahead risk",
+    "non-convertible MTF",
+    "REJECT"
+   ],
+   "source": "//@version=6\nindicator(\"MTF RSI Dashboard\", overlay=false)\ntf1 = input.timeframe(\"60\", \"Higher TF 1\")\ntf2 = input.timeframe(\"240\", \"Higher TF 2\")\ntf3 = input.timeframe(\"D\", \"Higher TF 3\")\nrsiCurrent = ta.rsi(close, 14)\nrsiTf1 = request.security(syminfo.tickerid, tf1, ta.rsi(close, 14))\nrsiTf2 = request.security(syminfo.tickerid, tf2, ta.rsi(close, 14))\nrsiTf3 = request.security(syminfo.tickerid, tf3, ta.rsi(close, 14), lookahead=barmerge.lookahead_on)\nplot(rsiCurrent, \"Current\", color=color.white)\nplot(rsiTf1, \"TF1\", color=color.blue)\nplot(rsiTf2, \"TF2\", color=color.orange)\nplot(rsiTf3, \"TF3\", color=color.red)\nhline(70)\nhline(30)"
+  },
+  {
+   "title": "Order Block Detector (REJECT - arrays + drawing objects)",
+   "kind": "indicator",
+   "features": [
+    "array.new",
+    "array.push",
+    "box.new",
+    "line.new",
+    "REJECT"
+   ],
+   "source": "//@version=6\nindicator(\"Order Blocks\", overlay=true, max_boxes_count=50)\nvar array<float> obTops = array.new<float>()\nvar array<float> obBottoms = array.new<float>()\nvar array<box> boxes = array.new<box>()\nbullOB = close > open and close[1] < open[1] and volume > ta.sma(volume, 20)\nif bullOB\n    array.push(obTops, high)\n    array.push(obBottoms, low)\n    b = box.new(bar_index, high, bar_index + 10, low, bgcolor=color.new(color.green, 80), border_color=color.green)\n    array.push(boxes, b)\nif array.size(boxes) > 20\n    box.delete(array.shift(boxes))\n    array.shift(obTops)\n    array.shift(obBottoms)\nline.new(bar_index, ta.sma(close, 50), bar_index + 5, ta.sma(close, 50), color=color.blue)"
+  },
+  {
+   "title": "Pivot High Look-Ahead Supply Zones (REJECT - ta.pivothigh future offset)",
+   "kind": "indicator",
+   "features": [
+    "ta.pivothigh",
+    "ta.pivotlow",
+    "look-ahead offset",
+    "label.new",
+    "REJECT"
+   ],
+   "source": "//@version=6\nindicator(\"Pivot Zones\", overlay=true)\nleftBars = input.int(15, \"Left\")\nrightBars = input.int(15, \"Right\")\nph = ta.pivothigh(high, leftBars, rightBars)\npl = ta.pivotlow(low, leftBars, rightBars)\nif not na(ph)\n    label.new(bar_index[rightBars], ph, \"H\", color=color.red, style=label.style_label_down, textcolor=color.white)\n    line.new(bar_index[rightBars], ph, bar_index, ph, color=color.red, extend=extend.right)\nif not na(pl)\n    label.new(bar_index[rightBars], pl, \"L\", color=color.green, style=label.style_label_up, textcolor=color.white)\n    line.new(bar_index[rightBars], pl, bar_index, pl, color=color.green, extend=extend.right)\nplot(ph, \"PH\", offset=-rightBars, color=color.red)\nplot(pl, \"PL\", offset=-rightBars, color=color.green)"
+  },
+  {
+   "title": "Liquidity Heatmap with Matrix/Map (REJECT - matrix + map + polylines)",
+   "kind": "indicator",
+   "features": [
+    "matrix.new",
+    "map.new",
+    "polyline.new",
+    "array of labels",
+    "REJECT"
+   ],
+   "source": "//@version=6\nindicator(\"Liquidity Heatmap\", overlay=true, max_polylines_count=100, max_labels_count=200)\nvar matrix<float> grid = matrix.new<float>(10, 10, 0.0)\nvar map<int, float> levelMap = map.new<int, float>()\nrow = bar_index % 10\ncol = int(close * 10) % 10\nmatrix.set(grid, row, col, matrix.get(grid, row, col) + volume)\nmap.put(levelMap, int(close), nz(map.get(levelMap, int(close)), 0.0) + volume)\nif barstate.islast\n    for r = 0 to 9\n        for c = 0 to 9\n            v = matrix.get(grid, r, c)\n            if v > 0\n                label.new(bar_index - c, low * (1 + r / 100.0), str.tostring(v, format.volume), color=color.new(color.red, 50), size=size.tiny)\n    var points = array.new<chart.point>()\n    array.push(points, chart.point.now(close))\n    polyline.new(points, line_color=color.blue)"
+  }
+ ]
+}
