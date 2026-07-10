@@ -60,7 +60,8 @@ const boolExpr: z.ZodType<unknown> = z.lazy(() =>
     z.object({ k: z.literal("trend"), dir: z.enum(["rising", "falling"]), period: numExpr, source: numExpr }).strict(),
     z.object({ k: z.literal("between"), value: numExpr, low: numExpr, high: numExpr }).strict(),
     z.object({ k: z.literal("session"), start: z.number().int().min(0).max(23), end: z.number().int().min(0).max(23) }).strict(),
-    z.object({ k: z.literal("dayofweek"), day: z.number().int().min(0).max(6) }).strict()
+    z.object({ k: z.literal("dayofweek"), day: z.number().int().min(0).max(6) }).strict(),
+    z.object({ k: z.literal("varb"), name: z.string().max(64) }).strict()
   ])
 );
 
@@ -73,6 +74,7 @@ const stmt: z.ZodType<unknown> = z.lazy(() =>
     z.object({ k: z.literal("trail"), mode: z.enum(["percent", "atr"]), value: numExpr }).strict(),
     z.object({ k: z.literal("size"), mode: z.enum(["units", "equity_pct", "risk_pct"]), value: numExpr }).strict(),
     z.object({ k: z.literal("setvar"), name: z.string().max(64), value: numExpr }).strict(),
+    z.object({ k: z.literal("setvarb"), name: z.string().max(64), value: boolExpr }).strict(),
     z.object({ k: z.literal("alert"), message: z.string().max(512), when: boolExpr, args: z.record(z.string().max(32), numExpr).optional() }).strict(),
     z.object({ k: z.literal("plot"), value: numExpr, label, color: z.string().max(32) }).strict(),
     z.object({ k: z.literal("marker"), dir: z.enum(["up", "down"]), label, when: boolExpr }).strict(),

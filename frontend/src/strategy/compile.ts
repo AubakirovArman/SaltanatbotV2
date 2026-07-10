@@ -10,6 +10,20 @@ interface Ctx {
   vars: Set<string>;
   /** Variable names read by a `get variable` block — checked against `vars`. */
   usedVars: Set<string>;
+  /** Procedure definitions by name, for compile-time inlining of function calls. */
+  procs: Map<string, Blockly.Block>;
+  /** Function names currently being expanded, to detect recursion. */
+  callStack: Set<string>;
+}
+
+function procName(block: Blockly.Block): string {
+  const withCall = block as unknown as { getProcedureCall?: () => string };
+  return withCall.getProcedureCall?.() ?? (block.getFieldValue("NAME") as string) ?? "";
+}
+
+function hasProcParams(def: Blockly.Block): boolean {
+  const withVars = def as unknown as { getVars?: () => string[] };
+  return (withVars.getVars?.().length ?? 0) > 0;
 }
 
 export interface CompileResult {
@@ -21,7 +35,14 @@ export interface CompileResult {
 
 /** Compile a Blockly workspace into a safe JSON-IR (no eval, no code strings). */
 export function compileWorkspace(workspace: Blockly.Workspace): CompileResult {
-  const ctx: Ctx = { inputs: new Map(), errors: [], vars: new Set(), usedVars: new Set() };
+  const ctx: Ctx = { inputs: new Map(), errors: [], vars: new Set(), usedVars: new Set(), procs: new Map(), callStack: new Set() };
+  // Index function definitions so calls can be inlined at compile time (no runtime cost).
+  for (const type of ["procedures_defnoreturn", "procedures_defreturn"]) {
+    for (const def of workspace.getBlocksByType(type, false)) {
+      const name = (def.getFieldValue("NAME") as string) || "";
+      if (name && !ctx.procs.has(name)) ctx.procs.set(name, def);
+    }
+  }
   const root = workspace.getTopBlocks(true).find((block) => block.type === "strategy_start");
   if (!root) {
     return { errors: ["Add a Strategy block to define entry rules."] };
@@ -118,6 +139,11 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
       ctx.vars.add(varName);
       return { k: "setvar", name: varName, value: { k: "arith", op: "+", a: { k: "var", name: varName }, b: numInput(block, "BY", ctx) } };
     }
+    case "varb_set": {
+      const varName = (block.getFieldValue("NAME") as string) || "flag";
+      ctx.vars.add(varName);
+      return { k: "setvarb", name: varName, value: boolInput(block, "VALUE", ctx) };
+    }
     case "alert_message": {
       // Optional {a}/{b} value slots interpolated into the message text at fire time.
       const args: Record<string, NumExpr> = {};
@@ -150,6 +176,32 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
     }
     case "controls_repeat_ext":
       return { k: "repeat", count: numInput(block, "TIMES", ctx), body: compileStatements(block.getInputTargetBlock("DO"), ctx) };
+    case "procedures_callnoreturn": {
+      // Inline the called function's body (parameterless), wrapped in if(true) so a
+      // single Stmt is returned. Recursion / parameters are rejected.
+      const name = procName(block);
+      const def = ctx.procs.get(name);
+      if (!def) {
+        ctx.errors.push(`Unknown function: ${name || "(unnamed)"}`);
+        return undefined;
+      }
+      if (hasProcParams(def)) {
+        ctx.errors.push(`Function "${name}" has parameters — parameters aren't supported yet.`);
+        return undefined;
+      }
+      if (ctx.callStack.has(name)) {
+        ctx.errors.push(`Recursive function not allowed: ${name}`);
+        return undefined;
+      }
+      if (ctx.callStack.size >= 20) {
+        ctx.errors.push(`Functions nested too deep near "${name}".`);
+        return undefined;
+      }
+      ctx.callStack.add(name);
+      const body = compileStatements(def.getInputTargetBlock("STACK"), ctx);
+      ctx.callStack.delete(name);
+      return { k: "if", cond: { k: "bool", v: true }, then: body };
+    }
     case "controls_whileUntil": {
       const cond = boolInput(block, "BOOL", ctx);
       const until = block.getFieldValue("MODE") === "UNTIL";
@@ -263,6 +315,27 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
       }
       return { k: "var", name: varName };
     }
+    case "procedures_callreturn": {
+      // Inline a value-returning function's RETURN expression at the call site.
+      const name = procName(block);
+      const def = ctx.procs.get(name);
+      if (!def) {
+        ctx.errors.push(`Unknown function: ${name || "(unnamed)"}`);
+        return { k: "num", v: 0 };
+      }
+      if (hasProcParams(def)) {
+        ctx.errors.push(`Function "${name}" has parameters — parameters aren't supported yet.`);
+        return { k: "num", v: 0 };
+      }
+      if (ctx.callStack.has(name) || ctx.callStack.size >= 20) {
+        ctx.errors.push(`Recursive or too-deeply-nested function: ${name}`);
+        return { k: "num", v: 0 };
+      }
+      ctx.callStack.add(name);
+      const ret = compileNum(def.getInputTargetBlock("RETURN"), ctx, vec);
+      ctx.callStack.delete(name);
+      return ret;
+    }
     case "ctx_read": {
       const keys: CtxKey[] = ["position_dir", "entry_price", "unrealized_pnl", "unrealized_pnl_pct", "bars_in_position", "last_trade_pnl", "consecutive_losses", "trades_today", "realized_today", "equity"];
       const key = block.getFieldValue("FIELD") as CtxKey;
@@ -305,6 +378,11 @@ function compileBool(block: Blockly.Block | null, ctx: Ctx): BoolExpr {
       return { k: "session", start: Number(block.getFieldValue("START")) || 0, end: Number(block.getFieldValue("END")) || 23 };
     case "time_dayofweek":
       return { k: "dayofweek", day: Math.min(6, Math.max(0, Number(block.getFieldValue("DAY")) || 0)) };
+    case "varb_get": {
+      const varName = (block.getFieldValue("NAME") as string) || "flag";
+      ctx.usedVars.add(varName);
+      return { k: "varb", name: varName };
+    }
     default:
       ctx.errors.push(`Expected a condition but found: ${block.type}`);
       return { k: "bool", v: false };

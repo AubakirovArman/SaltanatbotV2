@@ -141,6 +141,9 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) 
     case "setvar":
       rt.vars.set(stmt.name, evalNum(stmt.value, i, rt));
       break;
+    case "setvarb":
+      rt.vars.set(stmt.name, evalBool(stmt.value, i, rt) ? 1 : 0);
+      break;
     case "alert":
       if (evalBool(stmt.when, i, rt)) intents.alerts.push({ message: renderAlert(stmt.message, stmt.args, i, rt) });
       break;
@@ -280,6 +283,8 @@ function evalBool(expr: BoolExpr, i: number, rt: Runtime): boolean {
     }
     case "dayofweek":
       return new Date(rt.candles[i].time).getUTCDay() === expr.day;
+    case "varb":
+      return (rt.vars.get(expr.name) ?? 0) !== 0;
   }
 }
 

@@ -104,6 +104,21 @@ describe("runInit — on-start initialization", () => {
   });
 });
 
+describe("evaluateBar — boolean variables", () => {
+  it("stores and reads a boolean flag", () => {
+    const ir: StrategyIR = {
+      name: "flag",
+      inputs: [],
+      body: [
+        { k: "setvarb", name: "hot", value: { k: "compare", op: ">", a: { k: "price", field: "close" }, b: { k: "num", v: 50 } } },
+        { k: "entry", direction: "long", when: { k: "varb", name: "hot" } },
+      ],
+    };
+    expect(evaluateBar(ir, [candle(0, 100)], 0).entry).toBe("long"); // 100 > 50 → flag true
+    expect(evaluateBar(ir, [candle(0, 10)], 0).entry).toBeUndefined(); // 10 !> 50 → flag false
+  });
+});
+
 describe("evaluateBar — rolling aggregates (agg) and shift", () => {
   const bars = [10, 20, 30, 40, 50].map((c, i) => candle(i, c));
 
