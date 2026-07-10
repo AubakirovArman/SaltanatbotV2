@@ -181,6 +181,29 @@ export function registerStrategyBlocks() {
       tooltip: "Rate of change in percent."
     },
     {
+      type: "series_agg",
+      message0: "%1 of %2 over %3 bars",
+      args0: [
+        { type: "field_dropdown", name: "FN", options: [["sum", "sum"], ["average", "avg"], ["min", "min"], ["max", "max"], ["std dev", "stdev"], ["median", "median"]] },
+        { type: "input_value", name: "SOURCE", check: "Number" },
+        { type: "input_value", name: "PERIOD", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Rolling aggregate of any value over the last N bars."
+    },
+    {
+      type: "series_shift",
+      message0: "%1 from %2 bars ago",
+      args0: [
+        { type: "input_value", name: "SOURCE", check: "Number" },
+        { type: "field_number", name: "OFFSET", value: 1, min: 0, precision: 1 }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "The value of any expression N bars ago (e.g. RSI 3 bars ago)."
+    },
+    {
       type: "plot_series",
       message0: "plot %1 as %2 color %3",
       args0: [
@@ -445,15 +468,17 @@ export function registerStrategyBlocks() {
     // ---- Events ----
     {
       type: "alert_message",
-      message0: "alert %1 when %2",
+      message0: "alert %1 {a}=%2 {b}=%3 when %4",
       args0: [
         { type: "field_input", name: "TEXT", text: "signal" },
+        { type: "input_value", name: "A", check: "Number" },
+        { type: "input_value", name: "B", check: "Number" },
         { type: "input_value", name: "WHEN", check: "Boolean" }
       ],
       previousStatement: null,
       nextStatement: null,
       colour: "#9469c9",
-      tooltip: "Emit an alert when a condition fires."
+      tooltip: "Emit an alert when a condition fires. Use {a}/{b} in the text to insert the values (e.g. \"RSI={a}\")."
     },
     // ---- Flow ----
     {
@@ -501,6 +526,8 @@ export const strategyToolbox = {
         { kind: "block", type: "indicator_wpr" },
         { kind: "block", type: "indicator_cci" },
         { kind: "block", type: "indicator_roc" },
+        { kind: "block", type: "series_agg" },
+        { kind: "block", type: "series_shift" },
         { kind: "block", type: "plot_series" }
       ]
     },

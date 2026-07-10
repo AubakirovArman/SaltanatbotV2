@@ -27,7 +27,7 @@ function stmtText(stmt: Stmt, depth: number): string[] {
     case "marker": return [`${pad}mark ${stmt.dir === "up" ? "▲" : "▼"}${stmt.label ? ` "${stmt.label}"` : ""} when ${boolText(stmt.when)}`];
     case "size": return [`${pad}size ${stmt.mode} ${numText(stmt.value)}`];
     case "setvar": return [`${pad}set ${stmt.name} = ${numText(stmt.value)}`];
-    case "alert": return [`${pad}alert "${stmt.message}" when ${boolText(stmt.when)}`];
+    case "alert": return [`${pad}alert "${stmt.message}"${stmt.args ? ` {${Object.entries(stmt.args).map(([k, v]) => `${k}=${numText(v)}`).join(", ")}}` : ""} when ${boolText(stmt.when)}`];
     case "plot": return [`${pad}plot ${numText(stmt.value)} as "${stmt.label}"`];
     case "if": {
       const out = [`${pad}if ${boolText(stmt.cond)}:`, ...stmt.then.flatMap((inner) => stmtText(inner, depth + 1))];
@@ -65,6 +65,8 @@ function numText(expr: NumExpr): string {
     case "minmax": return `${expr.op}(${numText(expr.a)}, ${numText(expr.b)})`;
     case "arith": return `(${numText(expr.a)} ${expr.op} ${numText(expr.b)})`;
     case "unary": return `${expr.op}(${numText(expr.a)})`;
+    case "agg": return `${expr.fn}(${numText(expr.src)}, ${numText(expr.period)})`;
+    case "shift": return `${numText(expr.src)}[-${expr.offset}]`;
     case "ctx": return `pos.${expr.key}`;
   }
 }

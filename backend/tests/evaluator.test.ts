@@ -104,6 +104,39 @@ describe("runInit — on-start initialization", () => {
   });
 });
 
+describe("evaluateBar — rolling aggregates (agg) and shift", () => {
+  const bars = [10, 20, 30, 40, 50].map((c, i) => candle(i, c));
+
+  it("agg computes a rolling window; shift reads N bars back", () => {
+    const ir: StrategyIR = {
+      name: "agg",
+      inputs: [],
+      body: [
+        { k: "setvar", name: "avg3", value: { k: "agg", fn: "avg", src: { k: "price", field: "close" }, period: { k: "num", v: 3 } } },
+        { k: "setvar", name: "sum2", value: { k: "agg", fn: "sum", src: { k: "price", field: "close" }, period: { k: "num", v: 2 } } },
+        { k: "setvar", name: "back2", value: { k: "shift", src: { k: "price", field: "close" }, offset: 2 } },
+      ],
+    };
+    const vars = new Map<string, number>();
+    evaluateBar(ir, bars, 4, vars);
+    expect(vars.get("avg3")).toBe(40); // (30+40+50)/3
+    expect(vars.get("sum2")).toBe(90); // 40+50
+    expect(vars.get("back2")).toBe(30); // close 2 bars before bar 4
+  });
+});
+
+describe("evaluateBar — templated alerts", () => {
+  it("interpolates numeric args into the alert message; leaves unknown placeholders literal", () => {
+    const ir: StrategyIR = {
+      name: "a",
+      inputs: [],
+      body: [{ k: "alert", message: "x={a} y={b} z={missing}", when: { k: "bool", v: true }, args: { a: { k: "num", v: 42 }, b: { k: "price", field: "close" } } }],
+    };
+    const intents = evaluateBar(ir, [candle(0, 100)], 0);
+    expect(intents.alerts[0].message).toBe("x=42 y=100 z={missing}");
+  });
+});
+
 describe("evaluateBar — runtime position/PnL context (ctx reads)", () => {
   const oneBar = [candle(0, 100)];
   const ir: StrategyIR = {

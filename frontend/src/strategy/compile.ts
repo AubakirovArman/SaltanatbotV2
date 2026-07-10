@@ -118,8 +118,19 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
       ctx.vars.add(varName);
       return { k: "setvar", name: varName, value: { k: "arith", op: "+", a: { k: "var", name: varName }, b: numInput(block, "BY", ctx) } };
     }
-    case "alert_message":
-      return { k: "alert", message: (block.getFieldValue("TEXT") as string) || "alert", when: boolInput(block, "WHEN", ctx) };
+    case "alert_message": {
+      // Optional {a}/{b} value slots interpolated into the message text at fire time.
+      const args: Record<string, NumExpr> = {};
+      if (block.getInputTargetBlock("A")) args.a = numInput(block, "A", ctx);
+      if (block.getInputTargetBlock("B")) args.b = numInput(block, "B", ctx);
+      const alert: Extract<Stmt, { k: "alert" }> = {
+        k: "alert",
+        message: (block.getFieldValue("TEXT") as string) || "alert",
+        when: boolInput(block, "WHEN", ctx)
+      };
+      if (Object.keys(args).length) alert.args = args;
+      return alert;
+    }
     case "flow_if":
       return { k: "if", cond: boolInput(block, "COND", ctx), then: compileStatements(block.getInputTargetBlock("DO"), ctx) };
     case "controls_if": {
@@ -228,6 +239,15 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
       return { k: "roc", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "math_minmax":
       return { k: "minmax", op: block.getFieldValue("OP") === "min" ? "min" : "max", a: numInput(block, "A", ctx, true), b: numInput(block, "B", ctx, true) };
+    case "series_agg":
+      return {
+        k: "agg",
+        fn: (block.getFieldValue("FN") as "sum" | "avg" | "min" | "max" | "stdev" | "median") ?? "avg",
+        src: numInput(block, "SOURCE", ctx, true),
+        period: numInput(block, "PERIOD", ctx, true)
+      };
+    case "series_shift":
+      return { k: "shift", src: numInput(block, "SOURCE", ctx, true), offset: Math.max(0, Number(block.getFieldValue("OFFSET")) || 0) };
     case "param_number": {
       const paramName = (block.getFieldValue("NAME") as string) || "param";
       if (!ctx.inputs.has(paramName)) {
