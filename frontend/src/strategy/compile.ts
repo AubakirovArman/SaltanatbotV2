@@ -264,7 +264,7 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
       return { k: "var", name: varName };
     }
     case "ctx_read": {
-      const keys: CtxKey[] = ["position_dir", "entry_price", "unrealized_pnl", "unrealized_pnl_pct", "bars_in_position"];
+      const keys: CtxKey[] = ["position_dir", "entry_price", "unrealized_pnl", "unrealized_pnl_pct", "bars_in_position", "last_trade_pnl", "consecutive_losses", "trades_today", "realized_today", "equity"];
       const key = block.getFieldValue("FIELD") as CtxKey;
       if (vec) ctx.errors.push("Position/PnL reads can't be used inside an indicator or series input — they are single values, not history.");
       return { k: "ctx", key: keys.includes(key) ? key : "position_dir" };

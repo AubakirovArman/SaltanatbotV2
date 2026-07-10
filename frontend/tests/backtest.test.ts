@@ -166,6 +166,29 @@ describe("backtest exposes a variable trace", () => {
   });
 });
 
+describe("ctx trade-history reads (loss streak / last trade PnL)", () => {
+  it("tracks consecutive losses and last-trade PnL across trades", () => {
+    const ir: StrategyIR = {
+      name: "losses",
+      inputs: [],
+      body: [
+        { k: "entry", direction: "long", when: { k: "compare", op: "==", a: { k: "ctx", key: "position_dir" }, b: { k: "num", v: 0 } } },
+        { k: "exit", when: { k: "compare", op: ">=", a: { k: "ctx", key: "bars_in_position" }, b: { k: "num", v: 1 } } },
+        { k: "setvar", name: "cl", value: { k: "ctx", key: "consecutive_losses" } },
+        { k: "setvar", name: "ltp", value: { k: "ctx", key: "last_trade_pnl" } },
+        { k: "size", mode: "units", value: { k: "num", v: 1 } },
+      ],
+    };
+    const candles = [100, 98, 96, 94, 92, 90, 88, 86, 84, 82].map((c, i) => candle(i * MIN, c, c + 1, c - 1, c));
+    const result = runBacktest(ir, candles, { ...noFriction, fillTiming: "next_open" });
+    expect(result.trades.length).toBeGreaterThanOrEqual(2);
+    expect(result.trades.every((t) => t.pnl <= 0)).toBe(true);
+    const last = result.varTrace?.at(-1);
+    expect(last?.vars.cl ?? 0).toBeGreaterThanOrEqual(1);
+    expect(last?.vars.ltp ?? 0).toBeLessThan(0);
+  });
+});
+
 describe("ctx reads drive backtest behaviour", () => {
   it("exits after N bars in position via bars_in_position", () => {
     const ir: StrategyIR = {

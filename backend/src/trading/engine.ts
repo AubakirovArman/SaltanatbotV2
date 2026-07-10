@@ -83,6 +83,8 @@ interface RunningBot {
   managed?: Managed;
   /** Persistent `setvar` store — survives across bars for backtest/live parity. */
   vars: Map<string, number>;
+  /** Last known account equity (for the ctx equity read; carried on read failure). */
+  lastEquity?: number;
   /**
    * True when the bot was auto-resumed with stale risky state (open position or
    * nonzero counters after a long downtime). It buffers data but does NOT trade
@@ -103,14 +105,15 @@ export class TradingEngine {
     return this.running.has(id);
   }
 
-  async liveState(id: string): Promise<{ account?: AccountState; position?: PositionState | null; price: number; paused: boolean } | null> {
+  async liveState(id: string): Promise<{ account?: AccountState; position?: PositionState | null; price: number; paused: boolean; vars: Record<string, number> } | null> {
     const bot = this.running.get(id);
     if (!bot) return null;
     return {
       account: await bot.adapter.account().catch(() => undefined),
       position: await bot.adapter.position(bot.config.symbol).catch(() => null),
       price: bot.price,
-      paused: bot.paused === true
+      paused: bot.paused === true,
+      vars: Object.fromEntries(bot.vars)
     };
   }
 
@@ -443,8 +446,9 @@ export class TradingEngine {
     // Auto-resumed with stale risky state: buffer only, don't trade, until confirmed.
     if (bot.paused) return;
     let intents: BarIntents;
+    const equity = await this.equityOf(bot);
     try {
-      intents = evaluateBar(bot.config.ir, bot.buffer, index, bot.vars, this.positionCtx(bot));
+      intents = evaluateBar(bot.config.ir, bot.buffer, index, bot.vars, this.positionCtx(bot, equity));
     } catch (error) {
       this.log(bot.config.id, "error", `Strategy error: ${error instanceof Error ? error.message : error}`);
       return;
@@ -639,21 +643,46 @@ export class TradingEngine {
     setSetting(`paper:${bot.config.id}`, bot.paper.getState());
   }
 
-  /** Build the per-bar position/PnL context for `ctx` reads (flat → {} → all 0). */
-  private positionCtx(bot: RunningBot): Record<string, number> {
-    const m = bot.managed;
-    if (!m) return {};
-    const price = bot.price;
-    const move = m.side === "long" ? price - m.entry : m.entry - price;
-    const tf = timeframeMs[bot.config.timeframe] ?? 60_000;
-    const lastBarTime = bot.buffer.at(-1)?.time ?? m.entryTime ?? 0;
-    return {
-      position_dir: m.side === "long" ? 1 : -1,
-      entry_price: m.entry,
-      unrealized_pnl: (m.qty ?? 0) * move,
-      unrealized_pnl_pct: m.entry ? (move / m.entry) * 100 : 0,
-      bars_in_position: Math.max(0, Math.round((lastBarTime - (m.entryTime ?? lastBarTime)) / tf))
+  /** Latest account equity, cached so a failed read carries the last known value. */
+  private async equityOf(bot: RunningBot): Promise<number> {
+    const account = await bot.adapter.account().catch(() => undefined);
+    if (account) bot.lastEquity = account.equity;
+    return bot.lastEquity ?? 0;
+  }
+
+  /**
+   * Build the per-bar position/PnL context for `ctx` reads. Trade-history values
+   * (last trade PnL, loss streak, trades/realized today) are derived from the fills
+   * table each bar — same shape the backtester derives from its trade list.
+   */
+  private positionCtx(bot: RunningBot, equity: number): Record<string, number> {
+    const closes = listFills(bot.config.id, 500).filter((fill) => fill.kind === "close"); // newest first
+    let consecutiveLosses = 0;
+    for (const fill of closes) {
+      if (fill.realizedPnl < 0) consecutiveLosses += 1;
+      else break;
+    }
+    const dayStart = Math.floor(Date.now() / 86_400_000) * 86_400_000;
+    const todays = closes.filter((fill) => fill.ts >= dayStart);
+    const ctx: Record<string, number> = {
+      last_trade_pnl: closes[0]?.realizedPnl ?? 0,
+      consecutive_losses: consecutiveLosses,
+      trades_today: todays.length,
+      realized_today: todays.reduce((sum, fill) => sum + fill.realizedPnl, 0),
+      equity
     };
+    const m = bot.managed;
+    if (m) {
+      const move = m.side === "long" ? bot.price - m.entry : m.entry - bot.price;
+      const tf = timeframeMs[bot.config.timeframe] ?? 60_000;
+      const lastBarTime = bot.buffer.at(-1)?.time ?? m.entryTime ?? 0;
+      ctx.position_dir = m.side === "long" ? 1 : -1;
+      ctx.entry_price = m.entry;
+      ctx.unrealized_pnl = (m.qty ?? 0) * move;
+      ctx.unrealized_pnl_pct = m.entry ? (move / m.entry) * 100 : 0;
+      ctx.bars_in_position = Math.max(0, Math.round((lastBarTime - (m.entryTime ?? lastBarTime)) / tf));
+    }
+    return ctx;
   }
 
   /** Persist durable strategy state (setvar counters + managed position) for crash recovery. */

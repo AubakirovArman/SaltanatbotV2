@@ -361,7 +361,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     const intents: Intents = { exit: false, alerts: [], markers: [] };
     rt.ops = 0;
     rt.budgetHit = false;
-    rt.ctx = buildPositionCtx(position, candle.close, i);
+    rt.ctx = buildCtx(position, candle.close, i, trades, equity, candle.time);
     if (!liquidated) execStatements(ir.body, i, rt, intents);
     if (rt.budgetHit && !budgetWarned) {
       warnings.push({ time: candle.time, message: `A loop hit the per-bar execution budget (${MAX_OPS_PER_BAR}) and was truncated.` });
@@ -696,17 +696,38 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
 
 // ---------- statement execution ----------
 
-/** Build the per-bar position/PnL context for `ctx` reads. Flat → {} (all reads 0). */
-function buildPositionCtx(position: Position | null, price: number, i: number): Record<string, number> {
-  if (!position) return {};
-  const move = position.dir === "long" ? price - position.entryPrice : position.entryPrice - price;
-  return {
-    position_dir: position.dir === "long" ? 1 : -1,
-    entry_price: position.entryPrice,
-    unrealized_pnl: position.qty * move,
-    unrealized_pnl_pct: position.entryPrice ? (move / position.entryPrice) * 100 : 0,
-    bars_in_position: i - position.entryIndex
+/** Build the per-bar position/PnL context for `ctx` reads (identical shape to the live engine). */
+function buildCtx(position: Position | null, price: number, i: number, trades: Trade[], equity: number, barTime: number): Record<string, number> {
+  let consecutiveLosses = 0;
+  for (let t = trades.length - 1; t >= 0; t -= 1) {
+    if (trades[t].pnl < 0) consecutiveLosses += 1;
+    else break;
+  }
+  const dayStart = Math.floor(barTime / 86_400_000) * 86_400_000;
+  let tradesToday = 0;
+  let realizedToday = 0;
+  for (const tr of trades) {
+    if (tr.exitTime >= dayStart) {
+      tradesToday += 1;
+      realizedToday += tr.pnl;
+    }
+  }
+  const ctx: Record<string, number> = {
+    last_trade_pnl: trades.at(-1)?.pnl ?? 0,
+    consecutive_losses: consecutiveLosses,
+    trades_today: tradesToday,
+    realized_today: realizedToday,
+    equity
   };
+  if (position) {
+    const move = position.dir === "long" ? price - position.entryPrice : position.entryPrice - price;
+    ctx.position_dir = position.dir === "long" ? 1 : -1;
+    ctx.entry_price = position.entryPrice;
+    ctx.unrealized_pnl = position.qty * move;
+    ctx.unrealized_pnl_pct = position.entryPrice ? (move / position.entryPrice) * 100 : 0;
+    ctx.bars_in_position = i - position.entryIndex;
+  }
+  return ctx;
 }
 
 /** Run one-time on-start init statements (setvar-only) into rt.vars before the first bar. */
