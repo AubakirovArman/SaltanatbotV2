@@ -66,6 +66,25 @@ export function BacktestReport({ result, decimals, config, onShowOnChart }: Back
       {mc && <MonteCarloPanel mc={mc} initial={config?.initialCapital ?? 10_000} />}
 
       <TradeTable trades={result.trades} decimals={decimals} />
+      <StatePanel result={result} />
+    </div>
+  );
+}
+
+/** Final values of the strategy's variables (only shown when the strategy uses state). */
+function StatePanel({ result }: { result: BacktestResult }) {
+  const last = result.varTrace?.at(-1);
+  if (!last || Object.keys(last.vars).length === 0) return null;
+  return (
+    <div className="strategy-state">
+      <div className="panel-header small">
+        <h4>Variables · final bar</h4>
+      </div>
+      <div className="metric-grid">
+        {Object.entries(last.vars).map(([name, value]) => (
+          <Metric key={name} label={name} value={Number.isFinite(value) ? String(Math.round(value * 1e4) / 1e4) : "—"} />
+        ))}
+      </div>
     </div>
   );
 }

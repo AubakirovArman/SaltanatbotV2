@@ -135,6 +135,8 @@ export interface BacktestResult {
   warnings: { time: number; message: string }[];
   metrics: BacktestMetrics;
   tested: TestedRange;
+  /** Sampled per-bar snapshot of strategy variables (only when the strategy uses state). */
+  varTrace?: { time: number; vars: Record<string, number> }[];
 }
 
 interface Runtime {
@@ -214,6 +216,8 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
   let liquidated = false;
   let fundingPaid = 0;
   let budgetWarned = false;
+  const varTrace: { time: number; vars: Record<string, number> }[] = [];
+  const traceStep = Math.max(1, Math.floor(rt.n / 600)); // cap the trace at ~600 points
 
   // Bar duration (ms) inferred from the candle spacing — the same value used to
   // annualise Sharpe. Funding is pro-rated to this bar length: a rate quoted per
@@ -363,6 +367,9 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
       warnings.push({ time: candle.time, message: `A loop hit the per-bar execution budget (${MAX_OPS_PER_BAR}) and was truncated.` });
       budgetWarned = true;
     }
+    if (rt.vars.size && (i % traceStep === 0 || i === rt.n - 1)) {
+      varTrace.push({ time: candle.time, vars: Object.fromEntries(rt.vars) });
+    }
     if (intents.size) sizing = intents.size;
     for (const alert of intents.alerts) alerts.push({ time: candle.time, message: alert.message });
     for (const marker of intents.markers) {
@@ -443,7 +450,8 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     alerts,
     warnings,
     metrics: computeMetrics(trades, measured, config, barsInMarket, measured.length, candles, liquidated, fundingPaid),
-    tested
+    tested,
+    varTrace: varTrace.length ? varTrace : undefined
   };
 }
 
