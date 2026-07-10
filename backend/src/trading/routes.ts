@@ -7,7 +7,7 @@ import { timeframes } from "../market/timeframes.js";
 import type { ProviderRouter } from "../providers/router.js";
 import { TradingEngine, type TradeEvent } from "./engine.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
-import { getNotifyConfig, testNotify, type NotifyConfig } from "./notifications.js";
+import { getNotifyConfig, notify, testNotify, type NotifyConfig } from "./notifications.js";
 import { TelegramControl } from "./telegramControl.js";
 import { deleteBot, deleteSetting, initStore, listBots, listFills, listLogs, getSetting, setSetting, upsertBot } from "./store.js";
 import { parseStrategyIR } from "./strategy/irSchema.js";
@@ -335,6 +335,31 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
 
   router.post("/notify/test", async (_req, res) => {
     res.json(await testNotify());
+  });
+
+  // Deliver a client-side price alert through the notification channel (Telegram),
+  // so an alert reaches the operator even when the browser tab is closed.
+  router.post("/notify-alert", async (req, res) => {
+    const parsed = z
+      .object({
+        symbol: z.string().min(1).max(30),
+        price: z.number().finite(),
+        direction: z.enum(["above", "below"]),
+        hitPrice: z.number().finite().optional()
+      })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    const { symbol, price, direction, hitPrice } = parsed.data;
+    await notify({
+      event: "signal",
+      bot: "Price alert",
+      symbol,
+      text: `crossed ${direction} ${price}${hitPrice !== undefined ? ` — now ${hitPrice}` : ""}`
+    });
+    res.json({ ok: true });
   });
 
   return { router, wss, engine, telegramControl };

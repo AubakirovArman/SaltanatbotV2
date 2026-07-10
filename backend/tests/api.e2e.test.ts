@@ -154,4 +154,9 @@ describe("trading API E2E (real router, in-memory store)", () => {
   it("kill switch responds ok", async () => {
     expect((await (await post("/kill", {})).json()).ok).toBe(true);
   });
+
+  it("delivers a price alert through the notify channel", async () => {
+    expect((await post("/notify-alert", { symbol: "BTCUSDT", price: 65000, direction: "above", hitPrice: 65010 })).status).toBe(200);
+    expect((await post("/notify-alert", { symbol: "", price: "x", direction: "sideways" })).status).toBe(400);
+  });
 });

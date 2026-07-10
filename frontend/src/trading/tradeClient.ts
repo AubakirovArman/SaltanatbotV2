@@ -174,6 +174,9 @@ export const getFills = (id: string) => req<{ fills: Fill[] }>(`/bots/${id}/fill
 export const getLogs = (id: string) => req<{ logs: LogRow[] }>(`/bots/${id}/logs`).then((r) => r.logs);
 export const getLive = (id: string) => req<LiveState>(`/bots/${id}/live`);
 export const getOrders = (id: string) => req<{ orders: PendingOrder[] }>(`/bots/${id}/orders`).then((r) => r.orders);
+/** Deliver a triggered price alert through the server notification channel (Telegram). */
+export const notifyAlert = (payload: { symbol: string; price: number; direction: "above" | "below"; hitPrice?: number }) =>
+  req<{ ok: boolean }>("/notify-alert", { method: "POST", body: JSON.stringify(payload) });
 export const getKeys = () => req<{ binance: boolean; bybit: boolean }>("/keys");
 export const saveKeys = (exchange: ExchangeId, apiKey: string, apiSecret: string) =>
   req("/keys", { method: "POST", body: JSON.stringify({ exchange, apiKey, apiSecret }) });

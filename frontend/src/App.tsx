@@ -250,8 +250,27 @@ export default function App() {
     list.push({ id: "view-strategy", group: "View", label: "Open Strategy Lab", run: () => { warmStrategyLab(); setMode("strategy"); } });
     list.push({ id: "view-trade", group: "View", label: "Open Trading", run: () => { warmTradingView(); setMode("trade"); } });
     list.push({ id: "theme", group: "View", label: "Toggle light / dark theme", run: () => setTheme((current) => (current === "dark" ? "light" : "dark")) });
+    indicators.forEach((indicator) =>
+      list.push({
+        id: `ind-${indicator.id}`,
+        group: "Indicator",
+        label: `${indicator.enabled ? "Hide" : "Show"} ${indicator.label}`,
+        run: () => {
+          setIndicators((current) => current.map((item) => (item.id === indicator.id ? { ...item, enabled: !item.enabled } : item)));
+          setMode("chart");
+        }
+      })
+    );
+    if (priceAlerts.alerts.length > 0) {
+      list.push({
+        id: "alerts-clear",
+        group: "Alerts",
+        label: `Clear all price alerts (${priceAlerts.alerts.length})`,
+        run: () => priceAlerts.alerts.forEach((alert) => priceAlerts.removeAlert(alert.id))
+      });
+    }
     return list;
-  }, [catalog]);
+  }, [catalog, indicators, priceAlerts.alerts, priceAlerts.removeAlert]);
 
   // Command palette (⌘K) + timeframe number hotkeys.
   useEffect(() => {

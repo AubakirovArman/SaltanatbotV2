@@ -9,6 +9,7 @@ import {
   type AlertDirection,
   type PriceAlert
 } from "../market/alerts";
+import { getToken, notifyAlert } from "../trading/tradeClient";
 
 export interface AlertToast {
   id: string;
@@ -96,6 +97,13 @@ export function usePriceAlerts(prices: Record<string, number>, decimalsFor: (sym
     if (fired.length > 0) {
       playAlertBeep();
       setToasts((current) => [...current, ...fired]);
+      // Best-effort server delivery (Telegram) so a fired alert reaches the operator
+      // even with the tab closed — only when a trade token is present.
+      if (getToken()) {
+        for (const toast of fired) {
+          void notifyAlert({ symbol: toast.symbol, price: toast.price, direction: toast.direction, hitPrice: toast.hitPrice }).catch(() => undefined);
+        }
+      }
     }
   }, [prices]);
 
