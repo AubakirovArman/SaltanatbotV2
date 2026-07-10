@@ -962,3 +962,54 @@
     transform: rotate(360deg);
   }
 }
+
+/* ---- Pine Script import dialog ---- */
+.modal.pine-import {
+  width: min(720px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pine-import .pine-hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+.pine-import textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: rgba(134, 150, 166, 0.08);
+  color: inherit;
+  border: 1px solid rgba(134, 150, 166, 0.25);
+  border-radius: 8px;
+  padding: 10px;
+}
+.pine-import .pine-actions {
+  display: flex;
+  gap: 8px;
+}
+.pine-import .pine-preview pre {
+  max-height: 220px;
+  overflow: auto;
+  font-size: 11px;
+  background: rgba(134, 150, 166, 0.08);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 8px 0 0;
+}
+.pine-import .pine-warnings {
+  font-size: 12px;
+  border: 1px solid rgba(247, 201, 72, 0.4);
+  background: rgba(247, 201, 72, 0.08);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.pine-import .pine-warnings ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
