@@ -253,7 +253,12 @@ export function registerStrategyBlocks() {
             ["entry price", "entry_price"],
             ["unrealized PnL", "unrealized_pnl"],
             ["unrealized PnL %", "unrealized_pnl_pct"],
-            ["bars in trade", "bars_in_position"]
+            ["bars in trade", "bars_in_position"],
+            ["last trade PnL", "last_trade_pnl"],
+            ["consecutive losses", "consecutive_losses"],
+            ["trades today", "trades_today"],
+            ["realized PnL today", "realized_today"],
+            ["account equity", "equity"]
           ]
         }
       ],

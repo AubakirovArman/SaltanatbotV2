@@ -29,7 +29,17 @@ export type NumExpr =
 
 /** Runtime-context reads: the current position/PnL state, supplied per bar by the
  *  backtester and the live engine. Scalar-only (never a series). */
-export type CtxKey = "position_dir" | "entry_price" | "unrealized_pnl" | "unrealized_pnl_pct" | "bars_in_position";
+export type CtxKey =
+  | "position_dir"
+  | "entry_price"
+  | "unrealized_pnl"
+  | "unrealized_pnl_pct"
+  | "bars_in_position"
+  | "last_trade_pnl"
+  | "consecutive_losses"
+  | "trades_today"
+  | "realized_today"
+  | "equity";
 
 /** Boolean expression — evaluates to true/false on every bar. */
 export type BoolExpr =
