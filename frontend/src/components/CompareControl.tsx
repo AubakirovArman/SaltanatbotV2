@@ -33,13 +33,11 @@ export function CompareControl({ candidates, active, max, legend, onAdd, onRemov
     const needle = query.trim().toUpperCase();
     return candidates
       .filter((item) => !taken.has(item.symbol))
-      .filter(
-        (item) =>
-          needle === "" ||
-          item.symbol.toUpperCase().includes(needle) ||
-          item.displayName.toUpperCase().includes(needle)
-      )
-      .slice(0, 60);
+      .map((item, index) => ({ item, index, score: scoreCandidate(item, needle) }))
+      .filter((entry) => entry.score !== null)
+      .sort((a, b) => a.score! - b.score! || a.index - b.index)
+      .slice(0, 60)
+      .map((entry) => entry.item);
   }, [candidates, active, query]);
 
   // The renderer emits base first; compare rows follow (those we can remove).
@@ -48,15 +46,7 @@ export function CompareControl({ candidates, active, max, legend, onAdd, onRemov
   return (
     <div className="compare-control">
       <div className="compare-strip">
-        <button
-          type="button"
-          className="compare-add"
-          aria-expanded={open}
-          aria-haspopup="menu"
-          disabled={atMax}
-          title={atMax ? `Comparing the maximum of ${max} symbols` : "Compare another symbol"}
-          onClick={() => setOpen((value) => !value)}
-        >
+        <button type="button" className="compare-add" aria-expanded={open} aria-haspopup="listbox" disabled={atMax} title={atMax ? `Comparing the maximum of ${max} symbols` : "Compare another symbol"} onClick={() => setOpen((value) => !value)}>
           <GitCompareArrows size={13} aria-hidden="true" />
           Compare
           <Plus size={12} aria-hidden="true" />
@@ -75,23 +65,19 @@ export function CompareControl({ candidates, active, max, legend, onAdd, onRemov
       </div>
 
       {open && (
-        <div className="compare-menu" role="menu">
+        <div className="compare-menu">
           <label className="compare-search">
             <Search size={13} aria-hidden="true" />
-            <input
-              type="text"
-              value={query}
-              placeholder="Search symbol"
-              autoFocus
-              onChange={(event) => setQuery(event.target.value)}
-            />
+            <span className="sr-only">Search symbol to compare</span>
+            <input type="text" value={query} placeholder="Search symbol" autoFocus onChange={(event) => setQuery(event.target.value)} />
           </label>
-          <div className="compare-menu-list">
+          <div className="compare-menu-list" role="listbox" aria-label="Compare symbols">
             {options.map((item) => (
               <button
                 type="button"
                 key={item.symbol}
-                role="menuitem"
+                role="option"
+                aria-selected={false}
                 onClick={() => {
                   onAdd(item.symbol);
                   setOpen(false);
@@ -108,6 +94,31 @@ export function CompareControl({ candidates, active, max, legend, onAdd, onRemov
       )}
     </div>
   );
+}
+
+function scoreCandidate(item: CompareCandidate, needle: string): number | null {
+  if (!needle) return 100;
+  const symbol = item.symbol.toUpperCase();
+  const baseSymbol = symbolBase(symbol);
+  const [baseName = "", quoteName = ""] = item.displayName
+    .toUpperCase()
+    .split("/")
+    .map((part) => part.trim());
+
+  if (symbol === needle) return 0;
+  if (baseSymbol === needle) return 1;
+  if (symbol.startsWith(needle)) return 2;
+  if (baseName === needle) return 3;
+  if (baseName.startsWith(needle)) return 4;
+  if (symbol.includes(needle)) return 5;
+  if (baseName.includes(needle)) return 6;
+  if (quoteName.startsWith(needle)) return 9;
+  return null;
+}
+
+function symbolBase(symbol: string): string {
+  const suffix = ["USDT", "USDC", "USD", "BTC", "ETH", "EUR", "GBP", "JPY"].find((quote) => symbol.endsWith(quote));
+  return suffix ? symbol.slice(0, -suffix.length) : symbol;
 }
 
 function formatPct(pct?: number) {

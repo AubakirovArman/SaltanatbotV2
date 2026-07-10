@@ -33,7 +33,8 @@
 @media (max-width: 760px) {
   .topbar {
     flex-wrap: wrap;
-    padding-block: 6px;
+    gap: 6px;
+    padding: 6px 8px;
   }
 
   .terminal-shell {
@@ -43,8 +44,13 @@
   .workspace,
   .workspace.left-closed,
   .workspace.right-closed {
+    position: relative;
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(150px, 24dvh) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .workspace > span[aria-hidden="true"] {
+    display: none;
   }
 
   .stats-panel {
@@ -52,8 +58,15 @@
   }
 
   .watchlist {
+    position: absolute;
+    z-index: 20;
+    inset-inline: 8px;
+    inset-block-end: 8px;
+    max-block-size: min(42dvh, 360px);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
     border-inline-end: 0;
-    border-block-end: 1px solid var(--line);
+    box-shadow: var(--shadow-modal);
   }
 
   .symbol-list {
@@ -85,5 +98,66 @@
   .code-preview {
     border-inline-start: 0;
     border-block-start: 1px solid var(--line);
+  }
+
+  .brand strong,
+  .divider-v,
+  .status-pill {
+    display: none;
+  }
+
+  .symbol-chip {
+    max-inline-size: 166px;
+  }
+
+  .symbol-chip strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .timeframe-control {
+    flex: 1 1 auto;
+    min-inline-size: 150px;
+  }
+
+  .segmented.timeframes {
+    flex: 1 1 auto;
+  }
+
+  .segmented.timeframes button:not(.active) {
+    display: none;
+  }
+
+  .topbar-actions {
+    inline-size: 100%;
+    margin-inline-start: 0;
+    justify-content: space-between;
+  }
+
+  .chart-legend {
+    max-inline-size: calc(100% - 16px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chart-indicator-overlay,
+  .compare-control {
+    max-inline-size: calc(100% - 16px);
+  }
+
+  .indicator-strip,
+  .compare-strip {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .indicator-chip,
+  .compare-chip {
+    flex: 0 0 auto;
+  }
+
+  .compare-control {
+    inset-block-start: 64px;
   }
 }

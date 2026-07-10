@@ -20,6 +20,7 @@
 .trade-sidebar-actions {
   display: flex;
   gap: 6px;
+  justify-content: end;
 }
 
 .trade-sidebar-actions .run-button {
@@ -90,9 +91,18 @@
   color: var(--muted);
 }
 
-.ex-badge.binance { color: #f0b90b; background: rgba(240, 185, 11, 0.12); }
-.ex-badge.bybit { color: #f7a600; background: rgba(247, 166, 0, 0.12); }
-.ex-badge.paper { color: var(--accent); background: var(--accent-soft); }
+.ex-badge.binance {
+  color: #f0b90b;
+  background: rgba(240, 185, 11, 0.12);
+}
+.ex-badge.bybit {
+  color: #f7a600;
+  background: rgba(247, 166, 0, 0.12);
+}
+.ex-badge.paper {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 
 .trade-bot-meta {
   font-size: var(--fs-xs);
@@ -103,8 +113,12 @@
   font-style: normal;
 }
 
-.trade-bot-meta .live-text { color: var(--up); }
-.trade-bot-meta .off-text { color: var(--dim); }
+.trade-bot-meta .live-text {
+  color: var(--up);
+}
+.trade-bot-meta .off-text {
+  color: var(--dim);
+}
 
 /* ---- create form sections ---- */
 .trade-form-title {
@@ -165,11 +179,11 @@
 }
 
 .trade-empty {
-  max-inline-size: 420px;
+  max-inline-size: 440px;
   margin: 8vh auto;
   display: grid;
   justify-items: start;
-  gap: 10px;
+  gap: 12px;
   color: var(--muted);
 }
 
@@ -185,6 +199,30 @@
 .trade-empty p {
   margin: 0;
   line-height: 1.5;
+}
+
+.trade-empty-steps {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  list-style: none;
+}
+
+.trade-empty-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.trade-empty-steps li::before {
+  content: "";
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 /* ---- create form ---- */
@@ -667,6 +705,14 @@
   margin: 0;
   font-size: var(--fs-sm);
   line-height: 1.5;
+}
+
+.trade-token-label {
+  justify-self: start;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
 }
 
 .trade-gate input {

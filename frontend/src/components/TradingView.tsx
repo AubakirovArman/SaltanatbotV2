@@ -1,20 +1,4 @@
-import {
-  AlertTriangle,
-  BookOpen,
-  Bookmark,
-  Bot,
-  KeyRound,
-  Pencil,
-  Play,
-  Plus,
-  Save,
-  Send,
-  Settings2,
-  Square,
-  Terminal,
-  Trash2,
-  XOctagon
-} from "lucide-react";
+import { AlertTriangle, BookOpen, Bookmark, Bot, KeyRound, Pencil, Play, Plus, Save, Send, Settings2, Square, Terminal, Trash2, XOctagon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compileXmlToIr } from "../strategy/compileArtifact";
 import type { StrategyArtifact } from "../strategy/library";
@@ -74,7 +58,9 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
   liveRef.current = live;
 
   const refreshBots = useCallback(() => {
-    listBots().then(setBots).catch(() => undefined);
+    listBots()
+      .then(setBots)
+      .catch(() => undefined);
   }, []);
 
   // Verify the stored access token before showing the trading surface.
@@ -116,29 +102,53 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
     if (!selectedId || selectedBot?.status !== "running") return;
     let alive = true;
     const poll = () => {
-      getLive(selectedId).then((state) => alive && setLive((current) => ({ ...current, [selectedId]: state }))).catch(() => undefined);
-      getOrders(selectedId).then((rows) => alive && setOrders((current) => ({ ...current, [selectedId]: rows }))).catch(() => undefined);
+      getLive(selectedId)
+        .then((state) => alive && setLive((current) => ({ ...current, [selectedId]: state })))
+        .catch(() => undefined);
+      getOrders(selectedId)
+        .then((rows) => alive && setOrders((current) => ({ ...current, [selectedId]: rows })))
+        .catch(() => undefined);
     };
     poll();
     const id = window.setInterval(poll, 2000);
-    return () => { alive = false; window.clearInterval(id); };
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
   }, [selectedId, selectedBot?.status]);
 
   const openBot = (id: string) => {
     setView({ kind: "bot", id });
-    getFills(id).then((rows) => setFills((current) => ({ ...current, [id]: rows }))).catch(() => undefined);
-    getLogs(id).then((rows) => setLogs((current) => ({ ...current, [id]: rows }))).catch(() => undefined);
-    getLive(id).then((state) => setLive((current) => ({ ...current, [id]: state }))).catch(() => undefined);
-    getOrders(id).then((rows) => setOrders((current) => ({ ...current, [id]: rows }))).catch(() => undefined);
+    getFills(id)
+      .then((rows) => setFills((current) => ({ ...current, [id]: rows })))
+      .catch(() => undefined);
+    getLogs(id)
+      .then((rows) => setLogs((current) => ({ ...current, [id]: rows })))
+      .catch(() => undefined);
+    getLive(id)
+      .then((state) => setLive((current) => ({ ...current, [id]: state })))
+      .catch(() => undefined);
+    getOrders(id)
+      .then((rows) => setOrders((current) => ({ ...current, [id]: rows })))
+      .catch(() => undefined);
   };
 
   if (!authChecked) {
-    return <section className="trading trade-gate-wrap"><p className="empty-note">Checking access…</p></section>;
+    return (
+      <section className="trading trade-gate-wrap">
+        <p className="empty-note">Checking access…</p>
+      </section>
+    );
   }
   if (!authed) {
     return (
       <section className="trading trade-gate-wrap">
-        <TokenGate onAuthed={(state) => { setAuth(state); setAuthChecked(true); }} />
+        <TokenGate
+          onAuthed={(state) => {
+            setAuth(state);
+            setAuthChecked(true);
+          }}
+        />
       </section>
     );
   }
@@ -147,9 +157,11 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
     <section className="trading">
       <aside className="trade-sidebar">
         <div className="trade-sidebar-actions">
-          <button type="button" className="run-button" onClick={() => setView({ kind: "new" })}>
-            <Plus size={14} aria-hidden="true" /> New bot
-          </button>
+          {!(bots.length === 0 && view.kind === "empty") && (
+            <button type="button" className="run-button" onClick={() => setView({ kind: "new" })}>
+              <Plus size={14} aria-hidden="true" /> New bot
+            </button>
+          )}
           <button type="button" className={`icon-button ${view.kind === "settings" ? "active" : ""}`} title="Settings" onClick={() => setView({ kind: "settings" })}>
             <Settings2 size={15} aria-hidden="true" />
           </button>
@@ -160,15 +172,27 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
             const pos = live[bot.id]?.position;
             return (
               <button type="button" key={bot.id} className={`trade-bot-row ${selectedId === bot.id ? "active" : ""}`} onClick={() => openBot(bot.id)}>
-                <span className={`status-dot ${bot.status}`}><i /></span>
+                <span className={`status-dot ${bot.status}`}>
+                  <i />
+                </span>
                 <span className="trade-bot-id">
                   <strong>{bot.name}</strong>
-                  <small><span className={`ex-badge ${bot.exchange}`}>{bot.exchange}</span> {bot.symbol} · {bot.timeframe}</small>
+                  <small>
+                    <span className={`ex-badge ${bot.exchange}`}>{bot.exchange}</span> {bot.symbol} · {bot.timeframe}
+                  </small>
                 </span>
                 <span className="trade-bot-meta">
-                  {bot.status === "running"
-                    ? (pos ? <em className={pos.side === "long" ? "up" : "down"}>{pos.side === "long" ? "▲" : "▼"} {pos.side}</em> : <em className="live-text">live</em>)
-                    : <em className="off-text">off</em>}
+                  {bot.status === "running" ? (
+                    pos ? (
+                      <em className={pos.side === "long" ? "up" : "down"}>
+                        {pos.side === "long" ? "▲" : "▼"} {pos.side}
+                      </em>
+                    ) : (
+                      <em className="live-text">live</em>
+                    )
+                  ) : (
+                    <em className="off-text">off</em>
+                  )}
                 </span>
               </button>
             );
@@ -182,7 +206,10 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
           <CreateBotForm
             strategies={strategies}
             catalog={catalog}
-            onCreated={(bot) => { refreshBots(); openBot(bot.id); }}
+            onCreated={(bot) => {
+              refreshBots();
+              openBot(bot.id);
+            }}
           />
         )}
         {view.kind === "settings" && <SettingsPanel />}
@@ -194,7 +221,10 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
             fills={fills[selectedBot.id] ?? []}
             logs={logs[selectedBot.id] ?? []}
             onChanged={refreshBots}
-            onDeleted={() => { refreshBots(); setView({ kind: "empty" }); }}
+            onDeleted={() => {
+              refreshBots();
+              setView({ kind: "empty" });
+            }}
           />
         )}
       </div>
@@ -226,18 +256,11 @@ function TokenGate({ onAuthed }: { onAuthed: (state: AuthState) => void }) {
     <div className="trade-gate">
       <KeyRound size={26} aria-hidden="true" />
       <h2>Trading is locked</h2>
-      <p>
-        The Trade tab controls real orders, so it needs the access token. Find it in the backend
-        console on first run (or set it via the <code>AUTH_TOKEN</code> env var).
-      </p>
-      <input
-        type="password"
-        value={token}
-        placeholder="Access token"
-        autoFocus
-        onChange={(event) => setInput(event.target.value)}
-        onKeyDown={(event) => event.key === "Enter" && submit()}
-      />
+      <p>Enter the admin access token to manage paper and live bots. Public charts stay open; trading controls remain locked until this token is verified.</p>
+      <label className="trade-token-label" htmlFor="trade-access-token">
+        Access token
+      </label>
+      <input id="trade-access-token" type="password" value={token} placeholder="Access token" autoFocus onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && submit()} />
       {error && <span className="trade-gate-error">{error}</span>}
       <button type="button" className="run-button" onClick={submit} disabled={busy || !token.trim()}>
         {busy ? "Checking…" : "Unlock"}
@@ -251,8 +274,15 @@ function EmptyCenter({ onNew }: { onNew: () => void }) {
     <div className="trade-empty">
       <Bot size={22} aria-hidden="true" />
       <strong>Live &amp; paper trading</strong>
-      <p>Run a saved strategy on paper, Binance or Bybit. Signals become Antares-style commands that open and close positions automatically.</p>
-      <button type="button" className="run-button" onClick={onNew}><Plus size={14} aria-hidden="true" /> New bot</button>
+      <p>Start with a saved strategy in paper mode, verify signals, then arm live execution only when keys and risk settings are ready.</p>
+      <ol className="trade-empty-steps">
+        <li>Choose a saved strategy</li>
+        <li>Run it on paper</li>
+        <li>Review logs, fills and risk</li>
+      </ol>
+      <button type="button" className="run-button" onClick={onNew}>
+        <Plus size={14} aria-hidden="true" /> Create paper bot
+      </button>
     </div>
   );
 }
@@ -275,7 +305,10 @@ function CreateBotForm({ strategies, catalog, onCreated }: { strategies: Strateg
   const strategy = runnable.find((item) => item.id === strategyId);
 
   const create = async () => {
-    if (!strategy) { setError("Pick a strategy"); return; }
+    if (!strategy) {
+      setError("Pick a strategy");
+      return;
+    }
     const compiled = compileXmlToIr(strategy.xml);
     if (!compiled.ir || compiled.errors.length) {
       setError(compiled.errors[0] ?? "Strategy has errors");
@@ -315,26 +348,44 @@ function CreateBotForm({ strategies, catalog, onCreated }: { strategies: Strateg
 
       <fieldset className="form-section">
         <legend>Strategy</legend>
-        <label>From strategy
+        <label>
+          From strategy
           <select value={strategyId} onChange={(e) => setStrategyId(e.target.value)}>
             {runnable.length === 0 && <option value="">No saved strategies — build one first</option>}
-            {runnable.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            {runnable.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
           </select>
         </label>
-        <label>Bot name<input value={name} placeholder={strategy?.name ?? "Bot"} onChange={(e) => setName(e.target.value)} /></label>
+        <label>
+          Bot name
+          <input value={name} placeholder={strategy?.name ?? "Bot"} onChange={(e) => setName(e.target.value)} />
+        </label>
       </fieldset>
 
       <fieldset className="form-section">
         <legend>Market</legend>
         <div className="form-grid">
-          <label>Symbol
+          <label>
+            Symbol
             <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
-              {(catalog?.instruments ?? []).map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol}</option>)}
+              {(catalog?.instruments ?? []).map((item) => (
+                <option key={item.symbol} value={item.symbol}>
+                  {item.symbol}
+                </option>
+              ))}
             </select>
           </label>
-          <label>Interval
+          <label>
+            Interval
             <select value={timeframe} onChange={(e) => setTimeframe(e.target.value as TradingBot["timeframe"])}>
-              {(catalog?.timeframes ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
+              {(catalog?.timeframes ?? []).map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
             </select>
           </label>
         </div>
@@ -344,14 +395,16 @@ function CreateBotForm({ strategies, catalog, onCreated }: { strategies: Strateg
       <fieldset className="form-section">
         <legend>Execution</legend>
         <div className="form-grid">
-          <label>Exchange
+          <label>
+            Exchange
             <select value={exchange} onChange={(e) => setExchange(e.target.value as ExchangeId)}>
               <option value="paper">Paper (simulated)</option>
               <option value="binance">Binance</option>
               <option value="bybit">Bybit</option>
             </select>
           </label>
-          <label>Type
+          <label>
+            Type
             <select value={market} onChange={(e) => setMarket(e.target.value as "spot" | "futures")}>
               <option value="futures">Futures</option>
               <option value="spot">Spot</option>
@@ -359,7 +412,8 @@ function CreateBotForm({ strategies, catalog, onCreated }: { strategies: Strateg
           </label>
         </div>
         <div className="form-grid">
-          <label>Sizing
+          <label>
+            Sizing
             <select value={sizeMode} onChange={(e) => setSizeMode(e.target.value as TradingBot["sizeMode"])}>
               <option value="quote">Quote (USDT)</option>
               <option value="base">Base units</option>
@@ -367,8 +421,14 @@ function CreateBotForm({ strategies, catalog, onCreated }: { strategies: Strateg
               <option value="risk_pct">% risk</option>
             </select>
           </label>
-          <label>Amount<input type="number" value={sizeValue} min={0} step={1} onChange={(e) => setSizeValue(Number(e.target.value) || 0)} /></label>
-          <label>Leverage<input type="number" value={leverage} min={1} max={125} step={1} onChange={(e) => setLeverage(Number(e.target.value) || 1)} /></label>
+          <label>
+            Amount
+            <input type="number" value={sizeValue} min={0} step={1} onChange={(e) => setSizeValue(Number(e.target.value) || 0)} />
+          </label>
+          <label>
+            Leverage
+            <input type="number" value={leverage} min={1} max={125} step={1} onChange={(e) => setLeverage(Number(e.target.value) || 1)} />
+          </label>
         </div>
         <label className="check-row">
           <input type="checkbox" checked={notifyMarkers} onChange={(e) => setNotifyMarkers(e.target.checked)} />
@@ -377,15 +437,33 @@ function CreateBotForm({ strategies, catalog, onCreated }: { strategies: Strateg
       </fieldset>
 
       {exchange !== "paper" && (
-        <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> Real trading uses your saved API keys and real funds. Add keys in Settings and test on paper first.</div>
+        <div className="trade-warn">
+          <AlertTriangle size={13} aria-hidden="true" /> Real trading uses your saved API keys and real funds. Add keys in Settings and test on paper first.
+        </div>
       )}
-      {error && <div className="strategy-warnings"><span><AlertTriangle size={12} aria-hidden="true" /> {error}</span></div>}
-      <button type="button" className="run-button form-submit" onClick={create} disabled={busy || !strategy}>{busy ? "Creating…" : "Create bot"}</button>
+      {error && (
+        <div className="strategy-warnings">
+          <span>
+            <AlertTriangle size={12} aria-hidden="true" /> {error}
+          </span>
+        </div>
+      )}
+      <button type="button" className="run-button form-submit" onClick={create} disabled={busy || !strategy}>
+        {busy ? "Creating…" : "Create bot"}
+      </button>
     </div>
   );
 }
 
-function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
+function BotDetail({
+  bot,
+  live,
+  orders,
+  fills,
+  logs,
+  onChanged,
+  onDeleted
+}: {
   bot: TradingBot;
   live?: LiveState;
   orders: PendingOrder[];
@@ -410,9 +488,7 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
   };
   const saveEditor = () => {
     if (!editor) return;
-    const next = editor.id
-      ? saved.map((item) => (item.id === editor.id ? { ...item, name: editor.name.trim(), command: editor.command.trim() } : item))
-      : [{ id: newCommandId(), name: editor.name.trim(), command: editor.command.trim() }, ...saved];
+    const next = editor.id ? saved.map((item) => (item.id === editor.id ? { ...item, name: editor.name.trim(), command: editor.command.trim() } : item)) : [{ id: newCommandId(), name: editor.name.trim(), command: editor.command.trim() }, ...saved];
     setSaved(next);
     persistSavedCommands(next);
     setEditor(null);
@@ -458,11 +534,21 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
       <div className="trade-detail-head">
         <div>
           <strong>{bot.name}</strong>
-          <span>{bot.exchange} · {bot.market} · {bot.symbol} · {bot.timeframe} · {bot.strategyName}</span>
+          <span>
+            {bot.exchange} · {bot.market} · {bot.symbol} · {bot.timeframe} · {bot.strategyName}
+          </span>
         </div>
         <div className="trade-detail-actions">
           <button type="button" className={bot.status === "running" ? "danger" : "run-button"} onClick={toggle}>
-            {bot.status === "running" ? <><Square size={13} aria-hidden="true" /> Stop</> : <><Play size={13} aria-hidden="true" /> Start</>}
+            {bot.status === "running" ? (
+              <>
+                <Square size={13} aria-hidden="true" /> Stop
+              </>
+            ) : (
+              <>
+                <Play size={13} aria-hidden="true" /> Start
+              </>
+            )}
           </button>
           <button type="button" className="icon-button" title="Flatten (close position)" onClick={() => runCommand(`exit=${bot.symbol}`)} disabled={bot.status !== "running"}>
             <XOctagon size={15} aria-hidden="true" />
@@ -483,12 +569,28 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
 
       <div className="trade-console">
         <div className="panel-header small">
-          <strong><Terminal size={13} aria-hidden="true" /> Command console</strong>
+          <strong>
+            <Terminal size={13} aria-hidden="true" /> Command console
+          </strong>
           <span className="console-toggles">
-            <button type="button" className={`link-button ${showSaved ? "on" : ""}`} onClick={() => { setShowSaved((v) => !v); setShowRef(false); }}>
+            <button
+              type="button"
+              className={`link-button ${showSaved ? "on" : ""}`}
+              onClick={() => {
+                setShowSaved((v) => !v);
+                setShowRef(false);
+              }}
+            >
               <Bookmark size={13} aria-hidden="true" /> Saved
             </button>
-            <button type="button" className={`link-button ${showRef ? "on" : ""}`} onClick={() => { setShowRef((v) => !v); setShowSaved(false); }}>
+            <button
+              type="button"
+              className={`link-button ${showRef ? "on" : ""}`}
+              onClick={() => {
+                setShowRef((v) => !v);
+                setShowSaved(false);
+              }}
+            >
               <BookOpen size={13} aria-hidden="true" /> Reference
             </button>
           </span>
@@ -498,12 +600,20 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
             value={command}
             placeholder="action=openposition;side=buy;openpro=25;lev=5"
             onChange={(e) => setCommand(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") runCommand(command); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") runCommand(command);
+            }}
             disabled={bot.status !== "running"}
           />
-          <button type="button" title="Save command" className="console-save" onClick={() => command.trim() && openEditor(undefined, command)} disabled={!command.trim()}><Save size={14} aria-hidden="true" /></button>
-          <button type="button" className="console-dry" title="Dry run (preview without executing)" onClick={() => runCommand(command, true)} disabled={bot.status !== "running" || !command.trim()}>Dry</button>
-          <button type="button" onClick={() => runCommand(command)} disabled={bot.status !== "running"}><Send size={14} aria-hidden="true" /></button>
+          <button type="button" title="Save command" className="console-save" onClick={() => command.trim() && openEditor(undefined, command)} disabled={!command.trim()}>
+            <Save size={14} aria-hidden="true" />
+          </button>
+          <button type="button" className="console-dry" title="Dry run (preview without executing)" onClick={() => runCommand(command, true)} disabled={bot.status !== "running" || !command.trim()}>
+            Dry
+          </button>
+          <button type="button" onClick={() => runCommand(command)} disabled={bot.status !== "running"}>
+            <Send size={14} aria-hidden="true" />
+          </button>
         </div>
         {cmdOut && <div className="trade-console-out num">{cmdOut}</div>}
 
@@ -512,8 +622,12 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
             <input className="cmd-editor-name" placeholder="Command name" value={editor.name} onChange={(e) => setEditor({ ...editor, name: e.target.value })} />
             <textarea className="cmd-editor-body" rows={3} placeholder="Antares command (use :: to chain)" value={editor.command} onChange={(e) => setEditor({ ...editor, command: e.target.value })} />
             <div className="cmd-editor-actions">
-              <button type="button" className="run-button" onClick={saveEditor} disabled={!editor.name.trim() || !editor.command.trim()}>Save</button>
-              <button type="button" onClick={() => setEditor(null)}>Cancel</button>
+              <button type="button" className="run-button" onClick={saveEditor} disabled={!editor.name.trim() || !editor.command.trim()}>
+                Save
+              </button>
+              <button type="button" onClick={() => setEditor(null)}>
+                Cancel
+              </button>
             </div>
           </div>
         )}
@@ -522,7 +636,9 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
           <div className="cmd-reference">
             <div className="cmd-saved-head">
               <span className="cmd-group-title">My commands</span>
-              <button type="button" className="link-button" onClick={() => openEditor(undefined, "")}><Plus size={12} aria-hidden="true" /> New</button>
+              <button type="button" className="link-button" onClick={() => openEditor(undefined, "")}>
+                <Plus size={12} aria-hidden="true" /> New
+              </button>
             </div>
             {saved.length === 0 && <p className="empty-note">No saved commands. Build one, then press the save icon.</p>}
             {saved.map((item) => (
@@ -531,8 +647,12 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
                   <strong>{item.name}</strong>
                   <code>{item.command.replaceAll("{sym}", bot.symbol)}</code>
                 </button>
-                <button type="button" className="icon-button" title="Edit" onClick={() => openEditor(item.id, item.command, item.name)}><Pencil size={13} aria-hidden="true" /></button>
-                <button type="button" className="icon-button" title="Delete" onClick={() => removeSaved(item.id)}><Trash2 size={13} aria-hidden="true" /></button>
+                <button type="button" className="icon-button" title="Edit" onClick={() => openEditor(item.id, item.command, item.name)}>
+                  <Pencil size={13} aria-hidden="true" />
+                </button>
+                <button type="button" className="icon-button" title="Delete" onClick={() => removeSaved(item.id)}>
+                  <Trash2 size={13} aria-hidden="true" />
+                </button>
               </div>
             ))}
           </div>
@@ -545,16 +665,13 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
                 <span className="cmd-group-title">{group.title}</span>
                 {group.items.map((item) => (
                   <div className="cmd-saved-row" key={item.label}>
-                    <button
-                      type="button"
-                      className="cmd-example"
-                      title={item.command}
-                      onClick={() => setCommand(item.command.replaceAll("{sym}", bot.symbol))}
-                    >
+                    <button type="button" className="cmd-example" title={item.command} onClick={() => setCommand(item.command.replaceAll("{sym}", bot.symbol))}>
                       <strong>{item.label}</strong>
                       <code>{item.command.replaceAll("{sym}", bot.symbol)}</code>
                     </button>
-                    <button type="button" className="icon-button" title="Edit & save a copy" onClick={() => openEditor(undefined, item.command.replaceAll("{sym}", bot.symbol), item.label)}><Pencil size={13} aria-hidden="true" /></button>
+                    <button type="button" className="icon-button" title="Edit & save a copy" onClick={() => openEditor(undefined, item.command.replaceAll("{sym}", bot.symbol), item.label)}>
+                      <Pencil size={13} aria-hidden="true" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -565,7 +682,10 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
 
       {orders.length > 0 && (
         <div className="trade-orders">
-          <div className="panel-header small"><strong>Open orders</strong><span>{orders.length}</span></div>
+          <div className="panel-header small">
+            <strong>Open orders</strong>
+            <span>{orders.length}</span>
+          </div>
           <div className="trade-order-list">
             {orders.map((order) => (
               <div className="trade-order-row" key={order.id}>
@@ -573,7 +693,9 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
                 <span className={order.side === "buy" ? "up" : "down"}>{order.side}</span>
                 <span className="num">{order.qty}</span>
                 <span className="num">{order.price ?? order.trgPrice ?? "—"}</span>
-                <button type="button" className="order-cancel" title="Cancel order" onClick={() => runCommand(`action=cancelorder;by=id;orderid=${order.id};symbol=${bot.symbol}`)}>×</button>
+                <button type="button" className="order-cancel" title="Cancel order" onClick={() => runCommand(`action=cancelorder;by=id;orderid=${order.id};symbol=${bot.symbol}`)}>
+                  ×
+                </button>
               </div>
             ))}
           </div>
@@ -581,9 +703,19 @@ function BotDetail({ bot, live, orders, fills, logs, onChanged, onDeleted }: {
       )}
 
       <div className="trade-journal">
-        <div className="panel-header small"><strong>Journal</strong><span>{fills.length} fills</span></div>
+        <div className="panel-header small">
+          <strong>Journal</strong>
+          <span>{fills.length} fills</span>
+        </div>
         <div className="trade-fill-table">
-          <div className="trade-fill-row head"><span>Time</span><span>Side</span><span>Qty</span><span>Price</span><span>PnL</span><span>Reason</span></div>
+          <div className="trade-fill-row head">
+            <span>Time</span>
+            <span>Side</span>
+            <span>Qty</span>
+            <span>Price</span>
+            <span>PnL</span>
+            <span>Reason</span>
+          </div>
           {fills.slice(0, 60).map((fill) => (
             <div className="trade-fill-row" key={fill.id}>
               <span>{new Date(fill.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
@@ -626,9 +758,15 @@ function SettingsPanel() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    getKeys().then(setKeys).catch(() => undefined);
-    getNotify().then(setNotifyStatus).catch(() => undefined);
-    getSettings().then(setSettings).catch(() => undefined);
+    getKeys()
+      .then(setKeys)
+      .catch(() => undefined);
+    getNotify()
+      .then(setNotifyStatus)
+      .catch(() => undefined);
+    getSettings()
+      .then(setSettings)
+      .catch(() => undefined);
   }, []);
 
   const toggleLive = async (next: boolean) => {
@@ -658,22 +796,18 @@ function SettingsPanel() {
 
   return (
     <div className="trade-settings">
-      <div className="panel-header"><strong><AlertTriangle size={14} aria-hidden="true" /> Live trading</strong></div>
+      <div className="panel-header">
+        <strong>
+          <AlertTriangle size={14} aria-hidden="true" /> Live trading
+        </strong>
+      </div>
       {settings?.demo ? (
         <p className="settings-note">Running in demo mode — only paper trading is available.</p>
       ) : (
         <>
-          <p className="settings-note">
-            Live trading places real orders with your exchange keys. It is disarmed by default; arm it only
-            when you intend to trade for real. The kill switch stops every bot and disarms instantly.
-          </p>
+          <p className="settings-note">Live trading places real orders with your exchange keys. It is disarmed by default; arm it only when you intend to trade for real. The kill switch stops every bot and disarms instantly.</p>
           <label className="live-arm-row">
-            <input
-              type="checkbox"
-              checked={settings?.liveTradingEnabled ?? false}
-              disabled={busy}
-              onChange={(event) => toggleLive(event.target.checked)}
-            />
+            <input type="checkbox" checked={settings?.liveTradingEnabled ?? false} disabled={busy} onChange={(event) => toggleLive(event.target.checked)} />
             <span>Arm live trading{settings?.liveTradingEnabled ? " — ARMED" : ""}</span>
           </label>
           <button type="button" className="kill-switch" onClick={kill} disabled={busy}>
@@ -682,12 +816,18 @@ function SettingsPanel() {
         </>
       )}
 
-      <div className="panel-header"><strong><KeyRound size={14} aria-hidden="true" /> Exchange API keys</strong></div>
+      <div className="panel-header">
+        <strong>
+          <KeyRound size={14} aria-hidden="true" /> Exchange API keys
+        </strong>
+      </div>
       <p className="settings-note">Keys are stored encrypted on the server (never sent back to the browser). Use read+trade permissions, no withdrawals. IP-whitelist recommended.</p>
       <KeyForm exchange="binance" configured={keys.binance} onSaved={() => getKeys().then(setKeys)} />
       <KeyForm exchange="bybit" configured={keys.bybit} onSaved={() => getKeys().then(setKeys)} />
 
-      <div className="panel-header"><strong>Notifications</strong></div>
+      <div className="panel-header">
+        <strong>Notifications</strong>
+      </div>
       <NotifyForm status={notifyStatus} onSaved={() => getNotify().then(setNotifyStatus)} />
     </div>
   );
@@ -699,15 +839,24 @@ function KeyForm({ exchange, configured, onSaved }: { exchange: ExchangeId; conf
   const [saved, setSaved] = useState(false);
   const save = async () => {
     await saveKeys(exchange, apiKey, apiSecret);
-    setApiKey(""); setApiSecret(""); setSaved(true); onSaved();
+    setApiKey("");
+    setApiSecret("");
+    setSaved(true);
+    onSaved();
     window.setTimeout(() => setSaved(false), 1800);
   };
   return (
     <div className="key-form">
-      <div className="key-form-head"><strong>{exchange}</strong>{configured && <span className="badge-ok">configured</span>}{saved && <span className="badge-ok">saved</span>}</div>
+      <div className="key-form-head">
+        <strong>{exchange}</strong>
+        {configured && <span className="badge-ok">configured</span>}
+        {saved && <span className="badge-ok">saved</span>}
+      </div>
       <input placeholder="API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
       <input placeholder="API secret" type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} />
-      <button type="button" onClick={save} disabled={!apiKey || !apiSecret}>Save keys</button>
+      <button type="button" onClick={save} disabled={!apiKey || !apiSecret}>
+        Save keys
+      </button>
     </div>
   );
 }
@@ -719,7 +868,10 @@ function NotifyForm({ status, onSaved }: { status?: NotifyStatus; onSaved: () =>
   const [testMsg, setTestMsg] = useState<string>();
 
   useEffect(() => {
-    if (status) { setTgEnabled(status.telegram.enabled); setTgChat(status.telegram.chatId); }
+    if (status) {
+      setTgEnabled(status.telegram.enabled);
+      setTgChat(status.telegram.chatId);
+    }
   }, [status]);
 
   const save = async () => {
@@ -734,12 +886,18 @@ function NotifyForm({ status, onSaved }: { status?: NotifyStatus; onSaved: () =>
 
   return (
     <div className="key-form">
-      <label className="check-row"><input type="checkbox" checked={tgEnabled} onChange={(e) => setTgEnabled(e.target.checked)} /> Telegram {status?.telegram.hasToken && <span className="badge-ok">token set</span>}</label>
+      <label className="check-row">
+        <input type="checkbox" checked={tgEnabled} onChange={(e) => setTgEnabled(e.target.checked)} /> Telegram {status?.telegram.hasToken && <span className="badge-ok">token set</span>}
+      </label>
       <input placeholder="Bot token (from @BotFather)" value={tgToken} onChange={(e) => setTgToken(e.target.value)} />
       <input placeholder="Chat ID" value={tgChat} onChange={(e) => setTgChat(e.target.value)} />
       <div className="key-form-actions">
-        <button type="button" onClick={save}>Save</button>
-        <button type="button" onClick={test}>Send test</button>
+        <button type="button" onClick={save}>
+          Save
+        </button>
+        <button type="button" onClick={test}>
+          Send test
+        </button>
       </div>
       {testMsg && <div className="trade-console-out">{testMsg}</div>}
       <p className="settings-note">VK and other channels can be added the same way. Notifications fire on start/stop, position open/close, errors and signal markers.</p>
