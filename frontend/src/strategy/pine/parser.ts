@@ -56,7 +56,9 @@ export type PineStmt =
 export class PineParseError extends Error {}
 
 const MAX_DEPTH = 120;
-const TYPE_KEYWORDS = new Set(["float", "int", "bool", "color", "string", "series", "simple"]);
+const TYPE_KEYWORDS = new Set(["float", "int", "bool", "color", "string", "series", "simple", "const"]);
+/** Generic collection type heads (`array<T>`, `matrix<T>`, `map<K,V>`). */
+const COLLECTION_TYPES = new Set(["array", "matrix", "map"]);
 
 export function parsePine(source: string): PineStmt[] {
   const tokens = tokenize(source);
@@ -87,6 +89,10 @@ class Parser {
 
     if (tok.type === "ident") {
       // //@version handled in lexer as comment; version pragma appears as comment only.
+      // `array<T> x = …` / `matrix<…>` / `map<…>` — collection declarations.
+      if (COLLECTION_TYPES.has(tok.text) && this.tokens[this.pos + 1]?.type === "op" && this.tokens[this.pos + 1]?.text === "<") {
+        return this.skipRestAsUnsupported(`collection (${tok.text}<…>)`, indent, tok.line);
+      }
       if (tok.text === "var" || tok.text === "varip" || TYPE_KEYWORDS.has(tok.text)) return this.parseDeclaration(indent);
       if (tok.text === "if") return this.parseIf(indent);
       if (tok.text === "for") return this.parseFor(indent);
@@ -99,6 +105,14 @@ class Parser {
       if (this.lineContainsArrow()) return this.parseFunc(indent);
       // ident = / := / += ... expr
       const next = this.tokens[this.pos + 1];
+      // `someType name = expr` — a declaration typed with a user-defined (or
+      // builtin-object) type we don't know. Consume the type annotation and parse
+      // the assignment; the RHS then fails with a targeted message if unsupported.
+      if (next?.type === "ident" && this.tokens[this.pos + 2]?.type === "op" && this.tokens[this.pos + 2]?.text === "=") {
+        this.pos += 2;
+        this.expectOp("=");
+        return { t: "assign", name: next.text, value: this.parseExpr(), declaredVar: false };
+      }
       if (next?.type === "op" && next.text === "=") {
         this.pos += 2;
         if (this.peek().type === "ident" && this.peek().text === "switch") {
@@ -151,10 +165,37 @@ class Parser {
       if (next?.type === "ident") this.pos += 1;
       else break;
     }
-    const nameTok = this.peek();
+    // `var array<T> x = …` — a collection declaration behind var/type modifiers.
+    if (
+      this.peek().type === "ident" &&
+      COLLECTION_TYPES.has(this.peek().text) &&
+      this.tokens[this.pos + 1]?.type === "op" &&
+      this.tokens[this.pos + 1]?.text === "<"
+    ) {
+      return this.skipRestAsUnsupported(`collection (${this.peek().text}<…>)`, indent, startLine);
+    }
+    // `float[] x = …` — old-style array declaration. The type keyword is still the
+    // current token (the modifier loop only consumes it when an ident follows).
+    const bracketAt = this.peek().type === "ident" ? this.pos + 1 : this.pos;
+    if (
+      this.tokens[bracketAt]?.type === "op" &&
+      this.tokens[bracketAt]?.text === "[" &&
+      this.tokens[bracketAt + 1]?.type === "op" &&
+      this.tokens[bracketAt + 1]?.text === "]"
+    ) {
+      return this.skipRestAsUnsupported("collection (T[] array)", indent, startLine);
+    }
+    let nameTok = this.peek();
     if (nameTok.type !== "ident") {
       this.skipToLineEnd();
       return { t: "unsupported", what: "declaration", line: startLine };
+    }
+    // `var someType name = …` — a declaration typed with a user-defined (or builtin
+    // drawing) type. Consume the type annotation; the RHS produces a targeted error.
+    const after = this.tokens[this.pos + 1];
+    if (after?.type === "ident" && this.tokens[this.pos + 2]?.type === "op" && this.tokens[this.pos + 2]?.text === "=") {
+      this.pos += 1;
+      nameTok = this.peek();
     }
     // Tuple-typed destructuring like `[a, b] = f()` never reaches here (starts with `[`).
     this.pos += 1;
@@ -422,11 +463,21 @@ class Parser {
 
   private parsePostfix(): PineExpr {
     let expr = this.parsePrimary();
-    while (this.peekOp("[")) {
-      this.pos += 1;
-      const offset = this.parseExpr();
-      this.expectOp("]");
-      expr = { t: "index", base: expr, offset };
+    while (true) {
+      if (this.peekOp("[")) {
+        this.pos += 1;
+        const offset = this.parseExpr();
+        this.expectOp("]");
+        expr = { t: "index", base: expr, offset };
+        continue;
+      }
+      // `x.field` / `x.method(...)` on an expression result — objects/collections.
+      if (this.peekOp(".")) {
+        throw new PineParseError(
+          `Field/method access on an object (".…" on line ${this.peek().line}) — user-defined objects and collections can't run in the per-bar trading engine.`
+        );
+      }
+      break;
     }
     return expr;
   }
@@ -468,6 +519,12 @@ class Parser {
     }
     if (tok.type === "ident") {
       this.pos += 1;
+      // `array.new<float>(…)` / `matrix.new<…>` — generic collection constructors.
+      if (this.peekOp("<") && /^(array|matrix|map)\./.test(tok.text)) {
+        throw new PineParseError(
+          `${tok.text}<…>() creates a collection (line ${tok.line}) — arrays/matrices/maps can't run in the per-bar trading engine.`
+        );
+      }
       if (this.peekOp("(")) {
         this.pos += 1;
         const args: PineArg[] = [];

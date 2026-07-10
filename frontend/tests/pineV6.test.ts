@@ -428,6 +428,42 @@ describe("Pine v6 corpus: robustness + breadth", () => {
     }
   });
 
+  // Real-world script conventions (from the awesome-pinescript corpus): string
+  // constants for input groups/modes, frozen input.string selectors, input.color,
+  // hex color literals, and `const` type modifiers must all convert.
+  it("string constants, input.string mode selector, input.color, hex colors, const", () => {
+    const ir = roundTrips(`//@version=6
+indicator("Modes", overlay=true)
+var const string MODE_FAST = "Fast"
+string MODE_SLOW = "Slow"
+string GROUP_MAIN = "Main " + "settings"
+mode = input.string(MODE_FAST, "Mode", options=[MODE_FAST, MODE_SLOW], group=GROUP_MAIN)
+len = input.int(9, "Length", group=GROUP_MAIN)
+lineCol = input.color(color.green, "Line")
+maVal = mode == MODE_FAST ? ta.ema(close, len) : ta.sma(close, len * 2)
+plot(maVal, "ma", color=#26a69a)`);
+    const j = JSON.stringify(ir);
+    // mode == MODE_FAST folds to a constant condition inside the cond node.
+    expect(j).toContain('"cond"');
+    expect(ir.inputs.map((i) => i.name)).toEqual(["len"]);
+  });
+
+  it("structural constructs fail closed with honest reasons (not parse gibberish)", () => {
+    const cases: { src: string; match: RegExp }[] = [
+      { src: '//@version=6\nindicator("t")\ntype point\n    float x\n    float y\nplot(close)', match: /user-defined|data types/i },
+      { src: '//@version=6\nindicator("t")\narray<float> xs = array.new<float>()\nplot(close)', match: /collection|array/i },
+      { src: '//@version=6\nindicator("t")\nfloat[] xs = array.new_float(0)\nplot(close)', match: /collection|array/i },
+      { src: '//@version=6\nindicator("t")\nvalue = close\nplot(value.rounded)', match: /object|collection/i },
+      { src: '//@version=6\nindicator("t")\nplot(box.all)', match: /drawing|visual/i },
+      { src: '//@version=6\nindicator("t")\ninSession = time("60", "0800-1200")\nplot(inSession)', match: /session/i }
+    ];
+    for (const c of cases) {
+      const result = importPineScript(c.src);
+      expect(result.ok, `should reject: ${c.src.split("\n")[2]}`).toBe(false);
+      if (!result.ok) expect(result.error).toMatch(c.match);
+    }
+  });
+
   // Mirrors what the import dialog does for a mixed paste + multi-file batch: convert
   // each source independently → indicator()/strategy() route to the right artifact
   // kind, names come from the script, and invalid scripts fail without sinking the batch.

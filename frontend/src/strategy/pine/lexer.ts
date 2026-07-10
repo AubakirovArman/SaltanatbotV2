@@ -23,7 +23,7 @@ export interface Token {
 }
 
 const TWO_CHAR_OPS = new Set([":=", "==", "!=", "<=", ">=", "=>", "+=", "-=", "*=", "/="]);
-const ONE_CHAR_OPS = new Set(["=", "+", "-", "*", "/", "%", "<", ">", "?", ":", ",", "(", ")", "[", "]"]);
+const ONE_CHAR_OPS = new Set(["=", "+", "-", "*", "/", "%", "<", ">", "?", ":", ",", "(", ")", "[", "]", "."]);
 
 export class PineLexError extends Error {}
 
@@ -91,6 +91,18 @@ export function tokenize(source: string): Token[] {
       if (i >= source.length || source[i] === "\n") throw new PineLexError(`Unterminated string on line ${line}.`);
       i += 1;
       push("string", text);
+      continue;
+    }
+
+    // Hex color literal: #RRGGBB or #RRGGBBAA → a string token (colors are cosmetic).
+    if (ch === "#" && /[0-9a-fA-F]/.test(source[i + 1] ?? "")) {
+      let hex = "#";
+      i += 1;
+      while (i < source.length && /[0-9a-fA-F]/.test(source[i]) && hex.length < 9) {
+        hex += source[i];
+        i += 1;
+      }
+      push("string", hex);
       continue;
     }
 

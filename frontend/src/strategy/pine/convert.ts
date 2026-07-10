@@ -27,7 +27,7 @@ export interface PineResult {
 
 export class PineConvertError extends Error {}
 
-type Val = { t: "num"; e: NumExpr } | { t: "bool"; e: BoolExpr };
+type Val = { t: "num"; e: NumExpr } | { t: "bool"; e: BoolExpr } | { t: "str"; v: string };
 
 const PRICE_FIELDS = new Set(["open", "high", "low", "close", "volume", "hl2", "hlc3", "ohlc4"]);
 /** Pine `na` as a numeric value: 0/0 → NaN, so nz()/na()/isfinite handle it uniformly. */
@@ -138,6 +138,23 @@ class Converter {
         this.funcs.set(stmt.def.name, stmt.def);
         return [];
       case "unsupported":
+        // Structural constructs the per-bar scalar IR can never hold fail closed
+        // with an honest reason instead of a cascade of confusing follow-up errors.
+        if (stmt.what.startsWith("collection")) {
+          throw new PineConvertError(
+            `This script stores state in collections (${stmt.what.replace("collection ", "")}, line ${stmt.line}) — arrays/matrices/maps can't run in the per-bar trading engine.`
+          );
+        }
+        if (stmt.what === "type block") {
+          throw new PineConvertError(
+            `This script defines its own data types (\`type\` on line ${stmt.line}) and builds its logic on them — user-defined objects can't run in the per-bar trading engine. Scripts like this are usually visual analytics tools (labels/lines/tables), not convertible trading logic.`
+          );
+        }
+        if (stmt.what.startsWith("for…in")) {
+          throw new PineConvertError(
+            `for…in iterates a collection (line ${stmt.line}) — arrays/matrices/maps can't run in the per-bar trading engine.`
+          );
+        }
         this.warn(`Skipped unsupported statement (“${stmt.what}”, line ${stmt.line}).`);
         return [];
     }
@@ -178,6 +195,16 @@ class Converter {
       this.colorVars.set(name, this.colorOf(value));
       return [];
     }
+    // String constants (`string GROUP = "Main"`, mode names, concatenations) — bind
+    // as compile-time strings so comparisons against them fold to constants.
+    const str = this.strVal(value);
+    if (str !== undefined) {
+      if (this.reassigned.has(name)) {
+        throw new PineConvertError(`Variable "${name}" holds text and is reassigned — mutable string state isn't supported.`);
+      }
+      this.env.set(name, { t: "str", v: str });
+      return [];
+    }
     const mutable = declaredVar || this.reassigned.has(name);
     if (!mutable) {
       this.env.set(name, this.val(value));
@@ -189,6 +216,9 @@ class Converter {
       return [this.ternaryToIf(name, value)];
     }
     const val = this.val(value);
+    if (val.t === "str") {
+      throw new PineConvertError(`Variable "${name}" holds text and is reassigned — mutable string state isn't supported.`);
+    }
     if (val.t === "bool") {
       this.boolVars.add(name);
       if (declaredVar) {
@@ -216,6 +246,9 @@ class Converter {
       return [this.ternaryToIf(name, value)];
     }
     const val = this.val(value);
+    if (val.t === "str") {
+      throw new PineConvertError(`Variable "${name}" holds text and is reassigned — mutable string state isn't supported.`);
+    }
     if (this.boolVars.has(name) || (val.t === "bool" && !this.numVars.has(name))) {
       if (val.t !== "bool") throw new PineConvertError(`Variable "${name}" mixes boolean and numeric values.`);
       this.boolVars.add(name);
@@ -417,6 +450,7 @@ class Converter {
         else this.warn("strategy.exit had no stop=/limit= — nothing converted.");
         return out;
       }
+      case "runtime.error":
       case "strategy.cancel":
       case "strategy.cancel_all":
       case "fill":
@@ -490,6 +524,31 @@ class Converter {
       this.warn(`input.source "${name}" fixed to ${field} (source inputs aren't tunable here).`);
       return;
     }
+    // input.color: cosmetic — resolve the default to a hex and treat as a color binding.
+    if (kind === "input.color") {
+      this.colorVars.set(name, this.colorOf(defArg.value));
+      this.warn(`input.color "${name}" fixed to its default (colors aren't tunable here).`);
+      return;
+    }
+    // input.string (mode selectors, group names…): not tunable here — freeze to the
+    // default so comparisons against it fold to compile-time constants.
+    const strDefault = this.strVal(defArg.value);
+    if (kind === "input.string" || (strDefault !== undefined && kind !== "input.bool")) {
+      if (strDefault === undefined) throw new PineConvertError(`input.string "${name}" must have a literal text default.`);
+      this.env.set(name, { t: "str", v: strDefault });
+      this.warn(`input.string "${name}" fixed to its default "${strDefault}" (text inputs aren't tunable here).`);
+      return;
+    }
+    // input.time(timestamp("…")) — resolve the timestamp literal to epoch ms.
+    if (defArg.value.t === "call" && defArg.value.callee === "timestamp") {
+      const dateArg = defArg.value.args[0]?.value;
+      const parsed = dateArg?.t === "str" ? Date.parse(dateArg.v) : Number.NaN;
+      if (Number.isFinite(parsed)) {
+        if (!this.inputs.some((input) => input.name === name)) this.inputs.push({ name, value: parsed });
+        this.env.set(name, { t: "num", e: { k: "input", name } });
+        return;
+      }
+    }
     let value: number;
     if (kind === "input.bool") {
       value = isTrueIdent(defArg.value) ? 1 : 0;
@@ -499,8 +558,6 @@ class Converter {
       value = defArg.value.v;
     } else if (defArg.value.t === "unary" && defArg.value.op === "-" && defArg.value.a.t === "num") {
       value = -defArg.value.a.v;
-    } else if (defArg.value.t === "str") {
-      throw new PineConvertError(`input "${name}" has a text default — only numeric/boolean inputs are supported.`);
     } else {
       throw new PineConvertError(`input "${name}" must have a literal numeric default.`);
     }
@@ -514,6 +571,8 @@ class Converter {
     // User functions and switch can yield either type — resolve by evaluating them.
     if (expr.t === "call" && this.funcs.has(expr.callee)) return this.inlineUserFunc(expr.callee, expr.args);
     if (expr.t === "switch") return this.switchVal(expr);
+    const str = this.strVal(expr);
+    if (str !== undefined) return { t: "str", v: str };
     if (isBoolExpr(expr, this.boolVars, this.env)) return { t: "bool", e: this.bool(expr) };
     return { t: "num", e: this.num(expr) };
   }
@@ -711,6 +770,7 @@ class Converter {
   private numIdent(name: string): NumExpr {
     const bound = this.env.get(name);
     if (bound) {
+      if (bound.t === "str") throw new PineConvertError(`"${name}" is a text value ("${bound.v}"), not a number.`);
       if (bound.t !== "num") throw new PineConvertError(`"${name}" is a condition, not a number.`);
       return bound.e;
     }
@@ -741,7 +801,18 @@ class Converter {
     if (name.startsWith("syminfo.") || name.startsWith("timeframe.")) {
       throw new PineConvertError(`${name} reads symbol/timeframe metadata that isn't available to the engine.`);
     }
+    const drawingNs = ["label.", "line.", "linefill.", "box.", "table.", "polyline.", "chart."];
+    if (drawingNs.some((prefix) => name.startsWith(prefix))) {
+      throw new PineConvertError(`${name} belongs to chart drawing (labels/lines/boxes/tables) — visual objects can't run in the trading engine.`);
+    }
     if (this.plotHandles.has(name)) throw new PineConvertError(`"${name}" is a plot handle — it can't be used as a value.`);
+    // `someVar.field` — field access on a known binding (user objects).
+    if (name.includes(".")) {
+      const head = name.split(".")[0];
+      if (this.env.has(head) || this.numVars.has(head) || this.boolVars.has(head)) {
+        throw new PineConvertError(`"${name}" accesses a field of an object — user-defined objects and collections can't run in the per-bar trading engine.`);
+      }
+    }
     // `na` as a numeric value → NaN (0/0). nz()/na()/isfinite handling all treat it correctly.
     if (name === "na") return NAN_NUM;
     throw new PineConvertError(`Unknown identifier "${name}" — it was never assigned (or its definition was skipped).`);
@@ -914,6 +985,9 @@ class Converter {
     if (lookahead.includes(callee)) {
       return new PineConvertError(`${callee}() looks ahead in time (it confirms a pivot using future bars) — it can't run in a live per-bar engine.`);
     }
+    if (callee === "time" || callee === "time_close") {
+      return new PineConvertError(`${callee}() (session/time windows) isn't supported — use the "within UTC hours" session condition block instead.`);
+    }
     if (callee === "request.security" || callee.startsWith("request.")) {
       return new PineConvertError(`${callee}() pulls external/other-timeframe data — not available in this per-bar engine.`);
     }
@@ -931,7 +1005,13 @@ class Converter {
     if (callee.startsWith("array.") || callee.startsWith("matrix.") || callee.startsWith("map.")) {
       return new PineConvertError(`${callee}() uses collections (arrays/matrices/maps), which the scalar per-bar IR can't represent.`);
     }
-    if (callee.startsWith("str.")) return new PineConvertError(`${callee}() manipulates strings, which aren't part of the numeric strategy IR.`);
+    if (callee.startsWith("str.") || callee.startsWith("format.")) {
+      return new PineConvertError(`${callee}() manipulates strings, which aren't part of the numeric strategy IR.`);
+    }
+    const drawing = ["label.", "line.", "linefill.", "box.", "table.", "polyline.", "chart."];
+    if (drawing.some((prefix) => callee.startsWith(prefix))) {
+      return new PineConvertError(`${callee}() draws on the chart (labels/lines/boxes/tables) — visual objects can't run in the trading engine. If the script's core logic is computable, remove the drawing code and import the rest.`);
+    }
     if (callee.startsWith("ticker.") || callee === "timeframe.period" || callee.startsWith("syminfo.")) {
       return new PineConvertError(`${callee}() reads symbol/timeframe metadata that isn't available to the engine.`);
     }
@@ -998,6 +1078,7 @@ class Converter {
         }
         const bound = this.env.get(expr.name);
         if (bound) {
+          if (bound.t === "str") throw new PineConvertError(`"${expr.name}" is a text value ("${bound.v}"), not a condition.`);
           if (bound.t !== "bool") throw new PineConvertError(`"${expr.name}" is a number, not a condition.`);
           return bound.e;
         }
@@ -1015,6 +1096,13 @@ class Converter {
           if (naSide) {
             const test: BoolExpr = { k: "isna", a: this.num(naSide) };
             return expr.op === "==" ? test : { k: "not", a: test };
+          }
+          // String comparisons (mode selectors vs frozen input.string) fold to constants.
+          const strA = this.strVal(expr.a);
+          if (strA !== undefined) {
+            const strB = this.strVal(expr.b);
+            if (strB === undefined) throw new PineConvertError("A text value can only be compared with another text value.");
+            return { k: "bool", v: expr.op === "==" ? strA === strB : strA !== strB };
           }
         }
         if (["==", "!=", "<", "<=", ">", ">="].includes(expr.op)) {
@@ -1113,6 +1201,23 @@ class Converter {
     if (expr.t === "switch") return expr.arms.map((armExpr) => this.colorOf(armExpr.body)).find((hex) => hex !== undefined);
     if (expr.t === "str" && /^#[0-9a-fA-F]{6}$/.test(expr.v)) return expr.v;
     return undefined; // conditional/unknown colors are cosmetic — fall back silently
+  }
+
+  /** Resolve an expression to a compile-time string, if it is one: literals,
+   *  string-bound identifiers, and `+` concatenations of those. Undefined = not a string. */
+  private strVal(expr: PineExpr): string | undefined {
+    if (expr.t === "str") return expr.v;
+    if (expr.t === "ident") {
+      const bound = this.env.get(expr.name);
+      return bound?.t === "str" ? bound.v : undefined;
+    }
+    if (expr.t === "binary" && expr.op === "+") {
+      const a = this.strVal(expr.a);
+      if (a === undefined) return undefined;
+      const b = this.strVal(expr.b);
+      return b === undefined ? undefined : a + b;
+    }
+    return undefined;
   }
 
   /** Whether an expression is a color (so a `col = …` binding is cosmetic, not numeric). */
