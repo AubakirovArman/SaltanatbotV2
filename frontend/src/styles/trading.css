@@ -320,6 +320,22 @@
   margin-block-start: 2px;
 }
 
+.trade-runtime-badge {
+  display: inline-flex !important;
+  align-items: center;
+  inline-size: fit-content;
+  min-block-size: 20px;
+  margin-block-start: 6px !important;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1;
+}
+
 .trade-detail-actions {
   display: flex;
   gap: 6px;
@@ -565,6 +581,17 @@
   background: var(--panel);
 }
 
+.trade-order-journal {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 220px;
+}
+
+@supports not (content-visibility: auto) {
+  .trade-order-journal {
+    contain: layout style paint;
+  }
+}
+
 .trade-order-list {
   display: grid;
   gap: 1px;
@@ -636,6 +663,34 @@
 }
 
 .trade-fill-row .reason {
+  color: var(--dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+}
+
+.trade-journal-row {
+  display: grid;
+  grid-template-columns: 72px 72px 72px 44px 1fr minmax(84px, 1.2fr);
+  gap: 6px;
+  align-items: center;
+  min-block-size: 22px;
+  padding: 0 4px;
+  border-block-end: 1px solid var(--line-soft);
+}
+
+.trade-journal-row.head {
+  color: var(--dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+}
+
+.trade-journal-row .reason {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--dim);
   font-family: var(--font-ui);
   font-size: var(--fs-xs);

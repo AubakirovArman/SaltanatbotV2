@@ -149,7 +149,7 @@ export class BinanceAdapter implements ExchangeAdapter {
     }
     const price = await this.price(order.symbol);
     const filters = await binanceFilters(order.symbol, this.market).catch(() => undefined);
-    const rawQty = this.resolveQty(order, price);
+    const rawQty = await this.resolveQty(order, price);
     const qty = roundToStep(rawQty, filters?.stepSize);
     // Reject exchange-filter violations up front with a clear reason.
     const violation = checkMinimums(qty, order.type === "limit" ? order.price ?? price : price, filters);
@@ -220,13 +220,23 @@ export class BinanceAdapter implements ExchangeAdapter {
     return { ok: true, message: `balance ${account.balance}`, fills: [], data: account, account };
   }
 
-  private resolveQty(order: ExecOrder, price: number): number {
+  private async resolveQty(order: ExecOrder, price: number): Promise<number> {
     const lev = order.levForQty ? Math.max(1, order.leverage ?? 1) : 1;
     if (order.qty !== undefined) return order.qty;
     if (order.quoteQty !== undefined) return (order.quoteQty * lev) / price;
     if (order.openPct !== undefined || order.depoPct !== undefined) return 0; // needs balance; resolved via quote in practice
-    if (order.closePct !== undefined) return (order.closePct / 100) / price;
+    if (order.closePct !== undefined) {
+      if (this.market === "spot") return (await this.spotBaseQty(order.symbol)) * (order.closePct / 100);
+      return (order.closePct / 100) / price;
+    }
     return 0;
+  }
+
+  private async spotBaseQty(symbol: string): Promise<number> {
+    const base = baseAsset(symbol);
+    const data = (await this.signed("GET", "/api/v3/account")) as { balances: Array<{ asset: string; free: string; locked: string }> };
+    const row = data.balances.find((item) => item.asset === base);
+    return Number(row?.free ?? 0);
   }
 
   private async placeMarket(symbol: string, side: "BUY" | "SELL", qty: number, reduceOnly: boolean) {
@@ -276,4 +286,10 @@ function mapBinanceType(type: string): OrderType {
     case "TAKE_PROFIT_MARKET": return "tp_market";
     default: return "market";
   }
+}
+
+function baseAsset(symbol: string): string {
+  const quotes = ["USDT", "USDC", "FDUSD", "BUSD", "TUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "USD"];
+  const quote = quotes.find((item) => symbol.endsWith(item));
+  return quote ? symbol.slice(0, -quote.length) : symbol;
 }

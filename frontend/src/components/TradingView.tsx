@@ -13,6 +13,7 @@ import {
   getLogs,
   getNotify,
   getOrders,
+  getOrderJournal,
   getSettings,
   killAll,
   listBots,
@@ -31,6 +32,7 @@ import {
   type LiveState,
   type LogRow,
   type NotifyStatus,
+  type OrderJournal,
   type PendingOrder,
   type TradeEvent,
   type TradingBot
@@ -50,6 +52,7 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
   const [view, setView] = useState<CenterView>({ kind: "empty" });
   const [live, setLive] = useState<Record<string, LiveState>>({});
   const [orders, setOrders] = useState<Record<string, PendingOrder[]>>({});
+  const [orderJournal, setOrderJournal] = useState<Record<string, OrderJournal[]>>({});
   const [fills, setFills] = useState<Record<string, Fill[]>>({});
   const [logs, setLogs] = useState<Record<string, LogRow[]>>({});
   const [auth, setAuth] = useState<AuthState | null>(null);
@@ -76,23 +79,36 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
   useEffect(() => {
     if (!authed) return;
     refreshBots();
-    const socket = createTradeSocket();
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data) as TradeEvent;
-      if (data.type === "fill" && data.fill) {
-        setFills((current) => ({ ...current, [data.botId]: [data.fill!, ...(current[data.botId] ?? [])].slice(0, 200) }));
+    let socket: WebSocket | undefined;
+    let closed = false;
+    const connect = async () => {
+      const next = await createTradeSocket();
+      if (closed) {
+        next.close();
+        return;
       }
-      if (data.type === "log" && data.log) {
-        setLogs((current) => ({ ...current, [data.botId]: [{ botId: data.botId, ...data.log! } as LogRow, ...(current[data.botId] ?? [])].slice(0, 200) }));
-      }
-      if (data.type === "bot") {
-        refreshBots();
-        if (data.account || data.position !== undefined) {
-          setLive((current) => ({ ...current, [data.botId]: { ...current[data.botId], account: data.account ?? current[data.botId]?.account, position: data.position ?? current[data.botId]?.position, price: current[data.botId]?.price ?? 0 } }));
+      socket = next;
+      next.onmessage = (event) => {
+        const data = JSON.parse(event.data) as TradeEvent;
+        if (data.type === "fill" && data.fill) {
+          setFills((current) => ({ ...current, [data.botId]: [data.fill!, ...(current[data.botId] ?? [])].slice(0, 200) }));
         }
-      }
+        if (data.type === "log" && data.log) {
+          setLogs((current) => ({ ...current, [data.botId]: [{ botId: data.botId, ...data.log! } as LogRow, ...(current[data.botId] ?? [])].slice(0, 200) }));
+        }
+        if (data.type === "bot") {
+          refreshBots();
+          if (data.account || data.position !== undefined) {
+            setLive((current) => ({ ...current, [data.botId]: { ...current[data.botId], account: data.account ?? current[data.botId]?.account, position: data.position ?? current[data.botId]?.position, price: current[data.botId]?.price ?? 0 } }));
+          }
+        }
+      };
     };
-    return () => socket.close();
+    void connect().catch(() => undefined);
+    return () => {
+      closed = true;
+      socket?.close();
+    };
   }, [authed, refreshBots]);
 
   // Poll the live state of the selected running bot for price / equity / uPnL.
@@ -107,6 +123,9 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
         .catch(() => undefined);
       getOrders(selectedId)
         .then((rows) => alive && setOrders((current) => ({ ...current, [selectedId]: rows })))
+        .catch(() => undefined);
+      getOrderJournal(selectedId)
+        .then((rows) => alive && setOrderJournal((current) => ({ ...current, [selectedId]: rows })))
         .catch(() => undefined);
     };
     poll();
@@ -130,6 +149,9 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
       .catch(() => undefined);
     getOrders(id)
       .then((rows) => setOrders((current) => ({ ...current, [id]: rows })))
+      .catch(() => undefined);
+    getOrderJournal(id)
+      .then((rows) => setOrderJournal((current) => ({ ...current, [id]: rows })))
       .catch(() => undefined);
   };
 
@@ -218,6 +240,7 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
             bot={selectedBot}
             live={live[selectedBot.id]}
             orders={orders[selectedBot.id] ?? []}
+            orderJournal={orderJournal[selectedBot.id] ?? []}
             fills={fills[selectedBot.id] ?? []}
             logs={logs[selectedBot.id] ?? []}
             onChanged={refreshBots}
@@ -459,6 +482,7 @@ function BotDetail({
   bot,
   live,
   orders,
+  orderJournal,
   fills,
   logs,
   onChanged,
@@ -467,6 +491,7 @@ function BotDetail({
   bot: TradingBot;
   live?: LiveState;
   orders: PendingOrder[];
+  orderJournal: OrderJournal[];
   fills: Fill[];
   logs: LogRow[];
   onChanged: () => void;
@@ -537,6 +562,11 @@ function BotDetail({
           <span>
             {bot.exchange} · {bot.market} · {bot.symbol} · {bot.timeframe} · {bot.strategyName}
           </span>
+          {live?.runtimeStatus === "requires_manual_action" && (
+            <span className="trade-runtime-badge" title={live.pauseReason ?? "Operator confirmation required"}>
+              Requires action
+            </span>
+          )}
         </div>
         <div className="trade-detail-actions">
           <button type="button" className={bot.status === "running" ? "danger" : "run-button"} onClick={toggle}>
@@ -696,6 +726,35 @@ function BotDetail({
                 <button type="button" className="order-cancel" title="Cancel order" onClick={() => runCommand(`action=cancelorder;by=id;orderid=${order.id};symbol=${bot.symbol}`)}>
                   ×
                 </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {orderJournal.length > 0 && (
+        <div className="trade-orders trade-order-journal">
+          <div className="panel-header small">
+            <strong>Order journal</strong>
+            <span>{orderJournal.length}</span>
+          </div>
+          <div className="trade-fill-table">
+            <div className="trade-journal-row head">
+              <span>Time</span>
+              <span>Status</span>
+              <span>Action</span>
+              <span>Side</span>
+              <span>Qty</span>
+              <span>Reason</span>
+            </div>
+            {orderJournal.slice(0, 40).map((order) => (
+              <div className="trade-journal-row" key={order.id}>
+                <span>{new Date(order.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                <span className={order.status === "accepted" ? "up" : order.status === "rejected" ? "down" : ""}>{order.status}</span>
+                <span>{order.action}</span>
+                <span className={order.side === "buy" ? "up" : order.side === "sell" ? "down" : ""}>{order.side ?? "flat"}</span>
+                <span>{order.qty ?? "-"}</span>
+                <span className="reason">{order.reason.replace("signal:", "")}</span>
               </div>
             ))}
           </div>

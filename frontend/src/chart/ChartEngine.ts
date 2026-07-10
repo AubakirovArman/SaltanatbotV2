@@ -184,29 +184,59 @@ type ComputedIndicator =
   | { config: StochasticConfig; kind: "stochastic"; points: ReturnType<typeof stochastic> }
   | { config: ObvConfig; kind: "obv"; points: ReturnType<typeof obv> };
 
+const indicatorCache = new WeakMap<Candle[], Map<string, ComputedIndicator>>();
+
 function computeIndicators(candles: Candle[], configs: IndicatorConfig[]): ComputedIndicator[] {
+  let cache = indicatorCache.get(candles);
+  if (!cache) {
+    cache = new Map();
+    indicatorCache.set(candles, cache);
+  }
   return configs.filter(isIndicatorVisible).map((config): ComputedIndicator => {
+    const key = indicatorCalcKey(config);
+    const cached = cache.get(key);
+    if (cached) return { ...cached, config } as ComputedIndicator;
+    let computed: ComputedIndicator;
     switch (config.kind) {
       case "sma":
-        return { config, kind: config.kind, points: sma(candles, config.period) };
+        computed = { config, kind: config.kind, points: sma(candles, config.period) };
+        break;
       case "ema":
-        return { config, kind: config.kind, points: ema(candles, config.period) };
+        computed = { config, kind: config.kind, points: ema(candles, config.period) };
+        break;
       case "rsi":
-        return { config, kind: config.kind, points: rsi(candles, config.period) };
+        computed = { config, kind: config.kind, points: rsi(candles, config.period) };
+        break;
       case "vwap":
-        return { config, kind: config.kind, points: vwap(candles, config.period) };
+        computed = { config, kind: config.kind, points: vwap(candles, config.period) };
+        break;
       case "atr":
-        return { config, kind: config.kind, points: atr(candles, config.period) };
+        computed = { config, kind: config.kind, points: atr(candles, config.period) };
+        break;
       case "bollinger":
-        return { config, kind: config.kind, points: bollinger(candles, config.period, config.deviation) };
+        computed = { config, kind: config.kind, points: bollinger(candles, config.period, config.deviation) };
+        break;
       case "macd":
-        return { config, kind: config.kind, points: macd(candles, config.fast, config.slow, config.signal) };
+        computed = { config, kind: config.kind, points: macd(candles, config.fast, config.slow, config.signal) };
+        break;
       case "stochastic":
-        return { config, kind: config.kind, points: stochastic(candles, config.period, config.smooth) };
+        computed = { config, kind: config.kind, points: stochastic(candles, config.period, config.smooth) };
+        break;
       case "obv":
-        return { config, kind: config.kind, points: obv(candles) };
+        computed = { config, kind: config.kind, points: obv(candles) };
+        break;
     }
+    cache.set(key, computed);
+    return computed;
   });
+}
+
+function indicatorCalcKey(config: IndicatorConfig): string {
+  if (config.kind === "bollinger") return `${config.kind}:${config.period}:${config.deviation}`;
+  if (config.kind === "macd") return `${config.kind}:${config.fast}:${config.slow}:${config.signal}`;
+  if (config.kind === "stochastic") return `${config.kind}:${config.period}:${config.smooth}`;
+  if (config.kind === "obv") return config.kind;
+  return `${config.kind}:${config.period}`;
 }
 
 function collectMainValues(computed: ComputedIndicator[], start: number, end: number) {

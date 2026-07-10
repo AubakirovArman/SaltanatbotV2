@@ -23,18 +23,26 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  min-inline-size: 0;
   color: var(--text);
+}
+
+.brand-logo {
+  display: block;
+  flex: 0 0 26px;
+  inline-size: 26px;
+  block-size: 26px;
+  border-radius: 7px;
+  object-fit: contain;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .brand strong {
   font-size: var(--fs-lg);
   font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.brand svg {
-  color: var(--accent);
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 /* Current instrument — opens the command palette in symbol-search mode. */

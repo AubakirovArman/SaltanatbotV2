@@ -9,11 +9,12 @@ export async function getCandles(
   timeframe: Timeframe,
   limit = 320,
   endTime?: number,
-  exchange: DataExchange = "binance"
+  exchange: DataExchange = "binance",
+  init?: { signal?: AbortSignal }
 ) {
   const query = new URLSearchParams({ symbol, timeframe, limit: String(limit), exchange });
   if (endTime !== undefined) query.set("endTime", String(endTime));
-  return request<{ candles: Candle[]; provider: string; hasMore?: boolean }>(`/api/candles?${query}`);
+  return request<{ candles: Candle[]; provider: string; hasMore?: boolean }>(`/api/candles?${query}`, init);
 }
 
 export interface SparklineSeries {
@@ -49,8 +50,8 @@ export function parseStreamMessage(data: string) {
   return JSON.parse(data) as StreamMessage;
 }
 
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { Accept: "application/json" } });
+async function request<T>(path: string, init?: { signal?: AbortSignal }): Promise<T> {
+  const response = await fetch(path, { headers: { Accept: "application/json" }, signal: init?.signal });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} for ${path}`);
   }

@@ -5,6 +5,7 @@ export type ExchangeId = "paper" | "binance" | "bybit";
 export type MarketType = "spot" | "futures";
 export type Side = "buy" | "sell";
 export type BotStatus = "stopped" | "running" | "error";
+export type AuthRole = "read-only" | "paper-trade" | "live-trade" | "admin";
 export type OrderType = "market" | "limit" | "stop_market" | "stop_limit" | "tp_market" | "tp_limit";
 export type Tif = "GTC" | "IOC" | "FOK";
 export type PositionSide = "long" | "short";
@@ -100,6 +101,50 @@ export interface OrderRecord {
   reduceOnly: boolean;
   status: "filled" | "rejected" | "new";
   reason: string;
+  ts: number;
+}
+
+export type OrderJournalStatus = "intent" | "accepted" | "rejected" | "unknown";
+
+export interface OrderJournalRecord {
+  id: string;
+  botId: string;
+  exchange: ExchangeId;
+  market: MarketType;
+  symbol: string;
+  action: ExecAction;
+  side?: Side;
+  type: OrderType;
+  qty?: number;
+  reduceOnly?: boolean;
+  reason: string;
+  clientId?: string;
+  exchangeOrderId?: string;
+  status: OrderJournalStatus;
+  message?: string;
+  barTime?: number;
+  ts: number;
+  updatedAt: number;
+}
+
+export interface OrderEventRecord {
+  id: string;
+  orderId: string;
+  botId: string;
+  type: "intent" | "result" | "fill" | "reconcile";
+  data: unknown;
+  ts: number;
+}
+
+export interface AuditLogRecord {
+  id: string;
+  actor: string;
+  role: AuthRole;
+  action: string;
+  target?: string;
+  statusCode: number;
+  ip?: string;
+  data?: unknown;
   ts: number;
 }
 

@@ -1,5 +1,22 @@
 import type { Candle, Instrument, Timeframe } from "../types.js";
 
+export type DataExchange = "binance" | "bybit";
+export type DataMarketType = "spot" | "linear" | "inverse";
+export type PriceType = "last" | "mark" | "index";
+
+export interface MarketKey {
+  venue: DataExchange;
+  marketType: DataMarketType;
+  symbol: string;
+  timeframe: Timeframe;
+  priceType: PriceType;
+}
+
+export interface MarketRouteOptions {
+  marketType?: DataMarketType;
+  priceType?: PriceType;
+}
+
 export interface MarketSubscription {
   close: () => void;
 }
@@ -22,12 +39,14 @@ export interface MarketProvider {
   getCandles: (
     instrument: Instrument,
     timeframe: Timeframe,
-    range: CandleRange
+    range: CandleRange,
+    options?: MarketRouteOptions
   ) => Promise<Candle[]>;
   subscribe: (
     instrument: Instrument,
     timeframe: Timeframe,
     onCandle: (candle: Candle) => void,
-    onStatus?: (message: string) => void
+    onStatus?: (message: string) => void,
+    options?: MarketRouteOptions
   ) => Promise<MarketSubscription>;
 }

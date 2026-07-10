@@ -7,6 +7,8 @@ export interface BaseIndicatorConfig {
   visible?: boolean;
   logicCode?: string;
   logicXml?: string;
+  logicVersion?: number;
+  logicHash?: string;
   color: string;
 }
 

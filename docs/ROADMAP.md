@@ -1,6 +1,6 @@
 # Roadmap
 
-This tracks what a multi-dimension code audit surfaced and what has shipped. The safety-critical and quality-critical layers are **done**, plus a broad set of trading, backtest, data, and product features. The remaining items are larger features or need a funded exchange account / third-party keys / deploy infra to validate.
+This tracks what a multi-dimension code audit surfaced and what has shipped. The app has a strong alpha foundation, but live-trading safety is not considered production-ready until the release gates in [Code Improvement Plan](./CODE_IMPROVEMENT_PLAN.md) are proven by tests and testnet/live reconciliation. Some remaining items need a funded exchange account / third-party keys / deploy infra to validate.
 
 ## Shipped
 

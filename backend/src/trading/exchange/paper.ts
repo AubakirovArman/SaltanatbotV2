@@ -410,7 +410,8 @@ export class PaperAdapter implements ExchangeAdapter {
   }
 
   private slip(price: number, side: Side, entering: boolean): number {
-    const worseUp = (side === "buy") === entering;
+    void entering;
+    const worseUp = side === "buy";
     return price * (1 + (worseUp ? this.opts.slipPct : -this.opts.slipPct) / 100);
   }
 

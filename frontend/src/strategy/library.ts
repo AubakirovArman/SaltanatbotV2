@@ -13,6 +13,8 @@ export interface StrategyArtifact {
   linkedIndicatorId?: string;
   xml: string;
   code?: string;
+  version?: number;
+  hash?: string;
   createdAt: number;
   updatedAt: number;
 }

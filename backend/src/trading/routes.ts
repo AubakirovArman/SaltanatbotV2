@@ -1,18 +1,19 @@
 import { randomUUID } from "node:crypto";
+import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { z } from "zod";
-import { isDemoMode } from "../auth.js";
+import { clearAuthSession, createAuthSession, isDemoMode, issueWsTicket, requireAuth, roleAllows, roleForToken } from "../auth.js";
 import { timeframes } from "../market/timeframes.js";
 import type { ProviderRouter } from "../providers/router.js";
 import { TradingEngine, type TradeEvent } from "./engine.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
 import { getNotifyConfig, notify, testNotify, type NotifyConfig } from "./notifications.js";
 import { TelegramControl } from "./telegramControl.js";
-import { deleteBot, deleteSetting, initStore, listBots, listFills, listLogs, getSetting, setSetting, upsertBot } from "./store.js";
+import { deleteBot, deleteSetting, initStore, insertAuditLog, listAuditLog, listBots, listFills, listLogs, listOrderEvents, listOrderJournal, getSetting, setSetting, upsertBot } from "./store.js";
 import { parseStrategyIR } from "./strategy/irSchema.js";
 import type { Timeframe } from "../types.js";
-import type { BotConfig, ExchangeId } from "./types.js";
+import type { AuthRole, BotConfig, ExchangeId } from "./types.js";
 
 const timeframeEnum = z.enum(timeframes as [Timeframe, ...Timeframe[]]);
 
@@ -44,6 +45,10 @@ const keysBodySchema = z.object({
 const commandBodySchema = z.object({
   command: z.string().min(1).max(2000),
   dryRun: z.boolean().optional()
+});
+
+const sessionBodySchema = z.object({
+  token: z.string().trim().min(1).max(512)
 });
 
 const notifyBodySchema = z.object({
@@ -100,16 +105,46 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
 
   const liveEnabled = () => getSetting<boolean>("liveTradingEnabled") === true;
 
-  // Lets the frontend verify a stored token and learn whether live trading is armed.
-  router.get("/auth", (_req, res) => {
-    res.json({ ok: true, demo: isDemoMode(), liveTradingEnabled: liveEnabled() });
+  router.post("/session", (req, res) => {
+    const parsed = sessionBodySchema.safeParse(req.body);
+    const role = parsed.success ? roleForToken(parsed.data.token) : undefined;
+    if (!parsed.success || !role) {
+      res.status(401).json({ error: "Unauthorized — a valid access token is required." });
+      return;
+    }
+    const session = createAuthSession(res, role);
+    res.json({ ok: true, demo: isDemoMode(), liveTradingEnabled: liveEnabled(), role: session.role, csrfToken: session.csrfToken, expiresAt: session.expiresAt });
+  });
+
+  // Public status probe for the Trade tab. It avoids a noisy browser-console 401
+  // on first load, while every actual trading endpoint below remains gated.
+  router.get("/auth", (req, res) => {
+    if (!req.headers.authorization && !req.headers.cookie) {
+      res.json({ ok: false, demo: isDemoMode(), liveTradingEnabled: false });
+      return;
+    }
+    requireAuth(req, res, () => {
+      res.json({ ok: true, demo: isDemoMode(), liveTradingEnabled: liveEnabled(), role: res.locals.authRole, csrfToken: res.locals.csrfToken });
+    });
+  });
+
+  router.use(requireAuth);
+  router.use(auditMutations);
+
+  router.delete("/session", (req, res) => {
+    clearAuthSession(req, res);
+    res.json({ ok: true });
+  });
+
+  router.post("/ws-ticket", (_req, res) => {
+    res.json(issueWsTicket());
   });
 
   router.get("/settings", (_req, res) => {
     res.json({ demo: isDemoMode(), liveTradingEnabled: liveEnabled() });
   });
 
-  router.post("/settings", (req, res) => {
+  router.post("/settings", requireRole("admin"), (req, res) => {
     const parsed = z.object({ liveTradingEnabled: z.boolean() }).safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.flatten() });
@@ -124,7 +159,7 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
   });
 
   // Global kill switch: stop every bot and disarm live trading.
-  router.post("/kill", (_req, res) => {
+  router.post("/kill", requireRole("live-trade"), (_req, res) => {
     engine.stopAll();
     setSetting("liveTradingEnabled", false);
     res.json({ ok: true });
@@ -151,6 +186,7 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
       return;
     }
     const body = parsed.data;
+    if (!ensureRole(res, body.exchange === "paper" ? "paper-trade" : "live-trade")) return;
     if (isDemoMode() && body.exchange !== "paper") {
       res.status(403).json({ error: "Only paper trading is available in DEMO_MODE." });
       return;
@@ -186,18 +222,21 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
     res.json({ bot: withStatus(bot) });
   });
 
-  router.delete("/bots/:id", (req, res) => {
-    engine.stop(req.params.id);
-    deleteBot(req.params.id);
+  router.delete("/bots/:id", requireRole("admin"), (req, res) => {
+    const id = routeParam(req, "id");
+    engine.stop(id);
+    deleteBot(id);
     res.json({ ok: true });
   });
 
   router.post("/bots/:id/start", async (req, res) => {
-    const bot = listBots().find((item) => item.id === req.params.id);
+    const id = routeParam(req, "id");
+    const bot = listBots().find((item) => item.id === id);
     if (!bot) {
       res.status(404).json({ error: "Bot not found" });
       return;
     }
+    if (!ensureRole(res, roleForBot(bot))) return;
     // Live trading is double-gated: a global arm flag AND per-request confirmation.
     if (bot.exchange !== "paper") {
       if (isDemoMode()) {
@@ -223,24 +262,39 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
   });
 
   router.post("/bots/:id/stop", (req, res) => {
-    engine.stop(req.params.id);
+    const id = routeParam(req, "id");
+    const bot = listBots().find((item) => item.id === id);
+    if (!bot) {
+      res.status(404).json({ error: "Bot not found" });
+      return;
+    }
+    if (!ensureRole(res, roleForBot(bot))) return;
+    engine.stop(id);
     res.json({ ok: true });
   });
 
   // Clear the pause set by the resume staleness gate (bot resumed with stale
   // open-position/counter state) and let it trade again.
   router.post("/bots/:id/confirm-resume", (req, res) => {
-    res.json({ ok: engine.confirmResume(req.params.id) });
+    const id = routeParam(req, "id");
+    const bot = listBots().find((item) => item.id === id);
+    if (!bot) {
+      res.status(404).json({ error: "Bot not found" });
+      return;
+    }
+    if (!ensureRole(res, roleForBot(bot))) return;
+    res.json({ ok: engine.confirmResume(id) });
   });
 
   // Reset a bot's durable strategy state (setvar counters + managed tracking).
   // Only allowed while the bot is stopped so a running bot can't be desynced.
-  router.post("/bots/:id/reset-state", (req, res) => {
-    if (engine.isRunning(req.params.id)) {
+  router.post("/bots/:id/reset-state", requireRole("admin"), (req, res) => {
+    const id = routeParam(req, "id");
+    if (engine.isRunning(id)) {
       res.status(409).json({ error: "Stop the bot before resetting its state." });
       return;
     }
-    deleteSetting(`state:${req.params.id}`);
+    deleteSetting(`state:${id}`);
     res.json({ ok: true });
   });
 
@@ -250,35 +304,55 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
       res.status(400).json({ error: parsed.error.flatten() });
       return;
     }
-    const result = await engine.manualCommand(req.params.id, parsed.data.command, parsed.data.dryRun === true);
+    const id = routeParam(req, "id");
+    const bot = listBots().find((item) => item.id === id);
+    if (!bot) {
+      res.status(404).json({ error: "Bot not found" });
+      return;
+    }
+    if (!ensureRole(res, roleForBot(bot))) return;
+    const result = await engine.manualCommand(id, parsed.data.command, parsed.data.dryRun === true);
     res.json(result);
   });
 
   router.get("/bots/:id/fills", (req, res) => {
-    res.json({ fills: listFills(req.params.id, 200) });
+    res.json({ fills: listFills(routeParam(req, "id"), 200) });
   });
 
   router.get("/bots/:id/logs", (req, res) => {
-    res.json({ logs: listLogs(req.params.id, 200) });
+    res.json({ logs: listLogs(routeParam(req, "id"), 200) });
   });
 
   router.get("/bots/:id/live", async (req, res) => {
-    res.json((await engine.liveState(req.params.id)) ?? { price: 0 });
+    res.json((await engine.liveState(routeParam(req, "id"))) ?? { price: 0 });
   });
 
   router.get("/bots/:id/orders", async (req, res) => {
-    res.json({ orders: await engine.orders(req.params.id) });
+    res.json({ orders: await engine.orders(routeParam(req, "id")) });
+  });
+
+  router.get("/bots/:id/order-journal", (req, res) => {
+    res.json({ orders: listOrderJournal(routeParam(req, "id"), 200) });
+  });
+
+  router.get("/bots/:id/order-journal/:orderId/events", (req, res) => {
+    res.json({ events: listOrderEvents(routeParam(req, "orderId"), 500) });
+  });
+
+  router.get("/audit", requireRole("admin"), (req, res) => {
+    const limit = z.coerce.number().int().min(1).max(500).default(200).parse(req.query.limit);
+    res.json({ events: listAuditLog(limit) });
   });
 
   // ---- exchange keys (never returned in plaintext) ----
-  router.get("/keys", (_req, res) => {
+  router.get("/keys", requireRole("admin"), (_req, res) => {
     res.json({
       binance: hasKeys("binance"),
       bybit: hasKeys("bybit")
     });
   });
 
-  router.post("/keys", (req, res) => {
+  router.post("/keys", requireRole("admin"), (req, res) => {
     if (isDemoMode()) {
       res.status(403).json({ error: "Exchange keys cannot be stored in DEMO_MODE." });
       return;
@@ -293,7 +367,7 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
   });
 
   // ---- notifications ----
-  router.get("/notify", (_req, res) => {
+  router.get("/notify", requireRole("admin"), (_req, res) => {
     const config = getNotifyConfig();
     res.json({
       telegram: {
@@ -306,7 +380,7 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
     });
   });
 
-  router.post("/notify", (req, res) => {
+  router.post("/notify", requireRole("admin"), (req, res) => {
     const parsed = notifyBodySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.flatten() });
@@ -333,13 +407,13 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
     res.json({ ok: true });
   });
 
-  router.post("/notify/test", async (_req, res) => {
+  router.post("/notify/test", requireRole("admin"), async (_req, res) => {
     res.json(await testNotify());
   });
 
   // Deliver a client-side price alert through the notification channel (Telegram),
   // so an alert reaches the operator even when the browser tab is closed.
-  router.post("/notify-alert", async (req, res) => {
+  router.post("/notify-alert", requireRole("paper-trade"), async (req, res) => {
     const parsed = z
       .object({
         symbol: z.string().min(1).max(30),
@@ -368,4 +442,74 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
 function hasKeys(exchange: ExchangeId): boolean {
   const keys = getSetting<ExchangeKeys>(`keys:${exchange}`);
   return !!(keys?.apiKey && keys.apiSecret);
+}
+
+function requireRole(required: AuthRole) {
+  return (_req: Request, res: Response, next: NextFunction) => {
+    if (ensureRole(res, required)) next();
+  };
+}
+
+function ensureRole(res: Response, required: AuthRole): boolean {
+  const role = res.locals.authRole as AuthRole | undefined;
+  if (roleAllows(role, required)) return true;
+  res.status(403).json({ error: `Forbidden — requires ${required} access.` });
+  return false;
+}
+
+function roleForBot(bot: BotConfig): AuthRole {
+  return bot.exchange === "paper" ? "paper-trade" : "live-trade";
+}
+
+function auditMutations(req: Request, res: Response, next: NextFunction) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method.toUpperCase())) {
+    next();
+    return;
+  }
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    try {
+      insertAuditLog({
+        id: randomUUID(),
+        actor: String(res.locals.authMode ?? "unknown"),
+        role: (res.locals.authRole as AuthRole | undefined) ?? "read-only",
+        action: `${req.method.toUpperCase()} ${req.route?.path ?? req.path}`,
+        target: routeParamOptional(req, "id") ?? routeParamOptional(req, "orderId"),
+        statusCode: res.statusCode,
+        ip: req.ip,
+        data: {
+          params: sanitizeAuditValue(req.params),
+          query: sanitizeAuditValue(req.query),
+          body: sanitizeAuditValue(req.body)
+        },
+        ts: startedAt
+      });
+    } catch {
+      // Audit must never break an operator action; failed writes are surfaced by tests/logs.
+    }
+  });
+  next();
+}
+
+function sanitizeAuditValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeAuditValue);
+  if (!value || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = isSecretKey(key) ? "[redacted]" : sanitizeAuditValue(child);
+  }
+  return out;
+}
+
+function isSecretKey(key: string): boolean {
+  return /token|secret|apikey|api_key|authorization|password/i.test(key);
+}
+
+function routeParam(req: Request, key: string): string {
+  return routeParamOptional(req, key) ?? "";
+}
+
+function routeParamOptional(req: Request, key: string): string | undefined {
+  const value = req.params[key];
+  return Array.isArray(value) ? value[0] : value;
 }

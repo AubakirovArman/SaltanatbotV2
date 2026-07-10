@@ -211,6 +211,29 @@ describe("ctx reads drive backtest behaviour", () => {
 });
 
 describe("gap-through-stop honesty", () => {
+  it("checks stop/target risk on the entry bar after a next-open fill", () => {
+    const ir: StrategyIR = {
+      name: "entry-bar-stop",
+      inputs: [],
+      body: [
+        { k: "entry", direction: "long", when: { k: "compare", op: ">", a: { k: "price", field: "close" }, b: { k: "num", v: 0 } } },
+        { k: "stop", mode: "price", value: { k: "num", v: 95 } },
+        { k: "size", mode: "units", value: { k: "num", v: 1 } },
+      ],
+    };
+    const candles = [
+      candle(0 * MIN, 100, 101, 99, 100), // entry signal
+      candle(1 * MIN, 100, 102, 94, 101), // entry fills at open; low hits stop in the same bar
+      candle(2 * MIN, 101, 103, 100, 102),
+    ];
+    const result = runBacktest(ir, candles, { ...noFriction, fillTiming: "next_open" });
+    expect(result.trades[0].reason).toBe("stop");
+    expect(result.trades[0].entryIndex).toBe(1);
+    expect(result.trades[0].exitIndex).toBe(1);
+    expect(result.trades[0].exitPrice).toBe(95);
+    expect(result.trades[0].pnl).toBeCloseTo(-5, 9);
+  });
+
   it("fills a gapped stop at the bar OPEN, not the (better) stop price", () => {
     // Enter long, attach a price stop at 95. Then a bar gaps DOWN so its open
     // (90) is already below the stop (95). An honest engine fills at 90, not 95.

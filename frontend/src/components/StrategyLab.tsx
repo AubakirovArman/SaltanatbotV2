@@ -229,6 +229,7 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
     try {
       workspace = Blockly.inject(container, {
         toolbox: strategyToolbox,
+        media: "/blockly-media/",
         trashcan: false,
         theme: document.documentElement.dataset.theme === "light" ? forgeLight : forgeDark,
         renderer: "thrasos",
@@ -483,7 +484,7 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
           <div className="lab-breadcrumb">
             <Workflow size={13} aria-hidden="true" />
             <strong>{activeArtifact?.name ?? "Strategy Lab"}</strong>
-            <span>{activeArtifact?.kind ?? ""}</span>
+            <span>{activeArtifact ? `${activeArtifact.kind} v${activeArtifact.version ?? 1}` : ""}</span>
           </div>
           {selectedType && blockCatalog[selectedType] && (
             <div className="block-help" style={{ padding: "8px 10px", margin: "0 0 8px", borderRadius: 8, background: "rgba(134,150,166,0.10)", fontSize: 12, lineHeight: 1.45 }}>

@@ -1,16 +1,17 @@
+import { randomUUID } from "node:crypto";
 import type { Candle, Instrument, Timeframe } from "../types.js";
 import { BinanceProvider } from "./binance.js";
 import { BybitProvider } from "./bybit.js";
 import { CandleCache } from "./cache.js";
 import { readCandles, saveCandles, storedRange } from "./candleStore.js";
-import type { CandleRange, MarketProvider, MarketSubscription } from "./provider.js";
+import type { CandleRange, DataExchange, DataMarketType, MarketKey, MarketProvider, MarketSubscription, PriceType } from "./provider.js";
 import { SyntheticProvider } from "./synthetic.js";
-
-export type DataExchange = "binance" | "bybit";
 
 /** `strict` disables the synthetic fallback — live trading must never see fake data. */
 export interface RouteOptions {
   exchange?: DataExchange;
+  marketType?: DataMarketType;
+  priceType?: PriceType;
   strict?: boolean;
 }
 
@@ -25,16 +26,19 @@ export class ProviderRouter implements MarketProvider {
 
   private cache = new CandleCache();
 
+  private streams = new Map<string, SharedStream>();
+
   async getCandles(instrument: Instrument, timeframe: Timeframe, range: CandleRange, options?: DataExchange | RouteOptions) {
-    const { exchange, strict } = normalizeOptions(options);
+    const { exchange, marketType, priceType, strict } = normalizeOptions(options);
     const now = Date.now();
     const isHistory = range.endTime !== undefined && range.endTime < now - 60_000;
-    const source = this.sourceKey(instrument, exchange);
+    const marketKey = this.marketKey(instrument, timeframe, exchange, marketType, priceType);
+    const source = this.sourceKey(instrument, marketKey);
     const cacheKey = `${source}:${instrument.symbol}:${timeframe}:${range.limit}:${range.endTime ?? "live"}:${range.startTime ?? ""}`;
     const cached = this.cache.get(cacheKey, now);
     if (cached) return cached;
 
-    const provider = this.primary(instrument, exchange);
+    const provider = this.primary(instrument, marketKey?.venue);
     const persistable = provider !== this.synthetic;
 
     // Deep-history fast path: a request paging into the past that the persistent
@@ -51,7 +55,10 @@ export class ProviderRouter implements MarketProvider {
 
     let candles: Candle[];
     try {
-      candles = await provider.getCandles(instrument, timeframe, range);
+      candles = await provider.getCandles(instrument, timeframe, range, {
+        marketType: marketKey?.marketType,
+        priceType: marketKey?.priceType
+      });
       // Persist real exchange bars (fire-and-forget). Never persist synthetic or
       // fallback data — guard on the provider and on each candle's source.
       if (persistable) this.persist(source, instrument, timeframe, candles);
@@ -113,20 +120,63 @@ export class ProviderRouter implements MarketProvider {
     onStatus?: (message: string) => void,
     options?: DataExchange | RouteOptions
   ): Promise<MarketSubscription> {
-    const { exchange, strict } = normalizeOptions(options);
-    const provider = this.primary(instrument, exchange);
+    const { exchange, marketType, priceType, strict } = normalizeOptions(options);
+    const marketKey = this.marketKey(instrument, timeframe, exchange, marketType, priceType);
+    const provider = this.primary(instrument, marketKey?.venue);
     if (provider === this.synthetic) {
       if (strict) throw new Error(`No live feed for ${instrument.symbol} (synthetic disabled for trading)`);
       return this.synthetic.subscribe(instrument, timeframe, onCandle, onStatus);
     }
 
+    const streamKey = `${this.sourceKey(instrument, marketKey)}:${instrument.symbol}:${timeframe}`;
+    const existing = this.streams.get(streamKey);
+    if (existing) return this.addStreamListener(streamKey, existing, onCandle, onStatus);
+
+    const stream: SharedStream = {
+      listeners: new Map(),
+      upstream: undefined
+    };
+    this.streams.set(streamKey, stream);
+    const local = this.addStreamListener(streamKey, stream, onCandle, onStatus);
+
     try {
-      return await provider.subscribe(instrument, timeframe, onCandle, onStatus);
+      stream.upstream = await provider.subscribe(instrument, timeframe, (candle) => {
+        for (const listener of stream.listeners.values()) listener.onCandle(candle);
+      }, (message) => {
+        for (const listener of stream.listeners.values()) listener.onStatus?.(message);
+      }, {
+        marketType: marketKey?.marketType,
+        priceType: marketKey?.priceType
+      });
+      if (stream.listeners.size === 0) {
+        stream.upstream.close();
+        this.streams.delete(streamKey);
+      }
+      return local;
     } catch (error) {
+      this.streams.delete(streamKey);
       if (strict) throw error;
       onStatus?.(`Fallback stream: ${this.message(error)}`);
       return this.synthetic.subscribe(instrument, timeframe, onCandle, onStatus);
     }
+  }
+
+  private addStreamListener(
+    key: string,
+    stream: SharedStream,
+    onCandle: (candle: Candle) => void,
+    onStatus?: (message: string) => void
+  ): MarketSubscription {
+    const id = randomUUID();
+    stream.listeners.set(id, { onCandle, onStatus });
+    return {
+      close: () => {
+        stream.listeners.delete(id);
+        if (stream.listeners.size > 0) return;
+        stream.upstream?.close();
+        this.streams.delete(key);
+      }
+    };
   }
 
   private primary(instrument: Instrument, exchange?: DataExchange) {
@@ -134,9 +184,26 @@ export class ProviderRouter implements MarketProvider {
     return exchange === "bybit" ? this.bybit : this.binance;
   }
 
-  private sourceKey(instrument: Instrument, exchange?: DataExchange) {
+  private sourceKey(instrument: Instrument, marketKey?: MarketKey) {
     if (instrument.provider !== "binance") return "synthetic";
-    return exchange === "bybit" ? "bybit" : "binance";
+    const key = marketKey ?? this.marketKey(instrument, "1m");
+    return `${key.venue}:${key.marketType}:${key.priceType}`;
+  }
+
+  private marketKey(
+    instrument: Instrument,
+    timeframe: Timeframe,
+    exchange: DataExchange = "binance",
+    marketType: DataMarketType = "spot",
+    priceType: PriceType = "last"
+  ): MarketKey {
+    return {
+      venue: exchange,
+      marketType,
+      symbol: instrument.symbol,
+      timeframe,
+      priceType
+    };
   }
 
   private message(error: unknown) {
@@ -149,4 +216,9 @@ function normalizeOptions(options?: DataExchange | RouteOptions): RouteOptions {
   if (!options) return {};
   if (typeof options === "string") return { exchange: options };
   return options;
+}
+
+interface SharedStream {
+  listeners: Map<string, { onCandle: (candle: Candle) => void; onStatus?: (message: string) => void }>;
+  upstream?: MarketSubscription;
 }

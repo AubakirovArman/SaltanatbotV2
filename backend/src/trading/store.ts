@@ -3,7 +3,7 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { BotConfig, FillRecord } from "./types.js";
+import type { AuditLogRecord, BotConfig, FillRecord, OrderEventRecord, OrderJournalRecord } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../../data");
@@ -29,11 +29,38 @@ export function initStore() {
       data TEXT NOT NULL,
       ts INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS orders (
+      id TEXT PRIMARY KEY,
+      botId TEXT NOT NULL,
+      status TEXT NOT NULL,
+      data TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS order_events (
+      id TEXT PRIMARY KEY,
+      orderId TEXT NOT NULL,
+      botId TEXT NOT NULL,
+      type TEXT NOT NULL,
+      data TEXT NOT NULL,
+      ts INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       botId TEXT NOT NULL,
       level TEXT NOT NULL,
       message TEXT NOT NULL,
+      ts INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      actor TEXT NOT NULL,
+      role TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target TEXT,
+      statusCode INTEGER NOT NULL,
+      ip TEXT,
+      data TEXT,
       ts INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS settings (
@@ -42,7 +69,10 @@ export function initStore() {
       encrypted INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_fills_bot ON fills(botId, ts);
+    CREATE INDEX IF NOT EXISTS idx_orders_bot ON orders(botId, updatedAt);
+    CREATE INDEX IF NOT EXISTS idx_order_events_order ON order_events(orderId, ts);
     CREATE INDEX IF NOT EXISTS idx_logs_bot ON logs(botId, ts);
+    CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts);
   `);
   return db;
 }
@@ -64,6 +94,8 @@ export function upsertBot(bot: BotConfig) {
 export function deleteBot(id: string) {
   db.prepare("DELETE FROM bots WHERE id = ?").run(id);
   db.prepare("DELETE FROM fills WHERE botId = ?").run(id);
+  db.prepare("DELETE FROM order_events WHERE botId = ?").run(id);
+  db.prepare("DELETE FROM orders WHERE botId = ?").run(id);
   db.prepare("DELETE FROM logs WHERE botId = ?").run(id);
   // Drop this bot's persisted paper-sim and durable strategy state.
   db.prepare("DELETE FROM settings WHERE key = ? OR key = ?").run(`paper:${id}`, `state:${id}`);
@@ -88,6 +120,41 @@ export function listFills(botId: string, limit = 200): FillRecord[] {
     .map((row) => JSON.parse((row as { data: string }).data) as FillRecord);
 }
 
+// ---------- orders (durable lifecycle journal) ----------
+
+export function upsertOrderJournal(order: OrderJournalRecord) {
+  db.prepare(`
+    INSERT INTO orders (id, botId, status, data, ts, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      status = excluded.status,
+      data = excluded.data,
+      updatedAt = excluded.updatedAt
+  `).run(order.id, order.botId, order.status, JSON.stringify(order), order.ts, order.updatedAt);
+}
+
+export function insertOrderEvent(event: OrderEventRecord) {
+  db.prepare("INSERT INTO order_events (id, orderId, botId, type, data, ts) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(event.id, event.orderId, event.botId, event.type, JSON.stringify(event.data), event.ts);
+}
+
+export function listOrderJournal(botId: string, limit = 200): OrderJournalRecord[] {
+  return db
+    .prepare("SELECT data FROM orders WHERE botId = ? ORDER BY updatedAt DESC LIMIT ?")
+    .all(botId, limit)
+    .map((row) => JSON.parse((row as { data: string }).data) as OrderJournalRecord);
+}
+
+export function listOrderEvents(orderId: string, limit = 200): OrderEventRecord[] {
+  return db
+    .prepare("SELECT id, orderId, botId, type, data, ts FROM order_events WHERE orderId = ? ORDER BY ts ASC LIMIT ?")
+    .all(orderId, limit)
+    .map((row) => {
+      const typed = row as { id: string; orderId: string; botId: string; type: OrderEventRecord["type"]; data: string; ts: number };
+      return { ...typed, data: JSON.parse(typed.data) } satisfies OrderEventRecord;
+    });
+}
+
 // ---------- logs ----------
 
 export interface LogRecord {
@@ -107,6 +174,23 @@ export function listLogs(botId: string, limit = 200): LogRecord[] {
   return db
     .prepare("SELECT botId, level, message, ts FROM logs WHERE botId = ? ORDER BY ts DESC LIMIT ?")
     .all(botId, limit) as unknown as LogRecord[];
+}
+
+// ---------- audit log ----------
+
+export function insertAuditLog(record: AuditLogRecord) {
+  db.prepare("INSERT INTO audit_log (id, actor, role, action, target, statusCode, ip, data, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(record.id, record.actor, record.role, record.action, record.target ?? null, record.statusCode, record.ip ?? null, record.data === undefined ? null : JSON.stringify(record.data), record.ts);
+}
+
+export function listAuditLog(limit = 200): AuditLogRecord[] {
+  return db
+    .prepare("SELECT id, actor, role, action, target, statusCode, ip, data, ts FROM audit_log ORDER BY ts DESC LIMIT ?")
+    .all(limit)
+    .map((row) => {
+      const typed = row as Omit<AuditLogRecord, "data"> & { data: string | null };
+      return { ...typed, data: typed.data ? JSON.parse(typed.data) : undefined } satisfies AuditLogRecord;
+    });
 }
 
 // ---------- settings (exchange keys, notifications) ----------

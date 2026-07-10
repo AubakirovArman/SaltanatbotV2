@@ -1,5 +1,13 @@
 import type { Candle } from "../../types";
-import type { ChartTheme, CompareLegendSnapshot, CompareSeries, PlotArea, Viewport } from "../types";
+import { toHeikinAshi } from "../heikinAshi";
+import type { ChartTheme, CompareChartType, CompareLegendSnapshot, CompareSeries, Viewport } from "../types";
+import {
+  drawCompareShape,
+  drawPercentAxis,
+  drawZeroLine,
+  type NormalizedCandle,
+  type NormalizedPoint
+} from "./compareShapes";
 
 interface CompareInput {
   /** The base chart's visible candles (already sliced to [start, end)). */
@@ -10,30 +18,23 @@ interface CompareInput {
   theme: ChartTheme;
 }
 
-interface NormalizedLine {
+interface NormalizedCompare {
+  id: string;
   symbol: string;
+  timeframe: CompareSeries["timeframe"];
+  chartType: CompareChartType;
   color: string;
-  /** % change from the first visible bar, indexed to match `baseVisible`. */
-  values: Array<number | undefined>;
-  /** Latest defined % over the visible window (for the legend). */
+  upColor: string;
+  downColor: string;
+  line: NormalizedPoint[];
+  candles: NormalizedCandle[];
   currentPct?: number;
 }
 
 /**
- * Overlays one or more compare symbols on the price pane, normalized to %
- * change from the FIRST VISIBLE BAR so the comparison re-bases as you scroll.
- *
- * Because compare lines share the price pane but live on a % scale, we compute a
- * shared min/max % across the base symbol + every compare series over the
- * visible window and map % -> pixel Y into the pane's vertical space. A compact
- * right-side "%" axis and a legend (symbol · %change · swatch) describe the
- * scale.
- *
- * Alignment: compare bars are matched to the base window BY TIMESTAMP via a
- * lookup map (compare and base share timeframe + exchange, so bar cadence
- * matches). Base timestamps with no compare bar are left as gaps rather than
- * interpolated — simple and correct for aligned feeds; occasional missing bars
- * just break the line briefly.
+ * Overlays compare symbols on a separate % scale inside the price pane. Each
+ * compare can use its own timeframe and display type; values are normalized from
+ * the first visible base-chart bar so comparison re-bases while panning.
  */
 export function drawCompareSeries(
   ctx: CanvasRenderingContext2D,
@@ -47,24 +48,24 @@ export function drawCompareSeries(
   const baseFirst = base[0]?.close;
   if (!Number.isFinite(baseFirst) || baseFirst === 0) return [];
 
-  // Base symbol itself, normalized, so the % axis frames all lines together.
-  const baseLine: NormalizedLine = {
-    symbol: input.baseSymbol,
-    color: input.baseColor,
-    values: base.map((candle) => (candle.close / baseFirst - 1) * 100)
-  };
-  baseLine.currentPct = lastDefined(baseLine.values);
+  const windowStart = base[0].time;
+  const windowEnd = base[base.length - 1].time;
+  const baseValues = base.map((candle) => (candle.close / baseFirst - 1) * 100);
+  const compareItems = input.series
+    .map((entry) => normalize(entry, windowStart, windowEnd))
+    .filter((entry): entry is NormalizedCompare => entry !== undefined);
 
-  const compareLines: NormalizedLine[] = input.series.map((entry) =>
-    normalize(entry, base)
-  );
+  const finite = [
+    ...baseValues,
+    ...compareItems.flatMap((entry) =>
+      entry.candles.length > 0
+        ? entry.candles.flatMap((candle) => [candle.open, candle.high, candle.low, candle.close])
+        : entry.line.map((point) => point.value)
+    )
+  ].filter((value): value is number => Number.isFinite(value));
 
-  // Shared % range across base + compares over the visible window.
-  const allValues = [baseLine, ...compareLines].flatMap((line) => line.values);
-  const finite = allValues.filter(
-    (value): value is number => value !== undefined && Number.isFinite(value)
-  );
   if (finite.length === 0) return [];
+
   let min = Math.min(...finite, 0);
   let max = Math.max(...finite, 0);
   if (min === max) {
@@ -76,145 +77,109 @@ export function drawCompareSeries(
   max += pad;
   const span = max - min || 1;
   const pctToY = (pct: number) => plot.top + ((max - pct) / span) * plot.height;
-  const step = viewport.barSpacing;
 
   ctx.save();
+  ctx.beginPath();
+  ctx.rect(plot.left, plot.top, plot.width, plot.height);
+  ctx.clip();
 
-  // Faint 0% baseline so relative moves read against a fixed reference.
-  const zeroY = pctToY(0);
-  if (zeroY >= plot.top && zeroY <= plot.bottom) {
-    ctx.strokeStyle = input.theme.grid;
-    ctx.setLineDash([2, 4]);
-    ctx.globalAlpha = 0.7;
-    ctx.beginPath();
-    ctx.moveTo(plot.left, zeroY);
-    ctx.lineTo(plot.right, zeroY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 1;
+  drawZeroLine(ctx, plot, pctToY, input.theme);
+  for (const entry of compareItems) {
+    drawCompareShape(ctx, viewport, entry, pctToY);
   }
-
-  // Only the compare lines are drawn as overlays — the base symbol keeps its
-  // native candles/price line and is included purely for scaling + legend.
-  for (const line of compareLines) {
-    ctx.strokeStyle = line.color;
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    let started = false;
-    line.values.forEach((value, index) => {
-      if (value === undefined || !Number.isFinite(value)) {
-        started = false;
-        return;
-      }
-      const x = plot.left + index * step + step / 2;
-      const y = pctToY(value);
-      if (!started) {
-        ctx.moveTo(x, y);
-        started = true;
-      } else {
-        ctx.lineTo(x, y);
-      }
-    });
-    ctx.stroke();
-  }
+  ctx.restore();
 
   drawPercentAxis(ctx, plot, min, max, pctToY, input.theme);
-  ctx.restore();
   ctx.lineWidth = 1;
 
-  // Legend entries flow back to the React overlay (interactive remove ✕).
   return [
-    { symbol: baseLine.symbol, color: baseLine.color, pct: baseLine.currentPct, base: true },
-    ...compareLines.map((line) => ({
-      symbol: line.symbol,
-      color: line.color,
-      pct: line.currentPct,
-      base: false
+    { id: "base", symbol: input.baseSymbol, color: input.baseColor, pct: lastDefined(baseValues), base: true },
+    ...compareItems.map((entry) => ({
+      id: entry.id,
+      symbol: entry.symbol,
+      color: entry.color,
+      pct: entry.currentPct,
+      base: false,
+      timeframe: entry.timeframe,
+      chartType: entry.chartType
     }))
   ];
 }
 
-/** Normalize a compare series onto the base visible window, aligned by time. */
-function normalize(entry: CompareSeries, base: Candle[]): NormalizedLine {
-  const closeByTime = new Map<number, number>();
-  for (const candle of entry.candles) closeByTime.set(candle.time, candle.close);
+function normalize(entry: CompareSeries, windowStart: number, windowEnd: number): NormalizedCompare | undefined {
+  if (entry.candles.length === 0) return undefined;
 
-  // Baseline = the compare close at (or nearest before) the first visible base bar.
-  const firstTime = base[0].time;
-  let first = closeByTime.get(firstTime);
-  if (first === undefined) first = nearestBefore(entry.candles, firstTime);
+  const source = entry.chartType === "heikin" ? toHeikinAshi(entry.candles) : entry.candles;
+  const anchor = nearestBefore(source, windowStart) ?? source.find((candle) => candle.time >= windowStart);
+  const baseline = anchor?.close;
+  if (!baseline || !Number.isFinite(baseline)) return undefined;
 
-  const values: Array<number | undefined> = base.map((candle) => {
-    if (first === undefined || first === 0) return undefined;
-    let close = closeByTime.get(candle.time);
-    if (close === undefined) close = nearestBefore(entry.candles, candle.time);
-    if (close === undefined) return undefined;
-    return (close / first - 1) * 100;
-  });
+  const inWindow = source.filter((candle) => candle.time >= windowStart && candle.time <= windowEnd);
+  const line = normalizeLine(source, baseline, windowStart, windowEnd);
+  const candles = inWindow.map((candle) => ({
+    time: candle.time,
+    open: pct(candle.open, baseline),
+    high: pct(candle.high, baseline),
+    low: pct(candle.low, baseline),
+    close: pct(candle.close, baseline)
+  }));
+  const last = nearestBefore(source, windowEnd) ?? inWindow.at(-1);
 
   return {
+    id: entry.id,
     symbol: entry.symbol,
+    timeframe: entry.timeframe,
+    chartType: entry.chartType,
     color: entry.color,
-    values,
-    currentPct: lastDefined(values)
+    upColor: entry.upColor,
+    downColor: entry.downColor,
+    line,
+    candles,
+    currentPct: last ? pct(last.close, baseline) : undefined
   };
 }
 
+function normalizeLine(candles: Candle[], baseline: number, windowStart: number, windowEnd: number): NormalizedPoint[] {
+  const points: NormalizedPoint[] = [];
+  const before = nearestBefore(candles, windowStart);
+  if (before) points.push({ time: windowStart, value: pct(before.close, baseline) });
+  for (const candle of candles) {
+    if (candle.time < windowStart || candle.time > windowEnd) continue;
+    points.push({ time: candle.time, value: pct(candle.close, baseline) });
+  }
+  const atEnd = nearestBefore(candles, windowEnd);
+  if (atEnd && (points.length === 0 || points[points.length - 1].time < windowEnd)) {
+    points.push({ time: windowEnd, value: pct(atEnd.close, baseline) });
+  }
+  return dedupePoints(points);
+}
+
 /** Latest candle close at or before `time` (candles assumed time-ascending). */
-function nearestBefore(candles: Candle[], time: number): number | undefined {
-  let result: number | undefined;
+function nearestBefore(candles: Candle[], time: number): Candle | undefined {
+  let result: Candle | undefined;
   for (const candle of candles) {
     if (candle.time > time) break;
-    result = candle.close;
+    result = candle;
   }
   return result;
 }
 
-function lastDefined(values: Array<number | undefined>): number | undefined {
+function dedupePoints(points: NormalizedPoint[]): NormalizedPoint[] {
+  const out: NormalizedPoint[] = [];
+  for (const point of points) {
+    if (out.at(-1)?.time === point.time) out[out.length - 1] = point;
+    else out.push(point);
+  }
+  return out;
+}
+
+function lastDefined(values: number[]): number | undefined {
   for (let i = values.length - 1; i >= 0; i -= 1) {
-    if (values[i] !== undefined && Number.isFinite(values[i] as number)) return values[i];
+    if (Number.isFinite(values[i])) return values[i];
   }
   return undefined;
 }
 
-/** Compact right-edge % axis for the compare scale (distinct from the price axis). */
-function drawPercentAxis(
-  ctx: CanvasRenderingContext2D,
-  plot: PlotArea,
-  min: number,
-  max: number,
-  pctToY: (pct: number) => number,
-  theme: ChartTheme
-) {
-  const ticks = percentTicks(min, max);
-  ctx.font = '9px "SF Mono", SFMono-Regular, ui-monospace, Menlo, Consolas, monospace';
-  ctx.textBaseline = "middle";
-  // Right-align just INSIDE the plot's right edge so the compare % scale never
-  // collides with the native price axis that owns the right gutter.
-  ctx.textAlign = "right";
-  for (const pct of ticks) {
-    const y = pctToY(pct);
-    if (y < plot.top - 1 || y > plot.bottom + 1) continue;
-    ctx.fillStyle = theme.muted;
-    ctx.globalAlpha = 0.75;
-    const label = `${pct > 0 ? "+" : ""}${pct.toFixed(pct % 1 === 0 ? 0 : 1)}%`;
-    ctx.fillText(label, plot.right - 4, y);
-    ctx.globalAlpha = 1;
-  }
-  ctx.textAlign = "left";
-}
-
-/** A few rounded % gridline values across [min, max]. */
-function percentTicks(min: number, max: number): number[] {
-  const rough = (max - min) / 4;
-  const magnitude = 10 ** Math.floor(Math.log10(Math.abs(rough) || 1));
-  const normalized = rough / magnitude;
-  const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
-  const step = nice * magnitude || 1;
-  const ticks: number[] = [];
-  const first = Math.ceil(min / step) * step;
-  for (let value = first; value <= max + step * 0.001; value += step) {
-    ticks.push(Number(value.toFixed(6)));
-  }
-  return ticks;
+function pct(value: number, baseline: number) {
+  return (value / baseline - 1) * 100;
 }

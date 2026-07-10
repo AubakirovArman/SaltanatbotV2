@@ -352,15 +352,32 @@
 }
 
 .compare-chip {
-  gap: 4px;
+  gap: 5px;
   padding: 0 4px 0 7px;
   font-size: var(--fs-xs);
+}
+
+.compare-chip-main {
+  display: grid;
+  gap: 1px;
+  min-inline-size: 0;
 }
 
 .compare-chip strong {
   font-size: var(--fs-xs);
   font-weight: 650;
   line-height: 1;
+}
+
+.compare-chip em {
+  max-inline-size: 104px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .compare-chip small {
@@ -398,6 +415,81 @@
 .compare-chip button:hover {
   background: var(--accent-soft);
   color: var(--text);
+}
+
+.compare-settings {
+  pointer-events: auto;
+  inline-size: min(288px, calc(100dvw - 32px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(14px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+}
+
+.compare-settings header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-block-size: 24px;
+}
+
+.compare-settings header strong {
+  flex: 1;
+  min-inline-size: 0;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.compare-settings header button {
+  display: inline-grid;
+  place-content: center;
+  inline-size: 20px;
+  block-size: 20px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.compare-settings header button:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.compare-settings label {
+  display: grid;
+  gap: 4px;
+}
+
+.compare-settings label span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.compare-settings select,
+.compare-settings input[type="color"] {
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.compare-settings input[type="color"] {
+  padding: 2px;
 }
 
 .compare-menu {

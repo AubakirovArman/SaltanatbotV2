@@ -14,7 +14,6 @@ import {
   PanelLeft,
   PanelRight,
   Plus,
-  Radio,
   Sun,
   Trash2,
   Workflow
@@ -105,8 +104,9 @@ export function TopBar({
   return (
     <header className="topbar">
       <div className="brand">
-        <Radio size={16} strokeWidth={1.75} aria-hidden="true" />
-        <strong>SaltanatbotV2</strong>
+        <img className="brand-logo" src="/logo.svg" alt="" width="26" height="26" aria-hidden="true" />
+        <strong aria-hidden="true">SaltanatbotV2</strong>
+        <span className="sr-only">SaltanatbotV2</span>
       </div>
 
       <button

@@ -26,11 +26,10 @@ import {
   type ShapeTool
 } from "../chart/drawings";
 import { drawChart, setChartTheme } from "../chart/ChartEngine";
-import { compareColor } from "../chart/compareColors";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import { visibleCandles } from "../chart/scales";
-import type { ChartLivePosition, ChartMarker, ChartPlot, ChartTrade, CompareLegendSnapshot, CompareSeries, PriceMode, Viewport } from "../chart/types";
+import type { ChartLivePosition, ChartMarker, ChartPlot, ChartTrade, CompareLegendSnapshot, CompareOverlayConfig, CompareSeries, PriceMode, Viewport } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { PriceAlert } from "../market/alerts";
 import type { Candle, ChartType, Instrument, Timeframe } from "../types";
@@ -65,12 +64,17 @@ interface ChartCanvasProps {
   focusTime?: number;
   /** Compare overlay: other symbols' candles keyed by symbol. */
   compareSeries?: Record<string, Candle[]>;
-  /** Ordered list of compare symbols (drives color assignment + legend order). */
-  compareSymbols?: string[];
+  compareLoading?: Record<string, boolean>;
+  compareErrors?: Record<string, string | undefined>;
+  /** Ordered compare overlay configs (drives color assignment + legend order). */
+  compareOverlays?: CompareOverlayConfig[];
   /** Catalog symbols selectable in the Compare picker. */
   compareCandidates?: CompareCandidate[];
+  compareTimeframes?: Timeframe[];
+  compareChartTypes?: ChartType[];
   onAddCompare?: (symbol: string) => void;
-  onRemoveCompare?: (symbol: string) => void;
+  onUpdateCompare?: (id: string, patch: Partial<CompareOverlayConfig>) => void;
+  onRemoveCompare?: (id: string) => void;
 }
 
 const MAX_COMPARE = 3;
@@ -105,9 +109,14 @@ export function ChartCanvas({
   onNeedHistory,
   focusTime,
   compareSeries,
-  compareSymbols,
+  compareLoading,
+  compareErrors,
+  compareOverlays,
   compareCandidates,
+  compareTimeframes,
+  compareChartTypes,
   onAddCompare,
+  onUpdateCompare,
   onRemoveCompare
 }: ChartCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -143,14 +152,20 @@ export function ChartCanvas({
   const latest = candles.at(-1);
   drawingsRef.current = drawings;
 
-  // Assemble the compare overlay: attach a stable per-slot color to each symbol
-  // that actually has data. Order follows `compareSymbols` so colors are stable.
+  // Assemble the compare overlay from configured layers and the fetched data.
   const compare = useMemo<CompareSeries[]>(() => {
-    if (!compareSymbols || compareSymbols.length === 0 || !compareSeries) return [];
-    return compareSymbols
-      .map((symbol, index) => ({ symbol, color: compareColor(index), candles: compareSeries[symbol] ?? [] }))
-      .filter((entry) => entry.candles.length > 0);
-  }, [compareSymbols, compareSeries]);
+    if (!compareOverlays || compareOverlays.length === 0 || !compareSeries) return [];
+    return compareOverlays.map((overlay) => ({
+      id: overlay.id,
+      symbol: overlay.symbol,
+      timeframe: overlay.timeframe,
+      chartType: overlay.chartType,
+      color: overlay.color,
+      upColor: overlay.upColor,
+      downColor: overlay.downColor,
+      candles: compareSeries[overlay.id] ?? []
+    }));
+  }, [compareOverlays, compareSeries]);
 
   // Load / persist drawings per symbol.
   useEffect(() => {
@@ -407,13 +422,18 @@ export function ChartCanvas({
           activeStrategyId={activeStrategyId}
           onAddStrategy={onAddStrategy}
         />
-        {onAddCompare && onRemoveCompare && (
+        {onAddCompare && onUpdateCompare && onRemoveCompare && (
           <CompareControl
             candidates={compareCandidates ?? []}
-            active={compareSymbols ?? []}
+            active={compareOverlays ?? []}
             max={MAX_COMPARE}
+            timeframes={compareTimeframes ?? [timeframe]}
+            chartTypes={compareChartTypes ?? [chartType]}
             legend={compareLegend}
+            loading={compareLoading ?? {}}
+            errors={compareErrors ?? {}}
             onAdd={onAddCompare}
+            onUpdate={onUpdateCompare}
             onRemove={onRemoveCompare}
           />
         )}
@@ -735,8 +755,11 @@ function sameLegend(a: CompareLegendSnapshot[], b: CompareLegendSnapshot[]) {
     const other = b[index];
     return (
       entry.symbol === other.symbol &&
+      entry.id === other.id &&
       entry.color === other.color &&
       entry.base === other.base &&
+      entry.timeframe === other.timeframe &&
+      entry.chartType === other.chartType &&
       roundPct(entry.pct) === roundPct(other.pct)
     );
   });

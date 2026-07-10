@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { compareColor } from "./chart/compareColors";
 import type { IndicatorConfig } from "./chart/indicatorTypes";
-import type { ChartMarker, ChartPlot, ChartTrade } from "./chart/types";
+import type { ChartMarker, ChartPlot, ChartTrade, CompareChartType, CompareOverlayConfig } from "./chart/types";
 import { AlertToasts } from "./components/AlertToasts";
 import { ChartCanvas } from "./components/ChartCanvas";
 import { CommandPalette, type Command } from "./components/CommandPalette";
@@ -30,6 +31,8 @@ const initialWorkspaceState = loadInitialWorkspaceState();
 
 /** Max simultaneous compare-overlay symbols. */
 const MAX_COMPARE = 3;
+const DEFAULT_COMPARE_UP = "#23c97a";
+const DEFAULT_COMPARE_DOWN = "#ef5350";
 
 const fallbackInstrument: Instrument = {
   symbol: "BTCUSDT",
@@ -72,10 +75,9 @@ export default function App() {
   const [leftOpen, setLeftOpen] = useState(() => readPanel("mf:panel:left", true));
   const [rightOpen, setRightOpen] = useState(() => readPanel("mf:panel:right", true));
   const [workspaces, setWorkspaces] = useState<Workspace[]>(() => loadWorkspaces());
-  const [compareSymbols, setCompareSymbols] = useState<string[]>(() => loadCompare());
+  const [compareOverlays, setCompareOverlays] = useState<CompareOverlayConfig[]>(() => loadCompare(timeframe, chartType));
   const stream = useMarketStream(symbol, timeframe, cryptoExchange);
-  // Fetch the compare symbols on the same timeframe/exchange as the base chart.
-  const compareSeries = useCompareSeries(compareSymbols, timeframe, cryptoExchange);
+  const compareState = useCompareSeries(compareOverlays, cryptoExchange);
 
   useEffect(() => {
     saveWorkspaces(workspaces);
@@ -94,11 +96,11 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("sbv2:compare", JSON.stringify(compareSymbols));
+      localStorage.setItem("sbv2:compare", JSON.stringify(compareOverlays));
     } catch {
       // ignore storage failures
     }
-  }, [compareSymbols]);
+  }, [compareOverlays]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -169,18 +171,36 @@ export default function App() {
   );
 
   const addCompare = useCallback((sym: string) => {
-    setCompareSymbols((current) =>
-      current.includes(sym) || current.length >= MAX_COMPARE ? current : [...current, sym]
+    setCompareOverlays((current) =>
+      current.some((item) => item.symbol === sym) || current.length >= MAX_COMPARE
+        ? current
+        : [
+          ...current,
+          {
+            id: sym,
+            symbol: sym,
+            timeframe,
+            chartType: asCompareChartType(chartType),
+            color: compareColor(current.length),
+            upColor: DEFAULT_COMPARE_UP,
+            downColor: DEFAULT_COMPARE_DOWN
+          }
+        ]
+    );
+  }, [chartType, timeframe]);
+  const updateCompare = useCallback((id: string, patch: Partial<CompareOverlayConfig>) => {
+    setCompareOverlays((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch, chartType: asCompareChartType(patch.chartType ?? item.chartType) } : item))
     );
   }, []);
-  const removeCompare = useCallback((sym: string) => {
-    setCompareSymbols((current) => current.filter((item) => item !== sym));
+  const removeCompare = useCallback((id: string) => {
+    setCompareOverlays((current) => current.filter((item) => item.id !== id));
   }, []);
 
   // Never compare the base symbol against itself — drop it if it becomes active.
   useEffect(() => {
-    setCompareSymbols((current) =>
-      current.includes(symbol) ? current.filter((item) => item !== symbol) : current
+    setCompareOverlays((current) =>
+      current.some((item) => item.symbol === symbol) ? current.filter((item) => item.symbol !== symbol) : current
     );
   }, [symbol]);
 
@@ -299,11 +319,16 @@ export default function App() {
   };
 
   const saveStrategyArtifact = (artifact: StrategyArtifact) => {
-    setStrategyLibrary((current) => upsertArtifact(current, artifact));
+    let saved: StrategyArtifact = artifact;
+    setStrategyLibrary((current) => {
+      const next = upsertArtifact(current, artifact);
+      saved = next.find((item) => item.id === artifact.id) ?? artifact;
+      return next;
+    });
     if (!artifact.linkedIndicatorId) return;
     setIndicators((current) => current.map((indicator) => (
       indicator.id === artifact.linkedIndicatorId
-        ? { ...indicator, logicCode: artifact.code, logicXml: artifact.xml }
+        ? { ...indicator, logicCode: saved.code, logicXml: saved.xml, logicVersion: saved.version, logicHash: saved.hash }
         : indicator
     )));
   };
@@ -456,10 +481,15 @@ export default function App() {
               focusTime={activeOverlay ? chartFocus : undefined}
               theme={theme}
               onNeedHistory={stream.loadOlder}
-              compareSeries={compareSeries}
-              compareSymbols={compareSymbols}
+              compareSeries={compareState.series}
+              compareLoading={compareState.loading}
+              compareErrors={compareState.errors}
+              compareOverlays={compareOverlays}
               compareCandidates={compareCandidates}
+              compareTimeframes={catalog?.timeframes ?? []}
+              compareChartTypes={catalog?.chartTypes ?? []}
               onAddCompare={addCompare}
+              onUpdateCompare={updateCompare}
               onRemoveCompare={removeCompare}
             />
           )}
@@ -547,17 +577,54 @@ function writePanel(key: string, open: boolean) {
   }
 }
 
-/** Load persisted compare symbols, tolerating missing / malformed storage. */
-function loadCompare(): string[] {
+/** Load persisted compare overlays, tolerating the old string[] storage shape. */
+function loadCompare(defaultTimeframe: Timeframe, defaultChartType: ChartType): CompareOverlayConfig[] {
   try {
     const raw = window.localStorage.getItem("sbv2:compare");
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === "string").slice(0, MAX_COMPARE);
+    return parsed
+      .map((item, index): CompareOverlayConfig | undefined => {
+        if (typeof item === "string") {
+          return {
+            id: item,
+            symbol: item,
+            timeframe: defaultTimeframe,
+            chartType: asCompareChartType(defaultChartType),
+            color: compareColor(index),
+            upColor: DEFAULT_COMPARE_UP,
+            downColor: DEFAULT_COMPARE_DOWN
+          };
+        }
+        if (!item || typeof item !== "object") return undefined;
+        const candidate = item as Partial<CompareOverlayConfig>;
+        if (typeof candidate.symbol !== "string") return undefined;
+        return {
+          id: typeof candidate.id === "string" ? candidate.id : candidate.symbol,
+          symbol: candidate.symbol,
+          timeframe: asTimeframe(candidate.timeframe, defaultTimeframe),
+          chartType: asCompareChartType(candidate.chartType ?? defaultChartType),
+          color: typeof candidate.color === "string" ? candidate.color : compareColor(index),
+          upColor: typeof candidate.upColor === "string" ? candidate.upColor : DEFAULT_COMPARE_UP,
+          downColor: typeof candidate.downColor === "string" ? candidate.downColor : DEFAULT_COMPARE_DOWN
+        };
+      })
+      .filter((item): item is CompareOverlayConfig => Boolean(item))
+      .slice(0, MAX_COMPARE);
   } catch {
     return [];
   }
+}
+
+function asTimeframe(value: unknown, fallback: Timeframe): Timeframe {
+  const allowed: Timeframe[] = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"];
+  return typeof value === "string" && allowed.includes(value as Timeframe) ? value as Timeframe : fallback;
+}
+
+function asCompareChartType(value: unknown): CompareChartType {
+  const allowed: CompareChartType[] = ["candles", "heikin", "bars", "line", "area", "baseline"];
+  return typeof value === "string" && allowed.includes(value as CompareChartType) ? value as CompareChartType : "line";
 }
 
 /** Append " (n)" until the name is unique within the library. */
@@ -571,12 +638,33 @@ function dedupeName(name: string, items: StrategyArtifact[]): string {
 
 function upsertArtifact(items: StrategyArtifact[], artifact: StrategyArtifact) {
   const existing = items.find((item) => item.id === artifact.id);
-  if (!existing) return [artifact, ...items];
+  const stamped = stampArtifact(artifact, existing);
+  if (!existing) return [stamped, ...items];
   return items.map((item) => (
     item.id === artifact.id
-      ? { ...artifact, createdAt: item.createdAt, updatedAt: Date.now() }
+      ? { ...stamped, createdAt: item.createdAt, updatedAt: Date.now() }
       : item
   ));
+}
+
+function stampArtifact(artifact: StrategyArtifact, existing?: StrategyArtifact): StrategyArtifact {
+  const hash = artifactHash(artifact);
+  const unchanged = existing?.hash === hash;
+  return {
+    ...artifact,
+    hash,
+    version: unchanged ? existing?.version ?? artifact.version ?? 1 : (existing?.version ?? 0) + 1
+  };
+}
+
+function artifactHash(artifact: Pick<StrategyArtifact, "kind" | "name" | "xml" | "code">): string {
+  const text = `${artifact.kind}\n${artifact.name}\n${artifact.xml}\n${artifact.code ?? ""}`;
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function StrategyLoading() {

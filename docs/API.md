@@ -1,10 +1,34 @@
 # HTTP & WebSocket API reference
 
-SaltanatbotV2 exposes a small Express + WebSocket backend that serves market data (catalog, candles, sparklines), a live market stream, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is enabled for every origin, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://0.0.0.0:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and two WebSocket endpoints are exposed at `/stream` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
+SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), a live market stream, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and two WebSocket endpoints are exposed at `/stream` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
 
 - Base URL (default): `http://localhost:4180`
 - Content type: `application/json`
 - Validation: query parameters on `/api/candles`, `/api/sparklines`, and `/stream` are validated with [zod](https://zod.dev); invalid input returns HTTP `400` with a flattened zod error.
+
+## Trading auth
+
+Public market data endpoints are open. Trading endpoints are closed.
+
+Browser flow:
+
+1. `POST /api/trade/session` with `{ "token": "<AUTH_TOKEN>" }`.
+2. Server sets an HttpOnly `sbv2_session` cookie and returns `{ role, csrfToken }`.
+3. Send `X-CSRF-Token: <csrfToken>` on mutating `/api/trade/*` requests.
+4. Before connecting to `/trade-stream`, call `POST /api/trade/ws-ticket` and pass the returned one-time ticket as websocket subprotocol `sbv2.ticket.<base64url(ticket)>`.
+
+Bearer `Authorization: Bearer <AUTH_TOKEN>` is still accepted for scripts and local automation, but the bundled frontend does not persist the admin token in web storage.
+
+Roles are hierarchical:
+
+| Role | Token | Can do |
+| --- | --- | --- |
+| `read-only` | `AUTH_READONLY_TOKEN` | View bots, live state, fills, logs, order journal, portfolio, and trade stream. |
+| `paper-trade` | `AUTH_PAPER_TRADE_TOKEN` | Read-only plus create/start/stop/command paper bots and deliver price alerts. |
+| `live-trade` | `AUTH_LIVE_TRADE_TOKEN` | Paper permissions plus start/stop/command live bots after admin arming. |
+| `admin` | `AUTH_TOKEN` | Full access: keys, notification config, live arming, deletion, reset-state, audit log. |
+
+Every mutating trade API call is written to `audit_log` with the session role, status code, target, and redacted request data. View recent events with `GET /api/trade/audit?limit=200` as admin.
 
 ## Shared types
 
@@ -691,17 +715,30 @@ curl -X POST http://localhost:4180/api/trade/notify/test
 
 ## Trading WebSocket: `/trade-stream`
 
-A broadcast-only WebSocket that pushes every `TradeEvent` emitted by the trading engine to all connected clients. It takes no query parameters — connect and listen.
+A broadcast-only WebSocket that pushes every `TradeEvent` emitted by the trading engine to all connected clients. It takes no query parameters and rejects token-in-URL auth. Browser clients first request a short-lived one-time ticket:
+
+```
+POST /api/trade/ws-ticket
+X-CSRF-Token: <csrfToken>
+Cookie: sbv2_session=...
+
+→ { "ticket": "...", "expiresAt": 1751932800000 }
+```
+
+Then connect with a websocket subprotocol:
 
 ```
 ws://localhost:4180/trade-stream
+Sec-WebSocket-Protocol: sbv2.ticket.<base64url(ticket)>
 ```
 
 Each message is a JSON-serialized `TradeEvent` produced by the engine (fills, order updates, log lines, and status changes for running bots). Clients are tracked server-side and removed automatically on socket close or error.
 
 ```bash
-# Example using websocat
-websocat ws://localhost:4180/trade-stream
+# Script fallback using the admin token subprotocol still works.
+TOKEN="<AUTH_TOKEN>"
+PROTO="sbv2.auth.$(printf '%s' "$TOKEN" | base64 | tr '+/' '-_' | tr -d '=')"
+websocat -H "Sec-WebSocket-Protocol: $PROTO" ws://localhost:4180/trade-stream
 ```
 
 ---

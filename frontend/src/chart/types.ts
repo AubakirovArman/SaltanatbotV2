@@ -1,4 +1,4 @@
-import type { Candle, ChartType } from "../types";
+import type { Candle, ChartType, Timeframe } from "../types";
 import type { Anchor, DrawingObject } from "./drawings";
 import type { IndicatorConfig } from "./indicatorTypes";
 
@@ -106,10 +106,13 @@ export interface DrawChartOptions {
 
 /** Legend row emitted by the compare renderer for the React overlay. */
 export interface CompareLegendSnapshot {
+  id: string;
   symbol: string;
   color: string;
   pct?: number;
   base: boolean;
+  timeframe?: Timeframe;
+  chartType?: CompareChartType;
 }
 
 export interface DraftDrawing {
@@ -147,14 +150,33 @@ export interface ChartLivePosition {
   entryPrice: number;
 }
 
+export type CompareChartType = Exclude<ChartType, "renko">;
+
+export interface CompareOverlayConfig {
+  id: string;
+  symbol: string;
+  timeframe: Timeframe;
+  chartType: CompareChartType;
+  /** Single-color renderers: line / area / baseline. */
+  color: string;
+  /** Candle-like renderers: candles / Heikin Ashi / bars. */
+  upColor: string;
+  downColor: string;
+}
+
 /**
  * One symbol overlaid on the price pane for relative-performance comparison.
- * `candles` is the raw series for the same timeframe/exchange as the base chart;
- * the compare renderer normalizes it to % change from the first visible bar.
+ * `candles` is the raw series for the selected compare timeframe/exchange; the
+ * renderer normalizes it to % change from the first visible base-chart bar.
  */
 export interface CompareSeries {
+  id: string;
   symbol: string;
+  timeframe: Timeframe;
+  chartType: CompareChartType;
   color: string;
+  upColor: string;
+  downColor: string;
   candles: Candle[];
 }
 

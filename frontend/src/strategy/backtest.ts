@@ -305,13 +305,13 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
       pendingEntry = null;
     }
 
-    // 1. Intrabar stop / target on bars after entry.
+    // 1. Intrabar stop / target from the entry bar onward.
     //    Intrabar assumption: we have NO path knowledge within a bar. We assume
     //    the STOP is reached before the TARGET (pessimistic), and we test the
     //    stop as it stood at BAR OPEN — the trail only ratchets forward for the
     //    NEXT bar, avoiding the look-ahead of ratcheting on this bar's high/low
     //    and then testing this bar's low/high against the tightened stop.
-    if (position && i > position.entryIndex) {
+    if (position && i >= position.entryIndex) {
       if (position.stopPrice !== undefined && stopHit(position, candle)) {
         // Gap-aware: if price gaps through the stop, the real fill is the open,
         // not the stop level. Stops are MARKET orders → apply slippage.

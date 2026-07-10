@@ -1,6 +1,7 @@
 import express from "express";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { getAuthToken } from "../src/auth.js";
 import { createTradingApi } from "../src/trading/routes.js";
 
 // The HTTP tests never start a bot, so a no-op provider is enough — and it avoids
@@ -25,6 +26,7 @@ const fakeProvider = {
 vi.mock("../src/trading/store.js", () => {
   const bots = new Map<string, unknown>();
   const settings = new Map<string, unknown>();
+  const audit: unknown[] = [];
   const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
   return {
     initStore: () => {},
@@ -38,8 +40,14 @@ vi.mock("../src/trading/store.js", () => {
     deleteSetting: (k: string) => settings.delete(k),
     insertFill: () => {},
     listFills: () => [],
+    upsertOrderJournal: () => {},
+    insertOrderEvent: () => {},
+    listOrderJournal: () => [],
+    listOrderEvents: () => [],
     insertLog: () => {},
     listLogs: () => [],
+    insertAuditLog: (row: unknown) => audit.unshift(clone(row)),
+    listAuditLog: (limit: number) => audit.slice(0, limit).map((row) => clone(row)),
     getSetting: (k: string) => (settings.has(k) ? clone(settings.get(k)) : undefined),
     setSetting: (k: string, v: unknown) => settings.set(k, clone(v)),
   };
@@ -47,6 +55,12 @@ vi.mock("../src/trading/store.js", () => {
 
 let base: string;
 let server: Server;
+let sessionCookie: string;
+let csrfToken: string;
+let readOnlyCookie: string;
+let readOnlyCsrf: string;
+let paperCookie: string;
+let paperCsrf: string;
 
 const validBody = (over: Record<string, unknown> = {}) => ({
   name: "E2E",
@@ -61,6 +75,8 @@ const validBody = (over: Record<string, unknown> = {}) => ({
 });
 
 beforeAll(async () => {
+  process.env.AUTH_READONLY_TOKEN = "readonly-test-token";
+  process.env.AUTH_PAPER_TRADE_TOKEN = "paper-test-token";
   const api = createTradingApi(fakeProvider);
   const app = express();
   app.use(express.json());
@@ -70,24 +86,68 @@ beforeAll(async () => {
   });
   const port = (server.address() as { port: number }).port;
   base = `http://127.0.0.1:${port}/api/trade`;
+  ({ cookie: sessionCookie, csrf: csrfToken } = await loginAs(getAuthToken()));
+  ({ cookie: readOnlyCookie, csrf: readOnlyCsrf } = await loginAs("readonly-test-token"));
+  ({ cookie: paperCookie, csrf: paperCsrf } = await loginAs("paper-test-token"));
+  expect(sessionCookie).toMatch(/^sbv2_session=/);
+  expect(csrfToken).toBeTruthy();
 });
 
 afterAll(() => {
   server?.close();
 });
 
+const authHeaders = (unsafe = false) => ({
+  cookie: sessionCookie,
+  ...(unsafe ? { "x-csrf-token": csrfToken } : {}),
+});
 const post = (p: string, b: unknown) =>
-  fetch(base + p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
-const del = (p: string) => fetch(base + p, { method: "DELETE" });
-const get = (p: string) => fetch(base + p);
+  fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...authHeaders(true) }, body: JSON.stringify(b) });
+const del = (p: string) => fetch(base + p, { method: "DELETE", headers: authHeaders(true) });
+const get = (p: string) => fetch(base + p, { headers: authHeaders() });
+
+async function loginAs(token: string): Promise<{ cookie: string; csrf: string; role: string }> {
+  const login = await fetch(base + "/session", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  expect(login.status).toBe(200);
+  const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+  const body = (await login.json()) as { csrfToken: string; role: string };
+  return { cookie, csrf: body.csrfToken, role: body.role };
+}
 
 describe("trading API E2E (real router, in-memory store)", () => {
+  it("rejects unauthenticated and session requests without CSRF", async () => {
+    expect(await (await fetch(base + "/auth")).json()).toMatchObject({ ok: false });
+    expect((await fetch(base + "/bots")).status).toBe(401);
+    expect((await fetch(base + "/settings", { method: "POST", headers: { "content-type": "application/json", cookie: sessionCookie }, body: JSON.stringify({ liveTradingEnabled: true }) })).status).toBe(403);
+  });
+
   it("GET /auth reports server + live-arm state", async () => {
     const res = await get("/auth");
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.liveTradingEnabled).toBe(false);
+    expect(body.role).toBe("admin");
+  });
+
+  it("enforces session roles for mutating endpoints", async () => {
+    const readOnlyRes = await fetch(base + "/bots", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: readOnlyCookie, "x-csrf-token": readOnlyCsrf },
+      body: JSON.stringify(validBody()),
+    });
+    expect(readOnlyRes.status).toBe(403);
+
+    const paperLiveRes = await fetch(base + "/bots", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: paperCookie, "x-csrf-token": paperCsrf },
+      body: JSON.stringify(validBody({ exchange: "binance", market: "futures" })),
+    });
+    expect(paperLiveRes.status).toBe(403);
   });
 
   it("creates a paper bot with valid IR and lists it", async () => {
@@ -129,6 +189,15 @@ describe("trading API E2E (real router, in-memory store)", () => {
     expect((await res.json()).error).toMatch(/not armed/i);
   });
 
+  it("rejects live spot start until the inventory model is explicitly enabled", async () => {
+    expect((await post("/settings", { liveTradingEnabled: true })).status).toBe(200);
+    const created = await (await post("/bots", validBody({ exchange: "binance", market: "spot" }))).json();
+    const res = await post(`/bots/${created.bot.id}/start`, { confirmLive: true });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/Live spot trading is disabled/i);
+    expect((await post("/settings", { liveTradingEnabled: false })).status).toBe(200);
+  });
+
   it("confirm-resume returns false when the bot isn't paused", async () => {
     const created = await (await post("/bots", validBody())).json();
     const res = await post(`/bots/${created.bot.id}/confirm-resume`, {});
@@ -141,6 +210,27 @@ describe("trading API E2E (real router, in-memory store)", () => {
     const res = await post(`/bots/${created.bot.id}/reset-state`, {});
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
+  });
+
+  it("exposes the durable order journal endpoints", async () => {
+    const created = await (await post("/bots", validBody())).json();
+    const journal = await get(`/bots/${created.bot.id}/order-journal`);
+    expect(journal.status).toBe(200);
+    expect(await journal.json()).toEqual({ orders: [] });
+    const events = await get(`/bots/${created.bot.id}/order-journal/order-1/events`);
+    expect(events.status).toBe(200);
+    expect(await events.json()).toEqual({ events: [] });
+  });
+
+  it("writes an audit log with redacted secrets for mutating routes", async () => {
+    const res = await post("/keys", { exchange: "binance", apiKey: "abcdefgh", apiSecret: "supersecret" });
+    expect(res.status).toBe(200);
+    const audit = await (await get("/audit?limit=20")).json();
+    const event = audit.events.find((item: { action: string }) => item.action.includes("/keys"));
+    expect(event).toBeTruthy();
+    expect(event.role).toBe("admin");
+    expect(event.data.body.apiKey).toBe("[redacted]");
+    expect(event.data.body.apiSecret).toBe("[redacted]");
   });
 
   it("deletes a bot", async () => {

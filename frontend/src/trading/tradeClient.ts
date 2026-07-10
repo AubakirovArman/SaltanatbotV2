@@ -75,10 +75,43 @@ export interface PendingOrder {
   createdAt: number;
 }
 
+export interface OrderJournal {
+  id: string;
+  botId: string;
+  exchange: ExchangeId;
+  market: MarketType;
+  symbol: string;
+  action: string;
+  side?: "buy" | "sell";
+  type: string;
+  qty?: number;
+  reduceOnly?: boolean;
+  reason: string;
+  clientId?: string;
+  exchangeOrderId?: string;
+  status: "intent" | "accepted" | "rejected" | "unknown";
+  message?: string;
+  barTime?: number;
+  ts: number;
+  updatedAt: number;
+}
+
+export interface OrderEvent {
+  id: string;
+  orderId: string;
+  botId: string;
+  type: "intent" | "result" | "fill" | "reconcile";
+  data: unknown;
+  ts: number;
+}
+
 export interface LiveState {
   account?: Account;
   position?: Position | null;
   price: number;
+  paused?: boolean;
+  runtimeStatus?: "running" | "requires_manual_action";
+  pauseReason?: string;
 }
 
 export interface TradeEvent {
@@ -99,6 +132,8 @@ export interface NotifyStatus {
 
 const BASE = "/api/trade";
 const TOKEN_KEY = "sbv2:token";
+const SESSION_KEY = "sbv2:session";
+const CSRF_KEY = "sbv2:csrf";
 
 export class AuthError extends Error {
   constructor(message = "Unauthorized") {
@@ -109,7 +144,15 @@ export class AuthError extends Error {
 
 export function getToken(): string {
   try {
-    return localStorage.getItem(TOKEN_KEY) ?? "";
+    if (sessionStorage.getItem(SESSION_KEY)) return "session";
+    const sessionToken = sessionStorage.getItem(TOKEN_KEY);
+    if (sessionToken) return sessionToken;
+    const legacy = localStorage.getItem(TOKEN_KEY) ?? "";
+    if (legacy) {
+      sessionStorage.setItem(TOKEN_KEY, legacy);
+      localStorage.removeItem(TOKEN_KEY);
+    }
+    return legacy;
   } catch {
     return "";
   }
@@ -117,20 +160,28 @@ export function getToken(): string {
 
 export function setToken(token: string) {
   try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    if (token) sessionStorage.setItem(SESSION_KEY, "1");
+    else {
+      sessionStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(CSRF_KEY);
+    }
   } catch {
     // ignore storage failures
   }
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
+  const token = getStoredBearerToken();
+  const csrfToken = getCsrfToken();
   const res = await fetch(BASE + path, {
     ...init,
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
       ...(init?.headers ?? {})
     }
   });
@@ -143,17 +194,21 @@ export interface AuthState {
   ok: boolean;
   demo: boolean;
   liveTradingEnabled: boolean;
+  role?: "read-only" | "paper-trade" | "live-trade" | "admin";
+  csrfToken?: string;
 }
 
 /** Verify a token (defaults to the stored one) against the backend. */
 export async function checkAuth(token?: string): Promise<AuthState> {
-  const use = token ?? getToken();
-  const res = await fetch(`${BASE}/auth`, {
-    headers: use ? { Authorization: `Bearer ${use}` } : {}
-  });
+  if (token?.trim()) return createSession(token.trim());
+  const legacy = getStoredBearerToken();
+  if (legacy) return createSession(legacy);
+  const res = await fetch(`${BASE}/auth`, { credentials: "same-origin" });
   if (res.status === 401) throw new AuthError();
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<AuthState>;
+  const state = (await res.json()) as AuthState;
+  if (state.csrfToken) setSession(state.csrfToken);
+  return state;
 }
 
 export const getSettings = () => req<AuthState>("/settings");
@@ -174,6 +229,9 @@ export const getFills = (id: string) => req<{ fills: Fill[] }>(`/bots/${id}/fill
 export const getLogs = (id: string) => req<{ logs: LogRow[] }>(`/bots/${id}/logs`).then((r) => r.logs);
 export const getLive = (id: string) => req<LiveState>(`/bots/${id}/live`);
 export const getOrders = (id: string) => req<{ orders: PendingOrder[] }>(`/bots/${id}/orders`).then((r) => r.orders);
+export const getOrderJournal = (id: string) => req<{ orders: OrderJournal[] }>(`/bots/${id}/order-journal`).then((r) => r.orders);
+export const getOrderEvents = (id: string, orderId: string) =>
+  req<{ events: OrderEvent[] }>(`/bots/${id}/order-journal/${encodeURIComponent(orderId)}/events`).then((r) => r.events);
 /** Deliver a triggered price alert through the server notification channel (Telegram). */
 export const notifyAlert = (payload: { symbol: string; price: number; direction: "above" | "below"; hitPrice?: number }) =>
   req<{ ok: boolean }>("/notify-alert", { method: "POST", body: JSON.stringify(payload) });
@@ -184,9 +242,59 @@ export const getNotify = () => req<NotifyStatus>("/notify");
 export const saveNotify = (config: unknown) => req("/notify", { method: "POST", body: JSON.stringify(config) });
 export const testNotify = () => req<{ ok: boolean; message: string }>("/notify/test", { method: "POST" });
 
-export function createTradeSocket(): WebSocket {
+export async function createTradeSocket(): Promise<WebSocket> {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const token = getToken();
-  const query = token ? `?token=${encodeURIComponent(token)}` : "";
-  return new WebSocket(`${protocol}://${window.location.host}/trade-stream${query}`);
+  const ticket = await req<{ ticket: string }>("/ws-ticket", { method: "POST" });
+  return new WebSocket(`${protocol}://${window.location.host}/trade-stream`, [`sbv2.ticket.${base64Url(ticket.ticket)}`]);
+}
+
+function base64Url(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function createSession(token: string): Promise<AuthState> {
+  const res = await fetch(`${BASE}/session`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token })
+  });
+  if (res.status === 401) {
+    setToken("");
+    throw new AuthError();
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const state = (await res.json()) as AuthState;
+  if (state.csrfToken) setSession(state.csrfToken);
+  return state;
+}
+
+function setSession(csrfToken: string) {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.setItem(SESSION_KEY, "1");
+    sessionStorage.setItem(CSRF_KEY, csrfToken);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function getCsrfToken(): string {
+  try {
+    return sessionStorage.getItem(CSRF_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function getStoredBearerToken(): string {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
 }

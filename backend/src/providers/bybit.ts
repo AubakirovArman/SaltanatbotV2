@@ -1,8 +1,8 @@
 import WebSocket from "ws";
 import type { Candle, Instrument, Timeframe } from "../types.js";
-import { bybitIntervals } from "../market/timeframes.js";
+import { bybitIntervals, timeframeMs } from "../market/timeframes.js";
 import { fetchWithRetry } from "./http.js";
-import type { CandleRange, MarketProvider, MarketSubscription } from "./provider.js";
+import type { CandleRange, MarketProvider, MarketRouteOptions, MarketSubscription } from "./provider.js";
 
 type BybitKline = [string, string, string, string, string, string, string];
 
@@ -19,15 +19,17 @@ interface BybitKlineMessage {
   }>;
 }
 
-/** Public Bybit v5 spot market data (klines REST + WS). No API keys needed. */
+/** Public Bybit v5 market data (spot/linear/inverse klines REST + WS). No API keys needed. */
 export class BybitProvider implements MarketProvider {
   readonly name = "Bybit public";
 
-  async getCandles(instrument: Instrument, timeframe: Timeframe, range: CandleRange) {
+  async getCandles(instrument: Instrument, timeframe: Timeframe, range: CandleRange, options: MarketRouteOptions = {}) {
     const interval = bybitIntervals[timeframe];
     if (!interval) throw new Error(`Unsupported Bybit timeframe: ${timeframe}`);
+    if ((options.priceType ?? "last") !== "last") throw new Error(`Bybit ${options.priceType} candles are not wired yet`);
+    const category = bybitCategory(options.marketType);
     const url = new URL("https://api.bybit.com/v5/market/kline");
-    url.searchParams.set("category", "spot");
+    url.searchParams.set("category", category);
     url.searchParams.set("symbol", instrument.symbol);
     url.searchParams.set("interval", interval);
     url.searchParams.set("limit", String(Math.min(range.limit, 1000)));
@@ -41,7 +43,7 @@ export class BybitProvider implements MarketProvider {
     const list = payload.result?.list ?? [];
     // Bybit returns newest-first; reverse to ascending time.
     return list
-      .map((item) => this.fromKline(item))
+      .map((item) => this.fromKline(item, timeframe))
       .sort((a, b) => a.time - b.time);
   }
 
@@ -49,10 +51,13 @@ export class BybitProvider implements MarketProvider {
     instrument: Instrument,
     timeframe: Timeframe,
     onCandle: (candle: Candle) => void,
-    onStatus?: (message: string) => void
+    onStatus?: (message: string) => void,
+    options: MarketRouteOptions = {}
   ): Promise<MarketSubscription> {
     const interval = bybitIntervals[timeframe];
     if (!interval) throw new Error(`Unsupported Bybit timeframe: ${timeframe}`);
+    if ((options.priceType ?? "last") !== "last") throw new Error(`Bybit ${options.priceType} websocket candles are not wired yet`);
+    const category = bybitCategory(options.marketType);
 
     const topic = `kline.${interval}.${instrument.symbol}`;
     let closed = false;
@@ -73,7 +78,7 @@ export class BybitProvider implements MarketProvider {
     };
 
     const connect = () => {
-      socket = new WebSocket("wss://stream.bybit.com/v5/public/spot");
+      socket = new WebSocket(`wss://stream.bybit.com/v5/public/${category}`);
       socket.on("open", () => {
         const reconnected = attempts > 0;
         attempts = 0;
@@ -121,7 +126,7 @@ export class BybitProvider implements MarketProvider {
     };
   }
 
-  private fromKline(kline: BybitKline): Candle {
+  private fromKline(kline: BybitKline, timeframe: Timeframe): Candle {
     return {
       time: Number(kline[0]),
       open: Number(kline[1]),
@@ -129,8 +134,13 @@ export class BybitProvider implements MarketProvider {
       low: Number(kline[3]),
       close: Number(kline[4]),
       volume: Number(kline[5]),
-      final: true,
+      final: Number(kline[0]) + timeframeMs[timeframe] <= Date.now(),
       source: this.name
     };
   }
+}
+
+function bybitCategory(marketType: MarketRouteOptions["marketType"]): "spot" | "linear" | "inverse" {
+  if (marketType === "linear" || marketType === "inverse") return marketType;
+  return "spot";
 }

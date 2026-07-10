@@ -31,6 +31,9 @@ tmp/
 audits/
 IMPROVEMENT_PLAN.md
 
+# ── Claude Code (agent worktrees, local session state) ────────
+.claude/
+
 # ── Editor / OS ───────────────────────────────────────────────
 .DS_Store
 Thumbs.db

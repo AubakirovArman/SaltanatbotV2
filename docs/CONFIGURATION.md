@@ -1,6 +1,6 @@
 # Configuration & deployment
 
-SaltanatbotV2 is configured almost entirely at runtime, through the app itself, rather than through configuration files. The backend reads only two environment variables (a listen port and host); everything sensitive — exchange API keys, Telegram/VK notification credentials — is entered in the UI, encrypted with AES-256-GCM, and persisted in a local SQLite database. This guide covers the environment variables, where runtime state lives, how to configure secrets through the app, the at-rest encryption scheme, a production deployment recipe, and a hardening checklist for exposing the server publicly.
+SaltanatbotV2 is configured mostly at runtime through the app itself. The backend reads a small set of environment variables for listen/auth/session behavior; everything sensitive — exchange API keys, Telegram/VK notification credentials — is entered in the UI, encrypted with AES-256-GCM, and persisted in a local SQLite database. This guide covers the environment variables, where runtime state lives, how to configure secrets through the app, the at-rest encryption scheme, a production deployment recipe, and a hardening checklist for exposing the server publicly.
 
 ## Environment variables
 
@@ -10,7 +10,13 @@ The backend reads these environment variables in `backend/src/server.ts` / `back
 | ----------------- | ------------- | --------------------------------------------------------------------------------------- |
 | `PORT`            | `4180`        | TCP port the HTTP + WebSocket server listens on.                                        |
 | `HOST`            | `127.0.0.1`   | Interface the server binds to. Loopback by default (fail-safe). Set `0.0.0.0` to expose. |
-| `AUTH_TOKEN`      | *(auto)*      | Access token guarding the trading API. If unset, one is generated to `backend/data/.authtoken` and printed on first run. |
+| `AUTH_TOKEN`      | *(auto)*      | Admin token used to unlock the Trade tab. Browser login exchanges it for an HttpOnly session cookie. |
+| `AUTH_READONLY_TOKEN` | *(unset)* | Optional token for read-only trade visibility. Cannot mutate bots/settings. |
+| `AUTH_PAPER_TRADE_TOKEN` | *(unset)* | Optional token that can manage paper bots and price-alert delivery, but cannot create/start live bots. |
+| `AUTH_LIVE_TRADE_TOKEN` | *(unset)* | Optional token that can start/stop/command live bots once live trading is armed. Admin still controls keys/settings. |
+| `AUTH_SESSION_TTL_MS` | `43200000` | HttpOnly browser session TTL (default 12 hours). |
+| `AUTH_WS_TICKET_TTL_MS` | `30000` | One-time `/trade-stream` ticket TTL. |
+| `COOKIE_SECURE`   | *(off)*       | Set to `1` behind HTTPS so session cookies are marked `Secure`. |
 | `DEMO_MODE`       | *(off)*       | `1`/`true` disables exchange keys and live trading — paper only. For public demos.       |
 | `ALLOWED_ORIGINS` | dev localhost | Comma-separated CORS allowlist for cross-origin browser access. Same-origin always works. |
 
@@ -32,7 +38,7 @@ SaltanatbotV2 backend listening on http://127.0.0.1:4180
 
 If you bind to a non-loopback address, the server prints a warning to put it behind a reverse proxy with TLS (see [Security hardening](#security-hardening)).
 
-> **Public market data is open; the trading API is not.** `/api/candles`, `/api/sparklines`, `/api/catalog` and the `/stream` market socket need no token (they only serve public candles). Everything under `/api/trade` and the `/trade-stream` socket require the access token. Exchange keys and notification tokens are still entered in the UI and stored encrypted — never in environment variables.
+> **Public market data is open; the trading API is not.** `/api/candles`, `/api/sparklines`, `/api/catalog` and the `/stream` market socket need no token (they only serve public candles). The browser exchanges `AUTH_TOKEN` at `POST /api/trade/session` for an HttpOnly `sbv2_session` cookie and a CSRF token; mutating trade requests require `X-CSRF-Token`. `/trade-stream` uses a short-lived one-time ticket from `POST /api/trade/ws-ticket`. Exchange keys and notification tokens are still entered in the UI and stored encrypted — never in environment variables.
 
 > **`.env` is git-ignored** (with a committed `.env.example` allowed). Secrets belong in the encrypted store or `AUTH_TOKEN`, not committed files.
 
@@ -52,7 +58,7 @@ In development the Vite dev server (frontend) runs separately and proxies API an
 | Service          | Port   | Notes                                              |
 | ---------------- | ------ | -------------------------------------------------- |
 | Backend (Express)| `4180` | HTTP `/api/*`, WebSockets `/stream`, `/trade-stream`. |
-| Frontend (Vite)  | `4181` | `strictPort: false`, proxies `/api` and `/stream` to `127.0.0.1:4180`. |
+| Frontend (Vite)  | `4181` | `strictPort: false`, proxies `/api`, `/stream`, and `/trade-stream` to `127.0.0.1:4180`. |
 
 In production this split disappears — the backend serves the built frontend directly (see [Production deployment](#production-deployment)).
 
@@ -84,6 +90,9 @@ Both are **gitignored and must never be committed.** The repository's `.gitignor
 | `bots`     | Bot configurations (JSON), keyed by `id`.                             |
 | `fills`    | Trade journal / fill records per bot.                                 |
 | `logs`     | Per-bot log lines (`info` / `warn` / `error`).                        |
+| `orders`   | Durable order-intent/result journal keyed by `clientOrderId` / exchange order id. |
+| `order_events` | Per-order lifecycle events, including intent, result, fill, and reconciliation records. |
+| `audit_log` | Mutating trade API calls with role, status, target, and redacted request data. |
 | `settings` | Key/value store with an `encrypted` flag — exchange keys and notification config live here. |
 
 ## Configuring exchange API keys
@@ -250,11 +259,13 @@ Point your process manager (systemd, pm2, Docker, etc.) at this command, ensure 
 
 ## Security hardening
 
-The backend now defaults to the safe posture: it binds to `127.0.0.1`, the trading API requires an access token, and CORS is an allowlist (foreign origins get no `Access-Control-Allow-Origin`). Live trading is disarmed by default. Still, before putting this server on the public internet, work through the checklist below.
+The backend now defaults to the safe posture: it binds to `127.0.0.1`, the trading API requires an access token, CORS is an allowlist (foreign origins get no `Access-Control-Allow-Origin`), and the bundled SPA is served with CSP / browser hardening headers. Live trading is disarmed by default. Still, before putting this server on the public internet, work through the checklist below.
 
-- [ ] **Terminate TLS at a reverse proxy.** Keep the app bound to loopback (`HOST=127.0.0.1`, the default) and place nginx / Caddy / Traefik in front to handle HTTPS and to proxy both HTTP (`/api/*`) and the WebSocket upgrades (`/stream`, `/trade-stream`). The app itself serves plain HTTP.
+- [ ] **Terminate TLS at a reverse proxy.** Keep the app bound to loopback (`HOST=127.0.0.1`, the default) and place nginx / Caddy / Traefik in front to handle HTTPS and to proxy both HTTP (`/api/*`) and the WebSocket upgrades (`/stream`, `/trade-stream`). The app itself serves plain HTTP and intentionally does not send `upgrade-insecure-requests`, so direct `http://IP:4180` access remains usable for testing.
 - [ ] **Restrict network exposure with a firewall.** Only expose the proxy's `443` (and optionally `80` for redirect). Do not expose the backend's `4180` directly; block it at the host firewall / security group.
-- [ ] **Keep the access token secret.** The trading API and `/trade-stream` require it. Set a long random `AUTH_TOKEN` in production (don't rely on the auto-generated `backend/data/.authtoken` if you ship the data dir around), and never paste it into cross-origin sites. A defense-in-depth auth layer at the proxy is still welcome.
+- [ ] **Keep the access token secret.** The browser only uses it to create an HttpOnly session, but it is still the admin credential. Set a long random `AUTH_TOKEN` in production (don't rely on the auto-generated `backend/data/.authtoken` if you ship the data dir around), and never paste it into cross-origin sites. A defense-in-depth auth layer at the proxy is still welcome.
+- [ ] **Use scoped tokens where possible.** Give observers `AUTH_READONLY_TOKEN`, paper operators `AUTH_PAPER_TRADE_TOKEN`, and reserve `AUTH_TOKEN` for admin operations such as keys, live arming, deletion, and notification config.
+- [ ] **Set `COOKIE_SECURE=1` behind HTTPS.** Local plain HTTP cannot use Secure cookies, so this is operator-controlled. For a public TLS deployment, enable it.
 - [ ] **Set `ALLOWED_ORIGINS` if the API is reached cross-origin.** Same-origin (the bundled SPA) needs nothing. Leave it unset for the default same-origin deployment.
 - [ ] **Never commit `backend/data/`.** It contains `.secret` (the encryption key seed) and `trading.db` (encrypted API keys and tokens). It is gitignored — keep it that way, and treat backups of it as secret material.
 - [ ] **Protect `.secret` file permissions.** It is written `0600`; ensure the deployment user owns it and no other account can read it.

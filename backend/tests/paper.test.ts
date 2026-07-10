@@ -79,6 +79,12 @@ describe("PaperAdapter — opening a position", () => {
     expect(result.fills[0].price).toBeCloseTo(101, 9);
   });
 
+  it("applies slippage against sell entries too (short entry fills lower)", async () => {
+    adapter = makeAdapter({ slipPct: 1 }); // 1%
+    const result = await adapter.execute(order({ action: "open", side: "sell", qty: 1 }));
+    expect(result.fills[0].price).toBeCloseTo(99, 9);
+  });
+
   it("refuses to open a second position on the same symbol", async () => {
     await adapter.execute(order({ action: "open", side: "buy", qty: 1 }));
     const again = await adapter.execute(order({ action: "open", side: "buy", qty: 1 }));
@@ -131,6 +137,15 @@ describe("PaperAdapter — realized PnL on close", () => {
     // gross 10, close fee = 1 * 110 * 0.001 = 0.11 -> pnl 9.89
     expect(result.fills[0].fee).toBeCloseTo(0.11, 9);
     expect(result.fills[0].realizedPnl).toBeCloseTo(9.89, 9);
+  });
+
+  it("applies slippage against exits instead of improving the close price", async () => {
+    const adapter = makeAdapter({ slipPct: 1 });
+    await adapter.execute(order({ action: "open", side: "buy", qty: 1 })); // entry @ 101
+    price = 110;
+    const result = await adapter.execute(order({ action: "close", side: "sell" }));
+    expect(result.fills[0].price).toBeCloseTo(108.9, 9);
+    expect(result.fills[0].realizedPnl).toBeCloseTo(7.9, 9);
   });
 });
 

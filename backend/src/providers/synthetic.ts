@@ -1,6 +1,6 @@
 import type { Candle, Instrument, Timeframe } from "../types.js";
 import { alignTime, timeframeMs } from "../market/timeframes.js";
-import type { CandleRange, MarketProvider, MarketSubscription } from "./provider.js";
+import type { CandleRange, MarketProvider, MarketRouteOptions, MarketSubscription } from "./provider.js";
 
 /**
  * Deterministic synthetic market.
@@ -16,7 +16,7 @@ export class SyntheticProvider implements MarketProvider {
 
   private live = new Map<string, Candle>();
 
-  async getCandles(instrument: Instrument, timeframe: Timeframe, range: CandleRange) {
+  async getCandles(instrument: Instrument, timeframe: Timeframe, range: CandleRange, _options?: MarketRouteOptions) {
     const tf = timeframeMs[timeframe];
     const nowBucket = alignTime(Date.now(), timeframe);
     const end = range.endTime !== undefined ? alignTime(range.endTime, timeframe) : nowBucket;
@@ -43,7 +43,8 @@ export class SyntheticProvider implements MarketProvider {
     instrument: Instrument,
     timeframe: Timeframe,
     onCandle: (candle: Candle) => void,
-    onStatus?: (message: string) => void
+    onStatus?: (message: string) => void,
+    _options?: MarketRouteOptions
   ): Promise<MarketSubscription> {
     onStatus?.("Synthetic live stream active");
     const interval = setInterval(() => {
