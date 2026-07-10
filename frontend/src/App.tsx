@@ -10,6 +10,7 @@ import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
 import { useCompareSeries } from "./hooks/useCompareSeries";
 import { useMarketStream } from "./hooks/useMarketStream";
+import { useLivePositions } from "./hooks/useLivePositions";
 import { usePriceAlerts } from "./hooks/usePriceAlerts";
 import { useSparklines } from "./hooks/useSparklines";
 import type { StrategyArtifact, StrategyArtifactKind } from "./strategy/library";
@@ -200,6 +201,7 @@ export default function App() {
     [catalog]
   );
   const priceAlerts = usePriceAlerts(prices, decimalsFor);
+  const livePositions = useLivePositions(instrument.symbol);
 
   const chartStrategies = useMemo(
     () => strategyLibrary.filter((item) => item.kind === "strategy").map((item) => ({ id: item.id, name: item.name, description: item.description })),
@@ -426,6 +428,7 @@ export default function App() {
                   direction: price >= (stream.candles.at(-1)?.close ?? price) ? "above" : "below"
                 })
               }
+              livePositions={livePositions}
               strategyName={activeOverlay?.name}
               onClearStrategy={() => setOverlay(undefined)}
               strategies={chartStrategies}

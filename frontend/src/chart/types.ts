@@ -91,6 +91,8 @@ export interface DrawChartOptions {
   plots?: ChartPlot[];
   /** Active price alerts for the current symbol, drawn as horizontal lines. */
   alerts?: ChartAlert[];
+  /** Live bot positions on the current symbol, drawn as entry lines. */
+  livePositions?: ChartLivePosition[];
   showVolume?: boolean;
   /** Symbols overlaid on the price pane, normalized to % change (Compare). */
   compare?: CompareSeries[];
@@ -136,6 +138,13 @@ export interface ChartAlert {
   price: number;
   direction: "above" | "below";
   triggered: boolean;
+}
+
+/** A live bot position drawn on the chart (entry line + label). */
+export interface ChartLivePosition {
+  side: "long" | "short";
+  qty: number;
+  entryPrice: number;
 }
 
 /**
