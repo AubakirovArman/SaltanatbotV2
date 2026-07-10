@@ -17,7 +17,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     // Only pick up our dedicated test folders, never production src.
-    include: ["backend/tests/**/*.test.ts", "frontend/tests/**/*.test.ts"],
+    include: ["backend/tests/**/*.test.ts", "frontend/tests/**/*.test.{ts,tsx}"],
     environment: "node",
     globals: false,
     // Keep runs hermetic and fast; no DB/network setup is ever performed.

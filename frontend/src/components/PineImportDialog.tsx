@@ -80,22 +80,21 @@ export function PineImportDialog({ onClose, onImportMany }: PineImportDialogProp
   const canConvert = source.trim().length > 0 || files.length > 0;
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <div className="modal pine-import" role="dialog" aria-label="Import Pine Script" onClick={(event) => event.stopPropagation()}>
-        <div className="panel-header">
-          <h3>
+    <div className="gallery-backdrop" role="dialog" aria-modal="true" aria-label="Import Pine Script" onClick={onClose}>
+      <div className="gallery-modal pine-import" onClick={(event) => event.stopPropagation()}>
+        <div className="gallery-head">
+          <strong>
             <FileCode2 size={15} aria-hidden="true" /> Import Pine Script
-          </h3>
-          <button type="button" onClick={onClose} aria-label="Close">
+          </strong>
+          <button type="button" className="icon-button" onClick={onClose} title="Close" aria-label="Close">
             <X size={15} aria-hidden="true" />
           </button>
         </div>
+        <div className="gallery-body pine-body">
         <p className="pine-hint">
-          Paste a TradingView Pine Script (v4–v6) <strong>or upload one or more <code>.pine</code> files</strong>, then Convert.
-          Each <code>indicator()</code> becomes an indicator and each <code>strategy()</code> becomes a strategy — new, editable as
-          blocks, named from the script. Functions, <code>for</code>/<code>while</code>, <code>switch</code>, ternaries, most
-          <code> ta.*</code>/<code>math.*</code>, and <code>nz</code>/<code>na</code> are supported. Anything that can't run in a
-          per-bar engine (request.security, arrays/matrices, look-ahead pivots, drawings) is rejected with a clear reason.
+          Paste a TradingView Pine Script (v4–v6) or upload <code>.pine</code> files, then Convert. Each <code>indicator()</code>{" "}
+          becomes an indicator and each <code>strategy()</code> a strategy — new, editable as blocks, named from the script.
+          Unsupported constructs are rejected with a clear reason.
         </p>
         <textarea
           value={source}
@@ -104,7 +103,7 @@ export function PineImportDialog({ onClose, onImportMany }: PineImportDialogProp
             setResults(undefined);
           }}
           placeholder={'//@version=6\nstrategy("My strategy", overlay=true)\n...'}
-          rows={9}
+          rows={7}
           spellCheck={false}
         />
         <div className="pine-files">
@@ -189,6 +188,7 @@ export function PineImportDialog({ onClose, onImportMany }: PineImportDialogProp
               ))}
             </>
           )}
+        </div>
         </div>
       </div>
     </div>

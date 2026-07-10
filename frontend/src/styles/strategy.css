@@ -963,11 +963,14 @@
   }
 }
 
-/* ---- Pine Script import dialog ---- */
-.modal.pine-import {
-  width: min(720px, 92vw);
-  max-height: 86vh;
-  overflow-y: auto;
+/* ---- Pine Script import dialog ----
+   Reuses the gallery overlay (position: fixed, centered above the whole app),
+   so it never renders inline in the library sidebar or shifts its buttons. */
+.gallery-modal.pine-import {
+  inline-size: min(720px, 100%);
+  max-block-size: min(86vh, 720px);
+}
+.pine-import .pine-body {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -979,7 +982,7 @@
 }
 .pine-import textarea {
   width: 100%;
-  min-height: 220px;
+  min-height: 140px;
   resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
