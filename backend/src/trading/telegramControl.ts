@@ -19,9 +19,16 @@
 
 import type { TradingEngine } from "./engine.js";
 import { getNotifyConfig, isTelegramControlEnabled, type TelegramConfig } from "./notifications.js";
-import { getSetting, listBots, setSetting } from "./store.js";
-import { escapeHtml, formatStatus, HELP_TEXT, parseCommand, type StatusRow } from "./telegramCommands.js";
+import { getSetting, listBots, listLogs, setSetting } from "./store.js";
+import { type BotDetail, escapeHtml, formatBotDetail, formatPortfolio, formatStatus, HELP_TEXT, parseCommand, type StatusRow } from "./telegramCommands.js";
 import type { BotConfig } from "./types.js";
+
+/** An inline-keyboard reply: rows of buttons carrying callback `data`. */
+type Keyboard = { text: string; data: string }[][];
+interface Reply {
+  text: string;
+  keyboard?: Keyboard;
+}
 
 // Re-export the pure helpers so callers/tests have a single import surface.
 export { formatStatus, parseCommand };
@@ -32,6 +39,7 @@ export type { ParsedCommand, StatusRow } from "./telegramCommands.js";
 interface TelegramUpdate {
   update_id: number;
   message?: { chat?: { id?: number | string }; text?: string };
+  callback_query?: { id: string; data?: string; message?: { chat?: { id?: number | string } } };
 }
 
 const POLL_TIMEOUT_S = 25;
@@ -124,6 +132,19 @@ export class TelegramControl {
   }
 
   private async handleUpdate(telegram: TelegramConfig, update: TelegramUpdate): Promise<void> {
+    // Inline-keyboard button press.
+    if (update.callback_query) {
+      const cb = update.callback_query;
+      if (String(cb.message?.chat?.id) !== String(telegram.chatId)) {
+        await this.answerCallback(telegram, cb.id, "unauthorized").catch(() => undefined);
+        return;
+      }
+      const result = await this.runCallback(cb.data ?? "");
+      await this.answerCallback(telegram, cb.id, result.toast).catch(() => undefined);
+      if (result.text) await this.send(telegram, telegram.chatId, { text: result.text }).catch(() => undefined);
+      return;
+    }
+
     const message = update.message;
     const text = message?.text;
     if (!text) return;
@@ -136,35 +157,149 @@ export class TelegramControl {
     if (chatIdStr !== String(telegram.chatId)) {
       if (!this.warnedChats.has(chatIdStr)) {
         this.warnedChats.add(chatIdStr);
-        await this.send(telegram, chatIdStr, "⛔ unauthorized").catch(() => undefined);
+        await this.send(telegram, chatIdStr, { text: "⛔ unauthorized" }).catch(() => undefined);
       }
       return;
     }
 
     const { cmd, arg } = parseCommand(text);
     const reply = await this.runCommand(cmd, arg);
-    if (reply) await this.send(telegram, telegram.chatId, reply).catch(() => undefined);
+    if (reply.text) await this.send(telegram, telegram.chatId, reply).catch(() => undefined);
   }
 
-  /** Map a parsed command to its reply text. Interacts with the engine/store. */
-  private async runCommand(cmd: string, arg: string): Promise<string> {
+  /** Map a parsed command to its reply. Interacts with the engine/store. */
+  private async runCommand(cmd: string, arg: string): Promise<Reply> {
     switch (cmd) {
       case "help":
       case "start_help":
-        return HELP_TEXT;
+        return { text: HELP_TEXT };
       case "status":
-        return await this.statusReply();
+        return { text: await this.statusReply() };
+      case "bot":
+        return { text: await this.botReply(arg), keyboard: this.botKeyboard(arg) };
+      case "pnl":
+        return { text: await this.pnlReply() };
       case "stop":
-        return this.stopReply(arg);
+        return { text: this.stopReply(arg) };
       case "start":
-        return await this.startReply(arg);
+        return { text: await this.startReply(arg) };
+      case "close":
+        return { text: await this.closeReply(arg) };
+      case "resume":
+        return { text: this.resumeReply(arg) };
+      case "logs":
+        return { text: this.logsReply(arg) };
+      case "mute":
+        return { text: this.muteReply(arg, true) };
+      case "unmute":
+        return { text: this.muteReply(arg, false) };
       case "kill":
-        return this.killReply();
+        // Require an explicit button press before the destructive kill.
+        return { text: "⚠️ Confirm: stop ALL bots and disarm live trading?", keyboard: [[{ text: "🛑 Confirm kill", data: "kill:yes" }]] };
       case "":
-        return ""; // plain chat message — stay silent
+        return { text: "" }; // plain chat message — stay silent
       default:
-        return `Unknown command: /${escapeHtml(cmd)}\n${HELP_TEXT}`;
+        return { text: `Unknown command: /${escapeHtml(cmd)}\n${HELP_TEXT}` };
     }
+  }
+
+  /** Execute an inline-keyboard button press (data = "action:botId"). */
+  private async runCallback(data: string): Promise<{ toast: string; text?: string }> {
+    const [action, id] = data.split(":");
+    switch (action) {
+      case "kill":
+        this.engine.stopAll();
+        setSetting("liveTradingEnabled", false);
+        return { toast: "Killed", text: "🛑 Kill switch engaged — all bots stopped and live trading disarmed." };
+      case "resume":
+        return { toast: this.engine.confirmResume(id) ? "Resumed" : "Not paused" };
+      case "stop":
+        this.engine.stop(id);
+        return { toast: "Stopped" };
+      case "close": {
+        const ok = await this.engine.closeNow(id).catch(() => false);
+        return { toast: ok ? "Closed" : "No position" };
+      }
+      default:
+        return { toast: "?" };
+    }
+  }
+
+  private botKeyboard(arg: string): Keyboard | undefined {
+    const bot = findBotByName(arg);
+    if (!bot || !this.engine.isRunning(bot.id)) return undefined;
+    const row: { text: string; data: string }[] = [];
+    if (this.engine.isPaused(bot.id)) row.push({ text: "▶️ Resume", data: `resume:${bot.id}` });
+    row.push({ text: "✋ Close", data: `close:${bot.id}` }, { text: "⏹️ Stop", data: `stop:${bot.id}` });
+    return [row];
+  }
+
+  private async botReply(arg: string): Promise<string> {
+    const target = arg.trim();
+    if (!target) return "Usage: /bot &lt;name&gt;";
+    const bot = findBotByName(target);
+    if (!bot) return `No bot named "${escapeHtml(target)}".`;
+    const running = this.engine.isRunning(bot.id);
+    const detail: BotDetail = { name: bot.name, exchange: bot.exchange, symbol: bot.symbol, running, muted: this.engine.isMuted(bot.id) };
+    if (running) {
+      const live = await this.engine.liveState(bot.id).catch(() => null);
+      detail.paused = live?.paused;
+      detail.vars = live?.vars;
+      const pos = live?.position;
+      if (pos) {
+        detail.position = { side: pos.side, qty: pos.qty, entryPrice: pos.entryPrice };
+        const price = live?.price ?? pos.entryPrice;
+        const move = pos.side === "long" ? price - pos.entryPrice : pos.entryPrice - price;
+        detail.unrealizedPct = pos.entryPrice ? (move / pos.entryPrice) * 100 : 0;
+      }
+      try {
+        detail.realizedToday = (await this.engine.portfolio()).realizedTodayByBot[bot.id];
+      } catch {
+        // ignore portfolio read failure
+      }
+    }
+    return formatBotDetail(detail);
+  }
+
+  private async pnlReply(): Promise<string> {
+    let portfolio: Awaited<ReturnType<TradingEngine["portfolio"]>>;
+    try {
+      portfolio = await this.engine.portfolio();
+    } catch {
+      return "Couldn't read portfolio.";
+    }
+    const perBot = listBots()
+      .filter((bot) => this.engine.isRunning(bot.id))
+      .map((bot) => ({ name: bot.name, realized: portfolio.realizedTodayByBot[bot.id] ?? 0 }));
+    return formatPortfolio(portfolio.totalRealizedToday, perBot);
+  }
+
+  private async closeReply(arg: string): Promise<string> {
+    const bot = findBotByName(arg.trim());
+    if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
+    const ok = await this.engine.closeNow(bot.id).catch(() => false);
+    return ok ? `✋ Closed <b>${escapeHtml(bot.name)}</b>'s position.` : `<b>${escapeHtml(bot.name)}</b> has no open position.`;
+  }
+
+  private resumeReply(arg: string): string {
+    const bot = findBotByName(arg.trim());
+    if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
+    return this.engine.confirmResume(bot.id) ? `▶️ Resumed <b>${escapeHtml(bot.name)}</b>.` : `<b>${escapeHtml(bot.name)}</b> isn't paused.`;
+  }
+
+  private logsReply(arg: string): string {
+    const bot = findBotByName(arg.trim());
+    if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
+    const logs = listLogs(bot.id, 8);
+    if (!logs.length) return `No logs for <b>${escapeHtml(bot.name)}</b>.`;
+    return [...logs].reverse().map((entry) => `${escapeHtml(entry.level)}: ${escapeHtml(entry.message)}`).join("\n");
+  }
+
+  private muteReply(arg: string, muted: boolean): string {
+    const bot = findBotByName(arg.trim());
+    if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
+    this.engine.setMuted(bot.id, muted);
+    return muted ? `🔕 Muted <b>${escapeHtml(bot.name)}</b>'s alerts.` : `🔔 Unmuted <b>${escapeHtml(bot.name)}</b>.`;
   }
 
   private async statusReply(): Promise<string> {
@@ -229,19 +364,25 @@ export class TelegramControl {
     }
   }
 
-  private killReply(): string {
-    this.engine.stopAll();
-    setSetting("liveTradingEnabled", false);
-    return "🛑 Kill switch engaged — all bots stopped and live trading disarmed.";
-  }
-
-  private async send(telegram: TelegramConfig, chatId: string, text: string): Promise<void> {
+  private async send(telegram: TelegramConfig, chatId: string, reply: Reply): Promise<void> {
+    const body: Record<string, unknown> = { chat_id: chatId, text: reply.text, parse_mode: "HTML", disable_web_page_preview: true };
+    if (reply.keyboard) {
+      body.reply_markup = { inline_keyboard: reply.keyboard.map((row) => row.map((btn) => ({ text: btn.text, callback_data: btn.data }))) };
+    }
     const res = await fetch(`https://api.telegram.org/bot${telegram.token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true })
+      body: JSON.stringify(body)
     });
     if (!res.ok) throw new Error(`Telegram sendMessage HTTP ${res.status}`);
+  }
+
+  private async answerCallback(telegram: TelegramConfig, callbackId: string, text?: string): Promise<void> {
+    await fetch(`https://api.telegram.org/bot${telegram.token}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callback_query_id: callbackId, text })
+    });
   }
 }
 

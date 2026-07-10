@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatStatus, parseCommand, type StatusRow } from "../src/trading/telegramCommands.js";
+import { formatBotDetail, formatPortfolio, formatStatus, parseCommand, type StatusRow } from "../src/trading/telegramCommands.js";
 
 /**
  * The Telegram control channel is unit-tested through its two PURE functions —
@@ -125,5 +125,38 @@ describe("formatStatus", () => {
     const out = formatStatus(rows);
     expect(out).toContain("long 0.1235");
     expect(out).toContain("PnL today 1.9877");
+  });
+});
+
+describe("formatBotDetail", () => {
+  it("renders a running bot with position, PnL, mute and vars", () => {
+    const out = formatBotDetail({
+      name: "Alpha", exchange: "binance", symbol: "BTCUSDT", running: true, muted: true,
+      position: { side: "long", qty: 1.5, entryPrice: 64000 }, unrealizedPct: 2.5, realizedToday: 12.34,
+      vars: { streak: 2 },
+    });
+    expect(out).toContain("<b>Alpha</b>");
+    expect(out).toContain("long 1.5 @ 64000");
+    expect(out).toContain("uPnL 2.5%");
+    expect(out).toContain("PnL today: 12.34");
+    expect(out).toContain("muted");
+    expect(out).toContain("streak=2");
+  });
+
+  it("shows flat + paused state", () => {
+    const out = formatBotDetail({ name: "Beta", exchange: "paper", symbol: "ETHUSDT", running: true, paused: true, position: null });
+    expect(out).toContain("paused");
+    expect(out).toContain("flat");
+  });
+});
+
+describe("formatPortfolio", () => {
+  it("sums realized PnL across running bots", () => {
+    const out = formatPortfolio(30, [{ name: "A", realized: 10 }, { name: "B", realized: 20 }]);
+    expect(out).toContain("<b>A</b> · 10");
+    expect(out).toContain("Total today: <b>30</b>");
+  });
+  it("handles no running bots", () => {
+    expect(formatPortfolio(0, [])).toBe("No running bots.");
   });
 });
