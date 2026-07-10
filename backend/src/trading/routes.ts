@@ -9,7 +9,8 @@ import { TradingEngine, type TradeEvent } from "./engine.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
 import { getNotifyConfig, testNotify, type NotifyConfig } from "./notifications.js";
 import { TelegramControl } from "./telegramControl.js";
-import { deleteBot, initStore, listBots, listFills, listLogs, getSetting, setSetting, upsertBot } from "./store.js";
+import { deleteBot, deleteSetting, initStore, listBots, listFills, listLogs, getSetting, setSetting, upsertBot } from "./store.js";
+import { parseStrategyIR } from "./strategy/irSchema.js";
 import type { Timeframe } from "../types.js";
 import type { BotConfig, ExchangeId } from "./types.js";
 
@@ -19,7 +20,8 @@ const botBodySchema = z.object({
   id: z.string().optional(),
   name: z.string().max(120).optional(),
   strategyName: z.string().max(120).optional(),
-  ir: z.record(z.string(), z.unknown()).refine((v) => v && typeof v === "object", "ir must be an object"),
+  // Structurally validated separately by parseStrategyIR (a strict node whitelist).
+  ir: z.unknown(),
   symbol: z.string().min(1).max(30),
   timeframe: timeframeEnum,
   exchange: z.enum(["paper", "binance", "bybit"]).default("paper"),
@@ -153,13 +155,19 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
       res.status(403).json({ error: "Only paper trading is available in DEMO_MODE." });
       return;
     }
+    // Reject any IR that isn't a known node shape before it can be persisted/executed.
+    const irResult = parseStrategyIR(body.ir);
+    if (!irResult.ok) {
+      res.status(400).json({ error: `Invalid strategy IR: ${irResult.error}` });
+      return;
+    }
     const now = Date.now();
     const existing = body.id ? listBots().find((bot) => bot.id === body.id) : undefined;
     const bot: BotConfig = {
       id: body.id ?? randomUUID(),
       name: body.name?.trim() || body.strategyName || "Bot",
       strategyName: body.strategyName ?? "Strategy",
-      ir: body.ir as unknown as BotConfig["ir"],
+      ir: irResult.ir,
       symbol: body.symbol.toUpperCase(),
       timeframe: body.timeframe,
       exchange: body.exchange as ExchangeId,
@@ -216,6 +224,23 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
 
   router.post("/bots/:id/stop", (req, res) => {
     engine.stop(req.params.id);
+    res.json({ ok: true });
+  });
+
+  // Clear the pause set by the resume staleness gate (bot resumed with stale
+  // open-position/counter state) and let it trade again.
+  router.post("/bots/:id/confirm-resume", (req, res) => {
+    res.json({ ok: engine.confirmResume(req.params.id) });
+  });
+
+  // Reset a bot's durable strategy state (setvar counters + managed tracking).
+  // Only allowed while the bot is stopped so a running bot can't be desynced.
+  router.post("/bots/:id/reset-state", (req, res) => {
+    if (engine.isRunning(req.params.id)) {
+      res.status(409).json({ error: "Stop the bot before resetting its state." });
+      return;
+    }
+    deleteSetting(`state:${req.params.id}`);
     res.json({ ok: true });
   });
 

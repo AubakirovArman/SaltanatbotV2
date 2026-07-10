@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { Candle, Instrument, Timeframe } from "../types.js";
 import { findInstrument } from "../market/catalog.js";
+import { timeframeMs } from "../market/timeframes.js";
 import { ProviderRouter } from "../providers/router.js";
 import type { MarketSubscription } from "../providers/provider.js";
 import { commandToExec, formatExec, parseMessageSet } from "./commands.js";
 import { findLiveCollision } from "./collision.js";
-import { atrValue, evaluateBar, type BarIntents } from "./strategy/evaluator.js";
+import { atrValue, evaluateBar, runInit, type BarIntents } from "./strategy/evaluator.js";
 import { PaperAdapter, type PaperState } from "./exchange/paper.js";
 import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
 import { BybitAdapter } from "./exchange/bybit.js";
@@ -24,6 +25,14 @@ import type {
 } from "./types.js";
 
 const BUFFER_CAP = 1500;
+/**
+ * History seeded before a live bot starts evaluating, so indicators have warmup.
+ * NOTE: a live bot only evaluates bars that close AFTER it starts, so `setvar`
+ * counters (e.g. "entries so far", loss streaks) begin at the start moment —
+ * whereas a backtest accumulates them from bar 0 of history. For strategies whose
+ * decisions depend on absolute counts over all history, backtest and live will
+ * therefore diverge by construction; counters should be framed as "since start".
+ */
 const SEED_BARS = 500;
 
 export interface TradeEvent {
@@ -45,6 +54,20 @@ interface Managed {
   trail?: { mode: "percent" | "atr"; value: number };
 }
 
+/**
+ * Durable strategy runtime state, persisted to `state:<botId>` so a process
+ * restart/crash does NOT wipe `setvar` counters (which would reset martingale
+ * steps / loss streaks) or the managed-position tracking (whose loss would make
+ * the strategy see "flat" and re-enter an already-open live position).
+ */
+interface BotStateSnapshot {
+  vars: Record<string, number>;
+  managed?: Managed;
+  /** Time of the last bar this bot evaluated — used for the resume staleness gate. */
+  lastBarTime: number;
+  savedAt: number;
+}
+
 interface RunningBot {
   config: BotConfig;
   adapter: ExchangeAdapter;
@@ -56,6 +79,12 @@ interface RunningBot {
   managed?: Managed;
   /** Persistent `setvar` store — survives across bars for backtest/live parity. */
   vars: Map<string, number>;
+  /**
+   * True when the bot was auto-resumed with stale risky state (open position or
+   * nonzero counters after a long downtime). It buffers data but does NOT trade
+   * until an operator confirms via confirmResume() — see the resume staleness gate.
+   */
+  paused?: boolean;
 }
 
 export class TradingEngine {
@@ -70,13 +99,14 @@ export class TradingEngine {
     return this.running.has(id);
   }
 
-  async liveState(id: string): Promise<{ account?: AccountState; position?: PositionState | null; price: number } | null> {
+  async liveState(id: string): Promise<{ account?: AccountState; position?: PositionState | null; price: number; paused: boolean } | null> {
     const bot = this.running.get(id);
     if (!bot) return null;
     return {
       account: await bot.adapter.account().catch(() => undefined),
       position: await bot.adapter.position(bot.config.symbol).catch(() => null),
-      price: bot.price
+      price: bot.price,
+      paused: bot.paused === true
     };
   }
 
@@ -90,7 +120,7 @@ export class TradingEngine {
     return findLiveCollision(config, [...this.running.values()].map((bot) => bot.config));
   }
 
-  async start(config: BotConfig, options: { override?: boolean } = {}) {
+  async start(config: BotConfig, options: { override?: boolean; resumed?: boolean } = {}) {
     if (this.running.has(config.id)) return;
     const instrument = findInstrument(config.symbol);
     if (!instrument) throw new Error(`Unknown symbol: ${config.symbol}`);
@@ -111,6 +141,23 @@ export class TradingEngine {
       if (saved) adapter.setState(saved);
     }
 
+    // Restore durable strategy state (setvar counters + managed-position tracking)
+    // so a restart doesn't reset counters or lose track of an open position.
+    const savedState = getSetting<BotStateSnapshot>(`state:${config.id}`);
+    if (savedState) {
+      for (const [name, value] of Object.entries(savedState.vars ?? {})) bot.vars.set(name, value);
+      bot.managed = savedState.managed;
+      // Resume staleness gate: if the bot comes back with risky state (an open
+      // position or nonzero counters) after a long gap, don't blindly resume
+      // trading — buffer only and wait for operator confirmation. A lost loss
+      // streak would resume a bot that should be dead; a stale one would gate on
+      // a dead regime. Human confirm is the only safe default for both.
+      const hasRisk = !!bot.managed || Object.values(savedState.vars ?? {}).some((v) => v !== 0);
+      const gap = Date.now() - (savedState.lastBarTime || 0);
+      const stale = gap > 3 * (timeframeMs[config.timeframe] ?? 60_000);
+      if (options.resumed && hasRisk && stale) bot.paused = true;
+    }
+
     // Live bots must never see synthetic fallback data — trade on real prices only.
     const strict = config.exchange !== "paper";
 
@@ -118,6 +165,9 @@ export class TradingEngine {
     const seed = await this.provider.getCandles(instrument, config.timeframe, { limit: SEED_BARS }, { strict });
     bot.buffer = seed.slice(-BUFFER_CAP);
     bot.price = bot.buffer.at(-1)?.close ?? 0;
+
+    // Fresh start (no restored state): run the strategy's one-time on-start init.
+    if (!savedState) runInit(config.ir, bot.buffer, bot.vars);
 
     bot.sub = await this.provider.subscribe(
       instrument,
@@ -133,7 +183,26 @@ export class TradingEngine {
     upsertBot(config);
     this.log(config.id, "info", `Bot started on ${config.exchange} · ${config.symbol} ${config.timeframe}`);
     this.emitBot(config.id);
-    await notify({ event: "start", bot: config.name, symbol: config.symbol, text: `Started on ${config.exchange} (${config.timeframe})` });
+    if (bot.paused) {
+      this.log(config.id, "warn", "Resumed with stale state (open position or counters) — trading is PAUSED pending confirmation.");
+      await notify({ event: "error", bot: config.name, symbol: config.symbol, text: "Resumed with stale state — trading paused. Confirm to continue." });
+    } else {
+      await notify({ event: "start", bot: config.name, symbol: config.symbol, text: `Started on ${config.exchange} (${config.timeframe})` });
+    }
+  }
+
+  /** Clear the paused flag set by the resume staleness gate and let the bot trade. */
+  confirmResume(id: string): boolean {
+    const bot = this.running.get(id);
+    if (!bot?.paused) return false;
+    bot.paused = false;
+    this.log(id, "info", "Trading resumed by operator");
+    void notify({ event: "start", bot: bot.config.name, symbol: bot.config.symbol, text: "Trading resumed by operator" });
+    return true;
+  }
+
+  isPaused(id: string): boolean {
+    return this.running.get(id)?.paused === true;
   }
 
   stop(id: string) {
@@ -141,6 +210,7 @@ export class TradingEngine {
     if (!bot) return;
     bot.sub?.close();
     if (bot.paper) this.persistPaper(bot);
+    this.persistState(bot);
     this.running.delete(id);
     bot.config.status = "stopped";
     bot.config.updatedAt = Date.now();
@@ -163,6 +233,7 @@ export class TradingEngine {
     for (const bot of this.running.values()) {
       bot.sub?.close();
       if (bot.paper) this.persistPaper(bot);
+      this.persistState(bot);
     }
     this.running.clear();
   }
@@ -173,7 +244,7 @@ export class TradingEngine {
       if (config.status !== "running" || this.running.has(config.id)) continue;
       try {
         // Bypass the collision guard on resume — these were legitimately running.
-        await this.start(config, { override: true });
+        await this.start(config, { override: true, resumed: true });
         this.log(config.id, "info", "Resumed after restart");
       } catch (error) {
         this.log(config.id, "error", `Resume failed: ${error instanceof Error ? error.message : error}`);
@@ -365,6 +436,8 @@ export class TradingEngine {
   }
 
   private async onClosedBar(bot: RunningBot, index: number) {
+    // Auto-resumed with stale risky state: buffer only, don't trade, until confirmed.
+    if (bot.paused) return;
     let intents: BarIntents;
     try {
       intents = evaluateBar(bot.config.ir, bot.buffer, index, bot.vars);
@@ -386,11 +459,11 @@ export class TradingEngine {
 
     if (bot.managed && intents.exit) {
       await this.closePosition(bot, "signal");
-      return;
-    }
-    if (!bot.managed && intents.entry) {
+    } else if (!bot.managed && intents.entry) {
       await this.openPosition(bot, intents, index);
     }
+    // Persist counters + managed state every closed bar so a crash can't reset them.
+    this.persistState(bot);
   }
 
   // ---------- position actions ----------
@@ -456,6 +529,7 @@ export class TradingEngine {
       bot.managed = exchangeManaged
         ? { side: dir, entry: bot.price }
         : { side: dir, entry: bot.price, stop, target, trail: intents.trail };
+      this.persistState(bot);
     } else {
       this.log(bot.config.id, "error", `Open failed: ${result.message}`);
     }
@@ -483,6 +557,7 @@ export class TradingEngine {
     if (result.ok) {
       const pnl = result.fills.reduce((sum, f) => sum + f.realizedPnl, 0);
       bot.managed = undefined;
+      this.persistState(bot);
       await notify({ event: "close", bot: bot.config.name, symbol: bot.config.symbol, text: `Closed (${reason}) · PnL ${round(pnl)}` });
     } else {
       this.log(bot.config.id, "error", `Close failed: ${result.message}`);
@@ -554,6 +629,17 @@ export class TradingEngine {
   private persistPaper(bot: RunningBot) {
     if (!bot.paper) return;
     setSetting(`paper:${bot.config.id}`, bot.paper.getState());
+  }
+
+  /** Persist durable strategy state (setvar counters + managed position) for crash recovery. */
+  private persistState(bot: RunningBot) {
+    const snapshot: BotStateSnapshot = {
+      vars: Object.fromEntries(bot.vars),
+      managed: bot.managed,
+      lastBarTime: bot.buffer.at(-1)?.time ?? 0,
+      savedAt: Date.now()
+    };
+    setSetting(`state:${bot.config.id}`, snapshot);
   }
 
   private log(botId: string, level: "info" | "warn" | "error", message: string) {
