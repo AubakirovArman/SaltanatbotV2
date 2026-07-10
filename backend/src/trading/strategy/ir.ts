@@ -49,7 +49,7 @@ export type Stmt =
   | { k: "trail"; mode: "percent" | "atr"; value: NumExpr }
   | { k: "size"; mode: "units" | "equity_pct" | "risk_pct"; value: NumExpr }
   | { k: "setvar"; name: string; value: NumExpr }
-  | { k: "alert"; message: string; when: BoolExpr }
+  | { k: "alert"; message: string; when: BoolExpr; args?: Record<string, NumExpr> }
   | { k: "plot"; value: NumExpr; label: string; color: string }
   | { k: "marker"; dir: "up" | "down"; label: string; when: BoolExpr }
   | { k: "if"; cond: BoolExpr; then: Stmt[]; elifs?: { cond: BoolExpr; then: Stmt[] }[]; else?: Stmt[] }

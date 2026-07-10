@@ -142,7 +142,7 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) 
       rt.vars.set(stmt.name, evalNum(stmt.value, i, rt));
       break;
     case "alert":
-      if (evalBool(stmt.when, i, rt)) intents.alerts.push({ message: stmt.message });
+      if (evalBool(stmt.when, i, rt)) intents.alerts.push({ message: renderAlert(stmt.message, stmt.args, i, rt) });
       break;
     case "marker":
       if (evalBool(stmt.when, i, rt)) intents.markers.push({ dir: stmt.dir, label: stmt.label });
@@ -192,6 +192,18 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) 
       break;
     }
   }
+}
+
+/** Render an alert template: replace {name} placeholders with the numeric value of
+ *  args[name] at this bar. Args are numbers only, so no injection reaches Telegram. */
+function renderAlert(message: string, args: Record<string, NumExpr> | undefined, i: number, rt: Runtime): string {
+  if (!args) return message;
+  return message.replace(/\{(\w+)\}/g, (whole, key: string) => {
+    const expr = args[key];
+    if (!expr) return whole;
+    const v = evalNum(expr, i, rt);
+    return Number.isFinite(v) ? String(Math.round(v * 1e4) / 1e4) : "n/a";
+  });
 }
 
 function evalNum(expr: NumExpr, i: number, rt: Runtime): number {

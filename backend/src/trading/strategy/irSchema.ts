@@ -71,7 +71,7 @@ const stmt: z.ZodType<unknown> = z.lazy(() =>
     z.object({ k: z.literal("trail"), mode: z.enum(["percent", "atr"]), value: numExpr }).strict(),
     z.object({ k: z.literal("size"), mode: z.enum(["units", "equity_pct", "risk_pct"]), value: numExpr }).strict(),
     z.object({ k: z.literal("setvar"), name: z.string().max(64), value: numExpr }).strict(),
-    z.object({ k: z.literal("alert"), message: z.string().max(512), when: boolExpr }).strict(),
+    z.object({ k: z.literal("alert"), message: z.string().max(512), when: boolExpr, args: z.record(z.string().max(32), numExpr).optional() }).strict(),
     z.object({ k: z.literal("plot"), value: numExpr, label, color: z.string().max(32) }).strict(),
     z.object({ k: z.literal("marker"), dir: z.enum(["up", "down"]), label, when: boolExpr }).strict(),
     z

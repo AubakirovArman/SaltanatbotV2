@@ -445,15 +445,17 @@ export function registerStrategyBlocks() {
     // ---- Events ----
     {
       type: "alert_message",
-      message0: "alert %1 when %2",
+      message0: "alert %1 {a}=%2 {b}=%3 when %4",
       args0: [
         { type: "field_input", name: "TEXT", text: "signal" },
+        { type: "input_value", name: "A", check: "Number" },
+        { type: "input_value", name: "B", check: "Number" },
         { type: "input_value", name: "WHEN", check: "Boolean" }
       ],
       previousStatement: null,
       nextStatement: null,
       colour: "#9469c9",
-      tooltip: "Emit an alert when a condition fires."
+      tooltip: "Emit an alert when a condition fires. Use {a}/{b} in the text to insert the values (e.g. \"RSI={a}\")."
     },
     // ---- Flow ----
     {

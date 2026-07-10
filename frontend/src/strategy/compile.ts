@@ -118,8 +118,19 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
       ctx.vars.add(varName);
       return { k: "setvar", name: varName, value: { k: "arith", op: "+", a: { k: "var", name: varName }, b: numInput(block, "BY", ctx) } };
     }
-    case "alert_message":
-      return { k: "alert", message: (block.getFieldValue("TEXT") as string) || "alert", when: boolInput(block, "WHEN", ctx) };
+    case "alert_message": {
+      // Optional {a}/{b} value slots interpolated into the message text at fire time.
+      const args: Record<string, NumExpr> = {};
+      if (block.getInputTargetBlock("A")) args.a = numInput(block, "A", ctx);
+      if (block.getInputTargetBlock("B")) args.b = numInput(block, "B", ctx);
+      const alert: Extract<Stmt, { k: "alert" }> = {
+        k: "alert",
+        message: (block.getFieldValue("TEXT") as string) || "alert",
+        when: boolInput(block, "WHEN", ctx)
+      };
+      if (Object.keys(args).length) alert.args = args;
+      return alert;
+    }
     case "flow_if":
       return { k: "if", cond: boolInput(block, "COND", ctx), then: compileStatements(block.getInputTargetBlock("DO"), ctx) };
     case "controls_if": {

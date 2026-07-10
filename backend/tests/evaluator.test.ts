@@ -104,6 +104,18 @@ describe("runInit — on-start initialization", () => {
   });
 });
 
+describe("evaluateBar — templated alerts", () => {
+  it("interpolates numeric args into the alert message; leaves unknown placeholders literal", () => {
+    const ir: StrategyIR = {
+      name: "a",
+      inputs: [],
+      body: [{ k: "alert", message: "x={a} y={b} z={missing}", when: { k: "bool", v: true }, args: { a: { k: "num", v: 42 }, b: { k: "price", field: "close" } } }],
+    };
+    const intents = evaluateBar(ir, [candle(0, 100)], 0);
+    expect(intents.alerts[0].message).toBe("x=42 y=100 z={missing}");
+  });
+});
+
 describe("evaluateBar — runtime position/PnL context (ctx reads)", () => {
   const oneBar = [candle(0, 100)];
   const ir: StrategyIR = {
