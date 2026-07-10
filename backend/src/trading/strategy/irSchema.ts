@@ -17,7 +17,7 @@ const MAX_DEPTH = 48;
 const MAX_ARRAY = 512;
 
 const priceField = z.enum(["open", "high", "low", "close", "volume", "hl2", "hlc3", "ohlc4"]);
-const maKind = z.enum(["sma", "ema", "wma", "vwma"]);
+const maKind = z.enum(["sma", "ema", "wma", "vwma", "rma"]);
 const finite = z.number().finite();
 const label = z.string().max(200);
 
@@ -43,10 +43,16 @@ const numExpr: z.ZodType<unknown> = z.lazy(() =>
     z.object({ k: z.literal("roc"), period: numExpr, source: numExpr }).strict(),
     z.object({ k: z.literal("minmax"), op: z.enum(["min", "max"]), a: numExpr, b: numExpr }).strict(),
     z.object({ k: z.literal("arith"), op: z.enum(["+", "-", "*", "/", "%", "^"]), a: numExpr, b: numExpr }).strict(),
-    z.object({ k: z.literal("unary"), op: z.enum(["neg", "abs", "round", "floor", "ceil"]), a: numExpr }).strict(),
+    z.object({ k: z.literal("unary"), op: z.enum(["neg", "abs", "round", "floor", "ceil", "sign", "log", "log10", "exp", "sqrt"]), a: numExpr }).strict(),
     z.object({ k: z.literal("agg"), fn: z.enum(["sum", "avg", "min", "max", "stdev", "median"]), src: numExpr, period: numExpr }).strict(),
     z.object({ k: z.literal("shift"), src: numExpr, offset: z.number().int().min(0).max(100_000) }).strict(),
-    z.object({ k: z.literal("ctx"), key: z.enum(["position_dir", "entry_price", "unrealized_pnl", "unrealized_pnl_pct", "bars_in_position", "last_trade_pnl", "consecutive_losses", "trades_today", "realized_today", "equity"]) }).strict()
+    z.object({ k: z.literal("ctx"), key: z.enum(["position_dir", "entry_price", "unrealized_pnl", "unrealized_pnl_pct", "bars_in_position", "last_trade_pnl", "consecutive_losses", "trades_today", "realized_today", "equity"]) }).strict(),
+    z.object({ k: z.literal("cond"), cond: boolExpr, a: numExpr, b: numExpr }).strict(),
+    z.object({ k: z.literal("nz"), a: numExpr, b: numExpr }).strict(),
+    z.object({ k: z.literal("cum"), src: numExpr }).strict(),
+    z.object({ k: z.literal("barssince"), cond: boolExpr }).strict(),
+    z.object({ k: z.literal("varprev"), name: z.string().max(64) }).strict(),
+    z.object({ k: z.literal("histn"), field: priceField, offset: numExpr }).strict()
   ])
 );
 
@@ -61,7 +67,8 @@ const boolExpr: z.ZodType<unknown> = z.lazy(() =>
     z.object({ k: z.literal("between"), value: numExpr, low: numExpr, high: numExpr }).strict(),
     z.object({ k: z.literal("session"), start: z.number().int().min(0).max(23), end: z.number().int().min(0).max(23) }).strict(),
     z.object({ k: z.literal("dayofweek"), day: z.number().int().min(0).max(6) }).strict(),
-    z.object({ k: z.literal("varb"), name: z.string().max(64) }).strict()
+    z.object({ k: z.literal("varb"), name: z.string().max(64) }).strict(),
+    z.object({ k: z.literal("isna"), a: numExpr }).strict()
   ])
 );
 
@@ -88,7 +95,8 @@ const stmt: z.ZodType<unknown> = z.lazy(() =>
       })
       .strict(),
     z.object({ k: z.literal("repeat"), count: numExpr, body: z.array(stmt).max(MAX_ARRAY) }).strict(),
-    z.object({ k: z.literal("while"), cond: boolExpr, body: z.array(stmt).max(MAX_ARRAY), cap: z.number().int().min(1).max(1000) }).strict()
+    z.object({ k: z.literal("while"), cond: boolExpr, body: z.array(stmt).max(MAX_ARRAY), cap: z.number().int().min(1).max(1000) }).strict(),
+    z.object({ k: z.literal("for"), var: z.string().max(64), from: numExpr, to: numExpr, step: numExpr, body: z.array(stmt).max(MAX_ARRAY), cap: z.number().int().min(1).max(10_000) }).strict()
   ])
 );
 

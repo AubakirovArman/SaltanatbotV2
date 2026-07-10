@@ -42,6 +42,8 @@ function stmtText(stmt: Stmt, depth: number): string[] {
       return [`${pad}repeat ${numText(stmt.count)}x:`, ...stmt.body.flatMap((inner) => stmtText(inner, depth + 1))];
     case "while":
       return [`${pad}while ${boolText(stmt.cond)} (max ${stmt.cap}):`, ...stmt.body.flatMap((inner) => stmtText(inner, depth + 1))];
+    case "for":
+      return [`${pad}for ${stmt.var} = ${numText(stmt.from)} to ${numText(stmt.to)} by ${numText(stmt.step)}:`, ...stmt.body.flatMap((inner) => stmtText(inner, depth + 1))];
   }
 }
 
@@ -69,6 +71,12 @@ function numText(expr: NumExpr): string {
     case "agg": return `${expr.fn}(${numText(expr.src)}, ${numText(expr.period)})`;
     case "shift": return `${numText(expr.src)}[-${expr.offset}]`;
     case "ctx": return `pos.${expr.key}`;
+    case "cond": return `(${boolText(expr.cond)} ? ${numText(expr.a)} : ${numText(expr.b)})`;
+    case "nz": return `nz(${numText(expr.a)}, ${numText(expr.b)})`;
+    case "cum": return `cum(${numText(expr.src)})`;
+    case "barssince": return `barssince(${boolText(expr.cond)})`;
+    case "varprev": return `var:${expr.name}[1]`;
+    case "histn": return `${expr.field}[${numText(expr.offset)}]`;
   }
 }
 
@@ -84,5 +92,6 @@ function boolText(expr: BoolExpr): string {
     case "session": return `session ${expr.start}–${expr.end}h`;
     case "dayofweek": return `day == ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][expr.day]}`;
     case "varb": return `flag:${expr.name}`;
+    case "isna": return `na(${numText(expr.a)})`;
   }
 }

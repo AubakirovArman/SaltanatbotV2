@@ -1,7 +1,7 @@
 import type { BoolExpr, NumExpr, Stmt, StrategyIR, StrategyInput } from "../ir";
 import { IR_VERSION } from "../ir";
 import { PineLexError } from "./lexer";
-import { PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
+import { type PineFuncDef, PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
 
 /**
  * Semantic mapping: Pine AST → StrategyIR.
@@ -30,6 +30,8 @@ export class PineConvertError extends Error {}
 type Val = { t: "num"; e: NumExpr } | { t: "bool"; e: BoolExpr };
 
 const PRICE_FIELDS = new Set(["open", "high", "low", "close", "volume", "hl2", "hlc3", "ohlc4"]);
+/** Pine `na` as a numeric value: 0/0 → NaN, so nz()/na()/isfinite handle it uniformly. */
+const NAN_NUM: NumExpr = { k: "arith", op: "/", a: { k: "num", v: 0 }, b: { k: "num", v: 0 } };
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const PLOT_CALLS = new Set(["plot", "hline", "plotshape", "plotchar"]);
 
@@ -73,6 +75,10 @@ class Converter {
   private readonly numVars = new Set<string>();
   private readonly boolVars = new Set<string>();
   private readonly boolInputs = new Set<string>();
+  private readonly funcs = new Map<string, PineFuncDef>();
+  private readonly inlining = new Set<string>();
+  private readonly loopVars = new Set<string>();
+  private readonly colorVars = new Map<string, string | undefined>();
   private readonly inputs: StrategyInput[] = [];
   private readonly init: Extract<Stmt, { k: "setvar" }>[] = [];
   private readonly warnings: string[] = [];
@@ -123,10 +129,29 @@ class Converter {
         return this.exprStatement(stmt.value);
       case "if":
         return [this.ifStmt(stmt)];
+      case "for":
+        return [this.forStmt(stmt)];
+      case "while":
+        return [{ k: "while", cond: this.bool(stmt.cond), body: stmt.body.flatMap((s) => this.stmt(s)), cap: 1000 }];
+      case "func":
+        this.checkName(stmt.def.name);
+        this.funcs.set(stmt.def.name, stmt.def);
+        return [];
       case "unsupported":
         this.warn(`Skipped unsupported statement (“${stmt.what}”, line ${stmt.line}).`);
         return [];
     }
+  }
+
+  private forStmt(stmt: Extract<PineStmt, { t: "for" }>): Stmt {
+    this.checkName(stmt.var);
+    this.loopVars.add(stmt.var);
+    this.numVars.add(stmt.var);
+    const from = this.num(stmt.from);
+    const to = this.num(stmt.to);
+    const step = stmt.step ? this.num(stmt.step) : { k: "num" as const, v: 1 };
+    const body = stmt.body.flatMap((s) => this.stmt(s));
+    return { k: "for", var: stmt.var, from, to, step, body, cap: 10_000 };
   }
 
   private desugarCompound(stmt: Extract<PineStmt, { t: "reassign" }>): PineExpr {
@@ -146,6 +171,12 @@ class Converter {
     if (value.t === "call" && PLOT_CALLS.has(value.callee)) {
       this.plotHandles.add(name);
       return this.exprStatement(value);
+    }
+    // Color-valued bindings (`col = trendUp ? color.lime : color.red`) are cosmetic —
+    // record the resolved color (if constant) and drop the binding.
+    if (this.isColorExpr(value)) {
+      this.colorVars.set(name, this.colorOf(value));
+      return [];
     }
     const mutable = declaredVar || this.reassigned.has(name);
     if (!mutable) {
@@ -206,7 +237,24 @@ class Converter {
   }
 
   private tuple(names: string[], value: PineExpr): Stmt[] {
+    // `[a, b] = [x, y]` — direct tuple literal.
+    if (value.t === "tuplelit") {
+      names.forEach((n, i) => {
+        this.checkName(n);
+        if (i < value.items.length) this.env.set(n, this.val(value.items[i]));
+      });
+      return [];
+    }
     if (value.t !== "call") throw new PineConvertError("Tuple assignment must destructure a function call.");
+    // `[a, b] = myFn(...)` — user function returning a tuple.
+    if (this.funcs.has(value.callee)) {
+      const parts = this.inlineUserFuncTuple(value.callee, value.args);
+      names.forEach((n, i) => {
+        this.checkName(n);
+        if (i < parts.length) this.env.set(n, parts[i]);
+      });
+      return [];
+    }
     const callee = normalizeTa(value.callee);
     let parts: NumExpr[];
     if (callee === "ta.macd") {
@@ -259,12 +307,18 @@ class Converter {
   // ---------- call statements (plot / strategy.* / alerts / declarations) ----------
 
   private exprStatement(expr: PineExpr): Stmt[] {
+    if (expr.t === "switch") return this.switchStmt(expr);
     if (expr.t !== "call") {
       this.warn("Skipped a bare expression statement with no effect.");
       return [];
     }
     const callee = expr.callee;
     const args = expr.args;
+    // A bare call to a user function only computes a value — discarded here.
+    if (this.funcs.has(callee)) {
+      this.warn(`Skipped bare call to "${callee}()" — its return value isn't used.`);
+      return [];
+    }
 
     switch (callee) {
       case "indicator":
@@ -419,15 +473,10 @@ class Converter {
     return this.overlay ? "price" : "sub";
   }
 
-  /** Plot values can't contain mutable vars (scalar-only) — fail with a clear message. */
-  private plotValue(expr: PineExpr, what: string): NumExpr {
-    const node = this.num(expr);
-    if (containsVar(node)) {
-      throw new PineConvertError(
-        `${what}() of a mutable variable isn't supported — variables are single values, not series. Plot the underlying expression instead.`
-      );
-    }
-    return node;
+  /** Plot values are evaluated per bar in the chart preview, so mutable-var and
+   *  dynamic-history reads are fine here (unlike vectorized indicator sources). */
+  private plotValue(expr: PineExpr, _what: string): NumExpr {
+    return this.num(expr);
   }
 
   private registerInput(name: string, call: Extract<PineExpr, { t: "call" }>): void {
@@ -462,12 +511,141 @@ class Converter {
   // ---------- expressions ----------
 
   private val(expr: PineExpr): Val {
+    // User functions and switch can yield either type — resolve by evaluating them.
+    if (expr.t === "call" && this.funcs.has(expr.callee)) return this.inlineUserFunc(expr.callee, expr.args);
+    if (expr.t === "switch") return this.switchVal(expr);
     if (isBoolExpr(expr, this.boolVars, this.env)) return { t: "bool", e: this.bool(expr) };
     return { t: "num", e: this.num(expr) };
   }
 
+  // ---------- user-function inlining ----------
+
+  /**
+   * Inline a call to a user function by call-by-value substitution: evaluate the
+   * arguments in the caller's scope, bind them (and any immutable body locals) as
+   * temporary env entries, then evaluate the return expression. Series semantics
+   * are preserved because our expressions are vectorized. Recursion and functions
+   * with mutable locals / side effects (:=, if, plot, orders…) are rejected.
+   */
+  private inlineUserFunc(name: string, callArgs: PineArg[]): Val {
+    return this.withInlinedFunc(name, callArgs, (retExpr) => this.val(retExpr));
+  }
+
+  /** Inline a tuple-returning function (`f(...) => … [a, b]`) → one Val per element. */
+  private inlineUserFuncTuple(name: string, callArgs: PineArg[]): Val[] {
+    return this.withInlinedFunc(name, callArgs, (retExpr) => {
+      if (retExpr.t !== "tuplelit") throw new PineConvertError(`"${name}()" doesn't return a tuple to destructure.`);
+      return retExpr.items.map((item) => this.val(item));
+    });
+  }
+
+  /** Bind arguments + immutable locals in a temporary scope, evaluate the return, restore. */
+  private withInlinedFunc<T>(name: string, callArgs: PineArg[], evalRet: (retExpr: PineExpr) => T): T {
+    const def = this.funcs.get(name);
+    if (!def) throw new PineConvertError(`Unknown function "${name}".`);
+    if (this.inlining.has(name)) throw new PineConvertError(`Recursive function "${name}()" isn't supported.`);
+    const positional = callArgs.filter((a) => !a.name);
+    if (positional.length > def.params.length) throw new PineConvertError(`${name}() called with too many arguments.`);
+    // Resolve each parameter's value in the CALLER's scope (before binding).
+    const bound: { name: string; val: Val }[] = [];
+    def.params.forEach((param, i) => {
+      const supplied = callArgs.find((a) => a.name === param.name)?.value ?? positional[i]?.value ?? param.def;
+      if (!supplied) throw new PineConvertError(`${name}() is missing argument "${param.name}".`);
+      bound.push({ name: param.name, val: this.val(supplied) });
+    });
+
+    this.inlining.add(name);
+    const saved = new Map<string, Val | undefined>();
+    const numSaved = new Set<string>();
+    const boolSaved = new Set<string>();
+    const shadow = (n: string, v: Val) => {
+      if (!saved.has(n)) saved.set(n, this.env.get(n));
+      this.env.set(n, v);
+      if (v.t === "num" && !this.numVars.has(n)) numSaved.add(n);
+      if (v.t === "bool" && !this.boolVars.has(n)) boolSaved.add(n);
+    };
+    try {
+      for (const b of bound) shadow(b.name, b.val);
+      // Multi-line body: bind immutable locals; the last expression is the return value.
+      let retExpr = def.ret;
+      const body = def.body;
+      for (let i = 0; i < body.length; i += 1) {
+        const s = body[i];
+        const last = i === body.length - 1;
+        if (s.t === "assign" && !s.declaredVar) {
+          shadow(s.name, this.val(s.value));
+        } else if (s.t === "expr" && last) {
+          retExpr = s.value;
+        } else if (s.t === "func") {
+          throw new PineConvertError(`Nested function definitions in "${name}()" aren't supported.`);
+        } else {
+          throw new PineConvertError(`"${name}()" has control flow or side effects in its body — only value-returning functions can be inlined.`);
+        }
+      }
+      if (!retExpr) throw new PineConvertError(`"${name}()" doesn't return a value.`);
+      return evalRet(retExpr);
+    } finally {
+      for (const [n, v] of saved) {
+        if (v === undefined) this.env.delete(n);
+        else this.env.set(n, v);
+      }
+      for (const n of numSaved) this.numVars.delete(n);
+      for (const n of boolSaved) this.boolVars.delete(n);
+      this.inlining.delete(name);
+    }
+  }
+
+  // ---------- switch ----------
+
+  /** switch in value position → nested cond (numeric) or nested logic (boolean). */
+  private switchVal(expr: Extract<PineExpr, { t: "switch" }>): Val {
+    const def = expr.arms.find((a) => a.match === undefined);
+    const cases = expr.arms.filter((a) => a.match !== undefined);
+    const anyBool = expr.arms.some((a) => this.val(a.body).t === "bool");
+    if (anyBool) {
+      let acc: BoolExpr = def ? this.bool(def.body) : { k: "bool", v: false };
+      for (let i = cases.length - 1; i >= 0; i -= 1) {
+        const cond = this.switchArmCond(expr.subject, cases[i].match as PineExpr);
+        const then = this.bool(cases[i].body);
+        acc = { k: "logic", op: "or", a: { k: "logic", op: "and", a: cond, b: then }, b: { k: "logic", op: "and", a: { k: "not", a: cond }, b: acc } };
+      }
+      return { t: "bool", e: acc };
+    }
+    if (!def) this.warnOnce("switchdef", "switch without a default arm returns 0 for unmatched cases (Pine returns na).");
+    let acc: NumExpr = def ? this.num(def.body) : { k: "num", v: 0 };
+    for (let i = cases.length - 1; i >= 0; i -= 1) {
+      const cond = this.switchArmCond(expr.subject, cases[i].match as PineExpr);
+      acc = { k: "cond", cond, a: this.num(cases[i].body), b: acc };
+    }
+    return { t: "num", e: acc };
+  }
+
+  private switchArmCond(subject: PineExpr | undefined, match: PineExpr): BoolExpr {
+    if (!subject) return this.bool(match);
+    return { k: "compare", op: "==", a: this.num(subject), b: this.num(match) };
+  }
+
+  /** switch in statement position → if/elif/else running each arm's body statement. */
+  private switchStmt(expr: Extract<PineExpr, { t: "switch" }>): Stmt[] {
+    const def = expr.arms.find((a) => a.match === undefined);
+    const cases = expr.arms.filter((a) => a.match !== undefined);
+    if (!cases.length) return def ? this.exprStatement(def.body) : [];
+    const first = cases[0];
+    const node: Extract<Stmt, { k: "if" }> = {
+      k: "if",
+      cond: this.switchArmCond(expr.subject, first.match as PineExpr),
+      then: this.exprStatement(first.body)
+    };
+    const elifs = cases.slice(1).map((c) => ({ cond: this.switchArmCond(expr.subject, c.match as PineExpr), then: this.exprStatement(c.body) }));
+    if (elifs.length) node.elifs = elifs;
+    if (def) node.else = this.exprStatement(def.body);
+    return [node];
+  }
+
   private num(expr: PineExpr): NumExpr {
     switch (expr.t) {
+      case "tuplelit":
+        throw new PineConvertError("A tuple ([a, b]) can't be used as a single number.");
       case "num":
         return { k: "num", v: expr.v };
       case "str":
@@ -487,24 +665,45 @@ class Converter {
         throw new PineConvertError(`Operator "${expr.op}" doesn't produce a number.`);
       }
       case "ternary":
-        throw new PineConvertError(
-          "Conditional values (cond ? a : b) inside expressions aren't supported — assign them to a variable with := in an if/else first."
-        );
+        // Numeric conditional → cond node (vectorized; mutable-var interception happens in assign()).
+        return { k: "cond", cond: this.bool(expr.cond), a: this.num(expr.a), b: this.num(expr.b) };
+      case "switch": {
+        const v = this.switchVal(expr);
+        if (v.t !== "num") throw new PineConvertError("This switch yields a condition, not a number.");
+        return v.e;
+      }
       case "index": {
         const offsetExpr = expr.offset;
-        if (offsetExpr.t !== "num" || !Number.isInteger(offsetExpr.v) || offsetExpr.v < 0) {
-          throw new PineConvertError("History offset [n] must be a non-negative integer literal.");
+        const literal = offsetExpr.t === "num" && Number.isInteger(offsetExpr.v) && offsetExpr.v >= 0 ? offsetExpr.v : undefined;
+        // x[1] on a mutable var → previous-bar value (varprev). Only offset 1 is representable.
+        if (expr.base.t === "ident" && this.numVars.has(expr.base.name) && !this.env.has(expr.base.name)) {
+          if (literal === 0) return { k: "var", name: expr.base.name };
+          if (literal === 1) return { k: "varprev", name: expr.base.name };
+          throw new PineConvertError(`Only the previous bar (${expr.base.name}[1]) is available for a mutable variable, not a further/dynamic offset.`);
         }
-        const offset = offsetExpr.v;
         const base = this.num(expr.base);
-        if (containsVar(base)) {
-          throw new PineConvertError("History access on a mutable variable (x[1]) isn't supported — variables hold only their latest value.");
+        if (literal !== undefined) {
+          if (containsVar(base)) {
+            throw new PineConvertError("History access on a mutable variable (x[1]) isn't supported — variables hold only their latest value.");
+          }
+          if (literal === 0) return base;
+          if (base.k === "price" && !base.offset) return { k: "price", field: base.field, offset: literal };
+          return { k: "shift", src: base, offset: literal };
         }
-        if (offset === 0) return base;
-        if (base.k === "price" && !base.offset) return { k: "price", field: base.field, offset };
-        return { k: "shift", src: base, offset };
+        // Dynamic offset (e.g. close[i] in a loop) — only a plain price field can read it per bar.
+        if (base.k === "price" && !base.offset) {
+          return { k: "histn", field: base.field, offset: this.num(offsetExpr) };
+        }
+        throw new PineConvertError(
+          "A dynamic history offset (x[i]) is only supported on a raw price field (close[i], high[i], …), not on an indicator or computed series."
+        );
       }
       case "call":
+        if (this.funcs.has(expr.callee)) {
+          const v = this.inlineUserFunc(expr.callee, expr.args);
+          if (v.t !== "num") throw new PineConvertError(`"${expr.callee}()" returns a condition, not a number.`);
+          return v.e;
+        }
         return this.numCall(expr);
     }
   }
@@ -517,6 +716,11 @@ class Converter {
     }
     if (PRICE_FIELDS.has(name)) return { k: "price", field: name as never };
     if (this.numVars.has(name)) return { k: "var", name };
+    const constant = MATH_CONSTS[name];
+    if (constant !== undefined) return { k: "num", v: constant };
+    // `ta.tr` is a built-in series (True Range) used without parentheses.
+    if (name === "ta.tr") return this.trueRange();
+    if (name.startsWith("ta.")) throw this.unsupportedFn(name);
     if (name === "strategy.position_size") {
       this.warnOnce("possize", "strategy.position_size is mapped to the position DIRECTION sign (+1/-1/0), not the size.");
       return { k: "ctx", key: "position_dir" };
@@ -524,8 +728,22 @@ class Converter {
     if (name === "strategy.equity") return { k: "ctx", key: "equity" };
     if (name === "strategy.position_avg_price") return { k: "ctx", key: "entry_price" };
     if (name === "strategy.openprofit") return { k: "ctx", key: "unrealized_pnl" };
+    if (name === "strategy.wintrades" || name === "strategy.losstrades" || name === "strategy.closedtrades" || name === "strategy.netprofit") {
+      throw new PineConvertError(`${name} (whole-backtest strategy stats) isn't available to a live per-bar engine.`);
+    }
+    if (name === "bar_index" || name === "last_bar_index" || name === "n") {
+      throw new PineConvertError(`${name} (absolute bar count) isn't available — use bars-in-trade or a counter variable instead.`);
+    }
+    if (name.startsWith("barstate.")) throw new PineConvertError(`${name} isn't available — the engine evaluates one confirmed bar at a time.`);
+    if (name === "timenow" || name === "time" || name === "time_close" || name === "time_tradingday") {
+      throw new PineConvertError(`${name} (wall-clock/bar time) isn't a supported value — use the session/day-of-week condition blocks.`);
+    }
+    if (name.startsWith("syminfo.") || name.startsWith("timeframe.")) {
+      throw new PineConvertError(`${name} reads symbol/timeframe metadata that isn't available to the engine.`);
+    }
     if (this.plotHandles.has(name)) throw new PineConvertError(`"${name}" is a plot handle — it can't be used as a value.`);
-    if (name === "na") throw new PineConvertError("na is not supported — give variables explicit numeric defaults.");
+    // `na` as a numeric value → NaN (0/0). nz()/na()/isfinite handling all treat it correctly.
+    if (name === "na") return NAN_NUM;
     throw new PineConvertError(`Unknown identifier "${name}" — it was never assigned (or its definition was skipped).`);
   }
 
@@ -537,20 +755,57 @@ class Converter {
     switch (callee) {
       case "ta.sma":
       case "ta.ema":
+      case "ta.rma":
       case "ta.wma":
       case "ta.vwma": {
-        const kind = callee.slice(3) as "sma" | "ema" | "wma" | "vwma";
+        const kind = callee.slice(3) as "sma" | "ema" | "rma" | "wma" | "vwma";
         return { k: "ma", kind, period: period(1, "length"), source: this.seriesArg(args, 0, "source") };
       }
+      case "ta.hma":
+        return this.hma(this.seriesArg(args, 0, "source"), period(1, "length"));
+      case "ta.swma":
+        return this.swma(this.seriesArg(args, 0, "source"));
       case "ta.rsi":
         return { k: "rsi", period: period(1, "length"), source: this.seriesArg(args, 0, "source") };
       case "ta.atr":
         return { k: "atr", period: period(0, "length") };
       case "ta.tr":
-        this.warnOnce("tr", "ta.tr approximated as ATR(1).");
-        return { k: "atr", period: { k: "num", v: 1 } };
+        // Exact True Range: max(high-low, |high-close[1]|, |low-close[1]|).
+        return this.trueRange();
       case "ta.stdev":
-        return { k: "stdev", period: period(1, "length"), source: this.seriesArg(args, 0, "source") };
+      case "ta.dev": {
+        const src = this.seriesArg(args, 0, "source");
+        const len = period(1, "length");
+        if (callee === "ta.dev") {
+          // Mean absolute deviation: sma(|src - sma(src,len)|, len).
+          const mean: NumExpr = { k: "ma", kind: "sma", period: len, source: src };
+          return { k: "agg", fn: "avg", src: { k: "unary", op: "abs", a: { k: "arith", op: "-", a: src, b: mean } }, period: len };
+        }
+        return { k: "stdev", period: len, source: src };
+      }
+      case "ta.variance": {
+        this.warnOnce("variance", "ta.variance computed as stdev²(len).");
+        const sd: NumExpr = { k: "stdev", period: period(1, "length"), source: this.seriesArg(args, 0, "source") };
+        return { k: "arith", op: "^", a: sd, b: { k: "num", v: 2 } };
+      }
+      case "ta.sum":
+        return { k: "agg", fn: "sum", src: this.seriesArg(args, 0, "source"), period: period(1, "length") };
+      case "ta.median":
+        return { k: "agg", fn: "median", src: this.seriesArg(args, 0, "source"), period: period(1, "length") };
+      case "ta.cum":
+        return { k: "cum", src: this.seriesArg(args, 0, "source") };
+      case "ta.barssince":
+        return { k: "barssince", cond: this.bool(argRequired(args, 0, "condition", "ta.barssince").value) };
+      case "ta.bbw": {
+        // Bollinger Band Width: (upper - lower) / middle.
+        const src = this.seriesArg(args, 0, "source");
+        const len = period(1, "length");
+        const mult = this.numArg(args, 2, "mult", { k: "num", v: 2 });
+        const upper: NumExpr = { k: "bollinger", band: "upper", period: len, dev: mult, source: src };
+        const lower: NumExpr = { k: "bollinger", band: "lower", period: len, dev: mult, source: src };
+        const middle: NumExpr = { k: "bollinger", band: "middle", period: len, dev: mult, source: src };
+        return { k: "arith", op: "/", a: { k: "arith", op: "-", a: upper, b: lower }, b: middle };
+      }
       case "ta.highest":
       case "ta.lowest": {
         const kind = callee === "ta.highest" ? "highest" : "lowest";
@@ -598,22 +853,127 @@ class Converter {
       case "math.pow":
         return { k: "arith", op: "^", a: this.numArg(args, 0, "base"), b: this.numArg(args, 1, "exponent") };
       case "math.sqrt":
-        return { k: "arith", op: "^", a: this.numArg(args, 0, "number"), b: { k: "num", v: 0.5 } };
+        return { k: "unary", op: "sqrt", a: this.numArg(args, 0, "number") };
+      case "math.sign":
+        return { k: "unary", op: "sign", a: this.numArg(args, 0, "number") };
+      case "math.log":
+        return { k: "unary", op: "log", a: this.numArg(args, 0, "number") };
+      case "math.log10":
+        return { k: "unary", op: "log10", a: this.numArg(args, 0, "number") };
+      case "math.exp":
+        return { k: "unary", op: "exp", a: this.numArg(args, 0, "number") };
+      case "math.todegrees":
+        return { k: "arith", op: "*", a: this.numArg(args, 0, "radians"), b: { k: "num", v: 180 / Math.PI } };
+      case "math.toradians":
+        return { k: "arith", op: "*", a: this.numArg(args, 0, "degrees"), b: { k: "num", v: Math.PI / 180 } };
+      case "math.round_to_mintick":
+        this.warnOnce("mintick", "math.round_to_mintick passed through unrounded (tick size isn't known here).");
+        return this.numArg(args, 0, "number");
       case "math.avg": {
         if (args.length < 2) throw new PineConvertError("math.avg needs at least two arguments.");
         let sum: NumExpr = this.num(args[0].value);
         for (let i = 1; i < args.length; i += 1) sum = { k: "arith", op: "+", a: sum, b: this.num(args[i].value) };
         return { k: "arith", op: "/", a: sum, b: { k: "num", v: args.length } };
       }
-      case "nz": {
-        this.warnOnce("nz", "nz() passed through (warm-up bars stay empty instead of becoming the fallback).");
+      case "math.sin":
+      case "math.cos":
+      case "math.tan":
+      case "math.asin":
+      case "math.acos":
+      case "math.atan":
+        throw new PineConvertError(`${callee}() (trigonometry) isn't supported — no trig primitive in the strategy engine.`);
+      case "math.random":
+        throw new PineConvertError("math.random() is non-deterministic and can't run identically in backtest and live.");
+      case "nz":
+        return { k: "nz", a: this.numArg(args, 0, "source"), b: this.numArg(args, 1, "replacement", { k: "num", v: 0 }) };
+      case "fixnan":
+        this.warnOnce("fixnan", "fixnan() passed through (warm-up NaNs aren't forward-filled here).");
         return this.numArg(args, 0, "source");
+      case "iff": {
+        // Pine's legacy iff(cond, a, b) — a numeric ternary.
+        const cond = this.bool(argRequired(args, 0, "condition", "iff").value);
+        return { k: "cond", cond, a: this.numArg(args, 1, "then"), b: this.numArg(args, 2, "else") };
+      }
+      case "ta.macd": {
+        // Used undestructured (e.g. `ta.macd(...) > 0`) → the MACD line.
+        this.warnOnce("macdline", "ta.macd() used in an expression → the MACD line (destructure [m, s, h] for signal/histogram).");
+        const src = this.seriesArg(args, 0, "source");
+        return { k: "macd", line: "macd", fast: period(1, "fastlen"), slow: period(2, "slowlen"), signal: period(3, "siglen"), source: src };
       }
       case "color.new":
+      case "color.rgb":
         throw new PineConvertError("color values can't be used as numbers.");
       default:
-        throw new PineConvertError(`Unsupported function: ${expr.callee}().`);
+        throw this.unsupportedFn(expr.callee);
     }
+  }
+
+  /** Friendly, namespace-aware rejection for a function we can't map to the IR. */
+  private unsupportedFn(callee: string): PineConvertError {
+    const lookahead = ["ta.pivothigh", "ta.pivotlow", "ta.pivot_point_levels"];
+    if (lookahead.includes(callee)) {
+      return new PineConvertError(`${callee}() looks ahead in time (it confirms a pivot using future bars) — it can't run in a live per-bar engine.`);
+    }
+    if (callee === "request.security" || callee.startsWith("request.")) {
+      return new PineConvertError(`${callee}() pulls external/other-timeframe data — not available in this per-bar engine.`);
+    }
+    const needsBlock: Record<string, string> = {
+      "ta.vwap": "VWAP", "ta.linreg": "linear regression", "ta.valuewhen": "value-when", "ta.highestbars": "highest-bars offset",
+      "ta.lowestbars": "lowest-bars offset", "ta.sar": "parabolic SAR", "ta.supertrend": "SuperTrend", "ta.mfi": "MFI",
+      "ta.cmo": "CMO", "ta.tsi": "TSI", "ta.kc": "Keltner Channel", "ta.kcw": "Keltner width", "ta.correlation": "correlation",
+      "ta.cog": "center of gravity", "ta.alma": "ALMA", "ta.mode": "mode", "ta.percentile_linear_interpolation": "percentile",
+      "ta.percentile_nearest_rank": "percentile", "ta.percentrank": "percent-rank", "ta.dmi": "DMI/ADX", "ta.wpr": "Williams %R",
+      "ta.rci": "RCI", "ta.range": "range"
+    };
+    if (needsBlock[callee]) {
+      return new PineConvertError(`${callee}() (${needsBlock[callee]}) has no matching indicator primitive yet — rebuild it from the supported blocks, or request native support.`);
+    }
+    if (callee.startsWith("array.") || callee.startsWith("matrix.") || callee.startsWith("map.")) {
+      return new PineConvertError(`${callee}() uses collections (arrays/matrices/maps), which the scalar per-bar IR can't represent.`);
+    }
+    if (callee.startsWith("str.")) return new PineConvertError(`${callee}() manipulates strings, which aren't part of the numeric strategy IR.`);
+    if (callee.startsWith("ticker.") || callee === "timeframe.period" || callee.startsWith("syminfo.")) {
+      return new PineConvertError(`${callee}() reads symbol/timeframe metadata that isn't available to the engine.`);
+    }
+    return new PineConvertError(`Unsupported function: ${callee}().`);
+  }
+
+  /** True Range = max(high - low, |high - close[1]|, |low - close[1]|). */
+  private trueRange(): NumExpr {
+    const hl: NumExpr = { k: "arith", op: "-", a: { k: "price", field: "high" }, b: { k: "price", field: "low" } };
+    const hc: NumExpr = { k: "unary", op: "abs", a: { k: "arith", op: "-", a: { k: "price", field: "high" }, b: { k: "price", field: "close", offset: 1 } } };
+    const lc: NumExpr = { k: "unary", op: "abs", a: { k: "arith", op: "-", a: { k: "price", field: "low" }, b: { k: "price", field: "close", offset: 1 } } };
+    return { k: "minmax", op: "max", a: hl, b: { k: "minmax", op: "max", a: hc, b: lc } };
+  }
+
+  /** Hull MA: wma(2·wma(src, ⌊len/2⌋) − wma(src, len), round(√len)). */
+  private hma(src: NumExpr, len: NumExpr): NumExpr {
+    const half: NumExpr = { k: "unary", op: "floor", a: { k: "arith", op: "/", a: len, b: { k: "num", v: 2 } } };
+    const sqrtLen: NumExpr = { k: "unary", op: "round", a: { k: "unary", op: "sqrt", a: len } };
+    const raw: NumExpr = {
+      k: "arith",
+      op: "-",
+      a: { k: "arith", op: "*", a: { k: "num", v: 2 }, b: { k: "ma", kind: "wma", period: half, source: src } },
+      b: { k: "ma", kind: "wma", period: len, source: src }
+    };
+    return { k: "ma", kind: "wma", period: sqrtLen, source: raw };
+  }
+
+  /** Symmetric weighted MA of the last 4 bars, weights [1,2,2,1]/6. */
+  private swma(src: NumExpr): NumExpr {
+    const w = (offset: number, mult: number): NumExpr => ({
+      k: "arith",
+      op: "*",
+      a: offset === 0 ? src : { k: "shift", src, offset },
+      b: { k: "num", v: mult / 6 }
+    });
+    const sum: NumExpr = {
+      k: "arith",
+      op: "+",
+      a: { k: "arith", op: "+", a: w(3, 1), b: w(2, 2) },
+      b: { k: "arith", op: "+", a: w(1, 2), b: w(0, 1) }
+    };
+    return sum;
   }
 
   /** Indicator source/series argument: mutable vars are rejected (scalar-only). */
@@ -627,6 +987,8 @@ class Converter {
 
   private bool(expr: PineExpr): BoolExpr {
     switch (expr.t) {
+      case "tuplelit":
+        throw new PineConvertError("A tuple ([a, b]) can't be used as a condition.");
       case "ident": {
         if (expr.name === "true") return { k: "bool", v: true };
         if (expr.name === "false") return { k: "bool", v: false };
@@ -647,10 +1009,23 @@ class Converter {
         throw new PineConvertError("A negative number isn't a condition.");
       case "binary": {
         if (expr.op === "and" || expr.op === "or") return { k: "logic", op: expr.op, a: this.bool(expr.a), b: this.bool(expr.b) };
+        // `x == na` / `x != na` → na test (Pine forbids direct == na, but scripts still write it).
+        if (expr.op === "==" || expr.op === "!=") {
+          const naSide = isNaIdent(expr.a) ? expr.b : isNaIdent(expr.b) ? expr.a : undefined;
+          if (naSide) {
+            const test: BoolExpr = { k: "isna", a: this.num(naSide) };
+            return expr.op === "==" ? test : { k: "not", a: test };
+          }
+        }
         if (["==", "!=", "<", "<=", ">", ">="].includes(expr.op)) {
           return { k: "compare", op: expr.op as ">", a: this.num(expr.a), b: this.num(expr.b) };
         }
         throw new PineConvertError(`Operator "${expr.op}" doesn't produce a condition.`);
+      }
+      case "switch": {
+        const v = this.switchVal(expr);
+        if (v.t !== "bool") throw new PineConvertError("This switch yields a number, not a condition.");
+        return v.e;
       }
       case "ternary": {
         const c = this.bool(expr.cond);
@@ -662,17 +1037,40 @@ class Converter {
         };
       }
       case "call": {
+        if (this.funcs.has(expr.callee)) {
+          const v = this.inlineUserFunc(expr.callee, expr.args);
+          if (v.t !== "bool") throw new PineConvertError(`"${expr.callee}()" returns a number, not a condition.`);
+          return v.e;
+        }
         const callee = normalizeTa(expr.callee);
         if (callee === "ta.crossover") return { k: "cross", dir: "above", a: this.numArg(expr.args, 0, "a"), b: this.numArg(expr.args, 1, "b") };
         if (callee === "ta.crossunder") return { k: "cross", dir: "below", a: this.numArg(expr.args, 0, "a"), b: this.numArg(expr.args, 1, "b") };
         if (callee === "ta.cross") return { k: "cross", dir: "any", a: this.numArg(expr.args, 0, "a"), b: this.numArg(expr.args, 1, "b") };
         if (callee === "ta.rising" || callee === "ta.falling") return this.risingFalling(callee, expr.args);
-        if (callee === "na") throw new PineConvertError("na() checks aren't supported — warm-up bars are handled automatically.");
-        throw new PineConvertError(`Unsupported condition function: ${expr.callee}().`);
+        if (callee === "na") return { k: "isna", a: this.num(argRequired(expr.args, 0, "x", "na").value) };
+        if (callee === "iff") {
+          const cond = this.bool(argRequired(expr.args, 0, "condition", "iff").value);
+          return {
+            k: "logic",
+            op: "or",
+            a: { k: "logic", op: "and", a: cond, b: this.bool(argRequired(expr.args, 1, "then", "iff").value) },
+            b: { k: "logic", op: "and", a: { k: "not", a: cond }, b: this.bool(argRequired(expr.args, 2, "else", "iff").value) }
+          };
+        }
+        throw this.unsupportedFn(callee);
       }
       case "num":
+        // Pine treats a nonzero number as truthy in a few idioms; only 0/1 make sense here.
+        return { k: "compare", op: "!=", a: { k: "num", v: expr.v }, b: { k: "num", v: 0 } };
+      case "index": {
+        // Boolean history: cond[n] → the inlined condition with its series shifted n bars.
+        const offsetExpr = expr.offset;
+        if (offsetExpr.t !== "num" || !Number.isInteger(offsetExpr.v) || offsetExpr.v < 0) {
+          throw new PineConvertError("A condition's history offset [n] must be a non-negative integer literal.");
+        }
+        return shiftBool(this.bool(expr.base), offsetExpr.v);
+      }
       case "str":
-      case "index":
         throw new PineConvertError("Expected a condition (true/false expression).");
     }
   }
@@ -707,9 +1105,23 @@ class Converter {
   private colorOf(expr: PineExpr | undefined): string | undefined {
     if (!expr) return undefined;
     if (expr.t === "ident" && expr.name.startsWith("color.")) return COLOR_HEX[expr.name.slice(6)] ?? "#4db6ff";
-    if (expr.t === "call" && expr.callee === "color.new") return this.colorOf(expr.args[0]?.value);
+    if (expr.t === "ident" && this.colorVars.has(expr.name)) return this.colorVars.get(expr.name);
+    if (expr.t === "call" && (expr.callee === "color.new" || expr.callee === "color.rgb" || expr.callee === "color.from_gradient")) {
+      return this.colorOf(expr.args[0]?.value);
+    }
+    if (expr.t === "ternary") return this.colorOf(expr.a) ?? this.colorOf(expr.b);
+    if (expr.t === "switch") return expr.arms.map((armExpr) => this.colorOf(armExpr.body)).find((hex) => hex !== undefined);
     if (expr.t === "str" && /^#[0-9a-fA-F]{6}$/.test(expr.v)) return expr.v;
     return undefined; // conditional/unknown colors are cosmetic — fall back silently
+  }
+
+  /** Whether an expression is a color (so a `col = …` binding is cosmetic, not numeric). */
+  private isColorExpr(expr: PineExpr): boolean {
+    if (expr.t === "ident") return expr.name.startsWith("color.") || this.colorVars.has(expr.name);
+    if (expr.t === "call") return expr.callee.startsWith("color.");
+    if (expr.t === "ternary") return this.isColorExpr(expr.a) && this.isColorExpr(expr.b);
+    if (expr.t === "switch") return expr.arms.length > 0 && expr.arms.every((armExpr) => this.isColorExpr(armExpr.body));
+    return false;
   }
 
   /** Integer-ish operands for the Pine int-division warning. */
@@ -768,8 +1180,51 @@ function normalizeTa(callee: string): string {
   return callee;
 }
 
+const MATH_CONSTS: Record<string, number> = {
+  "math.pi": Math.PI,
+  "math.e": Math.E,
+  "math.phi": 1.618033988749895,
+  "math.rphi": 0.6180339887498949
+};
+
+/** Shift a numeric series expression back by n bars (for inlined boolean/numeric history). */
+function shiftNum(expr: NumExpr, n: number): NumExpr {
+  if (n === 0) return expr;
+  if (expr.k === "num" || expr.k === "input") return expr; // constants don't move with history
+  if (containsVar(expr)) throw new PineConvertError("History of a mutable-variable expression isn't supported.");
+  if (expr.k === "price") return { k: "price", field: expr.field, offset: (expr.offset ?? 0) + n };
+  if (expr.k === "shift") return { k: "shift", src: expr.src, offset: expr.offset + n };
+  return { k: "shift", src: expr, offset: n };
+}
+
+/** Shift an inlined boolean expression back by n bars. Multi-bar primitives (cross,
+ *  trend, session) can't be re-based, so they're rejected with a clear message. */
+function shiftBool(expr: BoolExpr, n: number): BoolExpr {
+  if (n === 0) return expr;
+  switch (expr.k) {
+    case "bool":
+      return expr;
+    case "compare":
+      return { k: "compare", op: expr.op, a: shiftNum(expr.a, n), b: shiftNum(expr.b, n) };
+    case "logic":
+      return { k: "logic", op: expr.op, a: shiftBool(expr.a, n), b: shiftBool(expr.b, n) };
+    case "not":
+      return { k: "not", a: shiftBool(expr.a, n) };
+    case "between":
+      return { k: "between", value: shiftNum(expr.value, n), low: shiftNum(expr.low, n), high: shiftNum(expr.high, n) };
+    case "isna":
+      return { k: "isna", a: shiftNum(expr.a, n) };
+    default:
+      throw new PineConvertError(`The history of this condition (${expr.k}) can't be computed — rewrite it without [n] on that sub-expression.`);
+  }
+}
+
 function identName(expr: PineExpr | undefined): string {
   return expr?.t === "ident" ? expr.name : "";
+}
+
+function isNaIdent(expr: PineExpr): boolean {
+  return expr.t === "ident" && expr.name === "na";
 }
 
 function isTrueIdent(expr: PineExpr): boolean {
@@ -794,14 +1249,23 @@ function isConstNum(expr: NumExpr): boolean {
 function containsVar(expr: NumExpr): boolean {
   switch (expr.k) {
     case "var":
+    case "varprev":
+    case "histn":
+      // Scalar-only reads (loop counters / mutable state) — never valid as a vectorized series.
       return true;
     case "arith":
     case "minmax":
+    case "nz":
       return containsVar(expr.a) || containsVar(expr.b);
     case "unary":
       return containsVar(expr.a);
     case "shift":
+    case "cum":
       return containsVar(expr.src);
+    case "cond":
+      return containsVarInBool(expr.cond) || containsVar(expr.a) || containsVar(expr.b);
+    case "barssince":
+      return containsVarInBool(expr.cond);
     case "agg":
       return containsVar(expr.src) || containsVar(expr.period);
     case "ma":
@@ -820,6 +1284,29 @@ function containsVar(expr: NumExpr): boolean {
   }
 }
 
+/** Whether a BoolExpr transitively reads a mutable variable (used inside cond/barssince). */
+function containsVarInBool(expr: BoolExpr): boolean {
+  switch (expr.k) {
+    case "varb":
+      return true;
+    case "compare":
+    case "cross":
+      return containsVar(expr.a) || containsVar(expr.b);
+    case "logic":
+      return containsVarInBool(expr.a) || containsVarInBool(expr.b);
+    case "not":
+      return containsVarInBool(expr.a);
+    case "trend":
+      return containsVar(expr.source) || containsVar(expr.period);
+    case "between":
+      return containsVar(expr.value) || containsVar(expr.low) || containsVar(expr.high);
+    case "isna":
+      return containsVar(expr.a);
+    default:
+      return false;
+  }
+}
+
 /** Pre-scan: every name that is ever reassigned (:=, +=…) anywhere in the script. */
 function collectReassigned(stmts: PineStmt[]): Set<string> {
   const out = new Set<string>();
@@ -827,6 +1314,8 @@ function collectReassigned(stmts: PineStmt[]): Set<string> {
     for (const stmt of list) {
       if (stmt.t === "reassign") out.add(stmt.name);
       if (stmt.t === "if") for (const clause of stmt.clauses) walk(clause.body);
+      if (stmt.t === "for" || stmt.t === "while") walk(stmt.body);
+      // Function bodies are inlined in their own scope — their locals aren't global vars.
     }
   };
   walk(stmts);
@@ -859,10 +1348,13 @@ function isBoolExpr(expr: PineExpr, boolVars: Set<string>, env: Map<string, Val>
     }
     case "call": {
       const callee = normalizeTa(expr.callee);
+      if (callee === "na") return true;
       return ["ta.crossover", "ta.crossunder", "ta.cross", "ta.rising", "ta.falling"].includes(callee);
     }
     case "ternary":
       return isBoolExpr(expr.a, boolVars, env) && isBoolExpr(expr.b, boolVars, env);
+    case "switch":
+      return expr.arms.every((armExpr) => isBoolExpr(armExpr.body, boolVars, env));
     default:
       return false;
   }

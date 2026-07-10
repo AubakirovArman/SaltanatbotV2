@@ -17,11 +17,28 @@ export type PineExpr =
   | { t: "index"; base: PineExpr; offset: PineExpr }
   | { t: "unary"; op: "-" | "not"; a: PineExpr }
   | { t: "binary"; op: string; a: PineExpr; b: PineExpr }
-  | { t: "ternary"; cond: PineExpr; a: PineExpr; b: PineExpr };
+  | { t: "ternary"; cond: PineExpr; a: PineExpr; b: PineExpr }
+  | { t: "switch"; subject?: PineExpr; arms: PineSwitchArm[] }
+  | { t: "tuplelit"; items: PineExpr[] };
+
+/** One `match => body` arm of a switch (match absent = the default `=> body` arm). */
+export interface PineSwitchArm {
+  match?: PineExpr;
+  body: PineExpr;
+}
 
 export interface PineArg {
   name?: string;
   value: PineExpr;
+}
+
+/** A user function definition: single-expression (`f(x) => x*2`) or a multi-line
+ *  body whose final expression is the return value. */
+export interface PineFuncDef {
+  name: string;
+  params: { name: string; def?: PineExpr }[];
+  body: PineStmt[];
+  ret?: PineExpr;
 }
 
 export type PineStmt =
@@ -31,6 +48,9 @@ export type PineStmt =
   | { t: "tuple"; names: string[]; value: PineExpr }
   | { t: "expr"; value: PineExpr }
   | { t: "if"; clauses: { cond: PineExpr | undefined; body: PineStmt[] }[] }
+  | { t: "for"; var: string; from: PineExpr; to: PineExpr; step?: PineExpr; body: PineStmt[] }
+  | { t: "while"; cond: PineExpr; body: PineStmt[] }
+  | { t: "func"; def: PineFuncDef }
   | { t: "unsupported"; what: string; line: number };
 
 export class PineParseError extends Error {}
@@ -67,46 +87,51 @@ class Parser {
 
     if (tok.type === "ident") {
       // //@version handled in lexer as comment; version pragma appears as comment only.
-      if (tok.text === "var" || TYPE_KEYWORDS.has(tok.text)) return this.parseDeclaration();
+      if (tok.text === "var" || tok.text === "varip" || TYPE_KEYWORDS.has(tok.text)) return this.parseDeclaration(indent);
       if (tok.text === "if") return this.parseIf(indent);
-      if (tok.text === "for" || tok.text === "while" || tok.text === "switch") {
+      if (tok.text === "for") return this.parseFor(indent);
+      if (tok.text === "while") return this.parseWhile(indent);
+      if (tok.text === "switch") return { t: "expr", value: this.parseSwitch(indent) };
+      if (tok.text === "import" || tok.text === "export" || tok.text === "method" || tok.text === "type") {
         return this.skipBlockStatement(tok.text, indent);
       }
-      if (tok.text === "import" || tok.text === "export" || tok.text === "method") {
-        return this.skipBlockStatement(tok.text, indent);
-      }
-      // User function declaration: `name(params) => body` — skip header + indented body.
-      if (this.lineContainsArrow()) return this.skipBlockStatement("function declaration", indent);
+      // User function declaration: `name(params) => body`.
+      if (this.lineContainsArrow()) return this.parseFunc(indent);
       // ident = / := / += ... expr
       const next = this.tokens[this.pos + 1];
       if (next?.type === "op" && next.text === "=") {
         this.pos += 2;
+        if (this.peek().type === "ident" && this.peek().text === "switch") {
+          return { t: "assign", name: tok.text, value: this.parseSwitch(indent), declaredVar: false };
+        }
         return { t: "assign", name: tok.text, value: this.parseExpr(), declaredVar: false };
       }
       if (next?.type === "op" && (next.text === ":=" || next.text === "+=" || next.text === "-=" || next.text === "*=" || next.text === "/=")) {
         this.pos += 2;
-        return { t: "reassign", name: tok.text, op: next.text as ":=", value: this.parseExpr() };
+        const rhs = this.peek().type === "ident" && this.peek().text === "switch" ? this.parseSwitch(indent) : this.parseExpr();
+        return { t: "reassign", name: tok.text, op: next.text as ":=", value: rhs };
       }
       // Bare expression statement (plot(...), strategy.entry(...), etc.)
       return { t: "expr", value: this.parseExpr() };
     }
 
     if (tok.type === "op" && tok.text === "[") {
-      // Tuple destructuring: [a, b, c] = ta.macd(...)
-      this.pos += 1;
-      const names: string[] = [];
-      while (!this.atEof()) {
-        const id = this.expect("ident");
-        names.push(id.text);
-        if (this.peekOp(",")) {
-          this.pos += 1;
-          continue;
-        }
-        break;
+      // `[a, b] = f(...)` (destructuring) OR a bare `[a, b]` tuple literal (e.g. a
+      // function's return line). Parse the bracket as expressions, then decide.
+      const lit = this.parseBracketList();
+      if (this.peekOp("=") && !this.peekOp("==")) {
+        this.pos += 1;
+        const names = lit.items.map((item) => (item.t === "ident" ? item.name : ""));
+        if (names.some((n) => !n)) throw new PineParseError(`Destructuring target on line ${tok.line} must be a list of names.`);
+        return { t: "tuple", names, value: this.parseExpr() };
       }
-      this.expectOp("]");
-      this.expectOp("=");
-      return { t: "tuple", names, value: this.parseExpr() };
+      return { t: "expr", value: lit };
+    }
+
+    // An expression statement that doesn't start with an identifier — e.g. a
+    // function's `(a - b) / c` return line, or `-x`. Parse it as an expression.
+    if (tok.type === "number" || tok.type === "string" || (tok.type === "op" && (tok.text === "(" || tok.text === "-"))) {
+      return { t: "expr", value: this.parseExpr() };
     }
 
     // Anything else at statement level: skip the line, report it.
@@ -116,11 +141,11 @@ class Parser {
   }
 
   /** `var` / typed declarations: `var float x = 0`, `float x = na`, `var x = 0`. */
-  private parseDeclaration(): PineStmt {
+  private parseDeclaration(indent: number): PineStmt {
     const startLine = this.peek().line;
     let declaredVar = false;
-    while (this.peek().type === "ident" && (this.peek().text === "var" || TYPE_KEYWORDS.has(this.peek().text))) {
-      if (this.peek().text === "var") declaredVar = true;
+    while (this.peek().type === "ident" && (this.peek().text === "var" || this.peek().text === "varip" || TYPE_KEYWORDS.has(this.peek().text))) {
+      if (this.peek().text === "var" || this.peek().text === "varip") declaredVar = true;
       // Only consume as a modifier when another ident follows (else it's the name).
       const next = this.tokens[this.pos + 1];
       if (next?.type === "ident") this.pos += 1;
@@ -131,9 +156,11 @@ class Parser {
       this.skipToLineEnd();
       return { t: "unsupported", what: "declaration", line: startLine };
     }
+    // Tuple-typed destructuring like `[a, b] = f()` never reaches here (starts with `[`).
     this.pos += 1;
     this.expectOp("=");
-    return { t: "assign", name: nameTok.text, value: this.parseExpr(), declaredVar };
+    const value = this.peek().type === "ident" && this.peek().text === "switch" ? this.parseSwitch(indent) : this.parseExpr();
+    return { t: "assign", name: nameTok.text, value, declaredVar };
   }
 
   private parseIf(indent: number): PineStmt {
@@ -157,6 +184,110 @@ class Parser {
       }
     }
     return { t: "if", clauses };
+  }
+
+  /** `for i = <from> to <to> [by <step>]` + indented body. `for … in …` is rejected. */
+  private parseFor(indent: number): PineStmt {
+    const line = this.peek().line;
+    this.expectIdent("for");
+    // `for [i, x] in coll` / `for x in coll` — collection iteration isn't representable.
+    if (this.peekOp("[") || !(this.peek().type === "ident" && this.tokens[this.pos + 1]?.type === "op" && this.tokens[this.pos + 1]?.text === "=")) {
+      return this.skipRestAsUnsupported("for…in loop", indent, line);
+    }
+    const varTok = this.expect("ident");
+    this.expectOp("=");
+    const from = this.parseExpr();
+    if (!(this.peek().type === "ident" && this.peek().text === "to")) return this.skipRestAsUnsupported("for loop", indent, line);
+    this.pos += 1;
+    const to = this.parseExpr();
+    let step: PineExpr | undefined;
+    if (this.peek().type === "ident" && this.peek().text === "by") {
+      this.pos += 1;
+      step = this.parseExpr();
+    }
+    return { t: "for", var: varTok.text, from, to, step, body: this.parseBlock(indent) };
+  }
+
+  private parseWhile(indent: number): PineStmt {
+    this.expectIdent("while");
+    const cond = this.parseExpr();
+    return { t: "while", cond, body: this.parseBlock(indent) };
+  }
+
+  /** User function: `name(a, b = 1) => expr` (single line) or `name(a) =>` + block. */
+  private parseFunc(indent: number): PineStmt {
+    const line = this.peek().line;
+    const nameTok = this.expect("ident");
+    this.expectOp("(");
+    const params: { name: string; def?: PineExpr }[] = [];
+    if (!this.peekOp(")")) {
+      while (true) {
+        // Optional type prefix on a param (`float x`): keep only the last ident as the name.
+        let pName = this.expect("ident");
+        while (this.peek().type === "ident") pName = this.expect("ident");
+        let def: PineExpr | undefined;
+        if (this.peekOp("=")) {
+          this.pos += 1;
+          def = this.parseExpr();
+        }
+        params.push({ name: pName.text, def });
+        if (this.peekOp(",")) {
+          this.pos += 1;
+          continue;
+        }
+        break;
+      }
+    }
+    this.expectOp(")");
+    this.expectOp("=>");
+    // Multi-line body if the arrow is the end of the line; else a single return expression.
+    if (this.peek().type === "newline") {
+      const body = this.parseBlock(indent);
+      return { t: "func", def: { name: nameTok.text, params, body } };
+    }
+    const ret = this.parseExpr();
+    return { t: "func", def: { name: nameTok.text, params, body: [], ret } };
+  }
+
+  /**
+   * `switch [subject]` with `match => body` arms (and an optional `=> default`).
+   * Modeled as an expression; convert.ts folds it into cond/logic (value context)
+   * or if/else (statement context). Arm bodies are single expressions (the common
+   * form); a multi-statement arm body is rejected there.
+   */
+  private parseSwitch(indent: number): PineExpr {
+    this.expectIdent("switch");
+    let subject: PineExpr | undefined;
+    if (this.peek().type !== "newline") subject = this.parseExpr();
+    const arms: PineSwitchArm[] = [];
+    while (true) {
+      const armIndent = this.peekNewlineIndent();
+      if (armIndent === undefined || armIndent <= indent) break;
+      this.skipNewlines();
+      // Default arm starts with `=>`.
+      if (this.peekOp("=>")) {
+        this.pos += 1;
+        arms.push({ body: this.parseExpr() });
+        continue;
+      }
+      const match = this.parseExpr();
+      this.expectOp("=>");
+      arms.push({ match, body: this.parseExpr() });
+    }
+    if (!arms.length) throw new PineParseError(`switch on line ${this.peek().line} has no arms.`);
+    return { t: "switch", subject, arms };
+  }
+
+  /** Consume the rest of a malformed header + its body, reporting it as unsupported. */
+  private skipRestAsUnsupported(what: string, indent: number, line: number): PineStmt {
+    this.skipToLineEnd();
+    while (true) {
+      const nextIndent = this.peekNewlineIndent();
+      if (nextIndent === undefined || nextIndent <= indent) break;
+      this.skipNewlines();
+      this.skipToLineEnd();
+    }
+    return { t: "unsupported", what, line };
   }
 
   /** Parse an indented block: statements whose line indent > parent indent. */
@@ -300,8 +431,27 @@ class Parser {
     return expr;
   }
 
+  /** Parse `[e1, e2, …]` into a tuple literal (used for both destructuring targets and returns). */
+  private parseBracketList(): Extract<PineExpr, { t: "tuplelit" }> {
+    this.expectOp("[");
+    const items: PineExpr[] = [];
+    if (!this.peekOp("]")) {
+      while (true) {
+        items.push(this.parseExpr());
+        if (this.peekOp(",")) {
+          this.pos += 1;
+          continue;
+        }
+        break;
+      }
+    }
+    this.expectOp("]");
+    return { t: "tuplelit", items };
+  }
+
   private parsePrimary(): PineExpr {
     const tok = this.peek();
+    if (tok.type === "op" && tok.text === "[") return this.parseBracketList();
     if (tok.type === "number") {
       this.pos += 1;
       return { t: "num", v: Number(tok.text) };
