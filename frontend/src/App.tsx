@@ -360,7 +360,43 @@ export default function App() {
     warmStrategyLab();
   };
 
-  // Add a validated .strategy import as a new editable artifact, deduping its name.
+  // Add one or more converted Pine scripts as new editable artifacts in a single
+  // pass — Pine indicator() → indicator artifact, strategy() → strategy artifact —
+  // deduping names against the library AND within the batch, then selecting the first.
+  const importPineMany = (
+    inputs: { kind: "indicator" | "strategy"; name: string; xml: string; code: string; warnings: string[] }[]
+  ) => {
+    if (!inputs.length) return;
+    const now = Date.now();
+    const firstId = `${inputs[0].kind}:pine-${now}-0`;
+    setStrategyLibrary((current) => {
+      const taken = new Set(current.map((item) => item.name));
+      const dedupe = (name: string) => {
+        if (!taken.has(name)) return name;
+        let n = 2;
+        while (taken.has(`${name} (${n})`)) n += 1;
+        return `${name} (${n})`;
+      };
+      const created: StrategyArtifact[] = inputs.map((input, i) => {
+        const name = dedupe(input.name);
+        taken.add(name);
+        return {
+          id: `${input.kind}:pine-${now}-${i}`,
+          kind: input.kind,
+          name,
+          description: `Imported from Pine Script${input.warnings.length ? ` (${input.warnings.length} fidelity warning${input.warnings.length === 1 ? "" : "s"})` : ""}.`,
+          xml: input.xml,
+          code: input.code,
+          createdAt: now,
+          updatedAt: now
+        };
+      });
+      return [...created, ...current];
+    });
+    setActiveArtifactId(firstId);
+    warmStrategyLab();
+  };
+
   const importStrategy = (input: { name: string; description: string; xml: string }) => {
     const now = Date.now();
     const artifact: StrategyArtifact = {
@@ -508,6 +544,7 @@ export default function App() {
                 onSaveArtifact={saveStrategyArtifact}
                 onUseTemplate={useTemplate}
                 onImportStrategy={importStrategy}
+                onImportPineMany={importPineMany}
                 catalog={catalog}
                 initialSymbol={symbol}
                 initialTimeframe={timeframe}

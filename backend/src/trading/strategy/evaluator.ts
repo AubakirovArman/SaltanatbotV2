@@ -9,6 +9,7 @@ import {
   highest,
   lowest,
   macdLine,
+  priceAt,
   roc,
   rsi,
   sma,
@@ -50,6 +51,8 @@ interface Runtime {
   budgetHit: boolean;
   /** Position/PnL runtime context supplied per bar by the caller (ctx reads). */
   ctx: Record<string, number>;
+  /** Snapshot of vars at the START of the bar — reads for `varprev` (x[1] on a var). */
+  varsPrev: Map<string, number>;
 }
 
 /**
@@ -70,11 +73,13 @@ export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, va
     params: new Map(ir.inputs.map((input) => [input.name, input.value])),
     vars: vars ?? new Map(),
     seriesCache: new Map(),
+    varsPrev: new Map(),
     ops: 0,
     budgetHit: false,
     ctx: ctx ?? {}
   };
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };
+  rt.varsPrev = new Map(rt.vars);
   execStatements(ir.body, index, rt, intents);
   if (rt.budgetHit) intents.budgetExceeded = true;
   return intents;
@@ -93,6 +98,7 @@ export function runInit(ir: StrategyIR, candles: Candle[], vars: Map<string, num
     params: new Map(ir.inputs.map((input) => [input.name, input.value])),
     vars,
     seriesCache: new Map(),
+    varsPrev: new Map(),
     ops: 0,
     budgetHit: false,
     ctx: {}
@@ -194,6 +200,27 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) 
       }
       break;
     }
+    case "for": {
+      const fromVal = evalNum(stmt.from, i, rt);
+      const toVal = evalNum(stmt.to, i, rt);
+      const rawStep = evalNum(stmt.step, i, rt);
+      // Pine infers direction from from/to; `by` is a magnitude (auto-subtracted when to<from).
+      const mag = Number.isNaN(rawStep) || rawStep === 0 ? 1 : Math.abs(rawStep);
+      const asc = toVal >= fromVal;
+      const step = asc ? mag : -mag;
+      let iter = 0;
+      for (let v = fromVal; asc ? v <= toVal : v >= toVal; v += step) {
+        if (iter >= stmt.cap || rt.ops >= MAX_OPS_PER_BAR) {
+          rt.budgetHit = true;
+          break;
+        }
+        rt.ops += 1;
+        rt.vars.set(stmt.var, v);
+        execStatements(stmt.body, i, rt, intents);
+        iter += 1;
+      }
+      break;
+    }
   }
 }
 
@@ -215,6 +242,25 @@ function evalNum(expr: NumExpr, i: number, rt: Runtime): number {
       return rt.vars.get(expr.name) ?? 0;
     case "ctx":
       return rt.ctx[expr.key] ?? 0;
+    case "varprev":
+      return rt.varsPrev.get(expr.name) ?? NaN;
+    case "histn": {
+      const off = Math.round(evalNum(expr.offset, i, rt));
+      const j = i - off;
+      if (!Number.isFinite(off) || j < 0 || j >= rt.candles.length) return NaN;
+      return priceAt(rt.candles[j], expr.field);
+    }
+    case "cond":
+      return evalBool(expr.cond, i, rt) ? evalNum(expr.a, i, rt) : evalNum(expr.b, i, rt);
+    case "nz": {
+      const x = evalNum(expr.a, i, rt);
+      return Number.isFinite(x) ? x : evalNum(expr.b, i, rt);
+    }
+    case "minmax": {
+      const a = evalNum(expr.a, i, rt);
+      const b = evalNum(expr.b, i, rt);
+      return expr.op === "min" ? Math.min(a, b) : Math.max(a, b);
+    }
     case "arith": {
       const a = evalNum(expr.a, i, rt);
       const b = evalNum(expr.b, i, rt);
@@ -285,6 +331,8 @@ function evalBool(expr: BoolExpr, i: number, rt: Runtime): boolean {
       return new Date(rt.candles[i].time).getUTCDay() === expr.day;
     case "varb":
       return (rt.vars.get(expr.name) ?? 0) !== 0;
+    case "isna":
+      return !Number.isFinite(evalNum(expr.a, i, rt));
   }
 }
 
@@ -308,6 +356,42 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
       return new Array<number>(n).fill(NaN);
     case "ctx":
       return new Array<number>(n).fill(rt.ctx[expr.key] ?? 0);
+    case "varprev":
+      return new Array<number>(n).fill(NaN);
+    case "histn":
+      // Dynamic history offsets can't vectorize — histn is scalar-only (loop bodies).
+      return new Array<number>(n).fill(NaN);
+    case "cond": {
+      const ca = getSeries(expr.a, rt);
+      const cb = getSeries(expr.b, rt);
+      const out = new Array<number>(n);
+      for (let idx = 0; idx < n; idx += 1) out[idx] = evalBool(expr.cond, idx, rt) ? ca[idx] : cb[idx];
+      return out;
+    }
+    case "nz": {
+      const na = getSeries(expr.a, rt);
+      const nb = getSeries(expr.b, rt);
+      return na.map((x, idx) => (Number.isFinite(x) ? x : nb[idx]));
+    }
+    case "cum": {
+      const cs = getSeries(expr.src, rt);
+      const out = new Array<number>(n);
+      let acc = 0;
+      for (let idx = 0; idx < n; idx += 1) {
+        if (Number.isFinite(cs[idx])) acc += cs[idx];
+        out[idx] = acc;
+      }
+      return out;
+    }
+    case "barssince": {
+      const out = new Array<number>(n).fill(NaN);
+      let last = -1;
+      for (let idx = 0; idx < n; idx += 1) {
+        if (evalBool(expr.cond, idx, rt)) last = idx;
+        if (last >= 0) out[idx] = idx - last;
+      }
+      return out;
+    }
     case "price": {
       const base = sourceSeries(rt.candles, expr.field);
       if (!expr.offset) return base;
@@ -318,6 +402,7 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
     case "ma": {
       const src = getSeries(expr.source, rt);
       const period = Math.max(1, Math.round(constNum(expr.period, rt)));
+      if (expr.kind === "rma") return wilderRma(src, period);
       if (expr.kind === "ema") return ema(src, period);
       if (expr.kind === "wma") return wma(src, period);
       if (expr.kind === "vwma") return vwma(src, sourceSeries(rt.candles, "volume"), period);
@@ -430,14 +515,43 @@ function applyArith(op: "+" | "-" | "*" | "/" | "%" | "^", a: number, b: number)
   }
 }
 
-function applyUnary(op: "neg" | "abs" | "round" | "floor" | "ceil", a: number): number {
+function applyUnary(op: "neg" | "abs" | "round" | "floor" | "ceil" | "sign" | "log" | "log10" | "exp" | "sqrt", a: number): number {
   switch (op) {
     case "neg": return -a;
     case "abs": return Math.abs(a);
     case "round": return Math.round(a);
     case "floor": return Math.floor(a);
     case "ceil": return Math.ceil(a);
+    case "sign": return Math.sign(a);
+    case "log": return Math.log(a);
+    case "log10": return Math.log10(a);
+    case "exp": return Math.exp(a);
+    case "sqrt": return Math.sqrt(a);
   }
+}
+
+/** Wilder's RMA (used by ta.rma / RSI / ATR): alpha = 1/period, seeded by SMA. */
+function wilderRma(src: number[], period: number): number[] {
+  const out = new Array<number>(src.length).fill(NaN);
+  let seed = 0;
+  let count = 0;
+  let prev = NaN;
+  for (let i = 0; i < src.length; i += 1) {
+    const v = src[i];
+    if (!Number.isFinite(v)) continue;
+    if (Number.isNaN(prev)) {
+      seed += v;
+      count += 1;
+      if (count === period) {
+        prev = seed / period;
+        out[i] = prev;
+      }
+    } else {
+      prev = (prev * (period - 1) + v) / period;
+      out[i] = prev;
+    }
+  }
+  return out;
 }
 
 function constNum(expr: NumExpr, rt: Runtime): number {

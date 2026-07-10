@@ -52,12 +52,23 @@ export function registerStrategyBlocks() {
       colour: "#4285b4",
       tooltip: "Read a price field from a past bar (offset)."
     },
+    {
+      type: "market_hist_dyn",
+      message0: "market %1 %2 bars ago (dynamic)",
+      args0: [
+        { type: "field_dropdown", name: "FIELD", options: PRICE_FIELDS },
+        { type: "input_value", name: "OFFSET", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#4285b4",
+      tooltip: "Read a price field N bars back where N can be a variable (e.g. a loop counter)."
+    },
     // ---- Indicators ----
     {
       type: "indicator_ma",
       message0: "%1 period %2 source %3",
       args0: [
-        { type: "field_dropdown", name: "KIND", options: [["SMA", "sma"], ["EMA", "ema"], ["WMA", "wma"], ["VWMA", "vwma"]] },
+        { type: "field_dropdown", name: "KIND", options: [["SMA", "sma"], ["EMA", "ema"], ["WMA", "wma"], ["VWMA", "vwma"], ["RMA", "rma"]] },
         { type: "input_value", name: "PERIOD", check: "Number" },
         { type: "input_value", name: "SOURCE", check: "Number" }
       ],
@@ -244,6 +255,28 @@ export function registerStrategyBlocks() {
       output: "Number",
       colour: "#6d72c9",
       tooltip: "Take the larger or smaller of two values."
+    },
+    {
+      type: "math_single_op",
+      message0: "%1 %2",
+      args0: [
+        { type: "field_dropdown", name: "OP", options: [["abs", "abs"], ["negate", "neg"], ["sign", "sign"], ["sqrt", "sqrt"], ["ln", "log"], ["log10", "log10"], ["exp", "exp"]] },
+        { type: "input_value", name: "NUM", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#6d72c9",
+      tooltip: "Unary math: abs, negate, sign, sqrt, natural log, log10, exp."
+    },
+    {
+      type: "math_modulo",
+      message0: "remainder of %1 ÷ %2",
+      args0: [
+        { type: "input_value", name: "A", check: "Number" },
+        { type: "input_value", name: "B", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#6d72c9",
+      tooltip: "Remainder after division (modulo)."
     },
     // ---- Position & PnL ----
     {
@@ -522,6 +555,91 @@ export function registerStrategyBlocks() {
       nextStatement: null,
       colour: "#bd58a4",
       tooltip: "Run inner blocks only when the condition is true."
+    },
+    // ---- Series (extra) ----
+    {
+      type: "series_cum",
+      message0: "cumulative sum of %1",
+      args0: [{ type: "input_value", name: "SOURCE", check: "Number" }],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Running total of a series from the first bar (ta.cum)."
+    },
+    {
+      type: "series_barssince",
+      message0: "bars since %1",
+      args0: [{ type: "input_value", name: "COND", check: "Boolean" }],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Number of bars since the condition was last true (ta.barssince)."
+    },
+    // ---- Math (extra) ----
+    {
+      type: "math_cond",
+      message0: "if %1 then %2 else %3",
+      args0: [
+        { type: "input_value", name: "COND", check: "Boolean" },
+        { type: "input_value", name: "A", check: "Number" },
+        { type: "input_value", name: "B", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#6d72c9",
+      tooltip: "Numeric ternary: pick one of two values based on a condition."
+    },
+    {
+      type: "math_nz",
+      message0: "nz %1 else %2",
+      args0: [
+        { type: "input_value", name: "A", check: "Number" },
+        { type: "input_value", name: "B", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#6d72c9",
+      tooltip: "Replace NaN/undefined (na) with a fallback value (nz)."
+    },
+    // ---- Logic (extra) ----
+    {
+      // Explicit definition (Blockly's built-in uses a %{BKY_…} message that needs
+      // the message locale loaded; ours is self-contained so the round-trip works headless).
+      type: "logic_negate",
+      message0: "not %1",
+      args0: [{ type: "input_value", name: "BOOL", check: "Boolean" }],
+      output: "Boolean",
+      colour: "#b28f36",
+      tooltip: "True when the inner condition is false."
+    },
+    {
+      type: "logic_isna",
+      message0: "%1 is na",
+      args0: [{ type: "input_value", name: "A", check: "Number" }],
+      output: "Boolean",
+      colour: "#b28f36",
+      tooltip: "True when a value is NaN / undefined (na)."
+    },
+    // ---- State (extra) ----
+    {
+      type: "var_prev",
+      message0: "var %1 (previous bar)",
+      args0: [{ type: "field_input", name: "NAME", text: "counter" }],
+      output: "Number",
+      colour: "#9469c9",
+      tooltip: "Read a stored variable's value from the previous bar (x[1])."
+    },
+    // ---- Flow (extra) ----
+    {
+      type: "for_range",
+      message0: "for %1 from %2 to %3 by %4 do %5",
+      args0: [
+        { type: "field_input", name: "NAME", text: "i" },
+        { type: "input_value", name: "FROM", check: "Number" },
+        { type: "input_value", name: "TO", check: "Number" },
+        { type: "input_value", name: "BY", check: "Number" },
+        { type: "input_statement", name: "DO" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: "#bd58a4",
+      tooltip: "Counted loop: run inner blocks for each value of the counter (bounded)."
     }
   ]);
   blocksRegistered = true;
@@ -536,7 +654,8 @@ export const strategyToolbox = {
       colour: "#4285b4",
       contents: [
         { kind: "block", type: "market_price" },
-        { kind: "block", type: "market_price_offset" }
+        { kind: "block", type: "market_price_offset" },
+        { kind: "block", type: "market_hist_dyn" }
       ]
     },
     {
@@ -558,6 +677,8 @@ export const strategyToolbox = {
         { kind: "block", type: "indicator_roc" },
         { kind: "block", type: "series_agg" },
         { kind: "block", type: "series_shift" },
+        { kind: "block", type: "series_cum" },
+        { kind: "block", type: "series_barssince" },
         { kind: "block", type: "plot_series" }
       ]
     },
@@ -570,7 +691,11 @@ export const strategyToolbox = {
         { kind: "block", type: "math_number" },
         { kind: "block", type: "math_arithmetic" },
         { kind: "block", type: "math_round" },
-        { kind: "block", type: "math_minmax" }
+        { kind: "block", type: "math_minmax" },
+        { kind: "block", type: "math_single_op" },
+        { kind: "block", type: "math_modulo" },
+        { kind: "block", type: "math_cond" },
+        { kind: "block", type: "math_nz" }
       ]
     },
     {
@@ -590,6 +715,7 @@ export const strategyToolbox = {
         { kind: "block", type: "cross_event" },
         { kind: "block", type: "series_trend" },
         { kind: "block", type: "value_between" },
+        { kind: "block", type: "logic_isna" },
         { kind: "block", type: "logic_compare" },
         { kind: "block", type: "logic_operation" },
         { kind: "block", type: "logic_negate" },
@@ -623,7 +749,8 @@ export const strategyToolbox = {
         { kind: "block", type: "flow_if" },
         { kind: "block", type: "controls_if" },
         { kind: "block", type: "controls_repeat_ext" },
-        { kind: "block", type: "controls_whileUntil" }
+        { kind: "block", type: "controls_whileUntil" },
+        { kind: "block", type: "for_range" }
       ]
     },
     {
@@ -653,6 +780,7 @@ export const strategyToolbox = {
         { kind: "block", type: "var_set" },
         { kind: "block", type: "var_change" },
         { kind: "block", type: "var_get" },
+        { kind: "block", type: "var_prev" },
         { kind: "block", type: "varb_set" },
         { kind: "block", type: "varb_get" },
         { kind: "block", type: "alert_message" }

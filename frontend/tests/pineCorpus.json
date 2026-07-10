@@ -1,0 +1,193 @@
+{
+  "scripts": [
+    {
+      "title": "RSI Reversal Strategy",
+      "kind": "strategy",
+      "source": "//@version=5\nstrategy(\"RSI Reversal Strategy\", overlay=true)\nlen = input.int(14, \"RSI Length\")\noversold = input.int(30, \"Oversold Level\")\noverbought = input.int(70, \"Overbought Level\")\nr = ta.rsi(close, len)\nlongSignal = ta.crossover(r, oversold)\nshortSignal = ta.crossunder(r, overbought)\nif longSignal\n    strategy.entry(\"Long\", strategy.long)\nif shortSignal\n    strategy.entry(\"Short\", strategy.short)\nif ta.crossunder(r, 50)\n    strategy.close(\"Long\")\nplot(r, \"RSI\", color=color.purple)",
+      "mustMap": [
+        "inputs contains len=14, oversold=30, overbought=70",
+        "entry direction long with when = cross{dir:above, a: rsi{period:input len, source:price close}, b: input oversold (or num 30)}",
+        "entry direction short with when = cross{dir:below, a: rsi{...}, b: input overbought}",
+        "exit{when: cross{dir:below, a: rsi{period:len}, b: num 50}} (strategy.close maps to exit)",
+        "plot of rsi with label RSI, pane sub (overlay=true script but rsi is oscillator; pane price is acceptable if converter keys off overlay)",
+        "immutable bindings r/longSignal/shortSignal inlined at use sites"
+      ],
+      "mayWarn": []
+    },
+    {
+      "title": "EMA Cross SL TP Strategy",
+      "kind": "strategy",
+      "source": "//@version=5\nstrategy(\"EMA Cross SL/TP\", overlay=true)\nfastLen = input.int(9, \"Fast EMA\")\nslowLen = input.int(21, \"Slow EMA\")\nslPerc = input.float(2.0, \"Stop Loss %\")\ntpPerc = input.float(4.0, \"Take Profit %\")\nfastMa = ta.ema(close, fastLen)\nslowMa = ta.ema(close, slowLen)\nlongCond = ta.crossover(fastMa, slowMa)\nif longCond\n    strategy.entry(\"L\", strategy.long)\nstrategy.exit(\"XL\", \"L\", stop=close * (1 - slPerc / 100), limit=close * (1 + tpPerc / 100))\nplot(fastMa, \"Fast EMA\", color=color.orange)\nplot(slowMa, \"Slow EMA\", color=color.blue)",
+      "mustMap": [
+        "inputs contains fastLen=9, slowLen=21, slPerc=2.0, tpPerc=4.0",
+        "entry direction long, when = cross{dir:above, a: ma{kind:ema, period:fastLen, source:close}, b: ma{kind:ema, period:slowLen, source:close}}",
+        "stop stmt: mode percent value slPerc (recognized pattern close*(1-p/100)) OR mode price with arith expr arith{*, price close, arith{-, num 1, arith{/, input slPerc, num 100}}}",
+        "target stmt: mode percent value tpPerc OR mode price with the mirrored arith expr",
+        "two plot stmts (Fast EMA, Slow EMA) pane price"
+      ],
+      "mayWarn": [
+        "strategy.exit id/from_entry linkage ignored (single-position model)"
+      ]
+    },
+    {
+      "title": "MACD Panel Indicator",
+      "kind": "indicator",
+      "source": "//@version=5\nindicator(\"MACD Panel\", overlay=false)\nfastLen = input.int(12, \"Fast Length\")\nslowLen = input.int(26, \"Slow Length\")\nsigLen = input.int(9, \"Signal Length\")\n[macdLine, signalLine, histLine] = ta.macd(close, fastLen, slowLen, sigLen)\nplot(macdLine, \"MACD\", color=color.blue)\nplot(signalLine, \"Signal\", color=color.orange)\nplot(histLine, \"Histogram\", color=color.gray, style=plot.style_histogram)",
+      "mustMap": [
+        "inputs contains fastLen=12, slowLen=26, sigLen=9",
+        "tuple destructuring: macdLine binds to macd{line:macd, fast:fastLen, slow:slowLen, signal:sigLen, source:close}",
+        "signalLine binds to macd{line:signal, ...}; histLine binds to macd{line:histogram, ...}",
+        "three plot stmts, all pane sub (overlay=false)",
+        "plot labels MACD, Signal, Histogram with mapped colors"
+      ],
+      "mayWarn": [
+        "plot style_histogram rendering style dropped (only value/label/color/pane kept)"
+      ]
+    },
+    {
+      "title": "Bollinger Bands Overlay",
+      "kind": "indicator",
+      "source": "//@version=5\nindicator(\"BB Bands\", overlay=true)\nlength = input.int(20, \"BB Length\")\nmult = input.float(2.0, \"StdDev Mult\")\nsrc = input.source(close, \"Source\")\n[middle, upper, lower] = ta.bb(src, length, mult)\npMid = plot(middle, \"Basis\", color=color.orange)\npUp = plot(upper, \"Upper\", color=color.blue)\npLo = plot(lower, \"Lower\", color=color.blue)\nfill(pUp, pLo, color=color.new(color.blue, 90))",
+      "mustMap": [
+        "inputs contains length=20, mult=2.0",
+        "tuple destructuring of ta.bb: middle -> bollinger{band:middle, period:length, dev:mult, source:close}, upper -> bollinger{band:upper,...}, lower -> bollinger{band:lower,...}",
+        "three plot stmts pane price (overlay=true)",
+        "plot ids (pMid/pUp/pLo) as assignment targets do not break conversion"
+      ],
+      "mayWarn": [
+        "fill() unsupported \u2014 warn and skip",
+        "color.new(color.blue, 90) transparency reduced to base color",
+        "input.source treated as fixed close source (source-type input not representable as numeric input)"
+      ]
+    },
+    {
+      "title": "Pullback Counter Strategy",
+      "kind": "strategy",
+      "source": "//@version=5\nstrategy(\"Pullback Counter\", overlay=true)\nmaLen = input.int(50, \"MA Length\")\nneeded = input.int(3, \"Down Bars Needed\")\nvar int downCount = 0\nma = ta.sma(close, maLen)\nif close < close[1]\n    downCount += 1\nelse\n    downCount := 0\nenterLong = downCount >= needed and close > ma and strategy.position_size == 0\nif enterLong\n    strategy.entry(\"Long\", strategy.long)\nif close < ma\n    strategy.close(\"Long\")",
+      "mustMap": [
+        "init contains setvar downCount=0 (var int declaration)",
+        "if{cond: compare{<, price close, price{close, offset:1}}, then:[setvar downCount = arith{+, var downCount, num 1}], else:[setvar downCount = num 0]} \u2014 += desugars to setvar with arith +",
+        "entry when includes compare{>=, var downCount, input needed}",
+        "strategy.position_size == 0 maps to compare{==, ctx{position_dir}, num 0} (flat-position gate)",
+        "entry when also includes compare{>, price close, ma{kind:sma, period:maLen, source:close}} joined by logic and",
+        "exit{when: compare{<, price close, ma sma}}"
+      ],
+      "mayWarn": [
+        "position_size magnitude approximated by position_dir ctx (sign-only)"
+      ]
+    },
+    {
+      "title": "RSI Momentum History Indicator",
+      "kind": "indicator",
+      "source": "//@version=5\nindicator(\"RSI Momentum\", overlay=false)\nlen = input.int(14, \"RSI Length\")\nr = ta.rsi(close, len)\nmom = r - r[1]\npriceChg = close - close[1]\nplot(mom, \"RSI Change\", color=color.purple)\nplot(priceChg, \"Price Change\", color=color.gray)\nplot(0, \"Zero\", color=color.silver)",
+      "mustMap": [
+        "inputs contains len=14",
+        "r[1] on a bound name maps to shift{src: rsi{period:len, source:close}, offset:1}",
+        "mom inlined as arith{-, rsi{...}, shift{rsi{...},1}} at plot site",
+        "close[1] maps to price{field:close, offset:1} (or shift over price close)",
+        "priceChg plot value = arith{-, price close, price{close, offset:1}}",
+        "three plots pane sub, including constant plot num{0}"
+      ],
+      "mayWarn": []
+    },
+    {
+      "title": "EMA Cross Alerts Indicator",
+      "kind": "indicator",
+      "source": "//@version=5\nindicator(\"EMA Cross Alerts\", overlay=true)\nfastLen = input.int(8, \"Fast EMA\")\nslowLen = input.int(34, \"Slow EMA\")\nfastE = ta.ema(close, fastLen)\nslowE = ta.ema(close, slowLen)\nbull = ta.crossover(fastE, slowE)\nbear = ta.crossunder(fastE, slowE)\nplot(fastE, \"Fast EMA\", color=color.green)\nplot(slowE, \"Slow EMA\", color=color.red)\nplotshape(bull, title=\"Buy\", style=shape.triangleup, location=location.belowbar, color=color.green, text=\"BUY\")\nplotshape(bear, title=\"Sell\", style=shape.triangledown, location=location.abovebar, color=color.red, text=\"SELL\")\nalertcondition(bull, title=\"Bull Cross\", message=\"Fast EMA crossed above slow EMA\")\nalertcondition(bear, title=\"Bear Cross\", message=\"Fast EMA crossed below slow EMA\")",
+      "mustMap": [
+        "inputs contains fastLen=8, slowLen=34",
+        "alert{message:'Fast EMA crossed above slow EMA', when: cross{dir:above, a: ma ema fastLen, b: ma ema slowLen}}",
+        "alert{message:'Fast EMA crossed below slow EMA', when: cross{dir:below,...}}",
+        "plotshape(bull, triangleup, belowbar) maps to marker{dir:up/long, label:'Buy' (or 'BUY'), when: cross above}",
+        "plotshape(bear, triangledown, abovebar) maps to marker{dir:down/short, when: cross below}",
+        "two plot stmts pane price"
+      ],
+      "mayWarn": [
+        "plotshape style/location/text cosmetic details collapsed into marker dir+label"
+      ]
+    },
+    {
+      "title": "Donchian Breakout Strategy",
+      "kind": "strategy",
+      "source": "//@version=5\nstrategy(\"Donchian Breakout\", overlay=true)\nchanLen = input.int(20, \"Channel Length\")\nupperBand = ta.highest(chanLen)[1]\nlowerBand = ta.lowest(chanLen)[1]\nif close > upperBand\n    strategy.entry(\"Long\", strategy.long)\nif close < lowerBand\n    strategy.entry(\"Short\", strategy.short)\nplot(upperBand, \"Upper\", color=color.teal)\nplot(lowerBand, \"Lower\", color=color.teal)",
+      "mustMap": [
+        "inputs contains chanLen=20",
+        "ta.highest(chanLen) with omitted source maps to extreme{kind:highest, period:chanLen, source:price high} (default source is high)",
+        "ta.lowest(chanLen) maps to extreme{kind:lowest, period:chanLen, source:price low}",
+        "[1] on the bound band maps to shift{src: extreme{...}, offset:1}",
+        "entry long when compare{>, price close, shift{extreme highest,1}}",
+        "entry short when compare{<, price close, shift{extreme lowest,1}}",
+        "two plots pane price of the shifted extremes"
+      ],
+      "mayWarn": []
+    },
+    {
+      "title": "Range Expansion Math Strategy",
+      "kind": "strategy",
+      "source": "//@version=5\nstrategy(\"Range Expansion\", overlay=true)\natrLen = input.int(14, \"ATR Length\")\nmult = input.float(1.5, \"Range Multiplier\")\natrVal = ta.atr(atrLen)\nbarRange = math.abs(close - open)\nthreshold = math.max(atrVal * mult, math.pow(atrVal, 1.1))\nexcess = barRange % atrVal\nif barRange > threshold and close > open\n    strategy.entry(\"Long\", strategy.long)\nif barRange > threshold and close < open\n    strategy.entry(\"Short\", strategy.short)\nplot(excess, \"Range mod ATR\", color=color.gray)",
+      "mustMap": [
+        "inputs contains atrLen=14, mult=1.5",
+        "math.abs maps to unary{op:abs, a: arith{-, price close, price open}}",
+        "math.max maps to minmax{op:max, a: arith{*, atr{period:atrLen}, input mult}, b: pow expr}",
+        "math.pow(atrVal, 1.1) maps to arith{op:^, a: atr{atrLen}, b: num 1.1}",
+        "% maps to arith{op:%, a: unary abs expr, b: atr}",
+        "entry long when logic{and, compare{>, barRange expr, threshold expr}, compare{>, close, open}}; entry short mirrored",
+        "plot of the % expression"
+      ],
+      "mayWarn": []
+    },
+    {
+      "title": "Kitchen Sink Mixed Support",
+      "kind": "indicator",
+      "source": "//@version=5\nindicator(\"Mixed Kitchen Sink\", overlay=true)\nlen = input.int(20, \"MA Length\")\nmaVal = ta.sma(close, len)\nhtfClose = request.security(syminfo.tickerid, \"D\", close)\nvw = ta.vwap\nbias = close > maVal ? 1 : -1\ntotal = 0.0\nfor i = 0 to 4\n    total := total + close[i]\navg5 = total / 5\nplot(maVal, \"SMA\", color=color.blue)\nplot(htfClose, \"Daily Close\", color=color.orange)\nplot(vw, \"VWAP\", color=color.purple)\nplot(bias, \"Bias\")\nplot(avg5, \"Manual 5-bar Avg\")",
+      "mustMap": [
+        "inputs contains len=20",
+        "plot of ma{kind:sma, period:len, source:close} label SMA pane price converts successfully",
+        "conversion completes (does not abort) despite unsupported constructs",
+        "unsupported plots either skipped with warning or given placeholder values, but the SMA plot is preserved"
+      ],
+      "mayWarn": [
+        "request.security unsupported \u2014 higher-timeframe data not representable",
+        "ta.vwap unsupported (no vwap node in IR)",
+        "numeric ternary (close > maVal ? 1 : -1) unsupported unless converter desugars to if/setvar",
+        "for loop with close[i] dynamic index unsupported (repeat{count} cannot express varying offset) \u2014 may drop or approximate as agg{fn:sum, period:5}/5",
+        "syminfo.tickerid unsupported symbol reference"
+      ]
+    },
+    {
+      "title": "Old School RSI (v4)",
+      "kind": "indicator",
+      "source": "//@version=4\nstudy(\"Old School RSI\", overlay=false)\nlen = input(14, \"len\")\nsrc = close\nr = rsi(src, len)\nbuy = cross(r, 30)\nsell = cross(r, 70)\nhline(70, \"Overbought\")\nhline(30, \"Oversold\")\nplot(r, \"RSI\", color=color.purple)\nplotshape(buy, title=\"RSI 30 cross\", style=shape.circle, location=location.bottom, color=color.green)",
+      "mustMap": [
+        "v4 handled gracefully: no crash, StrategyIR produced or clean version diagnostic",
+        "if converted: inputs contains len=14 (legacy input(defval, title) form)",
+        "study() treated as indicator declaration",
+        "rsi(src, len) without ta. namespace maps to rsi{period:len, source:close}",
+        "cross(r, 30) maps to cross{dir:any, a: rsi, b: num 30}",
+        "plot of rsi pane sub; plotshape(buy) maps to marker with when = cross any"
+      ],
+      "mayWarn": [
+        "//@version=4 legacy version \u2014 best-effort conversion",
+        "hline() unsupported \u2014 warn and skip (or approximate as constant plot)",
+        "legacy unnamespaced builtins (rsi, cross) resolved via v4 compatibility aliases"
+      ]
+    },
+    {
+      "title": "Stoch WPR Combo Strategy",
+      "kind": "strategy",
+      "source": "//@version=5\nstrategy(\"Stoch WPR Combo\", overlay=false)\nkLen = input.int(14, \"Stoch Length\")\nsmoothK = input.int(3, \"Smooth K\")\nwprLen = input.int(14, \"WPR Length\")\nk = ta.sma(ta.stoch(close, high, low, kLen), smoothK)\nd = ta.sma(k, 3)\nw = ta.wpr(wprLen)\nlongCond = ta.crossover(k, d) and w < -80\nshortCond = ta.crossunder(k, d) and w > -20\nif longCond\n    strategy.entry(\"Long\", strategy.long)\nif shortCond\n    strategy.entry(\"Short\", strategy.short)\nplot(k, \"%K\", color=color.blue)\nplot(d, \"%D\", color=color.orange)",
+      "mustMap": [
+        "inputs contains kLen=14, smoothK=3, wprLen=14",
+        "k recognized as stoch{line:k, period:kLen, smooth:smoothK} (sma-over-ta.stoch pattern) OR as ma{sma, period:smoothK} wrapping a raw stoch \u2014 either is acceptable but the stoch semantics must survive",
+        "d maps to stoch{line:d,...} or ma{sma, period:3, source:k expr}",
+        "ta.wpr(wprLen) maps to wpr{period:wprLen}",
+        "entry long when logic{and, cross{dir:above, a:k, b:d}, compare{<, wpr, num -80}} with -80 as num or unary{neg, num 80}",
+        "entry short when logic{and, cross{dir:below, a:k, b:d}, compare{>, wpr, num -20}}",
+        "two plots (%K, %D) pane sub (overlay=false)"
+      ],
+      "mayWarn": [
+        "ta.stoch(close, high, low, kLen) explicit source args collapsed to canonical stoch node"
+      ]
+    }
+  ]
+}
