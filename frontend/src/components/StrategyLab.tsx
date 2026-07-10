@@ -77,8 +77,9 @@ interface StrategyLabProps {
   onUseTemplate: (template: StrategyTemplate) => void;
   /** Import a validated `.strategy` file as a new editable artifact and select it. */
   onImportStrategy: (input: { name: string; description: string; xml: string }) => void;
-  /** Import a converted Pine Script as a new editable artifact and select it. */
-  onImportPine: (input: PineImport) => void;
+  /** Import one or more converted Pine Scripts (paste + uploaded files) as new
+   *  editable artifacts, selecting the first. */
+  onImportPineMany: (inputs: PineImport[]) => void;
   catalog?: CatalogResponse;
   initialSymbol: string;
   initialTimeframe: Timeframe;
@@ -175,7 +176,7 @@ function comboCount(state: OptSpecState): number {
   return total;
 }
 
-export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onCreateArtifact, onSaveArtifact, onUseTemplate, onImportStrategy, onImportPine, catalog, initialSymbol, initialTimeframe, theme = "dark", onApplyResult, onShowOnChart }: StrategyLabProps) {
+export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onCreateArtifact, onSaveArtifact, onUseTemplate, onImportStrategy, onImportPineMany, catalog, initialSymbol, initialTimeframe, theme = "dark", onApplyResult, onShowOnChart }: StrategyLabProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const workspaceRef = useRef<Blockly.WorkspaceSvg | null>(null);
   const previewRef = useRef<() => void>(() => undefined);
@@ -473,7 +474,7 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
   return (
     <section className="strategy-lab">
       <div className="strategy-grid">
-        <StrategyLibrary artifacts={artifacts} activeId={activeArtifact?.id} onSelect={onSelectArtifact} onCreate={onCreateArtifact} onUseTemplate={onUseTemplate} onImportStrategy={onImportStrategy} onImportPine={onImportPine} />
+        <StrategyLibrary artifacts={artifacts} activeId={activeArtifact?.id} onSelect={onSelectArtifact} onCreate={onCreateArtifact} onUseTemplate={onUseTemplate} onImportStrategy={onImportStrategy} onImportPineMany={onImportPineMany} />
         <div className="blockly-shell">
           <div className="blockly-host" ref={containerRef} />
           {initError && (
@@ -898,7 +899,7 @@ function StrategyLibrary({
   onCreate,
   onUseTemplate,
   onImportStrategy,
-  onImportPine
+  onImportPineMany
 }: {
   artifacts: StrategyArtifact[];
   activeId?: string;
@@ -906,7 +907,7 @@ function StrategyLibrary({
   onCreate: (kind: StrategyArtifactKind) => void;
   onUseTemplate: (template: StrategyTemplate) => void;
   onImportStrategy: (input: { name: string; description: string; xml: string }) => void;
-  onImportPine: (input: PineImport) => void;
+  onImportPineMany: (inputs: PineImport[]) => void;
 }) {
   const indicators = artifacts.filter((artifact) => artifact.kind === "indicator");
   const strategies = artifacts.filter((artifact) => artifact.kind === "strategy");
@@ -969,9 +970,9 @@ function StrategyLibrary({
       {pineOpen && (
         <PineImportDialog
           onClose={() => setPineOpen(false)}
-          onImport={(result) => {
+          onImportMany={(results) => {
             setPineOpen(false);
-            onImportPine(result);
+            onImportPineMany(results);
           }}
         />
       )}

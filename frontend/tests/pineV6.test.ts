@@ -427,4 +427,21 @@ describe("Pine v6 corpus: robustness + breadth", () => {
       expect(result.ok, `"${script.title}" should have been rejected`).toBe(false);
     }
   });
+
+  // Mirrors what the import dialog does for a mixed paste + multi-file batch: convert
+  // each source independently → indicator()/strategy() route to the right artifact
+  // kind, names come from the script, and invalid scripts fail without sinking the batch.
+  it("batch import: mixed indicator + strategy + invalid convert independently", () => {
+    const sources = [
+      '//@version=6\nindicator("Fast RSI")\nplot(ta.rsi(close, 7), "rsi")',
+      '//@version=6\nstrategy("Cross Bot")\nif ta.crossover(close, ta.sma(close, 20))\n    strategy.entry("L", strategy.long)',
+      '//@version=6\nindicator("HTF")\nplot(request.security(syminfo.tickerid, "D", close))'
+    ];
+    const results = sources.map((s) => importPineScript(s));
+    const ok = results.filter((r): r is Extract<typeof r, { ok: true }> => r.ok);
+    expect(ok).toHaveLength(2);
+    expect(ok.map((r) => `${r.kind}:${r.name}`)).toEqual(["indicator:Fast RSI", "strategy:Cross Bot"]);
+    const failed = results.find((r) => !r.ok);
+    expect(failed && !failed.ok && failed.error).toMatch(/request\.security|external|timeframe/i);
+  });
 });
