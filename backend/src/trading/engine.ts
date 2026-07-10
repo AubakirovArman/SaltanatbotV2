@@ -95,11 +95,34 @@ interface RunningBot {
 
 export class TradingEngine {
   private running = new Map<string, RunningBot>();
+  /** Bot ids whose per-bar alert/marker notifications are muted (persisted). */
+  private muted: Set<string>;
 
   constructor(
     private readonly provider: ProviderRouter,
     private readonly broadcast: (event: TradeEvent) => void
-  ) {}
+  ) {
+    this.muted = new Set(getSetting<string[]>("mutedBots") ?? []);
+  }
+
+  /** Mute/unmute a bot's alert & marker notifications (persisted). */
+  setMuted(id: string, muted: boolean): void {
+    if (muted) this.muted.add(id);
+    else this.muted.delete(id);
+    setSetting("mutedBots", [...this.muted]);
+  }
+
+  isMuted(id: string): boolean {
+    return this.muted.has(id);
+  }
+
+  /** Flatten a running bot's open position without stopping the bot. */
+  async closeNow(id: string): Promise<boolean> {
+    const bot = this.running.get(id);
+    if (!bot?.managed) return false;
+    await this.closePosition(bot, "signal");
+    return true;
+  }
 
   isRunning(id: string) {
     return this.running.has(id);
@@ -457,15 +480,16 @@ export class TradingEngine {
       this.log(bot.config.id, "warn", "Per-bar execution budget hit — a loop was truncated this bar.");
     }
 
+    const muted = this.muted.has(bot.config.id);
     for (const marker of intents.markers) {
       this.broadcast({ type: "signal", botId: bot.config.id, signal: { dir: marker.dir, label: marker.label, price: bot.price, ts: Date.now() } });
-      if (bot.config.notifyMarkers) {
+      if (bot.config.notifyMarkers && !muted) {
         void notify({ event: "signal", bot: bot.config.name, symbol: bot.config.symbol, text: `Signal ${marker.dir === "up" ? "▲" : "▼"} ${marker.label} @ ${bot.price}` });
       }
     }
     for (const alert of intents.alerts) {
       this.log(bot.config.id, "info", `Alert: ${alert.message}`);
-      void notify({ event: "signal", bot: bot.config.name, symbol: bot.config.symbol, text: alert.message });
+      if (!muted) void notify({ event: "signal", bot: bot.config.name, symbol: bot.config.symbol, text: alert.message });
     }
 
     if (bot.managed && intents.exit) {

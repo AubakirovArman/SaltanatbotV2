@@ -68,13 +68,56 @@ export function formatStatus(rows: StatusRow[]): string {
   return lines.join("\n");
 }
 
+export interface BotDetail {
+  name: string;
+  exchange: string;
+  symbol: string;
+  running: boolean;
+  paused?: boolean;
+  muted?: boolean;
+  position?: { side: string; qty: number; entryPrice: number } | null;
+  unrealizedPct?: number;
+  realizedToday?: number;
+  vars?: Record<string, number>;
+}
+
+/** Render the `/bot <name>` detail reply (HTML). Pure. */
+export function formatBotDetail(d: BotDetail): string {
+  const lines = [`<b>${escapeHtml(d.name)}</b> · ${escapeHtml(d.exchange)} · ${escapeHtml(d.symbol)}`];
+  lines.push(d.running ? (d.paused ? "⏸️ paused (awaiting confirm)" : "🟢 running") : "⚪ stopped");
+  if (d.position) {
+    lines.push(`Position: ${escapeHtml(d.position.side)} ${trimNum(d.position.qty)} @ ${trimNum(d.position.entryPrice)}${d.unrealizedPct !== undefined ? ` · uPnL ${trimNum(d.unrealizedPct)}%` : ""}`);
+  } else if (d.running) {
+    lines.push("Position: flat");
+  }
+  if (d.realizedToday !== undefined) lines.push(`PnL today: ${trimNum(d.realizedToday)}`);
+  if (d.muted) lines.push("🔕 alerts muted");
+  const vars = d.vars ? Object.entries(d.vars) : [];
+  if (vars.length) lines.push(`Vars: ${vars.map(([k, v]) => `${escapeHtml(k)}=${trimNum(v)}`).join(", ")}`);
+  return lines.join("\n");
+}
+
+/** Render the `/pnl` reply (HTML). Pure. */
+export function formatPortfolio(total: number, perBot: { name: string; realized: number }[]): string {
+  if (perBot.length === 0) return "No running bots.";
+  const lines = perBot.map((b) => `<b>${escapeHtml(b.name)}</b> · ${trimNum(b.realized)}`);
+  lines.push(`— Total today: <b>${trimNum(total)}</b>`);
+  return lines.join("\n");
+}
+
 /** Reply body for `/help`. */
 export const HELP_TEXT = [
   "<b>SaltanatbotV2 control</b>",
   "/help — show this help",
   "/status — list bots and running positions",
+  "/bot &lt;name&gt; — details for one bot",
+  "/pnl — today's realized PnL across bots",
   "/start &lt;name&gt; — start a bot by name",
   "/stop &lt;name|all&gt; — stop a bot or all bots",
+  "/close &lt;name&gt; — flatten a bot's position (keep it running)",
+  "/resume &lt;name&gt; — resume a bot paused after a restart",
+  "/logs &lt;name&gt; — recent log lines",
+  "/mute &lt;name&gt; · /unmute &lt;name&gt; — silence/unsilence a bot's alerts",
   "/kill — stop everything and disarm live trading"
 ].join("\n");
 
