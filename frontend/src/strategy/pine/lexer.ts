@@ -62,6 +62,11 @@ export function tokenize(source: string): Token[] {
       // Blank line or comment-only line: skip entirely (don't break statements).
       if (i >= source.length || source[i] === "\n" || (source[i] === "/" && source[i + 1] === "/")) continue;
       if (depth > 0) continue; // inside brackets → continuation
+      // Pine allows boolean chains to continue on the next indented line:
+      //   cond = a
+      //        and b
+      // Without this, the next line becomes a bogus bare `and(...)` call.
+      if (/^(and|or)\b/.test(source.slice(i))) continue;
       // A line ending in an operator/comma continues onto the next line — except
       // `=>`, which ends a function header whose body is the following indented block.
       const prev = tokens.at(-1);

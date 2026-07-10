@@ -83,6 +83,43 @@ export function stdev(src: number[], period: number): number[] {
   return out;
 }
 
+export function correlationSeries(a: number[], b: number[], period: number): number[] {
+  const n = Math.min(a.length, b.length);
+  const out = NaNArray(n);
+  if (period < 2) return out;
+  for (let i = period - 1; i < n; i += 1) {
+    let sumA = 0;
+    let sumB = 0;
+    let valid = true;
+    for (let j = 0; j < period; j += 1) {
+      const av = a[i - j];
+      const bv = b[i - j];
+      if (!Number.isFinite(av) || !Number.isFinite(bv)) {
+        valid = false;
+        break;
+      }
+      sumA += av;
+      sumB += bv;
+    }
+    if (!valid) continue;
+    const meanA = sumA / period;
+    const meanB = sumB / period;
+    let cov = 0;
+    let varA = 0;
+    let varB = 0;
+    for (let j = 0; j < period; j += 1) {
+      const da = a[i - j] - meanA;
+      const db = b[i - j] - meanB;
+      cov += da * db;
+      varA += da * da;
+      varB += db * db;
+    }
+    const denom = Math.sqrt(varA * varB);
+    out[i] = denom === 0 ? NaN : cov / denom;
+  }
+  return out;
+}
+
 export function rsi(src: number[], period: number): number[] {
   const out = NaNArray(src.length);
   let avgGain = 0;

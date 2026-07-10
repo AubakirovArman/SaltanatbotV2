@@ -309,25 +309,24 @@
    "source": "//@version=4\nstudy(\"Daily Pivots\", overlay=true)\nprevHigh = security(syminfo.tickerid, \"D\", high[1], lookahead=barmerge.lookahead_off)\nprevLow = security(syminfo.tickerid, \"D\", low[1], lookahead=barmerge.lookahead_off)\nprevClose = security(syminfo.tickerid, \"D\", close[1], lookahead=barmerge.lookahead_off)\npivot = (prevHigh + prevLow + prevClose) / 3\nr1 = 2 * pivot - prevLow\ns1 = 2 * pivot - prevHigh\nplot(pivot, \"P\", color=color.yellow, style=plot.style_stepline)\nplot(r1, \"R1\", color=color.red, style=plot.style_stepline)\nplot(s1, \"S1\", color=color.green, style=plot.style_stepline)"
   },
   {
-   "title": "Multi-Timeframe RSI (REJECT - request.security MTF)",
+   "title": "Multi-Timeframe RSI (request.security approximation)",
    "kind": "indicator",
    "features": [
     "request.security MTF",
     "lookahead risk",
-    "non-convertible MTF",
-    "REJECT"
+    "external-series approximation"
    ],
    "source": "//@version=6\nindicator(\"MTF RSI Dashboard\", overlay=false)\ntf1 = input.timeframe(\"60\", \"Higher TF 1\")\ntf2 = input.timeframe(\"240\", \"Higher TF 2\")\ntf3 = input.timeframe(\"D\", \"Higher TF 3\")\nrsiCurrent = ta.rsi(close, 14)\nrsiTf1 = request.security(syminfo.tickerid, tf1, ta.rsi(close, 14))\nrsiTf2 = request.security(syminfo.tickerid, tf2, ta.rsi(close, 14))\nrsiTf3 = request.security(syminfo.tickerid, tf3, ta.rsi(close, 14), lookahead=barmerge.lookahead_on)\nplot(rsiCurrent, \"Current\", color=color.white)\nplot(rsiTf1, \"TF1\", color=color.blue)\nplot(rsiTf2, \"TF2\", color=color.orange)\nplot(rsiTf3, \"TF3\", color=color.red)\nhline(70)\nhline(30)"
   },
   {
-   "title": "Order Block Detector (REJECT - arrays + drawing objects)",
+   "title": "Order Block Detector (arrays + drawing approximation)",
    "kind": "indicator",
    "features": [
     "array.new",
     "array.push",
     "box.new",
     "line.new",
-    "REJECT"
+    "opaque collection approximation"
    ],
    "source": "//@version=6\nindicator(\"Order Blocks\", overlay=true, max_boxes_count=50)\nvar array<float> obTops = array.new<float>()\nvar array<float> obBottoms = array.new<float>()\nvar array<box> boxes = array.new<box>()\nbullOB = close > open and close[1] < open[1] and volume > ta.sma(volume, 20)\nif bullOB\n    array.push(obTops, high)\n    array.push(obBottoms, low)\n    b = box.new(bar_index, high, bar_index + 10, low, bgcolor=color.new(color.green, 80), border_color=color.green)\n    array.push(boxes, b)\nif array.size(boxes) > 20\n    box.delete(array.shift(boxes))\n    array.shift(obTops)\n    array.shift(obBottoms)\nline.new(bar_index, ta.sma(close, 50), bar_index + 5, ta.sma(close, 50), color=color.blue)"
   },
@@ -344,14 +343,14 @@
    "source": "//@version=6\nindicator(\"Pivot Zones\", overlay=true)\nleftBars = input.int(15, \"Left\")\nrightBars = input.int(15, \"Right\")\nph = ta.pivothigh(high, leftBars, rightBars)\npl = ta.pivotlow(low, leftBars, rightBars)\nif not na(ph)\n    label.new(bar_index[rightBars], ph, \"H\", color=color.red, style=label.style_label_down, textcolor=color.white)\n    line.new(bar_index[rightBars], ph, bar_index, ph, color=color.red, extend=extend.right)\nif not na(pl)\n    label.new(bar_index[rightBars], pl, \"L\", color=color.green, style=label.style_label_up, textcolor=color.white)\n    line.new(bar_index[rightBars], pl, bar_index, pl, color=color.green, extend=extend.right)\nplot(ph, \"PH\", offset=-rightBars, color=color.red)\nplot(pl, \"PL\", offset=-rightBars, color=color.green)"
   },
   {
-   "title": "Liquidity Heatmap with Matrix/Map (REJECT - matrix + map + polylines)",
+   "title": "Liquidity Heatmap with Matrix/Map (opaque visual approximation)",
    "kind": "indicator",
    "features": [
     "matrix.new",
     "map.new",
     "polyline.new",
     "array of labels",
-    "REJECT"
+    "opaque collection approximation"
    ],
    "source": "//@version=6\nindicator(\"Liquidity Heatmap\", overlay=true, max_polylines_count=100, max_labels_count=200)\nvar matrix<float> grid = matrix.new<float>(10, 10, 0.0)\nvar map<int, float> levelMap = map.new<int, float>()\nrow = bar_index % 10\ncol = int(close * 10) % 10\nmatrix.set(grid, row, col, matrix.get(grid, row, col) + volume)\nmap.put(levelMap, int(close), nz(map.get(levelMap, int(close)), 0.0) + volume)\nif barstate.islast\n    for r = 0 to 9\n        for c = 0 to 9\n            v = matrix.get(grid, r, c)\n            if v > 0\n                label.new(bar_index - c, low * (1 + r / 100.0), str.tostring(v, format.volume), color=color.new(color.red, 50), size=size.tiny)\n    var points = array.new<chart.point>()\n    array.push(points, chart.point.now(close))\n    polyline.new(points, line_color=color.blue)"
   }

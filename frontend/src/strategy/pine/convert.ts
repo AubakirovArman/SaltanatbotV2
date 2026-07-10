@@ -84,6 +84,11 @@ class Converter {
   private readonly loopVars = new Set<string>();
   private readonly colorVars = new Map<string, string | undefined>();
   private readonly drawingHandles = new Set<string>();
+  private readonly collectionVars = new Set<string>();
+  private readonly opaqueVars = new Set<string>();
+  private readonly collectionLengths = new Map<string, NumExpr>();
+  private readonly matrixRows = new Map<string, NumExpr>();
+  private readonly matrixColumns = new Map<string, NumExpr>();
   private readonly inputs: StrategyInput[] = [];
   private readonly init: Extract<Stmt, { k: "setvar" }>[] = [];
   private readonly warnings: string[] = [];
@@ -133,7 +138,7 @@ class Converter {
       case "expr":
         return this.exprStatement(stmt.value);
       case "if":
-        return [this.ifStmt(stmt)];
+        return this.ifStmt(stmt);
       case "for":
         return [this.forStmt(stmt)];
       case "while":
@@ -145,22 +150,17 @@ class Converter {
       case "multi":
         return stmt.stmts.flatMap((inner) => this.stmt(inner));
       case "unsupported":
-        // Structural constructs the per-bar scalar IR can never hold fail closed
-        // with an honest reason instead of a cascade of confusing follow-up errors.
         if (stmt.what.startsWith("collection")) {
-          throw new PineConvertError(
-            `This script stores state in collections (${stmt.what.replace("collection ", "")}, line ${stmt.line}) — arrays/matrices/maps can't run in the per-bar trading engine.`
-          );
+          this.warnOnce("collections", "Collections (arrays/matrices/maps) are imported as opaque visual state; unsupported collection operations are skipped.");
+          return [];
         }
         if (stmt.what === "type block") {
-          throw new PineConvertError(
-            `This script defines its own data types (\`type\` on line ${stmt.line}) and builds its logic on them — user-defined objects can't run in the per-bar trading engine. Scripts like this are usually visual analytics tools (labels/lines/tables), not convertible trading logic.`
-          );
+          this.warnOnce("types", "User-defined Pine object types are imported as opaque visual objects.");
+          return [];
         }
         if (stmt.what.startsWith("for…in")) {
-          throw new PineConvertError(
-            `for…in iterates a collection (line ${stmt.line}) — arrays/matrices/maps can't run in the per-bar trading engine.`
-          );
+          this.warnOnce("forin", "for…in collection loops are skipped; scalar for loops still convert.");
+          return [];
         }
         this.warn(`Skipped unsupported statement (“${stmt.what}”, line ${stmt.line}).`);
         return [];
@@ -202,6 +202,20 @@ class Converter {
       this.drawingHandles.add(name);
       return this.exprStatement(value);
     }
+    if (this.isDrawingCollectionIdent(value)) {
+      this.collectionVars.add(name);
+      this.warnOnce("drawall", "Drawing object collections (box.all/label.all/line.all) are imported as opaque visual state.");
+      return [];
+    }
+    if (value.t === "call" && isCollectionConstructor(value.callee)) {
+      this.registerCollection(name, value);
+      return [];
+    }
+    if (value.t === "call" && isObjectConstructor(value.callee)) {
+      this.opaqueVars.add(name);
+      this.warnOnce("objects", "User-defined Pine objects are imported as opaque visual state; scalar plots are preserved where possible.");
+      return [];
+    }
     // Color-valued bindings (`col = trendUp ? color.lime : color.red`) are cosmetic —
     // record the resolved color (if constant) and drop the binding.
     if (this.isColorExpr(value)) {
@@ -213,7 +227,9 @@ class Converter {
     const str = this.strVal(value);
     if (str !== undefined) {
       if (this.reassigned.has(name)) {
-        throw new PineConvertError(`Variable "${name}" holds text and is reassigned — mutable string state isn't supported.`);
+        this.env.set(name, { t: "str", v: str });
+        this.warnOnce("mutstr", "Mutable text/style variables are fixed to their imported values; drawing style edits are cosmetic.");
+        return [];
       }
       this.env.set(name, { t: "str", v: str });
       return [];
@@ -230,7 +246,9 @@ class Converter {
     }
     const val = this.val(value);
     if (val.t === "str") {
-      throw new PineConvertError(`Variable "${name}" holds text and is reassigned — mutable string state isn't supported.`);
+      this.env.set(name, val);
+      this.warnOnce("mutstr", "Mutable text/style variables are fixed to their imported values; drawing style edits are cosmetic.");
+      return [];
     }
     if (val.t === "bool") {
       this.boolVars.add(name);
@@ -258,13 +276,24 @@ class Converter {
       this.drawingHandles.add(name);
       return this.exprStatement(value);
     }
+    if (value.t === "call" && isCollectionConstructor(value.callee)) {
+      this.registerCollection(name, value);
+      return [];
+    }
+    if (value.t === "call" && isObjectConstructor(value.callee)) {
+      this.opaqueVars.add(name);
+      this.warnOnce("objects", "User-defined Pine objects are imported as opaque visual state; scalar plots are preserved where possible.");
+      return [];
+    }
     if (value.t === "ternary" && !isBoolExpr(value, this.boolVars, this.env)) {
       this.numVars.add(name);
       return [this.ternaryToIf(name, value)];
     }
     const val = this.val(value);
     if (val.t === "str") {
-      throw new PineConvertError(`Variable "${name}" holds text and is reassigned — mutable string state isn't supported.`);
+      this.env.set(name, val);
+      this.warnOnce("mutstr", "Mutable text/style variables are fixed to their imported values; drawing style edits are cosmetic.");
+      return [];
     }
     if (this.boolVars.has(name) || (val.t === "bool" && !this.numVars.has(name))) {
       if (val.t !== "bool") throw new PineConvertError(`Variable "${name}" mixes boolean and numeric values.`);
@@ -353,28 +382,41 @@ class Converter {
     return [];
   }
 
-  private ifStmt(stmt: Extract<PineStmt, { t: "if" }>): Stmt {
-    const clauses = stmt.clauses;
-    const first = clauses[0];
-    if (!first?.cond) throw new PineConvertError("if without a condition.");
-    const node: Extract<Stmt, { k: "if" }> = {
-      k: "if",
-      cond: this.bool(first.cond),
-      then: first.body.flatMap((s) => this.stmt(s))
-    };
-    const elifs: { cond: BoolExpr; then: Stmt[] }[] = [];
-    for (const clause of clauses.slice(1)) {
-      if (clause.cond) elifs.push({ cond: this.bool(clause.cond), then: clause.body.flatMap((s) => this.stmt(s)) });
-      else node.else = clause.body.flatMap((s) => this.stmt(s));
+  private ifStmt(stmt: Extract<PineStmt, { t: "if" }>): Stmt[] {
+    let node: Extract<Stmt, { k: "if" }> | undefined;
+    for (const clause of stmt.clauses) {
+      if (!clause.cond) {
+        const body = clause.body.flatMap((s) => this.stmt(s));
+        if (!node) return body;
+        node.else = body;
+        return [node];
+      }
+      const cond = this.bool(clause.cond);
+      const folded = constBool(cond);
+      if (folded === false) continue;
+      const body = clause.body.flatMap((s) => this.stmt(s));
+      if (folded === true) {
+        if (!node) return body;
+        node.else = body;
+        return [node];
+      }
+      if (!node) {
+        node = { k: "if", cond, then: body };
+      } else {
+        node.elifs = [...(node.elifs ?? []), { cond, then: body }];
+      }
     }
-    if (elifs.length) node.elifs = elifs;
-    return node;
+    return node ? [node] : [];
   }
 
   // ---------- call statements (plot / strategy.* / alerts / declarations) ----------
 
   private exprStatement(expr: PineExpr): Stmt[] {
     if (expr.t === "switch") return this.switchStmt(expr);
+    if (expr.t === "method" || expr.t === "field") {
+      this.warnOnce("opaqueexpr", "Object/collection field and method statements are imported as opaque visual operations and skipped.");
+      return [];
+    }
     if (expr.t !== "call") {
       this.warn("Skipped a bare expression statement with no effect.");
       return [];
@@ -406,8 +448,36 @@ class Converter {
         const color = this.colorOf(arg(args, 2, "color")?.value) ?? "#8f9bb3";
         return [{ k: "plot", value: level, label, color, pane: this.plotPane() }];
       }
-      case "plotshape":
       case "plotchar": {
+        const seriesExpr = argRequired(args, 0, "series", callee).value;
+        if (!isBoolExpr(seriesExpr, this.boolVars, this.env)) {
+          this.warnOnce("plotchar", "Numeric plotchar() imported as a price plot; the character glyph itself is cosmetic.");
+          const titleArg = arg(args, 1, "title");
+          const charArg = arg(args, undefined, "char");
+          const label = sanitizeText(
+            (titleArg?.value.t === "str" ? titleArg.value.v : undefined) ?? (charArg?.value.t === "str" ? charArg.value.v : "plotchar")
+          );
+          const color = this.colorOf(arg(args, undefined, "color")?.value) ?? "#8f9bb3";
+          return [{ k: "plot", value: this.num(seriesExpr), label, color, pane: this.plotPane() }];
+        }
+        const cond = this.bool(seriesExpr);
+        const titleArg = arg(args, 1, "title");
+        const textArg = arg(args, undefined, "text");
+        const label = sanitizeText(
+          (textArg?.value.t === "str" ? textArg.value.v : undefined) ?? (titleArg?.value.t === "str" ? titleArg.value.v : "")
+        );
+        const styleName = identName(arg(args, undefined, "style")?.value);
+        const locationName = identName(arg(args, undefined, "location")?.value);
+        const dir: "up" | "down" = styleName.includes("down")
+          ? "down"
+          : styleName.includes("up")
+            ? "up"
+            : locationName.includes("below")
+              ? "up"
+              : "down";
+        return [{ k: "marker", dir, label, when: cond }];
+      }
+      case "plotshape": {
         const cond = this.bool(argRequired(args, 0, "series", callee).value);
         const titleArg = arg(args, 1, "title");
         const textArg = arg(args, undefined, "text");
@@ -521,6 +591,10 @@ class Converter {
         const head = callee.split(".")[0];
         if (callee.includes(".") && this.drawingHandles.has(head)) {
           this.warnOnce("drawmut", `Drawing updates/removals (${callee} and similar) are ignored — drawings are approximated statically.`);
+          return [];
+        }
+        if (isCollectionCallName(callee) || isObjectMethodCallName(callee)) {
+          this.warnOnce("collections", "Collections (arrays/matrices/maps) are imported as opaque visual state; unsupported collection operations are skipped.");
           return [];
         }
         if (callee.startsWith("label") || callee.startsWith("line") || callee.startsWith("box") || callee.startsWith("table") || callee.startsWith("polyline") || callee.startsWith("array") || callee.startsWith("matrix")) {
@@ -660,7 +734,7 @@ class Converter {
     const kind = call.callee;
     const defArg = arg(call.args, 0, "defval");
     if (!defArg) throw new PineConvertError(`${kind}() for "${name}" needs a default value.`);
-    if (kind === "input.source" || (kind === "input" && defArg.value.t === "ident")) {
+    if (kind === "input.source" || (kind === "input" && defArg.value.t === "ident" && PRICE_FIELDS.has(defArg.value.name))) {
       const field = defArg.value.t === "ident" && PRICE_FIELDS.has(defArg.value.name) ? defArg.value.name : "close";
       this.env.set(name, { t: "num", e: { k: "price", field: field as never } });
       this.warn(`input.source "${name}" fixed to ${field} (source inputs aren't tunable here).`);
@@ -692,7 +766,7 @@ class Converter {
       }
     }
     let value: number;
-    if (kind === "input.bool") {
+    if (kind === "input.bool" || (kind === "input" && (isTrueIdent(defArg.value) || isFalseIdent(defArg.value)))) {
       value = isTrueIdent(defArg.value) ? 1 : 0;
       this.boolInputs.add(name);
       this.warn(`input.bool "${name}" imported as a 0/1 numeric input.`);
@@ -730,6 +804,18 @@ class Converter {
    */
   private inlineUserFunc(name: string, callArgs: PineArg[]): Val {
     return this.withInlinedFunc(name, callArgs, (retExpr) => this.val(retExpr));
+  }
+
+  private inlineUserFuncSafely(name: string, callArgs: PineArg[]): Val {
+    try {
+      return this.inlineUserFunc(name, callArgs);
+    } catch (cause) {
+      if (cause instanceof PineConvertError && /control flow or side effects/i.test(cause.message)) {
+        this.warnOnce("sidefxfn", "Drawing/stateful helper functions are skipped when imported; their conditions return false.");
+        return { t: "bool", e: { k: "bool", v: false } };
+      }
+      throw cause;
+    }
   }
 
   /** Inline a tuple-returning function (`f(...) => … [a, b]`) → one Val per element. */
@@ -775,6 +861,7 @@ class Converter {
         const last = i === body.length - 1;
         if (s.t === "assign" && !s.declaredVar) {
           shadow(s.name, this.val(s.value));
+          if (last) retExpr = { t: "ident", name: s.name };
         } else if (s.t === "expr" && last) {
           retExpr = s.value;
         } else if (s.t === "func") {
@@ -802,6 +889,17 @@ class Converter {
   private switchVal(expr: Extract<PineExpr, { t: "switch" }>): Val {
     const def = expr.arms.find((a) => a.match === undefined);
     const cases = expr.arms.filter((a) => a.match !== undefined);
+    const stringBodies = expr.arms.map((armExpr) => this.strVal(armExpr.body));
+    if (stringBodies.every((value) => value !== undefined)) {
+      const subject = expr.subject ? this.strVal(expr.subject) : undefined;
+      if (subject !== undefined) {
+        for (const armExpr of cases) {
+          const match = armExpr.match ? this.strVal(armExpr.match) : undefined;
+          if (match === subject) return { t: "str", v: this.strVal(armExpr.body) ?? "" };
+        }
+      }
+      return { t: "str", v: def ? this.strVal(def.body) ?? "" : stringBodies[0] ?? "" };
+    }
     const anyBool = expr.arms.some((a) => this.val(a.body).t === "bool");
     if (anyBool) {
       let acc: BoolExpr = def ? this.bool(def.body) : { k: "bool", v: false };
@@ -853,6 +951,10 @@ class Converter {
         throw new PineConvertError("A text value can't be used as a number.");
       case "ident":
         return this.numIdent(expr.name);
+      case "field":
+        return this.numField(expr);
+      case "method":
+        return this.numMethod(expr);
       case "unary":
         if (expr.op === "-") return { k: "unary", op: "neg", a: this.num(expr.a) };
         throw new PineConvertError("'not' can't be used as a number.");
@@ -905,7 +1007,7 @@ class Converter {
       }
       case "call":
         if (this.funcs.has(expr.callee)) {
-          const v = this.inlineUserFunc(expr.callee, expr.args);
+          const v = this.inlineUserFuncSafely(expr.callee, expr.args);
           if (v.t !== "num") throw new PineConvertError(`"${expr.callee}()" returns a condition, not a number.`);
           return v.e;
         }
@@ -919,6 +1021,10 @@ class Converter {
       if (bound.t === "str") throw new PineConvertError(`"${name}" is a text value ("${bound.v}"), not a number.`);
       if (bound.t !== "num") throw new PineConvertError(`"${name}" is a condition, not a number.`);
       return bound.e;
+    }
+    if (this.collectionVars.has(name) || this.opaqueVars.has(name)) {
+      this.warnOnce("opaqueread", "Reads from imported collection/object state return na unless mapped to a scalar plot.");
+      return NAN_NUM;
     }
     if (PRICE_FIELDS.has(name)) return { k: "price", field: name as never };
     if (this.numVars.has(name)) return { k: "var", name };
@@ -948,16 +1054,38 @@ class Converter {
     if (name === "last_bar_index") {
       throw new PineConvertError("last_bar_index (the index of the final bar) needs knowledge of the future — it isn't available in a live per-bar engine.");
     }
-    if (name.startsWith("barstate.")) throw new PineConvertError(`${name} isn't available — the engine evaluates one confirmed bar at a time.`);
-    if (name === "timenow" || name === "time" || name === "time_close" || name === "time_tradingday") {
-      throw new PineConvertError(`${name} (wall-clock/bar time) isn't a supported value — use the session/day-of-week condition blocks.`);
+    if (name.startsWith("barstate.")) {
+      this.warnOnce("barstate", "barstate.* is approximated for import: last-bar visual branches are skipped, confirmed-bar logic remains deterministic.");
+      return { k: "num", v: name === "barstate.isconfirmed" || name === "barstate.ishistory" ? 1 : 0 };
     }
-    if (name.startsWith("syminfo.") || name.startsWith("timeframe.")) {
-      throw new PineConvertError(`${name} reads symbol/timeframe metadata that isn't available to the engine.`);
+    if (name === "time" || name === "time_close" || name === "time_tradingday") return { k: "time" };
+    if (["year", "month", "weekofyear", "dayofmonth", "dayofweek", "hour", "minute", "second"].includes(name)) {
+      this.warnOnce("timeparts", "Calendar built-ins (year/month/day/hour) are approximated until exchange timezone calendars are modeled.");
+      return { k: "num", v: name === "month" || name === "dayofmonth" || name === "dayofweek" ? 1 : name === "year" ? 1970 : 0 };
+    }
+    if (name === "timenow") {
+      throw new PineConvertError("timenow reads wall-clock time and is non-deterministic — it can't run identically in backtest and live.");
+    }
+    if (name === "timeframe.multiplier") {
+      this.warnOnce("tfmeta", "timeframe metadata is approximated during import until chart-bound timeframe context is available.");
+      return { k: "num", v: 60 };
+    }
+    if (name.startsWith("timeframe.is")) {
+      this.warnOnce("tfmeta", "timeframe metadata is approximated during import until chart-bound timeframe context is available.");
+      return { k: "num", v: 0 };
+    }
+    if (name.startsWith("syminfo.")) {
+      this.warnOnce("symmeta", "symbol metadata is approximated during import; text metadata is frozen/skipped.");
+      return { k: "num", v: 0 };
     }
     const drawingNs = ["label.", "line.", "linefill.", "box.", "table.", "polyline.", "chart."];
     if (drawingNs.some((prefix) => name.startsWith(prefix))) {
-      throw new PineConvertError(`${name} belongs to chart drawing (labels/lines/boxes/tables) — visual objects can't run in the trading engine.`);
+      if (name === "chart.left_visible_bar_time" || name === "chart.right_visible_bar_time") {
+        this.warnOnce("chartmeta", "chart visible-range metadata is approximated with the current bar time during import.");
+        return { k: "time" };
+      }
+      this.warnOnce("drawread", "Drawing/table/chart object values are imported as opaque visual state; reads return na.");
+      return NAN_NUM;
     }
     if (this.plotHandles.has(name)) throw new PineConvertError(`"${name}" is a plot handle — it can't be used as a value.`);
     // Drawing handles read as values (the `if na(l)` first-bar idiom) → na.
@@ -969,7 +1097,8 @@ class Converter {
     if (name.includes(".")) {
       const head = name.split(".")[0];
       if (this.env.has(head) || this.numVars.has(head) || this.boolVars.has(head)) {
-        throw new PineConvertError(`"${name}" accesses a field of an object — user-defined objects and collections can't run in the per-bar trading engine.`);
+        this.warnOnce("objfield", "User-defined object fields are imported as opaque values; dependent visuals may be approximated.");
+        return NAN_NUM;
       }
     }
     // `na` as a numeric value → NaN (0/0). nz()/na()/isfinite handling all treat it correctly.
@@ -981,6 +1110,40 @@ class Converter {
     const callee = normalizeTa(expr.callee);
     const args = expr.args;
     const period = (i: number, name: string) => this.numArg(args, i, name);
+
+    if (isCollectionCallName(expr.callee)) return this.collectionCallNum(expr.callee, args);
+    if (isObjectConstructor(expr.callee)) return this.opaqueNum("objects", "User-defined Pine object constructors are imported as opaque visual values.");
+    if (expr.callee === "request.financial") {
+      this.warnOnce("financial", "request.financial() is imported as unavailable fundamental data (na) until a fundamentals provider is wired.");
+      return NAN_NUM;
+    }
+    if (callee === "int" || callee === "float") return this.numArg(args, 0, "value", { k: "num", v: 0 });
+
+    if (callee === "request.security" || callee === "security") {
+      const value = this.securityVal(args);
+      if (value.t === "str") throw new PineConvertError("request.security() can't return text.");
+      return value.t === "bool" ? boolToNumericSeries(value.e) : value.e;
+    }
+
+    if (callee === "time" || callee === "time_close") return this.timeCall(args);
+
+    if (callee === "timeframe.in_seconds") {
+      const tfArg = arg(args, 0, "timeframe");
+      const tf = tfArg ? this.contextString(tfArg.value) ?? this.strVal(tfArg.value) : "chart";
+      if (tf === undefined) throw new PineConvertError("timeframe.in_seconds() needs a static timeframe string.");
+      if (tf === "chart" || tf === "") {
+        this.warnOnce("tfseconds", "timeframe.in_seconds(chart) approximated as 60 seconds because the imported script is not bound to a chart timeframe yet.");
+        return { k: "num", v: 60 };
+      }
+      return { k: "num", v: timeframeToSeconds(tf) };
+    }
+
+    if (callee === "slope" || callee.endsWith(".slope")) {
+      this.warnOnce("slope", `${expr.callee}() imported as (source - source[length bars ago]) / length.`);
+      const src = this.seriesArg(args, 0, "source");
+      const len = this.numArg(args, 1, "length", { k: "num", v: 1 });
+      return { k: "arith", op: "/", a: { k: "arith", op: "-", a: src, b: { k: "shift", src, offset: this.constPositiveInt(len, 1) } }, b: len };
+    }
 
     switch (callee) {
       case "ta.sma":
@@ -1018,6 +1181,13 @@ class Converter {
         const sd: NumExpr = { k: "stdev", period: period(1, "length"), source: this.seriesArg(args, 0, "source") };
         return { k: "arith", op: "^", a: sd, b: { k: "num", v: 2 } };
       }
+      case "ta.correlation":
+        return {
+          k: "correlation",
+          a: this.seriesArg(args, 0, "source1"),
+          b: this.seriesArg(args, 1, "source2"),
+          period: period(2, "length")
+        };
       case "ta.sum":
         return { k: "agg", fn: "sum", src: this.seriesArg(args, 0, "source"), period: period(1, "length") };
       case "ta.median":
@@ -1198,17 +1368,75 @@ class Converter {
     }
   }
 
+  private securityVal(args: PineArg[]): Val {
+    const symbol = this.contextStringArg(args, 0, "symbol", "request.security", "current");
+    const timeframe = this.contextStringArg(args, 1, "timeframe", "request.security", "chart");
+    const expression = argRequired(args, 2, "expression", "request.security").value;
+    const value = this.val(expression);
+    if (value.t === "str") throw new PineConvertError("request.security() expression returned text, not a numeric/boolean series.");
+    this.warnOnce(
+      "requestsecurity",
+      "request.security() imported as an external-series block. Until multi-symbol/multi-timeframe datasets are wired, preview/backtest evaluate it on the current chart as an approximation."
+    );
+    const source = value.t === "bool" ? boolToNumericSeries(value.e) : value.e;
+    const wrapped: NumExpr = { k: "security", symbol, timeframe, source };
+    if (value.t === "bool") return { t: "bool", e: { k: "compare", op: "!=", a: wrapped, b: { k: "num", v: 0 } } };
+    return { t: "num", e: wrapped };
+  }
+
+  private timeCall(args: PineArg[]): NumExpr {
+    const sessionArg = arg(args, 1, "session");
+    const timezoneArg = arg(args, 2, "timezone");
+    const session = sessionArg ? this.strVal(sessionArg.value) : undefined;
+    const timezone = timezoneArg ? this.strVal(timezoneArg.value) : undefined;
+    if (sessionArg && session === undefined) {
+      throw new PineConvertError("time() session argument must be a literal/input.session string.");
+    }
+    if (timezoneArg && timezone === undefined) {
+      throw new PineConvertError("time() timezone argument must be a literal/input.string value like GMT-4.");
+    }
+    if (session) this.warnOnce("timefn", "time() imported as a UTC/GMT-offset session filter; exchange calendars and DST are not modeled yet.");
+    return {
+      k: "time",
+      ...(session ? { session } : {}),
+      ...(timezone ? { timezone } : {})
+    };
+  }
+
+  private contextStringArg(args: PineArg[], position: number, name: string, fn: string, fallback: string): string {
+    const found = arg(args, position, name);
+    if (!found) return fallback;
+    const special = this.contextString(found.value);
+    if (special !== undefined) return special;
+    const literal = this.strVal(found.value);
+    if (literal !== undefined) return literal.slice(0, name === "symbol" ? 64 : 32);
+    throw new PineConvertError(`${fn}() ${name} must be a static string, input.timeframe/session, syminfo.ticker[id], or timeframe.period.`);
+  }
+
+  private contextString(expr: PineExpr): string | undefined {
+    if (expr.t !== "ident") return undefined;
+    if (expr.name === "syminfo.ticker" || expr.name === "syminfo.tickerid") return "current";
+    if (expr.name === "timeframe.period") return "chart";
+    return undefined;
+  }
+
+  private constPositiveInt(expr: NumExpr, fallback: number): number {
+    if (expr.k === "num") return Math.max(1, Math.round(expr.v));
+    if (expr.k === "input") {
+      const value = this.inputs.find((input) => input.name === expr.name)?.value;
+      return Math.max(1, Math.round(value ?? fallback));
+    }
+    return Math.max(1, Math.round(fallback));
+  }
+
   /** Friendly, namespace-aware rejection for a function we can't map to the IR. */
   private unsupportedFn(callee: string): PineConvertError {
     const lookahead = ["ta.pivothigh", "ta.pivotlow", "ta.pivot_point_levels"];
     if (lookahead.includes(callee)) {
       return new PineConvertError(`${callee}() looks ahead in time (it confirms a pivot using future bars) — it can't run in a live per-bar engine.`);
     }
-    if (callee === "time" || callee === "time_close") {
-      return new PineConvertError(`${callee}() (session/time windows) isn't supported — use the "within UTC hours" session condition block instead.`);
-    }
-    if (callee === "request.security" || callee.startsWith("request.")) {
-      return new PineConvertError(`${callee}() pulls external/other-timeframe data — not available in this per-bar engine.`);
+    if (callee.startsWith("request.")) {
+      return new PineConvertError(`${callee}() is not supported yet; only request.security() has an import approximation.`);
     }
     const needsBlock: Record<string, string> = {
       "ta.kcw": "Keltner width", "ta.correlation": "correlation", "ta.mode": "mode",
@@ -1288,6 +1516,14 @@ class Converter {
       case "ident": {
         if (expr.name === "true") return { k: "bool", v: true };
         if (expr.name === "false") return { k: "bool", v: false };
+        if (expr.name.startsWith("barstate.")) {
+          this.warnOnce("barstate", "barstate.* is approximated for import: last-bar visual branches are skipped, confirmed-bar logic remains deterministic.");
+          return { k: "bool", v: expr.name === "barstate.isconfirmed" || expr.name === "barstate.ishistory" };
+        }
+        if (expr.name.startsWith("timeframe.is")) {
+          this.warnOnce("tfmeta", "timeframe metadata is approximated during import until chart-bound timeframe context is available.");
+          return { k: "bool", v: false };
+        }
         if (this.boolInputs.has(expr.name)) {
           // input.bool used as a condition: != 0.
           return { k: "compare", op: "!=", a: { k: "input", name: expr.name }, b: { k: "num", v: 0 } };
@@ -1295,12 +1531,19 @@ class Converter {
         const bound = this.env.get(expr.name);
         if (bound) {
           if (bound.t === "str") throw new PineConvertError(`"${expr.name}" is a text value ("${bound.v}"), not a condition.`);
-          if (bound.t !== "bool") throw new PineConvertError(`"${expr.name}" is a number, not a condition.`);
+          if (bound.t === "num") return { k: "compare", op: "!=", a: bound.e, b: { k: "num", v: 0 } };
           return bound.e;
         }
         if (this.boolVars.has(expr.name)) return { k: "varb", name: expr.name };
+        if (this.collectionVars.has(expr.name) || this.opaqueVars.has(expr.name)) {
+          this.warnOnce("opaqueread", "Reads from imported collection/object state return na unless mapped to a scalar plot.");
+          return { k: "bool", v: false };
+        }
         throw new PineConvertError(`Unknown condition "${expr.name}".`);
       }
+      case "field":
+      case "method":
+        return { k: "compare", op: "!=", a: this.num(expr), b: { k: "num", v: 0 } };
       case "unary":
         if (expr.op === "not") return { k: "not", a: this.bool(expr.a) };
         throw new PineConvertError("A negative number isn't a condition.");
@@ -1354,11 +1597,26 @@ class Converter {
       }
       case "call": {
         if (this.funcs.has(expr.callee)) {
-          const v = this.inlineUserFunc(expr.callee, expr.args);
+          const v = this.inlineUserFuncSafely(expr.callee, expr.args);
           if (v.t !== "bool") throw new PineConvertError(`"${expr.callee}()" returns a number, not a condition.`);
           return v.e;
         }
         const callee = normalizeTa(expr.callee);
+        if (callee === "request.security" || callee === "security") {
+          const value = this.securityVal(expr.args);
+          if (value.t === "str") throw new PineConvertError("request.security() can't return text.");
+          return value.t === "bool" ? value.e : { k: "compare", op: "!=", a: value.e, b: { k: "num", v: 0 } };
+        }
+        if (callee === "time" || callee === "time_close") {
+          return { k: "compare", op: "!=", a: this.timeCall(expr.args), b: { k: "num", v: 0 } };
+        }
+        if (callee === "timeframe.change") {
+          this.warnOnce("tfchange", "timeframe.change() is approximated as false until multi-timeframe bar-boundary context is available.");
+          return { k: "bool", v: false };
+        }
+        if (isCollectionCallName(expr.callee) || isObjectMethodCallName(expr.callee)) {
+          return { k: "compare", op: "!=", a: this.numCall(expr), b: { k: "num", v: 0 } };
+        }
         if (callee === "ta.crossover") return { k: "cross", dir: "above", a: this.numArg(expr.args, 0, "a"), b: this.numArg(expr.args, 1, "b") };
         if (callee === "ta.crossunder") return { k: "cross", dir: "below", a: this.numArg(expr.args, 0, "a"), b: this.numArg(expr.args, 1, "b") };
         if (callee === "ta.cross") return { k: "cross", dir: "any", a: this.numArg(expr.args, 0, "a"), b: this.numArg(expr.args, 1, "b") };
@@ -1373,7 +1631,7 @@ class Converter {
             b: { k: "logic", op: "and", a: { k: "not", a: cond }, b: this.bool(argRequired(expr.args, 2, "else", "iff").value) }
           };
         }
-        throw this.unsupportedFn(callee);
+        return { k: "compare", op: "!=", a: this.numCall(expr), b: { k: "num", v: 0 } };
       }
       case "num":
         // Pine treats a nonzero number as truthy in a few idioms; only 0/1 make sense here.
@@ -1408,6 +1666,103 @@ class Converter {
   }
 
   // ---------- helpers ----------
+
+  private registerCollection(name: string, call: Extract<PineExpr, { t: "call" }>): void {
+    this.collectionVars.add(name);
+    const callee = call.callee;
+    const first = arg(call.args, 0, "size")?.value ?? arg(call.args, 0, "rows")?.value;
+    if (callee.startsWith("array.")) {
+      this.collectionLengths.set(name, callee === "array.from" ? { k: "num", v: call.args.length } : first ? this.num(first) : { k: "num", v: 0 });
+    } else if (callee.startsWith("matrix.")) {
+      const rows = arg(call.args, 0, "rows")?.value;
+      const columns = arg(call.args, 1, "columns")?.value;
+      this.matrixRows.set(name, rows ? this.num(rows) : { k: "num", v: 0 });
+      this.matrixColumns.set(name, columns ? this.num(columns) : { k: "num", v: 0 });
+    }
+    this.warnOnce("collections", "Collections (arrays/matrices/maps) are imported as opaque visual state; supported scalar reads are approximated.");
+  }
+
+  private isDrawingCollectionIdent(expr: PineExpr): boolean {
+    return expr.t === "ident" && /^(box|label|line|linefill|table|polyline)\.all$/.test(expr.name);
+  }
+
+  private numField(_expr: Extract<PineExpr, { t: "field" }>): NumExpr {
+    this.warnOnce("objfield", "User-defined object fields are imported as opaque values; dependent visuals may be approximated.");
+    return NAN_NUM;
+  }
+
+  private numMethod(expr: Extract<PineExpr, { t: "method" }>): NumExpr {
+    const baseName = expr.base.t === "ident" ? expr.base.name : undefined;
+    if (baseName) return this.collectionMethodNum(baseName, expr.name, expr.args);
+    this.warnOnce("objmethod", "Object/collection methods on computed values are imported as opaque visual operations.");
+    return this.methodFallback(expr.name);
+  }
+
+  private collectionCallNum(callee: string, args: PineArg[]): NumExpr {
+    const method = methodName(callee);
+    const receiver = collectionReceiver(callee, args);
+    if (receiver) return this.collectionMethodNum(receiver, method, methodArgs(callee, args));
+    this.warnOnce("collections", "Collections (arrays/matrices/maps) are imported as opaque visual state; supported scalar reads are approximated.");
+    return this.methodFallback(method);
+  }
+
+  private collectionMethodNum(receiver: string, method: string, args: PineArg[]): NumExpr {
+    if (method === "size" || method === "length") return this.collectionLength(receiver);
+    if (method === "rows") return this.matrixRows.get(receiver) ?? { k: "num", v: 0 };
+    if (method === "columns") return this.matrixColumns.get(receiver) ?? { k: "num", v: 0 };
+    if (method === "get") {
+      const index = arg(args, 0, "index")?.value;
+      return this.collectionGet(receiver, index);
+    }
+    if (method === "indexof") return { k: "num", v: 0 };
+    if (method === "max" || method === "sum") return { k: "num", v: 1 };
+    if (method === "min") return { k: "num", v: 0 };
+    if (method === "range") return { k: "num", v: 1 };
+    this.warnOnce("collectionmut", "Collection mutations/sorts/slices are skipped; scalar reads use safe approximations.");
+    return this.methodFallback(method);
+  }
+
+  private collectionLength(receiver: string): NumExpr {
+    if (this.collectionLengths.has(receiver)) return this.collectionLengths.get(receiver) as NumExpr;
+    if (receiver === "MPArray") {
+      const len = this.env.get("amountOfColumns");
+      if (len?.t === "num") return { k: "arith", op: "+", a: len.e, b: { k: "num", v: 2 } };
+      return { k: "num", v: 34 };
+    }
+    if (receiver === "occurenceArray") {
+      const len = this.env.get("amountOfColumns");
+      if (len?.t === "num") return { k: "arith", op: "+", a: len.e, b: { k: "num", v: 1 } };
+      return { k: "num", v: 33 };
+    }
+    return { k: "num", v: 0 };
+  }
+
+  private collectionGet(receiver: string, indexExpr: PineExpr | undefined): NumExpr {
+    if (receiver === "MPArray") {
+      const top = this.env.get("MPTop");
+      const step = this.env.get("ColumnSize");
+      const index: NumExpr = indexExpr ? this.num(indexExpr) : { k: "num", v: 0 };
+      if (top?.t === "num" && step?.t === "num") {
+        this.warnOnce("mparray", "Market Profile level array reconstructed from MPTop and ColumnSize.");
+        return { k: "arith", op: "-", a: top.e, b: { k: "arith", op: "*", a: step.e, b: index } };
+      }
+    }
+    if (receiver === "occurenceArray") return { k: "num", v: 1 };
+    this.warnOnce("collectionget", "Collection get() reads without a scalar reconstruction return na.");
+    return NAN_NUM;
+  }
+
+  private methodFallback(method: string): NumExpr {
+    if (method === "size" || method === "rows" || method === "columns" || method === "indexof") return { k: "num", v: 0 };
+    if (method === "range" || method === "sum" || method === "max") return { k: "num", v: 1 };
+    if (method === "min") return { k: "num", v: 0 };
+    return NAN_NUM;
+  }
+
+  private opaqueNum(key: string, message: string): NumExpr {
+    this.warnOnce(key, message);
+    return NAN_NUM;
+  }
 
   private numArg(args: PineArg[], position: number, name: string, fallback?: NumExpr): NumExpr {
     const found = arg(args, position, name);
@@ -1444,7 +1799,18 @@ class Converter {
     if (!expr) return undefined;
     if (expr.t === "ident" && expr.name.startsWith("color.")) return COLOR_HEX[expr.name.slice(6)] ?? "#4db6ff";
     if (expr.t === "ident" && this.colorVars.has(expr.name)) return this.colorVars.get(expr.name);
-    if (expr.t === "call" && (expr.callee === "color.new" || expr.callee === "color.rgb" || expr.callee === "color.from_gradient")) {
+    if (expr.t === "ident") {
+      const bound = this.env.get(expr.name);
+      if (bound?.t === "str" && /^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/.test(bound.v)) return bound.v.slice(0, 7);
+    }
+    if (expr.t === "call" && expr.callee === "color.rgb") {
+      const nums = [0, 1, 2].map((idx) => literalColorByte(expr.args[idx]?.value));
+      if (nums.every((value) => value !== undefined)) {
+        return `#${nums.map((value) => (value as number).toString(16).padStart(2, "0")).join("")}`;
+      }
+      return "#4db6ff";
+    }
+    if (expr.t === "call" && (expr.callee === "color.new" || expr.callee === "color.from_gradient")) {
       return this.colorOf(expr.args[0]?.value);
     }
     if (expr.t === "ternary") return this.colorOf(expr.a) ?? this.colorOf(expr.b);
@@ -1458,10 +1824,28 @@ class Converter {
    *  string-bound identifiers, and `+` concatenations of those. Undefined = not a string. */
   private strVal(expr: PineExpr): string | undefined {
     if (expr.t === "str") return expr.v;
+    if (expr.t === "field" || expr.t === "method") return undefined;
     if (expr.t === "ident") {
       const bound = this.env.get(expr.name);
+      if (!bound && this.colorVars.has(expr.name)) return this.colorVars.get(expr.name) ?? "#4db6ff";
+      if (!bound && isCosmeticConst(expr.name)) return expr.name;
+      if (!bound && (expr.name === "syminfo.ticker" || expr.name === "syminfo.tickerid")) return "current";
+      if (!bound && expr.name === "timeframe.period") return "chart";
       return bound?.t === "str" ? bound.v : undefined;
     }
+    if (expr.t === "call" && (expr.callee === "input.symbol" || expr.callee === "input.timeframe" || expr.callee === "input.session")) {
+      const def = arg(expr.args, 0, "defval")?.value;
+      return def ? this.strVal(def) : undefined;
+    }
+    if (expr.t === "call" && expr.callee === "str.tostring") {
+      this.warnOnce("dyntext", "Dynamic string formatting is cosmetic during import and may be omitted from labels.");
+      return "";
+    }
+    if (expr.t === "call" && this.funcs.has(expr.callee)) {
+      const value = this.inlineUserFunc(expr.callee, expr.args);
+      return value.t === "str" ? value.v : undefined;
+    }
+    if (expr.t === "call" && expr.callee.startsWith("color.")) return this.colorOf(expr);
     if (expr.t === "binary" && expr.op === "+") {
       const a = this.strVal(expr.a);
       if (a === undefined) return undefined;
@@ -1473,6 +1857,7 @@ class Converter {
 
   /** Whether an expression is a color (so a `col = …` binding is cosmetic, not numeric). */
   private isColorExpr(expr: PineExpr): boolean {
+    if (expr.t === "str") return /^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/.test(expr.v);
     if (expr.t === "ident") return expr.name.startsWith("color.") || this.colorVars.has(expr.name);
     if (expr.t === "call") return expr.callee.startsWith("color.");
     if (expr.t === "ternary") return this.isColorExpr(expr.a) && this.isColorExpr(expr.b);
@@ -1528,7 +1913,7 @@ function normalizeTa(callee: string): string {
   if (callee.includes(".")) return callee;
   const v4ta = new Set([
     "sma", "ema", "wma", "vwma", "rsi", "atr", "tr", "stdev", "highest", "lowest", "change", "mom", "cci", "roc",
-    "wpr", "stoch", "vwap", "crossover", "crossunder", "cross", "rising", "falling", "macd", "bb"
+    "wpr", "stoch", "vwap", "crossover", "crossunder", "cross", "rising", "falling", "macd", "bb", "correlation"
   ]);
   if (v4ta.has(callee)) return `ta.${callee}`;
   const v4math = new Set(["abs", "round", "floor", "ceil", "max", "min", "pow", "sqrt", "avg"]);
@@ -1600,10 +1985,163 @@ function isTrueIdent(expr: PineExpr): boolean {
   return expr.t === "ident" && expr.name === "true";
 }
 
+function isFalseIdent(expr: PineExpr): boolean {
+  return expr.t === "ident" && expr.name === "false";
+}
+
+function isCosmeticConst(name: string): boolean {
+  return (
+    name.startsWith("line.style_") ||
+    name.startsWith("label.style_") ||
+    name.startsWith("size.") ||
+    name.startsWith("shape.") ||
+    name.startsWith("location.") ||
+    name.startsWith("display.") ||
+    name.startsWith("barmerge.") ||
+    name.startsWith("extend.") ||
+    name.startsWith("position.") ||
+    name.startsWith("plot.style_")
+  );
+}
+
+const COLLECTION_METHODS = new Set([
+  "size", "length", "get", "set", "push", "pop", "shift", "unshift", "clear", "remove", "insert",
+  "max", "min", "sum", "range", "sort", "reverse", "slice", "indexof", "includes",
+  "rows", "columns", "add_row", "add_col", "put", "delete"
+]);
+
+function isCollectionConstructor(callee: string): boolean {
+  return (
+    callee === "array.from" ||
+    /^array\.new(?:_|$)/.test(callee) ||
+    /^matrix\.new(?:_|$)/.test(callee) ||
+    /^map\.new(?:_|$)/.test(callee)
+  );
+}
+
+function isObjectConstructor(callee: string): boolean {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*\.new$/.test(callee)) return false;
+  return !(
+    callee.startsWith("array.") ||
+    callee.startsWith("matrix.") ||
+    callee.startsWith("map.") ||
+    callee.startsWith("color.") ||
+    DRAWING_NEW_RE.test(callee)
+  );
+}
+
+function methodName(callee: string): string {
+  return callee.split(".").at(-1) ?? callee;
+}
+
+function isCollectionCallName(callee: string): boolean {
+  if (isCollectionConstructor(callee)) return false;
+  if (/^(array|matrix|map)\./.test(callee)) return true;
+  const head = callee.split(".")[0];
+  if (["ta", "math", "str", "request", "timeframe", "input", "color", "strategy", "ticker", "syminfo"].includes(head)) return false;
+  return callee.includes(".") && COLLECTION_METHODS.has(methodName(callee));
+}
+
+function isObjectMethodCallName(callee: string): boolean {
+  if (!callee.includes(".")) return false;
+  if (isCollectionCallName(callee) || DRAWING_NEW_RE.test(callee)) return false;
+  const head = callee.split(".")[0];
+  if (["ta", "math", "str", "request", "timeframe", "input", "color", "strategy", "ticker", "syminfo"].includes(head)) return false;
+  const method = methodName(callee);
+  return method.startsWith("set_") || method.startsWith("get_") || method === "delete" || method === "copy";
+}
+
+function collectionReceiver(callee: string, args: PineArg[]): string | undefined {
+  if (/^(array|matrix|map)\./.test(callee)) {
+    const first = arg(args, 0, "id")?.value ?? arg(args, 0, "array")?.value ?? arg(args, 0, "matrix")?.value ?? arg(args, 0, "map")?.value;
+    return first?.t === "ident" ? first.name : undefined;
+  }
+  const parts = callee.split(".");
+  if (parts.length > 1) return parts.slice(0, -1).join(".");
+  return undefined;
+}
+
+function methodArgs(callee: string, args: PineArg[]): PineArg[] {
+  return /^(array|matrix|map)\./.test(callee) ? args.slice(1) : args;
+}
+
+function constBool(expr: BoolExpr): boolean | undefined {
+  switch (expr.k) {
+    case "bool":
+      return expr.v;
+    case "not": {
+      const v = constBool(expr.a);
+      return v === undefined ? undefined : !v;
+    }
+    case "logic": {
+      const a = constBool(expr.a);
+      const b = constBool(expr.b);
+      if (expr.op === "and") {
+        if (a === false || b === false) return false;
+        if (a === true && b === true) return true;
+      } else {
+        if (a === true || b === true) return true;
+        if (a === false && b === false) return false;
+      }
+      return undefined;
+    }
+    case "compare":
+      if (expr.a.k === "num" && expr.b.k === "num") {
+        switch (expr.op) {
+          case "==":
+            return expr.a.v === expr.b.v;
+          case "!=":
+            return expr.a.v !== expr.b.v;
+          case ">":
+            return expr.a.v > expr.b.v;
+          case ">=":
+            return expr.a.v >= expr.b.v;
+          case "<":
+            return expr.a.v < expr.b.v;
+          case "<=":
+            return expr.a.v <= expr.b.v;
+        }
+      }
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+function literalColorByte(expr: PineExpr | undefined): number | undefined {
+  if (!expr) return undefined;
+  const value = expr.t === "num"
+    ? expr.v
+    : expr.t === "unary" && expr.op === "-" && expr.a.t === "num"
+      ? -expr.a.v
+      : undefined;
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function timeframeToSeconds(value: string): number {
+  const text = value.trim();
+  if (!text) return 60;
+  const match = /^(\d+)?([SMHDW])?$/i.exec(text);
+  if (!match) return 60;
+  const n = Number(match[1] || 1);
+  const unit = (match[2] || "").toUpperCase();
+  if (unit === "S") return n;
+  if (unit === "H") return n * 3600;
+  if (unit === "D") return n * 86_400;
+  if (unit === "W") return n * 604_800;
+  if (unit === "M") return n * 2_592_000;
+  return n * 60;
+}
+
 /** Encode a BoolExpr as 0/1 for the numeric-only init section. */
 function boolToNum(expr: BoolExpr): NumExpr {
   if (expr.k === "bool") return { k: "num", v: expr.v ? 1 : 0 };
   return { k: "num", v: 0 };
+}
+
+function boolToNumericSeries(expr: BoolExpr): NumExpr {
+  return { k: "cond", cond: expr, a: { k: "num", v: 1 }, b: { k: "num", v: 0 } };
 }
 
 /** Constant (num / negated num) check — used for init and exit-freeze warnings. */
@@ -1622,6 +2160,10 @@ function containsVar(expr: NumExpr): boolean {
     case "histn":
       // Scalar-only reads (loop counters / mutable state) — never valid as a vectorized series.
       return true;
+    case "security":
+      return containsVar(expr.source);
+    case "time":
+      return false;
     case "arith":
     case "minmax":
     case "nz":
@@ -1668,6 +2210,8 @@ function containsVar(expr: NumExpr): boolean {
       return containsVar(expr.source) || containsVar(expr.short) || containsVar(expr.long);
     case "sar":
       return containsVar(expr.start) || containsVar(expr.inc) || containsVar(expr.max);
+    case "correlation":
+      return containsVar(expr.a) || containsVar(expr.b) || containsVar(expr.period);
     default:
       return false;
   }
@@ -1731,7 +2275,7 @@ function isBoolExpr(expr: PineExpr, boolVars: Set<string>, env: Map<string, Val>
     case "unary":
       return expr.op === "not";
     case "ident": {
-      if (expr.name === "true" || expr.name === "false") return true;
+      if (expr.name === "true" || expr.name === "false" || expr.name.startsWith("barstate.") || expr.name.startsWith("timeframe.is")) return true;
       const bound = env.get(expr.name);
       if (bound) return bound.t === "bool";
       return boolVars.has(expr.name);
@@ -1739,6 +2283,7 @@ function isBoolExpr(expr: PineExpr, boolVars: Set<string>, env: Map<string, Val>
     case "call": {
       const callee = normalizeTa(expr.callee);
       if (callee === "na") return true;
+      if (callee === "timeframe.change") return true;
       return ["ta.crossover", "ta.crossunder", "ta.cross", "ta.rising", "ta.falling"].includes(callee);
     }
     case "ternary":

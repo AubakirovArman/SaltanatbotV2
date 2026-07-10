@@ -294,6 +294,22 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
       if (vec) ctx.errors.push("Dynamic history (variable bars-ago) can't be used inside an indicator/series input.");
       return { k: "histn", field: priceField(block.getFieldValue("FIELD")), offset: numInput(block, "OFFSET", ctx) };
     }
+    case "market_time": {
+      const session = ((block.getFieldValue("SESSION") as string) || "").trim();
+      const timezone = ((block.getFieldValue("TIMEZONE") as string) || "").trim();
+      return {
+        k: "time",
+        ...(session ? { session } : {}),
+        ...(timezone ? { timezone } : {})
+      };
+    }
+    case "market_security":
+      return {
+        k: "security",
+        symbol: ((block.getFieldValue("SYMBOL") as string) || "current").slice(0, 64),
+        timeframe: ((block.getFieldValue("TIMEFRAME") as string) || "chart").slice(0, 32),
+        source: numInput(block, "SOURCE", ctx, true)
+      };
     case "indicator_ma":
       return { k: "ma", kind: (block.getFieldValue("KIND") as MaKind) ?? "sma", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "indicator_rsi":
@@ -413,6 +429,13 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
         band: (block.getFieldValue("BAND") as "upper" | "middle" | "lower") ?? "middle",
         period: numInput(block, "PERIOD", ctx, true),
         mult: numInput(block, "MULT", ctx, true)
+      };
+    case "indicator_correlation":
+      return {
+        k: "correlation",
+        a: numInput(block, "A", ctx, true),
+        b: numInput(block, "B", ctx, true),
+        period: numInput(block, "PERIOD", ctx, true)
       };
     case "math_minmax":
       return { k: "minmax", op: block.getFieldValue("OP") === "min" ? "min" : "max", a: numInput(block, "A", ctx, vec), b: numInput(block, "B", ctx, vec) };

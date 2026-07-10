@@ -53,6 +53,8 @@ const numExpr: z.ZodType<unknown> = z.lazy(() =>
     z.object({ k: z.literal("barssince"), cond: boolExpr }).strict(),
     z.object({ k: z.literal("varprev"), name: z.string().max(64) }).strict(),
     z.object({ k: z.literal("histn"), field: priceField, offset: numExpr }).strict(),
+    z.object({ k: z.literal("time"), session: z.string().max(64).optional(), timezone: z.string().max(32).optional() }).strict(),
+    z.object({ k: z.literal("security"), symbol: z.string().max(64), timeframe: z.string().max(32), source: numExpr }).strict(),
     z.object({ k: z.literal("barindex") }).strict(),
     z.object({ k: z.literal("valuewhen"), cond: boolExpr, src: numExpr, occurrence: z.number().int().min(0).max(100) }).strict(),
     z.object({ k: z.literal("extremebars"), kind: z.enum(["highest", "lowest"]), period: numExpr, source: numExpr }).strict(),
@@ -67,7 +69,8 @@ const numExpr: z.ZodType<unknown> = z.lazy(() =>
     z.object({ k: z.literal("cog"), period: numExpr, source: numExpr }).strict(),
     z.object({ k: z.literal("percentrank"), period: numExpr, source: numExpr }).strict(),
     z.object({ k: z.literal("sar"), start: numExpr, inc: numExpr, max: numExpr }).strict(),
-    z.object({ k: z.literal("kc"), band: z.enum(["upper", "middle", "lower"]), period: numExpr, mult: numExpr }).strict()
+    z.object({ k: z.literal("kc"), band: z.enum(["upper", "middle", "lower"]), period: numExpr, mult: numExpr }).strict(),
+    z.object({ k: z.literal("correlation"), a: numExpr, b: numExpr, period: numExpr }).strict()
   ])
 );
 

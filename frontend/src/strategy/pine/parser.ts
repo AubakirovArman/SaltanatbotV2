@@ -14,6 +14,8 @@ export type PineExpr =
   | { t: "str"; v: string }
   | { t: "ident"; name: string }
   | { t: "call"; callee: string; args: PineArg[] }
+  | { t: "field"; base: PineExpr; name: string }
+  | { t: "method"; base: PineExpr; name: string; args: PineArg[] }
   | { t: "index"; base: PineExpr; offset: PineExpr }
   | { t: "unary"; op: "-" | "not"; a: PineExpr }
   | { t: "binary"; op: string; a: PineExpr; b: PineExpr }
@@ -91,9 +93,10 @@ class Parser {
 
     if (tok.type === "ident") {
       // //@version handled in lexer as comment; version pragma appears as comment only.
-      // `array<T> x = …` / `matrix<…>` / `map<…>` — collection declarations.
+      // `array<T> x = …` / `matrix<…>` / `map<…>` — parse as an opaque
+      // collection declaration instead of failing at parse time.
       if (COLLECTION_TYPES.has(tok.text) && this.tokens[this.pos + 1]?.type === "op" && this.tokens[this.pos + 1]?.text === "<") {
-        return this.skipRestAsUnsupported(`collection (${tok.text}<…>)`, indent, tok.line);
+        return this.parseGenericCollectionDeclaration(indent, false);
       }
       if (tok.text === "var" || tok.text === "varip" || TYPE_KEYWORDS.has(tok.text)) return this.parseDeclaration(indent);
       if (tok.text === "if") return this.parseIf(indent);
@@ -118,17 +121,26 @@ class Parser {
       if (next?.type === "op" && next.text === "=") {
         this.pos += 2;
         if (this.peek().type === "ident" && this.peek().text === "switch") {
-          return { t: "assign", name: tok.text, value: this.parseSwitch(indent), declaredVar: false };
+          const value = this.parseSwitch(indent);
+          this.skipCommaTail();
+          return { t: "assign", name: tok.text, value, declaredVar: false };
         }
-        return { t: "assign", name: tok.text, value: this.parseExpr(), declaredVar: false };
+        const value = this.parseExpr();
+        this.skipCommaTail();
+        return { t: "assign", name: tok.text, value, declaredVar: false };
       }
       if (next?.type === "op" && (next.text === ":=" || next.text === "+=" || next.text === "-=" || next.text === "*=" || next.text === "/=")) {
         this.pos += 2;
         const rhs = this.peek().type === "ident" && this.peek().text === "switch" ? this.parseSwitch(indent) : this.parseExpr();
+        this.skipCommaTail();
         return { t: "reassign", name: tok.text, op: next.text as ":=", value: rhs };
       }
       // Bare expression statement (plot(...), strategy.entry(...), etc.)
-      return { t: "expr", value: this.parseExpr() };
+      {
+        const value = this.parseExpr();
+        this.skipCommaTail();
+        return { t: "expr", value };
+      }
     }
 
     if (tok.type === "op" && tok.text === "[") {
@@ -139,7 +151,9 @@ class Parser {
         this.pos += 1;
         const names = lit.items.map((item) => (item.t === "ident" ? item.name : ""));
         if (names.some((n) => !n)) throw new PineParseError(`Destructuring target on line ${tok.line} must be a list of names.`);
-        return { t: "tuple", names, value: this.parseExpr() };
+        const value = this.peek().type === "ident" && this.peek().text === "switch" ? this.parseSwitch(indent) : this.parseExpr();
+        this.skipCommaTail();
+        return { t: "tuple", names, value };
       }
       return { t: "expr", value: lit };
     }
@@ -174,7 +188,7 @@ class Parser {
       this.tokens[this.pos + 1]?.type === "op" &&
       this.tokens[this.pos + 1]?.text === "<"
     ) {
-      return this.skipRestAsUnsupported(`collection (${this.peek().text}<…>)`, indent, startLine);
+      return this.parseGenericCollectionDeclaration(indent, declaredVar);
     }
     // `float[] x = …` — old-style array declaration. The type keyword is still the
     // current token (the modifier loop only consumes it when an ident follows).
@@ -185,7 +199,12 @@ class Parser {
       this.tokens[bracketAt + 1]?.type === "op" &&
       this.tokens[bracketAt + 1]?.text === "]"
     ) {
-      return this.skipRestAsUnsupported("collection (T[] array)", indent, startLine);
+      if (this.peek().type === "ident") this.pos += 1; // type name
+      this.expectOp("[");
+      this.expectOp("]");
+      const name = this.expect("ident");
+      this.expectOp("=");
+      return { t: "assign", name: name.text, value: this.parseExpr(), declaredVar };
     }
     let nameTok = this.peek();
     if (nameTok.type !== "ident") {
@@ -212,6 +231,15 @@ class Parser {
       stmts.push(this.parseDeclaration(indent));
     }
     return { t: "multi", stmts };
+  }
+
+  private parseGenericCollectionDeclaration(indent: number, declaredVar: boolean): PineStmt {
+    const head = this.expect("ident").text;
+    this.skipGenericArgs();
+    const name = this.expect("ident");
+    if (!this.peekOp("=")) return this.skipRestAsUnsupported(`collection (${head}<…>)`, indent, name.line);
+    this.pos += 1;
+    return { t: "assign", name: name.text, value: this.parseExpr(), declaredVar };
   }
 
   private parseIf(indent: number): PineStmt {
@@ -315,15 +343,18 @@ class Parser {
       const armIndent = this.peekNewlineIndent();
       if (armIndent === undefined || armIndent <= indent) break;
       this.skipNewlines();
+      if (!this.lineContainsArrow()) break;
       // Default arm starts with `=>`.
       if (this.peekOp("=>")) {
         this.pos += 1;
         arms.push({ body: this.parseExpr() });
+        this.skipUnsupportedArmRemainder();
         continue;
       }
       const match = this.parseExpr();
       this.expectOp("=>");
       arms.push({ match, body: this.parseExpr() });
+      this.skipUnsupportedArmRemainder();
     }
     if (!arms.length) throw new PineParseError(`switch on line ${this.peek().line} has no arms.`);
     return { t: "switch", subject, arms };
@@ -482,10 +513,19 @@ class Parser {
         continue;
       }
       // `x.field` / `x.method(...)` on an expression result — objects/collections.
+      // The semantic converter may later skip/approximate these opaque values,
+      // but parsing them lets the rest of the script import.
       if (this.peekOp(".")) {
-        throw new PineParseError(
-          `Field/method access on an object (".…" on line ${this.peek().line}) — user-defined objects and collections can't run in the per-bar trading engine.`
-        );
+        this.pos += 1;
+        const name = this.expect("ident").text;
+        if (this.peekOp("(")) {
+          this.pos += 1;
+          const args = this.parseArgs();
+          expr = { t: "method", base: expr, name, args };
+        } else {
+          expr = { t: "field", base: expr, name };
+        }
+        continue;
       }
       break;
     }
@@ -531,32 +571,11 @@ class Parser {
       this.pos += 1;
       // `array.new<float>(…)` / `matrix.new<…>` — generic collection constructors.
       if (this.peekOp("<") && /^(array|matrix|map)\./.test(tok.text)) {
-        throw new PineParseError(
-          `${tok.text}<…>() creates a collection (line ${tok.line}) — arrays/matrices/maps can't run in the per-bar trading engine.`
-        );
+        this.skipGenericArgs();
       }
       if (this.peekOp("(")) {
         this.pos += 1;
-        const args: PineArg[] = [];
-        if (!this.peekOp(")")) {
-          while (true) {
-            // Named argument: ident = expr (but not ==)
-            const argTok = this.peek();
-            const eq = this.tokens[this.pos + 1];
-            if (argTok.type === "ident" && eq?.type === "op" && eq.text === "=") {
-              this.pos += 2;
-              args.push({ name: argTok.text, value: this.parseExpr() });
-            } else {
-              args.push({ value: this.parseExpr() });
-            }
-            if (this.peekOp(",")) {
-              this.pos += 1;
-              continue;
-            }
-            break;
-          }
-        }
-        this.expectOp(")");
+        const args = this.parseArgs();
         return { t: "call", callee: tok.text, args };
       }
       return { t: "ident", name: tok.text };
@@ -604,6 +623,48 @@ class Parser {
     return tok;
   }
 
+  private skipGenericArgs(): void {
+    this.expectOp("<");
+    let depth = 1;
+    while (depth > 0) {
+      const tok = this.peek();
+      if (tok.type === "eof") throw new PineParseError("Unterminated generic type argument list.");
+      if (tok.type === "op" && tok.text === "<") depth += 1;
+      if (tok.type === "op" && tok.text === ">") depth -= 1;
+      this.pos += 1;
+    }
+  }
+
+  private skipUnsupportedArmRemainder(): void {
+    while (!this.atEof() && this.peek().type !== "newline") {
+      this.pos += 1;
+    }
+  }
+
+  private parseArgs(): PineArg[] {
+    const args: PineArg[] = [];
+    if (!this.peekOp(")")) {
+      while (true) {
+        // Named argument: ident = expr (but not ==)
+        const argTok = this.peek();
+        const eq = this.tokens[this.pos + 1];
+        if (argTok.type === "ident" && eq?.type === "op" && eq.text === "=") {
+          this.pos += 2;
+          args.push({ name: argTok.text, value: this.parseExpr() });
+        } else {
+          args.push({ value: this.parseExpr() });
+        }
+        if (this.peekOp(",")) {
+          this.pos += 1;
+          continue;
+        }
+        break;
+      }
+    }
+    this.expectOp(")");
+    return args;
+  }
+
   /** Indentation of the next statement if we're sitting on newline(s); undefined at EOF/none. */
   private peekNewlineIndent(): number | undefined {
     let idx = this.pos;
@@ -631,6 +692,10 @@ class Parser {
 
   private skipToLineEnd(): void {
     while (!this.atEof() && this.peek().type !== "newline") this.pos += 1;
+  }
+
+  private skipCommaTail(): void {
+    if (this.peekOp(",")) this.skipToLineEnd();
   }
 }
 

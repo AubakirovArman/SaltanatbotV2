@@ -335,20 +335,35 @@ indicator("Iff")
 plot(iff(close > open, high, low), "i")`);
     expect(json(ir)).toContain('"cond"');
   });
+
+  it("request.security imports as an editable external-series block", () => {
+    const result = importPineScript(`//@version=6
+indicator("HTF")
+htf = request.security(syminfo.tickerid, "D", ta.rsi(close, 14))
+plot(htf, "daily rsi")`);
+    expect(result.ok, result.ok ? "" : result.error).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings.join(" ")).toMatch(/request\.security|external-series|current chart/i);
+    const compiled = compileXmlToIr(result.xml);
+    expect(compiled.errors.filter((e) => !e.includes("no entry rule"))).toHaveLength(0);
+    const ir = convertPine(`//@version=6
+indicator("HTF")
+htf = request.security(syminfo.tickerid, "D", ta.rsi(close, 14))
+plot(htf, "daily rsi")`).ir;
+    expect(json(ir)).toContain('"security"');
+  });
+
+  it("time(session) imports as timestamp-or-na and can be used as a condition", () => {
+    const ir = roundTrips(`//@version=6
+indicator("Session")
+inSession = time("60", "0800-1200:23456")
+plotshape(inSession, "session")`);
+    expect(json(ir)).toContain('"time"');
+  });
 });
 
 describe("Pine v6: fail-closed on genuinely impossible constructs", () => {
   const impossible: { name: string; source: string; match: RegExp }[] = [
-    {
-      name: "request.security (other timeframe)",
-      source: `//@version=6\nindicator("x")\nhtf = request.security(syminfo.tickerid, "D", close)\nplot(htf)`,
-      match: /request\.security|external|timeframe/i
-    },
-    {
-      name: "arrays",
-      source: `//@version=6\nindicator("x")\nvar a = array.new_float(0)\nplot(array.size(a))`,
-      match: /collection|array/i
-    },
     {
       name: "ta.pivothigh (look-ahead)",
       source: `//@version=6\nindicator("x")\nph = ta.pivothigh(high, 5, 5)\nplot(ph)`,
@@ -365,11 +380,6 @@ describe("Pine v6: fail-closed on genuinely impossible constructs", () => {
       match: /trig/i
     },
     {
-      name: "barstate",
-      source: `//@version=6\nindicator("x")\nplotshape(barstate.islast, "last")`,
-      match: /barstate|confirmed/i
-    },
-    {
       name: "str.* strings",
       source: `//@version=6\nindicator("x")\nplot(str.length(syminfo.ticker))`,
       match: /string|metadata/i
@@ -384,10 +394,45 @@ describe("Pine v6: fail-closed on genuinely impossible constructs", () => {
   }
 });
 
+describe("Pine v6: opaque visual/collection constructs import with warnings", () => {
+  const convertible: { name: string; source: string; match: RegExp }[] = [
+    {
+      name: "arrays",
+      source: `//@version=6\nindicator("x")\nvar a = array.new_float(0)\nplot(array.size(a))`,
+      match: /collection|array/i
+    },
+    {
+      name: "barstate",
+      source: `//@version=6\nindicator("x")\nplotshape(barstate.islast, "last")`,
+      match: /barstate|last-bar/i
+    },
+    {
+      name: "user object type",
+      source: `//@version=6\nindicator("t")\ntype point\n    float x\n    float y\nplot(close)`,
+      match: /object|type/i
+    },
+    {
+      name: "drawing collection",
+      source: `//@version=6\nindicator("t")\nplot(box.all)`,
+      match: /drawing|opaque|visual/i
+    }
+  ];
+  for (const c of convertible) {
+    it(`imports ${c.name} with a fidelity warning`, () => {
+      const result = importPineScript(c.source);
+      expect(result.ok, result.ok ? "" : result.error).toBe(true);
+      if (!result.ok) return;
+      expect(result.warnings.join(" ")).toMatch(c.match);
+      const compiled = compileXmlToIr(result.xml);
+      expect(compiled.errors.filter((e) => !e.includes("no entry rule"))).toHaveLength(0);
+    });
+  }
+});
+
 describe("Pine v6 corpus: robustness + breadth", () => {
   // 31 real-world v6/v5/v4 scripts spanning indicators, strategies, functions,
-  // loops, switch, recursion, and constructs that MUST be rejected (request.security,
-  // arrays/matrices/maps, look-ahead pivots, native-only indicators).
+  // loops, switch, recursion, visual collections, MTF approximations, and hard
+  // rejects for genuinely unsafe/non-deterministic constructs.
   it("never crashes: each script converts+round-trips OR fails with a clear error", () => {
     let converted = 0;
     for (const script of v6corpus.scripts) {
@@ -406,12 +451,11 @@ describe("Pine v6 corpus: robustness + breadth", () => {
         expect(result.error.length, `"${script.title}" rejected with an empty message`).toBeGreaterThan(0);
       }
     }
-    // Breadth guard: everything computable in a per-bar scalar IR must convert.
-    // (The rest are genuine limitations — MTF data, collections, look-ahead, native-only indicators.)
+    // Breadth guard: everything computable or safely display-approximated must convert.
     expect(converted).toBeGreaterThanOrEqual(19);
   });
 
-  it("REJECT-tagged scripts (structurally impossible) all fail closed", () => {
+  it("REJECT-tagged look-ahead scripts still fail closed", () => {
     for (const script of v6corpus.scripts.filter((s) => s.title.includes("REJECT"))) {
       const result = importPineScript(script.source);
       expect(result.ok, `"${script.title}" should have been rejected`).toBe(false);
@@ -438,19 +482,18 @@ plot(maVal, "ma", color=#26a69a)`);
     expect(ir.inputs.map((i) => i.name)).toEqual(["len"]);
   });
 
-  it("structural constructs fail closed with honest reasons (not parse gibberish)", () => {
+  it("structural constructs import as editable approximations (not parse gibberish)", () => {
     const cases: { src: string; match: RegExp }[] = [
-      { src: '//@version=6\nindicator("t")\ntype point\n    float x\n    float y\nplot(close)', match: /user-defined|data types/i },
+      { src: '//@version=6\nindicator("t")\ntype point\n    float x\n    float y\nplot(close)', match: /type|object/i },
       { src: '//@version=6\nindicator("t")\narray<float> xs = array.new<float>()\nplot(close)', match: /collection|array/i },
       { src: '//@version=6\nindicator("t")\nfloat[] xs = array.new_float(0)\nplot(close)', match: /collection|array/i },
-      { src: '//@version=6\nindicator("t")\nvalue = close\nplot(value.rounded)', match: /object|collection/i },
-      { src: '//@version=6\nindicator("t")\nplot(box.all)', match: /drawing|visual/i },
-      { src: '//@version=6\nindicator("t")\ninSession = time("60", "0800-1200")\nplot(inSession)', match: /session/i }
+      { src: '//@version=6\nindicator("t")\nvalue = close\nplot(value.rounded)', match: /object|field|opaque/i },
+      { src: '//@version=6\nindicator("t")\nplot(box.all)', match: /drawing|visual|opaque/i }
     ];
     for (const c of cases) {
       const result = importPineScript(c.src);
-      expect(result.ok, `should reject: ${c.src.split("\n")[2]}`).toBe(false);
-      if (!result.ok) expect(result.error).toMatch(c.match);
+      expect(result.ok, `should import: ${c.src.split("\n")[2]}`).toBe(true);
+      if (result.ok) expect(result.warnings.join(" ")).toMatch(c.match);
     }
   });
 
@@ -648,9 +691,8 @@ plot(ta.percentrank(close, 14), "pr")`);
     ];
     const results = sources.map((s) => importPineScript(s));
     const ok = results.filter((r): r is Extract<typeof r, { ok: true }> => r.ok);
-    expect(ok).toHaveLength(2);
-    expect(ok.map((r) => `${r.kind}:${r.name}`)).toEqual(["indicator:Fast RSI", "strategy:Cross Bot"]);
-    const failed = results.find((r) => !r.ok);
-    expect(failed && !failed.ok && failed.error).toMatch(/request\.security|external|timeframe/i);
+    expect(ok).toHaveLength(3);
+    expect(ok.map((r) => `${r.kind}:${r.name}`)).toEqual(["indicator:Fast RSI", "strategy:Cross Bot", "indicator:HTF"]);
+    expect(ok[2].warnings.join(" ")).toMatch(/request\.security|external-series|current chart/i);
   });
 });

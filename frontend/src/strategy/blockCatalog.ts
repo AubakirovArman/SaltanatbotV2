@@ -15,6 +15,8 @@ export const blockCatalog: Record<string, BlockDoc> = {
   // Market & data
   market_price: { category: "Market", title: "Market price", body: "The current bar's price field: close/open/high/low/volume, or the averages hl2, hlc3, ohlc4." },
   market_price_offset: { category: "Market", title: "Price N bars ago", body: "A price field from a past bar (offset back from the current bar)." },
+  market_time: { category: "Market", title: "Bar time", body: "Pine time(): bar timestamp, optionally filtered by a session string such as 0930-1600:23456." },
+  market_security: { category: "Market", title: "External series", body: "Pine request.security(): value from another symbol or timeframe. Current runtime uses chart-data fallback until multi-series data is attached." },
 
   // Indicators
   indicator_ma: { category: "Indicators", title: "Moving average", body: "SMA / EMA / WMA / VWMA of a source over a period.", example: "EMA(21) of close" },
@@ -23,6 +25,7 @@ export const blockCatalog: Record<string, BlockDoc> = {
   indicator_macd: { category: "Indicators", title: "MACD", body: "MACD line, signal line, or histogram from fast/slow/signal EMAs." },
   indicator_atr: { category: "Indicators", title: "ATR", body: "Average True Range — volatility, for ATR-based stops/targets." },
   indicator_extreme: { category: "Indicators", title: "Highest / lowest", body: "Highest or lowest value of a source over the last N bars (Donchian-style)." },
+  indicator_correlation: { category: "Indicators", title: "Correlation", body: "Rolling Pearson correlation of two series over N bars, from -1 to +1." },
   series_agg: { category: "Indicators", title: "Rolling aggregate", body: "sum / average / min / max / std-dev / median of any value over the last N bars.", example: "average of RSI(14) over 5 bars" },
   series_shift: { category: "Indicators", title: "N bars ago", body: "The value of ANY expression N bars ago — e.g. RSI 3 bars back, for slope/divergence." },
   plot_series: { category: "Indicators", title: "Plot", body: "Draw a value on the chart, on the price pane or a separate sub-pane (for oscillators)." },

@@ -6,6 +6,7 @@ import {
   bollingerBand,
   cci,
   change as changeSeries,
+  correlationSeries,
   cmoSeries,
   cogSeries,
   dmiSeries,
@@ -379,6 +380,13 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
     case "histn":
       // Dynamic history offsets can't vectorize — histn is scalar-only (loop bodies).
       return new Array<number>(n).fill(NaN);
+    case "time":
+      return timeSeries(rt.candles, expr.session, expr.timezone);
+    case "security":
+      // Placeholder execution: Pine's request.security() requires another market
+      // context. Until the runtime supplies one, evaluate the requested expression
+      // on the current chart so imported scripts remain inspectable/editable.
+      return getSeries(expr.source, rt);
     case "cond": {
       const ca = getSeries(expr.a, rt);
       const cb = getSeries(expr.b, rt);
@@ -535,7 +543,53 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
       const bands = kcSeries(rt.candles, Math.max(1, Math.round(constNum(expr.period, rt))), constNum(expr.mult, rt) || 2);
       return expr.band === "upper" ? bands.upper : expr.band === "lower" ? bands.lower : bands.middle;
     }
+    case "correlation":
+      return correlationSeries(getSeries(expr.a, rt), getSeries(expr.b, rt), Math.max(2, Math.round(constNum(expr.period, rt))));
   }
+}
+
+function timeSeries(candles: Candle[], session?: string, timezone?: string): number[] {
+  if (!session) return candles.map((candle) => candle.time);
+  return candles.map((candle) => (isInPineSession(candle.time, session, timezone) ? candle.time : NaN));
+}
+
+function isInPineSession(time: number, session: string, timezone?: string): boolean {
+  const parsed = parsePineSession(session);
+  if (!parsed) return true;
+  const shifted = new Date(time + timezoneOffsetMs(timezone));
+  const minute = shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+  const day = shifted.getUTCDay();
+  if (parsed.days && !parsed.days.has(day)) return false;
+  if (parsed.start === parsed.end) return true;
+  return parsed.start < parsed.end
+    ? minute >= parsed.start && minute < parsed.end
+    : minute >= parsed.start || minute < parsed.end;
+}
+
+function parsePineSession(session: string): { start: number; end: number; days?: Set<number> } | undefined {
+  const text = session.trim();
+  if (!text || text === "24x7") return { start: 0, end: 0 };
+  const [range, daysText] = text.split(":");
+  const match = /^(\d{4})-(\d{4})$/.exec(range);
+  if (!match) return undefined;
+  const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(2, 4));
+  const days = daysText
+    ? new Set([...daysText].map((digit) => {
+        const pineDay = Number(digit);
+        return Number.isFinite(pineDay) ? (pineDay + 6) % 7 : -1;
+      }).filter((day) => day >= 0 && day <= 6))
+    : undefined;
+  return { start: toMinutes(match[1]), end: toMinutes(match[2]), days };
+}
+
+function timezoneOffsetMs(timezone?: string): number {
+  if (!timezone) return 0;
+  const match = /^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/.exec(timezone.trim());
+  if (!match) return 0;
+  const sign = match[1] === "+" ? 1 : -1;
+  const hours = Number(match[2]) || 0;
+  const minutes = Number(match[3]) || 0;
+  return sign * (hours * 60 + minutes) * 60_000;
 }
 
 type AggFn = "sum" | "avg" | "min" | "max" | "stdev" | "median";

@@ -80,6 +80,8 @@ function numText(expr: NumExpr): string {
     case "barssince": return `barssince(${boolText(expr.cond)})`;
     case "varprev": return `var:${expr.name}[1]`;
     case "histn": return `${expr.field}[${numText(expr.offset)}]`;
+    case "time": return `time(${expr.session ?? "chart"}${expr.timezone ? `, ${expr.timezone}` : ""})`;
+    case "security": return `security(${expr.symbol}, ${expr.timeframe}, ${numText(expr.source)})`;
     case "barindex": return "bar_index";
     case "valuewhen": return `valuewhen(${boolText(expr.cond)}, ${numText(expr.src)}, ${expr.occurrence})`;
     case "extremebars": return `${expr.kind}bars(${numText(expr.period)}, ${numText(expr.source)})`;
@@ -95,6 +97,7 @@ function numText(expr: NumExpr): string {
     case "percentrank": return `percentrank(${numText(expr.period)}, ${numText(expr.source)})`;
     case "sar": return `SAR(${numText(expr.start)}, ${numText(expr.inc)}, ${numText(expr.max)})`;
     case "kc": return `KC.${expr.band}(${numText(expr.period)}, ${numText(expr.mult)})`;
+    case "correlation": return `corr(${numText(expr.a)}, ${numText(expr.b)}, ${numText(expr.period)})`;
   }
 }
 

@@ -63,6 +63,29 @@ export function registerStrategyBlocks() {
       colour: "#4285b4",
       tooltip: "Read a price field N bars back where N can be a variable (e.g. a loop counter)."
     },
+    {
+      type: "market_time",
+      message0: "bar time session %1 timezone %2",
+      args0: [
+        { type: "field_input", name: "SESSION", text: "" },
+        { type: "field_input", name: "TIMEZONE", text: "" }
+      ],
+      output: "Number",
+      colour: "#4285b4",
+      tooltip: "Pine time(): returns the bar timestamp, or na outside the optional session."
+    },
+    {
+      type: "market_security",
+      message0: "external %1 timeframe %2 value %3",
+      args0: [
+        { type: "field_input", name: "SYMBOL", text: "current" },
+        { type: "field_input", name: "TIMEFRAME", text: "chart" },
+        { type: "input_value", name: "SOURCE", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#4285b4",
+      tooltip: "Pine request.security(): external symbol/timeframe series. Currently falls back to current chart data until multi-series data is loaded."
+    },
     // ---- Indicators ----
     {
       type: "indicator_ma",
@@ -351,6 +374,18 @@ export function registerStrategyBlocks() {
       output: "Number",
       colour: "#2f9e77",
       tooltip: "Keltner Channel band (EMA ± mult × ATR)."
+    },
+    {
+      type: "indicator_correlation",
+      message0: "correlation of %1 and %2 over %3 bars",
+      args0: [
+        { type: "input_value", name: "A", check: "Number" },
+        { type: "input_value", name: "B", check: "Number" },
+        { type: "input_value", name: "PERIOD", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Rolling Pearson correlation coefficient (-1 to +1)."
     },
     {
       type: "market_barindex",
@@ -862,6 +897,8 @@ export const strategyToolbox = {
         { kind: "block", type: "market_price" },
         { kind: "block", type: "market_price_offset" },
         { kind: "block", type: "market_hist_dyn" },
+        { kind: "block", type: "market_time" },
+        { kind: "block", type: "market_security" },
         { kind: "block", type: "market_barindex" }
       ]
     },
@@ -896,6 +933,7 @@ export const strategyToolbox = {
         { kind: "block", type: "indicator_percentrank" },
         { kind: "block", type: "indicator_sar" },
         { kind: "block", type: "indicator_kc" },
+        { kind: "block", type: "indicator_correlation" },
         { kind: "block", type: "series_agg" },
         { kind: "block", type: "series_shift" },
         { kind: "block", type: "series_cum" },

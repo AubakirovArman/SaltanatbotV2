@@ -185,6 +185,10 @@ function numXml(expr: NumExpr, d: Defaults): string {
       return block("var_prev", field("NAME", expr.name), "");
     case "histn":
       return block("market_hist_dyn", field("FIELD", expr.field) + value("OFFSET", numXml(expr.offset, d)), "");
+    case "time":
+      return block("market_time", field("SESSION", expr.session ?? "") + field("TIMEZONE", expr.timezone ?? ""), "");
+    case "security":
+      return block("market_security", field("SYMBOL", expr.symbol) + field("TIMEFRAME", expr.timeframe) + value("SOURCE", numXml(expr.source, d)), "");
     case "barindex":
       return block("market_barindex", "", "");
     case "valuewhen":
@@ -231,6 +235,8 @@ function numXml(expr: NumExpr, d: Defaults): string {
       );
     case "kc":
       return block("indicator_kc", field("BAND", expr.band) + value("PERIOD", numXml(expr.period, d)) + value("MULT", numXml(expr.mult, d)), "");
+    case "correlation":
+      return block("indicator_correlation", value("A", numXml(expr.a, d)) + value("B", numXml(expr.b, d)) + value("PERIOD", numXml(expr.period, d)), "");
     case "arith": {
       if (expr.op === "%") {
         return block("math_modulo", value("A", numXml(expr.a, d)) + value("B", numXml(expr.b, d)), "");

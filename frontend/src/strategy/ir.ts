@@ -32,6 +32,8 @@ export type NumExpr =
   | { k: "barssince"; cond: BoolExpr }
   | { k: "varprev"; name: string }
   | { k: "histn"; field: PriceField; offset: NumExpr }
+  | { k: "time"; session?: string; timezone?: string }
+  | { k: "security"; symbol: string; timeframe: string; source: NumExpr }
   /* --- Native indicator nodes (wave 3: near-total ta.* coverage) ---
      All are pure functions of the candle array (vectorized, deterministic),
      so backtest and live evaluate them identically. */
@@ -49,7 +51,8 @@ export type NumExpr =
   | { k: "cog"; period: NumExpr; source: NumExpr }
   | { k: "percentrank"; period: NumExpr; source: NumExpr }
   | { k: "sar"; start: NumExpr; inc: NumExpr; max: NumExpr }
-  | { k: "kc"; band: "upper" | "middle" | "lower"; period: NumExpr; mult: NumExpr };
+  | { k: "kc"; band: "upper" | "middle" | "lower"; period: NumExpr; mult: NumExpr }
+  | { k: "correlation"; a: NumExpr; b: NumExpr; period: NumExpr };
 
 /** Runtime-context reads: the current position/PnL state, supplied per bar by the
  *  backtester and the live engine. Scalar-only (never a series). */
@@ -122,12 +125,12 @@ export interface StrategyIR {
 }
 
 /** Current IR schema version stamped on newly compiled strategies. */
-export const IR_VERSION = 2;
+export const IR_VERSION = 3;
 
 const NUM_KINDS = new Set([
   "num", "input", "var", "price", "ma", "rsi", "bollinger", "macd", "atr", "stdev", "extreme", "change",
   "stoch", "wpr", "cci", "roc", "minmax", "arith", "unary", "ctx", "agg", "shift", "cond", "nz", "cum", "barssince", "varprev", "histn",
-  "barindex", "valuewhen", "extremebars", "linreg", "vwap", "supertrend", "dmi", "mfi", "cmo", "tsi", "alma", "cog", "percentrank", "sar", "kc"
+  "time", "security", "barindex", "valuewhen", "extremebars", "linreg", "vwap", "supertrend", "dmi", "mfi", "cmo", "tsi", "alma", "cog", "percentrank", "sar", "kc", "correlation"
 ]);
 
 export function isNumExpr(expr: NumExpr | BoolExpr): expr is NumExpr {
