@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type BacktestConfig, DEFAULT_CONFIG, runBacktest } from "../src/strategy/backtest";
+import { type BacktestConfig, DEFAULT_CONFIG, previewStrategy, runBacktest } from "../src/strategy/backtest";
 import type { StrategyIR } from "../src/strategy/ir";
 import type { Candle } from "../src/types";
 
@@ -127,6 +127,25 @@ describe("known crossover produces the expected trade", () => {
     expect(result.trades[0].entryIndex).toBe(4);
     expect(result.trades[0].entryPrice).toBe(111);
     expect(result.trades[0].direction).toBe("long");
+  });
+});
+
+describe("previewStrategy runs bar-major (setvar state accumulates)", () => {
+  it("plots a per-bar counter that increments across bars", () => {
+    // Each bar: count = count + 1; then plot count. State must carry across bars,
+    // which the old statement-major preview (that never ran setvar) could not do.
+    const ir: StrategyIR = {
+      name: "counter",
+      inputs: [],
+      body: [
+        { k: "setvar", name: "count", value: { k: "arith", op: "+", a: { k: "var", name: "count" }, b: { k: "num", v: 1 } } },
+        { k: "plot", value: { k: "var", name: "count" }, label: "count", color: "#fff" },
+      ],
+    };
+    const candles = [100, 101, 102, 103].map((c, i) => candle(i * MIN, c, c + 1, c - 1, c));
+    const { plots } = previewStrategy(ir, candles);
+    expect(plots).toHaveLength(1);
+    expect(plots[0].points.map((p) => p.value)).toEqual([1, 2, 3, 4]);
   });
 });
 

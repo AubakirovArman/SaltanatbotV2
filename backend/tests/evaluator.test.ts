@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateBar } from "../src/trading/strategy/evaluator.js";
+import { evaluateBar, runInit } from "../src/trading/strategy/evaluator.js";
 import type { StrategyIR } from "../src/trading/strategy/ir.js";
 import type { Candle } from "../src/types.js";
 
@@ -83,6 +83,55 @@ describe("evaluateBar — EMA/SMA cross intents on golden bars", () => {
     const first = signalBars(emaCrossIR, golden);
     const second = signalBars(emaCrossIR, golden);
     expect(first).toEqual(second);
+  });
+});
+
+describe("runInit — on-start initialization", () => {
+  it("seeds vars once before the first bar; per-bar rules build on the seed", () => {
+    const ir: StrategyIR = {
+      name: "init-counter",
+      inputs: [],
+      init: [{ k: "setvar", name: "count", value: { k: "num", v: 10 } }],
+      body: [{ k: "setvar", name: "count", value: { k: "arith", op: "+", a: { k: "var", name: "count" }, b: { k: "num", v: 1 } } }],
+    };
+    const vars = new Map<string, number>();
+    runInit(ir, golden, vars);
+    expect(vars.get("count")).toBe(10);
+    evaluateBar(ir, golden, 0, vars);
+    expect(vars.get("count")).toBe(11);
+    evaluateBar(ir, golden, 1, vars);
+    expect(vars.get("count")).toBe(12);
+  });
+});
+
+describe("evaluateBar — if / else-if / else routing", () => {
+  const ir: StrategyIR = {
+    name: "if-else",
+    inputs: [],
+    body: [
+      {
+        k: "if",
+        cond: { k: "compare", op: ">", a: { k: "price", field: "close" }, b: { k: "num", v: 100 } },
+        then: [{ k: "entry", direction: "long", when: { k: "bool", v: true } }],
+        elifs: [
+          {
+            cond: { k: "compare", op: "<", a: { k: "price", field: "close" }, b: { k: "num", v: 90 } },
+            then: [{ k: "entry", direction: "short", when: { k: "bool", v: true } }],
+          },
+        ],
+        else: [{ k: "setvar", name: "flat", value: { k: "num", v: 1 } }],
+      },
+    ],
+  };
+  const bars = [105, 85, 95].map((c, i) => candle(i * MIN, c));
+
+  it("runs the first matching branch, else-if, then falls through to else", () => {
+    const vars = new Map<string, number>();
+    expect(evaluateBar(ir, bars, 0, vars).entry).toBe("long"); // close 105 > 100
+    expect(evaluateBar(ir, bars, 1, vars).entry).toBe("short"); // close 85 < 90
+    const last = evaluateBar(ir, bars, 2, vars); // close 95 → else
+    expect(last.entry).toBeUndefined();
+    expect(vars.get("flat")).toBe(1);
   });
 });
 

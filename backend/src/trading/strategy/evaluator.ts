@@ -63,6 +63,24 @@ export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, va
   return intents;
 }
 
+/**
+ * Run the strategy's one-time `init` (on-start) statements, mutating `vars`.
+ * Called once when a bot first starts (not on resume, where state is restored).
+ * init is setvar-only, evaluated against the first available bar.
+ */
+export function runInit(ir: StrategyIR, candles: Candle[], vars: Map<string, number>): void {
+  if (!ir.init?.length) return;
+  const rt: Runtime = {
+    candles,
+    n: candles.length,
+    params: new Map(ir.inputs.map((input) => [input.name, input.value])),
+    vars,
+    seriesCache: new Map()
+  };
+  const intents: BarIntents = { exit: false, alerts: [], markers: [] };
+  for (const stmt of ir.init) execStatement(stmt, 0, rt, intents);
+}
+
 /** Current ATR(period) value at a bar — used by the engine for atr-based stops. */
 export function atrValue(candles: Candle[], period: number, index: number): number {
   const series = atrSeries(candles, period);
@@ -104,9 +122,22 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) 
       break;
     case "plot":
       break;
-    case "if":
-      if (evalBool(stmt.cond, i, rt)) execStatements(stmt.then, i, rt, intents);
+    case "if": {
+      if (evalBool(stmt.cond, i, rt)) {
+        execStatements(stmt.then, i, rt, intents);
+        break;
+      }
+      let matched = false;
+      for (const clause of stmt.elifs ?? []) {
+        if (evalBool(clause.cond, i, rt)) {
+          execStatements(clause.then, i, rt, intents);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched && stmt.else) execStatements(stmt.else, i, rt, intents);
       break;
+    }
   }
 }
 
@@ -270,13 +301,14 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
   }
 }
 
-function applyArith(op: "+" | "-" | "*" | "/" | "%", a: number, b: number): number {
+function applyArith(op: "+" | "-" | "*" | "/" | "%" | "^", a: number, b: number): number {
   switch (op) {
     case "+": return a + b;
     case "-": return a - b;
     case "*": return a * b;
     case "/": return b === 0 ? NaN : a / b;
     case "%": return b === 0 ? NaN : a % b;
+    case "^": return a ** b;
   }
 }
 

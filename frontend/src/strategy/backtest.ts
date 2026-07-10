@@ -184,6 +184,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     seriesCache: new Map(),
     atr14: candles.length ? atrSeries(candles, 14) : []
   };
+  runInit(ir, rt);
 
   const trades: Trade[] = [];
   const equityCurve: EquityPoint[] = [];
@@ -558,42 +559,77 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
     seriesCache: new Map(),
     atr14: candles.length ? atrSeries(candles, 14) : []
   };
-  const plots: PlotSeries[] = [];
+  runInit(ir, rt);
   const signals: TradeMarker[] = [];
 
-  const walk = (stmts: Stmt[]) => {
+  // Pre-register plots in AST order so their series keep a stable order even when
+  // a plot lives inside an `if` that first fires on a late bar.
+  const plotMap = new Map<Stmt, PlotSeries>();
+  const registerPlots = (stmts: Stmt[]) => {
     for (const stmt of stmts) {
-      if (stmt.k === "plot") {
-        const series = getSeries(stmt.value, rt);
-        plots.push({
-          label: stmt.label,
-          color: stmt.color,
-          points: candles.map((candle, i) => ({ time: candle.time, value: series[i] })).filter((point) => Number.isFinite(point.value))
-        });
-      } else if (stmt.k === "entry") {
-        for (let i = 1; i < candles.length; i += 1) {
-          if (evalBool(stmt.when, i, rt)) {
-            signals.push({ time: candles[i].time, price: stmt.direction === "long" ? candles[i].low : candles[i].high, kind: stmt.direction === "long" ? "buy" : "sell", label: stmt.direction === "long" ? "Buy" : "Sell" });
+      if (stmt.k === "plot") plotMap.set(stmt, { label: stmt.label, color: stmt.color, points: [] });
+      else if (stmt.k === "if") registerPlots(stmt.then);
+    }
+  };
+  registerPlots(ir.body);
+
+  // Execute bar-by-bar (statements in order) so `setvar` state accumulates and any
+  // stateful expression previews exactly as it would in the backtest — walking
+  // statement-by-statement (the old approach) never ran setvar and mis-ordered state.
+  const execBar = (stmts: Stmt[], i: number) => {
+    for (const stmt of stmts) {
+      switch (stmt.k) {
+        case "setvar":
+          rt.vars.set(stmt.name, evalNum(stmt.value, i, rt));
+          break;
+        case "plot": {
+          const value = evalNum(stmt.value, i, rt);
+          if (Number.isFinite(value)) (plotMap.get(stmt) as PlotSeries).points.push({ time: candles[i].time, value });
+          break;
+        }
+        case "entry":
+          if (i >= 1 && evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: stmt.direction === "long" ? candles[i].low : candles[i].high, kind: stmt.direction === "long" ? "buy" : "sell", label: stmt.direction === "long" ? "Buy" : "Sell" });
+          break;
+        case "exit":
+          if (i >= 1 && evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: candles[i].high, kind: "exit", label: "Exit" });
+          break;
+        case "marker":
+          if (i >= 1 && evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: stmt.dir === "up" ? candles[i].low : candles[i].high, kind: stmt.dir === "up" ? "buy" : "sell", label: stmt.label });
+          break;
+        case "if": {
+          if (evalBool(stmt.cond, i, rt)) {
+            execBar(stmt.then, i);
+            break;
           }
+          let matched = false;
+          for (const clause of stmt.elifs ?? []) {
+            if (evalBool(clause.cond, i, rt)) {
+              execBar(clause.then, i);
+              matched = true;
+              break;
+            }
+          }
+          if (!matched && stmt.else) execBar(stmt.else, i);
+          break;
         }
-      } else if (stmt.k === "exit") {
-        for (let i = 1; i < candles.length; i += 1) {
-          if (evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: candles[i].high, kind: "exit", label: "Exit" });
-        }
-      } else if (stmt.k === "marker") {
-        for (let i = 1; i < candles.length; i += 1) {
-          if (evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: stmt.dir === "up" ? candles[i].low : candles[i].high, kind: stmt.dir === "up" ? "buy" : "sell", label: stmt.label });
-        }
-      } else if (stmt.k === "if") {
-        walk(stmt.then);
+        // stop/target/trail/size/alert have no chart preview — skipped here.
       }
     }
   };
-  walk(ir.body);
+  for (let i = 0; i < candles.length; i += 1) execBar(ir.body, i);
+
+  const plots = [...plotMap.values()].filter((plot) => plot.points.length > 0);
   return { plots, signals };
 }
 
 // ---------- statement execution ----------
+
+/** Run one-time on-start init statements (setvar-only) into rt.vars before the first bar. */
+function runInit(ir: StrategyIR, rt: Runtime) {
+  if (!ir.init?.length) return;
+  const intents: Intents = { exit: false, alerts: [], markers: [] };
+  for (const stmt of ir.init) execStatement(stmt, 0, rt, intents);
+}
 
 function execStatements(stmts: Stmt[], i: number, rt: Runtime, intents: Intents) {
   for (const stmt of stmts) execStatement(stmt, i, rt, intents);
@@ -630,9 +666,22 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: Intents) {
       break;
     case "plot":
       break;
-    case "if":
-      if (evalBool(stmt.cond, i, rt)) execStatements(stmt.then, i, rt, intents);
+    case "if": {
+      if (evalBool(stmt.cond, i, rt)) {
+        execStatements(stmt.then, i, rt, intents);
+        break;
+      }
+      let matched = false;
+      for (const clause of stmt.elifs ?? []) {
+        if (evalBool(clause.cond, i, rt)) {
+          execStatements(clause.then, i, rt, intents);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched && stmt.else) execStatements(stmt.else, i, rt, intents);
       break;
+    }
   }
 }
 
@@ -651,6 +700,7 @@ function evalNum(expr: NumExpr, i: number, rt: Runtime): number {
         case "*": return a * b;
         case "/": return b === 0 ? NaN : a / b;
         case "%": return b === 0 ? NaN : a % b;
+        case "^": return a ** b;
       }
       return NaN;
     }
@@ -815,13 +865,14 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
   }
 }
 
-function applyArith(op: "+" | "-" | "*" | "/" | "%", a: number, b: number): number {
+function applyArith(op: "+" | "-" | "*" | "/" | "%" | "^", a: number, b: number): number {
   switch (op) {
     case "+": return a + b;
     case "-": return a - b;
     case "*": return a * b;
     case "/": return b === 0 ? NaN : a / b;
     case "%": return b === 0 ? NaN : a % b;
+    case "^": return a ** b;
   }
 }
 

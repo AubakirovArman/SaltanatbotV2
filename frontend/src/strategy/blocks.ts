@@ -19,13 +19,14 @@ export function registerStrategyBlocks() {
   Blockly.defineBlocksWithJsonArray([
     {
       type: "strategy_start",
-      message0: "strategy %1 rules %2",
+      message0: "strategy %1 on start (once) %2 rules %3",
       args0: [
         { type: "field_input", name: "NAME", text: "Momentum Breakout" },
+        { type: "input_statement", name: "INIT" },
         { type: "input_statement", name: "RULES" }
       ],
       colour: "#5f7285",
-      tooltip: "Entry point for a strategy or indicator graph."
+      tooltip: "Entry point. 'On start' runs once at bot start (set initial variables); 'rules' run every bar."
     },
     // ---- Market ----
     {
@@ -393,6 +394,18 @@ export function registerStrategyBlocks() {
       tooltip: "Store a value in a named variable for this bar."
     },
     {
+      type: "var_change",
+      message0: "change %1 by %2",
+      args0: [
+        { type: "field_input", name: "NAME", text: "counter" },
+        { type: "input_value", name: "BY", check: "Number" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: "#9469c9",
+      tooltip: "Increment (or decrement) a stored variable by an amount."
+    },
+    {
       type: "var_get",
       message0: "var %1",
       args0: [{ type: "field_input", name: "NAME", text: "counter" }],
@@ -504,8 +517,16 @@ export const strategyToolbox = {
       contents: [
         { kind: "block", type: "signal_entry" },
         { kind: "block", type: "signal_exit" },
-        { kind: "block", type: "signal_marker" },
-        { kind: "block", type: "flow_if" }
+        { kind: "block", type: "signal_marker" }
+      ]
+    },
+    {
+      kind: "category",
+      name: "Flow",
+      colour: "#bd58a4",
+      contents: [
+        { kind: "block", type: "flow_if" },
+        { kind: "block", type: "controls_if" }
       ]
     },
     {
@@ -525,6 +546,7 @@ export const strategyToolbox = {
       colour: "#9469c9",
       contents: [
         { kind: "block", type: "var_set" },
+        { kind: "block", type: "var_change" },
         { kind: "block", type: "var_get" },
         { kind: "block", type: "alert_message" }
       ]
