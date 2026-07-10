@@ -29,6 +29,7 @@ import { drawChart, setChartTheme } from "../chart/ChartEngine";
 import { compareColor } from "../chart/compareColors";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
+import { visibleCandles } from "../chart/scales";
 import type { ChartLivePosition, ChartMarker, ChartPlot, ChartTrade, CompareLegendSnapshot, CompareSeries, PriceMode, Viewport } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { PriceAlert } from "../market/alerts";
@@ -114,6 +115,8 @@ export function ChartCanvas({
   const viewportRef = useRef<Viewport>();
   const interactionRef = useRef<Interaction>();
   const drawingsRef = useRef<DrawingObject[]>([]);
+  const historyRef = useRef<DrawingObject[][]>([]);
+  const skipHistoryRef = useRef(false);
 
   const [tool, setTool] = useState<DrawingTool>("cursor");
   const [magnet, setMagnet] = useState(false);
@@ -163,11 +166,32 @@ export function ChartCanvas({
     return () => window.clearTimeout(id);
   }, [drawings, instrument.symbol]);
 
-  // Keyboard: Esc cancels/deselects, Delete removes selected.
+  // Record drawing snapshots for undo (bounded), skipping the ones an undo restores.
+  useEffect(() => {
+    if (skipHistoryRef.current) {
+      skipHistoryRef.current = false;
+      return;
+    }
+    historyRef.current.push(drawings);
+    if (historyRef.current.length > 60) historyRef.current.shift();
+  }, [drawings]);
+
+  // Keyboard: Esc cancels/deselects, Delete removes selected, Ctrl/Cmd+Z undoes.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if ((event.key === "z" || event.key === "Z") && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        const history = historyRef.current;
+        if (history.length >= 2) {
+          history.pop();
+          skipHistoryRef.current = true;
+          setSelectedId(undefined);
+          setDrawings(history[history.length - 1]);
+        }
+        return;
+      }
       if (event.key === "Escape") {
         setDraft(undefined);
         setSelectedId(undefined);
@@ -485,8 +509,21 @@ export function ChartCanvas({
             interactionRef.current = undefined;
           }}
           onWheel={(event) => {
-            const next = Math.min(4, Math.max(0.4, view.zoom + (event.deltaY > 0 ? -0.1 : 0.1)));
-            setView((current) => ({ ...current, zoom: next }));
+            const nextZoom = Math.min(4, Math.max(0.4, view.zoom + (event.deltaY > 0 ? -0.1 : 0.1)));
+            const vp = viewportRef.current;
+            if (!vp || candles.length === 0) {
+              setView((current) => ({ ...current, zoom: nextZoom }));
+              return;
+            }
+            // Anchor the zoom on the bar under the cursor: keep its global index at
+            // the same x after the bar spacing changes.
+            const rect = event.currentTarget.getBoundingClientRect();
+            const cursorX = (event.clientX - rect.left) * devicePixelRatio;
+            const indexBefore = vp.xToIndex(cursorX);
+            const nv = visibleCandles(candles, vp.plot, nextZoom, view.offset);
+            const desiredStart = indexBefore - (cursorX - vp.plot.left - nv.step / 2) / nv.step;
+            const newOffset = Math.max(0, Math.round(candles.length - nv.data.length - desiredStart));
+            setView((current) => ({ ...current, zoom: nextZoom, offset: newOffset }));
           }}
           onDoubleClick={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
           onContextMenu={(event) => {
@@ -500,6 +537,12 @@ export function ChartCanvas({
             setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id, price: viewport?.yToPrice(y) });
           }}
         />
+        {selectedId && drawings.some((d) => d.id === selectedId) && (
+          <DrawingStyleBar
+            drawing={drawings.find((d) => d.id === selectedId) as DrawingObject}
+            onChange={(patch) => setDrawings((current) => current.map((d) => (d.id === selectedId ? { ...d, style: { ...d.style, ...patch } } : d)))}
+          />
+        )}
         {menu && (
           <DrawingMenu
             x={menu.x}
@@ -546,6 +589,48 @@ function ToolButton({
     <button type="button" className={active ? "active" : ""} aria-label={label} title={label} onClick={onClick}>
       {children}
     </button>
+  );
+}
+
+const DRAW_COLORS = ["#4db6ff", "#f7c948", "#23c97a", "#ef5350", "#bd58a4", "#8f9bb3"];
+
+/** Floating style toolbar for the selected drawing (color / width / dash). */
+function DrawingStyleBar({ drawing, onChange }: { drawing: DrawingObject; onChange: (patch: Partial<DrawingObject["style"]>) => void }) {
+  return (
+    <div
+      style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", zIndex: 30, display: "flex", gap: 6, alignItems: "center", padding: "5px 8px", background: "#12161f", border: "1px solid rgba(134,150,166,0.25)", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.35)" }}
+    >
+      {DRAW_COLORS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          title={c}
+          aria-label={`Colour ${c}`}
+          onClick={() => onChange({ color: c })}
+          style={{ width: 16, height: 16, borderRadius: "50%", background: c, border: drawing.style.color === c ? "2px solid #fff" : "1px solid rgba(0,0,0,0.35)", cursor: "pointer", padding: 0 }}
+        />
+      ))}
+      <span style={{ width: 1, height: 16, background: "rgba(134,150,166,0.3)" }} />
+      {[1, 2, 3].map((w) => (
+        <button
+          key={w}
+          type="button"
+          title={`${w}px`}
+          onClick={() => onChange({ width: w })}
+          style={{ background: Math.round(drawing.style.width) === w ? "rgba(77,182,255,0.25)" : "transparent", border: "none", color: "inherit", cursor: "pointer", borderRadius: 4, padding: "2px 6px", fontSize: 11 }}
+        >
+          {w}px
+        </button>
+      ))}
+      <button
+        type="button"
+        title="Dashed line"
+        onClick={() => onChange({ dashed: !drawing.style.dashed })}
+        style={{ background: drawing.style.dashed ? "rgba(77,182,255,0.25)" : "transparent", border: "none", color: "inherit", cursor: "pointer", borderRadius: 4, padding: "2px 8px", fontSize: 11 }}
+      >
+        ┄
+      </button>
+    </div>
   );
 }
 
