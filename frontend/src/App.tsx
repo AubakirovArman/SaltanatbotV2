@@ -557,6 +557,7 @@ export default function App() {
                 catalog={catalog}
                 initialSymbol={symbol}
                 initialTimeframe={timeframe}
+                exchange={cryptoExchange}
                 theme={theme}
                 onApplyResult={(result, btSymbol, btTimeframe, visuals) =>
                   setOverlay({

@@ -19,7 +19,7 @@ import type { StrategyArtifact, StrategyArtifactKind } from "../strategy/library
 import { strategyTemplates, type StrategyTemplate, type TemplateCategory } from "../strategy/templates";
 import { downloadStrategyFile, parseStrategyFile } from "../strategy/strategyFile";
 import type { StrategyIR } from "../strategy/ir";
-import type { Candle, CatalogResponse, Timeframe } from "../types";
+import type { Candle, CatalogResponse, DataExchange, Timeframe } from "../types";
 import { BacktestReport } from "./BacktestReport";
 
 const blocklyMessages = Object.fromEntries(Object.entries(En).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
@@ -85,6 +85,7 @@ interface StrategyLabProps {
   catalog?: CatalogResponse;
   initialSymbol: string;
   initialTimeframe: Timeframe;
+  exchange?: DataExchange;
   theme?: "dark" | "light";
   onApplyResult?: (
     result: BacktestResult,
@@ -183,7 +184,7 @@ function comboCount(state: OptSpecState): number {
   return total;
 }
 
-export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onCreateArtifact, onSaveArtifact, onUseTemplate, onImportStrategy, onImportPineMany, catalog, initialSymbol, initialTimeframe, theme = "dark", onApplyResult, onShowOnChart }: StrategyLabProps) {
+export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onCreateArtifact, onSaveArtifact, onUseTemplate, onImportStrategy, onImportPineMany, catalog, initialSymbol, initialTimeframe, exchange = "binance", theme = "dark", onApplyResult, onShowOnChart }: StrategyLabProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const workspaceRef = useRef<Blockly.WorkspaceSvg | null>(null);
   const previewRef = useRef<() => void>(() => undefined);
@@ -369,10 +370,10 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
   // exact same candle window.
   const fetchHistory = async (): Promise<Candle[]> => {
     const chunk = Math.min(btBars, 1000);
-    let candles = (await getCandles(btSymbol, btTimeframe, chunk)).candles;
+    let candles = (await getCandles(btSymbol, btTimeframe, chunk, undefined, exchange)).candles;
     while (candles.length < btBars && candles.length > 0) {
       const oldest = candles[0].time;
-      const older = (await getCandles(btSymbol, btTimeframe, 1000, oldest - 1)).candles.filter((candle) => candle.time < oldest);
+      const older = (await getCandles(btSymbol, btTimeframe, 1000, oldest - 1, exchange)).candles.filter((candle) => candle.time < oldest);
       if (older.length === 0) break;
       candles = [...older, ...candles];
     }
@@ -401,7 +402,8 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
       const securityData = await loadSecurityDataForIr(compiled.ir, {
         symbol: btSymbol,
         timeframe: btTimeframe,
-        chartCandles: candles
+        chartCandles: candles,
+        exchange
       });
       const backtest = runBacktest(compiled.ir, candles, config, securityData);
       setResult(backtest);
@@ -448,7 +450,8 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
       const securityData = await loadSecurityDataForIr(compiled.ir, {
         symbol: btSymbol,
         timeframe: btTimeframe,
-        chartCandles: candles
+        chartCandles: candles,
+        exchange
       });
       optSecurityRef.current = securityData;
       const onProgress = (done: number, total: number) => setOptProgress({ done, total });
