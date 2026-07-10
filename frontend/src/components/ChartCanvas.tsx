@@ -4,8 +4,10 @@ import {
   Move,
   MoveHorizontal,
   MoveVertical,
+  MoveDiagonal,
   Ratio,
   RectangleHorizontal,
+  Ruler,
   Scaling,
   TrendingDown,
   TrendingUp,
@@ -105,6 +107,7 @@ export function ChartCanvas({
 
   const [tool, setTool] = useState<DrawingTool>("cursor");
   const [magnet, setMagnet] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number; id?: string }>();
   const [showVolume, setShowVolume] = useState(true);
   const [drawings, setDrawings] = useState<DrawingObject[]>([]);
   const [draft, setDraft] = useState<{ tool: ShapeTool; points: Anchor[] }>();
@@ -275,8 +278,14 @@ export function ChartCanvas({
         <ToolButton active={tool === "ray"} label="Ray" onClick={() => setTool("ray")}>
           <Move size={15} aria-hidden="true" />
         </ToolButton>
+        <ToolButton active={tool === "extended"} label="Extended line" onClick={() => setTool("extended")}>
+          <MoveDiagonal size={15} aria-hidden="true" />
+        </ToolButton>
         <ToolButton active={tool === "hline"} label="Horizontal line" onClick={() => setTool("hline")}>
           <MoveHorizontal size={15} aria-hidden="true" />
+        </ToolButton>
+        <ToolButton active={tool === "hray"} label="Horizontal ray" onClick={() => setTool("hray")}>
+          <MoveHorizontal size={15} aria-hidden="true" className="ic-ray" />
         </ToolButton>
         <ToolButton active={tool === "vline"} label="Vertical line" onClick={() => setTool("vline")}>
           <MoveVertical size={15} aria-hidden="true" />
@@ -293,6 +302,9 @@ export function ChartCanvas({
         <ToolButton active={tool === "short"} label="Short position" onClick={() => setTool("short")}>
           <TrendingDown size={15} aria-hidden="true" className="ic-down" />
         </ToolButton>
+        <ToolButton active={tool === "measure"} label="Measure (Δ price / % / bars)" onClick={() => setTool("measure")}>
+          <Ruler size={15} aria-hidden="true" />
+        </ToolButton>
         <span className="rail-divider" aria-hidden="true" />
         <ToolButton active={magnet} label="Magnet (snap to price)" onClick={() => setMagnet((value) => !value)}>
           <Magnet size={15} aria-hidden="true" />
@@ -307,6 +319,7 @@ export function ChartCanvas({
           aria-label="Delete all drawings"
           title="Delete all drawings"
           onClick={() => {
+            if (drawings.length > 0 && !window.confirm("Delete all drawings?")) return;
             setDraft(undefined);
             setSelectedId(undefined);
             setDrawings([]);
@@ -459,7 +472,39 @@ export function ChartCanvas({
             const next = Math.min(4, Math.max(0.4, view.zoom + (event.deltaY > 0 ? -0.1 : 0.1)));
             setView((current) => ({ ...current, zoom: next }));
           }}
+          onDoubleClick={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            const viewport = viewportRef.current;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const x = (event.clientX - rect.left) * devicePixelRatio;
+            const y = (event.clientY - rect.top) * devicePixelRatio;
+            const hit = viewport ? hitTest(viewport, drawingsRef.current, x, y, selectedId) : undefined;
+            if (hit) setSelectedId(hit.id);
+            setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id });
+          }}
         />
+        {menu && (
+          <DrawingMenu
+            x={menu.x}
+            y={menu.y}
+            drawing={menu.id ? drawings.find((d) => d.id === menu.id) : undefined}
+            hasLocked={drawings.some((d) => d.locked)}
+            onUnlockAll={() => setDrawings((current) => current.map((d) => ({ ...d, locked: false })))}
+            onClose={() => setMenu(undefined)}
+            onDelete={(id) => {
+              setDrawings((current) => current.filter((d) => d.id !== id));
+              setSelectedId(undefined);
+            }}
+            onDuplicate={(id) => {
+              const src = drawings.find((d) => d.id === id);
+              if (src) setDrawings((current) => [...current, createDrawing(src.tool, src.points.map((p) => ({ ...p })), src.style)]);
+            }}
+            onToggleLock={(id) => setDrawings((current) => current.map((d) => (d.id === id ? { ...d, locked: !d.locked } : d)))}
+            onToggleHide={(id) => setDrawings((current) => current.map((d) => (d.id === id ? { ...d, hidden: !d.hidden } : d)))}
+            onResetView={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
+          />
+        )}
       </div>
       <p className="sr-only" aria-live="polite">
         Latest {instrument.symbol} close is {latest?.close.toFixed(instrument.decimals) ?? "loading"}.
@@ -483,6 +528,60 @@ function ToolButton({
     <button type="button" className={active ? "active" : ""} aria-label={label} title={label} onClick={onClick}>
       {children}
     </button>
+  );
+}
+
+function MenuItem({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", background: "transparent", border: "none", color: danger ? "#ef5350" : "inherit", cursor: "pointer", borderRadius: 6, fontSize: 12 }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Right-click menu: acts on the hit drawing, or offers view/unlock actions on empty space. */
+function DrawingMenu({
+  x, y, drawing, hasLocked, onClose, onDelete, onDuplicate, onToggleLock, onToggleHide, onResetView, onUnlockAll
+}: {
+  x: number;
+  y: number;
+  drawing?: DrawingObject;
+  hasLocked: boolean;
+  onClose: () => void;
+  onDelete: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onToggleLock: (id: string) => void;
+  onToggleHide: (id: string) => void;
+  onResetView: () => void;
+  onUnlockAll: () => void;
+}) {
+  return (
+    <>
+      {/* Click-away / right-click-away catcher. */}
+      <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onPointerDown={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} />
+      <div
+        className="chart-context-menu"
+        style={{ position: "absolute", left: x, top: y, zIndex: 41, background: "#12161f", border: "1px solid rgba(134,150,166,0.25)", borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 6px 24px rgba(0,0,0,0.45)" }}
+      >
+        {drawing ? (
+          <>
+            <MenuItem label="Duplicate" onClick={() => { onDuplicate(drawing.id); onClose(); }} />
+            <MenuItem label={drawing.locked ? "Unlock" : "Lock"} onClick={() => { onToggleLock(drawing.id); onClose(); }} />
+            <MenuItem label={drawing.hidden ? "Show" : "Hide"} onClick={() => { onToggleHide(drawing.id); onClose(); }} />
+            <MenuItem label="Delete" onClick={() => { onDelete(drawing.id); onClose(); }} danger />
+          </>
+        ) : (
+          <>
+            <MenuItem label="Reset view" onClick={() => { onResetView(); onClose(); }} />
+            {hasLocked && <MenuItem label="Unlock all" onClick={() => { onUnlockAll(); onClose(); }} />}
+          </>
+        )}
+      </div>
+    </>
   );
 }
 

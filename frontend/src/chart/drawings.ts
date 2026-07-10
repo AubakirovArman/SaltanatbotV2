@@ -11,7 +11,8 @@ export type DrawingTool =
   | "rectangle"
   | "fib"
   | "long"
-  | "short";
+  | "short"
+  | "measure";
 
 export type ShapeTool = Exclude<DrawingTool, "cursor">;
 
@@ -51,7 +52,8 @@ export const TOOL_POINT_COUNT: Record<ShapeTool, number> = {
   rectangle: 2,
   fib: 2,
   long: 3,
-  short: 3
+  short: 3,
+  measure: 2
 };
 
 export const DEFAULT_FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
@@ -66,7 +68,8 @@ const TOOL_COLORS: Record<ShapeTool, string> = {
   rectangle: "#4db6ff",
   fib: "#f7c948",
   long: "#23c97a",
-  short: "#ef5350"
+  short: "#ef5350",
+  measure: "#8f9bb3"
 };
 
 export function defaultStyle(tool: ShapeTool): DrawingStyle {
@@ -78,6 +81,7 @@ export function defaultStyle(tool: ShapeTool): DrawingStyle {
     style.extendRight = true;
   }
   if (tool === "rectangle") style.fill = "rgba(77, 182, 255, 0.10)";
+  if (tool === "measure") style.dashed = true;
   return style;
 }
 
