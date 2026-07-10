@@ -25,6 +25,7 @@ import { buildRenko, drawRenko } from "./renderers/renko";
 import { drawVolume } from "./renderers/volume";
 import { drawMarkers } from "./renderers/markers";
 import { drawTradeOverlay } from "./renderers/tradeOverlay";
+import { drawAlertLines } from "./renderers/alertLines";
 import { drawStrategyPlots, drawSubPlots } from "./renderers/strategyPlots";
 import { drawCompareSeries } from "./renderers/compareSeries";
 import { toHeikinAshi } from "./heikinAshi";
@@ -52,7 +53,7 @@ export function setChartTheme(next: Partial<typeof theme>) {
 export function drawChart(options: DrawChartOptions) {
   const {
     ctx, width, height, candles, chartType, decimals, view, indicators,
-    drawings, draftDrawing, signals, trades, plots, showVolume, onViewport,
+    drawings, draftDrawing, signals, trades, plots, alerts, showVolume, onViewport,
     selectedDrawingId, hoveredDrawingId, compare, onCompareLegend
   } = options;
   ctx.clearRect(0, 0, width, height);
@@ -152,6 +153,7 @@ export function drawChart(options: DrawChartOptions) {
     decimals
   });
   if (pricePlots.length > 0) drawStrategyPlots(ctx, viewport, pricePlots);
+  if (alerts && alerts.length > 0) drawAlertLines(ctx, viewport, alerts, decimals);
   if (trades && trades.length > 0) drawTradeOverlay(ctx, viewport, trades, theme, decimals);
   if (signals && signals.length > 0) drawMarkers(ctx, viewport, signals, theme);
   drawLastPrice(ctx, plot, scale, candles[candles.length - 1], decimals, theme);

@@ -418,6 +418,14 @@ export default function App() {
               signals={activeOverlay?.signals}
               trades={activeOverlay?.trades}
               plots={activeOverlay?.plots}
+              alerts={priceAlerts.alerts}
+              onAddAlert={(price) =>
+                priceAlerts.addAlert({
+                  symbol: instrument.symbol,
+                  price,
+                  direction: price >= (stream.candles.at(-1)?.close ?? price) ? "above" : "below"
+                })
+              }
               strategyName={activeOverlay?.name}
               onClearStrategy={() => setOverlay(undefined)}
               strategies={chartStrategies}

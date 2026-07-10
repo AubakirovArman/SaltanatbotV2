@@ -89,6 +89,8 @@ export interface DrawChartOptions {
   trades?: ChartTrade[];
   /** Indicator lines the overlaid strategy plots. */
   plots?: ChartPlot[];
+  /** Active price alerts for the current symbol, drawn as horizontal lines. */
+  alerts?: ChartAlert[];
   showVolume?: boolean;
   /** Symbols overlaid on the price pane, normalized to % change (Compare). */
   compare?: CompareSeries[];
@@ -127,6 +129,13 @@ export interface ChartPlot {
   points: { time: number; value: number }[];
   /** Overlaid on the price pane (default) or drawn in a separate sub-pane. */
   pane?: "price" | "sub";
+}
+
+/** A price alert drawn on the chart as a horizontal line. */
+export interface ChartAlert {
+  price: number;
+  direction: "above" | "below";
+  triggered: boolean;
 }
 
 /**

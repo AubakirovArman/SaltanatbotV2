@@ -31,6 +31,7 @@ import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import type { ChartMarker, ChartPlot, ChartTrade, CompareLegendSnapshot, CompareSeries, PriceMode, Viewport } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
+import type { PriceAlert } from "../market/alerts";
 import type { Candle, ChartType, Instrument, Timeframe } from "../types";
 import { ChartIndicatorOverlay, type StrategyMenuItem } from "./ChartIndicatorOverlay";
 import { CompareControl, type CompareCandidate } from "./CompareControl";
@@ -51,6 +52,10 @@ interface ChartCanvasProps {
   activeStrategyId?: string;
   onAddStrategy?: (id: string) => void;
   plots?: ChartPlot[];
+  /** Active price alerts (all symbols); the chart draws ones for its symbol. */
+  alerts?: PriceAlert[];
+  /** Create a price alert at a chart price (from the right-click menu). */
+  onAddAlert?: (price: number) => void;
   theme?: string;
   onNeedHistory?: () => void;
   /** When set, scroll the viewport so this time lands in view. */
@@ -90,6 +95,8 @@ export function ChartCanvas({
   activeStrategyId,
   onAddStrategy,
   plots,
+  alerts,
+  onAddAlert,
   theme,
   onNeedHistory,
   focusTime,
@@ -107,10 +114,14 @@ export function ChartCanvas({
 
   const [tool, setTool] = useState<DrawingTool>("cursor");
   const [magnet, setMagnet] = useState(false);
-  const [menu, setMenu] = useState<{ x: number; y: number; id?: string }>();
+  const [menu, setMenu] = useState<{ x: number; y: number; id?: string; price?: number }>();
   const [showVolume, setShowVolume] = useState(true);
   const [drawings, setDrawings] = useState<DrawingObject[]>([]);
   const [draft, setDraft] = useState<{ tool: ShapeTool; points: Anchor[] }>();
+  const chartAlerts = useMemo(
+    () => (alerts ?? []).filter((a) => a.symbol === instrument.symbol).map((a) => ({ price: a.price, direction: a.direction, triggered: a.triggered })),
+    [alerts, instrument.symbol]
+  );
   const [hoverAnchor, setHoverAnchor] = useState<Anchor>();
   const [selectedId, setSelectedId] = useState<string>();
   const [hoveredId, setHoveredId] = useState<string>();
@@ -198,6 +209,7 @@ export function ChartCanvas({
         signals,
         trades,
         plots,
+        alerts: chartAlerts,
         showVolume,
         compare,
         baseSymbol: instrument.symbol,
@@ -212,7 +224,7 @@ export function ChartCanvas({
     cancelAnimationFrame(frameRef.current ?? 0);
     frameRef.current = requestAnimationFrame(render);
     return () => cancelAnimationFrame(frameRef.current ?? 0);
-  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, instrument.symbol, signals, trades, plots, compare, selectedId, showVolume, theme, view]);
+  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, instrument.symbol, signals, trades, plots, chartAlerts, compare, selectedId, showVolume, theme, view]);
 
   // Lazy-load older history when the viewport nears the left (oldest) edge.
   useEffect(() => {
@@ -481,7 +493,7 @@ export function ChartCanvas({
             const y = (event.clientY - rect.top) * devicePixelRatio;
             const hit = viewport ? hitTest(viewport, drawingsRef.current, x, y, selectedId) : undefined;
             if (hit) setSelectedId(hit.id);
-            setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id });
+            setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id, price: viewport?.yToPrice(y) });
           }}
         />
         {menu && (
@@ -490,6 +502,8 @@ export function ChartCanvas({
             y={menu.y}
             drawing={menu.id ? drawings.find((d) => d.id === menu.id) : undefined}
             hasLocked={drawings.some((d) => d.locked)}
+            alertPrice={onAddAlert && menu.price !== undefined ? menu.price : undefined}
+            onAddAlert={onAddAlert}
             onUnlockAll={() => setDrawings((current) => current.map((d) => ({ ...d, locked: false })))}
             onClose={() => setMenu(undefined)}
             onDelete={(id) => {
@@ -545,12 +559,14 @@ function MenuItem({ label, onClick, danger }: { label: string; onClick: () => vo
 
 /** Right-click menu: acts on the hit drawing, or offers view/unlock actions on empty space. */
 function DrawingMenu({
-  x, y, drawing, hasLocked, onClose, onDelete, onDuplicate, onToggleLock, onToggleHide, onResetView, onUnlockAll
+  x, y, drawing, hasLocked, alertPrice, onAddAlert, onClose, onDelete, onDuplicate, onToggleLock, onToggleHide, onResetView, onUnlockAll
 }: {
   x: number;
   y: number;
   drawing?: DrawingObject;
   hasLocked: boolean;
+  alertPrice?: number;
+  onAddAlert?: (price: number) => void;
   onClose: () => void;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -569,6 +585,9 @@ function DrawingMenu({
       >
         {drawing ? (
           <>
+            {onAddAlert && (drawing.tool === "hline" || drawing.tool === "hray") && (
+              <MenuItem label="Alert at this line" onClick={() => { onAddAlert(drawing.points[0].price); onClose(); }} />
+            )}
             <MenuItem label="Duplicate" onClick={() => { onDuplicate(drawing.id); onClose(); }} />
             <MenuItem label={drawing.locked ? "Unlock" : "Lock"} onClick={() => { onToggleLock(drawing.id); onClose(); }} />
             <MenuItem label={drawing.hidden ? "Show" : "Hide"} onClick={() => { onToggleHide(drawing.id); onClose(); }} />
@@ -576,6 +595,9 @@ function DrawingMenu({
           </>
         ) : (
           <>
+            {alertPrice !== undefined && onAddAlert && (
+              <MenuItem label={`Add alert @ ${alertPrice.toPrecision(6)}`} onClick={() => { onAddAlert(alertPrice); onClose(); }} />
+            )}
             <MenuItem label="Reset view" onClick={() => { onResetView(); onClose(); }} />
             {hasLocked && <MenuItem label="Unlock all" onClick={() => { onUnlockAll(); onClose(); }} />}
           </>
