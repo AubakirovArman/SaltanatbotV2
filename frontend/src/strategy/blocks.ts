@@ -196,6 +196,170 @@ export function registerStrategyBlocks() {
       tooltip: "Rate of change in percent."
     },
     {
+      type: "indicator_supertrend",
+      message0: "Supertrend %1 factor %2 period %3",
+      args0: [
+        { type: "field_dropdown", name: "LINE", options: [["value", "value"], ["direction", "dir"]] },
+        { type: "input_value", name: "FACTOR", check: "Number" },
+        { type: "input_value", name: "PERIOD", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Supertrend line value, or direction (+1 down-to-up / -1 up-to-down)."
+    },
+    {
+      type: "indicator_dmi",
+      message0: "DMI %1 period %2 smoothing %3",
+      args0: [
+        { type: "field_dropdown", name: "LINE", options: [["+DI", "plus"], ["-DI", "minus"], ["ADX", "adx"]] },
+        { type: "input_value", name: "PERIOD", check: "Number" },
+        { type: "input_value", name: "SMOOTHING", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Directional Movement Index: +DI, -DI, or ADX."
+    },
+    {
+      type: "indicator_vwap",
+      message0: "VWAP",
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Volume-Weighted Average Price (over the loaded history)."
+    },
+    {
+      type: "indicator_linreg",
+      message0: "linreg period %1 source %2 offset %3",
+      args0: [
+        { type: "input_value", name: "PERIOD", check: "Number" },
+        { type: "input_value", name: "SOURCE", check: "Number" },
+        { type: "field_number", name: "OFFSET", value: 0, min: 0, precision: 1 }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Linear regression curve value (ta.linreg)."
+    },
+    {
+      type: "indicator_valuewhen",
+      message0: "value of %1 when %2 occurrence %3",
+      args0: [
+        { type: "input_value", name: "SRC", check: "Number" },
+        { type: "input_value", name: "COND", check: "Boolean" },
+        { type: "field_number", name: "OCCURRENCE", value: 0, min: 0, precision: 1 }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Value of a series at the Nth most recent bar where the condition was true (ta.valuewhen)."
+    },
+    {
+      type: "indicator_extremebars",
+      message0: "bars since %1 over %2 of %3",
+      args0: [
+        { type: "field_dropdown", name: "KIND", options: [["highest", "highest"], ["lowest", "lowest"]] },
+        { type: "input_value", name: "PERIOD", check: "Number" },
+        { type: "input_value", name: "SOURCE", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Bars since the highest / lowest value of the last N bars (ta.highestbars / ta.lowestbars, positive offset)."
+    },
+    {
+      type: "indicator_mfi",
+      message0: "MFI period %1",
+      args0: [{ type: "input_value", name: "PERIOD", check: "Number" }],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Money Flow Index (volume-weighted RSI, 0–100)."
+    },
+    {
+      type: "indicator_cmo",
+      message0: "CMO period %1 source %2",
+      args0: [
+        { type: "input_value", name: "PERIOD", check: "Number" },
+        { type: "input_value", name: "SOURCE", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Chande Momentum Oscillator (−100…100)."
+    },
+    {
+      type: "indicator_tsi",
+      message0: "TSI short %1 long %2 source %3",
+      args0: [
+        { type: "input_value", name: "SHORT", check: "Number" },
+        { type: "input_value", name: "LONG", check: "Number" },
+        { type: "input_value", name: "SOURCE", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "True Strength Index (double-smoothed momentum, −1…1)."
+    },
+    {
+      type: "indicator_alma",
+      message0: "ALMA period %1 source %2 offset %3 sigma %4",
+      args0: [
+        { type: "input_value", name: "PERIOD", check: "Number" },
+        { type: "input_value", name: "SOURCE", check: "Number" },
+        { type: "field_number", name: "OFFSET", value: 0.85, min: 0, max: 1 },
+        { type: "field_number", name: "SIGMA", value: 6, min: 0.1 }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Arnaud Legoux Moving Average (Gaussian-weighted)."
+    },
+    {
+      type: "indicator_cog",
+      message0: "COG period %1 source %2",
+      args0: [
+        { type: "input_value", name: "PERIOD", check: "Number" },
+        { type: "input_value", name: "SOURCE", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Center of Gravity oscillator (ta.cog)."
+    },
+    {
+      type: "indicator_percentrank",
+      message0: "percentrank period %1 source %2",
+      args0: [
+        { type: "input_value", name: "PERIOD", check: "Number" },
+        { type: "input_value", name: "SOURCE", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Percent of the last N values that are ≤ the current value (0–100)."
+    },
+    {
+      type: "indicator_sar",
+      message0: "SAR start %1 increment %2 max %3",
+      args0: [
+        { type: "input_value", name: "START", check: "Number" },
+        { type: "input_value", name: "INC", check: "Number" },
+        { type: "input_value", name: "MAX", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Parabolic SAR (stop and reverse) level."
+    },
+    {
+      type: "indicator_kc",
+      message0: "Keltner %1 period %2 mult %3",
+      args0: [
+        { type: "field_dropdown", name: "BAND", options: [["upper", "upper"], ["middle", "middle"], ["lower", "lower"]] },
+        { type: "input_value", name: "PERIOD", check: "Number" },
+        { type: "input_value", name: "MULT", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Keltner Channel band (EMA ± mult × ATR)."
+    },
+    {
+      type: "market_barindex",
+      message0: "bar index",
+      output: "Number",
+      colour: "#4285b4",
+      tooltip: "Index of the current bar (relative to loaded history; 0 = first bar)."
+    },
+    {
       type: "series_agg",
       message0: "%1 of %2 over %3 bars",
       args0: [
@@ -697,7 +861,8 @@ export const strategyToolbox = {
       contents: [
         { kind: "block", type: "market_price" },
         { kind: "block", type: "market_price_offset" },
-        { kind: "block", type: "market_hist_dyn" }
+        { kind: "block", type: "market_hist_dyn" },
+        { kind: "block", type: "market_barindex" }
       ]
     },
     {
@@ -717,6 +882,20 @@ export const strategyToolbox = {
         { kind: "block", type: "indicator_wpr" },
         { kind: "block", type: "indicator_cci" },
         { kind: "block", type: "indicator_roc" },
+        { kind: "block", type: "indicator_supertrend" },
+        { kind: "block", type: "indicator_dmi" },
+        { kind: "block", type: "indicator_vwap" },
+        { kind: "block", type: "indicator_linreg" },
+        { kind: "block", type: "indicator_valuewhen" },
+        { kind: "block", type: "indicator_extremebars" },
+        { kind: "block", type: "indicator_mfi" },
+        { kind: "block", type: "indicator_cmo" },
+        { kind: "block", type: "indicator_tsi" },
+        { kind: "block", type: "indicator_alma" },
+        { kind: "block", type: "indicator_cog" },
+        { kind: "block", type: "indicator_percentrank" },
+        { kind: "block", type: "indicator_sar" },
+        { kind: "block", type: "indicator_kc" },
         { kind: "block", type: "series_agg" },
         { kind: "block", type: "series_shift" },
         { kind: "block", type: "series_cum" },

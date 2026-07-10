@@ -148,13 +148,14 @@ export function drawChart(options: DrawChartOptions) {
     drawSubPlots(ctx, subPanel, viewport, subPlots);
   }
 
+  // Strategy shading sits UNDER the user's own drawings so it never obscures them.
+  if (shapes && (shapes.boxes.length > 0 || shapes.vlines.length > 0 || shapes.rays.length > 0)) drawShapes(ctx, viewport, shapes);
   drawDrawings(ctx, viewport, drawings, {
     draft: draftDrawing,
     selectedId: selectedDrawingId,
     hoveredId: hoveredDrawingId,
     decimals
   });
-  if (shapes && (shapes.boxes.length > 0 || shapes.vlines.length > 0 || shapes.rays.length > 0)) drawShapes(ctx, viewport, shapes);
   if (pricePlots.length > 0) drawStrategyPlots(ctx, viewport, pricePlots);
   if (alerts && alerts.length > 0) drawAlertLines(ctx, viewport, alerts, decimals);
   if (livePositions && livePositions.length > 0) drawLivePositions(ctx, viewport, livePositions, decimals);

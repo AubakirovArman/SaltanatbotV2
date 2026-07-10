@@ -1,21 +1,35 @@
 import type { Candle } from "../types";
 import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "./ir";
 import {
+  almaSeries,
   atr as atrSeries,
   bollingerBand,
   cci,
   change as changeSeries,
+  cmoSeries,
+  cogSeries,
+  dmiSeries,
   ema,
+  extremeBars,
   highest,
+  kcSeries,
+  linregSeries,
   lowest,
   macdLine,
+  mfiSeries,
+  percentRankSeries,
   priceAt,
   roc,
   rsi,
+  sarSeries,
   sma,
   sourceSeries,
   stdev,
   stochK,
+  supertrendSeries,
+  tsiSeries,
+  valueWhen,
+  vwapSeries,
   vwma,
   williamsR,
   wma
@@ -536,6 +550,41 @@ function computeWarmup(ir: StrategyIR): number {
       case "unary":
         visitNum(expr.a);
         break;
+      // wave 3: unbounded-lookback nodes force the safe-default warmup.
+      case "barindex": case "vwap":
+        dynamic = true;
+        break;
+      case "valuewhen":
+        dynamic = true;
+        visitBool(expr.cond); visitNum(expr.src);
+        break;
+      case "sar":
+        dynamic = true;
+        visitNum(expr.start); visitNum(expr.inc); visitNum(expr.max);
+        break;
+      // wave 3: fixed-window nodes contribute their period.
+      case "extremebars": case "linreg": case "cmo": case "alma": case "cog": case "percentrank":
+        max = Math.max(max, period(expr.period));
+        visitNum(expr.source);
+        break;
+      case "mfi":
+        max = Math.max(max, period(expr.period));
+        break;
+      case "supertrend":
+        max = Math.max(max, period(expr.period));
+        visitNum(expr.factor);
+        break;
+      case "dmi":
+        max = Math.max(max, period(expr.period) + period(expr.smoothing));
+        break;
+      case "kc":
+        max = Math.max(max, period(expr.period));
+        visitNum(expr.mult);
+        break;
+      case "tsi":
+        max = Math.max(max, period(expr.short) + period(expr.long));
+        visitNum(expr.source);
+        break;
     }
   };
   const visitBool = (expr: BoolExpr) => {
@@ -643,11 +692,14 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
   // Open box runs: one per box statement, extended while its condition stays true
   // on consecutive bars and flushed when the run breaks (or at the end of history).
   const boxRuns = new Map<Stmt, { t1: number; t2: number; top: number; bottom: number; lastBar: number }>();
+  // Keep-NEWEST eviction: the most recent (on-screen) shapes matter most, so when
+  // the cap overflows we drop the oldest instead of refusing new ones.
   const flushBox = (stmt: Extract<Stmt, { k: "box" }>, run: { t1: number; t2: number; top: number; bottom: number }) => {
-    if (shapes.boxes.length < MAX_BOXES) {
-      shapes.boxes.push({ t1: run.t1, t2: run.t2, top: run.top, bottom: run.bottom, color: stmt.color, label: stmt.label || undefined });
-    }
+    shapes.boxes.push({ t1: run.t1, t2: run.t2, top: run.top, bottom: run.bottom, color: stmt.color, label: stmt.label || undefined });
+    if (shapes.boxes.length > MAX_BOXES) shapes.boxes.shift();
   };
+  // One vline/ray per statement per bar — loop bodies re-execute statements.
+  const drawnAtBar = new Map<Stmt, number>();
 
   // Pre-register plots in AST order so their series keep a stable order even when
   // a plot lives inside an `if` that first fires on a late bar.
@@ -697,11 +749,12 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
           const top = evalNum(stmt.top, i, rt);
           const bottom = evalNum(stmt.bottom, i, rt);
           const run = boxRuns.get(stmt);
-          if (run && run.lastBar === i - 1) {
+          if (run && (run.lastBar === i || run.lastBar === i - 1)) {
             run.t2 = candles[i].time;
-            // NaN edges stay NaN (full-height shading); finite edges track the run's extremes.
-            run.top = Math.max(run.top, top);
-            run.bottom = Math.min(run.bottom, bottom);
+            // Finite-aware extremes: warm-up NaNs are skipped instead of poisoning the
+            // edge; runs whose edges are NaN on EVERY bar stay NaN (full-height shading).
+            run.top = Number.isFinite(top) ? (Number.isFinite(run.top) ? Math.max(run.top, top) : top) : run.top;
+            run.bottom = Number.isFinite(bottom) ? (Number.isFinite(run.bottom) ? Math.min(run.bottom, bottom) : bottom) : run.bottom;
             run.lastBar = i;
           } else {
             if (run) flushBox(stmt as Extract<Stmt, { k: "box" }>, run);
@@ -710,14 +763,20 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
           break;
         }
         case "vline":
-          if (evalBool(stmt.when, i, rt) && shapes.vlines.length < MAX_VLINES) {
+          if (evalBool(stmt.when, i, rt) && drawnAtBar.get(stmt) !== i) {
+            drawnAtBar.set(stmt, i);
             shapes.vlines.push({ time: candles[i].time, color: stmt.color, label: stmt.label || undefined });
+            if (shapes.vlines.length > MAX_VLINES) shapes.vlines.shift();
           }
           break;
         case "ray": {
-          if (!evalBool(stmt.when, i, rt) || shapes.rays.length >= MAX_RAYS) break;
+          if (!evalBool(stmt.when, i, rt) || drawnAtBar.get(stmt) === i) break;
           const price = evalNum(stmt.price, i, rt);
-          if (Number.isFinite(price)) shapes.rays.push({ time: candles[i].time, price, color: stmt.color, label: stmt.label || undefined });
+          if (Number.isFinite(price)) {
+            drawnAtBar.set(stmt, i);
+            shapes.rays.push({ time: candles[i].time, price, color: stmt.color, label: stmt.label || undefined });
+            if (shapes.rays.length > MAX_RAYS) shapes.rays.shift();
+          }
           break;
         }
         case "if": {
@@ -1223,6 +1282,53 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
       const out = new Array<number>(n).fill(NaN);
       for (let idx = off; idx < n; idx += 1) out[idx] = src[idx - off];
       return out;
+    }
+    case "barindex": {
+      const out = new Array<number>(n);
+      for (let idx = 0; idx < n; idx += 1) out[idx] = idx;
+      return out;
+    }
+    case "valuewhen": {
+      const src = getSeries(expr.src, rt);
+      const cond = new Array<boolean>(n);
+      for (let idx = 0; idx < n; idx += 1) cond[idx] = evalBool(expr.cond, idx, rt);
+      return valueWhen(cond, src, expr.occurrence);
+    }
+    case "extremebars":
+      return extremeBars(expr.kind, getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))));
+    case "linreg":
+      return linregSeries(getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))), expr.offset);
+    case "vwap":
+      return vwapSeries(rt.candles);
+    case "supertrend": {
+      const st = supertrendSeries(rt.candles, constNum(expr.factor, rt) || 3, Math.max(1, Math.round(constNum(expr.period, rt))));
+      return expr.line === "dir" ? st.dir : st.value;
+    }
+    case "dmi": {
+      const d = dmiSeries(rt.candles, Math.max(1, Math.round(constNum(expr.period, rt))), Math.max(1, Math.round(constNum(expr.smoothing, rt))));
+      return expr.line === "plus" ? d.plus : expr.line === "minus" ? d.minus : d.adx;
+    }
+    case "mfi":
+      return mfiSeries(rt.candles, Math.max(1, Math.round(constNum(expr.period, rt))));
+    case "cmo":
+      return cmoSeries(getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))));
+    case "tsi":
+      return tsiSeries(
+        getSeries(expr.source, rt),
+        Math.max(1, Math.round(constNum(expr.short, rt))),
+        Math.max(1, Math.round(constNum(expr.long, rt)))
+      );
+    case "alma":
+      return almaSeries(getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))), expr.offset, expr.sigma);
+    case "cog":
+      return cogSeries(getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))));
+    case "percentrank":
+      return percentRankSeries(getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))));
+    case "sar":
+      return sarSeries(rt.candles, constNum(expr.start, rt) || 0.02, constNum(expr.inc, rt) || 0.02, constNum(expr.max, rt) || 0.2);
+    case "kc": {
+      const bands = kcSeries(rt.candles, Math.max(1, Math.round(constNum(expr.period, rt))), constNum(expr.mult, rt) || 2);
+      return expr.band === "upper" ? bands.upper : expr.band === "lower" ? bands.lower : bands.middle;
     }
   }
 }

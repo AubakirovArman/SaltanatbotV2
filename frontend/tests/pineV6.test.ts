@@ -365,11 +365,6 @@ describe("Pine v6: fail-closed on genuinely impossible constructs", () => {
       match: /trig/i
     },
     {
-      name: "bar_index",
-      source: `//@version=6\nindicator("x")\nplot(bar_index)`,
-      match: /bar count|bar_index/i
-    },
-    {
       name: "barstate",
       source: `//@version=6\nindicator("x")\nplotshape(barstate.islast, "last")`,
       match: /barstate|confirmed/i
@@ -378,11 +373,6 @@ describe("Pine v6: fail-closed on genuinely impossible constructs", () => {
       name: "str.* strings",
       source: `//@version=6\nindicator("x")\nplot(str.length(syminfo.ticker))`,
       match: /string|metadata/i
-    },
-    {
-      name: "ta.vwap (needs native block)",
-      source: `//@version=6\nindicator("x")\nplot(ta.vwap)`,
-      match: /vwap|native|primitive/i
     }
   ];
   for (const c of impossible) {
@@ -565,6 +555,86 @@ plot(close, "c")`);
     });
     expect(sawRay).toBe(false);
     expect(warnings.some((w) => /slanted/i.test(w))).toBe(true);
+  });
+
+  // Wave 3: native ta.* nodes — the "practically any indicator" expansion.
+  it("wave-3 ta.* functions convert, round-trip, and preview finite values", () => {
+    const ir = roundTrips(`//@version=6
+indicator("Wave3", overlay=false)
+[st, dir] = ta.supertrend(3, 10)
+[dip, dim, adx] = ta.dmi(14, 14)
+[kmid, kup, klow] = ta.kc(close, 20, 2)
+lastHigh = ta.valuewhen(ta.crossover(close, ta.sma(close, 10)), high, 0)
+reg = ta.linreg(close, 14, 0)
+plot(st, "st")
+plot(adx, "adx")
+plot(kup, "kc")
+plot(lastHigh, "vw")
+plot(reg, "lr")
+plot(ta.vwap, "vwap")
+plot(ta.mfi(hlc3, 14), "mfi")
+plot(ta.cmo(close, 9), "cmo")
+plot(ta.tsi(close, 13, 25), "tsi")
+plot(ta.alma(close, 21, 0.85, 6), "alma")
+plot(ta.cog(close, 10), "cog")
+plot(ta.percentrank(close, 20), "pr")
+plot(ta.sar(0.02, 0.02, 0.2), "sar")
+plot(ta.highestbars(high, 10), "hb")
+plot(bar_index, "bi")`);
+    const j = JSON.stringify(ir);
+    for (const kind of ["supertrend", "dmi", "kc", "valuewhen", "linreg", "vwap", "mfi", "cmo", "tsi", "alma", "cog", "percentrank", "sar", "extremebars", "barindex"]) {
+      expect(j, `missing node ${kind}`).toContain(`"${kind}"`);
+    }
+    // Preview must produce finite values once warm (no NaN-poisoned math).
+    const closes = Array.from({ length: 120 }, (_, i) => 100 + Math.sin(i / 7) * 10 + i * 0.05);
+    const candles = closesToCandles(closes);
+    const preview = previewStrategy(ir, candles);
+    for (const plot of preview.plots) {
+      const tail = plot.points.slice(-5);
+      expect(tail.length, `plot ${plot.label} has no points`).toBeGreaterThan(0);
+      for (const pt of tail) expect(Number.isFinite(pt.value), `plot ${plot.label} not finite`).toBe(true);
+    }
+  });
+
+  it("supertrend direction flips between +1/-1 and percentrank stays in 0..100", () => {
+    const ir = roundTrips(`//@version=6
+indicator("Rng")
+[st, dir] = ta.supertrend(2, 7)
+plot(dir, "dir")
+plot(ta.percentrank(close, 14), "pr")`);
+    const closes = Array.from({ length: 150 }, (_, i) => 100 + Math.sin(i / 9) * 15);
+    const preview = previewStrategy(ir, closesToCandles(closes));
+    const dirPlot = preview.plots.find((p) => p.label === "dir");
+    const prPlot = preview.plots.find((p) => p.label === "pr");
+    const dirs = new Set((dirPlot?.points ?? []).map((pt) => pt.value));
+    expect(dirs.has(1) && dirs.has(-1), "supertrend never flipped").toBe(true);
+    for (const pt of prPlot?.points ?? []) {
+      expect(pt.value).toBeGreaterThanOrEqual(0);
+      expect(pt.value).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("box run inside a loop body is not fragmented by same-bar re-execution (review fix)", () => {
+    const ir: StrategyIR = {
+      name: "loopbox",
+      inputs: [],
+      v: 2,
+      body: [
+        {
+          k: "repeat",
+          count: { k: "num", v: 3 },
+          body: [
+            { k: "box", top: { k: "price", field: "high" }, bottom: { k: "price", field: "low" }, when: { k: "bool", v: true }, label: "", color: "#26a69a" }
+          ]
+        }
+      ]
+    };
+    const candles = closesToCandles([100, 101, 102, 103]);
+    const preview = previewStrategy(ir, candles);
+    // One continuous run over all bars — not fragmented into per-iteration slivers.
+    expect(preview.shapes.boxes).toHaveLength(1);
+    expect(preview.shapes.boxes[0].t1).toBe(candles[0].time);
+    expect(preview.shapes.boxes[0].t2).toBe(candles[3].time);
   });
 
   // Mirrors what the import dialog does for a mixed paste + multi-file batch: convert

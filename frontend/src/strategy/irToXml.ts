@@ -185,6 +185,52 @@ function numXml(expr: NumExpr, d: Defaults): string {
       return block("var_prev", field("NAME", expr.name), "");
     case "histn":
       return block("market_hist_dyn", field("FIELD", expr.field) + value("OFFSET", numXml(expr.offset, d)), "");
+    case "barindex":
+      return block("market_barindex", "", "");
+    case "valuewhen":
+      return block(
+        "indicator_valuewhen",
+        field("OCCURRENCE", expr.occurrence) + value("SRC", numXml(expr.src, d)) + value("COND", boolXml(expr.cond, d)),
+        ""
+      );
+    case "extremebars":
+      return block("indicator_extremebars", field("KIND", expr.kind) + value("PERIOD", numXml(expr.period, d)) + value("SOURCE", numXml(expr.source, d)), "");
+    case "linreg":
+      return block("indicator_linreg", field("OFFSET", expr.offset) + value("PERIOD", numXml(expr.period, d)) + value("SOURCE", numXml(expr.source, d)), "");
+    case "vwap":
+      return block("indicator_vwap", "", "");
+    case "supertrend":
+      return block("indicator_supertrend", field("LINE", expr.line) + value("FACTOR", numXml(expr.factor, d)) + value("PERIOD", numXml(expr.period, d)), "");
+    case "dmi":
+      return block("indicator_dmi", field("LINE", expr.line) + value("PERIOD", numXml(expr.period, d)) + value("SMOOTHING", numXml(expr.smoothing, d)), "");
+    case "mfi":
+      return block("indicator_mfi", value("PERIOD", numXml(expr.period, d)), "");
+    case "cmo":
+      return block("indicator_cmo", value("PERIOD", numXml(expr.period, d)) + value("SOURCE", numXml(expr.source, d)), "");
+    case "tsi":
+      return block(
+        "indicator_tsi",
+        value("SHORT", numXml(expr.short, d)) + value("LONG", numXml(expr.long, d)) + value("SOURCE", numXml(expr.source, d)),
+        ""
+      );
+    case "alma":
+      return block(
+        "indicator_alma",
+        field("OFFSET", expr.offset) + field("SIGMA", expr.sigma) + value("PERIOD", numXml(expr.period, d)) + value("SOURCE", numXml(expr.source, d)),
+        ""
+      );
+    case "cog":
+      return block("indicator_cog", value("PERIOD", numXml(expr.period, d)) + value("SOURCE", numXml(expr.source, d)), "");
+    case "percentrank":
+      return block("indicator_percentrank", value("PERIOD", numXml(expr.period, d)) + value("SOURCE", numXml(expr.source, d)), "");
+    case "sar":
+      return block(
+        "indicator_sar",
+        value("START", numXml(expr.start, d)) + value("INC", numXml(expr.inc, d)) + value("MAX", numXml(expr.max, d)),
+        ""
+      );
+    case "kc":
+      return block("indicator_kc", field("BAND", expr.band) + value("PERIOD", numXml(expr.period, d)) + value("MULT", numXml(expr.mult, d)), "");
     case "arith": {
       if (expr.op === "%") {
         return block("math_modulo", value("A", numXml(expr.a, d)) + value("B", numXml(expr.b, d)), "");

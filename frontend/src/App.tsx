@@ -551,11 +551,13 @@ export default function App() {
                 initialSymbol={symbol}
                 initialTimeframe={timeframe}
                 theme={theme}
-                onApplyResult={(result, btSymbol, btTimeframe) =>
+                onApplyResult={(result, btSymbol, btTimeframe, visuals) =>
                   setOverlay({
                     name: result.name,
                     signals: result.signals,
                     trades: result.trades,
+                    plots: visuals?.plots,
+                    shapes: visuals?.shapes,
                     symbol: btSymbol,
                     timeframe: btTimeframe
                   })

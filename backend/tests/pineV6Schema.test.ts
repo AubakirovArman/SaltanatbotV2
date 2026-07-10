@@ -64,7 +64,35 @@ const drawingIr = {
   ]
 };
 
+const wave3Ir = {
+  name: "wave3",
+  inputs: [],
+  v: 2,
+  body: [
+    { k: "plot", value: { k: "supertrend", line: "dir", factor: { k: "num", v: 3 }, period: { k: "num", v: 10 } }, label: "st", color: "#fff" },
+    { k: "plot", value: { k: "dmi", line: "adx", period: { k: "num", v: 14 }, smoothing: { k: "num", v: 14 } }, label: "adx", color: "#fff" },
+    { k: "plot", value: { k: "kc", band: "upper", period: { k: "num", v: 20 }, mult: { k: "num", v: 2 } }, label: "kc", color: "#fff" },
+    { k: "plot", value: { k: "valuewhen", cond: { k: "bool", v: true }, src: { k: "price", field: "high" }, occurrence: 0 }, label: "vw", color: "#fff" },
+    { k: "plot", value: { k: "linreg", period: { k: "num", v: 14 }, source: { k: "price", field: "close" }, offset: 0 }, label: "lr", color: "#fff" },
+    { k: "plot", value: { k: "vwap" }, label: "vwap", color: "#fff" },
+    { k: "plot", value: { k: "mfi", period: { k: "num", v: 14 } }, label: "mfi", color: "#fff" },
+    { k: "plot", value: { k: "cmo", period: { k: "num", v: 9 }, source: { k: "price", field: "close" } }, label: "cmo", color: "#fff" },
+    { k: "plot", value: { k: "tsi", short: { k: "num", v: 13 }, long: { k: "num", v: 25 }, source: { k: "price", field: "close" } }, label: "tsi", color: "#fff" },
+    { k: "plot", value: { k: "alma", period: { k: "num", v: 21 }, source: { k: "price", field: "close" }, offset: 0.85, sigma: 6 }, label: "alma", color: "#fff" },
+    { k: "plot", value: { k: "cog", period: { k: "num", v: 10 }, source: { k: "price", field: "close" } }, label: "cog", color: "#fff" },
+    { k: "plot", value: { k: "percentrank", period: { k: "num", v: 20 }, source: { k: "price", field: "close" } }, label: "pr", color: "#fff" },
+    { k: "plot", value: { k: "sar", start: { k: "num", v: 0.02 }, inc: { k: "num", v: 0.02 }, max: { k: "num", v: 0.2 } }, label: "sar", color: "#fff" },
+    { k: "plot", value: { k: "extremebars", kind: "highest", period: { k: "num", v: 10 }, source: { k: "price", field: "high" } }, label: "hb", color: "#fff" },
+    { k: "plot", value: { k: "barindex" }, label: "bi", color: "#fff" }
+  ]
+};
+
 describe("backend schema accepts Pine v6 IR nodes", () => {
+  it("accepts all wave-3 native indicator nodes", () => {
+    const result = parseStrategyIR(wave3Ir);
+    expect(result.ok, result.ok ? "" : (result as { error: string }).error).toBe(true);
+  });
+
   it("accepts display-only drawing statements (box/vline/ray)", () => {
     const result = parseStrategyIR(drawingIr);
     expect(result.ok, result.ok ? "" : (result as { error: string }).error).toBe(true);

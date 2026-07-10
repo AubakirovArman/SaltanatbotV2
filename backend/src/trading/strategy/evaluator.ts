@@ -1,21 +1,35 @@
 import type { Candle } from "../../types.js";
 import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "./ir.js";
 import {
+  almaSeries,
   atr as atrSeries,
   bollingerBand,
   cci,
   change as changeSeries,
+  cmoSeries,
+  cogSeries,
+  dmiSeries,
   ema,
+  extremeBars,
   highest,
+  kcSeries,
+  linregSeries,
   lowest,
   macdLine,
+  mfiSeries,
+  percentRankSeries,
   priceAt,
   roc,
   rsi,
+  sarSeries,
   sma,
   sourceSeries,
   stdev,
   stochK,
+  supertrendSeries,
+  tsiSeries,
+  valueWhen,
+  vwapSeries,
   vwma,
   williamsR,
   wma
@@ -473,6 +487,53 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
       const out = new Array<number>(n).fill(NaN);
       for (let idx = off; idx < n; idx += 1) out[idx] = src[idx - off];
       return out;
+    }
+    case "barindex": {
+      const out = new Array<number>(n);
+      for (let idx = 0; idx < n; idx += 1) out[idx] = idx;
+      return out;
+    }
+    case "valuewhen": {
+      const src = getSeries(expr.src, rt);
+      const cond = new Array<boolean>(n);
+      for (let idx = 0; idx < n; idx += 1) cond[idx] = evalBool(expr.cond, idx, rt);
+      return valueWhen(cond, src, expr.occurrence);
+    }
+    case "extremebars":
+      return extremeBars(expr.kind, getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))));
+    case "linreg":
+      return linregSeries(getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))), expr.offset);
+    case "vwap":
+      return vwapSeries(rt.candles);
+    case "supertrend": {
+      const st = supertrendSeries(rt.candles, constNum(expr.factor, rt) || 3, Math.max(1, Math.round(constNum(expr.period, rt))));
+      return expr.line === "dir" ? st.dir : st.value;
+    }
+    case "dmi": {
+      const d = dmiSeries(rt.candles, Math.max(1, Math.round(constNum(expr.period, rt))), Math.max(1, Math.round(constNum(expr.smoothing, rt))));
+      return expr.line === "plus" ? d.plus : expr.line === "minus" ? d.minus : d.adx;
+    }
+    case "mfi":
+      return mfiSeries(rt.candles, Math.max(1, Math.round(constNum(expr.period, rt))));
+    case "cmo":
+      return cmoSeries(getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))));
+    case "tsi":
+      return tsiSeries(
+        getSeries(expr.source, rt),
+        Math.max(1, Math.round(constNum(expr.short, rt))),
+        Math.max(1, Math.round(constNum(expr.long, rt)))
+      );
+    case "alma":
+      return almaSeries(getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))), expr.offset, expr.sigma);
+    case "cog":
+      return cogSeries(getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))));
+    case "percentrank":
+      return percentRankSeries(getSeries(expr.source, rt), Math.max(1, Math.round(constNum(expr.period, rt))));
+    case "sar":
+      return sarSeries(rt.candles, constNum(expr.start, rt) || 0.02, constNum(expr.inc, rt) || 0.02, constNum(expr.max, rt) || 0.2);
+    case "kc": {
+      const bands = kcSeries(rt.candles, Math.max(1, Math.round(constNum(expr.period, rt))), constNum(expr.mult, rt) || 2);
+      return expr.band === "upper" ? bands.upper : expr.band === "lower" ? bands.lower : bands.middle;
     }
   }
 }

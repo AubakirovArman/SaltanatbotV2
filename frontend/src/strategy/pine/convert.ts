@@ -142,6 +142,8 @@ class Converter {
         this.checkName(stmt.def.name);
         this.funcs.set(stmt.def.name, stmt.def);
         return [];
+      case "multi":
+        return stmt.stmts.flatMap((inner) => this.stmt(inner));
       case "unsupported":
         // Structural constructs the per-bar scalar IR can never hold fail closed
         // with an honest reason instead of a cascade of confusing follow-up errors.
@@ -324,8 +326,25 @@ class Converter {
         { k: "bollinger", band: "upper", period, dev, source: src },
         { k: "bollinger", band: "lower", period, dev, source: src }
       ];
+    } else if (callee === "ta.supertrend") {
+      const factor = this.numArg(value.args, 0, "factor");
+      const period = this.numArg(value.args, 1, "atrPeriod");
+      parts = [
+        { k: "supertrend", line: "value", factor, period },
+        { k: "supertrend", line: "dir", factor, period }
+      ];
+    } else if (callee === "ta.dmi") {
+      const period = this.numArg(value.args, 0, "diLength");
+      const smoothing = this.numArg(value.args, 1, "adxSmoothing");
+      parts = [
+        { k: "dmi", line: "plus", period, smoothing },
+        { k: "dmi", line: "minus", period, smoothing },
+        { k: "dmi", line: "adx", period, smoothing }
+      ];
+    } else if (callee === "ta.kc") {
+      parts = [this.kcNode(value.args, "middle"), this.kcNode(value.args, "upper"), this.kcNode(value.args, "lower")];
     } else {
-      throw new PineConvertError(`Tuple destructuring is only supported for ta.macd and ta.bb (got ${value.callee}).`);
+      throw new PineConvertError(`Tuple destructuring is only supported for ta.macd, ta.bb, ta.supertrend, ta.dmi and ta.kc (got ${value.callee}).`);
     }
     names.forEach((n, i) => {
       this.checkName(n);
@@ -465,54 +484,86 @@ class Converter {
         else this.warn("strategy.exit had no stop=/limit= — nothing converted.");
         return out;
       }
-      case "bgcolor": {
-        // bgcolor(cond ? color : na) — background shading → a full-height box while
+      case "bgcolor":
+      case "barcolor":
+        // bgcolor/barcolor(cond ? color : na) — shading → a full-height box while
         // the condition holds. Non-conditional/unresolvable colors stay display-skips.
-        const colorArg = arg(args, 0, "color");
-        if (colorArg?.value.t === "ternary") {
-          const { cond, a, b } = colorArg.value;
-          const aIsNa = isNaIdent(a);
-          const bIsNa = isNaIdent(b);
-          if (aIsNa !== bIsNa) {
-            const when = aIsNa ? ({ k: "not", a: this.bool(cond) } as BoolExpr) : this.bool(cond);
-            const hex = this.colorOf(aIsNa ? b : a) ?? "#8f9bb3";
-            return [{ k: "box", top: NAN_NUM, bottom: NAN_NUM, when, label: "", color: hex }];
-          }
-        }
-        this.warn("Skipped bgcolor() — only conditional shading (cond ? color : na) is convertible.");
-        return [];
+        return this.displayMapped(callee, () => this.conditionalShading(arg(args, 0, "color"), callee));
+      case "plotarrow": {
+        // plotarrow(series): up arrow while series > 0, down arrow while series < 0.
+        const series = this.num(argRequired(args, 0, "series", "plotarrow").value);
+        return [
+          { k: "marker", dir: "up", label: "", when: { k: "compare", op: ">", a: series, b: { k: "num", v: 0 } } },
+          { k: "marker", dir: "down", label: "", when: { k: "compare", op: "<", a: series, b: { k: "num", v: 0 } } }
+        ];
       }
       case "runtime.error":
       case "strategy.cancel":
       case "strategy.cancel_all":
       case "fill":
-      case "barcolor":
       case "plotcandle":
-      case "plotbar":
-      case "plotarrow": {
+      case "plotbar": {
         this.warn(`Skipped display-only/unsupported call: ${callee}().`);
         return [];
       }
       case "label.new":
-        return this.mapLabelNew(args);
+        return this.displayMapped(callee, () => this.mapLabelNew(args));
       case "line.new":
-        return this.mapLineNew(args);
+        return this.displayMapped(callee, () => this.mapLineNew(args));
       case "box.new":
-        return this.mapBoxNew(args);
-      default:
+        return this.displayMapped(callee, () => this.mapBoxNew(args));
+      default: {
         if (DRAWING_MUTATE_RE.test(callee)) {
           this.warnOnce("drawmut", `Drawing updates/removals (${callee} and similar) are ignored — drawings are approximated statically.`);
           return [];
         }
-        if (callee.startsWith("label") || callee.startsWith("line") || callee.startsWith("box") || callee.startsWith("table") || callee.startsWith("array") || callee.startsWith("matrix")) {
+        // Method syntax on a tracked handle: l.set_y1(...), l.delete().
+        const head = callee.split(".")[0];
+        if (callee.includes(".") && this.drawingHandles.has(head)) {
+          this.warnOnce("drawmut", `Drawing updates/removals (${callee} and similar) are ignored — drawings are approximated statically.`);
+          return [];
+        }
+        if (callee.startsWith("label") || callee.startsWith("line") || callee.startsWith("box") || callee.startsWith("table") || callee.startsWith("polyline") || callee.startsWith("array") || callee.startsWith("matrix")) {
           this.warn(`Skipped drawing/collection call: ${callee}().`);
           return [];
         }
         throw new PineConvertError(`Unsupported statement call: ${callee}().`);
+      }
     }
   }
 
   // ---------- drawing-object mapping (display-only approximations) ----------
+
+  /** Drawing calls are display-only, so a mapping that trips over an unsupported
+   *  sub-expression degrades to a skip+warning instead of failing the whole import. */
+  private displayMapped(fn: string, build: () => Stmt[]): Stmt[] {
+    try {
+      return build();
+    } catch (cause) {
+      if (cause instanceof PineConvertError) {
+        this.warn(`Skipped ${fn}() — ${cause.message}`);
+        return [];
+      }
+      throw cause;
+    }
+  }
+
+  /** bgcolor/barcolor with a `cond ? color : na` ternary → a full-height box while
+   *  the condition holds; anything else stays a display-skip with a warning. */
+  private conditionalShading(colorArg: PineArg | undefined, fn: string): Stmt[] {
+    if (colorArg?.value.t === "ternary") {
+      const { cond, a, b } = colorArg.value;
+      const aIsNa = isNaIdent(a);
+      const bIsNa = isNaIdent(b);
+      if (aIsNa !== bIsNa) {
+        const when = aIsNa ? ({ k: "not", a: this.bool(cond) } as BoolExpr) : this.bool(cond);
+        const hex = this.colorOf(aIsNa ? b : a) ?? "#8f9bb3";
+        return [{ k: "box", top: NAN_NUM, bottom: NAN_NUM, when, label: "", color: hex }];
+      }
+    }
+    this.warn(`Skipped ${fn}() — only conditional shading (cond ? color : na) is convertible.`);
+    return [];
+  }
 
   /** label.new(x, y, text, …) → a chart marker at the bars where this statement
    *  runs. Direction comes from style/yloc; dynamic text falls back to static. */
@@ -832,6 +883,10 @@ class Converter {
           throw new PineConvertError(`Only the previous bar (${expr.base.name}[1]) is available for a mutable variable, not a further/dynamic offset.`);
         }
         const base = this.num(expr.base);
+        // bar_index[k] is just bar_index − k (works for dynamic offsets too).
+        if (base.k === "barindex") {
+          return { k: "arith", op: "-", a: base, b: this.num(offsetExpr) };
+        }
         if (literal !== undefined) {
           if (containsVar(base)) {
             throw new PineConvertError("History access on a mutable variable (x[1]) isn't supported — variables hold only their latest value.");
@@ -869,8 +924,9 @@ class Converter {
     if (this.numVars.has(name)) return { k: "var", name };
     const constant = MATH_CONSTS[name];
     if (constant !== undefined) return { k: "num", v: constant };
-    // `ta.tr` is a built-in series (True Range) used without parentheses.
+    // `ta.tr` / `ta.vwap` are built-in series used without parentheses.
     if (name === "ta.tr") return this.trueRange();
+    if (name === "ta.vwap") return { k: "vwap" };
     if (name.startsWith("ta.")) throw this.unsupportedFn(name);
     if (name === "strategy.position_size") {
       this.warnOnce("possize", "strategy.position_size is mapped to the position DIRECTION sign (+1/-1/0), not the size.");
@@ -882,8 +938,15 @@ class Converter {
     if (name === "strategy.wintrades" || name === "strategy.losstrades" || name === "strategy.closedtrades" || name === "strategy.netprofit") {
       throw new PineConvertError(`${name} (whole-backtest strategy stats) isn't available to a live per-bar engine.`);
     }
-    if (name === "bar_index" || name === "last_bar_index" || name === "n") {
-      throw new PineConvertError(`${name} (absolute bar count) isn't available — use bars-in-trade or a counter variable instead.`);
+    if (name === "bar_index" || name === "n") {
+      this.warnOnce(
+        "barindex",
+        "bar_index is relative to the loaded history window — absolute values differ between backtest and live; differences (bar_index - x) are safe."
+      );
+      return { k: "barindex" };
+    }
+    if (name === "last_bar_index") {
+      throw new PineConvertError("last_bar_index (the index of the final bar) needs knowledge of the future — it isn't available in a live per-bar engine.");
     }
     if (name.startsWith("barstate.")) throw new PineConvertError(`${name} isn't available — the engine evaluates one confirmed bar at a time.`);
     if (name === "timenow" || name === "time" || name === "time_close" || name === "time_tradingday") {
@@ -997,8 +1060,68 @@ class Converter {
       case "ta.stoch":
         this.warnOnce("stoch", "ta.stoch imported as raw %K of close/high/low.");
         return { k: "stoch", line: "k", period: this.numArg(args, 3, "length", { k: "num", v: 14 }), smooth: { k: "num", v: 1 } };
-      case "ta.vwap":
-        throw new PineConvertError("ta.vwap is not supported in strategy logic yet.");
+      case "ta.vwap": {
+        if (args.length) this.warnOnce("vwapsrc", "ta.vwap is computed from hlc3·volume here (the passed source/anchor arguments are ignored).");
+        return { k: "vwap" };
+      }
+      case "ta.valuewhen": {
+        const cond = this.bool(argRequired(args, 0, "condition", "ta.valuewhen").value);
+        const src = this.seriesArg(args, 1, "source");
+        const occurrence = this.literalArg(args, 2, "occurrence", "ta.valuewhen", 0);
+        if (!Number.isInteger(occurrence) || occurrence < 0) {
+          throw new PineConvertError("ta.valuewhen() occurrence must be a non-negative integer literal (0 = most recent).");
+        }
+        return { k: "valuewhen", cond, src, occurrence };
+      }
+      case "ta.highestbars":
+      case "ta.lowestbars": {
+        const kind = callee === "ta.highestbars" ? "highest" : "lowest";
+        if (args.length === 1) {
+          return { k: "extremebars", kind, period: period(0, "length"), source: { k: "price", field: kind === "highest" ? "high" : "low" } };
+        }
+        return { k: "extremebars", kind, period: period(1, "length"), source: this.seriesArg(args, 0, "source") };
+      }
+      case "ta.linreg": {
+        const offset = this.literalArg(args, 2, "offset", "ta.linreg", 0);
+        if (!Number.isInteger(offset)) throw new PineConvertError("ta.linreg() offset must be an integer literal.");
+        return { k: "linreg", period: period(1, "length"), source: this.seriesArg(args, 0, "source"), offset };
+      }
+      case "ta.supertrend":
+        // Used undestructured → the SuperTrend line value.
+        this.warnOnce("stline", "ta.supertrend() used in an expression → the SuperTrend line value (destructure [line, dir] for the direction).");
+        return { k: "supertrend", line: "value", factor: this.numArg(args, 0, "factor"), period: this.numArg(args, 1, "atrPeriod") };
+      case "ta.dmi":
+        // Used undestructured → the ADX line.
+        this.warnOnce("dmiline", "ta.dmi() used in an expression → the ADX line (destructure [plus, minus, adx] for the DI lines).");
+        return { k: "dmi", line: "adx", period: this.numArg(args, 0, "diLength"), smoothing: this.numArg(args, 1, "adxSmoothing") };
+      case "ta.mfi": {
+        // v5 signature is (source, length); the 1-arg form (length) is also accepted.
+        if (args.filter((a) => !a.name).length === 1 && !arg(args, undefined, "source")) {
+          return { k: "mfi", period: period(0, "length") };
+        }
+        const src = args[0]?.value;
+        if (!(src && src.t === "ident" && src.name === "hlc3")) this.warnOnce("mfi", "ta.mfi computed from hlc3 here (the passed source is ignored).");
+        return { k: "mfi", period: period(1, "length") };
+      }
+      case "ta.cmo":
+        return { k: "cmo", period: period(1, "length"), source: this.seriesArg(args, 0, "series") };
+      case "ta.tsi":
+        return { k: "tsi", short: period(1, "short_length"), long: period(2, "long_length"), source: this.seriesArg(args, 0, "source") };
+      case "ta.alma": {
+        const offset = this.literalArg(args, 2, "offset", "ta.alma", 0.85);
+        const sigma = this.literalArg(args, 3, "sigma", "ta.alma", 6);
+        return { k: "alma", period: period(1, "length"), source: this.seriesArg(args, 0, "series"), offset, sigma };
+      }
+      case "ta.cog":
+        return { k: "cog", period: period(1, "length"), source: this.seriesArg(args, 0, "source") };
+      case "ta.percentrank":
+        return { k: "percentrank", period: period(1, "length"), source: this.seriesArg(args, 0, "source") };
+      case "ta.sar":
+        return { k: "sar", start: this.numArg(args, 0, "start"), inc: this.numArg(args, 1, "inc"), max: this.numArg(args, 2, "max") };
+      case "ta.kc":
+        // Used undestructured → the middle line.
+        this.warnOnce("kcline", "ta.kc() used in an expression → the middle line (destructure [middle, upper, lower] for the bands).");
+        return this.kcNode(args, "middle");
       case "math.abs":
         return { k: "unary", op: "abs", a: this.numArg(args, 0, "number") };
       case "math.round": {
@@ -1088,12 +1211,9 @@ class Converter {
       return new PineConvertError(`${callee}() pulls external/other-timeframe data — not available in this per-bar engine.`);
     }
     const needsBlock: Record<string, string> = {
-      "ta.vwap": "VWAP", "ta.linreg": "linear regression", "ta.valuewhen": "value-when", "ta.highestbars": "highest-bars offset",
-      "ta.lowestbars": "lowest-bars offset", "ta.sar": "parabolic SAR", "ta.supertrend": "SuperTrend", "ta.mfi": "MFI",
-      "ta.cmo": "CMO", "ta.tsi": "TSI", "ta.kc": "Keltner Channel", "ta.kcw": "Keltner width", "ta.correlation": "correlation",
-      "ta.cog": "center of gravity", "ta.alma": "ALMA", "ta.mode": "mode", "ta.percentile_linear_interpolation": "percentile",
-      "ta.percentile_nearest_rank": "percentile", "ta.percentrank": "percent-rank", "ta.dmi": "DMI/ADX", "ta.wpr": "Williams %R",
-      "ta.rci": "RCI", "ta.range": "range"
+      "ta.kcw": "Keltner width", "ta.correlation": "correlation", "ta.mode": "mode",
+      "ta.percentile_linear_interpolation": "percentile", "ta.percentile_nearest_rank": "percentile",
+      "ta.wpr": "Williams %R", "ta.rci": "RCI", "ta.range": "range"
     };
     if (needsBlock[callee]) {
       return new PineConvertError(`${callee}() (${needsBlock[callee]}) has no matching indicator primitive yet — rebuild it from the supported blocks, or request native support.`);
@@ -1193,6 +1313,18 @@ class Converter {
             const test: BoolExpr = { k: "isna", a: this.num(naSide) };
             return expr.op === "==" ? test : { k: "not", a: test };
           }
+          // Boolean equality (`flagBool == true`, `sig != false`) — logical identity.
+          if (isBoolExpr(expr.a, this.boolVars, this.env) || isBoolExpr(expr.b, this.boolVars, this.env)) {
+            const left = this.bool(expr.a);
+            const right = this.bool(expr.b);
+            const eq: BoolExpr = {
+              k: "logic",
+              op: "or",
+              a: { k: "logic", op: "and", a: left, b: right },
+              b: { k: "logic", op: "and", a: { k: "not", a: left }, b: { k: "not", a: right } }
+            };
+            return expr.op === "==" ? eq : { k: "not", a: eq };
+          }
           // String comparisons (mode selectors vs frozen input.string) fold to constants.
           const strA = this.strVal(expr.a);
           if (strA !== undefined) {
@@ -1286,6 +1418,28 @@ class Converter {
     return this.num(found.value);
   }
 
+  /** An argument that must be a compile-time numeric literal (IR node parameters
+   *  that aren't per-bar series: occurrences, offsets, sigmas…). */
+  private literalArg(args: PineArg[], position: number, name: string, fn: string, fallback: number): number {
+    const found = arg(args, position, name);
+    if (!found) return fallback;
+    const v = found.value;
+    if (v.t === "num") return v.v;
+    if (v.t === "unary" && v.op === "-" && v.a.t === "num") return -v.a.v;
+    throw new PineConvertError(`${fn}() ${name} must be a literal number (not a series or input).`);
+  }
+
+  /** ta.kc(source, length, mult) → one Keltner band. The middle line is EMA(close)
+   *  here, so a non-close source is ignored with a warning. */
+  private kcNode(args: PineArg[], band: "upper" | "middle" | "lower"): NumExpr {
+    const src = args[0]?.value;
+    if (!(src && src.t === "ident" && src.name === "close")) {
+      this.warnOnce("kcsrc", "ta.kc bands are computed from EMA(close) here (the passed source is ignored).");
+    }
+    if (arg(args, 3, "useTrueRange")) this.warnOnce("kctr", "ta.kc useTrueRange ignored — bands always use ATR (True Range) here.");
+    return { k: "kc", band, period: this.numArg(args, 1, "length"), mult: this.numArg(args, 2, "mult") };
+  }
+
   private colorOf(expr: PineExpr | undefined): string | undefined {
     if (!expr) return undefined;
     if (expr.t === "ident" && expr.name.startsWith("color.")) return COLOR_HEX[expr.name.slice(6)] ?? "#4db6ff";
@@ -1295,7 +1449,8 @@ class Converter {
     }
     if (expr.t === "ternary") return this.colorOf(expr.a) ?? this.colorOf(expr.b);
     if (expr.t === "switch") return expr.arms.map((armExpr) => this.colorOf(armExpr.body)).find((hex) => hex !== undefined);
-    if (expr.t === "str" && /^#[0-9a-fA-F]{6}$/.test(expr.v)) return expr.v;
+    const hexMatch = expr.t === "str" ? /^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/.exec(expr.v) : null;
+    if (hexMatch) return `#${hexMatch[1]}`;
     return undefined; // conditional/unknown colors are cosmetic — fall back silently
   }
 
@@ -1392,6 +1547,14 @@ const MATH_CONSTS: Record<string, number> = {
 function shiftNum(expr: NumExpr, n: number): NumExpr {
   if (n === 0) return expr;
   if (expr.k === "num" || expr.k === "input") return expr; // constants don't move with history
+  // A mutable var's previous-bar value is exactly varprev (only [1] exists).
+  if (expr.k === "var") {
+    if (n === 1) return { k: "varprev", name: expr.name };
+    throw new PineConvertError(`Only the previous bar ([1]) is available for variable "${expr.name}", not [${n}].`);
+  }
+  if (expr.k === "arith") return { k: "arith", op: expr.op, a: shiftNum(expr.a, n), b: shiftNum(expr.b, n) };
+  if (expr.k === "minmax") return { k: "minmax", op: expr.op, a: shiftNum(expr.a, n), b: shiftNum(expr.b, n) };
+  if (expr.k === "unary") return { k: "unary", op: expr.op, a: shiftNum(expr.a, n) };
   if (containsVar(expr)) throw new PineConvertError("History of a mutable-variable expression isn't supported.");
   if (expr.k === "price") return { k: "price", field: expr.field, offset: (expr.offset ?? 0) + n };
   if (expr.k === "shift") return { k: "shift", src: expr.src, offset: expr.offset + n };
@@ -1405,6 +1568,11 @@ function shiftBool(expr: BoolExpr, n: number): BoolExpr {
   switch (expr.k) {
     case "bool":
       return expr;
+    case "varb":
+      // Bool vars are stored as 0/1 in the same slot numeric vars use, so the
+      // previous-bar value is exactly varprev != 0. Only [1] is representable.
+      if (n === 1) return { k: "compare", op: "!=", a: { k: "varprev", name: expr.name }, b: { k: "num", v: 0 } };
+      throw new PineConvertError(`Only the previous bar (${expr.name}[1]) is available for a flag variable, not [${n}].`);
     case "compare":
       return { k: "compare", op: expr.op, a: shiftNum(expr.a, n), b: shiftNum(expr.b, n) };
     case "logic":
@@ -1475,11 +1643,31 @@ function containsVar(expr: NumExpr): boolean {
     case "extreme":
     case "change":
     case "roc":
+    case "extremebars":
+    case "linreg":
+    case "cmo":
+    case "alma":
+    case "cog":
+    case "percentrank":
       return containsVar(expr.source) || containsVar(expr.period);
     case "bollinger":
       return containsVar(expr.source) || containsVar(expr.period) || containsVar(expr.dev);
     case "macd":
       return containsVar(expr.source) || containsVar(expr.fast) || containsVar(expr.slow) || containsVar(expr.signal);
+    case "valuewhen":
+      return containsVarInBool(expr.cond) || containsVar(expr.src);
+    case "supertrend":
+      return containsVar(expr.factor) || containsVar(expr.period);
+    case "dmi":
+      return containsVar(expr.period) || containsVar(expr.smoothing);
+    case "mfi":
+      return containsVar(expr.period);
+    case "kc":
+      return containsVar(expr.period) || containsVar(expr.mult);
+    case "tsi":
+      return containsVar(expr.source) || containsVar(expr.short) || containsVar(expr.long);
+    case "sar":
+      return containsVar(expr.start) || containsVar(expr.inc) || containsVar(expr.max);
     default:
       return false;
   }
@@ -1516,6 +1704,7 @@ function collectReassigned(stmts: PineStmt[]): Set<string> {
       if (stmt.t === "reassign") out.add(stmt.name);
       if (stmt.t === "if") for (const clause of stmt.clauses) walk(clause.body);
       if (stmt.t === "for" || stmt.t === "while") walk(stmt.body);
+      if (stmt.t === "multi") walk(stmt.stmts);
       // Function bodies are inlined in their own scope — their locals aren't global vars.
     }
   };

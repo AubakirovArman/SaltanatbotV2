@@ -52,7 +52,22 @@ const numExpr: z.ZodType<unknown> = z.lazy(() =>
     z.object({ k: z.literal("cum"), src: numExpr }).strict(),
     z.object({ k: z.literal("barssince"), cond: boolExpr }).strict(),
     z.object({ k: z.literal("varprev"), name: z.string().max(64) }).strict(),
-    z.object({ k: z.literal("histn"), field: priceField, offset: numExpr }).strict()
+    z.object({ k: z.literal("histn"), field: priceField, offset: numExpr }).strict(),
+    z.object({ k: z.literal("barindex") }).strict(),
+    z.object({ k: z.literal("valuewhen"), cond: boolExpr, src: numExpr, occurrence: z.number().int().min(0).max(100) }).strict(),
+    z.object({ k: z.literal("extremebars"), kind: z.enum(["highest", "lowest"]), period: numExpr, source: numExpr }).strict(),
+    z.object({ k: z.literal("linreg"), period: numExpr, source: numExpr, offset: z.number().int().min(0).max(500) }).strict(),
+    z.object({ k: z.literal("vwap") }).strict(),
+    z.object({ k: z.literal("supertrend"), line: z.enum(["value", "dir"]), factor: numExpr, period: numExpr }).strict(),
+    z.object({ k: z.literal("dmi"), line: z.enum(["plus", "minus", "adx"]), period: numExpr, smoothing: numExpr }).strict(),
+    z.object({ k: z.literal("mfi"), period: numExpr }).strict(),
+    z.object({ k: z.literal("cmo"), period: numExpr, source: numExpr }).strict(),
+    z.object({ k: z.literal("tsi"), short: numExpr, long: numExpr, source: numExpr }).strict(),
+    z.object({ k: z.literal("alma"), period: numExpr, source: numExpr, offset: z.number().min(0).max(1), sigma: z.number().min(0.1).max(100) }).strict(),
+    z.object({ k: z.literal("cog"), period: numExpr, source: numExpr }).strict(),
+    z.object({ k: z.literal("percentrank"), period: numExpr, source: numExpr }).strict(),
+    z.object({ k: z.literal("sar"), start: numExpr, inc: numExpr, max: numExpr }).strict(),
+    z.object({ k: z.literal("kc"), band: z.enum(["upper", "middle", "lower"]), period: numExpr, mult: numExpr }).strict()
   ])
 );
 

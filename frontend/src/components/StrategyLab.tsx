@@ -10,7 +10,7 @@ import type { PineImport } from "../strategy/pine";
 import { compileWorkspace } from "../strategy/compile";
 import { buildShareUrl } from "../strategy/share";
 import { irToText } from "../strategy/irText";
-import { DEFAULT_CONFIG, runBacktest, type BacktestConfig, type BacktestResult } from "../strategy/backtest";
+import { DEFAULT_CONFIG, runBacktest, previewStrategy, type BacktestConfig, type BacktestResult, type PlotSeries, type ShapeOverlays } from "../strategy/backtest";
 import { cloneWithInputs, type Objective, type OptimizeResult, type OptimizeSpec, type ParamSpec, type WalkForwardResult } from "../strategy/optimizer";
 import { runOptimizeInWorker, runWalkForwardInWorker } from "../strategy/optimizerClient";
 import type { StrategyArtifact, StrategyArtifactKind } from "../strategy/library";
@@ -84,7 +84,12 @@ interface StrategyLabProps {
   initialSymbol: string;
   initialTimeframe: Timeframe;
   theme?: "dark" | "light";
-  onApplyResult?: (result: BacktestResult, symbol: string, timeframe: Timeframe) => void;
+  onApplyResult?: (
+    result: BacktestResult,
+    symbol: string,
+    timeframe: Timeframe,
+    visuals?: { plots: PlotSeries[]; shapes: ShapeOverlays }
+  ) => void;
   onShowOnChart?: (symbol: string, timeframe: Timeframe) => void;
 }
 
@@ -393,7 +398,8 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
       const backtest = runBacktest(compiled.ir, candles, config);
       setResult(backtest);
       setOptimizeResult(undefined);
-      onApplyResult?.(backtest, btSymbol, btTimeframe);
+      const visuals = previewStrategy(compiled.ir, candles);
+      onApplyResult?.(backtest, btSymbol, btTimeframe, { plots: visuals.plots, shapes: visuals.shapes });
     } catch (cause) {
       setErrors([...compiled.errors, cause instanceof Error ? cause.message : "History request failed."]);
     } finally {
@@ -455,7 +461,8 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
     const backtest = runBacktest(cloned, candles, config);
     setResult(backtest);
     setOptimizeResult(undefined);
-    onApplyResult?.(backtest, btSymbol, btTimeframe);
+    const visuals = previewStrategy(cloned, candles);
+    onApplyResult?.(backtest, btSymbol, btTimeframe, { plots: visuals.plots, shapes: visuals.shapes });
   };
 
   const shareNow = () => {

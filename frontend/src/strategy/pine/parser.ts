@@ -51,6 +51,8 @@ export type PineStmt =
   | { t: "for"; var: string; from: PineExpr; to: PineExpr; step?: PineExpr; body: PineStmt[] }
   | { t: "while"; cond: PineExpr; body: PineStmt[] }
   | { t: "func"; def: PineFuncDef }
+  /** Several comma-separated declarations on one line: `var a = 0, var b = false`. */
+  | { t: "multi"; stmts: PineStmt[] }
   | { t: "unsupported"; what: string; line: number };
 
 export class PineParseError extends Error {}
@@ -201,7 +203,15 @@ class Parser {
     this.pos += 1;
     this.expectOp("=");
     const value = this.peek().type === "ident" && this.peek().text === "switch" ? this.parseSwitch(indent) : this.parseExpr();
-    return { t: "assign", name: nameTok.text, value, declaredVar };
+    const first: PineStmt = { t: "assign", name: nameTok.text, value, declaredVar };
+    // `var a = 0, var b = false, c = 1` — comma-chained declarations on one line.
+    if (!this.peekOp(",")) return first;
+    const stmts: PineStmt[] = [first];
+    while (this.peekOp(",")) {
+      this.pos += 1;
+      stmts.push(this.parseDeclaration(indent));
+    }
+    return { t: "multi", stmts };
   }
 
   private parseIf(indent: number): PineStmt {

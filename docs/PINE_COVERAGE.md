@@ -35,10 +35,13 @@ immutable locals and a final return expression, including tuple returns
 substitution. Rejected: recursion, and functions with internal mutable state /
 side effects (`:=`, `if`, `plot`, orders in the body).
 
-**Indicators (`ta.*`)** — `sma, ema, rma, wma, vwma, hma, swma, rsi, atr, tr,
-stdev, dev, variance, highest, lowest, change, mom, roc, cci, wpr, stoch, sum,
-median, cum, barssince, bbw, macd, bb, crossover, crossunder, cross, rising,
-falling`. (`tr`, `dev`, `bbw`, `hma`, `swma` are exact compositions of primitives.)
+**Indicators (`ta.*`)** — `sma, ema, rma, wma, vwma, hma, swma, alma, rsi, atr,
+tr, stdev, dev, variance, highest, lowest, highestbars, lowestbars, change, mom,
+roc, cci, wpr, stoch, sum, median, cum, barssince, valuewhen, bbw, macd, bb,
+supertrend, dmi (+ADX), mfi, cmo, tsi, kc, sar, vwap (session-anchored), linreg,
+cog, percentrank, crossover, crossunder, cross, rising, falling` — the wave-3
+natives (supertrend/dmi/kc return their Pine tuples). `bar_index` is supported
+with a relativity warning (values are relative to loaded history).
 
 **Math (`math.*`)** — `abs, round, floor, ceil, sign, sqrt, log, log10, exp, pow,
 max, min, avg, todegrees, toradians`, the constants `pi, e, phi, rphi`, and
@@ -51,8 +54,16 @@ offset inside loops (scalar-only), `var[1]` previous-bar reads, and boolean hist
 `cond[n]` (the inlined condition, series-shifted).
 
 **Orders & signals** — `strategy.entry/order/close/close_all`, `strategy.exit`
-(`stop=`/`limit=` absolute prices), `plot`, `hline`, `plotshape`/`plotchar` (→ chart
-markers), `alertcondition`, `alert`.
+(`stop=`/`limit=` absolute prices), `plot`, `hline`, `plotshape`/`plotchar`/`plotarrow`
+(→ chart markers), `alertcondition`, `alert`.
+
+**Chart drawings (display-only approximations, always warned)** — `bgcolor`/`barcolor`
+conditional shading → full-height boxes; `label.new` → markers with text;
+horizontal `line.new` → levels; `box.new` → zones over the firing bars; drawing
+handles (`l = line.new(...)`, `if na(l)` guards) accepted; `set_*`/`delete`
+mutations ignored. Comma-chained declarations (`var a = 0, var b = false`),
+boolean equality (`flag == true`), and history on vars/flags/conditions
+(`x[1]`, `flag[1]`, `cond[1]`) all convert.
 
 ## Rejected (with a clear message)
 
@@ -67,7 +78,7 @@ These are **structural** limits of a per-bar scalar IR, not missing polish:
 | `str.*`, user types, string-typed logic | The IR is numeric/boolean only |
 | `barstate.*`, `bar_index`, `timenow`, `time`, `varip` history, `math.random` | Non-deterministic or engine-internal |
 | Recursion & stateful user functions | Can't inline without hoisting persistent state |
-| Native-only indicators — `linreg, valuewhen, supertrend, sar, dmi/adx, mfi, cmo, tsi, kc, vwap, alma, cog, percentile/percentrank, mode` | No matching IR primitive yet; rebuild from supported blocks or request native support |
+| `ta.kcw, ta.correlation, ta.mode, ta.percentile_*, ta.rci, ta.range` | No matching IR primitive yet |
 | Trigonometry (`math.sin/cos/tan/…`) | No trig primitive in the engine |
 
 ## Test coverage

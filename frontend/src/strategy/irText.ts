@@ -80,6 +80,21 @@ function numText(expr: NumExpr): string {
     case "barssince": return `barssince(${boolText(expr.cond)})`;
     case "varprev": return `var:${expr.name}[1]`;
     case "histn": return `${expr.field}[${numText(expr.offset)}]`;
+    case "barindex": return "bar_index";
+    case "valuewhen": return `valuewhen(${boolText(expr.cond)}, ${numText(expr.src)}, ${expr.occurrence})`;
+    case "extremebars": return `${expr.kind}bars(${numText(expr.period)}, ${numText(expr.source)})`;
+    case "linreg": return `linreg(${numText(expr.period)}, ${numText(expr.source)}, ${expr.offset})`;
+    case "vwap": return "VWAP";
+    case "supertrend": return `Supertrend.${expr.line}(${numText(expr.factor)}, ${numText(expr.period)})`;
+    case "dmi": return `DMI.${expr.line}(${numText(expr.period)}, ${numText(expr.smoothing)})`;
+    case "mfi": return `MFI(${numText(expr.period)})`;
+    case "cmo": return `CMO(${numText(expr.period)}, ${numText(expr.source)})`;
+    case "tsi": return `TSI(${numText(expr.short)}/${numText(expr.long)}, ${numText(expr.source)})`;
+    case "alma": return `ALMA(${numText(expr.period)}, ${numText(expr.source)}, ${expr.offset}, ${expr.sigma})`;
+    case "cog": return `COG(${numText(expr.period)}, ${numText(expr.source)})`;
+    case "percentrank": return `percentrank(${numText(expr.period)}, ${numText(expr.source)})`;
+    case "sar": return `SAR(${numText(expr.start)}, ${numText(expr.inc)}, ${numText(expr.max)})`;
+    case "kc": return `KC.${expr.band}(${numText(expr.period)}, ${numText(expr.mult)})`;
   }
 }
 

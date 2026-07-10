@@ -336,6 +336,84 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
       return { k: "cci", period: numInput(block, "PERIOD", ctx, true) };
     case "indicator_roc":
       return { k: "roc", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
+    case "market_barindex":
+      return { k: "barindex" };
+    case "indicator_supertrend":
+      return {
+        k: "supertrend",
+        line: block.getFieldValue("LINE") === "dir" ? "dir" : "value",
+        factor: numInput(block, "FACTOR", ctx, true),
+        period: numInput(block, "PERIOD", ctx, true)
+      };
+    case "indicator_dmi": {
+      const line = block.getFieldValue("LINE");
+      return {
+        k: "dmi",
+        line: line === "minus" || line === "adx" ? line : "plus",
+        period: numInput(block, "PERIOD", ctx, true),
+        smoothing: numInput(block, "SMOOTHING", ctx, true)
+      };
+    }
+    case "indicator_vwap":
+      return { k: "vwap" };
+    case "indicator_linreg":
+      return {
+        k: "linreg",
+        period: numInput(block, "PERIOD", ctx, true),
+        source: numInput(block, "SOURCE", ctx, true),
+        offset: Math.min(500, Math.max(0, Math.round(Number(block.getFieldValue("OFFSET")) || 0)))
+      };
+    case "indicator_valuewhen":
+      return {
+        k: "valuewhen",
+        cond: boolInput(block, "COND", ctx),
+        src: numInput(block, "SRC", ctx, true),
+        occurrence: Math.min(100, Math.max(0, Math.round(Number(block.getFieldValue("OCCURRENCE")) || 0)))
+      };
+    case "indicator_extremebars":
+      return {
+        k: "extremebars",
+        kind: block.getFieldValue("KIND") === "lowest" ? "lowest" : "highest",
+        period: numInput(block, "PERIOD", ctx, true),
+        source: numInput(block, "SOURCE", ctx, true)
+      };
+    case "indicator_mfi":
+      return { k: "mfi", period: numInput(block, "PERIOD", ctx, true) };
+    case "indicator_cmo":
+      return { k: "cmo", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
+    case "indicator_tsi":
+      return {
+        k: "tsi",
+        short: numInput(block, "SHORT", ctx, true),
+        long: numInput(block, "LONG", ctx, true),
+        source: numInput(block, "SOURCE", ctx, true)
+      };
+    case "indicator_alma":
+      return {
+        k: "alma",
+        period: numInput(block, "PERIOD", ctx, true),
+        source: numInput(block, "SOURCE", ctx, true),
+        offset: Math.min(1, Math.max(0, Number(block.getFieldValue("OFFSET")) || 0)),
+        sigma: Math.min(100, Math.max(0.1, Number(block.getFieldValue("SIGMA")) || 6))
+      };
+    case "indicator_cog":
+      return { k: "cog", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
+    case "indicator_percentrank":
+      return { k: "percentrank", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
+    case "indicator_sar":
+      return {
+        k: "sar",
+        start: numInput(block, "START", ctx, true),
+        inc: numInput(block, "INC", ctx, true),
+        max: numInput(block, "MAX", ctx, true)
+      };
+    case "indicator_kc":
+      return {
+        k: "kc",
+        band: (block.getFieldValue("BAND") as "upper" | "middle" | "lower") ?? "middle",
+        period: numInput(block, "PERIOD", ctx, true),
+        mult: numInput(block, "MULT", ctx, true)
+      };
     case "math_minmax":
       return { k: "minmax", op: block.getFieldValue("OP") === "min" ? "min" : "max", a: numInput(block, "A", ctx, vec), b: numInput(block, "B", ctx, vec) };
     case "math_single_op": {

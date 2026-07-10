@@ -31,7 +31,25 @@ export type NumExpr =
   | { k: "cum"; src: NumExpr }
   | { k: "barssince"; cond: BoolExpr }
   | { k: "varprev"; name: string }
-  | { k: "histn"; field: PriceField; offset: NumExpr };
+  | { k: "histn"; field: PriceField; offset: NumExpr }
+  /* --- Native indicator nodes (wave 3: near-total ta.* coverage) ---
+     All are pure functions of the candle array (vectorized, deterministic),
+     so backtest and live evaluate them identically. */
+  | { k: "barindex" }
+  | { k: "valuewhen"; cond: BoolExpr; src: NumExpr; occurrence: number }
+  | { k: "extremebars"; kind: "highest" | "lowest"; period: NumExpr; source: NumExpr }
+  | { k: "linreg"; period: NumExpr; source: NumExpr; offset: number }
+  | { k: "vwap" }
+  | { k: "supertrend"; line: "value" | "dir"; factor: NumExpr; period: NumExpr }
+  | { k: "dmi"; line: "plus" | "minus" | "adx"; period: NumExpr; smoothing: NumExpr }
+  | { k: "mfi"; period: NumExpr }
+  | { k: "cmo"; period: NumExpr; source: NumExpr }
+  | { k: "tsi"; short: NumExpr; long: NumExpr; source: NumExpr }
+  | { k: "alma"; period: NumExpr; source: NumExpr; offset: number; sigma: number }
+  | { k: "cog"; period: NumExpr; source: NumExpr }
+  | { k: "percentrank"; period: NumExpr; source: NumExpr }
+  | { k: "sar"; start: NumExpr; inc: NumExpr; max: NumExpr }
+  | { k: "kc"; band: "upper" | "middle" | "lower"; period: NumExpr; mult: NumExpr };
 
 /** Runtime-context reads: the current position/PnL state, supplied per bar by the
  *  backtester and the live engine. Scalar-only (never a series). */
@@ -108,7 +126,8 @@ export const IR_VERSION = 2;
 
 const NUM_KINDS = new Set([
   "num", "input", "var", "price", "ma", "rsi", "bollinger", "macd", "atr", "stdev", "extreme", "change",
-  "stoch", "wpr", "cci", "roc", "minmax", "arith", "unary", "ctx", "agg", "shift", "cond", "nz", "cum", "barssince", "varprev", "histn"
+  "stoch", "wpr", "cci", "roc", "minmax", "arith", "unary", "ctx", "agg", "shift", "cond", "nz", "cum", "barssince", "varprev", "histn",
+  "barindex", "valuewhen", "extremebars", "linreg", "vwap", "supertrend", "dmi", "mfi", "cmo", "tsi", "alma", "cog", "percentrank", "sar", "kc"
 ]);
 
 export function isNumExpr(expr: NumExpr | BoolExpr): expr is NumExpr {
