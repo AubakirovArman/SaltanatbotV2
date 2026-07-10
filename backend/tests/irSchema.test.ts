@@ -92,6 +92,10 @@ describe("parseStrategyIR", () => {
     expect(parseStrategyIR({ name: "c", inputs: [], body: [{ k: "exit", when: { k: "compare", op: ">", a: { k: "ctx", key: "secret_key" }, b: { k: "num", v: 3 } } }] }).ok).toBe(false);
   });
 
+  it("accepts boolean-variable nodes (setvarb / varb)", () => {
+    expect(parseStrategyIR({ name: "b", inputs: [], body: [{ k: "setvarb", name: "f", value: { k: "bool", v: true } }, { k: "exit", when: { k: "varb", name: "f" } }] }).ok).toBe(true);
+  });
+
   it("accepts a legacy IR with no version field", () => {
     const { v, ...legacy } = validIR as typeof validIR & { v?: number };
     expect(parseStrategyIR(legacy).ok).toBe(true);

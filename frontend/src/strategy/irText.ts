@@ -27,6 +27,7 @@ function stmtText(stmt: Stmt, depth: number): string[] {
     case "marker": return [`${pad}mark ${stmt.dir === "up" ? "▲" : "▼"}${stmt.label ? ` "${stmt.label}"` : ""} when ${boolText(stmt.when)}`];
     case "size": return [`${pad}size ${stmt.mode} ${numText(stmt.value)}`];
     case "setvar": return [`${pad}set ${stmt.name} = ${numText(stmt.value)}`];
+    case "setvarb": return [`${pad}set flag ${stmt.name} = ${boolText(stmt.value)}`];
     case "alert": return [`${pad}alert "${stmt.message}"${stmt.args ? ` {${Object.entries(stmt.args).map(([k, v]) => `${k}=${numText(v)}`).join(", ")}}` : ""} when ${boolText(stmt.when)}`];
     case "plot": return [`${pad}plot ${numText(stmt.value)} as "${stmt.label}"`];
     case "if": {
@@ -82,5 +83,6 @@ function boolText(expr: BoolExpr): string {
     case "between": return `${numText(expr.value)} in [${numText(expr.low)}, ${numText(expr.high)}]`;
     case "session": return `session ${expr.start}–${expr.end}h`;
     case "dayofweek": return `day == ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][expr.day]}`;
+    case "varb": return `flag:${expr.name}`;
   }
 }

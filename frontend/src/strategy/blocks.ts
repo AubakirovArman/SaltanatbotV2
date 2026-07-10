@@ -470,6 +470,26 @@ export function registerStrategyBlocks() {
       colour: "#9469c9",
       tooltip: "Read a stored variable."
     },
+    {
+      type: "varb_set",
+      message0: "set flag %1 = %2",
+      args0: [
+        { type: "field_input", name: "NAME", text: "inTrade" },
+        { type: "input_value", name: "VALUE", check: "Boolean" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: "#9469c9",
+      tooltip: "Store a true/false flag."
+    },
+    {
+      type: "varb_get",
+      message0: "flag %1",
+      args0: [{ type: "field_input", name: "NAME", text: "inTrade" }],
+      output: "Boolean",
+      colour: "#9469c9",
+      tooltip: "Read a stored true/false flag."
+    },
     // ---- Events ----
     {
       type: "alert_message",
@@ -602,6 +622,14 @@ export const strategyToolbox = {
       ]
     },
     {
+      // Blockly's dynamic Functions category (define + call). Parameterless functions
+      // are inlined at compile time; parameters/recursion are rejected by the compiler.
+      kind: "category",
+      name: "Functions",
+      colour: "#745ba5",
+      custom: "PROCEDURE"
+    },
+    {
       kind: "category",
       name: "Risk & Size",
       colour: "#c05f5f",
@@ -620,6 +648,8 @@ export const strategyToolbox = {
         { kind: "block", type: "var_set" },
         { kind: "block", type: "var_change" },
         { kind: "block", type: "var_get" },
+        { kind: "block", type: "varb_set" },
+        { kind: "block", type: "varb_get" },
         { kind: "block", type: "alert_message" }
       ]
     }

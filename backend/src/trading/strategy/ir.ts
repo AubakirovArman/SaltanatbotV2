@@ -51,7 +51,8 @@ export type BoolExpr =
   | { k: "trend"; dir: "rising" | "falling"; period: NumExpr; source: NumExpr }
   | { k: "between"; value: NumExpr; low: NumExpr; high: NumExpr }
   | { k: "session"; start: number; end: number }
-  | { k: "dayofweek"; day: number };
+  | { k: "dayofweek"; day: number }
+  | { k: "varb"; name: string };
 
 export type Stmt =
   | { k: "entry"; direction: "long" | "short"; when: BoolExpr }
@@ -61,6 +62,7 @@ export type Stmt =
   | { k: "trail"; mode: "percent" | "atr"; value: NumExpr }
   | { k: "size"; mode: "units" | "equity_pct" | "risk_pct"; value: NumExpr }
   | { k: "setvar"; name: string; value: NumExpr }
+  | { k: "setvarb"; name: string; value: BoolExpr }
   | { k: "alert"; message: string; when: BoolExpr; args?: Record<string, NumExpr> }
   | { k: "plot"; value: NumExpr; label: string; color: string }
   | { k: "marker"; dir: "up" | "down"; label: string; when: BoolExpr }
