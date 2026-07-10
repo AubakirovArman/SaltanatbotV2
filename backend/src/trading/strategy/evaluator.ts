@@ -367,6 +367,50 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
       const a = getSeries(expr.a, rt);
       return a.map((value) => applyUnary(expr.op, value));
     }
+    case "agg": {
+      const src = getSeries(expr.src, rt);
+      const period = Math.min(500, Math.max(1, Math.round(constNum(expr.period, rt))));
+      return rollingAgg(src, period, expr.fn);
+    }
+    case "shift": {
+      const src = getSeries(expr.src, rt);
+      const off = Math.max(0, Math.round(expr.offset));
+      if (!off) return src;
+      const out = new Array<number>(n).fill(NaN);
+      for (let idx = off; idx < n; idx += 1) out[idx] = src[idx - off];
+      return out;
+    }
+  }
+}
+
+type AggFn = "sum" | "avg" | "min" | "max" | "stdev" | "median";
+
+function rollingAgg(src: number[], period: number, fn: AggFn): number[] {
+  const n = src.length;
+  const out = new Array<number>(n).fill(NaN);
+  for (let i = period - 1; i < n; i += 1) {
+    const win = src.slice(i - period + 1, i + 1);
+    if (win.some(Number.isNaN)) continue;
+    out[i] = aggregate(win, fn);
+  }
+  return out;
+}
+
+function aggregate(win: number[], fn: AggFn): number {
+  switch (fn) {
+    case "sum": return win.reduce((a, b) => a + b, 0);
+    case "avg": return win.reduce((a, b) => a + b, 0) / win.length;
+    case "min": return win.reduce((a, b) => Math.min(a, b), Infinity);
+    case "max": return win.reduce((a, b) => Math.max(a, b), -Infinity);
+    case "stdev": {
+      const m = win.reduce((a, b) => a + b, 0) / win.length;
+      return Math.sqrt(win.reduce((a, b) => a + (b - m) ** 2, 0) / win.length);
+    }
+    case "median": {
+      const s = [...win].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    }
   }
 }
 

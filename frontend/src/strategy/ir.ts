@@ -23,6 +23,8 @@ export type NumExpr =
   | { k: "minmax"; op: "min" | "max"; a: NumExpr; b: NumExpr }
   | { k: "arith"; op: "+" | "-" | "*" | "/" | "%" | "^"; a: NumExpr; b: NumExpr }
   | { k: "unary"; op: "neg" | "abs" | "round" | "floor" | "ceil"; a: NumExpr }
+  | { k: "agg"; fn: "sum" | "avg" | "min" | "max" | "stdev" | "median"; src: NumExpr; period: NumExpr }
+  | { k: "shift"; src: NumExpr; offset: number }
   | { k: "ctx"; key: CtxKey };
 
 /** Runtime-context reads: the current position/PnL state, supplied per bar by the
@@ -78,7 +80,7 @@ export const IR_VERSION = 1;
 
 const NUM_KINDS = new Set([
   "num", "input", "var", "price", "ma", "rsi", "bollinger", "macd", "atr", "stdev", "extreme", "change",
-  "stoch", "wpr", "cci", "roc", "minmax", "arith", "unary", "ctx"
+  "stoch", "wpr", "cci", "roc", "minmax", "arith", "unary", "ctx", "agg", "shift"
 ]);
 
 export function isNumExpr(expr: NumExpr | BoolExpr): expr is NumExpr {

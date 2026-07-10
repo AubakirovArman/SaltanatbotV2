@@ -181,6 +181,29 @@ export function registerStrategyBlocks() {
       tooltip: "Rate of change in percent."
     },
     {
+      type: "series_agg",
+      message0: "%1 of %2 over %3 bars",
+      args0: [
+        { type: "field_dropdown", name: "FN", options: [["sum", "sum"], ["average", "avg"], ["min", "min"], ["max", "max"], ["std dev", "stdev"], ["median", "median"]] },
+        { type: "input_value", name: "SOURCE", check: "Number" },
+        { type: "input_value", name: "PERIOD", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "Rolling aggregate of any value over the last N bars."
+    },
+    {
+      type: "series_shift",
+      message0: "%1 from %2 bars ago",
+      args0: [
+        { type: "input_value", name: "SOURCE", check: "Number" },
+        { type: "field_number", name: "OFFSET", value: 1, min: 0, precision: 1 }
+      ],
+      output: "Number",
+      colour: "#2f9e77",
+      tooltip: "The value of any expression N bars ago (e.g. RSI 3 bars ago)."
+    },
+    {
       type: "plot_series",
       message0: "plot %1 as %2 color %3",
       args0: [
@@ -503,6 +526,8 @@ export const strategyToolbox = {
         { kind: "block", type: "indicator_wpr" },
         { kind: "block", type: "indicator_cci" },
         { kind: "block", type: "indicator_roc" },
+        { kind: "block", type: "series_agg" },
+        { kind: "block", type: "series_shift" },
         { kind: "block", type: "plot_series" }
       ]
     },

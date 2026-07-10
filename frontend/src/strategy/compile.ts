@@ -239,6 +239,15 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
       return { k: "roc", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "math_minmax":
       return { k: "minmax", op: block.getFieldValue("OP") === "min" ? "min" : "max", a: numInput(block, "A", ctx, true), b: numInput(block, "B", ctx, true) };
+    case "series_agg":
+      return {
+        k: "agg",
+        fn: (block.getFieldValue("FN") as "sum" | "avg" | "min" | "max" | "stdev" | "median") ?? "avg",
+        src: numInput(block, "SOURCE", ctx, true),
+        period: numInput(block, "PERIOD", ctx, true)
+      };
+    case "series_shift":
+      return { k: "shift", src: numInput(block, "SOURCE", ctx, true), offset: Math.max(0, Number(block.getFieldValue("OFFSET")) || 0) };
     case "param_number": {
       const paramName = (block.getFieldValue("NAME") as string) || "param";
       if (!ctx.inputs.has(paramName)) {

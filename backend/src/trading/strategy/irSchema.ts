@@ -44,6 +44,8 @@ const numExpr: z.ZodType<unknown> = z.lazy(() =>
     z.object({ k: z.literal("minmax"), op: z.enum(["min", "max"]), a: numExpr, b: numExpr }).strict(),
     z.object({ k: z.literal("arith"), op: z.enum(["+", "-", "*", "/", "%", "^"]), a: numExpr, b: numExpr }).strict(),
     z.object({ k: z.literal("unary"), op: z.enum(["neg", "abs", "round", "floor", "ceil"]), a: numExpr }).strict(),
+    z.object({ k: z.literal("agg"), fn: z.enum(["sum", "avg", "min", "max", "stdev", "median"]), src: numExpr, period: numExpr }).strict(),
+    z.object({ k: z.literal("shift"), src: numExpr, offset: z.number().int().min(0).max(100_000) }).strict(),
     z.object({ k: z.literal("ctx"), key: z.enum(["position_dir", "entry_price", "unrealized_pnl", "unrealized_pnl_pct", "bars_in_position"]) }).strict()
   ])
 );
