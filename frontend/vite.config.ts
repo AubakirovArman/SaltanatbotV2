@@ -5,16 +5,16 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: "0.0.0.0",
-    port: 4181,
-    strictPort: false,
+    port: 4180,
+    strictPort: true,
     proxy: {
-      "/api": "http://127.0.0.1:4180",
+      "/api": "http://127.0.0.1:4181",
       "/stream": {
-        target: "ws://127.0.0.1:4180",
+        target: "ws://127.0.0.1:4181",
         ws: true
       },
       "/trade-stream": {
-        target: "ws://127.0.0.1:4180",
+        target: "ws://127.0.0.1:4181",
         ws: true
       }
     }
