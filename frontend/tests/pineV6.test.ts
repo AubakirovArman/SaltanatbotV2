@@ -520,6 +520,36 @@ plot(close, "c")`);
     expect(Number.isFinite(preview.shapes.boxes[0].top)).toBe(false);
   });
 
+  it("fill() between assigned plots converts to band shading", () => {
+    const { ir, warnings } = convertPine(`//@version=6
+indicator("Fill", overlay=true)
+upper = plot(high, "upper", color=color.blue)
+lower = plot(low, "lower", color=color.red)
+fill(upper, lower, color=color.new(color.blue, 85))`);
+
+    expect(warnings.join(" ")).toMatch(/fill/i);
+    expect(json(ir)).toContain('"box"');
+    const roundTripped = roundTrips(`//@version=6
+indicator("Fill", overlay=true)
+upper = plot(high, "upper", color=color.blue)
+lower = plot(low, "lower", color=color.red)
+fill(upper, lower, color=color.new(color.blue, 85))`);
+    expect(json(roundTripped)).toContain('"box"');
+  });
+
+  it("gradient fill() uses explicit top/bottom series when Pine supplies them", () => {
+    const ir = roundTrips(`//@version=6
+indicator("Gradient Fill", overlay=true)
+mid = plot(hl2, "mid")
+trend = plot(ta.sma(close, 5), "trend")
+fill(mid, trend, high, low, color.green, color.red)`);
+    const box = ir.body.find((stmt) => stmt.k === "box");
+
+    expect(box).toBeTruthy();
+    expect(json(ir)).toContain('"field":"high"');
+    expect(json(ir)).toContain('"field":"low"');
+  });
+
   it("box tracks run extremes; vline and ray anchor at their firing bars", () => {
     const ir: StrategyIR = {
       name: "draw",

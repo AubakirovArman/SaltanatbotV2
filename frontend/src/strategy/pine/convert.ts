@@ -28,6 +28,7 @@ export interface PineResult {
 export class PineConvertError extends Error {}
 
 type Val = { t: "num"; e: NumExpr } | { t: "bool"; e: BoolExpr } | { t: "str"; v: string };
+type PlotHandle = { value: NumExpr; pane: "price" | "sub"; label: string };
 
 const PRICE_FIELDS = new Set(["open", "high", "low", "close", "volume", "hl2", "hlc3", "ohlc4"]);
 /** Pine `na` as a numeric value: 0/0 → NaN, so nz()/na()/isfinite handle it uniformly. */
@@ -76,6 +77,7 @@ class Converter {
   private overlay = false; // Pine default for indicator() AND strategy()
   private readonly env = new Map<string, Val>();
   private readonly plotHandles = new Set<string>();
+  private readonly plotHandleValues = new Map<string, PlotHandle>();
   private readonly numVars = new Set<string>();
   private readonly boolVars = new Set<string>();
   private readonly boolInputs = new Set<string>();
@@ -191,10 +193,13 @@ class Converter {
       this.registerInput(name, value);
       return [];
     }
-    // `p = plot(...)` binds a plot handle (only useful for fill(), which we skip).
+    // `p = plot(...)` binds a plot handle for later fill(p, other, ...).
     if (value.t === "call" && PLOT_CALLS.has(value.callee)) {
+      const out = this.exprStatement(value);
       this.plotHandles.add(name);
-      return this.exprStatement(value);
+      const plot = out.find((node): node is Extract<Stmt, { k: "plot" }> => node.k === "plot");
+      if (plot) this.plotHandleValues.set(name, { value: plot.value, pane: plot.pane ?? "price", label: plot.label });
+      return out;
     }
     // `l = line.new(...)` — draws AND binds a handle. Emit the mapped drawing (or a
     // skip-warning) and remember the handle so later set_*/delete calls are understood.
@@ -570,12 +575,13 @@ class Converter {
       case "runtime.error":
       case "strategy.cancel":
       case "strategy.cancel_all":
-      case "fill":
       case "plotcandle":
       case "plotbar": {
         this.warn(`Skipped display-only/unsupported call: ${callee}().`);
         return [];
       }
+      case "fill":
+        return this.displayMapped(callee, () => this.mapFill(args));
       case "label.new":
         return this.displayMapped(callee, () => this.mapLabelNew(args));
       case "line.new":
@@ -637,6 +643,44 @@ class Converter {
     }
     this.warn(`Skipped ${fn}() — only conditional shading (cond ? color : na) is convertible.`);
     return [];
+  }
+
+  /** fill(plotA, plotB, color) / gradient fill(plotA, plotB, top, bottom, ...)
+   *  becomes a chart band between two per-bar series. */
+  private mapFill(args: PineArg[]): Stmt[] {
+    const first = this.plotHandleOf(arg(args, 0, "plot1")?.value);
+    const second = this.plotHandleOf(arg(args, 1, "plot2")?.value);
+    if (!first || !second) {
+      this.warn("Skipped fill() — it needs two assigned plot()/hline() handles.");
+      return [];
+    }
+    if (first.pane === "sub" || second.pane === "sub") {
+      this.warnOnce("subfill", "Sub-pane fill() is skipped until strategy shape overlays support sub-panes.");
+      return [];
+    }
+
+    const third = arg(args, 2, "color")?.value;
+    const simpleColor = third && this.isColorExpr(third);
+    const topArg = simpleColor ? undefined : arg(args, 2, "top_value")?.value;
+    const bottomArg = simpleColor ? undefined : arg(args, 3, "bottom_value")?.value;
+    const colorExpr = simpleColor ? third : (arg(args, 4, "top_color")?.value ?? third);
+
+    this.warnOnce("fill", "fill() imported as band shading between plot series; transparency/fillgaps are approximated.");
+    return [
+      {
+        k: "box",
+        top: topArg ? this.num(topArg) : first.value,
+        bottom: bottomArg ? this.num(bottomArg) : second.value,
+        when: { k: "bool", v: true },
+        label: "",
+        color: this.colorOf(colorExpr) ?? "#8f9bb3"
+      }
+    ];
+  }
+
+  private plotHandleOf(expr: PineExpr | undefined): PlotHandle | undefined {
+    if (expr?.t !== "ident") return undefined;
+    return this.plotHandleValues.get(expr.name);
   }
 
   /** label.new(x, y, text, …) → a chart marker at the bars where this statement
