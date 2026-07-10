@@ -292,6 +292,10 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
       return { k: "roc", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "math_minmax":
       return { k: "minmax", op: block.getFieldValue("OP") === "min" ? "min" : "max", a: numInput(block, "A", ctx, true), b: numInput(block, "B", ctx, true) };
+    case "math_single_op":
+      return { k: "unary", op: block.getFieldValue("OP") === "neg" ? "neg" : "abs", a: numInput(block, "NUM", ctx, vec) };
+    case "math_modulo":
+      return { k: "arith", op: "%", a: numInput(block, "A", ctx, vec), b: numInput(block, "B", ctx, vec) };
     case "series_agg":
       return {
         k: "agg",

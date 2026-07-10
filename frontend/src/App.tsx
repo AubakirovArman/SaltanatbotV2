@@ -336,6 +336,23 @@ export default function App() {
   };
 
   // Add a validated .strategy import as a new editable artifact, deduping its name.
+  const importPine = (input: { kind: "indicator" | "strategy"; name: string; xml: string; code: string; warnings: string[] }) => {
+    const now = Date.now();
+    const artifact: StrategyArtifact = {
+      id: `${input.kind}:pine-${now}`,
+      kind: input.kind,
+      name: dedupeName(input.name, strategyLibrary),
+      description: `Imported from Pine Script${input.warnings.length ? ` (${input.warnings.length} fidelity warning${input.warnings.length === 1 ? "" : "s"})` : ""}.`,
+      xml: input.xml,
+      code: input.code,
+      createdAt: now,
+      updatedAt: now
+    };
+    setStrategyLibrary((current) => [artifact, ...current]);
+    setActiveArtifactId(artifact.id);
+    warmStrategyLab();
+  };
+
   const importStrategy = (input: { name: string; description: string; xml: string }) => {
     const now = Date.now();
     const artifact: StrategyArtifact = {
@@ -478,6 +495,7 @@ export default function App() {
                 onSaveArtifact={saveStrategyArtifact}
                 onUseTemplate={useTemplate}
                 onImportStrategy={importStrategy}
+                onImportPine={importPine}
                 catalog={catalog}
                 initialSymbol={symbol}
                 initialTimeframe={timeframe}

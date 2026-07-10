@@ -1,10 +1,12 @@
-import { AlertTriangle, Code2, Download, FileJson, LayoutGrid, Loader2, Play, Plus, Save, Share2, SlidersHorizontal, Upload, Workflow, X } from "lucide-react";
+import { AlertTriangle, Code2, Download, FileCode2, FileJson, LayoutGrid, Loader2, Play, Plus, Save, Share2, SlidersHorizontal, Upload, Workflow, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import * as Blockly from "blockly/core";
 import * as En from "blockly/msg/en";
 import { getCandles } from "../api/marketClient";
 import { registerStrategyBlocks, strategyToolbox } from "../strategy/blocks";
 import { blockCatalog } from "../strategy/blockCatalog";
+import { PineImportDialog } from "./PineImportDialog";
+import type { PineImport } from "../strategy/pine";
 import { compileWorkspace } from "../strategy/compile";
 import { buildShareUrl } from "../strategy/share";
 import { irToText } from "../strategy/irText";
@@ -75,6 +77,8 @@ interface StrategyLabProps {
   onUseTemplate: (template: StrategyTemplate) => void;
   /** Import a validated `.strategy` file as a new editable artifact and select it. */
   onImportStrategy: (input: { name: string; description: string; xml: string }) => void;
+  /** Import a converted Pine Script as a new editable artifact and select it. */
+  onImportPine: (input: PineImport) => void;
   catalog?: CatalogResponse;
   initialSymbol: string;
   initialTimeframe: Timeframe;
@@ -171,7 +175,7 @@ function comboCount(state: OptSpecState): number {
   return total;
 }
 
-export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onCreateArtifact, onSaveArtifact, onUseTemplate, onImportStrategy, catalog, initialSymbol, initialTimeframe, theme = "dark", onApplyResult, onShowOnChart }: StrategyLabProps) {
+export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onCreateArtifact, onSaveArtifact, onUseTemplate, onImportStrategy, onImportPine, catalog, initialSymbol, initialTimeframe, theme = "dark", onApplyResult, onShowOnChart }: StrategyLabProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const workspaceRef = useRef<Blockly.WorkspaceSvg | null>(null);
   const previewRef = useRef<() => void>(() => undefined);
@@ -469,7 +473,7 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
   return (
     <section className="strategy-lab">
       <div className="strategy-grid">
-        <StrategyLibrary artifacts={artifacts} activeId={activeArtifact?.id} onSelect={onSelectArtifact} onCreate={onCreateArtifact} onUseTemplate={onUseTemplate} onImportStrategy={onImportStrategy} />
+        <StrategyLibrary artifacts={artifacts} activeId={activeArtifact?.id} onSelect={onSelectArtifact} onCreate={onCreateArtifact} onUseTemplate={onUseTemplate} onImportStrategy={onImportStrategy} onImportPine={onImportPine} />
         <div className="blockly-shell">
           <div className="blockly-host" ref={containerRef} />
           {initError && (
@@ -893,7 +897,8 @@ function StrategyLibrary({
   onSelect,
   onCreate,
   onUseTemplate,
-  onImportStrategy
+  onImportStrategy,
+  onImportPine
 }: {
   artifacts: StrategyArtifact[];
   activeId?: string;
@@ -901,11 +906,13 @@ function StrategyLibrary({
   onCreate: (kind: StrategyArtifactKind) => void;
   onUseTemplate: (template: StrategyTemplate) => void;
   onImportStrategy: (input: { name: string; description: string; xml: string }) => void;
+  onImportPine: (input: PineImport) => void;
 }) {
   const indicators = artifacts.filter((artifact) => artifact.kind === "indicator");
   const strategies = artifacts.filter((artifact) => artifact.kind === "strategy");
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [importError, setImportError] = useState<string>();
+  const [pineOpen, setPineOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const importFile = async (file: File) => {
@@ -937,6 +944,9 @@ function StrategyLibrary({
         <button type="button" onClick={() => fileInputRef.current?.click()} title="Import a .strategy file">
           <Upload size={14} aria-hidden="true" /> Import
         </button>
+        <button type="button" onClick={() => setPineOpen(true)} title="Convert a TradingView Pine Script into an indicator or strategy">
+          <FileCode2 size={14} aria-hidden="true" /> Pine
+        </button>
       </div>
       <input
         ref={fileInputRef}
@@ -956,6 +966,15 @@ function StrategyLibrary({
       )}
       <LibraryGroup title="Indicators" items={indicators} activeId={activeId} onSelect={onSelect} />
       <LibraryGroup title="Strategies" items={strategies} activeId={activeId} onSelect={onSelect} />
+      {pineOpen && (
+        <PineImportDialog
+          onClose={() => setPineOpen(false)}
+          onImport={(result) => {
+            setPineOpen(false);
+            onImportPine(result);
+          }}
+        />
+      )}
       {galleryOpen && (
         <TemplateGallery
           onClose={() => setGalleryOpen(false)}

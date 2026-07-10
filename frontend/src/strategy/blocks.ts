@@ -241,6 +241,28 @@ export function registerStrategyBlocks() {
       colour: "#6d72c9",
       tooltip: "Take the larger or smaller of two values."
     },
+    {
+      type: "math_single_op",
+      message0: "%1 %2",
+      args0: [
+        { type: "field_dropdown", name: "OP", options: [["abs", "abs"], ["negate", "neg"]] },
+        { type: "input_value", name: "NUM", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#6d72c9",
+      tooltip: "Absolute value or sign flip."
+    },
+    {
+      type: "math_modulo",
+      message0: "remainder of %1 ÷ %2",
+      args0: [
+        { type: "input_value", name: "A", check: "Number" },
+        { type: "input_value", name: "B", check: "Number" }
+      ],
+      output: "Number",
+      colour: "#6d72c9",
+      tooltip: "Remainder after division (modulo)."
+    },
     // ---- Position & PnL ----
     {
       type: "ctx_read",
@@ -566,7 +588,9 @@ export const strategyToolbox = {
         { kind: "block", type: "math_number" },
         { kind: "block", type: "math_arithmetic" },
         { kind: "block", type: "math_round" },
-        { kind: "block", type: "math_minmax" }
+        { kind: "block", type: "math_minmax" },
+        { kind: "block", type: "math_single_op" },
+        { kind: "block", type: "math_modulo" }
       ]
     },
     {
