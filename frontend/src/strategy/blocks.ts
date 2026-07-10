@@ -205,11 +205,12 @@ export function registerStrategyBlocks() {
     },
     {
       type: "plot_series",
-      message0: "plot %1 as %2 color %3",
+      message0: "plot %1 as %2 color %3 on %4",
       args0: [
         { type: "input_value", name: "VALUE", check: "Number" },
         { type: "field_input", name: "LABEL", text: "signal" },
-        { type: "field_input", name: "COLOR", text: "#4db6ff" }
+        { type: "field_input", name: "COLOR", text: "#4db6ff" },
+        { type: "field_dropdown", name: "PANE", options: [["price pane", "price"], ["separate pane", "sub"]] }
       ],
       previousStatement: null,
       nextStatement: null,

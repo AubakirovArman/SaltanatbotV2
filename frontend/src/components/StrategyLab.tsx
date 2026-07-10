@@ -4,6 +4,7 @@ import * as Blockly from "blockly/core";
 import * as En from "blockly/msg/en";
 import { getCandles } from "../api/marketClient";
 import { registerStrategyBlocks, strategyToolbox } from "../strategy/blocks";
+import { blockCatalog } from "../strategy/blockCatalog";
 import { compileWorkspace } from "../strategy/compile";
 import { buildShareUrl } from "../strategy/share";
 import { irToText } from "../strategy/irText";
@@ -180,6 +181,7 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
   const activeRef = useRef<StrategyArtifact>();
 
   const [preview, setPreview] = useState("");
+  const [selectedType, setSelectedType] = useState<string>();
   const [strategyInputs, setStrategyInputs] = useState<StrategyIR["inputs"]>([]);
   const [jsonSize, setJsonSize] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
@@ -267,6 +269,11 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
     };
 
     const onChange = (event: Blockly.Events.Abstract) => {
+      if (event.type === Blockly.Events.SELECTED) {
+        const id = (event as Blockly.Events.Selected).newElementId;
+        const block = id ? workspace.getBlockById(id) : null;
+        setSelectedType(block?.type ?? undefined);
+      }
       if (event.isUiEvent) return;
       window.clearTimeout(previewTimer.current);
       previewTimer.current = window.setTimeout(doPreview, 250);
@@ -478,6 +485,15 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
             <strong>{activeArtifact?.name ?? "Strategy Lab"}</strong>
             <span>{activeArtifact?.kind ?? ""}</span>
           </div>
+          {selectedType && blockCatalog[selectedType] && (
+            <div className="block-help" style={{ padding: "8px 10px", margin: "0 0 8px", borderRadius: 8, background: "rgba(134,150,166,0.10)", fontSize: 12, lineHeight: 1.45 }}>
+              <strong>{blockCatalog[selectedType].title}</strong>
+              <div style={{ opacity: 0.85, marginTop: 3 }}>{blockCatalog[selectedType].body}</div>
+              {blockCatalog[selectedType].example && (
+                <code style={{ display: "block", marginTop: 4, opacity: 0.75 }}>e.g. {blockCatalog[selectedType].example}</code>
+              )}
+            </div>
+          )}
           <div className="backtest-controls">
             <button type="button" className="run-button" onClick={runNow} disabled={running || optimizing}>
               {running ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}

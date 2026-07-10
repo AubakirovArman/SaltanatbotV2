@@ -572,6 +572,8 @@ export interface PlotSeries {
   label: string;
   color: string;
   points: { time: number; value: number }[];
+  /** Where to draw: overlaid on the price pane (default) or in a separate sub-pane. */
+  pane?: "price" | "sub";
 }
 
 /**
@@ -600,7 +602,7 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
   const plotMap = new Map<Stmt, PlotSeries>();
   const registerPlots = (stmts: Stmt[]) => {
     for (const stmt of stmts) {
-      if (stmt.k === "plot") plotMap.set(stmt, { label: stmt.label, color: stmt.color, points: [] });
+      if (stmt.k === "plot") plotMap.set(stmt, { label: stmt.label, color: stmt.color, points: [], pane: stmt.pane ?? "price" });
       else if (stmt.k === "if") {
         registerPlots(stmt.then);
         for (const clause of stmt.elifs ?? []) registerPlots(clause.then);

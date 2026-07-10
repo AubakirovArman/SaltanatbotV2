@@ -125,6 +125,8 @@ export interface ChartPlot {
   label: string;
   color: string;
   points: { time: number; value: number }[];
+  /** Overlaid on the price pane (default) or drawn in a separate sub-pane. */
+  pane?: "price" | "sub";
 }
 
 /**
