@@ -22,7 +22,12 @@ export type NumExpr =
   | { k: "roc"; period: NumExpr; source: NumExpr }
   | { k: "minmax"; op: "min" | "max"; a: NumExpr; b: NumExpr }
   | { k: "arith"; op: "+" | "-" | "*" | "/" | "%" | "^"; a: NumExpr; b: NumExpr }
-  | { k: "unary"; op: "neg" | "abs" | "round" | "floor" | "ceil"; a: NumExpr };
+  | { k: "unary"; op: "neg" | "abs" | "round" | "floor" | "ceil"; a: NumExpr }
+  | { k: "ctx"; key: CtxKey };
+
+/** Runtime-context reads: the current position/PnL state, supplied per bar by the
+ *  backtester and the live engine. Scalar-only (never a series). */
+export type CtxKey = "position_dir" | "entry_price" | "unrealized_pnl" | "unrealized_pnl_pct" | "bars_in_position";
 
 /** Boolean expression — evaluates to true/false on every bar. */
 export type BoolExpr =
@@ -73,7 +78,7 @@ export const IR_VERSION = 1;
 
 const NUM_KINDS = new Set([
   "num", "input", "var", "price", "ma", "rsi", "bollinger", "macd", "atr", "stdev", "extreme", "change",
-  "stoch", "wpr", "cci", "roc", "minmax", "arith", "unary"
+  "stoch", "wpr", "cci", "roc", "minmax", "arith", "unary", "ctx"
 ]);
 
 export function isNumExpr(expr: NumExpr | BoolExpr): expr is NumExpr {

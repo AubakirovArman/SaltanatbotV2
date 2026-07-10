@@ -149,6 +149,27 @@ describe("previewStrategy runs bar-major (setvar state accumulates)", () => {
   });
 });
 
+describe("ctx reads drive backtest behaviour", () => {
+  it("exits after N bars in position via bars_in_position", () => {
+    const ir: StrategyIR = {
+      name: "ctx-hold",
+      inputs: [],
+      body: [
+        { k: "entry", direction: "long", when: { k: "compare", op: "==", a: { k: "ctx", key: "position_dir" }, b: { k: "num", v: 0 } } },
+        { k: "exit", when: { k: "compare", op: ">=", a: { k: "ctx", key: "bars_in_position" }, b: { k: "num", v: 3 } } },
+        { k: "size", mode: "units", value: { k: "num", v: 1 } },
+      ],
+    };
+    const candles = Array.from({ length: 10 }, (_, i) => candle(i * MIN, 100 + i, 101 + i, 99 + i, 100 + i));
+    const result = runBacktest(ir, candles, { ...noFriction, fillTiming: "next_open" });
+    expect(result.trades.length).toBeGreaterThanOrEqual(1);
+    // Entry fills at bar 1; held until bars_in_position >= 3 (bar 4 signal → fills bar 5).
+    expect(result.trades[0].entryIndex).toBe(1);
+    expect(result.trades[0].reason).toBe("signal");
+    expect(result.trades[0].exitIndex).toBe(5);
+  });
+});
+
 describe("gap-through-stop honesty", () => {
   it("fills a gapped stop at the bar OPEN, not the (better) stop price", () => {
     // Enter long, attach a price stop at 95. Then a bar gaps DOWN so its open

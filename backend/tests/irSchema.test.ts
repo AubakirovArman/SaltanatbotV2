@@ -87,6 +87,11 @@ describe("parseStrategyIR", () => {
     expect(bad.ok).toBe(false);
   });
 
+  it("accepts a ctx (position/PnL) read; rejects an unknown ctx key", () => {
+    expect(parseStrategyIR({ name: "c", inputs: [], body: [{ k: "exit", when: { k: "compare", op: ">", a: { k: "ctx", key: "bars_in_position" }, b: { k: "num", v: 3 } } }] }).ok).toBe(true);
+    expect(parseStrategyIR({ name: "c", inputs: [], body: [{ k: "exit", when: { k: "compare", op: ">", a: { k: "ctx", key: "secret_key" }, b: { k: "num", v: 3 } } }] }).ok).toBe(false);
+  });
+
   it("accepts a legacy IR with no version field", () => {
     const { v, ...legacy } = validIR as typeof validIR & { v?: number };
     expect(parseStrategyIR(legacy).ok).toBe(true);

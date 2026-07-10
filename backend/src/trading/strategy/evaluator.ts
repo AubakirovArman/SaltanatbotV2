@@ -48,6 +48,8 @@ interface Runtime {
   /** Statements/iterations executed this bar; guarded against MAX_OPS_PER_BAR. */
   ops: number;
   budgetHit: boolean;
+  /** Position/PnL runtime context supplied per bar by the caller (ctx reads). */
+  ctx: Record<string, number>;
 }
 
 /**
@@ -61,7 +63,7 @@ interface Runtime {
  * omitting it (fresh map per bar) makes stateful strategies behave differently.
  * The series cache is always per-call (candles grow each bar, so it can't persist).
  */
-export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, vars?: Map<string, number>): BarIntents {
+export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, vars?: Map<string, number>, ctx?: Record<string, number>): BarIntents {
   const rt: Runtime = {
     candles,
     n: candles.length,
@@ -69,7 +71,8 @@ export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number, va
     vars: vars ?? new Map(),
     seriesCache: new Map(),
     ops: 0,
-    budgetHit: false
+    budgetHit: false,
+    ctx: ctx ?? {}
   };
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };
   execStatements(ir.body, index, rt, intents);
@@ -91,7 +94,8 @@ export function runInit(ir: StrategyIR, candles: Candle[], vars: Map<string, num
     vars,
     seriesCache: new Map(),
     ops: 0,
-    budgetHit: false
+    budgetHit: false,
+    ctx: {}
   };
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };
   for (const stmt of ir.init) execStatement(stmt, 0, rt, intents);
@@ -194,6 +198,8 @@ function evalNum(expr: NumExpr, i: number, rt: Runtime): number {
   switch (expr.k) {
     case "var":
       return rt.vars.get(expr.name) ?? 0;
+    case "ctx":
+      return rt.ctx[expr.key] ?? 0;
     case "arith": {
       const a = evalNum(expr.a, i, rt);
       const b = evalNum(expr.b, i, rt);
@@ -283,6 +289,8 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
       return new Array<number>(n).fill(rt.params.get(expr.name) ?? 0);
     case "var":
       return new Array<number>(n).fill(NaN);
+    case "ctx":
+      return new Array<number>(n).fill(rt.ctx[expr.key] ?? 0);
     case "price": {
       const base = sourceSeries(rt.candles, expr.field);
       if (!expr.offset) return base;

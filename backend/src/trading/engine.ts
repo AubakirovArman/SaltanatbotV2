@@ -49,6 +49,10 @@ export interface TradeEvent {
 interface Managed {
   side: "long" | "short";
   entry: number;
+  /** Filled base quantity — used for unrealized-PnL ctx reads. */
+  qty: number;
+  /** Bar time at entry — used for bars-in-position ctx reads. */
+  entryTime: number;
   stop?: number;
   target?: number;
   trail?: { mode: "percent" | "atr"; value: number };
@@ -440,7 +444,7 @@ export class TradingEngine {
     if (bot.paused) return;
     let intents: BarIntents;
     try {
-      intents = evaluateBar(bot.config.ir, bot.buffer, index, bot.vars);
+      intents = evaluateBar(bot.config.ir, bot.buffer, index, bot.vars, this.positionCtx(bot));
     } catch (error) {
       this.log(bot.config.id, "error", `Strategy error: ${error instanceof Error ? error.message : error}`);
       return;
@@ -529,9 +533,10 @@ export class TradingEngine {
     const result = await bot.adapter.execute(order);
     if (result.ok) {
       // When the exchange holds the SL/TP, don't also manage them locally (avoids double-close).
+      const entryTime = bot.buffer[index]?.time ?? bot.buffer.at(-1)?.time ?? 0;
       bot.managed = exchangeManaged
-        ? { side: dir, entry: bot.price }
-        : { side: dir, entry: bot.price, stop, target, trail: intents.trail };
+        ? { side: dir, entry: bot.price, qty, entryTime }
+        : { side: dir, entry: bot.price, qty, entryTime, stop, target, trail: intents.trail };
       this.persistState(bot);
     } else {
       this.log(bot.config.id, "error", `Open failed: ${result.message}`);
@@ -632,6 +637,23 @@ export class TradingEngine {
   private persistPaper(bot: RunningBot) {
     if (!bot.paper) return;
     setSetting(`paper:${bot.config.id}`, bot.paper.getState());
+  }
+
+  /** Build the per-bar position/PnL context for `ctx` reads (flat → {} → all 0). */
+  private positionCtx(bot: RunningBot): Record<string, number> {
+    const m = bot.managed;
+    if (!m) return {};
+    const price = bot.price;
+    const move = m.side === "long" ? price - m.entry : m.entry - price;
+    const tf = timeframeMs[bot.config.timeframe] ?? 60_000;
+    const lastBarTime = bot.buffer.at(-1)?.time ?? m.entryTime ?? 0;
+    return {
+      position_dir: m.side === "long" ? 1 : -1,
+      entry_price: m.entry,
+      unrealized_pnl: (m.qty ?? 0) * move,
+      unrealized_pnl_pct: m.entry ? (move / m.entry) * 100 : 0,
+      bars_in_position: Math.max(0, Math.round((lastBarTime - (m.entryTime ?? lastBarTime)) / tf))
+    };
   }
 
   /** Persist durable strategy state (setvar counters + managed position) for crash recovery. */

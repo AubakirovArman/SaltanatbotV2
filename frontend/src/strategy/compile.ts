@@ -1,6 +1,6 @@
 import * as Blockly from "blockly/core";
 import { IR_VERSION } from "./ir";
-import type { BoolExpr, MaKind, NumExpr, Stmt, StrategyInput, StrategyIR } from "./ir";
+import type { BoolExpr, CtxKey, MaKind, NumExpr, Stmt, StrategyInput, StrategyIR } from "./ir";
 import type { PriceField } from "./ta";
 
 interface Ctx {
@@ -243,6 +243,12 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
       }
       return { k: "var", name: varName };
     }
+    case "ctx_read": {
+      const keys: CtxKey[] = ["position_dir", "entry_price", "unrealized_pnl", "unrealized_pnl_pct", "bars_in_position"];
+      const key = block.getFieldValue("FIELD") as CtxKey;
+      if (vec) ctx.errors.push("Position/PnL reads can't be used inside an indicator or series input — they are single values, not history.");
+      return { k: "ctx", key: keys.includes(key) ? key : "position_dir" };
+    }
     default:
       ctx.errors.push(`Unsupported value block: ${block.type}`);
       return { k: "num", v: 0 };
@@ -270,6 +276,11 @@ function compileBool(block: Blockly.Block | null, ctx: Ctx): BoolExpr {
       return { k: "trend", dir: block.getFieldValue("DIR") === "falling" ? "falling" : "rising", period: numInput(block, "PERIOD", ctx, true), source: numInput(block, "SOURCE", ctx, true) };
     case "value_between":
       return { k: "between", value: numInput(block, "VALUE", ctx), low: numInput(block, "LOW", ctx), high: numInput(block, "HIGH", ctx) };
+    case "position_is": {
+      const state = block.getFieldValue("STATE");
+      const target = state === "long" ? 1 : state === "short" ? -1 : 0;
+      return { k: "compare", op: "==", a: { k: "ctx", key: "position_dir" }, b: { k: "num", v: target } };
+    }
     case "time_session":
       return { k: "session", start: Number(block.getFieldValue("START")) || 0, end: Number(block.getFieldValue("END")) || 23 };
     case "time_dayofweek":

@@ -104,6 +104,29 @@ describe("runInit — on-start initialization", () => {
   });
 });
 
+describe("evaluateBar — runtime position/PnL context (ctx reads)", () => {
+  const oneBar = [candle(0, 100)];
+  const ir: StrategyIR = {
+    name: "ctx",
+    inputs: [],
+    body: [
+      { k: "exit", when: { k: "compare", op: "<", a: { k: "ctx", key: "unrealized_pnl_pct" }, b: { k: "num", v: -2 } } },
+      { k: "entry", direction: "long", when: { k: "compare", op: "==", a: { k: "ctx", key: "position_dir" }, b: { k: "num", v: 0 } } },
+    ],
+  };
+
+  it("enters only when flat and exits a losing position via ctx", () => {
+    // Flat: position_dir 0 → entry fires; pnl_pct 0 → no exit.
+    const flat = evaluateBar(ir, oneBar, 0, undefined, {});
+    expect(flat.entry).toBe("long");
+    expect(flat.exit).toBe(false);
+    // Losing long: position_dir 1 (no re-entry), pnl_pct -3 → exit.
+    const losing = evaluateBar(ir, oneBar, 0, undefined, { position_dir: 1, unrealized_pnl_pct: -3 });
+    expect(losing.entry).toBeUndefined();
+    expect(losing.exit).toBe(true);
+  });
+});
+
 describe("evaluateBar — bounded loops (repeat / while) + op budget", () => {
   const oneBar = [candle(0, 100)];
   const inc = (name: string): StrategyIR["body"][number] => ({

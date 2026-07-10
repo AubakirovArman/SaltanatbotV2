@@ -65,6 +65,7 @@ function numText(expr: NumExpr): string {
     case "minmax": return `${expr.op}(${numText(expr.a)}, ${numText(expr.b)})`;
     case "arith": return `(${numText(expr.a)} ${expr.op} ${numText(expr.b)})`;
     case "unary": return `${expr.op}(${numText(expr.a)})`;
+    case "ctx": return `pos.${expr.key}`;
   }
 }
 

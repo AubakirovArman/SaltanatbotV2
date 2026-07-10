@@ -217,6 +217,35 @@ export function registerStrategyBlocks() {
       colour: "#6d72c9",
       tooltip: "Take the larger or smaller of two values."
     },
+    // ---- Position & PnL ----
+    {
+      type: "ctx_read",
+      message0: "position %1",
+      args0: [
+        {
+          type: "field_dropdown",
+          name: "FIELD",
+          options: [
+            ["direction (+1/-1/0)", "position_dir"],
+            ["entry price", "entry_price"],
+            ["unrealized PnL", "unrealized_pnl"],
+            ["unrealized PnL %", "unrealized_pnl_pct"],
+            ["bars in trade", "bars_in_position"]
+          ]
+        }
+      ],
+      output: "Number",
+      colour: "#3d9970",
+      tooltip: "Read the current position / PnL state (0 when flat)."
+    },
+    {
+      type: "position_is",
+      message0: "position is %1",
+      args0: [{ type: "field_dropdown", name: "STATE", options: [["long", "long"], ["short", "short"], ["flat", "flat"]] }],
+      output: "Boolean",
+      colour: "#3d9970",
+      tooltip: "True when the current position matches long / short / flat."
+    },
     // ---- Logic ----
     {
       type: "cross_event",
@@ -485,6 +514,15 @@ export const strategyToolbox = {
         { kind: "block", type: "math_arithmetic" },
         { kind: "block", type: "math_round" },
         { kind: "block", type: "math_minmax" }
+      ]
+    },
+    {
+      kind: "category",
+      name: "Position & PnL",
+      colour: "#3d9970",
+      contents: [
+        { kind: "block", type: "ctx_read" },
+        { kind: "block", type: "position_is" }
       ]
     },
     {

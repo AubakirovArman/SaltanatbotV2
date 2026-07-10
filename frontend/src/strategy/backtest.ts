@@ -147,6 +147,8 @@ interface Runtime {
   /** Per-bar statement/iteration counter, guarded against MAX_OPS_PER_BAR. */
   ops: number;
   budgetHit: boolean;
+  /** Position/PnL runtime context, refreshed each bar (ctx reads). */
+  ctx: Record<string, number>;
 }
 
 /** Hard per-bar execution budget. MUST equal the backend evaluator's constant
@@ -193,7 +195,8 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     seriesCache: new Map(),
     atr14: candles.length ? atrSeries(candles, 14) : [],
     ops: 0,
-    budgetHit: false
+    budgetHit: false,
+    ctx: {}
   };
   runInit(ir, rt);
 
@@ -354,6 +357,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     const intents: Intents = { exit: false, alerts: [], markers: [] };
     rt.ops = 0;
     rt.budgetHit = false;
+    rt.ctx = buildPositionCtx(position, candle.close, i);
     if (!liquidated) execStatements(ir.body, i, rt, intents);
     if (rt.budgetHit && !budgetWarned) {
       warnings.push({ time: candle.time, message: `A loop hit the per-bar execution budget (${MAX_OPS_PER_BAR}) and was truncated.` });
@@ -577,7 +581,8 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
     seriesCache: new Map(),
     atr14: candles.length ? atrSeries(candles, 14) : [],
     ops: 0,
-    budgetHit: false
+    budgetHit: false,
+    ctx: {}
   };
   runInit(ir, rt);
   const signals: TradeMarker[] = [];
@@ -683,6 +688,19 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[]): { plots: Plo
 
 // ---------- statement execution ----------
 
+/** Build the per-bar position/PnL context for `ctx` reads. Flat → {} (all reads 0). */
+function buildPositionCtx(position: Position | null, price: number, i: number): Record<string, number> {
+  if (!position) return {};
+  const move = position.dir === "long" ? price - position.entryPrice : position.entryPrice - price;
+  return {
+    position_dir: position.dir === "long" ? 1 : -1,
+    entry_price: position.entryPrice,
+    unrealized_pnl: position.qty * move,
+    unrealized_pnl_pct: position.entryPrice ? (move / position.entryPrice) * 100 : 0,
+    bars_in_position: i - position.entryIndex
+  };
+}
+
 /** Run one-time on-start init statements (setvar-only) into rt.vars before the first bar. */
 function runInit(ir: StrategyIR, rt: Runtime) {
   if (!ir.init?.length) return;
@@ -783,6 +801,8 @@ function evalNum(expr: NumExpr, i: number, rt: Runtime): number {
   switch (expr.k) {
     case "var":
       return rt.vars.get(expr.name) ?? 0;
+    case "ctx":
+      return rt.ctx[expr.key] ?? 0;
     case "arith": {
       const a = evalNum(expr.a, i, rt);
       const b = evalNum(expr.b, i, rt);
@@ -890,6 +910,8 @@ function computeSeries(expr: NumExpr, rt: Runtime): number[] {
       return new Array<number>(n).fill(rt.params.get(expr.name) ?? 0);
     case "var":
       return new Array<number>(n).fill(NaN);
+    case "ctx":
+      return new Array<number>(n).fill(rt.ctx[expr.key] ?? 0);
     case "price": {
       const base = sourceSeries(rt.candles, expr.field);
       if (!expr.offset) return base;
