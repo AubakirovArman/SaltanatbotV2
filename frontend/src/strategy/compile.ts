@@ -213,7 +213,8 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
         k: "plot",
         value: numInput(block, "VALUE", ctx, true),
         label: (block.getFieldValue("LABEL") as string) || "series",
-        color: (block.getFieldValue("COLOR") as string) || "#4db6ff"
+        color: (block.getFieldValue("COLOR") as string) || "#4db6ff",
+        pane: block.getFieldValue("PANE") === "sub" ? "sub" : "price"
       };
     default:
       ctx.errors.push(`Unsupported action block: ${block.type}`);

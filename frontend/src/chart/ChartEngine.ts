@@ -25,7 +25,7 @@ import { buildRenko, drawRenko } from "./renderers/renko";
 import { drawVolume } from "./renderers/volume";
 import { drawMarkers } from "./renderers/markers";
 import { drawTradeOverlay } from "./renderers/tradeOverlay";
-import { drawStrategyPlots } from "./renderers/strategyPlots";
+import { drawStrategyPlots, drawSubPlots } from "./renderers/strategyPlots";
 import { drawCompareSeries } from "./renderers/compareSeries";
 import { toHeikinAshi } from "./heikinAshi";
 import { computePlot, niceTicks, priceScale, visibleCandles } from "./scales";
@@ -68,11 +68,14 @@ export function drawChart(options: DrawChartOptions) {
       indicator.kind === "atr" ||
       indicator.kind === "obv")
   );
+  const subPlots = (plots ?? []).filter((series) => series.pane === "sub");
+  const pricePlots = (plots ?? []).filter((series) => series.pane !== "sub");
+  const subPanelHeight = subPlots.length > 0 ? Math.min(88, Math.max(58, height * 0.14)) : 0;
   const volumeHeight = showVolume ? Math.min(90, Math.max(52, height * 0.13)) : 0;
   const lowerHeight = lowerIndicators.length > 0
     ? Math.min(88, Math.max(58, height * 0.14))
     : 0;
-  const mainHeight = Math.max(180, height - lowerIndicators.length * lowerHeight - volumeHeight);
+  const mainHeight = Math.max(180, height - lowerIndicators.length * lowerHeight - volumeHeight - subPanelHeight);
   const plot = computePlot(width, mainHeight);
   if (candles.length === 0) {
     drawEmpty(ctx, width, height);
@@ -137,6 +140,10 @@ export function drawChart(options: DrawChartOptions) {
     panelTop += volumeHeight;
   }
   drawLowerPanels(ctx, lowerIndicators, computed, start, end, plot, lowerHeight, panelTop);
+  if (subPlots.length > 0) {
+    const subPanel = makePanel(plot, panelTop + lowerIndicators.length * lowerHeight, subPanelHeight);
+    drawSubPlots(ctx, subPanel, viewport, subPlots);
+  }
 
   drawDrawings(ctx, viewport, drawings, {
     draft: draftDrawing,
@@ -144,7 +151,7 @@ export function drawChart(options: DrawChartOptions) {
     hoveredId: hoveredDrawingId,
     decimals
   });
-  if (plots && plots.length > 0) drawStrategyPlots(ctx, viewport, plots);
+  if (pricePlots.length > 0) drawStrategyPlots(ctx, viewport, pricePlots);
   if (trades && trades.length > 0) drawTradeOverlay(ctx, viewport, trades, theme, decimals);
   if (signals && signals.length > 0) drawMarkers(ctx, viewport, signals, theme);
   drawLastPrice(ctx, plot, scale, candles[candles.length - 1], decimals, theme);

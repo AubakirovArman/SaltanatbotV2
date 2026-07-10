@@ -29,7 +29,7 @@ function stmtText(stmt: Stmt, depth: number): string[] {
     case "setvar": return [`${pad}set ${stmt.name} = ${numText(stmt.value)}`];
     case "setvarb": return [`${pad}set flag ${stmt.name} = ${boolText(stmt.value)}`];
     case "alert": return [`${pad}alert "${stmt.message}"${stmt.args ? ` {${Object.entries(stmt.args).map(([k, v]) => `${k}=${numText(v)}`).join(", ")}}` : ""} when ${boolText(stmt.when)}`];
-    case "plot": return [`${pad}plot ${numText(stmt.value)} as "${stmt.label}"`];
+    case "plot": return [`${pad}plot ${numText(stmt.value)} as "${stmt.label}"${stmt.pane === "sub" ? " [sub]" : ""}`];
     case "if": {
       const out = [`${pad}if ${boolText(stmt.cond)}:`, ...stmt.then.flatMap((inner) => stmtText(inner, depth + 1))];
       for (const clause of stmt.elifs ?? []) {
