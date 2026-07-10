@@ -34,6 +34,10 @@ const PRICE_FIELDS = new Set(["open", "high", "low", "close", "volume", "hl2", "
 const NAN_NUM: NumExpr = { k: "arith", op: "/", a: { k: "num", v: 0 }, b: { k: "num", v: 0 } };
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const PLOT_CALLS = new Set(["plot", "hline", "plotshape", "plotchar"]);
+/** Drawing-object constructors (label.new, line.new, box.new, …). */
+const DRAWING_NEW_RE = /^(label|line|linefill|box|table|polyline)\.new$/;
+/** Drawing-object mutators/removers whose effects we can't track (skipped with a warning). */
+const DRAWING_MUTATE_RE = /^(label|line|linefill|box|table|polyline)\.(set_\w+|delete|copy|all)$/;
 
 const COLOR_HEX: Record<string, string> = {
   red: "#ef5350",
@@ -79,6 +83,7 @@ class Converter {
   private readonly inlining = new Set<string>();
   private readonly loopVars = new Set<string>();
   private readonly colorVars = new Map<string, string | undefined>();
+  private readonly drawingHandles = new Set<string>();
   private readonly inputs: StrategyInput[] = [];
   private readonly init: Extract<Stmt, { k: "setvar" }>[] = [];
   private readonly warnings: string[] = [];
@@ -189,6 +194,12 @@ class Converter {
       this.plotHandles.add(name);
       return this.exprStatement(value);
     }
+    // `l = line.new(...)` — draws AND binds a handle. Emit the mapped drawing (or a
+    // skip-warning) and remember the handle so later set_*/delete calls are understood.
+    if (value.t === "call" && DRAWING_NEW_RE.test(value.callee)) {
+      this.drawingHandles.add(name);
+      return this.exprStatement(value);
+    }
     // Color-valued bindings (`col = trendUp ? color.lime : color.red`) are cosmetic —
     // record the resolved color (if constant) and drop the binding.
     if (this.isColorExpr(value)) {
@@ -241,6 +252,10 @@ class Converter {
 
   private setMutable(name: string, value: PineExpr): Stmt[] {
     this.checkName(name);
+    if (value.t === "call" && DRAWING_NEW_RE.test(value.callee)) {
+      this.drawingHandles.add(name);
+      return this.exprStatement(value);
+    }
     if (value.t === "ternary" && !isBoolExpr(value, this.boolVars, this.env)) {
       this.numVars.add(name);
       return [this.ternaryToIf(name, value)];
@@ -478,13 +493,73 @@ class Converter {
         this.warn(`Skipped display-only/unsupported call: ${callee}().`);
         return [];
       }
+      case "label.new":
+        return this.mapLabelNew(args);
+      case "line.new":
+        return this.mapLineNew(args);
+      case "box.new":
+        return this.mapBoxNew(args);
       default:
+        if (DRAWING_MUTATE_RE.test(callee)) {
+          this.warnOnce("drawmut", `Drawing updates/removals (${callee} and similar) are ignored — drawings are approximated statically.`);
+          return [];
+        }
         if (callee.startsWith("label") || callee.startsWith("line") || callee.startsWith("box") || callee.startsWith("table") || callee.startsWith("array") || callee.startsWith("matrix")) {
           this.warn(`Skipped drawing/collection call: ${callee}().`);
           return [];
         }
         throw new PineConvertError(`Unsupported statement call: ${callee}().`);
     }
+  }
+
+  // ---------- drawing-object mapping (display-only approximations) ----------
+
+  /** label.new(x, y, text, …) → a chart marker at the bars where this statement
+   *  runs. Direction comes from style/yloc; dynamic text falls back to static. */
+  private mapLabelNew(args: PineArg[]): Stmt[] {
+    const textArg = arg(args, 2, "text");
+    let text = textArg ? this.strVal(textArg.value) : undefined;
+    if (textArg && text === undefined) {
+      this.warnOnce("dyntext", "Dynamic label text (str.* formatting) isn't supported — labels imported without text.");
+      text = "";
+    }
+    const styleName = identName(arg(args, undefined, "style")?.value);
+    const ylocName = identName(arg(args, undefined, "yloc")?.value);
+    const dir: "up" | "down" = styleName.includes("down") || ylocName.includes("above") ? "down" : "up";
+    return [{ k: "marker", dir, label: sanitizeText(text ?? ""), when: { k: "bool", v: true } }];
+  }
+
+  /** line.new(x1, y1, x2, y2, …) → a horizontal level (ray) when y1 and y2 are the
+   *  same expression; slanted segments have no per-bar representation and are skipped. */
+  private mapLineNew(args: PineArg[]): Stmt[] {
+    const y1 = arg(args, 1, "y1");
+    const y2 = arg(args, 3, "y2");
+    if (!y1) {
+      this.warn("Skipped line.new() without coordinates.");
+      return [];
+    }
+    if (y2 && JSON.stringify(y1.value) !== JSON.stringify(y2.value)) {
+      this.warnOnce("slanted", "Slanted line.new() segments (y1 ≠ y2) can't be drawn per-bar — skipped.");
+      return [];
+    }
+    this.warnOnce("linelevel", "line.new() imported as a horizontal level from the firing bar (x-coordinates/extend are approximated).");
+    const color = this.colorOf(arg(args, undefined, "color")?.value) ?? "#8f9bb3";
+    return [{ k: "ray", price: this.num(y1.value), when: { k: "bool", v: true }, label: "", color }];
+  }
+
+  /** box.new(left, top, right, bottom, …) → a box over the bars where this statement
+   *  runs; the drawn top/bottom come from the price arguments, x-args are ignored. */
+  private mapBoxNew(args: PineArg[]): Stmt[] {
+    const top = arg(args, 1, "top");
+    const bottom = arg(args, 3, "bottom");
+    if (!top || !bottom) {
+      this.warn("Skipped box.new() without top/bottom prices.");
+      return [];
+    }
+    this.warnOnce("boxspan", "box.new() imported as a zone over the bars where it fires (left/right x-coordinates are approximated).");
+    const color =
+      this.colorOf(arg(args, undefined, "bgcolor")?.value) ?? this.colorOf(arg(args, undefined, "border_color")?.value) ?? "#26a69a";
+    return [{ k: "box", top: this.num(top.value), bottom: this.num(bottom.value), when: { k: "bool", v: true }, label: "", color }];
   }
 
   /** indicator()/strategy() declaration: name, overlay, and sizing defaults. */
@@ -822,6 +897,11 @@ class Converter {
       throw new PineConvertError(`${name} belongs to chart drawing (labels/lines/boxes/tables) — visual objects can't run in the trading engine.`);
     }
     if (this.plotHandles.has(name)) throw new PineConvertError(`"${name}" is a plot handle — it can't be used as a value.`);
+    // Drawing handles read as values (the `if na(l)` first-bar idiom) → na.
+    if (this.drawingHandles.has(name)) {
+      this.warnOnce("handleread", `Drawing handles ("${name}") have no value here — reads yield na.`);
+      return NAN_NUM;
+    }
     // `someVar.field` — field access on a known binding (user objects).
     if (name.includes(".")) {
       const head = name.split(".")[0];

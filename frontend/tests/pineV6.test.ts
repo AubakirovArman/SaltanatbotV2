@@ -514,6 +514,59 @@ plot(close, "c")`);
     expect(preview.shapes.rays[0].price).toBe(109);
   });
 
+  // Simple drawing-object patterns (no collections) map to display primitives:
+  // label.new → marker (text renders on chart), horizontal line.new → ray, box.new → box.
+  it("label.new / line.new / box.new map to marker / ray / box with warnings", () => {
+    const ir = roundTrips(`//@version=6
+indicator("Draw", overlay=true)
+sup = ta.lowest(low, 20)
+if ta.crossover(close, ta.sma(close, 10))
+    label.new(bar_index, high, "breakout", style=label.style_label_down)
+    line.new(bar_index, sup, bar_index + 10, sup, color=color.gray, extend=extend.right)
+    box.new(bar_index, high, bar_index + 5, low, bgcolor=color.new(color.green, 80))
+plot(close, "c")`);
+    const kinds = new Set<string>();
+    walkStmts(ir.body, (s) => kinds.add(s.k));
+    expect(kinds.has("marker")).toBe(true);
+    expect(kinds.has("ray")).toBe(true);
+    expect(kinds.has("box")).toBe(true);
+    // The label text must survive into the marker.
+    let text = "";
+    walkStmts(ir.body, (s) => {
+      if (s.k === "marker") text = s.label;
+    });
+    expect(text).toBe("breakout");
+  });
+
+  it("drawing handles: binding, set_*/delete mutations, and na(handle) idiom convert with warnings", () => {
+    const result = importPineScript(`//@version=6
+indicator("Handles", overlay=true)
+var line supLine = na
+level = ta.lowest(low, 50)
+if na(supLine)
+    supLine := line.new(bar_index, level, bar_index + 1, level, color=color.gray)
+line.set_y1(supLine, level)
+line.delete(supLine)
+plot(close, "c")`);
+    expect(result.ok, result.ok ? "" : (result as { error: string }).error).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings.some((w) => /ignored|approximated/i.test(w))).toBe(true);
+  });
+
+  it("slanted line.new segments are skipped with a warning, not mis-drawn", () => {
+    const { ir, warnings } = convertPine(`//@version=6
+indicator("Slant")
+if close > open
+    line.new(bar_index - 5, low, bar_index, high)
+plot(close, "c")`);
+    let sawRay = false;
+    walkStmts(ir.body, (s) => {
+      if (s.k === "ray") sawRay = true;
+    });
+    expect(sawRay).toBe(false);
+    expect(warnings.some((w) => /slanted/i.test(w))).toBe(true);
+  });
+
   // Mirrors what the import dialog does for a mixed paste + multi-file batch: convert
   // each source independently → indicator()/strategy() route to the right artifact
   // kind, names come from the script, and invalid scripts fail without sinking the batch.
