@@ -2,10 +2,13 @@ import { Loader2, SlidersHorizontal } from "lucide-react";
 import type { StrategyIR } from "../ir";
 import type { Objective, OptimizeResult, WalkForwardResult } from "../optimizer";
 import { OBJECTIVES, comboCount, type AxisState, type OptSpecState } from "../optimization/model";
+import type { Locale } from "../../i18n";
+import { strategyNumber, strategyObjective, strategyText } from "../../i18n/strategy";
 
 const MAX_COMBOS = 2000;
 
 export function OptimizePanel({
+  locale,
   spec,
   inputs,
   onSpecChange,
@@ -21,6 +24,7 @@ export function OptimizePanel({
   onApplyCombo,
   decimals
 }: {
+  locale: Locale;
   spec: OptSpecState;
   inputs: StrategyIR["inputs"];
   onSpecChange: (spec: OptSpecState) => void;
@@ -36,6 +40,7 @@ export function OptimizePanel({
   onApplyCombo: (params: Record<string, number>) => void;
   decimals: number;
 }) {
+  const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const enabledCount = spec.axes.filter((axis) => axis.enabled).length;
   const combos = comboCount(spec);
   const pct = progress.total > 0 ? Math.min(100, (progress.done / progress.total) * 100) : 0;
@@ -56,9 +61,9 @@ export function OptimizePanel({
     <div className="optimizer">
       <div className="panel-header small">
         <strong>
-          <SlidersHorizontal size={13} aria-hidden="true" /> Optimizer
+          <SlidersHorizontal size={13} aria-hidden="true" /> {t("optimizer")}
         </strong>
-        <span>{combos > MAX_COMBOS ? `${MAX_COMBOS}+ combos` : `${combos} combo${combos === 1 ? "" : "s"}`}</span>
+        <span>{combos > MAX_COMBOS ? `${MAX_COMBOS}+ ${t("combos")}` : `${strategyNumber(locale, combos)} ${t(combos === 1 ? "combo" : "combos")}`}</span>
       </div>
 
       <div className="opt-axes">
@@ -68,7 +73,7 @@ export function OptimizePanel({
           const disabled = !axis.enabled && enabledCount >= 3;
           return (
             <div key={input.name} className={axis.enabled ? "opt-axis on" : "opt-axis"}>
-              <label className="opt-axis-toggle" title={disabled ? "Up to 3 parameters at once" : undefined}>
+              <label className="opt-axis-toggle" title={disabled ? t("maxParameters") : undefined}>
                 <input type="checkbox" checked={axis.enabled} disabled={disabled} onChange={(event) => patchAxis(input.name, { enabled: event.target.checked })} />
                 <span className="opt-axis-name">{input.name}</span>
                 <span className="opt-axis-cur">= {input.value}</span>
@@ -76,15 +81,15 @@ export function OptimizePanel({
               {axis.enabled && (
                 <div className="opt-axis-range">
                   <label>
-                    min
+                    {t("min")}
                     <input type="number" value={axis.min} onChange={(event) => patchAxis(input.name, { min: Number(event.target.value) })} />
                   </label>
                   <label>
-                    max
+                    {t("max")}
                     <input type="number" value={axis.max} onChange={(event) => patchAxis(input.name, { max: Number(event.target.value) })} />
                   </label>
                   <label>
-                    step
+                    {t("step")}
                     <input type="number" value={axis.step} min={0} onChange={(event) => patchAxis(input.name, { step: Number(event.target.value) })} />
                   </label>
                 </div>
@@ -96,26 +101,26 @@ export function OptimizePanel({
 
       <div className="config-row">
         <label>
-          Objective
+          {t("objective")}
           <select value={spec.objective} onChange={(event) => onSpecChange({ ...spec, objective: event.target.value as Objective })}>
             {OBJECTIVES.map((o) => (
               <option key={o.id} value={o.id}>
-                {o.label}
+                {strategyObjective(locale, o.id)}
               </option>
             ))}
           </select>
         </label>
         <label>
-          Train %
+          {t("trainPercent")}
           <input type="number" value={Math.round(spec.trainFrac * 100)} min={20} max={90} step={5} onChange={(event) => onSpecChange({ ...spec, trainFrac: clamp01((Number(event.target.value) || 70) / 100) })} />
         </label>
         <label className="check">
           <input type="checkbox" checked={walkForwardOn} onChange={(event) => onToggleWalkForward(event.target.checked)} />
-          Walk-fwd
+          {t("walkForwardShort")}
         </label>
         {walkForwardOn && (
           <label>
-            Folds
+            {t("folds")}
             <input type="number" value={folds} min={2} max={12} step={1} onChange={(event) => onFoldsChange(Math.max(2, Math.min(12, Number(event.target.value) || 4)))} />
           </label>
         )}
@@ -123,13 +128,15 @@ export function OptimizePanel({
 
       {combos > MAX_COMBOS && (
         <div className="opt-hint">
-          Grid has {combos.toLocaleString()} combos — only the first {MAX_COMBOS.toLocaleString()} will be evaluated. Widen the step to shrink the grid.
+          {locale === "ru"
+            ? `Сетка содержит ${strategyNumber(locale, combos)} комбинаций — будут проверены только первые ${strategyNumber(locale, MAX_COMBOS)}. Увеличьте шаг, чтобы уменьшить сетку.`
+            : `Grid has ${strategyNumber(locale, combos)} combos — only the first ${strategyNumber(locale, MAX_COMBOS)} will be evaluated. Widen the step to shrink the grid.`}
         </div>
       )}
 
       <button type="button" className="run-button" onClick={onRun} disabled={optimizing || enabledCount === 0}>
         {optimizing ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <SlidersHorizontal size={15} aria-hidden="true" />}
-        {optimizing ? (progress.total ? `Optimizing… ${progress.done}/${progress.total}` : "Optimizing…") : "Run optimizer"}
+        {optimizing ? (progress.total ? `${t("optimizing")} ${progress.done}/${progress.total}` : t("optimizing")) : t("runOptimizer")}
       </button>
 
       {optimizing && (
@@ -138,28 +145,29 @@ export function OptimizePanel({
         </div>
       )}
 
-      {result && !optimizing && <OptimizeResults result={result} onApplyCombo={onApplyCombo} />}
-      {walkForwardOn && walkForwardResult && !optimizing && <WalkForwardResults wf={walkForwardResult} decimals={decimals} />}
+      {result && !optimizing && <OptimizeResults locale={locale} result={result} onApplyCombo={onApplyCombo} />}
+      {walkForwardOn && walkForwardResult && !optimizing && <WalkForwardResults locale={locale} wf={walkForwardResult} decimals={decimals} />}
     </div>
   );
 }
-function OptimizeResults({ result, onApplyCombo }: { result: OptimizeResult; onApplyCombo: (params: Record<string, number>) => void }) {
+function OptimizeResults({ locale, result, onApplyCombo }: { locale: Locale; result: OptimizeResult; onApplyCombo: (params: Record<string, number>) => void }) {
+  const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const rows = result.ranked.slice(0, 20);
   const keys = result.ranked[0] ? Object.keys(result.ranked[0].params) : [];
   return (
     <div className="opt-results">
       <div className="panel-header small">
-        <strong>Ranked · {objectiveLabel(result.objective)}</strong>
+        <strong>{t("ranked")} · {strategyObjective(locale, result.objective)}</strong>
         <span>
           {result.evaluated}/{result.totalCombos}
-          {result.truncated ? " (capped)" : ""}
+          {result.truncated ? ` (${t("capped")})` : ""}
         </span>
       </div>
       <div className="opt-table" role="table">
         <div className="opt-row head" role="row">
-          <span>{keys.join(" · ") || "params"}</span>
-          <span title="In-sample objective score">IS</span>
-          <span title="Out-of-sample objective score">OOS</span>
+          <span>{keys.join(" · ") || t("params")}</span>
+          <span title={t("inSampleScore")}>IS</span>
+          <span title={t("outSampleScore")}>OOS</span>
           <span />
         </div>
         {rows.map((row, i) => (
@@ -168,7 +176,7 @@ function OptimizeResults({ result, onApplyCombo }: { result: OptimizeResult; onA
             <span className="opt-score">{fmtScore(row.score)}</span>
             <span className={`opt-score ${row.outScore === undefined ? "" : row.outScore >= 0 ? "up" : "down"}`}>{row.outScore === undefined ? "—" : fmtScore(row.outScore)}</span>
             <button type="button" className="link-button" onClick={() => onApplyCombo(row.params)}>
-              Apply
+              {t("apply")}
             </button>
           </div>
         ))}
@@ -177,16 +185,17 @@ function OptimizeResults({ result, onApplyCombo }: { result: OptimizeResult; onA
   );
 }
 
-function WalkForwardResults({ wf, decimals }: { wf: WalkForwardResult; decimals: number }) {
+function WalkForwardResults({ locale, wf, decimals }: { locale: Locale; wf: WalkForwardResult; decimals: number }) {
+  const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   if (wf.folds.length === 0) {
-    return <div className="opt-hint">Not enough history to build walk-forward folds. Increase bars or reduce folds.</div>;
+    return <div className="opt-hint">{t("insufficientWalkForward")}</div>;
   }
   const agg = wf.aggregate;
   const keys = Object.keys(wf.folds[0].params);
   return (
     <div className="opt-results">
       <div className="panel-header small">
-        <strong>Walk-forward · {wf.folds.length} folds</strong>
+        <strong>{t("walkForward")} · {wf.folds.length} {t("folds").toLowerCase()}</strong>
         {agg && (
           <span className={agg.netProfit >= 0 ? "up" : "down"}>
             OOS {agg.netProfit >= 0 ? "+" : ""}
@@ -197,10 +206,10 @@ function WalkForwardResults({ wf, decimals }: { wf: WalkForwardResult; decimals:
       <div className="opt-table wf" role="table">
         <div className="opt-row head" role="row">
           <span>#</span>
-          <span>{keys.join(" · ") || "params"}</span>
-          <span title="Out-of-sample net profit">OOS net</span>
-          <span title="Out-of-sample trades">Trades</span>
-          <span title="Out-of-sample win rate">Win%</span>
+          <span>{keys.join(" · ") || t("params")}</span>
+          <span title={t("outSampleNetHelp")}>{t("outSampleNet")}</span>
+          <span title={t("outSampleTrades")}>{t("trades")}</span>
+          <span title={t("outSampleWinRate")}>{t("winPercent")}</span>
         </div>
         {wf.folds.map((fold) => (
           <div className="opt-row" role="row" key={fold.fold}>
@@ -217,19 +226,15 @@ function WalkForwardResults({ wf, decimals }: { wf: WalkForwardResult; decimals:
       </div>
       {agg && (
         <div className="assumptions">
-          <span>OOS trades {agg.totalTrades}</span>
-          <span>Win {agg.winRate.toFixed(0)}%</span>
+          <span>{t("oosTrades")} {agg.totalTrades}</span>
+          <span>{t("win")} {agg.winRate.toFixed(0)}%</span>
           <span>PF {Number.isFinite(agg.profitFactor) ? agg.profitFactor.toFixed(2) : "∞"}</span>
-          <span>Max DD {agg.maxDrawdownPct.toFixed(1)}%</span>
-          <span title="Final stitched OOS equity">Final {agg.finalEquity.toFixed(decimals === 0 ? 0 : 2)}</span>
+          <span>{t("maxDrawdownShort")} {agg.maxDrawdownPct.toFixed(1)}%</span>
+          <span title={t("finalEquity")}>{t("final")} {agg.finalEquity.toFixed(decimals === 0 ? 0 : 2)}</span>
         </div>
       )}
     </div>
   );
-}
-
-function objectiveLabel(objective: Objective): string {
-  return OBJECTIVES.find((o) => o.id === objective)?.label ?? objective;
 }
 
 function fmtScore(v: number): string {

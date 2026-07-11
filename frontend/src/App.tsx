@@ -251,6 +251,7 @@ export default function App() {
                 initialTimeframe={timeframe}
                 exchange={cryptoExchange}
                 theme={theme}
+                locale={locale}
                 onApplyResult={artifactOverlay.applyBacktestResult}
                 onShowOnChart={artifactOverlay.showOnChart}
               />

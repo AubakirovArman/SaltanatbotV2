@@ -92,6 +92,14 @@ test("switches and persists the interface locale", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Переключить язык интерфейса на английский" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Данные графика", exact: true })).toBeVisible();
 
+  await workspaceModes.getByRole("button", { name: "Стратегия", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Запустить бэктест", exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Галерея", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Pine", exact: true }).click();
+  const pineDialog = page.getByRole("dialog", { name: "Импорт Pine Script" });
+  await expect(pineDialog.getByRole("button", { name: "Преобразовать", exact: true })).toBeDisabled();
+  await pineDialog.getByRole("button", { name: "Закрыть", exact: true }).click();
+
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
   await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();

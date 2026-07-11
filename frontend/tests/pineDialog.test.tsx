@@ -12,7 +12,7 @@ import { PineImportDialog } from "../src/components/PineImportDialog";
  */
 describe("PineImportDialog overlay", () => {
   it("renders on the fixed gallery overlay, not the dead .modal classes", () => {
-    const html = renderToStaticMarkup(<PineImportDialog onClose={() => {}} onImportMany={() => {}} />);
+    const html = renderToStaticMarkup(<PineImportDialog locale="en" onClose={() => {}} onImportMany={() => {}} />);
     expect(html).toContain("gallery-backdrop");
     expect(html).toContain("gallery-modal pine-import");
     expect(html).toContain("gallery-body pine-body");

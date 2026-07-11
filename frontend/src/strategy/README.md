@@ -34,6 +34,7 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - `components/StrategyLibrary.tsx` owns artifact browsing/import/export and template/Pine entry flows.
 - `components/OptimizePanel.tsx` owns optimizer controls/results; `optimization/model.ts` owns sweep-state construction.
 - `components/StrategyExecutionPanel.tsx` owns backtest configuration, execution actions, diagnostics and report/preview presentation.
+- `../i18n/strategy.ts` owns typed English/Russian Strategy Studio messages and dynamic category/objective labels; Pine/IR identifiers remain unchanged.
 
 ## Testing
 

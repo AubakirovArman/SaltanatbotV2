@@ -2,8 +2,11 @@ import { LineChart, Target } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { BacktestConfig, BacktestResult, Trade } from "../strategy/backtest";
 import { monteCarlo, type MonteCarloStats } from "../strategy/montecarlo";
+import type { Locale } from "../i18n";
+import { strategyText } from "../i18n/strategy";
 
 interface BacktestReportProps {
+  locale: Locale;
   result: BacktestResult;
   decimals: number;
   config?: BacktestConfig;
@@ -12,7 +15,8 @@ interface BacktestReportProps {
 
 type SortKey = "entryTime" | "pnl" | "pnlPct" | "barsHeld" | "maePct" | "mfePct";
 
-export function BacktestReport({ result, decimals, config, onShowOnChart }: BacktestReportProps) {
+export function BacktestReport({ locale, result, decimals, config, onShowOnChart }: BacktestReportProps) {
+  const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const { metrics, tested } = result;
   const positive = metrics.netProfit >= 0;
 
@@ -27,64 +31,64 @@ export function BacktestReport({ result, decimals, config, onShowOnChart }: Back
       <div className="panel-header">
         <strong>
           <Target size={15} aria-hidden="true" />
-          Backtest · {result.name}
+          {t("backtest")} · {result.name}
         </strong>
         {onShowOnChart && (result.trades.length > 0 || result.signals.length > 0) && (
           <button type="button" className="link-button" onClick={onShowOnChart}>
-            <LineChart size={13} aria-hidden="true" /> Show on chart
+            <LineChart size={13} aria-hidden="true" /> {t("showOnChart")}
           </button>
         )}
       </div>
 
       {metrics.liquidated && (
         <div className="strategy-warnings" role="alert">
-          <span>Account was liquidated — the run stopped early. Results below are truncated.</span>
+          <span>{t("liquidated")}</span>
         </div>
       )}
 
       {!result.provenance.performanceClaimsValid && (
         <div className="strategy-warnings provenance-warning" role="alert">
-          <span>{provenanceWarning(result.provenance.status)}</span>
+          <span>{provenanceWarning(locale, result.provenance.status)}</span>
         </div>
       )}
 
       <div className="metric-grid">
-        <Metric label="Net profit" value={`${positive ? "+" : ""}${metrics.netProfit.toFixed(2)}`} tone={positive ? "up" : "down"} sub={`${metrics.netProfitPct.toFixed(2)}%`} />
-        <Metric label="Win rate" value={`${metrics.winRate.toFixed(1)}%`} sub={`${metrics.wins}/${metrics.totalTrades}`} />
-        <Metric label="Profit factor" value={fmt(metrics.profitFactor)} />
-        <Metric label="Max drawdown" value={`${metrics.maxDrawdownPct.toFixed(1)}%`} tone="down" sub={`-${metrics.maxDrawdown.toFixed(2)}`} />
-        <Metric label="Sharpe" value={metrics.sharpe.toFixed(2)} />
-        <Metric label="Trades" value={String(metrics.totalTrades)} />
-        <Metric label="Avg trade" value={metrics.avgTrade.toFixed(2)} tone={metrics.avgTrade >= 0 ? "up" : "down"} />
-        <Metric label="Time in market" value={`${metrics.timeInMarketPct.toFixed(0)}%`} />
-        <Metric label="Avg MAE" value={`${metrics.avgMaePct.toFixed(2)}%`} tone="down" />
-        <Metric label="Avg MFE" value={`${metrics.avgMfePct.toFixed(2)}%`} tone="up" />
+        <Metric label={t("netProfit")} value={`${positive ? "+" : ""}${metrics.netProfit.toFixed(2)}`} tone={positive ? "up" : "down"} sub={`${metrics.netProfitPct.toFixed(2)}%`} />
+        <Metric label={t("winRate")} value={`${metrics.winRate.toFixed(1)}%`} sub={`${metrics.wins}/${metrics.totalTrades}`} />
+        <Metric label={t("profitFactor")} value={fmt(metrics.profitFactor)} />
+        <Metric label={t("maxDrawdown")} value={`${metrics.maxDrawdownPct.toFixed(1)}%`} tone="down" sub={`-${metrics.maxDrawdown.toFixed(2)}`} />
+        <Metric label={t("sharpe")} value={metrics.sharpe.toFixed(2)} />
+        <Metric label={t("trades")} value={String(metrics.totalTrades)} />
+        <Metric label={t("avgTrade")} value={metrics.avgTrade.toFixed(2)} tone={metrics.avgTrade >= 0 ? "up" : "down"} />
+        <Metric label={t("timeInMarket")} value={`${metrics.timeInMarketPct.toFixed(0)}%`} />
+        <Metric label={t("avgMae")} value={`${metrics.avgMaePct.toFixed(2)}%`} tone="down" />
+        <Metric label={t("avgMfe")} value={`${metrics.avgMfePct.toFixed(2)}%`} tone="up" />
         {(config?.fundingRatePctPer8h ?? 0) !== 0 && (
-          <Metric label="Funding paid" value={`-${metrics.fundingPaid.toFixed(2)}`} tone="down" sub={`${config?.fundingRatePctPer8h}%/8h`} />
+          <Metric label={t("fundingPaid")} value={`-${metrics.fundingPaid.toFixed(2)}`} tone="down" sub={`${config?.fundingRatePctPer8h}%/8h`} />
         )}
       </div>
 
-      <AssumptionsBar result={result} tested={tested} config={config} />
+      <AssumptionsBar locale={locale} result={result} tested={tested} config={config} />
 
-      <EquityCurve result={result} mc={mc} />
-      <UnderwaterCurve result={result} />
+      <EquityCurve locale={locale} result={result} mc={mc} />
+      <UnderwaterCurve locale={locale} result={result} />
 
-      {mc && <MonteCarloPanel mc={mc} initial={config?.initialCapital ?? 10_000} />}
+      {mc && <MonteCarloPanel locale={locale} mc={mc} initial={config?.initialCapital ?? 10_000} />}
 
-      <TradeTable trades={result.trades} decimals={decimals} />
-      <StatePanel result={result} />
+      <TradeTable locale={locale} trades={result.trades} decimals={decimals} />
+      <StatePanel locale={locale} result={result} />
     </div>
   );
 }
 
 /** Final values of the strategy's variables (only shown when the strategy uses state). */
-function StatePanel({ result }: { result: BacktestResult }) {
+function StatePanel({ locale, result }: { locale: Locale; result: BacktestResult }) {
   const last = result.varTrace?.at(-1);
   if (!last || Object.keys(last.vars).length === 0) return null;
   return (
     <div className="strategy-state">
       <div className="panel-header small">
-        <h4>Variables · final bar</h4>
+        <h4>{strategyText(locale, "variablesFinal")}</h4>
       </div>
       <div className="metric-grid">
         {Object.entries(last.vars).map(([name, value]) => (
@@ -95,7 +99,8 @@ function StatePanel({ result }: { result: BacktestResult }) {
   );
 }
 
-function AssumptionsBar({ result, tested, config }: { result: BacktestResult; tested: BacktestResult["tested"]; config?: BacktestConfig }) {
+function AssumptionsBar({ locale, result, tested, config }: { locale: Locale; result: BacktestResult; tested: BacktestResult["tested"]; config?: BacktestConfig }) {
+  const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const fee = config?.commissionPct ?? 0.05;
   const slip = config?.slippagePct ?? 0.02;
   const lev = config?.maxLeverage ?? 5;
@@ -103,48 +108,49 @@ function AssumptionsBar({ result, tested, config }: { result: BacktestResult; te
   const funding = config?.fundingRatePctPer8h ?? 0;
   return (
     <div className="assumptions">
-      <span title="Bars measured after indicator warm-up">
-        Tested {fmt0(tested.bars)} bars · warm-up {fmt0(tested.warmupBars)}
+      <span title={t("testedHelp")}>
+        {t("tested")} {fmt0(tested.bars, locale)} {t("bars").toLowerCase()} · {t("warmup")} {fmt0(tested.warmupBars, locale)}
       </span>
-      <span>{fmtRange(tested.fromTime, tested.toTime)}</span>
-      <span>Fee {fee}% · slip {slip}% · {lev}x max · {timing === "next_open" ? "next-open fills" : "close fills"}{funding !== 0 ? ` · funding ${funding}%/8h` : ""}</span>
-      <span title={provenanceDetails(result)}>
-        Data {result.provenance.status} · {fmt0(result.provenance.chartBars)} chart{result.provenance.securityBars > 0 ? ` · ${fmt0(result.provenance.securityBars)} security` : ""}
+      <span>{fmtRange(tested.fromTime, tested.toTime, locale)}</span>
+      <span>{t("feeShort")} {fee}% · {t("slipShort")} {slip}% · {lev}x {t("maxShort")} · {timing === "next_open" ? t("nextOpenFills") : t("closeFills")}{funding !== 0 ? ` · ${t("funding")} ${funding}%` : ""}</span>
+      <span title={provenanceDetails(locale, result)}>
+        {t("data")} {result.provenance.status} · {fmt0(result.provenance.chartBars, locale)} {t("chartBars")}{result.provenance.securityBars > 0 ? ` · ${fmt0(result.provenance.securityBars, locale)} ${t("securityBars")}` : ""}
       </span>
       {result.warnings.length > 0 && (
         <span className="warn-count" title={result.warnings.slice(-6).map((w) => w.message).join("\n")}>
-          {result.warnings.length} warning{result.warnings.length === 1 ? "" : "s"}
+          {result.warnings.length} {t(result.warnings.length === 1 ? "warning" : "warnings")}
         </span>
       )}
     </div>
   );
 }
 
-function provenanceWarning(status: BacktestResult["provenance"]["status"]): string {
+function provenanceWarning(locale: Locale, status: BacktestResult["provenance"]["status"]): string {
   if (status === "fallback") {
-    return "Synthetic or fallback market data was used. Performance claims are not valid for this run.";
+    return strategyText(locale, "provenanceFallback");
   }
   if (status === "mixed") {
-    return "Mixed or partially unverified market data was used. Performance claims are not valid for this run.";
+    return strategyText(locale, "provenanceMixed");
   }
-  return "Market-data provenance is unknown. Performance claims are not valid for this run.";
+  return strategyText(locale, "provenanceUnknown");
 }
 
-function provenanceDetails(result: BacktestResult): string {
-  if (result.provenance.sources.length === 0) return "No candle sources were recorded";
+function provenanceDetails(locale: Locale, result: BacktestResult): string {
+  if (result.provenance.sources.length === 0) return strategyText(locale, "noCandleSources");
   return result.provenance.sources
-    .map((source) => `${source.scope}: ${source.source} (${fmt0(source.bars)} bars, ${source.kind})`)
+    .map((source) => `${source.scope}: ${source.source} (${fmt0(source.bars, locale)} ${strategyText(locale, "bars").toLowerCase()}, ${source.kind})`)
     .join("\n");
 }
 
-function MonteCarloPanel({ mc, initial }: { mc: MonteCarloStats; initial: number }) {
+function MonteCarloPanel({ locale, mc, initial }: { locale: Locale; mc: MonteCarloStats; initial: number }) {
+  const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const ruin = mc.riskOfRuin * 100;
   const half = mc.riskOfHalf * 100;
   return (
     <div className="montecarlo">
       <div className="panel-header small">
-        <strong>Monte Carlo</strong>
-        <span>{fmt0(mc.runs)} paths</span>
+        <strong>{t("monteCarlo")}</strong>
+        <span>{fmt0(mc.runs, locale)} {t("paths")}</span>
       </div>
       <div className="mc-grid">
         <McCell label="Net p5" value={mc.netProfit.p5.toFixed(0)} tone={mc.netProfit.p5 >= 0 ? "up" : "down"} />
@@ -152,9 +158,9 @@ function MonteCarloPanel({ mc, initial }: { mc: MonteCarloStats; initial: number
         <McCell label="Net p95" value={mc.netProfit.p95.toFixed(0)} tone={mc.netProfit.p95 >= 0 ? "up" : "down"} />
         <McCell label="DD p50" value={`${mc.maxDrawdownPct.p50.toFixed(1)}%`} tone="down" />
         <McCell label="DD p95" value={`${mc.maxDrawdownPct.p95.toFixed(1)}%`} tone="down" />
-        <McCell label="Risk of ruin" value={`${ruin.toFixed(1)}%`} tone={ruin > 5 ? "down" : undefined} />
-        <McCell label="Risk of -50%" value={`${half.toFixed(1)}%`} tone={half > 10 ? "down" : undefined} />
-        <McCell label="Start" value={fmt0(initial)} />
+        <McCell label={t("riskOfRuin")} value={`${ruin.toFixed(1)}%`} tone={ruin > 5 ? "down" : undefined} />
+        <McCell label={t("riskOfHalf")} value={`${half.toFixed(1)}%`} tone={half > 10 ? "down" : undefined} />
+        <McCell label={t("start")} value={fmt0(initial, locale)} />
       </div>
     </div>
   );
@@ -169,7 +175,8 @@ function McCell({ label, value, tone }: { label: string; value: string; tone?: "
   );
 }
 
-function TradeTable({ trades, decimals }: { trades: Trade[]; decimals: number }) {
+function TradeTable({ locale, trades, decimals }: { locale: Locale; trades: Trade[]; decimals: number }) {
+  const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const [sortKey, setSortKey] = useState<SortKey>("entryTime");
   const [asc, setAsc] = useState(false);
 
@@ -191,29 +198,29 @@ function TradeTable({ trades, decimals }: { trades: Trade[]; decimals: number })
   return (
     <div className="trade-list">
       <div className="panel-header small">
-        <strong>Trades</strong>
+        <strong>{t("trades")}</strong>
         <span>{trades.length}</span>
       </div>
       {trades.length === 0 ? (
-        <p className="empty-note">No trades were triggered on this history. Check your entry condition.</p>
+        <p className="empty-note">{t("noTrades")}</p>
       ) : (
         <div className="trade-table wide" role="table">
           <div className="trade-row head" role="row">
-            <span>Dir</span>
-            <button type="button" className="th" onClick={() => setSort("entryTime")}>Entry{arrow("entryTime")}</button>
-            <span>Exit</span>
+            <span>{t("direction")}</span>
+            <button type="button" className="th" onClick={() => setSort("entryTime")}>{t("entry")}{arrow("entryTime")}</button>
+            <span>{t("exit")}</span>
             <button type="button" className="th" onClick={() => setSort("pnl")}>PnL{arrow("pnl")}</button>
             <button type="button" className="th" onClick={() => setSort("pnlPct")}>%{arrow("pnlPct")}</button>
-            <button type="button" className="th" onClick={() => setSort("barsHeld")}>Bars{arrow("barsHeld")}</button>
+            <button type="button" className="th" onClick={() => setSort("barsHeld")}>{t("bars")}{arrow("barsHeld")}</button>
             <button type="button" className="th" onClick={() => setSort("maePct")}>MAE{arrow("maePct")}</button>
             <button type="button" className="th" onClick={() => setSort("mfePct")}>MFE{arrow("mfePct")}</button>
-            <span>Reason</span>
+            <span>{t("reason")}</span>
           </div>
           {sorted.map((trade, index) => (
             <div className="trade-row" role="row" key={`${trade.entryIndex}-${trade.exitIndex}-${index}`}>
-              <span className={trade.direction === "long" ? "up" : "down"}>{trade.direction}</span>
-              <span title={fmtTime(trade.entryTime)}>{trade.entryPrice.toFixed(decimals)}</span>
-              <span title={fmtTime(trade.exitTime)}>{trade.exitPrice.toFixed(decimals)}</span>
+              <span className={trade.direction === "long" ? "up" : "down"}>{t(trade.direction === "long" ? "long" : "short")}</span>
+              <span title={fmtTime(trade.entryTime, locale)}>{trade.entryPrice.toFixed(decimals)}</span>
+              <span title={fmtTime(trade.exitTime, locale)}>{trade.exitPrice.toFixed(decimals)}</span>
               <span className={trade.pnl >= 0 ? "up" : "down"}>{trade.pnl >= 0 ? "+" : ""}{trade.pnl.toFixed(2)}</span>
               <span className={trade.pnlPct >= 0 ? "up" : "down"}>{trade.pnlPct.toFixed(1)}</span>
               <span>{trade.barsHeld}</span>
@@ -238,7 +245,7 @@ function Metric({ label, value, sub, tone }: { label: string; value: string; sub
   );
 }
 
-function EquityCurve({ result, mc }: { result: BacktestResult; mc: MonteCarloStats | null }) {
+function EquityCurve({ locale, result, mc }: { locale: Locale; result: BacktestResult; mc: MonteCarloStats | null }) {
   const points = result.equityCurve;
   if (points.length < 2) return null;
   const width = 520;
@@ -274,10 +281,10 @@ function EquityCurve({ result, mc }: { result: BacktestResult; mc: MonteCarloSta
   return (
     <div className="equity-curve">
       <div className="panel-header small">
-        <strong>Equity</strong>
+        <strong>{strategyText(locale, "equity")}</strong>
         <span>{result.equityCurve.at(-1)!.equity.toFixed(0)}</span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Equity curve">
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={strategyText(locale, "equityCurve")}>
         {band && <path d={band} fill="rgba(141,155,179,0.16)" stroke="none" />}
         <line x1={0} y1={baselineY} x2={width} y2={baselineY} stroke="rgba(141,155,179,0.4)" strokeDasharray="4 4" strokeWidth={1} />
         <path d={`${path} L${width},${height} L0,${height} Z`} fill={color} opacity={0.12} />
@@ -288,7 +295,7 @@ function EquityCurve({ result, mc }: { result: BacktestResult; mc: MonteCarloSta
 }
 
 /** Underwater plot: percent below the running equity peak over time. */
-function UnderwaterCurve({ result }: { result: BacktestResult }) {
+function UnderwaterCurve({ locale, result }: { locale: Locale; result: BacktestResult }) {
   const points = result.equityCurve;
   if (points.length < 2) return null;
   const width = 520;
@@ -307,10 +314,10 @@ function UnderwaterCurve({ result }: { result: BacktestResult }) {
   return (
     <div className="equity-curve underwater">
       <div className="panel-header small">
-        <strong>Drawdown</strong>
+        <strong>{strategyText(locale, "drawdown")}</strong>
         <span>{worst.toFixed(1)}%</span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Underwater drawdown">
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={strategyText(locale, "underwaterDrawdown")}>
         <path d={`${path} L${width},0 L0,0 Z`} fill="#ef5350" opacity={0.14} />
         <path d={path} fill="none" stroke="#ef5350" strokeWidth={1.4} />
       </svg>
@@ -323,17 +330,17 @@ function fmt(value: number): string {
   return value.toFixed(2);
 }
 
-function fmt0(value: number): string {
-  return Math.round(value).toLocaleString();
+function fmt0(value: number, locale: Locale = "en"): string {
+  return Math.round(value).toLocaleString(locale === "ru" ? "ru-RU" : "en-US");
 }
 
-function fmtTime(ms: number): string {
+function fmtTime(ms: number, locale: Locale): string {
   if (!ms) return "—";
-  return new Date(ms).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(ms).toLocaleString(locale === "ru" ? "ru-RU" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function fmtRange(from: number, to: number): string {
+function fmtRange(from: number, to: number, locale: Locale): string {
   if (!from || !to) return "—";
-  const d = (ms: number) => new Date(ms).toLocaleDateString([], { month: "short", day: "numeric", year: "2-digit" });
+  const d = (ms: number) => new Date(ms).toLocaleDateString(locale === "ru" ? "ru-RU" : "en-US", { month: "short", day: "numeric", year: "2-digit" });
   return `${d(from)} → ${d(to)}`;
 }

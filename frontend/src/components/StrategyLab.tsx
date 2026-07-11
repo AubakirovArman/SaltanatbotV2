@@ -5,6 +5,8 @@ import type { BacktestResult, PlotSeries, ShapeOverlays } from "../strategy/back
 import type { StrategyArtifact, StrategyArtifactKind } from "../strategy/library";
 import type { StrategyTemplate } from "../strategy/templates";
 import type { CatalogResponse, DataExchange, Timeframe } from "../types";
+import type { Locale } from "../i18n";
+import { strategyText } from "../i18n/strategy";
 import { StrategyLibrary } from "../strategy/components/StrategyLibrary";
 import { StrategyExecutionPanel } from "../strategy/components/StrategyExecutionPanel";
 import { useStrategyResearch } from "../strategy/useStrategyResearch";
@@ -24,6 +26,7 @@ interface StrategyLabProps {
   initialTimeframe: Timeframe;
   exchange?: DataExchange;
   theme?: "dark" | "light";
+  locale: Locale;
   onApplyResult?: (
     result: BacktestResult,
     symbol: string,
@@ -47,6 +50,7 @@ export function StrategyLab({
   initialTimeframe,
   exchange = "binance",
   theme = "dark",
+  locale,
   onApplyResult,
   onShowOnChart
 }: StrategyLabProps) {
@@ -86,6 +90,7 @@ export function StrategyLab({
     <section className="strategy-lab">
       <div className="strategy-grid">
         <StrategyLibrary
+          locale={locale}
           artifacts={artifacts}
           activeId={activeArtifact?.id}
           onSelect={onSelectArtifact}
@@ -98,12 +103,13 @@ export function StrategyLab({
           <div className="blockly-host" ref={workspace.containerRef} />
           {workspace.initError && (
             <div className="strategy-error" role="alert">
-              <strong>Strategy editor did not start</strong>
+              <strong>{strategyText(locale, "editorFailed")}</strong>
               <span>{workspace.initError}</span>
             </div>
           )}
         </div>
         <StrategyExecutionPanel
+          locale={locale}
           activeArtifact={activeArtifact}
           selectedType={workspace.selectedType}
           running={research.running}

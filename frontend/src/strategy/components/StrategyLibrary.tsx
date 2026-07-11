@@ -5,8 +5,11 @@ import type { PineImport } from "../pine";
 import type { StrategyArtifact, StrategyArtifactKind } from "../library";
 import { strategyTemplates, type StrategyTemplate, type TemplateCategory } from "../templates";
 import { downloadStrategyFile, parseStrategyFile } from "../strategyFile";
+import type { Locale } from "../../i18n";
+import { strategyCategory, strategyText } from "../../i18n/strategy";
 
 export function StrategyLibrary({
+  locale,
   artifacts,
   activeId,
   onSelect,
@@ -15,6 +18,7 @@ export function StrategyLibrary({
   onImportStrategy,
   onImportPineMany
 }: {
+  locale: Locale;
   artifacts: StrategyArtifact[];
   activeId?: string;
   onSelect: (id: string) => void;
@@ -35,12 +39,12 @@ export function StrategyLibrary({
     try {
       const parsed = parseStrategyFile(await file.text());
       if (!parsed) {
-        setImportError("Not a valid .strategy file.");
+        setImportError(strategyText(locale, "invalidStrategy"));
         return;
       }
       onImportStrategy({ name: parsed.name, description: parsed.description, xml: parsed.xml });
     } catch {
-      setImportError("Could not read that file.");
+      setImportError(strategyText(locale, "unreadableFile"));
     }
   };
 
@@ -48,19 +52,19 @@ export function StrategyLibrary({
     <aside className="strategy-library">
       <div className="strategy-library-actions">
         <button type="button" onClick={() => onCreate("indicator")}>
-          <Plus size={14} aria-hidden="true" /> Indicator
+          <Plus size={14} aria-hidden="true" /> {strategyText(locale, "indicator")}
         </button>
         <button type="button" onClick={() => onCreate("strategy")}>
-          <Plus size={14} aria-hidden="true" /> Strategy
+          <Plus size={14} aria-hidden="true" /> {strategyText(locale, "strategy")}
         </button>
-        <button type="button" onClick={() => setGalleryOpen(true)} title="Browse ready-made strategy templates">
-          <LayoutGrid size={14} aria-hidden="true" /> Gallery
+        <button type="button" onClick={() => setGalleryOpen(true)} title={strategyText(locale, "browseTemplates")}>
+          <LayoutGrid size={14} aria-hidden="true" /> {strategyText(locale, "gallery")}
         </button>
-        <button type="button" onClick={() => fileInputRef.current?.click()} title="Import a .strategy file">
-          <Upload size={14} aria-hidden="true" /> Import
+        <button type="button" onClick={() => fileInputRef.current?.click()} title={strategyText(locale, "importStrategy")}>
+          <Upload size={14} aria-hidden="true" /> {strategyText(locale, "import")}
         </button>
-        <button type="button" onClick={() => setPineOpen(true)} title="Convert a TradingView Pine Script into an indicator or strategy">
-          <FileCode2 size={14} aria-hidden="true" /> Pine
+        <button type="button" onClick={() => setPineOpen(true)} title={strategyText(locale, "convertPine")}>
+          <FileCode2 size={14} aria-hidden="true" /> {strategyText(locale, "pine")}
         </button>
       </div>
       <input
@@ -79,10 +83,11 @@ export function StrategyLibrary({
           {importError}
         </div>
       )}
-      <LibraryGroup title="Indicators" items={indicators} activeId={activeId} onSelect={onSelect} />
-      <LibraryGroup title="Strategies" items={strategies} activeId={activeId} onSelect={onSelect} />
+      <LibraryGroup locale={locale} title={strategyText(locale, "indicators")} items={indicators} activeId={activeId} onSelect={onSelect} />
+      <LibraryGroup locale={locale} title={strategyText(locale, "strategies")} items={strategies} activeId={activeId} onSelect={onSelect} />
       {pineOpen && (
         <PineImportDialog
+          locale={locale}
           onClose={() => setPineOpen(false)}
           onImportMany={(results) => {
             setPineOpen(false);
@@ -92,6 +97,7 @@ export function StrategyLibrary({
       )}
       {galleryOpen && (
         <TemplateGallery
+          locale={locale}
           onClose={() => setGalleryOpen(false)}
           onUse={(template) => {
             onUseTemplate(template);
@@ -103,11 +109,13 @@ export function StrategyLibrary({
   );
 }
 function LibraryGroup({
+  locale,
   title,
   items,
   activeId,
   onSelect
 }: {
+  locale: Locale;
   title: string;
   items: StrategyArtifact[];
   activeId?: string;
@@ -129,8 +137,8 @@ function LibraryGroup({
             <button
               type="button"
               className="library-item-export"
-              title="Export as .strategy file"
-              aria-label={`Export ${item.name}`}
+              title={strategyText(locale, "exportStrategy")}
+              aria-label={`${strategyText(locale, "exportStrategy")}: ${item.name}`}
               onClick={(event) => {
                 event.stopPropagation();
                 downloadStrategyFile(item);
@@ -147,9 +155,11 @@ function LibraryGroup({
 const TEMPLATE_CATEGORIES: TemplateCategory[] = ["Trend", "Mean reversion", "Breakout", "Momentum"];
 
 function TemplateGallery({
+  locale,
   onClose,
   onUse
 }: {
+  locale: Locale;
   onClose: () => void;
   onUse: (template: StrategyTemplate) => void;
 }) {
@@ -167,13 +177,13 @@ function TemplateGallery({
   })).filter((group) => group.items.length > 0);
 
   return (
-    <div className="gallery-backdrop" role="dialog" aria-modal="true" aria-label="Strategy template gallery" onClick={onClose}>
+    <div className="gallery-backdrop" role="dialog" aria-modal="true" aria-label={strategyText(locale, "galleryLabel")} onClick={onClose}>
       <div className="gallery-modal" onClick={(event) => event.stopPropagation()}>
         <div className="gallery-head">
           <strong>
-            <LayoutGrid size={15} aria-hidden="true" /> Strategy Gallery
+            <LayoutGrid size={15} aria-hidden="true" /> {strategyText(locale, "strategyGallery")}
           </strong>
-          <button type="button" className="icon-button" onClick={onClose} title="Close" aria-label="Close gallery">
+          <button type="button" className="icon-button" onClick={onClose} title={strategyText(locale, "close")} aria-label={strategyText(locale, "closeGallery")}>
             <X size={15} aria-hidden="true" />
           </button>
         </div>
@@ -181,7 +191,7 @@ function TemplateGallery({
           {categories.map((group) => (
             <section key={group.category} className="gallery-group">
               <div className="panel-header">
-                <strong>{group.category}</strong>
+                <strong>{strategyCategory(locale, group.category)}</strong>
                 <span>{group.items.length}</span>
               </div>
               <div className="gallery-cards">
@@ -197,7 +207,7 @@ function TemplateGallery({
                       ))}
                     </div>
                     <button type="button" className="gallery-use" onClick={() => onUse(template)}>
-                      Use
+                      {strategyText(locale, "use")}
                     </button>
                   </article>
                 ))}
