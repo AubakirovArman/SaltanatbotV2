@@ -1,4 +1,6 @@
 import type { Candle } from "../types";
+import { computeBacktestMetrics, medianDelta } from "./backtestMetrics";
+import type { BacktestConfig, BacktestResult, EquityPoint, TestedRange, Trade, TradeMarker } from "./backtestTypes";
 import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "./ir";
 import { buildPreviewTables, type PreviewTable } from "./previewTables";
 import { alignSecuritySeries, getSecurityCandles, type SecurityDataContext } from "./securityData";
@@ -38,32 +40,6 @@ import {
   wma
 } from "./ta";
 
-export interface BacktestConfig {
-  initialCapital: number;
-  commissionPct: number;
-  slippagePct: number;
-  allowShort: boolean;
-  /**
-   * When are entry/exit SIGNAL fills executed?
-   *  - 'next_open' (default): fill on the next bar's open. This matches the live
-   *    engine, which can only act AFTER a bar has closed — no look-ahead.
-   *  - 'same_close': legacy behaviour, fill on the signalling bar's own close.
-   */
-  fillTiming?: "next_open" | "same_close";
-  /** Max notional as a multiple of equity. Entries above this are clipped/rejected. */
-  maxLeverage?: number;
-  /** Quantity is rounded down to this step (0 disables rounding). */
-  qtyStep?: number;
-  /**
-   * Perp funding / borrow cost, expressed as a percentage of position notional
-   * charged every 8 hours a position is held. Pro-rated to each bar's duration.
-   * Default 0 (no funding), so behaviour is unchanged unless explicitly set.
-   * A positive rate is a cost paid by the open position (long or short) — it is
-   * always deducted from equity, modelling the average carry drag of holding.
-   */
-  fundingRatePctPer8h?: number;
-}
-
 export const DEFAULT_CONFIG: BacktestConfig = {
   initialCapital: 10_000,
   commissionPct: 0.05,
@@ -75,87 +51,7 @@ export const DEFAULT_CONFIG: BacktestConfig = {
   fundingRatePctPer8h: 0
 };
 
-export interface Trade {
-  direction: "long" | "short";
-  entryIndex: number;
-  exitIndex: number;
-  entryTime: number;
-  exitTime: number;
-  entryPrice: number;
-  exitPrice: number;
-  qty: number;
-  pnl: number;
-  pnlPct: number;
-  reason: "signal" | "stop" | "target" | "close" | "liquidation";
-  /** Bars the position was held (exitIndex - entryIndex). */
-  barsHeld: number;
-  /** Max adverse excursion: worst unrealised loss while open, as % of entry notional. */
-  maePct: number;
-  /** Max favorable excursion: best unrealised gain while open, as % of entry notional. */
-  mfePct: number;
-}
-
-export interface EquityPoint {
-  time: number;
-  equity: number;
-}
-
-export interface TradeMarker {
-  time: number;
-  price: number;
-  kind: "buy" | "sell" | "exit";
-  label?: string;
-}
-
-export interface BacktestMetrics {
-  netProfit: number;
-  netProfitPct: number;
-  totalTrades: number;
-  wins: number;
-  losses: number;
-  winRate: number;
-  profitFactor: number;
-  maxDrawdown: number;
-  maxDrawdownPct: number;
-  sharpe: number;
-  avgTrade: number;
-  expectancy: number;
-  timeInMarketPct: number;
-  finalEquity: number;
-  /** Average MAE / MFE across trades, as % of entry notional. */
-  avgMaePct: number;
-  avgMfePct: number;
-  /** Total funding / borrow cost paid across all held bars (currency, >= 0). */
-  fundingPaid: number;
-  /** True if the run stopped early because the account was liquidated. */
-  liquidated: boolean;
-}
-
-/** The effective window over which metrics/equity were measured (post warm-up). */
-export interface TestedRange {
-  fromTime: number;
-  toTime: number;
-  bars: number;
-  /** Bars skipped as indicator warm-up before measurement began. */
-  warmupBars: number;
-}
-
-export interface BacktestResult {
-  name: string;
-  trades: Trade[];
-  equityCurve: EquityPoint[];
-  /** Flat entry/exit markers (kept for compatibility / report). */
-  markers: TradeMarker[];
-  /** Arrow signals from `signal_marker` blocks (no trade). */
-  signals: TradeMarker[];
-  alerts: { time: number; message: string }[];
-  /** Non-fatal issues encountered while sizing/executing (skipped entries, clips, liquidation). */
-  warnings: { time: number; message: string }[];
-  metrics: BacktestMetrics;
-  tested: TestedRange;
-  /** Sampled per-bar snapshot of strategy variables (only when the strategy uses state). */
-  varTrace?: { time: number; vars: Record<string, number> }[];
-}
+export type { BacktestConfig, BacktestMetrics, BacktestResult, EquityPoint, TestedRange, Trade, TradeMarker } from "./backtestTypes";
 
 interface Runtime {
   candles: Candle[];
@@ -475,7 +371,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     signals,
     alerts,
     warnings,
-    metrics: computeMetrics(trades, measured, config, barsInMarket, measured.length, candles, liquidated, fundingPaid),
+    metrics: computeBacktestMetrics(trades, measured, config, barsInMarket, measured.length, candles, liquidated, fundingPaid),
     tested,
     varTrace: varTrace.length ? varTrace : undefined
   };
@@ -1623,90 +1519,4 @@ function targetHit(position: Position, candle: Candle): boolean {
 function unrealized(position: Position | null, price: number): number {
   if (!position) return 0;
   return position.dir === "long" ? position.qty * (price - position.entryPrice) : position.qty * (position.entryPrice - price);
-}
-
-// ---------- metrics ----------
-
-function computeMetrics(
-  trades: Trade[],
-  equityCurve: EquityPoint[],
-  config: BacktestConfig,
-  barsInMarket: number,
-  n: number,
-  candles: Candle[],
-  liquidated: boolean,
-  fundingPaid = 0
-): BacktestMetrics {
-  const startEquity = equityCurve[0]?.equity ?? config.initialCapital;
-  const finalEquity = equityCurve.at(-1)?.equity ?? config.initialCapital;
-  const netProfit = finalEquity - startEquity;
-  const wins = trades.filter((trade) => trade.pnl > 0);
-  const losses = trades.filter((trade) => trade.pnl <= 0);
-  const grossProfit = wins.reduce((sum, trade) => sum + trade.pnl, 0);
-  const grossLoss = Math.abs(losses.reduce((sum, trade) => sum + trade.pnl, 0));
-
-  let peak = startEquity;
-  let maxDrawdown = 0;
-  let maxDrawdownPct = 0;
-  for (const point of equityCurve) {
-    peak = Math.max(peak, point.equity);
-    const drawdown = peak - point.equity;
-    if (drawdown > maxDrawdown) {
-      maxDrawdown = drawdown;
-      maxDrawdownPct = peak > 0 ? (drawdown / peak) * 100 : 0;
-    }
-  }
-
-  const returns: number[] = [];
-  for (let i = 1; i < equityCurve.length; i += 1) {
-    const prev = equityCurve[i - 1].equity;
-    if (prev > 0) returns.push((equityCurve[i].equity - prev) / prev);
-  }
-  const meanReturn = mean(returns);
-  const stdReturn = std(returns, meanReturn);
-  const barMs = candles.length > 1 ? medianDelta(candles) : 60_000;
-  const barsPerYear = (365 * 24 * 3600 * 1000) / barMs;
-  const sharpe = stdReturn > 0 ? (meanReturn / stdReturn) * Math.sqrt(barsPerYear) : 0;
-
-  const avgMaePct = trades.length ? trades.reduce((sum, trade) => sum + trade.maePct, 0) / trades.length : 0;
-  const avgMfePct = trades.length ? trades.reduce((sum, trade) => sum + trade.mfePct, 0) / trades.length : 0;
-
-  return {
-    netProfit,
-    netProfitPct: startEquity > 0 ? (netProfit / startEquity) * 100 : 0,
-    totalTrades: trades.length,
-    wins: wins.length,
-    losses: losses.length,
-    winRate: trades.length ? (wins.length / trades.length) * 100 : 0,
-    profitFactor: grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0,
-    maxDrawdown,
-    maxDrawdownPct,
-    sharpe,
-    avgTrade: trades.length ? netProfit / trades.length : 0,
-    expectancy: trades.length ? trades.reduce((sum, trade) => sum + trade.pnl, 0) / trades.length : 0,
-    timeInMarketPct: n > 0 ? (Math.min(barsInMarket, n) / n) * 100 : 0,
-    finalEquity,
-    avgMaePct,
-    avgMfePct,
-    fundingPaid,
-    liquidated
-  };
-}
-
-function mean(values: number[]): number {
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-}
-
-function std(values: number[], avg: number): number {
-  if (values.length < 2) return 0;
-  return Math.sqrt(values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / values.length);
-}
-
-function medianDelta(candles: Candle[]): number {
-  const deltas: number[] = [];
-  for (let i = Math.max(1, candles.length - 50); i < candles.length; i += 1) {
-    deltas.push(candles[i].time - candles[i - 1].time);
-  }
-  deltas.sort((a, b) => a - b);
-  return deltas[Math.floor(deltas.length / 2)] || 60_000;
 }

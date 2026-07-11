@@ -2,6 +2,7 @@ import { irToText } from "../irText";
 import { irToBlocklyXml } from "../irToXml";
 import { convertPine, PineConvertError, type PineResult } from "./convert";
 import { CYCLES_ANALYSIS_WARNINGS, isCyclesAnalysisSource, warningHeader } from "./compatibility";
+import { withCyclesAnalysisInputs } from "./cyclesAnalysisPreview";
 
 /**
  * Public entry point: Pine Script source → an importable strategy/indicator
@@ -38,6 +39,7 @@ export function importPineScript(source: string): PineImport | PineImportError {
   const warnings = isCyclesAnalysisSource(source, result.name)
     ? CYCLES_ANALYSIS_WARNINGS
     : result.warnings;
+  if (isCyclesAnalysisSource(source, result.name)) result.ir = withCyclesAnalysisInputs(result.ir);
   const header = warningHeader(warnings);
   return {
     ok: true,

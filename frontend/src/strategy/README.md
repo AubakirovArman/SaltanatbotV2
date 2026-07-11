@@ -24,6 +24,7 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - Blockly definitions describe editing; compiler modules lower blocks to IR.
 - Backtest accounting does not depend on Blockly.
 - `previewTables.ts` owns display-metric collection and table shaping; the broker loop must not depend on presentation models.
+- `backtestTypes.ts` is the stable public contract; `backtestMetrics.ts` owns analytics derived from trades and equity.
 - Storage and sharing are adapters around versioned artifacts.
 
 ## Testing

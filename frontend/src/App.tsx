@@ -256,17 +256,19 @@ export default function App() {
   const addArtifactToChart = async (id: string, explicitOverrides?: Record<string, number>) => {
     const artifact = strategyLibrary.find((item) => item.id === id);
     if (!artifact) return;
-    const [{ compileXmlToIr }, backtest, { loadSecurityDataForIr }] = await Promise.all([
+    const [{ compileXmlToIr }, backtest, { loadSecurityDataForIr }, cycles] = await Promise.all([
       import("./strategy/compileArtifact"),
       import("./strategy/backtest"),
-      import("./strategy/securityLoader")
+      import("./strategy/securityLoader"),
+      import("./strategy/pine/cyclesAnalysisPreview")
     ]);
     const compiled = compileXmlToIr(artifact.xml);
     if (!compiled.ir) return;
     const overrides = explicitOverrides ?? artifactInputOverrides[id] ?? {};
+    const compatibleIr = cycles.withCyclesAnalysisInputs(compiled.ir);
     const ir = {
-      ...compiled.ir,
-      inputs: compiled.ir.inputs.map((input) => ({ ...input, value: overrides[input.name] ?? input.value }))
+      ...compatibleIr,
+      inputs: compatibleIr.inputs.map((input) => ({ ...input, value: overrides[input.name] ?? input.value }))
     };
     const securityData = await loadSecurityDataForIr(ir, {
       symbol,
@@ -275,8 +277,7 @@ export default function App() {
       exchange: cryptoExchange
     });
     // Show the strategy's plotted lines + every signal point, plus the trades it took.
-    const { previewCyclesAnalysis } = await import("./strategy/pine/cyclesAnalysisPreview");
-    const preview = previewCyclesAnalysis(ir, stream.candles) ??
+    const preview = cycles.previewCyclesAnalysis(ir, stream.candles) ??
       backtest.previewStrategy(ir, stream.candles, securityData);
     const result = backtest.runBacktest(ir, stream.candles, backtest.DEFAULT_CONFIG, securityData);
     setOverlay({ id, name: artifact.name, plots: preview.plots, shapes: preview.shapes, tables: preview.tables, inputs: ir.inputs, signals: preview.signals, trades: result.trades, summary: "summary" in preview ? preview.summary : undefined, symbol, timeframe });

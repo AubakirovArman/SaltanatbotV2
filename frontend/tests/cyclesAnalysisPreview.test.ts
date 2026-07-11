@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StrategyIR } from "../src/strategy/ir";
-import { previewCyclesAnalysis } from "../src/strategy/pine/cyclesAnalysisPreview";
+import { previewCyclesAnalysis, withCyclesAnalysisInputs } from "../src/strategy/pine/cyclesAnalysisPreview";
 
 const ir: StrategyIR = {
   v: 2,
@@ -42,5 +42,39 @@ describe("Cycles Analysis native preview", () => {
 
   it("does not intercept unrelated imported indicators", () => {
     expect(previewCyclesAnalysis({ ...ir, name: "Other Indicator" }, [])).toBeUndefined();
+  });
+
+  it("adds stable chart-side compatibility inputs exactly once", () => {
+    const once = withCyclesAnalysisInputs(ir);
+    const twice = withCyclesAnalysisInputs(once);
+
+    expect(once.inputs.map((input) => input.name)).toContain("cyclesDirectionMode");
+    expect(twice.inputs).toHaveLength(once.inputs.length);
+    expect(twice.init).toHaveLength(once.init?.length ?? 0);
+  });
+
+  it("supports duration-based cycle changes in candle units", () => {
+    const durationIr = withCyclesAnalysisInputs({
+      ...ir,
+      inputs: [
+        ...ir.inputs,
+        { name: "cyclesDirectionMode", value: 1 },
+        { name: "cyclesDurationUnits", value: 1 },
+        { name: "changeInDirectionUnitsInput", value: 2 }
+      ]
+    });
+    const candles = [100, 100, 100, 100].map((close, index) => ({
+      time: index * 60_000,
+      open: close,
+      high: 101,
+      low: 99,
+      close,
+      volume: 100
+    }));
+
+    const preview = previewCyclesAnalysis(durationIr, candles);
+
+    expect(preview?.shapes.vlines.length).toBeGreaterThanOrEqual(1);
+    expect(preview?.summary).toMatch(/[1-9]\d* cycles/);
   });
 });

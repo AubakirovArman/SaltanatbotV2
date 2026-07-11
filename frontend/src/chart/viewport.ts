@@ -10,6 +10,8 @@ export interface ViewportInput {
   priceMode: PriceMode;
   /** Extra price values (indicator lines) that must stay in view. */
   extraValues?: number[];
+  /** Empty bars reserved to the right for future projection shapes. */
+  rightPaddingBars?: number;
   /** Optional externally-supplied price scale (e.g. Renko brick scale). */
   scaleOverride?: PriceScale;
 }
@@ -20,8 +22,8 @@ export interface ViewportInput {
  * through the returned {@link Viewport} so it all stays aligned under zoom/pan.
  */
 export function buildViewport(input: ViewportInput): Viewport {
-  const { candles, plot, zoom, offset, priceMode, extraValues = [] } = input;
-  const visible = visibleCandles(candles, plot, zoom, offset);
+  const { candles, plot, zoom, offset, priceMode, extraValues = [], rightPaddingBars = 0 } = input;
+  const visible = visibleCandles(candles, plot, zoom, offset, rightPaddingBars);
   const data = visible.data;
   const barSpacing = visible.step;
   const start = Math.max(0, candles.length - offsetClamped(candles, offset) - data.length);

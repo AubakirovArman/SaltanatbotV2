@@ -1,7 +1,6 @@
 export const CYCLES_ANALYSIS_WARNINGS = [
-  "Core percentage-based cycle detection, crest labels, phase shading, aggregate/percentile statistics, prediction zone, and reversal markers use the native chart preview.",
-  "Duration/Both direction modes, minimum-duration enforcement, and stagnation visuals are not yet available in the native preview.",
-  "Numeric and boolean Pine inputs are editable from the chart; text selectors currently stay at their imported defaults."
+  "Pine object/array/table state is executed by a native chart preview; the portable live-strategy runtime still treats those object identities as display-only.",
+  "Table typography, percentile pairing, and drawing-object mutation are rendered with equivalent chart/HTML primitives rather than TradingView objects."
 ];
 
 export function isCyclesAnalysisSource(source: string, name: string) {

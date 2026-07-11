@@ -32,8 +32,8 @@ import { drawStrategyPlots, drawSubPlots } from "./renderers/strategyPlots";
 import { drawCompareSeries } from "./renderers/compareSeries";
 import { toHeikinAshi } from "./heikinAshi";
 import { computePlot, niceTicks, priceScale, visibleCandles } from "./scales";
-import { buildViewport } from "./viewport";
-import type { DrawChartOptions, PlotArea, PriceMode, PriceScale, Viewport } from "./types";
+import { buildViewport, medianBarTime } from "./viewport";
+import type { ChartShapes, DrawChartOptions, PlotArea, PriceMode, PriceScale, Viewport } from "./types";
 
 let theme = {
   background: "#0b0d10",
@@ -85,7 +85,8 @@ export function drawChart(options: DrawChartOptions) {
     return;
   }
 
-  const visible = visibleCandles(candles, plot, view.zoom, view.offset);
+  const rightPaddingBars = projectionPaddingBars(candles, shapes);
+  const visible = visibleCandles(candles, plot, view.zoom, view.offset, rightPaddingBars);
   const data = chartType === "heikin" ? toHeikinAshi(visible.data) : visible.data;
   const start = Math.max(0, candles.length - clampOffset(candles, view.offset) - visible.data.length);
   const end = start + visible.data.length;
@@ -95,7 +96,7 @@ export function drawChart(options: DrawChartOptions) {
   const scaleOverride = chartType === "renko" && bricks.length > 0 ? renkoScale(plot, bricks) : undefined;
 
   const viewport = buildViewport({
-    candles, plot, zoom: view.zoom, offset: view.offset, priceMode, extraValues, scaleOverride
+    candles, plot, zoom: view.zoom, offset: view.offset, priceMode, extraValues, scaleOverride, rightPaddingBars
   });
   const scale = viewport.scale;
   onViewport?.(viewport);
@@ -167,6 +168,13 @@ export function drawChart(options: DrawChartOptions) {
 
 function clampOffset(candles: Candle[], offset: number) {
   return Math.max(0, Math.min(offset, Math.max(0, candles.length - 24)));
+}
+
+function projectionPaddingBars(candles: Candle[], shapes?: ChartShapes) {
+  const last = candles.at(-1)?.time;
+  if (last === undefined || !shapes?.boxes.length) return 0;
+  const future = Math.max(last, ...shapes.boxes.map((box) => box.t2));
+  return Math.max(0, Math.ceil((future - last) / medianBarTime(candles)) + 2);
 }
 
 function makePanel(plot: PlotArea, top: number, panelHeight: number): PlotArea {

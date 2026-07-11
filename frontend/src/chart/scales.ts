@@ -16,12 +16,13 @@ export function computePlot(width: number, height: number): PlotArea {
   };
 }
 
-export function visibleCandles(candles: Candle[], plot: PlotArea, zoom: number, offset: number) {
+export function visibleCandles(candles: Candle[], plot: PlotArea, zoom: number, offset: number, rightPaddingBars = 0) {
   const step = Math.max(4, Math.min(26, 8 * zoom));
   const count = Math.max(24, Math.floor(plot.width / step));
+  const padding = Math.max(0, Math.min(Math.ceil(rightPaddingBars), Math.floor(count * 0.32), Math.max(0, count - 24)));
   const safeOffset = Math.max(0, Math.min(offset, Math.max(0, candles.length - 24)));
   const end = Math.max(0, candles.length - safeOffset);
-  const start = Math.max(0, end - count);
+  const start = Math.max(0, end - (count - padding));
   return { data: candles.slice(start, end), step };
 }
 

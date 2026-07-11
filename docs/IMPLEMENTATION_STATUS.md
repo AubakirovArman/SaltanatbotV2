@@ -99,6 +99,25 @@ Verification:
 - 27 Vitest files / 271 tests pass, including IR round-trip, schema, preview and Pine-conversion coverage.
 - Biome and backend/frontend TypeScript checks pass.
 
+### Backtest decomposition — commit `0e024cb` and current architecture commit
+
+- [x] Extract display-metric collection and table shaping into `previewTables.ts`.
+- [x] Extract public backtest contracts into `backtestTypes.ts` without breaking facade imports.
+- [x] Extract deterministic performance analytics into `backtestMetrics.ts`.
+- [x] Preserve all existing broker, preview, optimizer and report behavior through regression tests.
+
+### Cycles Analysis modes and future chart space — current architecture commit
+
+- [x] Add Percentage, Duration and Both direction modes with day/candle units.
+- [x] Add minimum-duration filters, first-direction selection, stagnation and high/low markers.
+- [x] Reserve chart space for future prediction zones and keep time/pixel transforms invertible.
+- [x] Add collapsible accessible statistics/prediction tables and typed chart controls.
+
+Verification:
+
+- 28 Vitest files / 275 tests pass, including duration-mode and projection-viewport coverage.
+- Biome and backend/frontend TypeScript checks pass.
+
 ## Completed browser baseline
 
 ### Critical browser E2E expansion

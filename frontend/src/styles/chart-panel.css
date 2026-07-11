@@ -221,6 +221,24 @@
   contain-intrinsic-size: auto 320px auto 280px;
 }
 
+.chart-tables.collapsed {
+  max-block-size: none;
+  overflow: visible;
+}
+
+.chart-tables-toggle {
+  justify-self: end;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 90%, transparent);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.chart-tables-toggle:hover { color: var(--text); }
+
 .artifact-input-panel {
   position: absolute;
   inset-block-start: 42px;
@@ -283,6 +301,17 @@
   background: var(--panel);
   color: var(--text);
   font-family: var(--font-mono);
+}
+
+.artifact-input-list select {
+  min-inline-size: 0;
+  inline-size: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--fs-xs);
 }
 
 .artifact-input-list input[type="checkbox"] { justify-self: end; }

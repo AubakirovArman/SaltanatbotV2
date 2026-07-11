@@ -805,9 +805,13 @@ function formatVolume(volume: number) {
 }
 
 function ChartTablesOverlay({ tables }: { tables: ChartTable[] }) {
+  const [open, setOpen] = useState(true);
   return (
-    <aside className="chart-tables" aria-label="Indicator statistics">
-      {tables.map((table) => (
+    <aside className={`chart-tables ${open ? "" : "collapsed"}`} aria-label="Indicator statistics">
+      <button type="button" className="chart-tables-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        {open ? "Hide statistics" : "Show statistics"}
+      </button>
+      {open && tables.map((table) => (
         <table key={table.id} className="chart-data-table">
           <caption>{table.id}</caption>
           <thead>
@@ -840,11 +844,16 @@ function ArtifactInputPanel({ inputs, onChange, onClose }: { inputs: { name: str
       <div className="artifact-input-list">
         {inputs.map((input) => {
           const boolean = isBooleanInput(input);
+          const options = inputOptions(input.name);
           const id = `artifact-input-${input.name.replace(/[^a-z0-9_-]/gi, "-")}`;
           return (
             <label key={input.name} htmlFor={id}>
               <span>{inputLabel(input.name)}</span>
-              {boolean ? (
+              {options ? (
+                <select id={id} value={input.value} onChange={(event) => onChange(input.name, Number(event.target.value))}>
+                  {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              ) : boolean ? (
                 <input id={id} type="checkbox" checked={input.value !== 0} onChange={(event) => onChange(input.name, event.target.checked ? 1 : 0)} />
               ) : (
                 <input id={id} type="number" value={input.value} step="any" onChange={(event) => {
@@ -866,6 +875,14 @@ function isBooleanInput(input: { name: string; value: number }) {
 
 function inputLabel(name: string) {
   return name.replace(/Input$/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (char) => char.toUpperCase());
+}
+
+function inputOptions(name: string) {
+  if (name === "cyclesDirectionMode") return [{ value: 0, label: "Percentage" }, { value: 1, label: "Duration" }, { value: 2, label: "Both" }];
+  if (name === "cyclesDurationUnits") return [{ value: 0, label: "Days" }, { value: 1, label: "Candles" }];
+  if (name === "cyclesMinimumFor") return [{ value: 0, label: "None" }, { value: 1, label: "Both" }, { value: 2, label: "Bull" }, { value: 3, label: "Bear" }];
+  if (name === "cyclesFirstDirection") return [{ value: 1, label: "Bull" }, { value: -1, label: "Bear" }];
+  return undefined;
 }
 
 function formatTableValue(value: string | number | null) {
