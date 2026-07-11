@@ -3,7 +3,7 @@ import { IR_VERSION } from "../ir";
 import { arg, argRequired } from "./arguments";
 import { diagnosticFromMessage, type PineDiagnostic } from "./diagnostics";
 import { PineConvertError } from "./errors";
-import { containsVar, isConstNum, shiftBool } from "./expressionHistory";
+import { containsVar, isConstNum } from "./expressionHistory";
 import {
   COLOR_HEX,
   DRAWING_MUTATE_RE,
@@ -31,6 +31,7 @@ import {
 import { lowerNumericCall, type NumericCallLoweringContext } from "./numericCallLowering";
 import { lowerBooleanCall, type BooleanCallLoweringContext } from "./booleanCallLowering";
 import { lowerNumericExpression, type NumericExpressionLoweringContext } from "./numericExpressionLowering";
+import { lowerBooleanExpression, type BooleanExpressionLoweringContext } from "./booleanExpressionLowering";
 import {
   boolToNum,
   boolToNumericSeries,
@@ -43,7 +44,6 @@ import {
   isCollectionConstructor,
   isCosmeticConst,
   isFalseIdent,
-  isNaIdent,
   isObjectConstructor,
   isObjectMethodCallName,
   isTrueIdent,
@@ -1214,120 +1214,59 @@ class Converter {
   }
 
   private bool(expr: PineExpr): BoolExpr {
-    switch (expr.t) {
-      case "tuplelit":
-        throw new PineConvertError("A tuple ([a, b]) can't be used as a condition.");
-      case "ident": {
-        const target = this.storageName(expr.name, false);
-        if (expr.name === "true") return { k: "bool", v: true };
-        if (expr.name === "false") return { k: "bool", v: false };
-        if (expr.name.startsWith("barstate.")) {
-          this.warnOnce("barstate", "barstate.* is approximated for import: last-bar visual branches are skipped, confirmed-bar logic remains deterministic.");
-          return { k: "bool", v: expr.name === "barstate.isconfirmed" || expr.name === "barstate.ishistory" };
-        }
-        if (expr.name.startsWith("timeframe.is")) {
-          this.warnOnce("tfmeta", "timeframe metadata is approximated during import until chart-bound timeframe context is available.");
-          return { k: "bool", v: false };
-        }
-        if (this.boolInputs.has(expr.name)) {
-          // input.bool used as a condition: != 0.
-          return { k: "compare", op: "!=", a: { k: "input", name: expr.name }, b: { k: "num", v: 0 } };
-        }
-        const bound = this.boundValue(expr.name);
-        if (bound) {
-          if (bound.t === "str") throw new PineConvertError(`"${expr.name}" is a text value ("${bound.v}"), not a condition.`);
-          if (bound.t === "num") return { k: "compare", op: "!=", a: bound.e, b: { k: "num", v: 0 } };
-          return bound.e;
-        }
-        if (this.boolVars.has(expr.name)) return { k: "varb", name: expr.name };
-        if (target !== expr.name && this.boolVars.has(target)) return { k: "varb", name: target };
-        if (this.numVars.has(expr.name)) return { k: "compare", op: "!=", a: { k: "var", name: expr.name }, b: { k: "num", v: 0 } };
-        if (target !== expr.name && this.numVars.has(target)) return { k: "compare", op: "!=", a: { k: "var", name: target }, b: { k: "num", v: 0 } };
-        if (this.collectionVars.has(expr.name) || this.opaqueVars.has(expr.name) || this.collectionVars.has(target) || this.opaqueVars.has(target)) {
-          this.warnOnce("opaqueread", "Reads from imported collection/object state return na unless mapped to a scalar plot.");
-          return { k: "bool", v: false };
-        }
-        if (target !== expr.name && isUserObjectFieldName(expr.name)) {
-          this.warnOnce("objstate", "User-defined object fields are flattened into scalar state variables; collection/object fidelity is approximate.");
-          this.boolVars.add(target);
-          return { k: "varb", name: target };
-        }
-        throw new PineConvertError(`Unknown condition "${expr.name}".`);
-      }
-      case "field":
-      case "method":
-        return { k: "compare", op: "!=", a: this.num(expr), b: { k: "num", v: 0 } };
-      case "unary":
-        if (expr.op === "not") return { k: "not", a: this.bool(expr.a) };
-        throw new PineConvertError("A negative number isn't a condition.");
-      case "binary": {
-        if (expr.op === "and" || expr.op === "or") return { k: "logic", op: expr.op, a: this.bool(expr.a), b: this.bool(expr.b) };
-        // `x == na` / `x != na` → na test (Pine forbids direct == na, but scripts still write it).
-        if (expr.op === "==" || expr.op === "!=") {
-          const naSide = isNaIdent(expr.a) ? expr.b : isNaIdent(expr.b) ? expr.a : undefined;
-          if (naSide) {
-            const test: BoolExpr = { k: "isna", a: this.num(naSide) };
-            return expr.op === "==" ? test : { k: "not", a: test };
-          }
-          // Boolean equality (`flagBool == true`, `sig != false`) — logical identity.
-          if (isBoolExpr(expr.a, this.boolVars, this.env) || isBoolExpr(expr.b, this.boolVars, this.env)) {
-            const left = this.bool(expr.a);
-            const right = this.bool(expr.b);
-            const eq: BoolExpr = {
-              k: "logic",
-              op: "or",
-              a: { k: "logic", op: "and", a: left, b: right },
-              b: { k: "logic", op: "and", a: { k: "not", a: left }, b: { k: "not", a: right } }
-            };
-            return expr.op === "==" ? eq : { k: "not", a: eq };
-          }
-          // String comparisons (mode selectors vs frozen input.string) fold to constants.
-          const strA = this.strVal(expr.a);
-          const strB = this.strVal(expr.b);
-          if (strA !== undefined || strB !== undefined) {
-            if (strA === undefined || strB === undefined) {
-              this.warnOnce("objtextcmp", "Text comparisons against opaque object fields are approximated during import.");
-              return { k: "bool", v: expr.op === "!=" };
-            }
-            return { k: "bool", v: expr.op === "==" ? strA === strB : strA !== strB };
-          }
-        }
-        if (["==", "!=", "<", "<=", ">", ">="].includes(expr.op)) {
-          return { k: "compare", op: expr.op as ">", a: this.num(expr.a), b: this.num(expr.b) };
-        }
-        throw new PineConvertError(`Operator "${expr.op}" doesn't produce a condition.`);
-      }
-      case "switch": {
-        const v = this.switchVal(expr);
-        if (v.t !== "bool") throw new PineConvertError("This switch yields a number, not a condition.");
-        return v.e;
-      }
-      case "ternary": {
-        const c = this.bool(expr.cond);
-        return {
-          k: "logic",
-          op: "or",
-          a: { k: "logic", op: "and", a: c, b: this.bool(expr.a) },
-          b: { k: "logic", op: "and", a: { k: "not", a: c }, b: this.bool(expr.b) }
-        };
-      }
-      case "call": {
-        return lowerBooleanCall(this.booleanCallContext(), expr);
-      }
-      case "num":
-        // Pine treats a nonzero number as truthy in a few idioms; only 0/1 make sense here.
-        return { k: "compare", op: "!=", a: { k: "num", v: expr.v }, b: { k: "num", v: 0 } };
-      case "index": {
-        // Boolean history: cond[n] → the inlined condition with its series shifted n bars.
-        const offsetExpr = expr.offset;
-        if (offsetExpr.t !== "num" || !Number.isInteger(offsetExpr.v) || offsetExpr.v < 0) {
-          throw new PineConvertError("A condition's history offset [n] must be a non-negative integer literal.");
-        }
-        return shiftBool(this.bool(expr.base), offsetExpr.v);
-      }
-      case "str":
-        throw new PineConvertError("Expected a condition (true/false expression).");
+    return lowerBooleanExpression(this.booleanExpressionContext(), expr);
+  }
+
+  private booleanExpressionContext(): BooleanExpressionLoweringContext {
+    return {
+      bool: (value) => this.bool(value),
+      isBooleanExpression: (value) => isBoolExpr(value, this.boolVars, this.env),
+      num: (value) => this.num(value),
+      resolveCall: (value) => lowerBooleanCall(this.booleanCallContext(), value),
+      resolveIdentifier: (name) => this.boolIdent(name),
+      resolveString: (value) => this.strVal(value),
+      resolveSwitch: (value) => {
+        const result = this.switchVal(value);
+        if (result.t !== "bool") throw new PineConvertError("This switch yields a number, not a condition.");
+        return result.e;
+      },
+      warnOnce: (key, message) => this.warnOnce(key, message)
+    };
+  }
+
+  private boolIdent(name: string): BoolExpr {
+    const target = this.storageName(name, false);
+    if (name === "true") return { k: "bool", v: true };
+    if (name === "false") return { k: "bool", v: false };
+    if (name.startsWith("barstate.")) {
+      this.warnOnce("barstate", "barstate.* is approximated for import: last-bar visual branches are skipped, confirmed-bar logic remains deterministic.");
+      return { k: "bool", v: name === "barstate.isconfirmed" || name === "barstate.ishistory" };
     }
+    if (name.startsWith("timeframe.is")) {
+      this.warnOnce("tfmeta", "timeframe metadata is approximated during import until chart-bound timeframe context is available.");
+      return { k: "bool", v: false };
+    }
+    if (this.boolInputs.has(name)) return { k: "compare", op: "!=", a: { k: "input", name }, b: { k: "num", v: 0 } };
+    const bound = this.boundValue(name);
+    if (bound) {
+      if (bound.t === "str") throw new PineConvertError(`"${name}" is a text value ("${bound.v}"), not a condition.`);
+      if (bound.t === "num") return { k: "compare", op: "!=", a: bound.e, b: { k: "num", v: 0 } };
+      return bound.e;
+    }
+    if (this.boolVars.has(name)) return { k: "varb", name };
+    if (target !== name && this.boolVars.has(target)) return { k: "varb", name: target };
+    if (this.numVars.has(name)) return { k: "compare", op: "!=", a: { k: "var", name }, b: { k: "num", v: 0 } };
+    if (target !== name && this.numVars.has(target)) return { k: "compare", op: "!=", a: { k: "var", name: target }, b: { k: "num", v: 0 } };
+    if (this.collectionVars.has(name) || this.opaqueVars.has(name) || this.collectionVars.has(target) || this.opaqueVars.has(target)) {
+      this.warnOnce("opaqueread", "Reads from imported collection/object state return na unless mapped to a scalar plot.");
+      return { k: "bool", v: false };
+    }
+    if (target !== name && isUserObjectFieldName(name)) {
+      this.warnOnce("objstate", "User-defined object fields are flattened into scalar state variables; collection/object fidelity is approximate.");
+      this.boolVars.add(target);
+      return { k: "varb", name: target };
+    }
+    throw new PineConvertError(`Unknown condition "${name}".`);
   }
 
   private booleanCallContext(): BooleanCallLoweringContext {
