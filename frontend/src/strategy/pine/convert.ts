@@ -6,23 +6,12 @@ import { PineConvertError } from "./errors";
 import { containsVar } from "./expressionHistory";
 import {
   COLOR_HEX,
-  DRAWING_MUTATE_RE,
   NAME_RE,
   PRICE_FIELDS
 } from "./language";
 import { PineLexError } from "./lexer";
 import { type PineFuncDef, PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
-import {
-  type DrawingLoweringContext,
-  lowerBox,
-  lowerConditionalShading,
-  lowerDisplay,
-  lowerFill,
-  lowerLabel,
-  lowerLine,
-  lowerTableCell,
-  type PlotHandleValue
-} from "./drawingLowering";
+import { type PlotHandleValue } from "./drawingLowering";
 import { lowerNumericCall, type NumericCallLoweringContext } from "./numericCallLowering";
 import { lowerBooleanCall, type BooleanCallLoweringContext } from "./booleanCallLowering";
 import { lowerNumericExpression, type NumericExpressionLoweringContext } from "./numericExpressionLowering";
@@ -44,15 +33,14 @@ import { lowerAssignment, lowerMutableAssignment, type AssignmentLoweringContext
 import { lowerDeclaration, type DeclarationLoweringContext } from "./declarationLowering";
 import { lowerPlotStatement, type PlotStatementLoweringContext } from "./plotStatementLowering";
 import { lowerAlertStatement, type AlertStatementLoweringContext } from "./alertStatementLowering";
+import { lowerDrawingStatement, type DrawingStatementLoweringContext } from "./drawingStatementLowering";
 import {
   boolToNumericSeries,
   collectReassigned,
   collectionReceiver,
   isBoolExpr,
-  isCollectionCallName,
   isCosmeticConst,
   isFalseIdent,
-  isObjectMethodCallName,
   isTrueIdent,
   isUserObjectFieldName,
   literalColorByte,
@@ -275,51 +263,9 @@ class Converter {
     if (plotStatements !== undefined) return plotStatements;
     const alertStatements = lowerAlertStatement(this.alertStatementContext(), callee, args);
     if (alertStatements !== undefined) return alertStatements;
-
-    switch (callee) {
-      case "bgcolor":
-      case "barcolor":
-        // bgcolor/barcolor(cond ? color : na) — shading → a full-height box while
-        // the condition holds. Non-conditional/unresolvable colors stay display-skips.
-        return this.lowerDrawing(callee, (ctx) => lowerConditionalShading(ctx, arg(args, 0, "color"), callee));
-      case "runtime.error":
-      case "plotcandle":
-      case "plotbar": {
-        this.warn(`Skipped display-only/unsupported call: ${callee}().`);
-        return [];
-      }
-      case "fill":
-        return this.lowerDrawing(callee, (ctx) => lowerFill(ctx, args));
-      case "label.new":
-        return this.lowerDrawing(callee, (ctx) => lowerLabel(ctx, args));
-      case "line.new":
-        return this.lowerDrawing(callee, (ctx) => lowerLine(ctx, args));
-      case "box.new":
-        return this.lowerDrawing(callee, (ctx) => lowerBox(ctx, args));
-      case "table.cell":
-        return this.lowerDrawing(callee, (ctx) => lowerTableCell(ctx, args));
-      default: {
-        if (DRAWING_MUTATE_RE.test(callee)) {
-          this.warnOnce("drawmut", `Drawing updates/removals (${callee} and similar) are ignored — drawings are approximated statically.`);
-          return [];
-        }
-        // Method syntax on a tracked handle: l.set_y1(...), l.delete().
-        const head = callee.split(".")[0];
-        if (callee.includes(".") && this.drawingHandles.has(head)) {
-          this.warnOnce("drawmut", `Drawing updates/removals (${callee} and similar) are ignored — drawings are approximated statically.`);
-          return [];
-        }
-        if (isCollectionCallName(callee) || isObjectMethodCallName(callee)) {
-          this.warnOnce("collections", "Collections (arrays/matrices/maps) are imported as opaque visual state; unsupported collection operations are skipped.");
-          return [];
-        }
-        if (callee.startsWith("label") || callee.startsWith("line") || callee.startsWith("box") || callee.startsWith("table") || callee.startsWith("polyline") || callee.startsWith("array") || callee.startsWith("matrix")) {
-          this.warn(`Skipped drawing/collection call: ${callee}().`);
-          return [];
-        }
-        throw new PineConvertError(`Unsupported statement call: ${callee}().`);
-      }
-    }
+    const drawingStatements = lowerDrawingStatement(this.drawingStatementContext(), callee, args);
+    if (drawingStatements !== undefined) return drawingStatements;
+    throw new PineConvertError(`Unsupported statement call: ${callee}().`);
   }
 
   private strategyCallContext(): StrategyCallLoweringContext {
@@ -367,10 +313,8 @@ class Converter {
     };
   }
 
-  // ---------- drawing-object mapping (display-only approximations) ----------
-
-  private lowerDrawing(fn: string, build: (context: DrawingLoweringContext) => Stmt[]): Stmt[] {
-    const context: DrawingLoweringContext = {
+  private drawingStatementContext(): DrawingStatementLoweringContext {
+    return {
       nan: NAN_NUM,
       bool: (expr) => this.bool(expr),
       num: (expr) => this.num(expr),
@@ -378,10 +322,10 @@ class Converter {
       string: (expr) => this.strVal(expr),
       isColor: (expr) => this.isColorExpr(expr),
       plotHandle: (expr) => expr?.t === "ident" ? this.plotHandleValues.get(expr.name) : undefined,
+      hasDrawingHandle: (name) => this.drawingHandles.has(name),
       warn: (message) => this.warn(message),
       warnOnce: (key, message) => this.warnOnce(key, message)
     };
-    return lowerDisplay(context, fn, () => build(context));
   }
   private registerInput(name: string, call: Extract<PineExpr, { t: "call" }>): void {
     this.checkName(name);

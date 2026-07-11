@@ -188,9 +188,10 @@ Verification:
 - [x] Extract direct, user-function and built-in tuple destructuring.
 - [x] Extract immutable/mutable assignment state, one-time initialization and special handle bindings.
 - [x] Extract declaration/default sizing, plot/marker and alert statement calls.
+- [x] Extract drawing, mutation, collection and unsupported-call statement coordination.
 - [x] Add direct tests for indicator, arithmetic, external boolean-series and fail-closed paths.
 - [x] Add direct tests for cross, multi-bar trend, external boolean-series and conservative timeframe paths.
-- [x] Reduce `convert.ts` from 1,916 to 1,033 lines after extracting declaration, plot and alert statements.
+- [x] Reduce `convert.ts` from 1,916 to 977 lines after completing statement lowering decomposition.
 
 ### Trading activity decomposition — commit `4335465`
 
@@ -241,13 +242,13 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Extract switch lowering.
   - [x] Extract user-function inlining.
   - [x] Extract general value coordination.
-- [ ] Extract statement and strategy-call lowering.
+- [x] Extract statement and strategy-call lowering.
   - [x] Extract strategy-call lowering.
   - [x] Extract generic statement/control-flow lowering.
   - [x] Extract tuple statements.
   - [x] Extract assignment state.
   - [x] Extract declaration, plot/marker and alert statements.
-  - [ ] Extract final drawing/fallback call coordinator.
+  - [x] Extract final drawing/fallback call coordinator.
 - [x] Extract drawing lowering.
 - [ ] Extract Blockly serialization.
 - [x] Add a typed compatibility registry and Markdown matrix generated from both Pine corpora.
