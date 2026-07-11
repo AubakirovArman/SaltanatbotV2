@@ -57,7 +57,10 @@ jobs:
             echo "::error::backend/data is tracked in git — it must be gitignored (holds secrets)."
             exit 1
           fi
-          git check-ignore -q backend/data || {
+          # Check a virtual child path because backend/data does not exist in a
+          # clean checkout. --no-index keeps this check valid if the probe name
+          # is ever present in the worktree.
+          git check-ignore -q --no-index backend/data/.secret-scan-probe || {
             echo "::error::backend/data is not covered by .gitignore."
             exit 1
           }
