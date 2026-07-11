@@ -34,6 +34,9 @@ jobs:
       - name: Lint (Biome)
         run: npm run lint
 
+      - name: Documentation links and commands
+        run: npm run docs:check
+
       - name: Test (Vitest)
         run: npm test
 

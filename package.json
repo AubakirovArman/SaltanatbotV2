@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "docs:check": "node scripts/check-docs.mjs",
     "lint": "biome check --formatter-enabled=false --assists-enabled=false .",
     "format": "biome format --write ."
   },

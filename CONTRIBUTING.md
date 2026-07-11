@@ -28,6 +28,7 @@ All scripts below are defined in the root `package.json` and delegate to the wor
 | `npm run dev` | Runs backend on `4181` and frontend on `4180` via `concurrently`. Vite proxies API and WebSocket traffic to the backend. |
 | `npm run build` | `npm --workspaces run build` — compiles the backend with `tsc` (emitting to `backend/dist`) and builds the frontend with `tsc -b && vite build`. |
 | `npm run check` | `npm --workspaces run check` — type-checks both workspaces with no emit (`tsc --noEmit` on the backend, `tsc -b --noEmit` on the frontend). |
+| `npm run docs:check` | Validates tracked Markdown local links and documented root npm commands. |
 | `npm start` | Runs the built backend: `node dist/server.js` (run `npm run build` first). |
 
 Run `npm run check` before opening a pull request — it is the fastest way to catch type errors across both workspaces.
@@ -188,8 +189,8 @@ action=openposition;symbol={sym};side=buy;openpro=10;lev=10;levforqty!;stop=5%;t
 ## See also
 
 - [README](./README.md)
-- [Architecture](./ARCHITECTURE.md)
-- [API reference](./API.md)
-- [Trading guide](./TRADING.md)
-- [Strategies](./STRATEGIES.md)
-- [Configuration](./CONFIGURATION.md)
+- [Architecture](./docs/ARCHITECTURE.md)
+- [API reference](./docs/API.md)
+- [Trading guide](./docs/TRADING.md)
+- [Strategies](./docs/STRATEGIES.md)
+- [Configuration](./docs/CONFIGURATION.md)

@@ -130,7 +130,7 @@ Verification:
 - [x] Move bot lifecycle actions, runtime cards, command console and journals into `BotDetail.tsx`.
 - [x] Reduce `TradingView.tsx` to a 241-line socket/list/selection controller.
 
-### Strategy Lab decomposition — commit `cbf6b4c` and current optimizer commit
+### Strategy Lab decomposition — commits `cbf6b4c`, `1effaae`
 
 - [x] Move artifact browsing, import/export, Pine entry and template gallery into `strategy/components/StrategyLibrary.tsx`.
 - [x] Add a feature-folder README documenting the new UI boundary.
@@ -139,7 +139,7 @@ Verification:
 - [x] Move sweep-state creation and worker-spec shaping into `optimization/model.ts`.
 - [x] Reduce `StrategyLab.tsx` further to 617 lines and add direct model tests.
 
-### Trading engine decomposition — current engine-risk commit
+### Trading engine decomposition — commit `9e048b6`
 
 - [x] Extract pure position-sizing and stop/target calculations into `engineRisk.ts`.
 - [x] Add focused quote/equity/risk sizing and long/short stop/target tests.
@@ -214,7 +214,7 @@ Current: 16 scenarios implemented; the original critical-flow checklist is compl
 - [ ] Complete Russian user-guide parity.
 - [ ] Generate API/block/Pine compatibility reference from source contracts.
 - [x] Add `SECURITY.md`, `CODE_OF_CONDUCT.md`, changelog and support policy.
-- [ ] Add documentation link/example checks to CI.
+- [x] Add documentation link/example checks to CI.
 - [ ] Add release channels, SBOM, checksums and signed artifacts.
 
 ## Quality gates for every following commit
