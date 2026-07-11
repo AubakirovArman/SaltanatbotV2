@@ -148,7 +148,7 @@ Required improvements:
 - [x] resource budgets for file size, lines, tokens, AST size/nesting, loops and generated IR;
 - [x] explicit unsupported-feature registry instead of scattered function conditions;
 - [x] conversion report showing exact, approximated, display-only and rejected constructs;
-- side-by-side source, generated blocks and preview comparison;
+- [x] side-by-side source, generated blocks and preview comparison;
 - [x] deterministic output snapshots;
 - [x] a public compatibility matrix generated from tests;
 - [x] fuzzing and property tests for lexer/parser safety;

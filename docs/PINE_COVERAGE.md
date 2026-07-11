@@ -55,6 +55,12 @@ Their complete public result—including language profile, IR, diagnostics, sour
 map and fidelity report—must remain byte-stable unless the golden change is
 reviewed as an intentional compatibility change.
 
+Imported artifacts retain their original Pine source, language profile,
+diagnostics, fidelity report and source map. Strategy Studio shows that immutable
+source beside the editable generated Blockly workspace and compiled preview.
+Activating a diagnostic focuses its exact source selection. Editing blocks does
+not rewrite the evidence source, so comparisons never imply a false round-trip.
+
 **Design guarantee.** The target IR is a per-bar, vectorized, `eval`-free dataflow
 that must run **identically in the browser backtest and the live engine**. Every
 construct that would break that guarantee (look-ahead, other-timeframe data,

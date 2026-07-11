@@ -7,6 +7,7 @@ import {
   upsertArtifact
 } from "../src/strategy/artifactLibraryModel";
 import type { StrategyArtifact } from "../src/strategy/library";
+import { importPineScript } from "../src/strategy/pine";
 
 const artifact = (overrides: Partial<StrategyArtifact> = {}): StrategyArtifact => ({
   id: "strategy:one",
@@ -38,14 +39,18 @@ describe("artifact library model", () => {
   });
 
   it("deduplicates a Pine import against the library and within its batch", () => {
+    const converted = importPineScript('//@version=6\nindicator("Momentum")\nplot(close)');
+    if (!converted.ok) throw new Error(converted.error);
     const created = createPineArtifacts([
-      { kind: "indicator", name: "Momentum", xml: "a", code: "a", warnings: [] },
-      { kind: "strategy", name: "Momentum", xml: "b", code: "b", warnings: ["approx"] }
+      { ...converted, kind: "indicator", name: "Momentum", xml: "a", code: "a", warnings: [] },
+      { ...converted, kind: "strategy", name: "Momentum", xml: "b", code: "b", warnings: ["approx"] }
     ], [artifact()], 100);
 
     expect(created.map((item) => item.name)).toEqual(["Momentum (2)", "Momentum (3)"]);
     expect(created.map((item) => item.id)).toEqual(["indicator:pine-100-0", "strategy:pine-100-1"]);
     expect(created[1].description).toContain("1 fidelity warning");
+    expect(created[0].pine).toMatchObject({ source: converted.source, language: { profile: "v6" } });
+    expect(created[0].pine?.report.overall).toBe("display-only");
   });
 
   it("creates an editable template copy without mutating the template identity", () => {

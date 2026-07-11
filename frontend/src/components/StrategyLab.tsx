@@ -9,6 +9,7 @@ import type { Locale } from "../i18n";
 import { strategyText } from "../i18n/strategy";
 import { StrategyLibrary } from "../strategy/components/StrategyLibrary";
 import { StrategyExecutionPanel } from "../strategy/components/StrategyExecutionPanel";
+import { PineSourceComparison } from "../strategy/components/PineSourceComparison";
 import { useStrategyResearch } from "../strategy/useStrategyResearch";
 import { useStrategyWorkspace } from "../strategy/useStrategyWorkspace";
 
@@ -99,14 +100,18 @@ export function StrategyLab({
           onImportStrategy={onImportStrategy}
           onImportPineMany={onImportPineMany}
         />
-        <div className="blockly-shell">
-          <div className="blockly-host" ref={workspace.containerRef} />
-          {workspace.initError && (
-            <div className="strategy-error" role="alert">
-              <strong>{strategyText(locale, "editorFailed")}</strong>
-              <span>{workspace.initError}</span>
-            </div>
-          )}
+        <div className={`strategy-authoring${activeArtifact?.pine ? " has-pine-source" : ""}`}>
+          {activeArtifact?.pine && <PineSourceComparison locale={locale} pine={activeArtifact.pine} />}
+          <div className="blockly-shell">
+            {activeArtifact?.pine && <span className="blockly-panel-label">{strategyText(locale, "generatedBlocks")}</span>}
+            <div className="blockly-host" ref={workspace.containerRef} />
+            {workspace.initError && (
+              <div className="strategy-error" role="alert">
+                <strong>{strategyText(locale, "editorFailed")}</strong>
+                <span>{workspace.initError}</span>
+              </div>
+            )}
+          </div>
         </div>
         <StrategyExecutionPanel
           locale={locale}

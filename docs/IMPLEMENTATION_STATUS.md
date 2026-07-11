@@ -315,6 +315,9 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 - [x] Record source, author, SPDX decision, acquisition date and SHA-256 for every external Pine file.
 - [x] Restrict real-world compiler corpus tests to hash-verified MPL-2.0 samples; keep unknown-license files audit-only.
 - [x] Fail docs CI when Pine provenance, file coverage, license headers or hashes drift.
+- [x] Persist immutable Pine source/profile/diagnostic/report evidence with imported artifacts.
+- [x] Show original Pine, generated Blockly workspace and compiled preview side by side in Strategy Studio.
+- [x] Focus the exact read-only source selection when a user activates a diagnostic.
 
 - [x] Extract AST and public diagnostic types with source-span contracts.
 - [x] Extract semantic scope/symbol/function analysis.

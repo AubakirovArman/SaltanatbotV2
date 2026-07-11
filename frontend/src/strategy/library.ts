@@ -2,6 +2,7 @@ import { indicatorLogicPreview } from "../chart/indicatorLogic";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import { starterStrategyXml } from "./starter";
 import { strategyTemplates } from "./templates";
+import type { PineConversionReport, PineDiagnostic, PineLanguageProfile, PineSourceMapEntry } from "@saltanatbotv2/pine-compiler";
 
 export type StrategyArtifactKind = "indicator" | "strategy";
 
@@ -17,6 +18,14 @@ export interface StrategyArtifact {
   hash?: string;
   createdAt: number;
   updatedAt: number;
+  /** Immutable import evidence. Blockly edits do not rewrite the original Pine source. */
+  pine?: {
+    source: string;
+    language: PineLanguageProfile;
+    diagnostics: PineDiagnostic[];
+    report: PineConversionReport;
+    sourceMap: PineSourceMapEntry[];
+  };
 }
 
 export function createDefaultStrategyLibrary(indicators: IndicatorConfig[]) {

@@ -62,6 +62,11 @@ export interface PineArtifactInput {
   xml: string;
   code: string;
   warnings: string[];
+  source: string;
+  language: import("@saltanatbotv2/pine-compiler").PineLanguageProfile;
+  diagnostics: import("@saltanatbotv2/pine-compiler").PineDiagnostic[];
+  report: import("@saltanatbotv2/pine-compiler").PineConversionReport;
+  sourceMap: import("@saltanatbotv2/pine-compiler").PineSourceMapEntry[];
 }
 
 export function createPineArtifacts(inputs: PineArtifactInput[], items: StrategyArtifact[], now = Date.now()): StrategyArtifact[] {
@@ -78,6 +83,13 @@ export function createPineArtifacts(inputs: PineArtifactInput[], items: Strategy
       description: `Imported from Pine Script${input.warnings.length ? ` (${input.warnings.length} fidelity warning${input.warnings.length === 1 ? "" : "s"})` : ""}.`,
       xml: input.xml,
       code: input.code,
+      pine: {
+        source: input.source,
+        language: input.language,
+        diagnostics: input.diagnostics,
+        report: input.report,
+        sourceMap: input.sourceMap
+      },
       createdAt: now,
       updatedAt: now
     };

@@ -17,6 +17,11 @@ The import facade also preserves the compiler's versioned evidence `report`.
 The dialog presents its worst category and exact/approximation/display-only
 counts with semantic `<dl>` markup, while diagnostics remain a list with stable
 codes, source lines and concrete remediation.
+
+Successful imports persist the immutable original source and compiler evidence
+on the artifact. `PineSourceComparison.tsx` renders it beside Blockly and the
+existing compiled preview; diagnostic buttons focus exact textarea ranges
+without creating thousands of line DOM nodes for maximum-size sources.
 `semanticHelpers.ts` owns pure type/classification, constant-folding, collection and reassignment analysis helpers used by lowering.
 `drawingLowering.ts` maps display-only Pine fills, shading, labels, lines, boxes, projections and numeric tables through an explicit lowering context.
 `numericCallLowering.ts` maps numeric built-in calls to IR nodes through an explicit context, keeping converter-owned scope and diagnostics state outside the module.

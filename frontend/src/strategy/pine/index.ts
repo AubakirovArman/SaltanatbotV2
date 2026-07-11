@@ -45,6 +45,7 @@ export interface PineImport {
   language: PineLanguageProfile;
   sourceMap: PineSourceMapEntry[];
   report: PineConversionReport;
+  source: string;
 }
 
 export interface PineImportError {
@@ -84,6 +85,7 @@ export function importPineScript(source: string): PineImport | PineImportError {
     diagnostics: result.diagnostics,
     language: result.language,
     sourceMap: result.sourceMap,
-    report: result.report
+    report: result.report,
+    source
   };
 }

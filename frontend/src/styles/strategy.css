@@ -274,6 +274,97 @@
   background: var(--bg);
 }
 
+.strategy-authoring {
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.strategy-authoring.has-pine-source {
+  grid-template-columns: minmax(15rem, 0.42fr) minmax(20rem, 1fr);
+}
+
+.pine-source-comparison {
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(8rem, 1fr) auto;
+  gap: 0.45rem;
+  padding: 0.5rem;
+  border-inline-end: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.pine-source-comparison .panel-header,
+.pine-source-comparison .panel-header strong {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.pine-source-comparison p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.pine-source-comparison textarea {
+  inline-size: 100%;
+  min-block-size: 0;
+  resize: none;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 0.55rem;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--fs-sm)/1.5 var(--font-mono);
+  white-space: pre;
+  overflow: auto;
+}
+
+.pine-source-comparison ul {
+  max-block-size: 7rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+
+.pine-source-comparison li button {
+  inline-size: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 0;
+  padding: 0.25rem;
+  background: transparent;
+  color: var(--muted);
+  text-align: start;
+  cursor: pointer;
+}
+
+.pine-source-comparison li button:hover,
+.pine-source-comparison li button:focus-visible {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.blockly-panel-label {
+  position: absolute;
+  inset-block-start: 0.45rem;
+  inset-inline-end: 0.55rem;
+  z-index: 2;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  pointer-events: none;
+}
+
 .blockly-host {
   position: absolute;
   inset: 0;
