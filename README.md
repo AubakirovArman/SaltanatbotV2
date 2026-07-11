@@ -1,5 +1,7 @@
 <div align="center">
 
+[English](README.md) · [Русский](README.ru.md)
+
 <img src="assets/logo.svg" alt="SaltanatbotV2 logo" width="140" height="140" />
 
 # SaltanatbotV2 🐘
@@ -94,12 +96,12 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 git clone https://github.com/AubakirovArman/SaltanatbotV2.git
 cd SaltanatbotV2
 
-# 2. Install (npm workspaces installs backend + frontend together)
+# 2. Install all application and shared workspaces
 npm install
 
 # 3a. Develop — backend (tsx watch) + frontend (Vite) with hot reload
 npm run dev
-#    frontend → http://localhost:5173   backend/API → http://localhost:4180
+#    frontend → http://localhost:4180   backend/API → http://localhost:4181
 
 # 3b. …or build & run production (backend serves the built frontend on one port)
 npm run build
@@ -122,7 +124,7 @@ PORT=4180 HOST=127.0.0.1 npm start        # loopback by default; set HOST=0.0.0.
 ### …or with Docker
 
 ```bash
-# Builds both workspaces and runs the backend (which serves the SPA) on :4180.
+# Builds the application workspaces and runs the backend (which serves the SPA) on :4180.
 # backend/data (DB + secrets) is a persistent named volume.
 docker compose up --build          # open → http://localhost:4180
 ```
@@ -143,6 +145,10 @@ The access token is printed in the container logs (`docker compose logs`), or se
 | [**Trading & command language**](docs/TRADING.md) | The Trade tab, all 14 Antares-style actions, paper/Binance/Bybit modes, notifications |
 | [**Configuration & deployment**](docs/CONFIGURATION.md) | Env vars, runtime data, exchange keys, encryption, production & hardening checklist |
 | [**Roadmap**](docs/ROADMAP.md) | What has shipped and what's next |
+| [**Master improvement plan**](docs/MASTER_IMPROVEMENT_PLAN.md) | Product gaps, priorities, release gates and delivery milestones |
+| [**Modular architecture**](docs/MODULAR_ARCHITECTURE.md) | Target packages, module boundaries and safe decomposition sequence |
+| [**Testing strategy**](docs/TESTING_STRATEGY.md) | Unit, parity, browser E2E, visual, accessibility, performance and recovery testing |
+| [**Internationalization & docs**](docs/I18N_AND_DOCUMENTATION.md) | English/Russian structure, UI i18n and documentation quality gates |
 | [**Contributing**](CONTRIBUTING.md) | Dev setup, repo conventions, and how to add instruments / blocks / commands |
 
 ---

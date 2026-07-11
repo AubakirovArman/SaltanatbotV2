@@ -54,7 +54,7 @@ Blocks are typed: value blocks declare `output: "Number"` or `"Boolean"`, and in
 
 ## The IR shape
 
-The IR type (`frontend/src/strategy/ir.ts`, mirrored on the backend at `backend/src/trading/strategy/ir.ts`) has three node families:
+The canonical IR type (`packages/strategy-core/index.d.ts`, re-exported by frontend/backend facades) has three node families:
 
 - **`NumExpr`** — evaluates to a number on every bar. Examples: `{ k: "num", v }`, `{ k: "input", name }`, `{ k: "var", name }`, `{ k: "price", field, offset? }`, `{ k: "ma", kind, period, source }`, `{ k: "rsi", ... }`, `{ k: "bollinger", ... }`, `{ k: "macd", ... }`, `{ k: "atr", ... }`, `{ k: "arith", op, a, b }`, `{ k: "unary", op, a }`, and others.
 - **`BoolExpr`** — evaluates to true/false. Examples: `{ k: "compare", op, a, b }`, `{ k: "logic", op, a, b }`, `{ k: "not", a }`, `{ k: "cross", dir, a, b }`, `{ k: "trend", dir, period, source }`, `{ k: "between", value, low, high }`, `{ k: "session", start, end }`, `{ k: "dayofweek", day }`.
@@ -111,15 +111,21 @@ const result = runBacktest(ir, candles); // uses DEFAULT_CONFIG
 | `commissionPct` | number | `0.05` | Commission per side, in percent, charged on entry + exit notional. |
 | `slippagePct` | number | `0.02` | Slippage applied to the fill price, in percent. |
 | `allowShort` | boolean | `true` | When false, `short` entries are skipped. |
+| `fillTiming` | `next_open \| same_close` | `next_open` | Default fills a signal at the following bar's open; `same_close` is legacy behavior. |
+| `maxLeverage` | number | `5` | Maximum position notional as a multiple of equity. |
+| `qtyStep` | number | `0` | Optional quantity step; zero disables quantity rounding. |
+| `fundingRatePctPer8h` | number | `0` | Funding/borrow cost per eight hours, prorated by bar duration. |
 
 ### Bar loop semantics
 
 For each candle, in order:
 
-1. **Trailing stop then intrabar exits.** On bars *after* entry, a trailing stop first ratchets: for a long it can only move up (`Math.max` of the prior stop and `high * (1 - pct/100)` or `high - atr*value`), for a short only down. Then the engine checks whether the (possibly trailed) `stopPrice` was hit — stops are checked *before* targets — and closes at the stop or target price with reason `"stop"` / `"target"`.
-2. **Evaluate the IR** for the bar via `execStatements(ir.body, i, rt, intents)`, gathering intents (entry, exit, stop, target, trail, size, alerts, markers). Alerts are recorded with the bar time; `signal_marker` blocks push arrow signals (`buy` for up, `sell` for down) into `result.signals` without opening a trade.
-3. **Signal exit at close.** If a position is open and the bar produced an `exit` intent, it closes at the bar close (with slippage), reason `"signal"`.
-4. **Entry at close when flat.** If flat and an `entry` intent fired, the position opens at the close (with slippage). Stop/target prices resolve from the intent's mode; a trailing stop is seeded from the entry bar so risk is bounded immediately. Quantity comes from the active sizing rule.
+1. **Fill pending signals.** With the default `next_open` timing, an entry or exit produced by the previous closed bar fills at this bar's open. `same_close` retains the legacy same-bar close behavior.
+2. **Intrabar exits.** The engine checks the stop as it stood at bar open before the target. Gap-through stops use the worse open; favourable gaps through a limit target use the better open. A trailing stop is ratcheted from this bar's extreme only for use on the next bar, avoiding look-ahead.
+3. **Excursion and liquidation.** MAE/MFE are updated from intrabar extremes. If equity plus worst-case unrealized PnL reaches zero, the position is liquidated and the run stops trading.
+4. **Evaluate the IR.** `execStatements(ir.body, i, rt, intents)` gathers entry, exit, risk, sizing, alert and marker intents. A per-bar operation budget bounds loops.
+5. **Schedule or execute signals.** Under `next_open`, actionable intents are carried to the next bar. Under `same_close`, they execute on the current close.
+6. **Account for holding costs.** Funding/borrow cost is prorated to the inferred bar duration and deducted while a position is open.
 
 Fills use `applySlippage()`; long entries and short exits fill *higher*, the opposite fill *lower*, by `slippagePct`. Commission is `qty * (entryPrice + exitPrice) * commissionPct/100`, deducted from realized PnL.
 
@@ -143,7 +149,7 @@ interface BacktestResult {
 }
 ```
 
-A `Trade.reason` is one of `"signal" | "stop" | "target" | "close"`.
+A `Trade.reason` is one of `"signal" | "stop" | "target" | "close" | "liquidation"`.
 
 ## Metrics produced
 
@@ -201,7 +207,7 @@ const shared = readSharedFromHash();           // { name, xml } | null on load
 
 ## The same evaluator on the backend
 
-The backtester and the live bot engine do not reimplement strategy logic — they run the same per-bar interpreter over the same IR shape. The backend copy lives in `backend/src/trading/strategy/evaluator.ts` (with matching `ir.ts` and `ta.ts`), and its `evaluateBar` carries the guarantee in its doc comment: *"This is the exact same evaluation the backtest engine uses, so live signals match backtested ones bar-for-bar."*
+The backtester and live bot engine currently run mirrored per-bar interpreters over the canonical shared IR shape. A stateful cross-runtime parity test compares frontend preview signals with backend evaluator intents bar-for-bar while the evaluator and TA implementations are moved into `strategy-core`.
 
 ```ts
 export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number): BarIntents

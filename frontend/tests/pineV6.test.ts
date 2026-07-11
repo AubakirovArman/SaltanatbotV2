@@ -678,6 +678,20 @@ plot(close, "c")`);
     expect(warnings.some((w) => /slanted/i.test(w))).toBe(true);
   });
 
+  it("vertical line.new segments map to chart event lines", () => {
+    const { ir, warnings } = convertPine(`//@version=6
+indicator("Cycles", overlay=true)
+if close > open
+    line.new(bar_index, close, bar_index, close + 1, xloc.bar_index, extend.both, color.gray)`);
+    let sawVline = false;
+    walkStmts(ir.body, (s) => {
+      if (s.k === "vline") sawVline = true;
+    });
+    expect(sawVline).toBe(true);
+    expect(warnings.some((w) => /vertical/i.test(w))).toBe(true);
+    expect(warnings.some((w) => /slanted/i.test(w))).toBe(false);
+  });
+
   // Wave 3: native ta.* nodes — the "practically any indicator" expansion.
   it("wave-3 ta.* functions convert, round-trip, and preview finite values", () => {
     const ir = roundTrips(`//@version=6

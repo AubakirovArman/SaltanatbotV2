@@ -16,6 +16,12 @@ const PRICE_FIELDS: [string, string][] = [
 
 export function registerStrategyBlocks() {
   if (blocksRegistered) return;
+  // Blockly ships blocks with these global names, but their field/input shapes
+  // differ from the stable Saltanatbot XML contract. Remove the built-ins
+  // deliberately before registering our compatible definitions; otherwise
+  // Blockly warns about an accidental overwrite on every headless import.
+  Blockly.Blocks.math_modulo = undefined;
+  Blockly.Blocks.logic_negate = undefined;
   Blockly.defineBlocksWithJsonArray([
     {
       type: "strategy_start",

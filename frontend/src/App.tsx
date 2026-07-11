@@ -9,6 +9,7 @@ import { StatsPanel } from "./components/StatsPanel";
 import { TopBar } from "./components/TopBar";
 import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
+import { loadLocale, storeLocale, type Locale } from "./i18n";
 import { useCompareSeries } from "./hooks/useCompareSeries";
 import { useMarketStream } from "./hooks/useMarketStream";
 import { useLivePositions } from "./hooks/useLivePositions";
@@ -73,6 +74,7 @@ export default function App() {
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     (typeof localStorage !== "undefined" && localStorage.getItem("mf:theme") === "light") ? "light" : "dark"
   );
+  const [locale, setLocale] = useState<Locale>(() => loadLocale());
   const [leftOpen, setLeftOpen] = useState(() => readPanel("mf:panel:left", true));
   const [rightOpen, setRightOpen] = useState(() => readPanel("mf:panel:right", true));
   const [workspaces, setWorkspaces] = useState<Workspace[]>(() => loadWorkspaces());
@@ -111,6 +113,11 @@ export default function App() {
       // ignore storage failures
     }
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    storeLocale(locale);
+  }, [locale]);
 
   // The strategy overlay is bound to the market/interval it was computed on.
   const activeOverlay =
@@ -224,13 +231,20 @@ export default function App() {
   const priceAlerts = usePriceAlerts(prices, decimalsFor);
   const livePositions = useLivePositions(instrument.symbol);
 
+  const chartCustomIndicators = useMemo(
+    () => strategyLibrary
+      .filter((item) => item.kind === "indicator" && !item.linkedIndicatorId)
+      .map((item) => ({ id: item.id, name: item.name, description: item.description })),
+    [strategyLibrary]
+  );
+
   const chartStrategies = useMemo(
     () => strategyLibrary.filter((item) => item.kind === "strategy").map((item) => ({ id: item.id, name: item.name, description: item.description })),
     [strategyLibrary]
   );
 
-  // Run a saved strategy on the current chart data and overlay its signals/trades.
-  const addStrategyToChart = async (id: string) => {
+  // Compile any saved custom indicator or strategy and overlay its chart visuals.
+  const addArtifactToChart = async (id: string) => {
     const artifact = strategyLibrary.find((item) => item.id === id);
     if (!artifact) return;
     const [{ compileXmlToIr }, backtest, { loadSecurityDataForIr }] = await Promise.all([
@@ -247,7 +261,9 @@ export default function App() {
       exchange: cryptoExchange
     });
     // Show the strategy's plotted lines + every signal point, plus the trades it took.
-    const preview = backtest.previewStrategy(compiled.ir, stream.candles, securityData);
+    const { previewCyclesAnalysis } = await import("./strategy/pine/cyclesAnalysisPreview");
+    const preview = previewCyclesAnalysis(compiled.ir, stream.candles) ??
+      backtest.previewStrategy(compiled.ir, stream.candles, securityData);
     const result = backtest.runBacktest(compiled.ir, stream.candles, backtest.DEFAULT_CONFIG, securityData);
     setOverlay({ id, name: artifact.name, plots: preview.plots, shapes: preview.shapes, signals: preview.signals, trades: result.trades, symbol, timeframe });
     const times = [...preview.signals.map((s) => s.time), ...result.trades.map((t) => t.exitTime)];
@@ -454,6 +470,7 @@ export default function App() {
         mode={mode}
         connection={stream.connection}
         theme={theme}
+        locale={locale}
         leftOpen={leftOpen}
         rightOpen={rightOpen}
         workspaces={workspaces}
@@ -466,6 +483,7 @@ export default function App() {
         onStrategyWarmup={warmStrategyLab}
         onOpenPalette={() => setPaletteOpen(true)}
         onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+        onToggleLocale={() => setLocale((current) => (current === "en" ? "ru" : "en"))}
         onToggleLeft={() => setLeftOpen((open) => !open)}
         onToggleRight={() => setRightOpen((open) => !open)}
       />
@@ -520,9 +538,10 @@ export default function App() {
               livePositions={livePositions}
               strategyName={activeOverlay?.name}
               onClearStrategy={() => setOverlay(undefined)}
+              customIndicators={chartCustomIndicators}
               strategies={chartStrategies}
-              activeStrategyId={activeOverlay?.id}
-              onAddStrategy={addStrategyToChart}
+              activeArtifactId={activeOverlay?.id}
+              onAddArtifact={addArtifactToChart}
               focusTime={activeOverlay ? chartFocus : undefined}
               theme={theme}
               onNeedHistory={stream.loadOlder}

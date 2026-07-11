@@ -19,6 +19,7 @@ import {
   Workflow
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { translate, type Locale } from "../i18n";
 import type { CatalogResponse, ChartType, Instrument, Timeframe } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
 import type { Workspace } from "../workspace/workspaces";
@@ -31,6 +32,7 @@ interface TopBarProps {
   mode: "chart" | "strategy" | "trade";
   connection: ConnectionState;
   theme: "dark" | "light";
+  locale: Locale;
   leftOpen: boolean;
   rightOpen: boolean;
   workspaces: Workspace[];
@@ -43,6 +45,7 @@ interface TopBarProps {
   onStrategyWarmup: () => void;
   onOpenPalette: () => void;
   onToggleTheme: () => void;
+  onToggleLocale: () => void;
   onToggleLeft: () => void;
   onToggleRight: () => void;
 }
@@ -67,13 +70,6 @@ const chartLabels = {
   renko: "Renko"
 } satisfies Record<ChartType, string>;
 
-const statusLabels: Record<ConnectionState, string> = {
-  connected: "live",
-  fallback: "synth",
-  error: "offline",
-  connecting: "sync"
-};
-
 /** Timeframes shown inline in the compact top-bar segment. The rest live in the
  * "more" dropdown so every timeframe stays selectable without cluttering the bar. */
 const COMPACT_TIMEFRAMES: Timeframe[] = ["5m", "15m", "1h", "4h", "1d", "1w"];
@@ -86,6 +82,7 @@ export function TopBar({
   mode,
   connection,
   theme,
+  locale,
   leftOpen,
   rightOpen,
   workspaces,
@@ -98,6 +95,7 @@ export function TopBar({
   onStrategyWarmup,
   onOpenPalette,
   onToggleTheme,
+  onToggleLocale,
   onToggleLeft,
   onToggleRight
 }: TopBarProps) {
@@ -135,7 +133,7 @@ export function TopBar({
             aria-pressed={mode === "chart"}
           >
             <CandlestickChart size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span>Chart</span>
+            <span>{translate(locale, "chart")}</span>
           </button>
           <button
             type="button"
@@ -146,7 +144,7 @@ export function TopBar({
             aria-pressed={mode === "strategy"}
           >
             <Workflow size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span>Strategy</span>
+            <span>{translate(locale, "strategy")}</span>
           </button>
           <button
             type="button"
@@ -155,7 +153,7 @@ export function TopBar({
             aria-pressed={mode === "trade"}
           >
             <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span>Trade</span>
+            <span>{translate(locale, "trade")}</span>
           </button>
         </div>
 
@@ -168,7 +166,7 @@ export function TopBar({
               className={`icon-button ${leftOpen ? "active" : ""}`}
               onClick={onToggleLeft}
               title="Toggle markets panel"
-              aria-label="Toggle markets panel"
+              aria-label={translate(locale, "toggleMarkets")}
               aria-pressed={leftOpen}
             >
               <PanelLeft size={15} strokeWidth={1.75} aria-hidden="true" />
@@ -178,7 +176,7 @@ export function TopBar({
               className={`icon-button ${rightOpen ? "active" : ""}`}
               onClick={onToggleRight}
               title="Toggle instrument panel"
-              aria-label="Toggle instrument panel"
+              aria-label={translate(locale, "toggleInstrument")}
               aria-pressed={rightOpen}
             >
               <PanelRight size={15} strokeWidth={1.75} aria-hidden="true" />
@@ -191,15 +189,24 @@ export function TopBar({
           onApply={onApplyWorkspace}
           onDelete={onDeleteWorkspace}
         />
-        <button type="button" className="icon-button" onClick={onOpenPalette} title="Command palette (⌘K)" aria-label="Open command palette">
+        <button type="button" className="icon-button" onClick={onOpenPalette} title="Command palette (⌘K)" aria-label={translate(locale, "openPalette")}>
           <Command size={14} strokeWidth={1.75} aria-hidden="true" />
         </button>
-        <button type="button" className="icon-button" onClick={onToggleTheme} title="Toggle theme" aria-label="Toggle light or dark theme">
+        <button type="button" className="icon-button" onClick={onToggleTheme} title="Toggle theme" aria-label={translate(locale, "toggleTheme")}>
           {theme === "dark" ? <Sun size={14} strokeWidth={1.75} aria-hidden="true" /> : <Moon size={14} strokeWidth={1.75} aria-hidden="true" />}
+        </button>
+        <button
+          type="button"
+          className="icon-button locale-toggle"
+          onClick={onToggleLocale}
+          title={locale === "en" ? "Русский" : "English"}
+          aria-label={translate(locale, locale === "en" ? "switchToRussian" : "switchToEnglish")}
+        >
+          {locale.toUpperCase()}
         </button>
         <div className={`status-pill ${connection}`} title={`Feed: ${connection}`} role="status">
           <i aria-hidden="true" />
-          {statusLabels[connection]}
+          {translate(locale, connection === "connected" ? "statusConnected" : connection === "fallback" ? "statusFallback" : connection === "error" ? "statusError" : "statusConnecting")}
         </div>
       </div>
     </header>

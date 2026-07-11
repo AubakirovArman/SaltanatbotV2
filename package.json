@@ -4,21 +4,25 @@
   "private": true,
   "type": "module",
   "workspaces": [
+    "packages/*",
     "backend",
     "frontend"
   ],
   "scripts": {
-    "dev": "concurrently -n backend,frontend -c cyan,green \"npm --workspace backend run dev\" \"npm --workspace frontend run dev -- --host 0.0.0.0\"",
-    "build": "npm --workspaces run build",
+    "dev": "concurrently -n backend,frontend -c cyan,green \"PORT=4181 npm --workspace backend run dev\" \"npm --workspace frontend run dev -- --host 0.0.0.0\"",
+    "build": "npm --workspaces --if-present run build",
     "start": "npm --workspace backend run start",
-    "check": "npm --workspaces run check",
+    "check": "npm --workspaces --if-present run check",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "lint": "biome check --formatter-enabled=false --assists-enabled=false .",
     "format": "biome format --write ."
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@biomejs/biome": "^1.9.4",
     "concurrently": "^9.2.1",
-    "vitest": "^2.1.9"
+    "vitest": "^4.1.10"
   }
 }

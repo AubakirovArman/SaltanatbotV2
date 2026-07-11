@@ -17,6 +17,7 @@ export class SyntheticProvider implements MarketProvider {
   private live = new Map<string, Candle>();
 
   async getCandles(instrument: Instrument, timeframe: Timeframe, range: CandleRange, _options?: MarketRouteOptions) {
+    this.assertUsableSeed(instrument);
     const tf = timeframeMs[timeframe];
     const nowBucket = alignTime(Date.now(), timeframe);
     const end = range.endTime !== undefined ? alignTime(range.endTime, timeframe) : nowBucket;
@@ -46,6 +47,7 @@ export class SyntheticProvider implements MarketProvider {
     onStatus?: (message: string) => void,
     _options?: MarketRouteOptions
   ): Promise<MarketSubscription> {
+    this.assertUsableSeed(instrument);
     onStatus?.("Synthetic live stream active");
     const interval = setInterval(() => {
       onCandle(this.advance(instrument, timeframe));
@@ -151,6 +153,12 @@ export class SyntheticProvider implements MarketProvider {
 
   private minPrice(instrument: Instrument) {
     return instrument.basePrice * 0.05;
+  }
+
+  private assertUsableSeed(instrument: Instrument) {
+    if (!Number.isFinite(instrument.basePrice) || instrument.basePrice <= 0) {
+      throw new Error(`Synthetic fallback unavailable for ${instrument.symbol}: no positive reference price`);
+    }
   }
 
   private volume(instrument: Instrument, time: number) {

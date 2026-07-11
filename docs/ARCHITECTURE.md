@@ -1,16 +1,18 @@
 # Architecture
 
-SaltanatbotV2 is an open-source crypto trading terminal built as an npm-workspaces monorepo with two workspaces: an Express 5 + `ws` backend that proxies public market data and drives a persisted trading engine, and a React 18 + Vite 8 frontend that renders a custom canvas charting UI and a Blockly-based strategy builder. Market data is normalized behind a `ProviderRouter` that routes each request to Binance, Bybit, or a deterministic synthetic feed, and strategies are expressed as a shared intermediate representation (IR) that the frontend uses for backtesting and the backend re-uses for live evaluation. This document describes the monorepo layout, each tier, the market-data layer, the shared strategy IR, and the end-to-end request/data flow.
+SaltanatbotV2 is an open-source crypto trading terminal built as an npm-workspaces monorepo. The Express 5 + `ws` backend proxies public market data and drives a persisted trading engine; the React 18 + Vite 8 frontend renders a custom canvas chart and Blockly strategy builder; shared workspaces own canonical transport and strategy contracts. Market data is normalized behind a `ProviderRouter`, and strategies compile to a shared intermediate representation (IR).
 
 ## Monorepo layout
 
-The repository is a private npm workspace root that owns two packages:
+The repository is a private npm workspace root that owns two applications and incremental shared packages:
 
 | Package | Name | Location | Role |
 | --- | --- | --- | --- |
 | Root | `saltanatbotv2` | `/` | Workspace host + orchestration scripts |
 | Backend | `@saltanatbotv2/backend` | `backend/` | HTTP + WebSocket server, market providers, trading engine |
 | Frontend | `@saltanatbotv2/frontend` | `frontend/` | React SPA, canvas chart engine, strategy lab |
+| Contracts | `@saltanatbotv2/contracts` | `packages/contracts/` | Canonical market and WebSocket types |
+| Strategy core | `@saltanatbotv2/strategy-core` | `packages/strategy-core/` | Canonical IR types, version and shared runtime primitives |
 
 The root `package.json` declares the workspaces and the scripts that fan out into them:
 
@@ -19,9 +21,9 @@ The root `package.json` declares the workspaces and the scripts that fan out int
   "name": "saltanatbotv2",
   "private": true,
   "type": "module",
-  "workspaces": ["backend", "frontend"],
+  "workspaces": ["packages/*", "backend", "frontend"],
   "scripts": {
-    "dev": "concurrently -n backend,frontend -c cyan,green \"npm --workspace backend run dev\" \"npm --workspace frontend run dev -- --host 0.0.0.0\"",
+    "dev": "concurrently -n backend,frontend -c cyan,green \"PORT=4181 npm --workspace backend run dev\" \"npm --workspace frontend run dev -- --host 0.0.0.0\"",
     "build": "npm --workspaces run build",
     "start": "npm --workspace backend run start",
     "check": "npm --workspaces run check"
@@ -31,8 +33,8 @@ The root `package.json` declares the workspaces and the scripts that fan out int
 
 | Root script | What it does |
 | --- | --- |
-| `npm run dev` | Runs backend (`tsx watch`) and frontend (`vite`) together via `concurrently` |
-| `npm run build` | Builds both workspaces (`tsc` for backend, `tsc -b && vite build` for frontend) |
+| `npm run dev` | Runs backend on `4181` (`tsx watch`) and frontend on `4180` (`vite`) together via `concurrently` |
+| `npm run build` | Builds every workspace with a build script (`tsc` backend, `tsc -b && vite build` frontend) |
 | `npm start` | Starts the compiled backend (`node dist/server.js`), which also serves the built frontend |
 | `npm run check` | Type-checks both workspaces without emitting |
 
@@ -48,8 +50,8 @@ Key pieces wired up in `backend/src/server.ts`:
 - **REST endpoints** — `GET /api/health`, `GET /api/catalog`, `GET /api/candles`, `GET /api/sparklines`, plus the trading router mounted at `/api/trade`.
 - **Validation** — every query is parsed with `zod` (e.g. `candleQuery` enforces `symbol`, an enum `timeframe`, a `limit` clamped to `10..1000`, and an `exchange` enum of `binance | bybit` defaulting to `binance`).
 - **Static hosting** — after the API routes, `express.static` serves `../../frontend/dist` and a catch-all route (`app.get(/.*/, ...)`) returns `index.html` so the SPA can deep-link.
-- **Configuration** — `PORT` (default `4180`) and `HOST` (default `0.0.0.0`) come from the environment.
-- **Graceful shutdown** — `SIGINT`/`SIGTERM` call `trading.engine.stopAll()` and close the server.
+- **Configuration** — `PORT` (default `4180`) and `HOST` (default `127.0.0.1`) come from the environment. A wider bind must be explicitly requested.
+- **Graceful shutdown** — `SIGINT`/`SIGTERM` stop Telegram control, call `trading.engine.shutdown()` so desired bot state remains resumable, and close the server.
 
 ### Persistence and secrets
 
@@ -79,7 +81,7 @@ backend/src/
     ├── store.ts              # node:sqlite persistence + AES-256-GCM key storage
     ├── types.ts              # BotConfig, ExchangeAdapter, account/position types
     ├── exchange/             # paper / binance / bybit execution adapters
-    └── strategy/             # Backend copy of the strategy IR + evaluator + TA
+    └── strategy/             # Backend evaluator/TA plus a facade over shared IR
 ```
 
 ## Frontend (`@saltanatbotv2/frontend`)
@@ -170,10 +172,7 @@ Notes grounded in the code:
 
 ## Shared strategy IR
 
-Strategies are not stored as executable code — they compile to a typed **intermediate representation** that both tiers understand. The IR type module exists in two places with an identical shape:
-
-- Frontend: `frontend/src/strategy/ir.ts` — used by the Blockly compiler and the in-browser backtester.
-- Backend: `backend/src/trading/strategy/ir.ts` — consumed by the live `evaluateBar` evaluator inside the trading engine.
+Strategies are not stored as executable code — they compile to a typed **intermediate representation** that both tiers understand. The canonical IR declarations and schema version live in `packages/strategy-core`; the frontend and backend `ir.ts` files are compatibility facades while evaluator/TA extraction continues.
 
 This is what lets a strategy backtested in the browser be executed identically on the server for live trading. The IR is a small algebra of numeric expressions, boolean expressions, and statements:
 
@@ -191,7 +190,7 @@ export interface StrategyIR {
 | `BoolExpr` | `bool`, `compare`, `logic`, `not`, `cross`, `trend`, `between`, `session`, `dayofweek` |
 | `Stmt` | `entry`, `exit`, `stop`, `target`, `trail`, `size`, `setvar`, `alert`, `plot`, `marker`, `if` |
 
-The frontend backtester (`strategy/backtest.ts`) walks candles bar-by-bar through this IR to produce `signals`, `plots`, and `trades` for the chart overlay; the backend `evaluateBar` (`trading/strategy/evaluator.ts`) walks the same IR against the live candle buffer inside `TradingEngine` to emit entry/exit intents for the execution adapters. Both tiers ship their own copy of the TA helpers (`ta.ts`) that back the expression kinds.
+The frontend backtester (`strategy/backtest.ts`) walks candles bar-by-bar through this IR to produce `signals`, `plots`, and `trades`; the backend evaluator walks the same IR against the live candle buffer. TA/evaluator implementations are still mirrored temporarily, protected by a stateful cross-runtime parity test, and are scheduled to move into `strategy-core`.
 
 ## Request and data flow
 

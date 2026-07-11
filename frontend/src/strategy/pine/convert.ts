@@ -1,7 +1,23 @@
 import type { BoolExpr, NumExpr, Stmt, StrategyIR, StrategyInput } from "../ir";
 import { IR_VERSION } from "../ir";
+import { arg, argRequired } from "./arguments";
+import { PineConvertError } from "./errors";
+import { containsVar, isConstNum, shiftBool, shiftNum } from "./expressionHistory";
+import {
+  COLOR_HEX,
+  DRAWING_MUTATE_RE,
+  DRAWING_NEW_RE,
+  MATH_CONSTS,
+  NAME_RE,
+  PINE_NAMESPACES,
+  PLOT_CALLS,
+  PRICE_FIELDS,
+  normalizeTa,
+  timeframeToSeconds
+} from "./language";
 import { PineLexError } from "./lexer";
 import { type PineFuncDef, PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
+import { sanitizeText } from "./text";
 
 /**
  * Semantic mapping: Pine AST → StrategyIR.
@@ -25,45 +41,13 @@ export interface PineResult {
   warnings: string[];
 }
 
-export class PineConvertError extends Error {}
+export { PineConvertError } from "./errors";
 
 type Val = { t: "num"; e: NumExpr } | { t: "bool"; e: BoolExpr } | { t: "str"; v: string };
 type PlotHandle = { value: NumExpr; pane: "price" | "sub"; label: string };
 
-const PRICE_FIELDS = new Set(["open", "high", "low", "close", "volume", "hl2", "hlc3", "ohlc4"]);
 /** Pine `na` as a numeric value: 0/0 → NaN, so nz()/na()/isfinite handle it uniformly. */
 const NAN_NUM: NumExpr = { k: "arith", op: "/", a: { k: "num", v: 0 }, b: { k: "num", v: 0 } };
-const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
-const PLOT_CALLS = new Set(["plot", "hline", "plotshape", "plotchar"]);
-const PINE_NAMESPACES = new Set([
-  "array", "barstate", "box", "chart", "color", "display", "extend", "hline", "input", "label", "line", "linefill",
-  "location", "map", "math", "matrix", "plot", "polyline", "position", "request", "shape", "size", "str", "strategy",
-  "syminfo", "table", "ta", "timeframe", "xloc", "yloc"
-]);
-/** Drawing-object constructors (label.new, line.new, box.new, …). */
-const DRAWING_NEW_RE = /^(label|line|linefill|box|table|polyline)\.new$/;
-/** Drawing-object mutators/removers whose effects we can't track (skipped with a warning). */
-const DRAWING_MUTATE_RE = /^(label|line|linefill|box|table|polyline)\.(set_\w+|delete|copy|all)$/;
-
-const COLOR_HEX: Record<string, string> = {
-  red: "#ef5350",
-  green: "#26a69a",
-  lime: "#23c97a",
-  blue: "#4db6ff",
-  aqua: "#26c6da",
-  teal: "#26a69a",
-  orange: "#ff9800",
-  yellow: "#f7c948",
-  purple: "#bd58a4",
-  fuchsia: "#e040fb",
-  maroon: "#c05f5f",
-  navy: "#3949ab",
-  olive: "#9e9d24",
-  silver: "#b0bec5",
-  gray: "#8f9bb3",
-  white: "#eceff1",
-  black: "#263238"
-};
 
 export function convertPine(source: string): PineResult {
   let ast: PineStmt[];
@@ -705,22 +689,30 @@ class Converter {
     return [{ k: "marker", dir, label: sanitizeText(text ?? ""), when: { k: "bool", v: true } }];
   }
 
-  /** line.new(x1, y1, x2, y2, …) → a horizontal level (ray) when y1 and y2 are the
-   *  same expression; slanted segments have no per-bar representation and are skipped. */
+  /** line.new(x1, y1, x2, y2, …) → a vertical event line when x1/x2 match, or a
+   *  horizontal level when y1/y2 match. Other segments have no representation. */
   private mapLineNew(args: PineArg[]): Stmt[] {
+    const x1 = arg(args, 0, "x1");
     const y1 = arg(args, 1, "y1");
+    const x2 = arg(args, 2, "x2");
     const y2 = arg(args, 3, "y2");
-    if (!y1) {
+    if (!x1 || !y1) {
       this.warn("Skipped line.new() without coordinates.");
       return [];
     }
-    if (y2 && JSON.stringify(y1.value) !== JSON.stringify(y2.value)) {
-      this.warnOnce("slanted", "Slanted line.new() segments (y1 ≠ y2) can't be drawn per-bar — skipped.");
-      return [];
-    }
-    this.warnOnce("linelevel", "line.new() imported as a horizontal level from the firing bar (x-coordinates/extend are approximated).");
     const color = this.colorOf(arg(args, undefined, "color")?.value) ?? "#8f9bb3";
-    return [{ k: "ray", price: this.num(y1.value), when: { k: "bool", v: true }, label: "", color }];
+    const sameX = !!x2 && JSON.stringify(x1.value) === JSON.stringify(x2.value);
+    if (sameX) {
+      this.warnOnce("linevertical", "Vertical line.new() imported at the firing bar (its x-coordinate/extend are approximated).");
+      return [{ k: "vline", when: { k: "bool", v: true }, label: "", color }];
+    }
+    const sameY = !y2 || JSON.stringify(y1.value) === JSON.stringify(y2.value);
+    if (sameY) {
+      this.warnOnce("linelevel", "line.new() imported as a horizontal level from the firing bar (x-coordinates/extend are approximated).");
+      return [{ k: "ray", price: this.num(y1.value), when: { k: "bool", v: true }, label: "", color }];
+    }
+    this.warnOnce("slanted", "Slanted line.new() segments can't be drawn per-bar — skipped.");
+    return [];
   }
 
   /** box.new(left, top, right, bottom, …) → a box over the bars where this statement
@@ -1994,86 +1986,6 @@ class Converter {
 
 // ---------- module helpers ----------
 
-/** Positional/named argument lookup (positional index counts unnamed args only). */
-function arg(args: PineArg[], position: number | undefined, name: string): PineArg | undefined {
-  const named = args.find((a) => a.name === name);
-  if (named) return named;
-  if (position === undefined) return undefined;
-  const positional = args.filter((a) => !a.name);
-  return positional[position];
-}
-
-function argRequired(args: PineArg[], position: number, name: string, fn: string): PineArg {
-  const found = arg(args, position, name);
-  if (!found) throw new PineConvertError(`${fn}() is missing its "${name}" argument.`);
-  return found;
-}
-
-/** v4 bare names (sma, crossover, study…) → v5 namespaced equivalents. */
-function normalizeTa(callee: string): string {
-  if (callee.includes(".")) return callee;
-  const v4ta = new Set([
-    "sma", "ema", "wma", "vwma", "rsi", "atr", "tr", "stdev", "highest", "lowest", "change", "mom", "cci", "roc",
-    "wpr", "stoch", "vwap", "crossover", "crossunder", "cross", "rising", "falling", "macd", "bb", "correlation"
-  ]);
-  if (v4ta.has(callee)) return `ta.${callee}`;
-  const v4math = new Set(["abs", "round", "floor", "ceil", "max", "min", "pow", "sqrt", "avg"]);
-  if (v4math.has(callee)) return `math.${callee}`;
-  return callee;
-}
-
-const MATH_CONSTS: Record<string, number> = {
-  "math.pi": Math.PI,
-  "math.e": Math.E,
-  "math.phi": 1.618033988749895,
-  "math.rphi": 0.6180339887498949
-};
-
-/** Shift a numeric series expression back by n bars (for inlined boolean/numeric history). */
-function shiftNum(expr: NumExpr, n: number): NumExpr {
-  if (n === 0) return expr;
-  if (expr.k === "num" || expr.k === "input") return expr; // constants don't move with history
-  // A mutable var's previous-bar value is exactly varprev (only [1] exists).
-  if (expr.k === "var") {
-    if (n === 1) return { k: "varprev", name: expr.name };
-    throw new PineConvertError(`Only the previous bar ([1]) is available for variable "${expr.name}", not [${n}].`);
-  }
-  if (expr.k === "arith") return { k: "arith", op: expr.op, a: shiftNum(expr.a, n), b: shiftNum(expr.b, n) };
-  if (expr.k === "minmax") return { k: "minmax", op: expr.op, a: shiftNum(expr.a, n), b: shiftNum(expr.b, n) };
-  if (expr.k === "unary") return { k: "unary", op: expr.op, a: shiftNum(expr.a, n) };
-  if (containsVar(expr)) throw new PineConvertError("History of a mutable-variable expression isn't supported.");
-  if (expr.k === "price") return { k: "price", field: expr.field, offset: (expr.offset ?? 0) + n };
-  if (expr.k === "shift") return { k: "shift", src: expr.src, offset: expr.offset + n };
-  return { k: "shift", src: expr, offset: n };
-}
-
-/** Shift an inlined boolean expression back by n bars. Multi-bar primitives (cross,
- *  trend, session) can't be re-based, so they're rejected with a clear message. */
-function shiftBool(expr: BoolExpr, n: number): BoolExpr {
-  if (n === 0) return expr;
-  switch (expr.k) {
-    case "bool":
-      return expr;
-    case "varb":
-      // Bool vars are stored as 0/1 in the same slot numeric vars use, so the
-      // previous-bar value is exactly varprev != 0. Only [1] is representable.
-      if (n === 1) return { k: "compare", op: "!=", a: { k: "varprev", name: expr.name }, b: { k: "num", v: 0 } };
-      throw new PineConvertError(`Only the previous bar (${expr.name}[1]) is available for a flag variable, not [${n}].`);
-    case "compare":
-      return { k: "compare", op: expr.op, a: shiftNum(expr.a, n), b: shiftNum(expr.b, n) };
-    case "logic":
-      return { k: "logic", op: expr.op, a: shiftBool(expr.a, n), b: shiftBool(expr.b, n) };
-    case "not":
-      return { k: "not", a: shiftBool(expr.a, n) };
-    case "between":
-      return { k: "between", value: shiftNum(expr.value, n), low: shiftNum(expr.low, n), high: shiftNum(expr.high, n) };
-    case "isna":
-      return { k: "isna", a: shiftNum(expr.a, n) };
-    default:
-      throw new PineConvertError(`The history of this condition (${expr.k}) can't be computed — rewrite it without [n] on that sub-expression.`);
-  }
-}
-
 function identName(expr: PineExpr | undefined): string {
   return expr?.t === "ident" ? expr.name : "";
 }
@@ -2228,21 +2140,6 @@ function literalColorByte(expr: PineExpr | undefined): number | undefined {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
-function timeframeToSeconds(value: string): number {
-  const text = value.trim();
-  if (!text) return 60;
-  const match = /^(\d+)?([SMHDW])?$/i.exec(text);
-  if (!match) return 60;
-  const n = Number(match[1] || 1);
-  const unit = (match[2] || "").toUpperCase();
-  if (unit === "S") return n;
-  if (unit === "H") return n * 3600;
-  if (unit === "D") return n * 86_400;
-  if (unit === "W") return n * 604_800;
-  if (unit === "M") return n * 2_592_000;
-  return n * 60;
-}
-
 /** Encode a BoolExpr as 0/1 for the numeric-only init section. */
 function boolToNum(expr: BoolExpr): NumExpr {
   if (expr.k === "bool") return { k: "num", v: expr.v ? 1 : 0 };
@@ -2251,102 +2148,6 @@ function boolToNum(expr: BoolExpr): NumExpr {
 
 function boolToNumericSeries(expr: BoolExpr): NumExpr {
   return { k: "cond", cond: expr, a: { k: "num", v: 1 }, b: { k: "num", v: 0 } };
-}
-
-/** Constant (num / negated num) check — used for init and exit-freeze warnings. */
-function isConstNum(expr: NumExpr): boolean {
-  if (expr.k === "num" || expr.k === "input") return true;
-  if (expr.k === "unary") return isConstNum(expr.a);
-  if (expr.k === "arith") return isConstNum(expr.a) && isConstNum(expr.b);
-  return false;
-}
-
-/** Whether a NumExpr contains a mutable-variable read anywhere. */
-function containsVar(expr: NumExpr): boolean {
-  switch (expr.k) {
-    case "var":
-    case "varprev":
-    case "histn":
-      // Scalar-only reads (loop counters / mutable state) — never valid as a vectorized series.
-      return true;
-    case "security":
-      return containsVar(expr.source);
-    case "time":
-      return false;
-    case "arith":
-    case "minmax":
-    case "nz":
-      return containsVar(expr.a) || containsVar(expr.b);
-    case "unary":
-      return containsVar(expr.a);
-    case "shift":
-    case "cum":
-      return containsVar(expr.src);
-    case "cond":
-      return containsVarInBool(expr.cond) || containsVar(expr.a) || containsVar(expr.b);
-    case "barssince":
-      return containsVarInBool(expr.cond);
-    case "agg":
-      return containsVar(expr.src) || containsVar(expr.period);
-    case "ma":
-    case "rsi":
-    case "stdev":
-    case "extreme":
-    case "change":
-    case "roc":
-    case "extremebars":
-    case "linreg":
-    case "cmo":
-    case "alma":
-    case "cog":
-    case "percentrank":
-      return containsVar(expr.source) || containsVar(expr.period);
-    case "bollinger":
-      return containsVar(expr.source) || containsVar(expr.period) || containsVar(expr.dev);
-    case "macd":
-      return containsVar(expr.source) || containsVar(expr.fast) || containsVar(expr.slow) || containsVar(expr.signal);
-    case "valuewhen":
-      return containsVarInBool(expr.cond) || containsVar(expr.src);
-    case "supertrend":
-      return containsVar(expr.factor) || containsVar(expr.period);
-    case "dmi":
-      return containsVar(expr.period) || containsVar(expr.smoothing);
-    case "mfi":
-      return containsVar(expr.period);
-    case "kc":
-      return containsVar(expr.period) || containsVar(expr.mult);
-    case "tsi":
-      return containsVar(expr.source) || containsVar(expr.short) || containsVar(expr.long);
-    case "sar":
-      return containsVar(expr.start) || containsVar(expr.inc) || containsVar(expr.max);
-    case "correlation":
-      return containsVar(expr.a) || containsVar(expr.b) || containsVar(expr.period);
-    default:
-      return false;
-  }
-}
-
-/** Whether a BoolExpr transitively reads a mutable variable (used inside cond/barssince). */
-function containsVarInBool(expr: BoolExpr): boolean {
-  switch (expr.k) {
-    case "varb":
-      return true;
-    case "compare":
-    case "cross":
-      return containsVar(expr.a) || containsVar(expr.b);
-    case "logic":
-      return containsVarInBool(expr.a) || containsVarInBool(expr.b);
-    case "not":
-      return containsVarInBool(expr.a);
-    case "trend":
-      return containsVar(expr.source) || containsVar(expr.period);
-    case "between":
-      return containsVar(expr.value) || containsVar(expr.low) || containsVar(expr.high);
-    case "isna":
-      return containsVar(expr.a);
-    default:
-      return false;
-  }
 }
 
 /** Pre-scan: every name that is ever reassigned (:=, +=…) anywhere in the script. */
@@ -2363,17 +2164,6 @@ function collectReassigned(stmts: PineStmt[]): Set<string> {
   };
   walk(stmts);
   return out;
-}
-
-/** Strip XML-unsafe control characters and lone surrogates from user text. */
-function sanitizeText(text: string): string {
-  let out = "";
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    if (code < 0x20 || code === 0x7f || (code >= 0xd800 && code <= 0xdfff)) continue;
-    out += ch;
-  }
-  return out.normalize("NFC").slice(0, 200);
 }
 
 /** Detect whether a Pine expression is boolean-typed in our mapping. */

@@ -19,12 +19,21 @@ interface ChartIndicatorOverlayProps {
   indicators: IndicatorConfig[];
   onChange: (indicators: IndicatorConfig[]) => void;
   onEditLogic: (indicator: IndicatorConfig) => void;
+  customIndicators?: StrategyMenuItem[];
   strategies?: StrategyMenuItem[];
-  activeStrategyId?: string;
-  onAddStrategy?: (id: string) => void;
+  activeArtifactId?: string;
+  onAddArtifact?: (id: string) => void;
 }
 
-export function ChartIndicatorOverlay({ indicators, onChange, onEditLogic, strategies = [], activeStrategyId, onAddStrategy }: ChartIndicatorOverlayProps) {
+export function ChartIndicatorOverlay({
+  indicators,
+  onChange,
+  onEditLogic,
+  customIndicators = [],
+  strategies = [],
+  activeArtifactId,
+  onAddArtifact
+}: ChartIndicatorOverlayProps) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string>();
   const active = indicators.filter((indicator) => indicator.enabled);
@@ -87,7 +96,26 @@ export function ChartIndicatorOverlay({ indicators, onChange, onEditLogic, strat
           ))}
           {available.length === 0 && <p>All indicators added</p>}
 
-          {onAddStrategy && strategies.length > 0 && (
+          {onAddArtifact && customIndicators.length > 0 && (
+            <>
+              <span className="menu-group-title">Custom indicators</span>
+              {customIndicators.map((indicator) => (
+                <button
+                  type="button"
+                  key={indicator.id}
+                  role="menuitem"
+                  className={`menu-strategy ${indicator.id === activeArtifactId ? "active" : ""}`}
+                  onClick={() => { onAddArtifact(indicator.id); setAdding(false); }}
+                >
+                  <Code2 size={12} aria-hidden="true" />
+                  <strong>{indicator.name}</strong>
+                  <small>{indicator.description}</small>
+                </button>
+              ))}
+            </>
+          )}
+
+          {onAddArtifact && strategies.length > 0 && (
             <>
               <span className="menu-group-title">Strategies</span>
               {strategies.map((strategy) => (
@@ -95,8 +123,8 @@ export function ChartIndicatorOverlay({ indicators, onChange, onEditLogic, strat
                   type="button"
                   key={strategy.id}
                   role="menuitem"
-                  className={`menu-strategy ${strategy.id === activeStrategyId ? "active" : ""}`}
-                  onClick={() => { onAddStrategy(strategy.id); setAdding(false); }}
+                  className={`menu-strategy ${strategy.id === activeArtifactId ? "active" : ""}`}
+                  onClick={() => { onAddArtifact(strategy.id); setAdding(false); }}
                 >
                   <Workflow size={12} aria-hidden="true" />
                   <strong>{strategy.name}</strong>

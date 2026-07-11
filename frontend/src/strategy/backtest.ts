@@ -746,6 +746,9 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[], securityData?
         case "setvar":
           rt.vars.set(stmt.name, evalNum(stmt.value, i, rt));
           break;
+        case "setvarb":
+          rt.vars.set(stmt.name, evalBool(stmt.value, i, rt) ? 1 : 0);
+          break;
         case "plot": {
           const value = evalNum(stmt.value, i, rt);
           if (Number.isFinite(value)) (plotMap.get(stmt) as PlotSeries).points.push({ time: candles[i].time, value });

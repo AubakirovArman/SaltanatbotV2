@@ -236,12 +236,13 @@ npm start
 | `npm run build`   | `npm --workspaces run build` (backend `tsc`, frontend `vite build`). |
 | `npm start`       | `npm --workspace backend run start` → `node dist/server.js`. |
 
-The server binds to `HOST:PORT` and, on `SIGINT` / `SIGTERM`, stops all running bots and closes gracefully:
+The server binds to `HOST:PORT` and, on `SIGINT` / `SIGTERM`, stops Telegram control, shuts down active runtime subscriptions while preserving resumable desired bot state, and closes gracefully:
 
 ```ts
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
-    trading.engine.stopAll();
+    trading.telegramControl.stop();
+    trading.engine.shutdown();
     server.close(() => process.exit(0));
   });
 }

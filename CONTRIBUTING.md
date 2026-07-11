@@ -1,6 +1,6 @@
 # Contributing guide
 
-Thanks for your interest in improving **SaltanatbotV2**, an open-source crypto trading terminal. This repository is an npm-workspaces monorepo containing a TypeScript **backend** (Express + WebSocket market/trading server) and a **frontend** (React + Vite + Blockly strategy builder). This guide explains how to set up the project, the scripts and conventions used across both workspaces, and how to extend the three most common surfaces: market instruments, chart indicators / strategy blocks, and trading commands.
+Thanks for your interest in improving **SaltanatbotV2**, an open-source crypto trading terminal. This npm-workspaces monorepo contains a TypeScript backend, a React frontend and shared contract/strategy packages.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ No database or external service is required to run the app locally. Live crypto 
 
 ## Install
 
-Install once at the repo root. Because `package.json` declares `"workspaces": ["backend", "frontend"]`, this installs dependencies for **both** workspaces:
+Install once at the repo root. npm installs the backend, frontend and `packages/*` shared workspaces together:
 
 ```bash
 npm install
@@ -25,7 +25,7 @@ All scripts below are defined in the root `package.json` and delegate to the wor
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Runs backend and frontend together via `concurrently`. Backend runs `tsx watch src/server.ts`; frontend runs `vite --host 0.0.0.0`. |
+| `npm run dev` | Runs backend on `4181` and frontend on `4180` via `concurrently`. Vite proxies API and WebSocket traffic to the backend. |
 | `npm run build` | `npm --workspaces run build` — compiles the backend with `tsc` (emitting to `backend/dist`) and builds the frontend with `tsc -b && vite build`. |
 | `npm run check` | `npm --workspaces run check` — type-checks both workspaces with no emit (`tsc --noEmit` on the backend, `tsc -b --noEmit` on the frontend). |
 | `npm start` | Runs the built backend: `node dist/server.js` (run `npm run build` first). |
@@ -34,11 +34,11 @@ Run `npm run check` before opening a pull request — it is the fastest way to c
 
 ### Backend server defaults
 
-The backend server (`backend/src/server.ts`) reads its port and host from the environment, defaulting to port `4180` and host `0.0.0.0`:
+The backend server (`backend/src/server.ts`) reads its port and host from the environment, defaulting to port `4180` and the loopback host `127.0.0.1`:
 
 ```ts
 const port = Number(process.env.PORT ?? 4180);
-const host = process.env.HOST ?? "0.0.0.0";
+const host = process.env.HOST ?? "127.0.0.1";
 ```
 
 ## Repository layout
@@ -93,7 +93,7 @@ These conventions are enforced or observed throughout the existing code — plea
   The frontend uses `"module": "ESNext"` / `"moduleResolution": "Node"` with Vite, so frontend imports are written **without** an extension (e.g. `import { compileWorkspace } from "./compile"`).
 - **No `eval` in the strategy engine.** Strategies are compiled from Blockly into a plain JSON **IR** (intermediate representation) and interpreted — never turned into executable code strings. `compileWorkspace()` in `frontend/src/strategy/compile.ts` is documented as producing a "safe JSON-IR (no eval, no code strings)", and the evaluator (`backend/src/trading/strategy/evaluator.ts`) walks that IR node-by-node. Do not introduce `eval`, `new Function`, or dynamic code generation into the strategy path.
 - **Functional React components.** Components are function components using hooks (`useState`, `useEffect`, `useMemo`, `lazy`/`Suspense`), as seen in `App.tsx`. There are no class components — keep it that way.
-- **Shared IR shape.** The strategy IR types exist on both sides (`frontend/src/strategy/ir.ts` and `backend/src/trading/strategy/ir.ts`) and the indicator math (`ta.ts`) is mirrored so the frontend backtest and the backend live engine evaluate identically. If you change one, change the other to keep them in sync.
+- **Shared IR shape.** Change IR nodes in `packages/strategy-core`. Frontend/backend `ir.ts` files only re-export that package. TA/evaluator code remains temporarily mirrored, so update both sides and the parity fixtures until extraction is complete.
 
 ## How to add things
 
@@ -140,7 +140,7 @@ There are two related indicator surfaces. Pick the one that matches your goal.
 | Step | File |
 | --- | --- |
 | Define the block (JSON) and add it to a toolbox category | `frontend/src/strategy/blocks.ts` |
-| Add the IR node to `NumExpr` / `BoolExpr` / `Stmt` | `frontend/src/strategy/ir.ts` **and** `backend/src/trading/strategy/ir.ts` |
+| Add the IR node to `NumExpr` / `BoolExpr` / `Stmt` | `packages/strategy-core/index.d.ts` |
 | Compile the block into the IR node | `frontend/src/strategy/compile.ts` |
 | Implement the indicator math | `frontend/src/strategy/ta.ts` **and** `backend/src/trading/strategy/ta.ts` |
 | Evaluate the IR node per bar | `backend/src/trading/strategy/evaluator.ts` |

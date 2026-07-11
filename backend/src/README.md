@@ -1,0 +1,27 @@
+# Backend source
+
+The backend composes public market data, authenticated trading APIs, WebSocket streams, persistence and execution adapters.
+
+## Entry point
+
+`server.ts` is the composition root. It should wire modules rather than accumulate domain behavior.
+
+## Boundaries
+
+- Public request/response contracts should move to `packages/contracts`.
+- Trading domain logic must not depend on Express request objects.
+- Market/exchange adapters implement explicit ports.
+- SQLite access stays behind stores/repositories.
+- Live trading paths fail closed and never consume synthetic fallback data.
+
+## Invariants
+
+- Loopback is the default bind.
+- Trade mutations require role authorization and CSRF in browser sessions.
+- WebSocket trade access uses short-lived one-use tickets.
+- Secrets are encrypted at rest and redacted from audit data.
+- Shutdown preserves resumable desired bot state and closes subscriptions.
+
+## Tests
+
+Use pure unit tests, fake provider/exchange integration tests, API contract tests and recovery scenarios. Real testnet checks are opt-in release gates.

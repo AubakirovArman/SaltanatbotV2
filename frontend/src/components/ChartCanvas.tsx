@@ -48,9 +48,10 @@ interface ChartCanvasProps {
   trades?: ChartTrade[];
   strategyName?: string;
   onClearStrategy?: () => void;
+  customIndicators?: StrategyMenuItem[];
   strategies?: StrategyMenuItem[];
-  activeStrategyId?: string;
-  onAddStrategy?: (id: string) => void;
+  activeArtifactId?: string;
+  onAddArtifact?: (id: string) => void;
   plots?: ChartPlot[];
   shapes?: ChartShapes;
   /** Active price alerts (all symbols); the chart draws ones for its symbol. */
@@ -99,9 +100,10 @@ export function ChartCanvas({
   trades,
   strategyName,
   onClearStrategy,
+  customIndicators,
   strategies,
-  activeStrategyId,
-  onAddStrategy,
+  activeArtifactId,
+  onAddArtifact,
   plots,
   shapes,
   alerts,
@@ -421,9 +423,10 @@ export function ChartCanvas({
           indicators={indicators}
           onChange={onIndicatorsChange}
           onEditLogic={onEditIndicatorLogic}
+          customIndicators={customIndicators}
           strategies={strategies}
-          activeStrategyId={activeStrategyId}
-          onAddStrategy={onAddStrategy}
+          activeArtifactId={activeArtifactId}
+          onAddArtifact={onAddArtifact}
         />
         {onAddCompare && onUpdateCompare && onRemoveCompare && (
           <CompareControl

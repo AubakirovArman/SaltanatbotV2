@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fetchDynamicCrypto } from "../src/market/dynamicCrypto.js";
 import { BinanceProvider } from "../src/providers/binance.js";
 import { BybitProvider } from "../src/providers/bybit.js";
 import { ProviderRouter } from "../src/providers/router.js";
+import { SyntheticProvider } from "../src/providers/synthetic.js";
 import type { Instrument } from "../src/types.js";
 
 vi.mock("../src/providers/candleStore.js", () => ({
@@ -58,6 +60,81 @@ describe("REST market providers", () => {
     const candles = await new BybitProvider().getCandles(instrument, "1m", { limit: 2 });
 
     expect(candles.map((candle) => candle.final)).toEqual([true, false]);
+  });
+});
+
+describe("dynamic crypto discovery", () => {
+  it("seeds every discovered instrument with a positive exchange price", async () => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("exchangeInfo")) {
+        return json({
+          symbols: [
+            { symbol: "AAAUSDT", status: "TRADING", baseAsset: "AAA", quoteAsset: "USDT", filters: [{ filterType: "PRICE_FILTER", tickSize: "0.01000000" }] },
+            { symbol: "NOPRICEUSDT", status: "TRADING", baseAsset: "NOPRICE", quoteAsset: "USDT" }
+          ]
+        });
+      }
+      if (url.includes("instruments-info")) {
+        return json({
+          retCode: 0,
+          result: { list: [
+            { symbol: "AAAUSDT", status: "Trading", baseCoin: "AAA", quoteCoin: "USDT" },
+            { symbol: "NOPRICEUSDT", status: "Trading", baseCoin: "NOPRICE", quoteCoin: "USDT" }
+          ] }
+        });
+      }
+      if (url.includes("ticker/price")) {
+        return json([{ symbol: "AAAUSDT", price: "12.34" }]);
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+
+    const discovered = await fetchDynamicCrypto();
+
+    expect(discovered).toHaveLength(1);
+    expect(discovered[0]).toMatchObject({ symbol: "AAAUSDT", basePrice: 12.34, decimals: 2 });
+  });
+
+  it("keeps the curated catalog when ticker seeds are unavailable", async () => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("exchangeInfo")) {
+        return json({ symbols: [{ symbol: "AAAUSDT", status: "TRADING", baseAsset: "AAA", quoteAsset: "USDT" }] });
+      }
+      if (url.includes("instruments-info")) return json({ retCode: 0, result: { list: [] } });
+      if (url.includes("ticker/price")) return json([]);
+      throw new Error(`Unexpected URL ${url}`);
+    });
+
+    await expect(fetchDynamicCrypto()).resolves.toEqual([]);
+  });
+});
+
+describe("synthetic fallback safety", () => {
+  const unseeded = { ...instrument, symbol: "NEWUSDT", basePrice: 0 };
+
+  it("rejects history and streams without a positive reference price", async () => {
+    const synthetic = new SyntheticProvider();
+
+    await expect(synthetic.getCandles(unseeded, "1m", { limit: 10 })).rejects.toThrow(/no positive reference price/i);
+    await expect(synthetic.subscribe(unseeded, "1m", () => {})).rejects.toThrow(/no positive reference price/i);
+  });
+
+  it("returns an explicit unavailable error instead of zero fallback candles", async () => {
+    const failing = {
+      async getCandles() { throw new Error("exchange offline"); },
+      async subscribe() { throw new Error("stream offline"); }
+    };
+    const router = new ProviderRouter() as unknown as {
+      binance: typeof failing;
+      getCandles: ProviderRouter["getCandles"];
+      subscribe: ProviderRouter["subscribe"];
+    };
+    router.binance = failing;
+
+    await expect(router.getCandles(unseeded, "1m", { limit: 10 })).rejects.toThrow(/Market data unavailable.*no positive reference price/i);
+    await expect(router.subscribe(unseeded, "1m", () => {})).rejects.toThrow(/Market stream unavailable.*no positive reference price/i);
   });
 });
 

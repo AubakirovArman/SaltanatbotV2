@@ -11,7 +11,7 @@ import { timeframes } from "./market/timeframes.js";
 import { ProviderRouter } from "./providers/router.js";
 import { securityHeaders } from "./securityHeaders.js";
 import { createTradingApi } from "./trading/routes.js";
-import type { StreamMessage, Timeframe } from "./types.js";
+import type { Candle, StreamMessage, Timeframe } from "./types.js";
 
 const port = Number(process.env.PORT ?? 4180);
 // Fail safe: bind to loopback unless the operator explicitly opts into a wider bind.
@@ -88,16 +88,25 @@ app.get("/api/candles", async (request, response) => {
     return;
   }
 
-  const candles = await provider.getCandles(
-    instrument,
-    parsed.data.timeframe,
-    {
-      limit: parsed.data.limit,
-      endTime: parsed.data.endTime,
-      startTime: parsed.data.startTime
-    },
-    parsed.data.exchange
-  );
+  let candles: Candle[];
+  try {
+    candles = await provider.getCandles(
+      instrument,
+      parsed.data.timeframe,
+      {
+        limit: parsed.data.limit,
+        endTime: parsed.data.endTime,
+        startTime: parsed.data.startTime
+      },
+      parsed.data.exchange
+    );
+  } catch (error) {
+    response.status(503).json({
+      error: error instanceof Error ? error.message : "Market data unavailable",
+      unavailable: true
+    });
+    return;
+  }
   response.json({
     instrument,
     candles,
@@ -181,49 +190,58 @@ wss.on("connection", async (socket, request) => {
     return;
   }
 
-  const candles = await provider.getCandles(
-    instrument,
-    parsed.data.timeframe,
-    { limit: parsed.data.limit },
-    parsed.data.exchange
-  );
-  send({
-    type: "snapshot",
-    symbol: instrument.symbol,
-    timeframe: parsed.data.timeframe,
-    candles,
-    provider: candles.at(-1)?.source ?? provider.name,
-    ts: Date.now()
-  });
+  try {
+    const candles = await provider.getCandles(
+      instrument,
+      parsed.data.timeframe,
+      { limit: parsed.data.limit },
+      parsed.data.exchange
+    );
+    send({
+      type: "snapshot",
+      symbol: instrument.symbol,
+      timeframe: parsed.data.timeframe,
+      candles,
+      provider: candles.at(-1)?.source ?? provider.name,
+      ts: Date.now()
+    });
 
-  const subscription = await provider.subscribe(
-    instrument,
-    parsed.data.timeframe,
-    (candle) => {
-      if (socket.readyState !== socket.OPEN) return;
-      send({
-        type: "candle",
-        symbol: instrument.symbol,
-        timeframe: parsed.data.timeframe,
-        candle,
-        provider: candle.source ?? provider.name,
-        ts: Date.now()
-      });
-    },
-    (message) => {
-      if (socket.readyState !== socket.OPEN) return;
-      send({
-        type: "status",
-        status: message.includes("Fallback") ? "fallback" : "connected",
-        provider: instrument.provider,
-        message,
-        ts: Date.now()
-      });
-    },
-    parsed.data.exchange
-  );
+    const subscription = await provider.subscribe(
+      instrument,
+      parsed.data.timeframe,
+      (candle) => {
+        if (socket.readyState !== socket.OPEN) return;
+        send({
+          type: "candle",
+          symbol: instrument.symbol,
+          timeframe: parsed.data.timeframe,
+          candle,
+          provider: candle.source ?? provider.name,
+          ts: Date.now()
+        });
+      },
+      (message) => {
+        if (socket.readyState !== socket.OPEN) return;
+        send({
+          type: "status",
+          status: message.includes("Fallback") ? "fallback" : "connected",
+          provider: instrument.provider,
+          message,
+          ts: Date.now()
+        });
+      },
+      parsed.data.exchange
+    );
 
-  socket.on("close", () => subscription.close());
+    socket.on("close", () => subscription.close());
+  } catch (error) {
+    send({
+      type: "error",
+      message: error instanceof Error ? error.message : "Market stream unavailable",
+      ts: Date.now()
+    });
+    socket.close();
+  }
 });
 
 const __filename = fileURLToPath(import.meta.url);

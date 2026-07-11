@@ -44,29 +44,38 @@ interface DiscoveredPair {
   tickSize?: string;
 }
 
+interface BinanceTicker {
+  symbol: string;
+  price: string;
+}
+
 /**
  * Fetch the tradable USDT-spot universe and build Instrument entries. Prefers
  * pairs listed on BOTH exchanges when Bybit responds; otherwise Binance alone.
  * Returns [] on total failure so catalog.ts keeps its curated fallback.
  */
 export async function fetchDynamicCrypto(): Promise<Instrument[]> {
-  const [binance, bybit] = await Promise.all([fetchBinancePairs(), fetchBybitPairs()]);
+  const [binance, bybit, prices] = await Promise.all([fetchBinancePairs(), fetchBybitPairs(), fetchBinancePrices()]);
   if (binance.length === 0) return []; // Binance is the required source of truth.
+  // A real positive seed is required for the public synthetic fallback. If the
+  // ticker request is unavailable, retain the curated catalog instead of
+  // publishing dynamic instruments that would later produce zero OHLC bars.
+  if (prices.size === 0) return [];
 
   const bybitSymbols = new Set(bybit.map((p) => p.symbol));
   // If Bybit responded, prefer the intersection (pairs available on both); else
   // fall back to Binance's full list.
   const selected =
     bybitSymbols.size > 0 ? binance.filter((p) => bybitSymbols.has(p.symbol)) : binance;
-  const pairs = selected.length > 0 ? selected : binance;
+  const pairs = (selected.length > 0 ? selected : binance).filter((pair) => prices.has(pair.symbol));
 
   pairs.sort((a, b) => a.symbol.localeCompare(b.symbol));
   const capped = pairs.slice(0, MAX_PAIRS);
 
-  return capped.map((pair) => buildInstrument(pair));
+  return capped.map((pair) => buildInstrument(pair, prices.get(pair.symbol)!));
 }
 
-function buildInstrument(pair: DiscoveredPair): Instrument {
+function buildInstrument(pair: DiscoveredPair, basePrice: number): Instrument {
   const decimals = decimalsFromTickSize(pair.tickSize);
   return {
     symbol: pair.symbol,
@@ -75,11 +84,25 @@ function buildInstrument(pair: DiscoveredPair): Instrument {
     exchange: "Binance / Bybit",
     currency: "USDT",
     provider: "binance",
-    // basePrice only seeds the synthetic fallback path; live pairs use real
-    // quotes, so 0 is a safe, cheap default (no extra ticker fetch needed).
-    basePrice: 0,
+    // This quote seeds the clearly-labelled public synthetic fallback if the
+    // exchange feed later becomes unavailable. It is never used by live bots.
+    basePrice,
     decimals: decimals ?? 4
   };
+}
+
+async function fetchBinancePrices(): Promise<Map<string, number>> {
+  try {
+    const body = await fetchJson<BinanceTicker[]>("https://api.binance.com/api/v3/ticker/price");
+    const out = new Map<string, number>();
+    for (const ticker of body ?? []) {
+      const price = Number(ticker.price);
+      if (ticker.symbol && Number.isFinite(price) && price > 0) out.set(ticker.symbol, price);
+    }
+    return out;
+  } catch {
+    return new Map();
+  }
 }
 
 async function fetchBinancePairs(): Promise<DiscoveredPair[]> {

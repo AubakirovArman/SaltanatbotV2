@@ -1,5 +1,7 @@
 # Roadmap
 
+> This page tracks feature direction. The prioritized engineering and release program is maintained in [MASTER_IMPROVEMENT_PLAN.md](./MASTER_IMPROVEMENT_PLAN.md), with separate [modular architecture](./MODULAR_ARCHITECTURE.md), [testing](./TESTING_STRATEGY.md), and [internationalization/documentation](./I18N_AND_DOCUMENTATION.md) specifications.
+
 This tracks what a multi-dimension code audit surfaced and what has shipped. The app has a strong alpha foundation, but live-trading safety is not considered production-ready until the release gates in [Code Improvement Plan](./CODE_IMPROVEMENT_PLAN.md) are proven by tests and testnet/live reconciliation. Some remaining items need a funded exchange account / third-party keys / deploy infra to validate.
 
 ## Shipped
@@ -25,7 +27,7 @@ This tracks what a multi-dimension code audit surfaced and what has shipped. The
 - **Strategy template gallery** (categorized); **`.strategy` export/import**; **saved workspaces** (named chart layouts); **two-way Telegram control** (`/status` `/stop` `/start` `/kill`, chatId-authorized).
 
 **Engineering**
-- 99 Vitest tests (command parser, paper engine, filters, collision, Telegram, backtest, evaluator parity, Monte Carlo); GitHub Actions CI (typecheck/lint/test/build + secret scan); multi-stage Dockerfile + docker-compose with persistent data volume; Biome lint gate.
+- 262 Vitest tests (commands, paper engine, filters, collision, Telegram, backtest, Pine and evaluator parity) plus an initial Playwright production E2E suite; GitHub Actions CI, Docker and Biome gates.
 
 ## Remaining
 

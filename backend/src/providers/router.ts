@@ -64,7 +64,15 @@ export class ProviderRouter implements MarketProvider {
       if (persistable) this.persist(source, instrument, timeframe, candles);
     } catch (error) {
       if (strict) throw error;
-      const fallback = await this.synthetic.getCandles(instrument, timeframe, range);
+      let fallback: Candle[];
+      try {
+        fallback = await this.synthetic.getCandles(instrument, timeframe, range);
+      } catch (fallbackError) {
+        throw new Error(
+          `Market data unavailable for ${instrument.symbol}: ${this.message(error)}; ${this.message(fallbackError)}`,
+          { cause: error }
+        );
+      }
       candles = fallback.map((candle) => ({
         ...candle,
         source: `Fallback after ${this.message(error)}`
@@ -157,7 +165,14 @@ export class ProviderRouter implements MarketProvider {
       this.streams.delete(streamKey);
       if (strict) throw error;
       onStatus?.(`Fallback stream: ${this.message(error)}`);
-      return this.synthetic.subscribe(instrument, timeframe, onCandle, onStatus);
+      try {
+        return await this.synthetic.subscribe(instrument, timeframe, onCandle, onStatus);
+      } catch (fallbackError) {
+        throw new Error(
+          `Market stream unavailable for ${instrument.symbol}: ${this.message(error)}; ${this.message(fallbackError)}`,
+          { cause: error }
+        );
+      }
     }
   }
 

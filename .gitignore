@@ -26,6 +26,9 @@ logs/
 runtime-logs/
 tmp/
 .cache/
+test-results/
+playwright-report/
+blob-report/
 
 # ── Internal dev artifacts (kept local, not published) ────────
 audits/
