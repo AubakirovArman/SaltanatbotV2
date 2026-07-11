@@ -10,6 +10,7 @@ Runtime-neutral historical trading primitives shared independently of the React 
 - exhaustive StrategyIR warm-up analysis;
 - evaluator context and bounded variable traces;
 - deterministic performance and risk metrics.
+- versioned evaluator event traces attached to every backtest result.
 
 The package may depend on `@saltanatbotv2/contracts` and `@saltanatbotv2/strategy-core`. It must not import React, Blockly, browser globals, storage, network or exchange adapters.
 

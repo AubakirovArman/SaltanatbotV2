@@ -4,8 +4,10 @@ import {
   evaluateStrategyBar,
   MAX_OPS_PER_BAR,
   runStrategyInit,
+  traceBarIntents,
   type BarIntents,
   type SecurityDataContext,
+  type StrategyBarTrace,
   type StrategyRuntime
 } from "@saltanatbotv2/strategy-core";
 import { computeBacktestMetrics, medianDelta } from "../backtestMetrics";
@@ -57,6 +59,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
   const signals: TradeMarker[] = [];
   const alerts: { time: number; message: string }[] = [];
   const warnings: { time: number; message: string }[] = [];
+  const eventTrace: StrategyBarTrace[] = [];
 
   let equity = config.initialCapital;
   let position: Position | null = null;
@@ -193,6 +196,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     const intents: Intents = liquidated
       ? { exit: false, alerts: [], markers: [] }
       : evaluateStrategyBar(ir, i, rt, ctx);
+    eventTrace.push(intents.trace ?? traceBarIntents(intents, i, candle.time));
     if (intents.budgetExceeded && !budgetWarned) {
       warnings.push({ time: candle.time, message: `A loop hit the per-bar execution budget (${MAX_OPS_PER_BAR}) and was truncated.` });
       budgetWarned = true;
@@ -279,6 +283,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     warnings,
     metrics: computeBacktestMetrics(trades, measured, config, barsInMarket, measured.length, candles, liquidated, fundingPaid),
     tested,
-    varTrace: variableTrace.result()
+    varTrace: variableTrace.result(),
+    eventTrace
   };
 }

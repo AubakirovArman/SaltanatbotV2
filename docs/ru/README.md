@@ -25,6 +25,7 @@
 - [Master improvement plan](../MASTER_IMPROVEMENT_PLAN.md)
 - [Модульная архитектура](../MODULAR_ARCHITECTURE.md)
 - [Тестирование](../TESTING_STRATEGY.md)
+- [Трассировка событий стратегии](EVENT_TRACES.md)
 
 ## Правила перевода
 

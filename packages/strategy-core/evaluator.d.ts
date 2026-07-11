@@ -1,6 +1,7 @@
 import type { Candle } from "@saltanatbotv2/contracts";
 import type { BoolExpr, NumExpr, StrategyIR } from "./index.js";
 import { type SecurityDataContext } from "./securityData.js";
+import { type StrategyBarTrace } from "./trace.js";
 export interface BarIntents {
     entry?: "long" | "short";
     exit: boolean;
@@ -29,6 +30,8 @@ export interface BarIntents {
     }[];
     /** Set when the bar hit the per-bar op budget and execution was truncated. */
     budgetExceeded?: boolean;
+    /** Versioned semantic trace produced by public per-bar evaluation calls. */
+    trace?: StrategyBarTrace;
 }
 /** Hard shared per-bar execution budget for backtest, preview and live. */
 export declare const MAX_OPS_PER_BAR = 10000;

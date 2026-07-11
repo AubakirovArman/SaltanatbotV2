@@ -3,10 +3,13 @@ import {
   createStrategyRuntime,
   evaluateCondition,
   evaluateNumber,
+  evaluateStrategyBar,
   MAX_OPS_PER_BAR,
   MAX_REPEAT,
   runStrategyInit,
-  type SecurityDataContext
+  traceBarIntents,
+  type SecurityDataContext,
+  type StrategyBarTrace
 } from "@saltanatbotv2/strategy-core";
 import type { Candle } from "../../types";
 import type { TradeMarker } from "../backtestTypes";
@@ -57,6 +60,7 @@ export interface StrategyPreview {
   signals: TradeMarker[];
   shapes: ShapeOverlays;
   tables: PreviewTable[];
+  eventTrace: StrategyBarTrace[];
 }
 
 /** Render-safety caps for drawing overlays (a hostile/buggy strategy can fire every bar). */
@@ -74,7 +78,9 @@ export function previewStrategy(
   securityData?: SecurityDataContext
 ): StrategyPreview {
   const runtime = createStrategyRuntime(ir, candles, { securityData });
+  const traceRuntime = createStrategyRuntime(ir, candles, { securityData });
   runStrategyInit(ir, runtime);
+  runStrategyInit(ir, traceRuntime);
   const signals: TradeMarker[] = [];
   const shapes: ShapeOverlays = { boxes: [], vlines: [], rays: [] };
   const boxRuns = new Map<Stmt, { t1: number; t2: number; top: number; bottom: number; lastBar: number }>();
@@ -96,6 +102,7 @@ export function previewStrategy(
   const projections = new Map<Stmt, ShapeBox>();
   const metricValues = new Map<Stmt, number>();
   const plotMap = new Map<Stmt, PlotSeries>();
+  const eventTrace: StrategyBarTrace[] = [];
 
   const registerPlots = (statements: Stmt[]) => {
     for (const statement of statements) {
@@ -305,6 +312,8 @@ export function previewStrategy(
   for (let index = 0; index < candles.length; index += 1) {
     beginStrategyBar(runtime);
     execute(ir.body, index);
+    const intents = evaluateStrategyBar(ir, index, traceRuntime);
+    eventTrace.push(intents.trace ?? traceBarIntents(intents, index, candles[index].time));
   }
 
   for (const [statement, run] of boxRuns) flushBox(statement as Extract<Stmt, { k: "box" }>, run);
@@ -314,5 +323,5 @@ export function previewStrategy(
   }
 
   const plots = [...plotMap.values()].filter((plot) => plot.points.length > 0);
-  return { plots, signals, shapes, tables: buildPreviewTables(ir.body, metricValues) };
+  return { plots, signals, shapes, tables: buildPreviewTables(ir.body, metricValues), eventTrace };
 }

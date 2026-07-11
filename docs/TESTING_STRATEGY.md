@@ -60,7 +60,16 @@ Corpus entries carry expected classification: `EXACT`, `APPROXIMATION`, `DISPLAY
 
 ## Cross-runtime golden traces
 
-Create a versioned trace format:
+Version 1 is implemented in `strategy-core` and checked against the same golden JSON through preview, backtest and the backend evaluator used by paper/live:
+
+```text
+bar index/time
+entry/exit/risk intents
+alerts/markers
+execution-budget status
+```
+
+The next trace version extends the declared format with:
 
 ```text
 bar time
@@ -72,7 +81,7 @@ position/equity after event
 warnings
 ```
 
-Run the same candles and IR through preview, backtest, paper and backend evaluator. Differences must be intentional and declared by layer; unexplained differences fail CI.
+Run the same candles and IR through preview, backtest, paper and backend evaluator. Differences must be intentional and declared by layer; unexplained differences fail CI. See [Strategy event traces](./EVENT_TRACES.md).
 
 ## Chart testing
 

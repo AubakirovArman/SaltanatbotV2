@@ -12,8 +12,8 @@
     }
   },
   "scripts": {
-    "build": "tsc ta.ts securityData.ts evaluator.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --declaration --outDir .",
-    "check": "tsc ta.ts securityData.ts evaluator.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --noEmit && node ../../scripts/check-strategy-core-generated.mjs"
+    "build": "tsc ta.ts securityData.ts trace.ts evaluator.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --declaration --outDir .",
+    "check": "tsc ta.ts securityData.ts trace.ts evaluator.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --noEmit && node ../../scripts/check-strategy-core-generated.mjs"
   },
   "dependencies": {
     "@saltanatbotv2/contracts": "0.1.0"

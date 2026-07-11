@@ -284,6 +284,9 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
     - [x] Extract exhaustive warm-up/lookback analysis, including nested control flow and dynamic floors.
     - [x] Extract position/daily-stat evaluator context and bounded variable-trace collection.
 - [ ] Add versioned golden event traces across preview/backtest/paper/live.
+  - [x] Add JSON-safe StrategyBarTrace v1 intents with fixed semantic ordering.
+  - [x] Check one golden fixture through preview, backtest and the evaluator used by paper/live.
+  - [ ] Extend traces with expression/variable explanations, fill decisions, position/equity transitions, warnings and provenance.
 - [ ] Add missing/fallback-data provenance to every report.
 
 ### Frontend decomposition

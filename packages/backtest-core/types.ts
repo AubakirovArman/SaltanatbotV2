@@ -1,3 +1,5 @@
+import type { StrategyBarTrace } from "@saltanatbotv2/strategy-core";
+
 /** Runtime-neutral backtest result and configuration contracts. */
 export interface BacktestConfig {
   initialCapital: number;
@@ -79,4 +81,6 @@ export interface BacktestResult {
   metrics: BacktestMetrics;
   tested: TestedRange;
   varTrace?: { time: number; vars: Record<string, number> }[];
+  /** Versioned evaluator intents for parity/debugging across runtime layers. */
+  eventTrace: StrategyBarTrace[];
 }

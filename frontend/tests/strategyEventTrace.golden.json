@@ -1,0 +1,54 @@
+[
+  {
+    "v": 1,
+    "barIndex": 0,
+    "barTime": 0,
+    "events": [
+      { "kind": "exit" },
+      { "kind": "stop", "mode": "price", "value": 95 },
+      { "kind": "target", "mode": "price", "value": 110 },
+      { "kind": "trail", "mode": "percent", "value": 2 },
+      { "kind": "size", "mode": "units", "value": 1 }
+    ]
+  },
+  {
+    "v": 1,
+    "barIndex": 1,
+    "barTime": 60000,
+    "events": [
+      { "kind": "entry", "direction": "long" },
+      { "kind": "stop", "mode": "price", "value": 95 },
+      { "kind": "target", "mode": "price", "value": 110 },
+      { "kind": "trail", "mode": "percent", "value": 2 },
+      { "kind": "size", "mode": "units", "value": 1 },
+      { "kind": "alert", "message": "go 101" },
+      { "kind": "marker", "direction": "up", "label": "go" }
+    ]
+  },
+  {
+    "v": 1,
+    "barIndex": 2,
+    "barTime": 120000,
+    "events": [
+      { "kind": "entry", "direction": "long" },
+      { "kind": "stop", "mode": "price", "value": 95 },
+      { "kind": "target", "mode": "price", "value": 110 },
+      { "kind": "trail", "mode": "percent", "value": 2 },
+      { "kind": "size", "mode": "units", "value": 1 },
+      { "kind": "alert", "message": "go 102" },
+      { "kind": "marker", "direction": "up", "label": "go" }
+    ]
+  },
+  {
+    "v": 1,
+    "barIndex": 3,
+    "barTime": 180000,
+    "events": [
+      { "kind": "exit" },
+      { "kind": "stop", "mode": "price", "value": 95 },
+      { "kind": "target", "mode": "price", "value": 110 },
+      { "kind": "trail", "mode": "percent", "value": 2 },
+      { "kind": "size", "mode": "units", "value": 1 }
+    ]
+  }
+]

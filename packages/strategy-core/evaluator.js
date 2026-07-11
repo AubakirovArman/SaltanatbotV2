@@ -1,5 +1,6 @@
 import { alignSecuritySeries, getSecurityCandles } from "./securityData.js";
 import { almaSeries, atr as atrSeries, bollingerBand, cci, change as changeSeries, correlationSeries, cmoSeries, cogSeries, dmiSeries, ema, extremeBars, highest, kcSeries, linregSeries, lowest, macdLine, mfiSeries, percentRankSeries, priceAt, roc, rsi, sarSeries, sma, sourceSeries, stdev, stochK, supertrendSeries, tsiSeries, valueWhen, vwapSeries, vwma, williamsR, wma } from "./ta.js";
+import { traceBarIntents } from "./trace.js";
 /** Hard shared per-bar execution budget for backtest, preview and live. */
 export const MAX_OPS_PER_BAR = 10_000;
 /** Max iterations a single `repeat` can request (also clamped by the op budget). */
@@ -49,6 +50,7 @@ export function evaluateStrategyBar(ir, index, rt, ctx = rt.ctx) {
     execStatements(ir.body, index, rt, intents);
     if (rt.budgetHit)
         intents.budgetExceeded = true;
+    intents.trace = traceBarIntents(intents, index, rt.candles[index]?.time ?? 0);
     return intents;
 }
 /**

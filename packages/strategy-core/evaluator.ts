@@ -36,6 +36,7 @@ import {
   williamsR,
   wma
 } from "./ta.js";
+import { traceBarIntents, type StrategyBarTrace } from "./trace.js";
 
 export interface BarIntents {
   entry?: "long" | "short";
@@ -48,6 +49,8 @@ export interface BarIntents {
   markers: { dir: "up" | "down"; label: string }[];
   /** Set when the bar hit the per-bar op budget and execution was truncated. */
   budgetExceeded?: boolean;
+  /** Versioned semantic trace produced by public per-bar evaluation calls. */
+  trace?: StrategyBarTrace;
 }
 
 /** Hard shared per-bar execution budget for backtest, preview and live. */
@@ -141,6 +144,7 @@ export function evaluateStrategyBar(
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };
   execStatements(ir.body, index, rt, intents);
   if (rt.budgetHit) intents.budgetExceeded = true;
+  intents.trace = traceBarIntents(intents, index, rt.candles[index]?.time ?? 0);
   return intents;
 }
 
