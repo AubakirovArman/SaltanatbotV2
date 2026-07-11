@@ -6,6 +6,8 @@ The Pine subsystem converts a supported subset of Pine Script into editable Bloc
 
 Consumers should import from `index.ts`. Lexer, parser and conversion internals are not stable APIs.
 
+`ast.ts` is the public AST type facade. `diagnostics.ts` owns stable diagnostic codes and source-span contracts for editor integrations.
+
 ## Current pipeline
 
 ```text

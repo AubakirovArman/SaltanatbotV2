@@ -145,12 +145,19 @@ Verification:
 - [x] Add focused quote/equity/risk sizing and long/short stop/target tests.
 - [x] Keep exchange orchestration and order lifecycle unchanged behind the `TradingEngine` facade.
 
-### Trading localization — current trading-i18n commit
+### Trading localization — commit `11783cd`
 
 - [x] Add a typed EN/RU trading message catalog.
 - [x] Localize trading access, empty state, bot creation labels and primary actions.
 - [x] Pass locale explicitly through the trading feature boundary.
 - [x] Extend browser locale coverage into the Russian Trade authentication flow.
+
+### Pine compiler public contracts — current Pine diagnostics commit
+
+- [x] Add a public AST type facade independent of parser implementation imports.
+- [x] Add typed warning/error diagnostics with stable codes and source-span contracts.
+- [x] Preserve legacy warning strings while exposing structured diagnostics to future editors.
+- [x] Attach typed diagnostics to public `PineConvertError` instances.
 
 ## Completed browser baseline
 

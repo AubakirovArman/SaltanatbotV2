@@ -1,6 +1,7 @@
 import type { BoolExpr, NumExpr, Stmt, StrategyIR, StrategyInput } from "../ir";
 import { IR_VERSION } from "../ir";
 import { arg, argRequired } from "./arguments";
+import { diagnosticFromMessage, type PineDiagnostic } from "./diagnostics";
 import { PineConvertError } from "./errors";
 import { containsVar, isConstNum, shiftBool, shiftNum } from "./expressionHistory";
 import {
@@ -39,6 +40,7 @@ export interface PineResult {
   name: string;
   ir: StrategyIR;
   warnings: string[];
+  diagnostics: PineDiagnostic[];
 }
 
 export { PineConvertError } from "./errors";
@@ -111,7 +113,13 @@ class Converter {
       init: this.init.length ? this.init : undefined,
       v: IR_VERSION
     };
-    return { kind: this.kind, name: this.name, ir, warnings: this.warnings };
+    return {
+      kind: this.kind,
+      name: this.name,
+      ir,
+      warnings: this.warnings,
+      diagnostics: this.warnings.map((warning) => diagnosticFromMessage(warning, "warning", "PINE_COMPATIBILITY_WARNING"))
+    };
   }
 
   // ---------- statements ----------

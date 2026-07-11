@@ -2,6 +2,8 @@ import { irToText } from "../irText";
 import { irToBlocklyXml } from "../irToXml";
 import { convertPine, PineConvertError, type PineResult } from "./convert";
 import { CYCLES_ANALYSIS_WARNINGS, isCyclesAnalysisSource, warningHeader } from "./compatibility";
+export type { PineAst, PineArg, PineExpr, PineFuncDef, PineStmt } from "./ast";
+export type { PineDiagnostic, SourcePosition, SourceSpan } from "./diagnostics";
 import { withCyclesAnalysisInputs } from "./cyclesAnalysisPreview";
 
 /**
