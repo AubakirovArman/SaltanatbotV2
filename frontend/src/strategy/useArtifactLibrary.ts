@@ -6,15 +6,17 @@ import {
   createTemplateCopy,
   dedupeArtifactName,
   stampArtifact,
+  rollbackArtifact,
   type PineArtifactInput,
   upsertArtifact
 } from "./artifactLibraryModel";
 import type { StrategyArtifact, StrategyArtifactKind } from "./library";
-import { indicatorToArtifact } from "./library";
+import { indicatorToArtifact, normalizeArtifact } from "./library";
 import { warmStrategyLab } from "./loadStrategyLab";
 import { clearShareHash, readSharedFromHash } from "./share";
 import { storeStrategyLibrary } from "./storage";
 import type { StrategyTemplate } from "./templates";
+import type { PortableStrategyArtifact } from "./strategyFile";
 
 const ARTIFACT_INPUTS_KEY = "marketforge.artifactInputs.v1";
 
@@ -38,6 +40,7 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
       kind: "strategy",
       name: `${shared.name} (remix)`,
       description: "Imported from a shared link.",
+      provenance: { source: "share", importedAt: now },
       xml: shared.xml,
       createdAt: now,
       updatedAt: now
@@ -100,21 +103,44 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
     warmStrategyLab();
   };
 
-  const importStrategy = (input: { name: string; description: string; xml: string }) => {
+  const importStrategy = (input: PortableStrategyArtifact) => {
     const now = Date.now();
     const artifact: StrategyArtifact = {
-      id: `strategy:import-${now}`,
-      kind: "strategy",
+      id: `${input.kind}:import-${now}`,
+      kind: input.kind,
       name: dedupeArtifactName(input.name, artifacts),
       description: input.description || "Imported strategy.",
+      provenance: {
+        source: input.provenance.source === "wizard" ? "wizard" : "file",
+        importedAt: now,
+        parentId: input.provenance.exportedFromId,
+        parentHash: input.provenance.parentHash
+      },
       xml: input.xml,
-      code: "",
+      code: input.code ?? "",
+      schemaVersion: input.schemaVersion,
+      semanticVersion: input.semanticVersion,
+      hash: input.contentHash,
+      irHash: input.irHash,
+      parameters: input.parameters,
+      dependencies: input.dependencies,
       createdAt: now,
       updatedAt: now
     };
-    setArtifacts((current) => [artifact, ...current]);
+    setArtifacts((current) => [normalizeArtifact(artifact, now), ...current]);
     setActiveArtifactId(artifact.id);
     warmStrategyLab();
+  };
+
+  const rollbackArtifactVersion = (id: string, version: number) => {
+    setArtifacts((current) => rollbackArtifact(current, id, version));
+    setActiveArtifactId(id);
+  };
+
+  const updateArtifactDependencies = (id: string, dependencies: string[]) => {
+    const artifact = artifacts.find((item) => item.id === id);
+    if (!artifact) return;
+    saveArtifact({ ...artifact, dependencies: [...new Set(dependencies.filter((dependency) => dependency !== id))], updatedAt: Date.now() });
   };
 
   return {
@@ -130,7 +156,9 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
     createArtifact,
     useTemplate,
     importPineMany,
-    importStrategy
+    importStrategy,
+    rollbackArtifactVersion,
+    updateArtifactDependencies
   };
 }
 

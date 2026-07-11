@@ -29,11 +29,14 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - `useStrategyResearch.ts` owns cancellable backtest/optimizer orchestration and rejects stale async results.
 - `useStrategyWorkspace.ts` owns Blockly injection, artifact loading, preview debounce, autosave and teardown.
 - `useArtifactLibrary.ts` owns artifact selection, persistence, shared-link remixing, template/Pine imports and linked-indicator synchronization; `artifactLibraryModel.ts` owns deterministic naming, hashes and versions.
+- `strategyFile.ts` owns checksum-verified schema-v2 portable files and explicit legacy migration.
+- `dependencyGraph.ts` owns missing/cycle validation; `wizard.ts` emits ordinary editable XML.
 - `blocklyTheme.ts` owns the dark/light Blockly theme definitions.
 - Storage and sharing are adapters around versioned artifacts.
 - `components/StrategyLibrary.tsx` owns artifact browsing/import/export and template/Pine entry flows.
 - `components/OptimizePanel.tsx` owns optimizer controls/results; `optimization/model.ts` owns sweep-state construction.
 - `components/StrategyExecutionPanel.tsx` owns backtest configuration, execution actions, diagnostics and report/preview presentation.
+- `components/ArtifactVersionPanel.tsx` owns dependency, history, diff and rollback controls; `components/StrategyWizard.tsx` owns the guided creation dialog.
 - `../i18n/strategy.ts` owns typed English/Russian Strategy Studio messages and dynamic category/objective labels; Pine/IR identifiers remain unchanged.
 
 ## Testing

@@ -7,6 +7,7 @@ The generated [strategy block catalog](./BLOCK_CATALOG.generated.md) lists stabl
 ## Contents
 
 - [From blocks to IR](#from-blocks-to-ir)
+- [Studio workflow and artifacts](#studio-workflow-and-artifacts)
 - [Block taxonomy](#block-taxonomy)
 - [The IR shape](#the-ir-shape)
 - [Backtesting: `runBacktest`](#backtesting-runbacktest)
@@ -32,10 +33,30 @@ Key properties of the compiler:
 - **No `eval`, no code strings.** Compilation produces a plain JSON object (`StrategyIR`) made of tagged union nodes (each node has a `k` discriminator). Nothing is ever turned into JavaScript source and executed. The header comment states the intent directly: *"Compile a Blockly workspace into a safe JSON-IR (no eval, no code strings)."*
 - **Disabled blocks are skipped.** `compileStatements` only compiles a block when `block.isEnabled()` is true.
 - **Validation.** If there is no `strategy_start` block, compilation returns `{ errors: ["Add a Strategy block to define entry rules."] }` with no IR. If the body contains no `entry` and no `marker` statement, an error is pushed: *"Strategy has no entry rule — add a Buy/Sell, Entry, or Mark signal."* Unrecognized statement blocks push `Unsupported action block: <type>`; unrecognized value/condition blocks push `Unsupported value block:` / `Expected a condition but found:`.
-- **Inputs are collected as a side effect.** A `param_number` block registers a named tunable input the first time it is seen (via `ctx.inputs`); the collected inputs become `ir.inputs`, each `{ name, value }`.
+- **Inputs are collected as a side effect.** A `param_number` block registers a named tunable input the first time it is seen (via `ctx.inputs`). Each schema carries `name`, `value`/`defaultValue`, `min`, `max`, `step` and `optimizationEligible`; invalid ranges are linked to the exact block as compile diagnostics.
 - **Variables** declared with `var_set` are tracked in `ctx.vars` and read back with `var_get`.
+- **Blockly functions are compile-time subgraphs.** Numeric arguments are substituted into reusable return/body graphs. Recursion, unknown functions and nesting beyond the fixed depth budget fail closed; no executable code is generated.
 
 The reverse direction — generating Blockly XML for built-in indicators and templates — lives in `frontend/src/strategy/library.ts`. For example, `strategyXml()` emits a `strategy_start` block whose `RULES` statement chains `plot_series` blocks, and helpers like `maValue()` / `rsiValue()` / `bollingerValue()` / `macdValue()` build the corresponding indicator value blocks. This is how each chart indicator becomes an editable `StrategyArtifact` in the default library.
+
+## Studio workflow and artifacts
+
+The right-hand Studio is split into seven explicit stages: **Build**, **Validate**, **Preview**,
+**Backtest**, **Optimize**, **Run** and **Learn**. Validation diagnostics select and center the
+originating block. Learn shows the selected block's description, input/output contract, example and
+pitfalls. The three-step wizard creates an EMA-cross, RSI-threshold or price-breakout strategy as
+ordinary Blockly XML, so the result is fully editable and has no wizard-only runtime.
+
+Artifacts use schema v2 and local semantic versions. Every meaningful save records the IR/XML hash,
+parameter schema, indicator dependencies and immutable prior revision. The version panel can compare
+line/metadata changes and roll back by creating a new current revision; history is never rewritten.
+Dependency edges are validated for missing indicators and cycles.
+
+Portable `.strategy` files include schema/semantic versions, SHA-256 content and IR hashes,
+parameters, dependencies and provenance. Import verifies the checksum before accepting the payload;
+legacy schema-v1 files use an explicit migration path. These files are the integrity-checked sharing
+format. URL hashes remain a convenience for local collaboration and must not be treated as signed or
+trusted packages.
 
 ## Block taxonomy
 
@@ -67,7 +88,15 @@ A `StrategyIR` is simply:
 ```ts
 interface StrategyIR {
   name: string;
-  inputs: { name: string; value: number }[];
+  inputs: {
+    name: string;
+    value: number;
+    defaultValue?: number;
+    min?: number;
+    max?: number;
+    step?: number;
+    optimizationEligible?: boolean;
+  }[];
   body: Stmt[];
 }
 ```
@@ -131,7 +160,7 @@ For each candle, in order:
 
 Fills use `applySlippage()`; long entries and short exits fill *higher*, the opposite fill *lower*, by `slippagePct`. Commission is `qty * (entryPrice + exitPrice) * commissionPct/100`, deducted from realized PnL.
 
-**Sizing** (`resolveSize`) supports three modes: `units` (fixed quantity), `equity_pct` (percent of equity as notional / price), and `risk_pct` (equity × risk% divided by the per-unit distance to the stop; with no stop it falls back to full-equity notional). The default sizing before any `size` statement runs is `{ mode: "equity_pct", value: 100 }`.
+**Sizing** (`resolveSize`) supports three modes: `units` (fixed quantity), `equity_pct` (percent of equity as notional / price), and `risk_pct` (equity × risk% divided by the per-unit distance to the stop). Risk-percent sizing without a valid stop fails closed and skips the entry. The default sizing before any `size` statement runs is `{ mode: "equity_pct", value: 100 }`.
 
 **Stops and targets** (`resolveStop` / `resolveTarget`) each support `price` (absolute), `percent` (relative to entry), and `atr` (a multiple of ATR-14 distance). A `stopHit` is `low ≤ stop` for longs / `high ≥ stop` for shorts; a `targetHit` is `high ≥ target` for longs / `low ≤ target` for shorts.
 

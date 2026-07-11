@@ -304,6 +304,8 @@ export default function App() {
                 onUseTemplate={artifactLibrary.useTemplate}
                 onImportStrategy={artifactLibrary.importStrategy}
                 onImportPineMany={artifactLibrary.importPineMany}
+                onRollbackArtifact={artifactLibrary.rollbackArtifactVersion}
+                onUpdateArtifactDependencies={artifactLibrary.updateArtifactDependencies}
                 catalog={catalog}
                 initialSymbol={symbol}
                 initialTimeframe={timeframe}
@@ -312,6 +314,7 @@ export default function App() {
                 locale={locale}
                 onApplyResult={artifactOverlay.applyBacktestResult}
                 onShowOnChart={artifactOverlay.showOnChart}
+                onOpenTrading={() => setMode("trade")}
               />
             </Suspense>
           )}

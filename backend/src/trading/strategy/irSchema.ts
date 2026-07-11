@@ -123,7 +123,15 @@ const stmt: z.ZodType<unknown> = z.lazy(() =>
   ])
 );
 
-const strategyInput = z.object({ name: z.string().max(64), value: finite }).strict();
+const strategyInput = z.object({
+  name: z.string().max(64),
+  value: finite,
+  defaultValue: finite.optional(),
+  min: finite.optional(),
+  max: finite.optional(),
+  step: finite.positive().optional(),
+  optimizationEligible: z.boolean().optional()
+}).strict().refine((input) => input.min === undefined || input.max === undefined || input.min <= input.max, "input min must be <= max");
 
 const strategyIRSchema = z
   .object({

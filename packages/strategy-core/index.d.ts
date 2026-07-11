@@ -100,6 +100,11 @@ export type Stmt =
 export interface StrategyInput {
   name: string;
   value: number;
+  defaultValue?: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  optimizationEligible?: boolean;
 }
 
 export interface StrategyIR {

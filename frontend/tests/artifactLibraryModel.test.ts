@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   artifactHash,
+  artifactIrHash,
   createPineArtifacts,
   createTemplateCopy,
   dedupeArtifactName,
+  diffArtifactVersions,
+  rollbackArtifact,
   upsertArtifact
 } from "../src/strategy/artifactLibraryModel";
 import type { StrategyArtifact } from "../src/strategy/library";
@@ -22,6 +25,11 @@ const artifact = (overrides: Partial<StrategyArtifact> = {}): StrategyArtifact =
 });
 
 describe("artifact library model", () => {
+  it("fingerprints canonical IR independently of artifact presentation metadata", () => {
+    const ir = { v: 4 as const, name: "A", inputs: [], body: [] };
+    expect(artifactIrHash(ir)).toMatch(/^ir[0-9a-f]{8}$/);
+    expect(artifactIrHash({ ...ir, name: "B" })).not.toBe(artifactIrHash(ir));
+  });
   it("deduplicates names deterministically", () => {
     const items = [artifact(), artifact({ id: "strategy:two", name: "Momentum (2)" })];
     expect(dedupeArtifactName("Momentum", items)).toBe("Momentum (3)");
@@ -36,6 +44,16 @@ describe("artifact library model", () => {
     expect(unchanged).toMatchObject({ version: 4, createdAt: 10, updatedAt: 30 });
     expect(changed).toMatchObject({ version: 5, createdAt: 10, updatedAt: 40 });
     expect(changed.hash).not.toBe(original.hash);
+    expect(changed.history).toMatchObject([{ version: 4, xml: "<xml />" }]);
+  });
+
+  it("diffs and rolls back immutable revisions as a new semantic version", () => {
+    const original = artifact({ hash: artifactHash(artifact()), irHash: "ir-old", version: 1, semanticVersion: "1.0.0" });
+    const changed = upsertArtifact([original], { ...original, xml: "<xml>changed</xml>", code: "new line", irHash: "ir-new" }, 40)[0];
+    expect(diffArtifactVersions(changed, 1)).toMatchObject({ fromVersion: 1, toVersion: 2, added: ["new line"] });
+    const restored = rollbackArtifact([changed], changed.id, 1, 50)[0];
+    expect(restored).toMatchObject({ version: 3, semanticVersion: "1.0.2", xml: "<xml />", irHash: "ir-old" });
+    expect(restored.history).toHaveLength(2);
   });
 
   it("deduplicates a Pine import against the library and within its batch", () => {

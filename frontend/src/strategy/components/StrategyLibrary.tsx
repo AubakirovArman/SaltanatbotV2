@@ -1,12 +1,13 @@
-import { Download, FileCode2, LayoutGrid, Plus, Upload, X } from "lucide-react";
+import { Download, FileCode2, LayoutGrid, Plus, Upload, WandSparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PineImportDialog } from "../../components/PineImportDialog";
 import type { PineImport } from "../pine";
 import type { StrategyArtifact, StrategyArtifactKind } from "../library";
 import { strategyTemplates, type StrategyTemplate, type TemplateCategory } from "../templates";
-import { downloadStrategyFile, parseStrategyFile } from "../strategyFile";
+import { downloadStrategyFile, parseStrategyFile, type PortableStrategyArtifact } from "../strategyFile";
 import type { Locale } from "../../i18n";
 import { strategyCategory, strategyText } from "../../i18n/strategy";
+import { StrategyWizard } from "./StrategyWizard";
 
 export function StrategyLibrary({
   locale,
@@ -24,7 +25,7 @@ export function StrategyLibrary({
   onSelect: (id: string) => void;
   onCreate: (kind: StrategyArtifactKind) => void;
   onUseTemplate: (template: StrategyTemplate) => void;
-  onImportStrategy: (input: { name: string; description: string; xml: string }) => void;
+  onImportStrategy: (input: PortableStrategyArtifact) => void;
   onImportPineMany: (inputs: PineImport[]) => void;
 }) {
   const indicators = artifacts.filter((artifact) => artifact.kind === "indicator");
@@ -32,17 +33,18 @@ export function StrategyLibrary({
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [importError, setImportError] = useState<string>();
   const [pineOpen, setPineOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const importFile = async (file: File) => {
     setImportError(undefined);
     try {
-      const parsed = parseStrategyFile(await file.text());
+      const parsed = await parseStrategyFile(await file.text());
       if (!parsed) {
         setImportError(strategyText(locale, "invalidStrategy"));
         return;
       }
-      onImportStrategy({ name: parsed.name, description: parsed.description, xml: parsed.xml });
+      onImportStrategy(parsed);
     } catch {
       setImportError(strategyText(locale, "unreadableFile"));
     }
@@ -59,6 +61,9 @@ export function StrategyLibrary({
         </button>
         <button type="button" onClick={() => setGalleryOpen(true)} title={strategyText(locale, "browseTemplates")}>
           <LayoutGrid size={14} aria-hidden="true" /> {strategyText(locale, "gallery")}
+        </button>
+        <button type="button" onClick={() => setWizardOpen(true)} title={strategyText(locale, "strategyWizard")}>
+          <WandSparkles size={14} aria-hidden="true" /> {strategyText(locale, "wizard")}
         </button>
         <button type="button" onClick={() => fileInputRef.current?.click()} title={strategyText(locale, "importStrategy")}>
           <Upload size={14} aria-hidden="true" /> {strategyText(locale, "import")}
@@ -92,6 +97,16 @@ export function StrategyLibrary({
           onImportMany={(results) => {
             setPineOpen(false);
             onImportPineMany(results);
+          }}
+        />
+      )}
+      {wizardOpen && (
+        <StrategyWizard
+          locale={locale}
+          onClose={() => setWizardOpen(false)}
+          onCreate={(artifact) => {
+            onImportStrategy(artifact);
+            setWizardOpen(false);
           }}
         />
       )}
@@ -141,7 +156,7 @@ function LibraryGroup({
               aria-label={`${strategyText(locale, "exportStrategy")}: ${item.name}`}
               onClick={(event) => {
                 event.stopPropagation();
-                downloadStrategyFile(item);
+                void downloadStrategyFile(item);
               }}
             >
               <Download size={13} aria-hidden="true" />

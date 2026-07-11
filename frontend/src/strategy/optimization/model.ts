@@ -31,10 +31,10 @@ export function initOptSpec(ir: StrategyIR): OptSpecState {
     const step = niceStep(span);
     return {
       name: input.name,
-      enabled: i < 1, // enable the first input by default
-      min: round4(base - span),
-      max: round4(base + span),
-      step
+      enabled: input.optimizationEligible !== false && i < 1,
+      min: input.min ?? round4(base - span),
+      max: input.max ?? round4(base + span),
+      step: input.step ?? step
     };
   });
   return { objective: "netProfit", trainFrac: 0.7, axes };

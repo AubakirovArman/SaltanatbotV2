@@ -204,17 +204,17 @@ Canvas content needs a maintained DOM alternative today. Experimental HTML-in-Ca
 
 ## Priority 2: Strategy and Indicator Studio
 
-- separate Build, Validate, Preview, Backtest, Optimize, Run and Learn concerns;
-- block inspector with description, inputs, outputs, examples and pitfalls;
-- guided strategy wizard producing ordinary editable Blockly XML;
-- inline compile diagnostics linked to blocks and Pine source spans;
-- parameter schema with min/max/step/default and optimization eligibility;
-- reusable user-defined functions and indicator subgraphs;
-- artifact history, semantic version, IR hash and migration metadata;
-- dependency graph for indicators used by strategies;
-- diff and rollback between versions;
-- safe share files with schema version, checksums and provenance;
-- marketplace is deferred until signing, moderation, permissions and supply-chain policy exist.
+- [x] separate Build, Validate, Preview, Backtest, Optimize, Run and Learn concerns;
+- [x] block inspector with description, inputs, outputs, examples and pitfalls;
+- [x] guided strategy wizard producing ordinary editable Blockly XML;
+- [x] inline compile diagnostics linked to blocks and Pine source spans;
+- [x] parameter schema with min/max/step/default and optimization eligibility;
+- [x] reusable user-defined functions and indicator subgraphs;
+- [x] artifact history, semantic version, IR hash and migration metadata;
+- [x] dependency graph for indicators used by strategies;
+- [x] diff and rollback between versions;
+- [x] safe share files with schema version, checksums and provenance;
+- [x] marketplace is explicitly deferred until signing, moderation, permissions and supply-chain policy exist.
 
 ## Priority 2: accessibility and internationalization
 

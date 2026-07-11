@@ -47,6 +47,31 @@ test("opens the lazy Strategy workspace without losing the shell", async ({ page
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   await expect(workspaceModes.getByRole("button", { name: "Chart", exact: true })).toHaveAttribute("aria-pressed", "false");
   await expect(workspaceModes.getByRole("button", { name: "Strategy", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const stages = page.getByRole("navigation", { name: "Studio stages" });
+  await expect(stages.getByRole("button", { name: "Build", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await stages.getByRole("button", { name: "Learn", exact: true }).click();
+  await expect(page.getByText("Select a block in the workspace to inspect its contract, example and pitfalls.")).toBeVisible();
+});
+
+test("creates an ordinary editable strategy with the guided wizard", async ({ page }) => {
+  const workspaceModes = page.getByLabel("Workspace mode");
+  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Wizard", exact: true }).click();
+  const wizard = page.getByRole("dialog", { name: "Guided strategy wizard" });
+  await wizard.getByLabel("Strategy name").fill("E2E guided breakout");
+  await wizard.getByRole("button", { name: "Next", exact: true }).click();
+  await wizard.getByLabel("Entry signal").selectOption("price-breakout");
+  await wizard.getByLabel("Lookback").fill("12");
+  await wizard.getByRole("button", { name: "Next", exact: true }).click();
+  await wizard.getByRole("button", { name: "Create editable strategy", exact: true }).click();
+
+  await expect(wizard).toBeHidden();
+  await expect(page.locator(".strategy-library")).toContainText("E2E guided breakout");
+  const stages = page.getByRole("navigation", { name: "Studio stages" });
+  await stages.getByRole("button", { name: "Validate", exact: true }).click();
+  await expect(page.getByText("Validation passed. No compile diagnostics.")).toBeVisible();
 });
 
 test("persists the selected theme across reload", async ({ page }) => {
@@ -103,6 +128,7 @@ test("switches and persists the interface locale", async ({ page }) => {
   await page.keyboard.press("Escape");
 
   await workspaceModes.getByRole("button", { name: "Стратегия", exact: true }).click();
+  await page.getByRole("navigation", { name: "Этапы Студии" }).getByRole("button", { name: "Бэктест", exact: true }).click();
   await expect(page.getByRole("button", { name: "Запустить бэктест", exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("button", { name: "Галерея", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Pine", exact: true }).click();
@@ -145,6 +171,7 @@ test("runs a backtest and exposes assumptions and metrics", async ({ page }) => 
   const workspaceModes = page.getByLabel("Workspace mode");
   await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("navigation", { name: "Studio stages" }).getByRole("button", { name: "Backtest", exact: true }).click();
   await page.locator(".config-row label").filter({ hasText: /^Market/ }).locator("select").selectOption("EURUSD");
   await page.getByRole("button", { name: "Run backtest" }).click();
 

@@ -1,7 +1,7 @@
-import { AlertTriangle, Code2, FileJson, Loader2, Play, Save, Share2, SlidersHorizontal, Workflow } from "lucide-react";
-import type { Dispatch, SetStateAction } from "react";
+import { AlertTriangle, Code2, FileJson, Loader2, Play, Save, Share2, Workflow } from "lucide-react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import type { BacktestConfig, BacktestResult } from "../backtest";
-import { blockCatalog } from "../blockCatalog";
+import { blockInspectorDoc } from "../blockCatalog";
 import type { StrategyArtifact } from "../library";
 import type { StrategyIR } from "../ir";
 import type { OptimizeResult, WalkForwardResult } from "../optimizer";
@@ -11,6 +11,8 @@ import { BacktestReport } from "../../components/BacktestReport";
 import type { Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
 import { OptimizePanel } from "./OptimizePanel";
+import { ArtifactVersionPanel } from "./ArtifactVersionPanel";
+import type { CompileDiagnostic } from "../compile";
 
 const BAR_CHOICES = [500, 1000, 3000, 5000, 10000, 20000, 50000];
 
@@ -23,6 +25,9 @@ const COST_PRESETS: { id: string; labelKey: "majorsTaker" | "altcoin" | "custom"
 interface StrategyExecutionPanelProps {
   locale: Locale;
   activeArtifact?: StrategyArtifact;
+  artifacts: StrategyArtifact[];
+  onRollbackArtifact: (version: number) => void;
+  onDependenciesChange: (dependencies: string[]) => void;
   selectedType?: string;
   running: boolean;
   optimizing: boolean;
@@ -56,17 +61,31 @@ interface StrategyExecutionPanelProps {
   walkForwardResult?: WalkForwardResult;
   onApplyCombo: (params: Record<string, number>) => void;
   errors: string[];
+  diagnostics: CompileDiagnostic[];
+  onDiagnosticSelect: (blockId?: string) => void;
   result?: BacktestResult;
   decimals: number;
   onShowOnChart?: () => void;
+  onOpenTrading?: () => void;
   jsonSize: number;
   preview: string;
   savedAt?: number;
 }
 
+type StudioStage = "build" | "validate" | "preview" | "backtest" | "optimize" | "run" | "learn";
+const studioStages: Array<{ id: StudioStage; key: "stageBuild" | "stageValidate" | "stagePreview" | "stageBacktest" | "stageOptimize" | "stageRun" | "stageLearn" }> = [
+  { id: "build", key: "stageBuild" }, { id: "validate", key: "stageValidate" }, { id: "preview", key: "stagePreview" },
+  { id: "backtest", key: "stageBacktest" }, { id: "optimize", key: "stageOptimize" }, { id: "run", key: "stageRun" }, { id: "learn", key: "stageLearn" }
+];
+
 export function StrategyExecutionPanel(props: StrategyExecutionPanelProps) {
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(props.locale, key);
-  const help = props.selectedType ? blockCatalog[props.selectedType] : undefined;
+  const help = props.selectedType ? blockInspectorDoc(props.selectedType) : undefined;
+  const [stage, setStage] = useState<StudioStage>("build");
+  const selectStage = (next: StudioStage) => {
+    setStage(next);
+    if (next === "optimize" && !props.optOpen && props.strategyInputs.length > 0) props.onToggleOptimize();
+  };
   return (
     <aside className="code-preview">
       <div className="lab-breadcrumb">
@@ -74,64 +93,91 @@ export function StrategyExecutionPanel(props: StrategyExecutionPanelProps) {
         <strong>{props.activeArtifact?.name ?? t("strategyLab")}</strong>
         <span>{props.activeArtifact ? `${props.activeArtifact.kind} v${props.activeArtifact.version ?? 1}` : ""}</span>
       </div>
-      {help && (
-        <div className="block-help" style={{ padding: "8px 10px", margin: "0 0 8px", borderRadius: 8, background: "rgba(134,150,166,0.10)", fontSize: 12, lineHeight: 1.45 }}>
-          <strong>{help.title}</strong>
-          <div style={{ opacity: 0.85, marginTop: 3 }}>{help.body}</div>
-          {help.example && <code style={{ display: "block", marginTop: 4, opacity: 0.75 }}>{t("example")} {help.example}</code>}
-        </div>
+      {props.activeArtifact && (
+        <ArtifactVersionPanel
+          locale={props.locale}
+          artifact={props.activeArtifact}
+          artifacts={props.artifacts}
+          onRollback={props.onRollbackArtifact}
+          onDependenciesChange={props.onDependenciesChange}
+        />
       )}
-      <div className="backtest-controls">
-        <button type="button" className="run-button" onClick={props.onRun} disabled={props.running || props.optimizing}>
-          {props.running ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}
-          {props.running ? t("loadingHistory") : t("runBacktest")}
-        </button>
-        <button type="button" onClick={props.onToggleOptimize} disabled={props.strategyInputs.length === 0} className={props.optOpen ? "shared" : ""} title={props.strategyInputs.length === 0 ? t("addNumericInput") : t("optimizeParameters")}>
-          <SlidersHorizontal size={15} aria-hidden="true" />
-        </button>
+      <nav className="studio-stage-tabs" aria-label={t("studioStages")}>
+        {studioStages.map((item) => <button type="button" key={item.id} className={stage === item.id ? "active" : ""} aria-pressed={stage === item.id} onClick={() => selectStage(item.id)}>{t(item.key)}</button>)}
+      </nav>
+      <div className="backtest-controls studio-global-actions">
         <button type="button" onClick={props.onShare} title={t("copyShareLink")} className={props.shareState === "copied" ? "shared" : ""}><Share2 size={15} aria-hidden="true" /></button>
         <button type="button" onClick={props.onSave} disabled={!props.activeArtifact} title={t("save")}><Save size={15} aria-hidden="true" /></button>
       </div>
-      {props.strategyInputs.length === 0 && props.optOpen && <div className="opt-hint">{t("noNumericInputs")}</div>}
       {props.shareState === "copied" && <div className="share-toast">{t("shareCopied")}</div>}
-      <MarketControls {...props} />
 
-      {props.optOpen && props.optSpec && (
-        <OptimizePanel
-          locale={props.locale}
-          spec={props.optSpec}
-          inputs={props.strategyInputs}
-          onSpecChange={props.onOptSpecChange}
-          onRun={props.onOptimize}
-          optimizing={props.optimizing}
-          progress={props.optProgress}
-          walkForwardOn={props.walkForwardOn}
-          onToggleWalkForward={props.onToggleWalkForward}
-          folds={props.optFolds}
-          onFoldsChange={props.onFoldsChange}
-          walkForwardMode={props.walkForwardMode}
-          onWalkForwardModeChange={props.onWalkForwardModeChange}
-          result={props.optimizeResult}
-          walkForwardResult={props.walkForwardResult}
-          onApplyCombo={props.onApplyCombo}
-          decimals={props.decimals}
-        />
+      {stage === "build" && (
+        <section className="studio-stage-panel">
+          <div className="panel-header"><strong>{t("parameterSchema")}</strong><span>{props.strategyInputs.length}</span></div>
+          {props.strategyInputs.length === 0 ? <p>{t("noNumericInputs")}</p> : (
+            <table className="studio-parameter-table"><thead><tr><th>{t("inputs")}</th><th>{t("default")}</th><th>{t("min")}</th><th>{t("max")}</th><th>{t("step")}</th><th>{t("optimizer")}</th></tr></thead><tbody>{props.strategyInputs.map((input) => <tr key={input.name}><th scope="row">{input.name}</th><td>{input.defaultValue ?? input.value}</td><td>{input.min ?? "—"}</td><td>{input.max ?? "—"}</td><td>{input.step ?? "—"}</td><td>{input.optimizationEligible === false ? t("disabled") : t("enabled")}</td></tr>)}</tbody></table>
+          )}
+          <p>{t("functionsHint")}</p>
+        </section>
       )}
 
-      {props.errors.length > 0 && (
-        <div className="strategy-warnings" role="status">
-          {props.errors.map((message, index) => <span key={`${message}-${index}`}><AlertTriangle size={12} aria-hidden="true" /> {message}</span>)}
-        </div>
+      {stage === "validate" && (
+        <section className="studio-stage-panel">
+          <div className="panel-header"><strong>{t("validation")}</strong><span>{props.diagnostics.length}</span></div>
+          {props.diagnostics.length > 0 ? (
+            <div className="strategy-warnings" role="status">
+              {props.diagnostics.map((diagnostic, index) => diagnostic.blockId ? (
+                <button type="button" key={`${diagnostic.message}-${index}`} onClick={() => props.onDiagnosticSelect(diagnostic.blockId)}><AlertTriangle size={12} aria-hidden="true" /> {diagnostic.message} <code>{diagnostic.blockType}</code></button>
+              ) : <span key={`${diagnostic.message}-${index}`}><AlertTriangle size={12} aria-hidden="true" /> {diagnostic.message}</span>)}
+            </div>
+          ) : <p role="status">{t("validationPassed")}</p>}
+        </section>
       )}
 
-      {props.result ? (
-        <BacktestReport locale={props.locale} result={props.result} decimals={props.decimals} config={props.config} onShowOnChart={props.onShowOnChart} />
-      ) : (
-        <>
+      {stage === "preview" && (
+        <section className="studio-stage-panel">
           <div className="panel-header"><strong><Code2 size={15} aria-hidden="true" /> {t("preview")}</strong><span>{props.jsonSize} {t("bytes")}</span></div>
           <pre>{props.preview || t("connectBlocks")}</pre>
-        </>
+        </section>
       )}
+
+      {stage === "backtest" && (
+        <section className="studio-stage-panel">
+          <div className="backtest-controls"><button type="button" className="run-button" onClick={props.onRun} disabled={props.running || props.optimizing}>{props.running ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}{props.running ? t("loadingHistory") : t("runBacktest")}</button></div>
+          <MarketControls {...props} />
+          {props.result ? <BacktestReport locale={props.locale} result={props.result} decimals={props.decimals} config={props.config} onShowOnChart={props.onShowOnChart} /> : <p>{t("runBacktestHint")}</p>}
+        </section>
+      )}
+
+      {stage === "optimize" && (
+        <section className="studio-stage-panel">
+          {props.strategyInputs.length === 0 && <div className="opt-hint">{t("noNumericInputs")}</div>}
+          <MarketControls {...props} />
+          {props.optOpen && props.optSpec && <OptimizePanel locale={props.locale} spec={props.optSpec} inputs={props.strategyInputs} onSpecChange={props.onOptSpecChange} onRun={props.onOptimize} optimizing={props.optimizing} progress={props.optProgress} walkForwardOn={props.walkForwardOn} onToggleWalkForward={props.onToggleWalkForward} folds={props.optFolds} onFoldsChange={props.onFoldsChange} walkForwardMode={props.walkForwardMode} onWalkForwardModeChange={props.onWalkForwardModeChange} result={props.optimizeResult} walkForwardResult={props.walkForwardResult} onApplyCombo={props.onApplyCombo} decimals={props.decimals} />}
+        </section>
+      )}
+
+      {stage === "run" && (
+        <section className="studio-stage-panel studio-run-stage">
+          <strong>{t("runReadiness")}</strong>
+          <p>{props.diagnostics.length ? t("fixValidationBeforeRun") : t("runReadinessHint")}</p>
+          {props.onShowOnChart && <button type="button" onClick={props.onShowOnChart}>{t("showOnChart")}</button>}
+          {props.onOpenTrading && <button type="button" disabled={props.diagnostics.length > 0} onClick={props.onOpenTrading}>{t("openExperimentalTrading")}</button>}
+        </section>
+      )}
+
+      {stage === "learn" && (help ? (
+        <div className="block-help" style={{ padding: "8px 10px", margin: "0 0 8px", borderRadius: 8, background: "rgba(134,150,166,0.10)", fontSize: 12, lineHeight: 1.45 }}>
+          <strong>{help.title}</strong>
+          <div style={{ opacity: 0.85, marginTop: 3 }}>{help.body}</div>
+          <dl className="block-inspector-contract">
+            <div><dt>{t("inputs")}</dt><dd>{help.inputs.join(" · ")}</dd></div>
+            <div><dt>{t("output")}</dt><dd>{help.output}</dd></div>
+            <div><dt>{t("example")}</dt><dd><code>{help.example}</code></dd></div>
+            <div><dt>{t("pitfalls")}</dt><dd>{help.pitfalls.join(" · ")}</dd></div>
+          </dl>
+        </div>
+      ) : <p className="studio-stage-panel">{t("selectBlockToLearn")}</p>)}
 
       <div className="ir-note">
         <FileJson size={15} aria-hidden="true" />

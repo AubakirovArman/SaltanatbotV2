@@ -12,6 +12,7 @@ import { StrategyExecutionPanel } from "../strategy/components/StrategyExecution
 import { PineSourceComparison } from "../strategy/components/PineSourceComparison";
 import { useStrategyResearch } from "../strategy/useStrategyResearch";
 import { useStrategyWorkspace } from "../strategy/useStrategyWorkspace";
+import type { PortableStrategyArtifact } from "../strategy/strategyFile";
 
 interface StrategyLabProps {
   artifacts: StrategyArtifact[];
@@ -20,8 +21,10 @@ interface StrategyLabProps {
   onCreateArtifact: (kind: StrategyArtifactKind) => void;
   onSaveArtifact: (artifact: StrategyArtifact) => void;
   onUseTemplate: (template: StrategyTemplate) => void;
-  onImportStrategy: (input: { name: string; description: string; xml: string }) => void;
+  onImportStrategy: (input: PortableStrategyArtifact) => void;
   onImportPineMany: (inputs: PineImport[]) => void;
+  onRollbackArtifact: (id: string, version: number) => void;
+  onUpdateArtifactDependencies: (id: string, dependencies: string[]) => void;
   catalog?: CatalogResponse;
   initialSymbol: string;
   initialTimeframe: Timeframe;
@@ -35,6 +38,7 @@ interface StrategyLabProps {
     visuals?: { plots: PlotSeries[]; shapes: ShapeOverlays }
   ) => void;
   onShowOnChart?: (symbol: string, timeframe: Timeframe) => void;
+  onOpenTrading?: () => void;
 }
 
 export function StrategyLab({
@@ -46,6 +50,8 @@ export function StrategyLab({
   onUseTemplate,
   onImportStrategy,
   onImportPineMany,
+  onRollbackArtifact,
+  onUpdateArtifactDependencies,
   catalog,
   initialSymbol,
   initialTimeframe,
@@ -53,7 +59,8 @@ export function StrategyLab({
   theme = "dark",
   locale,
   onApplyResult,
-  onShowOnChart
+  onShowOnChart,
+  onOpenTrading
 }: StrategyLabProps) {
   const activeArtifact = artifacts.find((artifact) => artifact.id === activeArtifactId) ?? artifacts[0];
   const workspace = useStrategyWorkspace({ activeArtifact, onSaveArtifact, theme });
@@ -68,6 +75,10 @@ export function StrategyLab({
   const [shareState, setShareState] = useState<"idle" | "copied">("idle");
   const instrument = catalog?.instruments.find((item) => item.symbol === research.symbol);
   const errors = [...new Set([...workspace.compileErrors, ...research.errors])];
+  const diagnostics = [
+    ...workspace.compileDiagnostics,
+    ...research.errors.filter((message) => !workspace.compileErrors.includes(message)).map((message) => ({ severity: "error" as const, message }))
+  ];
 
   useEffect(() => {
     research.clearResult();
@@ -116,6 +127,9 @@ export function StrategyLab({
         <StrategyExecutionPanel
           locale={locale}
           activeArtifact={activeArtifact}
+          artifacts={artifacts}
+          onRollbackArtifact={(version) => activeArtifact && onRollbackArtifact(activeArtifact.id, version)}
+          onDependenciesChange={(dependencies) => activeArtifact && onUpdateArtifactDependencies(activeArtifact.id, dependencies)}
           selectedType={workspace.selectedType}
           running={research.running}
           optimizing={research.optimizing}
@@ -149,9 +163,12 @@ export function StrategyLab({
           walkForwardResult={research.walkForwardResult}
           onApplyCombo={research.applyCombo}
           errors={errors}
+          diagnostics={diagnostics}
+          onDiagnosticSelect={workspace.focusDiagnostic}
           result={research.result}
           decimals={instrument?.decimals ?? 2}
           onShowOnChart={onShowOnChart ? () => onShowOnChart(research.symbol, research.timeframe) : undefined}
+          onOpenTrading={onOpenTrading}
           jsonSize={workspace.jsonSize}
           preview={workspace.preview}
           savedAt={workspace.savedAt}

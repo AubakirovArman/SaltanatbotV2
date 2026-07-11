@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { registerStrategyBlocks, strategyToolbox } from "./blocks";
 import { forgeDark, forgeLight } from "./blocklyTheme";
 import { compileWorkspace } from "./compile";
+import type { CompileDiagnostic } from "./compile";
 import type { StrategyIR } from "./ir";
 import { irToText } from "./irText";
 import type { StrategyArtifact } from "./library";
+import { artifactIrHash } from "./artifactLibraryModel";
 
 const blocklyMessages = Object.fromEntries(Object.entries(En).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 let localeReady = false;
@@ -30,6 +32,7 @@ export function useStrategyWorkspace(options: UseStrategyWorkspaceOptions) {
   const [strategyInputs, setStrategyInputs] = useState<StrategyIR["inputs"]>([]);
   const [jsonSize, setJsonSize] = useState(0);
   const [compileErrors, setCompileErrors] = useState<string[]>([]);
+  const [compileDiagnostics, setCompileDiagnostics] = useState<CompileDiagnostic[]>([]);
   const [initError, setInitError] = useState<string>();
   const [savedAt, setSavedAt] = useState<number>();
   onSaveRef.current = options.onSaveArtifact;
@@ -69,6 +72,7 @@ export function useStrategyWorkspace(options: UseStrategyWorkspaceOptions) {
       setPreview(compiled.ir ? irToText(compiled.ir) : "");
       setStrategyInputs(compiled.ir?.inputs ?? []);
       setCompileErrors(compiled.errors);
+      setCompileDiagnostics(compiled.diagnostics ?? compiled.errors.map((message) => ({ severity: "error", message })));
       setJsonSize(JSON.stringify(Blockly.serialization.workspaces.save(workspace)).length);
     };
     previewRef.current = previewNow;
@@ -147,6 +151,15 @@ export function useStrategyWorkspace(options: UseStrategyWorkspaceOptions) {
     };
   };
 
+  const focusDiagnostic = (blockId?: string) => {
+    const workspace = workspaceRef.current;
+    if (!workspace || !blockId) return;
+    const block = workspace.getBlockById(blockId);
+    if (!block) return;
+    Blockly.common.setSelected(block);
+    workspace.centerOnBlock(blockId, true);
+  };
+
   return {
     containerRef,
     workspaceRef,
@@ -155,6 +168,8 @@ export function useStrategyWorkspace(options: UseStrategyWorkspaceOptions) {
     strategyInputs,
     jsonSize,
     compileErrors,
+    compileDiagnostics,
+    focusDiagnostic,
     initError,
     savedAt,
     saveNow,
@@ -169,6 +184,8 @@ function serializeArtifact(workspace: Blockly.WorkspaceSvg, artifact: StrategyAr
     name: extractWorkspaceName(workspace) || artifact.name,
     xml: Blockly.Xml.domToText(Blockly.Xml.workspaceToDom(workspace)),
     code: compiled.ir ? irToText(compiled.ir) : "",
+    irHash: compiled.ir ? artifactIrHash(compiled.ir) : undefined,
+    parameters: compiled.ir?.inputs,
     updatedAt: Date.now()
   };
 }

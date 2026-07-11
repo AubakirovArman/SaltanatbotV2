@@ -514,14 +514,18 @@ export function registerStrategyBlocks() {
     // ---- Params ----
     {
       type: "param_number",
-      message0: "input %1 = %2",
+      message0: "input %1 default %2 min %3 max %4 step %5 optimize %6",
       args0: [
         { type: "field_input", name: "NAME", text: "length" },
-        { type: "field_number", name: "VALUE", value: 14 }
+        { type: "field_number", name: "VALUE", value: 14 },
+        { type: "field_number", name: "MIN", value: 1 },
+        { type: "field_number", name: "MAX", value: 100 },
+        { type: "field_number", name: "STEP", value: 1, min: 0.000001 },
+        { type: "field_checkbox", name: "OPTIMIZE", checked: true }
       ],
       output: "Number",
       colour: "#6d72c9",
-      tooltip: "A named numeric parameter you can tune before a backtest."
+      tooltip: "A named numeric parameter with validated bounds and optional optimizer eligibility."
     },
     {
       type: "math_minmax",

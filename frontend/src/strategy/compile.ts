@@ -6,6 +6,7 @@ import type { PriceField } from "./ta";
 interface Ctx {
   inputs: Map<string, StrategyInput>;
   errors: string[];
+  diagnostics: CompileDiagnostic[];
   /** Variable names written by a `set variable` block anywhere in the strategy. */
   vars: Set<string>;
   /** Variable names read by a `get variable` block — checked against `vars`. */
@@ -14,6 +15,7 @@ interface Ctx {
   procs: Map<string, Blockly.Block>;
   /** Function names currently being expanded, to detect recursion. */
   callStack: Set<string>;
+  procArgs: Array<Map<string, NumExpr>>;
 }
 
 function procName(block: Blockly.Block): string {
@@ -21,21 +23,24 @@ function procName(block: Blockly.Block): string {
   return withCall.getProcedureCall?.() ?? (block.getFieldValue("NAME") as string) ?? "";
 }
 
-function hasProcParams(def: Blockly.Block): boolean {
-  const withVars = def as unknown as { getVars?: () => string[] };
-  return (withVars.getVars?.().length ?? 0) > 0;
-}
-
 export interface CompileResult {
   ir?: StrategyIR;
   errors: string[];
   /** Non-blocking advisories (e.g. reading a variable that is never set). */
   warnings?: string[];
+  diagnostics?: CompileDiagnostic[];
+}
+
+export interface CompileDiagnostic {
+  severity: "error" | "warning";
+  message: string;
+  blockId?: string;
+  blockType?: string;
 }
 
 /** Compile a Blockly workspace into a safe JSON-IR (no eval, no code strings). */
 export function compileWorkspace(workspace: Blockly.Workspace): CompileResult {
-  const ctx: Ctx = { inputs: new Map(), errors: [], vars: new Set(), usedVars: new Set(), procs: new Map(), callStack: new Set() };
+  const ctx: Ctx = { inputs: new Map(), errors: [], diagnostics: [], vars: new Set(), usedVars: new Set(), procs: new Map(), callStack: new Set(), procArgs: [] };
   // Index function definitions so calls can be inlined at compile time (no runtime cost).
   for (const type of ["procedures_defnoreturn", "procedures_defreturn"]) {
     for (const def of workspace.getBlocksByType(type, false)) {
@@ -51,7 +56,7 @@ export function compileWorkspace(workspace: Blockly.Workspace): CompileResult {
   // "On start (once)" section — only `set variable` blocks are meaningful here.
   const initStmts = compileStatements(root.getInputTargetBlock("INIT"), ctx);
   for (const stmt of initStmts) {
-    if (stmt.k !== "setvar") ctx.errors.push("The 'on start' section only accepts 'set variable' blocks.");
+    if (stmt.k !== "setvar") addError(ctx, "The 'on start' section only accepts 'set variable' blocks.", root.getInputTargetBlock("INIT") ?? root);
   }
   const init = initStmts.filter((stmt): stmt is Extract<Stmt, { k: "setvar" }> => stmt.k === "setvar");
   const body = compileStatements(root.getInputTargetBlock("RULES"), ctx);
@@ -59,7 +64,7 @@ export function compileWorkspace(workspace: Blockly.Workspace): CompileResult {
   const hasEntry = containsStmt(body, "entry");
   const hasMarker = containsStmt(body, "marker");
   if (!hasEntry && !hasMarker) {
-    ctx.errors.push("Strategy has no entry rule — add a Buy/Sell, Entry, or Mark signal.");
+    addError(ctx, "Strategy has no entry rule — add a Buy/Sell, Entry, or Mark signal.", root);
   }
 
   // Reading a variable that is never set reads 0 silently — flag the likely typo.
@@ -71,6 +76,7 @@ export function compileWorkspace(workspace: Blockly.Workspace): CompileResult {
   return {
     ir: { name, inputs: [...ctx.inputs.values()], body, init: init.length ? init : undefined, v: IR_VERSION },
     errors: ctx.errors,
+    diagnostics: ctx.diagnostics.length ? ctx.diagnostics : undefined,
     warnings: warnings.length ? warnings : undefined
   };
 }
@@ -177,29 +183,26 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
     case "controls_repeat_ext":
       return { k: "repeat", count: numInput(block, "TIMES", ctx), body: compileStatements(block.getInputTargetBlock("DO"), ctx) };
     case "procedures_callnoreturn": {
-      // Inline the called function's body (parameterless), wrapped in if(true) so a
-      // single Stmt is returned. Recursion / parameters are rejected.
+      // Inline the called function's body with compile-time numeric argument substitution.
       const name = procName(block);
       const def = ctx.procs.get(name);
       if (!def) {
-        ctx.errors.push(`Unknown function: ${name || "(unnamed)"}`);
-        return undefined;
-      }
-      if (hasProcParams(def)) {
-        ctx.errors.push(`Function "${name}" has parameters — parameters aren't supported yet.`);
+        addError(ctx, `Unknown function: ${name || "(unnamed)"}`, block);
         return undefined;
       }
       if (ctx.callStack.has(name)) {
-        ctx.errors.push(`Recursive function not allowed: ${name}`);
+        addError(ctx, `Recursive function not allowed: ${name}`, block);
         return undefined;
       }
       if (ctx.callStack.size >= 20) {
-        ctx.errors.push(`Functions nested too deep near "${name}".`);
+        addError(ctx, `Functions nested too deep near "${name}".`, block);
         return undefined;
       }
+      ctx.procArgs.push(procedureArguments(def, block, ctx));
       ctx.callStack.add(name);
       const body = compileStatements(def.getInputTargetBlock("STACK"), ctx);
       ctx.callStack.delete(name);
+      ctx.procArgs.pop();
       return { k: "if", cond: { k: "bool", v: true }, then: body };
     }
     case "controls_whileUntil": {
@@ -278,7 +281,7 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
         color: (block.getFieldValue("COLOR") as string) || "#f7c948"
       };
     default:
-      ctx.errors.push(`Unsupported action block: ${block.type}`);
+      addError(ctx, `Unsupported action block: ${block.type}`, block);
       return undefined;
   }
 }
@@ -311,7 +314,7 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
       return { k: "price", field: priceField(block.getFieldValue("FIELD")), offset: Math.max(0, Number(block.getFieldValue("BARS")) || 0) };
     case "market_hist_dyn": {
       // Dynamic offset (may read a loop counter) — scalar-only, forbidden as a series input.
-      if (vec) ctx.errors.push("Dynamic history (variable bars-ago) can't be used inside an indicator/series input.");
+      if (vec) addError(ctx, "Dynamic history (variable bars-ago) can't be used inside an indicator/series input.", block);
       return { k: "histn", field: priceField(block.getFieldValue("FIELD")), offset: numInput(block, "OFFSET", ctx) };
     }
     case "market_time": {
@@ -486,13 +489,28 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
     case "var_prev": {
       const varName = (block.getFieldValue("NAME") as string) || "x";
       ctx.usedVars.add(varName);
-      if (vec) ctx.errors.push(`Variable "${varName}" can't be used inside an indicator/series input.`);
+      if (vec) addError(ctx, `Variable "${varName}" can't be used inside an indicator/series input.`, block);
       return { k: "varprev", name: varName };
     }
     case "param_number": {
       const paramName = (block.getFieldValue("NAME") as string) || "param";
       if (!ctx.inputs.has(paramName)) {
-        ctx.inputs.set(paramName, { name: paramName, value: Number(block.getFieldValue("VALUE")) || 0 });
+        const value = finiteField(block, "VALUE", 0);
+        const min = finiteField(block, "MIN", value);
+        const max = finiteField(block, "MAX", value);
+        const step = finiteField(block, "STEP", 1);
+        if (min > max) addError(ctx, `Input "${paramName}" minimum must be less than or equal to maximum.`, block);
+        if (step <= 0) addError(ctx, `Input "${paramName}" step must be positive.`, block);
+        if (value < min || value > max) addError(ctx, `Input "${paramName}" default must be within [${min}, ${max}].`, block);
+        ctx.inputs.set(paramName, {
+          name: paramName,
+          value,
+          defaultValue: value,
+          min,
+          max,
+          step: step > 0 ? step : 1,
+          optimizationEligible: block.getFieldValue("OPTIMIZE") !== "FALSE"
+        });
       }
       return { k: "input", name: paramName };
     }
@@ -500,41 +518,77 @@ function compileNum(block: Blockly.Block | null, ctx: Ctx, vec = false): NumExpr
       const varName = (block.getFieldValue("NAME") as string) || "x";
       ctx.usedVars.add(varName);
       if (vec) {
-        ctx.errors.push(`Variable "${varName}" can't be used inside an indicator, cross, or series input — a variable has only its latest value, not a history.`);
+        addError(ctx, `Variable "${varName}" can't be used inside an indicator, cross, or series input — a variable has only its latest value, not a history.`, block);
       }
       return { k: "var", name: varName };
+    }
+    case "variables_get": {
+      const id = String(block.getFieldValue("VAR") ?? "");
+      const name = block.getField("VAR")?.getText() ?? id;
+      for (let index = ctx.procArgs.length - 1; index >= 0; index -= 1) {
+        const value = ctx.procArgs[index].get(id) ?? ctx.procArgs[index].get(name);
+        if (value) return value;
+      }
+      addError(ctx, `Function parameter "${name}" is not bound at this call site.`, block);
+      return { k: "num", v: 0 };
     }
     case "procedures_callreturn": {
       // Inline a value-returning function's RETURN expression at the call site.
       const name = procName(block);
       const def = ctx.procs.get(name);
       if (!def) {
-        ctx.errors.push(`Unknown function: ${name || "(unnamed)"}`);
-        return { k: "num", v: 0 };
-      }
-      if (hasProcParams(def)) {
-        ctx.errors.push(`Function "${name}" has parameters — parameters aren't supported yet.`);
+        addError(ctx, `Unknown function: ${name || "(unnamed)"}`, block);
         return { k: "num", v: 0 };
       }
       if (ctx.callStack.has(name) || ctx.callStack.size >= 20) {
-        ctx.errors.push(`Recursive or too-deeply-nested function: ${name}`);
+        addError(ctx, `Recursive or too-deeply-nested function: ${name}`, block);
         return { k: "num", v: 0 };
       }
+      ctx.procArgs.push(procedureArguments(def, block, ctx, vec));
       ctx.callStack.add(name);
       const ret = compileNum(def.getInputTargetBlock("RETURN"), ctx, vec);
       ctx.callStack.delete(name);
+      ctx.procArgs.pop();
       return ret;
     }
     case "ctx_read": {
       const keys: CtxKey[] = ["position_dir", "entry_price", "unrealized_pnl", "unrealized_pnl_pct", "bars_in_position", "last_trade_pnl", "consecutive_losses", "trades_today", "realized_today", "equity"];
       const key = block.getFieldValue("FIELD") as CtxKey;
-      if (vec) ctx.errors.push("Position/PnL reads can't be used inside an indicator or series input — they are single values, not history.");
+      if (vec) addError(ctx, "Position/PnL reads can't be used inside an indicator or series input — they are single values, not history.", block);
       return { k: "ctx", key: keys.includes(key) ? key : "position_dir" };
     }
     default:
-      ctx.errors.push(`Unsupported value block: ${block.type}`);
+      addError(ctx, `Unsupported value block: ${block.type}`, block);
       return { k: "num", v: 0 };
   }
+}
+
+function finiteField(block: Blockly.Block, name: string, fallback: number) {
+  const value = Number(block.getFieldValue(name));
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function addError(ctx: Ctx, message: string, block?: Blockly.Block | null) {
+  ctx.errors.push(message);
+  ctx.diagnostics.push({ severity: "error", message, blockId: block?.id, blockType: block?.type });
+}
+
+function procedureArguments(definition: Blockly.Block, call: Blockly.Block, ctx: Ctx, vec = false): Map<string, NumExpr> {
+  // Blockly 13 exposes procedure parameters as variable models. Older
+  // releases also supplied `getVars()`, so retain it as a compatibility
+  // fallback for artifacts created with those versions.
+  const models = definition.getVarModels();
+  const legacyVars = (definition as unknown as { getVars?: () => string[] }).getVars?.() ?? [];
+  const parameters = models.length
+    ? models.map((model) => ({ id: model.getId(), name: model.getName() }))
+    : legacyVars.map((value) => ({ id: value, name: definition.workspace.getVariableMap().getVariableById(value)?.getName() ?? value }));
+  const map = new Map<string, NumExpr>();
+  parameters.forEach(({ id, name }, index) => {
+    const expression = compileNum(call.getInputTargetBlock(`ARG${index}`), ctx, vec);
+    map.set(id, expression);
+    if (name) map.set(name, expression);
+  });
+  return map;
 }
 
 function compileBool(block: Blockly.Block | null, ctx: Ctx): BoolExpr {
@@ -575,7 +629,7 @@ function compileBool(block: Blockly.Block | null, ctx: Ctx): BoolExpr {
       return { k: "varb", name: varName };
     }
     default:
-      ctx.errors.push(`Expected a condition but found: ${block.type}`);
+      addError(ctx, `Expected a condition but found: ${block.type}`, block);
       return { k: "bool", v: false };
   }
 }
@@ -596,7 +650,7 @@ function arithOp(field: string, ctx: Ctx): "+" | "-" | "*" | "/" | "%" | "^" {
     case "DIVIDE": return "/";
     case "POWER": return "^";
     default:
-      ctx.errors.push(`Unsupported math operator: ${field}`);
+      addError(ctx, `Unsupported math operator: ${field}`);
       return "+";
   }
 }

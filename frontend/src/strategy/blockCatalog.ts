@@ -7,6 +7,16 @@ export interface BlockDoc {
   title: string;
   body: string;
   example?: string;
+  inputs?: string[];
+  output?: string;
+  pitfalls?: string[];
+}
+
+export interface ResolvedBlockDoc extends BlockDoc {
+  inputs: string[];
+  output: string;
+  example: string;
+  pitfalls: string[];
 }
 
 export const blockCatalog: Record<string, BlockDoc> = {
@@ -62,3 +72,30 @@ export const blockCatalog: Record<string, BlockDoc> = {
   time_session: { category: "Time", title: "Session hours", body: "True during a UTC hour window (wraps past midnight)." },
   time_dayofweek: { category: "Time", title: "Day of week", body: "True on the selected UTC weekday." }
 };
+
+/** Complete inspector contract even for Blockly built-ins and newly added catalog rows. */
+export function blockInspectorDoc(type: string): ResolvedBlockDoc | undefined {
+  const doc = blockCatalog[type];
+  if (!doc) return undefined;
+  const defaults = categoryInspectorDefaults(doc.category, type);
+  return {
+    ...doc,
+    inputs: doc.inputs ?? defaults.inputs,
+    output: doc.output ?? defaults.output,
+    example: doc.example ?? defaults.example,
+    pitfalls: doc.pitfalls ?? defaults.pitfalls
+  };
+}
+
+function categoryInspectorDefaults(category: string, type: string): Pick<ResolvedBlockDoc, "inputs" | "output" | "example" | "pitfalls"> {
+  if (category === "Market") return { inputs: type === "market_security" ? ["symbol", "timeframe", "source series"] : ["field / offset where applicable"], output: "Numeric time series", example: "Use close as the source for an EMA.", pitfalls: ["Future bars are never available; offsets must reference completed history."] };
+  if (category === "Indicators") return { inputs: ["source series", "period / method parameters"], output: type === "plot_series" ? "Chart plot" : "Numeric time series", example: "Feed the output into a cross or plot block.", pitfalls: ["Warm-up bars return incomplete values; choose a period supported by the loaded history."] };
+  if (category === "Logic") return { inputs: ["numeric or boolean expressions"], output: "Boolean condition", example: "Connect the condition to an entry, exit or marker.", pitfalls: ["A condition is evaluated once per closed bar, not continuously inside the candle."] };
+  if (category === "Signals") return { inputs: ["boolean condition", "direction / label"], output: "Signal or order intent", example: "Enter long when fast EMA crosses above slow EMA.", pitfalls: ["Multiple entries on one bar are resolved deterministically; the first accepted intent wins."] };
+  if (category === "Risk") return { inputs: ["mode", "positive numeric value"], output: "Execution constraint", example: "Attach a 2% stop before risk-percent sizing.", pitfalls: ["Risk-percent size requires a valid stop; unsafe or non-positive values fail closed."] };
+  if (category === "State" || category === "Position & PnL") return { inputs: ["variable / context field", "value where applicable"], output: type.includes("get") || type === "ctx_read" ? "Numeric or boolean value" : "Persistent state change", example: "Store a counter and read it on the next closed bar.", pitfalls: ["State persists across bars; reset it explicitly when the strategy lifecycle requires it."] };
+  if (category === "Flow") return { inputs: ["condition / count", "nested statements"], output: "Controlled statement sequence", example: "Run an entry block only while a session condition is true.", pitfalls: ["Loops are bounded by iteration and per-bar operation budgets."] };
+  if (category === "Time") return { inputs: ["UTC session or weekday"], output: "Boolean condition", example: "Limit entries to Monday–Friday session hours.", pitfalls: ["Confirm timezone and daylight-saving assumptions before live use."] };
+  if (category === "Alerts") return { inputs: ["message", "condition", "optional values"], output: "Journal/notification event", example: "Alert RSI={a} when the threshold is crossed.", pitfalls: ["Alerts do not place orders and notification delivery can fail independently."] };
+  return { inputs: ["connected child blocks"], output: "Strategy graph", example: "Connect rules under the Strategy root.", pitfalls: ["Exactly one Strategy root should own executable rules."] };
+}

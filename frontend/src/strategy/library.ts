@@ -5,6 +5,31 @@ import { strategyTemplates } from "./templates";
 import type { PineConversionReport, PineDiagnostic, PineLanguageProfile, PineSourceMapEntry } from "@saltanatbotv2/pine-compiler";
 
 export type StrategyArtifactKind = "indicator" | "strategy";
+export const ARTIFACT_SCHEMA_VERSION = 2;
+
+export interface ArtifactParameter {
+  name: string;
+  value: number;
+  defaultValue?: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  optimizationEligible?: boolean;
+}
+
+export interface ArtifactRevision {
+  version: number;
+  semanticVersion: string;
+  hash: string;
+  irHash?: string;
+  name: string;
+  description: string;
+  xml: string;
+  code?: string;
+  parameters?: ArtifactParameter[];
+  dependencies?: string[];
+  savedAt: number;
+}
 
 export interface StrategyArtifact {
   id: string;
@@ -15,7 +40,17 @@ export interface StrategyArtifact {
   xml: string;
   code?: string;
   version?: number;
+  /** Fingerprint of the complete artifact payload used for version changes. */
   hash?: string;
+  /** Fingerprint of canonical compiled StrategyIR only. */
+  irHash?: string;
+  schemaVersion?: number;
+  semanticVersion?: string;
+  parameters?: ArtifactParameter[];
+  dependencies?: string[];
+  history?: ArtifactRevision[];
+  migration?: { fromSchema: number; toSchema: number; migratedAt: number };
+  provenance?: { source: "local" | "pine" | "file" | "share" | "wizard"; importedAt?: number; parentId?: string; parentHash?: string };
   createdAt: number;
   updatedAt: number;
   /** Immutable import evidence. Blockly edits do not rewrite the original Pine source. */
@@ -59,13 +94,29 @@ export function mergeDefaultStrategyLibrary(
   stored: StrategyArtifact[] | undefined,
   indicators: IndicatorConfig[]
 ) {
-  const defaults = createDefaultStrategyLibrary(indicators);
+  const defaults = createDefaultStrategyLibrary(indicators).map((artifact) => normalizeArtifact(artifact));
   if (!stored?.length) return defaults;
-  const existing = new Map(stored.map((item) => [item.id, item]));
+  const existing = new Map(stored.map((item) => {
+    const normalized = normalizeArtifact(item);
+    return [normalized.id, normalized];
+  }));
   defaults.forEach((item) => {
     if (!existing.has(item.id)) existing.set(item.id, item);
   });
   return [...existing.values()];
+}
+
+export function normalizeArtifact(artifact: StrategyArtifact, now = Date.now()): StrategyArtifact {
+  const fromSchema = artifact.schemaVersion ?? 1;
+  return {
+    ...artifact,
+    schemaVersion: ARTIFACT_SCHEMA_VERSION,
+    semanticVersion: artifact.semanticVersion ?? `0.${Math.max(1, artifact.version ?? 1)}.0`,
+    history: Array.isArray(artifact.history) ? artifact.history.slice(-30) : [],
+    dependencies: Array.isArray(artifact.dependencies) ? [...new Set(artifact.dependencies.filter((id) => typeof id === "string" && id !== artifact.id))] : [],
+    provenance: artifact.provenance ?? { source: artifact.pine ? "pine" : "local", importedAt: artifact.pine ? artifact.createdAt : undefined },
+    migration: fromSchema < ARTIFACT_SCHEMA_VERSION ? { fromSchema, toSchema: ARTIFACT_SCHEMA_VERSION, migratedAt: now } : artifact.migration
+  };
 }
 
 export function createNewArtifact(kind: StrategyArtifactKind, count: number): StrategyArtifact {
@@ -76,6 +127,8 @@ export function createNewArtifact(kind: StrategyArtifactKind, count: number): St
     kind,
     name,
     description: kind === "indicator" ? "Draft indicator logic." : "Draft strategy logic.",
+    schemaVersion: ARTIFACT_SCHEMA_VERSION,
+    semanticVersion: "0.1.0",
     xml: kind === "indicator" ? customIndicatorXml(name) : starterStrategyXml,
     createdAt: now,
     updatedAt: now

@@ -10,6 +10,22 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Versioned Strategy and Indicator Studio — 2026-07-11
+
+- [x] Separate Build, Validate, Preview, Backtest, Optimize, Run and Learn workflows.
+- [x] Add a complete inspector contract and block-linked compiler diagnostics.
+- [x] Generate editable EMA-cross, RSI-threshold and breakout strategies from a guided wizard.
+- [x] Carry validated default/min/max/step/optimization metadata through Blockly, IR and optimizer.
+- [x] Inline bounded non-recursive Blockly functions with numeric argument substitution.
+- [x] Add schema-v2 artifact history, semantic versions, dependency validation, diff and rollback.
+- [x] Verify SHA-256 portable strategy files and explicitly migrate legacy schema-v1 payloads.
+- [x] Document the workflow and trust boundary in English, Russian and Kazakh.
+
+Verification:
+
+- Dedicated artifact, dependency, file, wizard, inspector and compiler-diagnostic tests pass.
+- Frontend/backend TypeScript and repository lint pass.
+
 ### Professional chart workspace — 2026-07-11
 
 - [x] Add keyboard/pointer-resizable side docks, dock swapping and 1/2/4 chart presets.
