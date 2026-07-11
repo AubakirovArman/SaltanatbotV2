@@ -177,9 +177,10 @@ Verification:
 
 - [x] Extract numeric built-in dispatch behind a typed lowering context.
 - [x] Extract boolean built-in dispatch and rising/falling window semantics behind a typed lowering context.
+- [x] Extract numeric operators, ternaries and bounded history access behind a typed lowering context.
 - [x] Add direct tests for indicator, arithmetic, external boolean-series and fail-closed paths.
 - [x] Add direct tests for cross, multi-bar trend, external boolean-series and conservative timeframe paths.
-- [x] Reduce `convert.ts` from 1,916 to 1,645 lines without changing its public facade.
+- [x] Reduce `convert.ts` from 1,916 to 1,603 lines without changing its public facade.
 
 ### Trading activity decomposition — commit `4335465`
 
@@ -223,7 +224,8 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [ ] Extract expression lowering.
   - [x] Extract numeric built-in function-call dispatch.
   - [x] Extract boolean built-in function-call dispatch.
-  - [ ] Extract identifier/operator and remaining boolean expression lowering.
+  - [x] Extract numeric operators and history access.
+  - [ ] Extract identifier resolution and remaining boolean expression lowering.
 - [ ] Extract statement and strategy-call lowering.
 - [x] Extract drawing lowering.
 - [ ] Extract Blockly serialization.

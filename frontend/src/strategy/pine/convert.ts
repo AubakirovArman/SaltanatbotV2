@@ -3,7 +3,7 @@ import { IR_VERSION } from "../ir";
 import { arg, argRequired } from "./arguments";
 import { diagnosticFromMessage, type PineDiagnostic } from "./diagnostics";
 import { PineConvertError } from "./errors";
-import { containsVar, isConstNum, shiftBool, shiftNum } from "./expressionHistory";
+import { containsVar, isConstNum, shiftBool } from "./expressionHistory";
 import {
   COLOR_HEX,
   DRAWING_MUTATE_RE,
@@ -30,6 +30,7 @@ import {
 } from "./drawingLowering";
 import { lowerNumericCall, type NumericCallLoweringContext } from "./numericCallLowering";
 import { lowerBooleanCall, type BooleanCallLoweringContext } from "./booleanCallLowering";
+import { lowerNumericExpression, type NumericExpressionLoweringContext } from "./numericExpressionLowering";
 import {
   boolToNum,
   boolToNumericSeries,
@@ -917,77 +918,34 @@ class Converter {
   }
 
   private num(expr: PineExpr): NumExpr {
-    switch (expr.t) {
-      case "tuplelit":
-        throw new PineConvertError("A tuple ([a, b]) can't be used as a single number.");
-      case "num":
-        return { k: "num", v: expr.v };
-      case "str":
-        throw new PineConvertError("A text value can't be used as a number.");
-      case "ident":
-        return this.numIdent(expr.name);
-      case "field":
-        return this.numField(expr);
-      case "method":
-        return this.numMethod(expr);
-      case "unary":
-        if (expr.op === "-") return { k: "unary", op: "neg", a: this.num(expr.a) };
-        throw new PineConvertError("'not' can't be used as a number.");
-      case "binary": {
-        if (["+", "-", "*", "/", "%"].includes(expr.op)) {
-          if (expr.op === "/" && this.isIntish(expr.a) && this.isIntish(expr.b)) {
-            this.warnOnce("intdiv", "Pine integer division truncates (7/2=3); here it stays fractional — wrap with math.floor if the script relies on truncation.");
-          }
-          return { k: "arith", op: expr.op as "+", a: this.num(expr.a), b: this.num(expr.b) };
+    return lowerNumericExpression(this.numericExpressionContext(), expr);
+  }
+
+  private numericExpressionContext(): NumericExpressionLoweringContext {
+    return {
+      bool: (value) => this.bool(value),
+      hasBoundValue: (name) => this.env.has(name),
+      isIntegerLike: (value) => this.isIntish(value),
+      isMutableNumber: (name) => this.numVars.has(name),
+      num: (value) => this.num(value),
+      resolveCall: (value) => {
+        if (this.funcs.has(value.callee)) {
+          const result = this.inlineUserFuncSafely(value.callee, value.args);
+          if (result.t !== "num") throw new PineConvertError(`"${value.callee}()" returns a condition, not a number.`);
+          return result.e;
         }
-        throw new PineConvertError(`Operator "${expr.op}" doesn't produce a number.`);
-      }
-      case "ternary":
-        // Numeric conditional → cond node (vectorized; mutable-var interception happens in assign()).
-        return { k: "cond", cond: this.bool(expr.cond), a: this.num(expr.a), b: this.num(expr.b) };
-      case "switch": {
-        const v = this.switchVal(expr);
-        if (v.t !== "num") throw new PineConvertError("This switch yields a condition, not a number.");
-        return v.e;
-      }
-      case "index": {
-        const offsetExpr = expr.offset;
-        const literal = offsetExpr.t === "num" && Number.isInteger(offsetExpr.v) && offsetExpr.v >= 0 ? offsetExpr.v : undefined;
-        // x[1] on a mutable var → previous-bar value (varprev). Only offset 1 is representable.
-        if (expr.base.t === "ident" && this.numVars.has(expr.base.name) && !this.env.has(expr.base.name)) {
-          if (literal === 0) return { k: "var", name: expr.base.name };
-          if (literal === 1) return { k: "varprev", name: expr.base.name };
-          throw new PineConvertError(`Only the previous bar (${expr.base.name}[1]) is available for a mutable variable, not a further/dynamic offset.`);
-        }
-        const base = this.num(expr.base);
-        // bar_index[k] is just bar_index − k (works for dynamic offsets too).
-        if (base.k === "barindex") {
-          return { k: "arith", op: "-", a: base, b: this.num(offsetExpr) };
-        }
-        if (literal !== undefined) {
-          if (containsVar(base)) {
-            throw new PineConvertError("History access on a mutable variable (x[1]) isn't supported — variables hold only their latest value.");
-          }
-          if (literal === 0) return base;
-          if (base.k === "price" && !base.offset) return { k: "price", field: base.field, offset: literal };
-          return { k: "shift", src: base, offset: literal };
-        }
-        // Dynamic offset (e.g. close[i] in a loop) — only a plain price field can read it per bar.
-        if (base.k === "price" && !base.offset) {
-          return { k: "histn", field: base.field, offset: this.num(offsetExpr) };
-        }
-        throw new PineConvertError(
-          "A dynamic history offset (x[i]) is only supported on a raw price field (close[i], high[i], …), not on an indicator or computed series."
-        );
-      }
-      case "call":
-        if (this.funcs.has(expr.callee)) {
-          const v = this.inlineUserFuncSafely(expr.callee, expr.args);
-          if (v.t !== "num") throw new PineConvertError(`"${expr.callee}()" returns a condition, not a number.`);
-          return v.e;
-        }
-        return this.numCall(expr);
-    }
+        return this.numCall(value);
+      },
+      resolveField: (value) => this.numField(value),
+      resolveIdentifier: (name) => this.numIdent(name),
+      resolveMethod: (value) => this.numMethod(value),
+      resolveSwitch: (value) => {
+        const result = this.switchVal(value);
+        if (result.t !== "num") throw new PineConvertError("This switch yields a condition, not a number.");
+        return result.e;
+      },
+      warnOnce: (key, message) => this.warnOnce(key, message)
+    };
   }
 
   private numIdent(name: string): NumExpr {
