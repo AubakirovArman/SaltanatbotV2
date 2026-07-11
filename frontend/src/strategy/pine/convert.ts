@@ -32,6 +32,7 @@ import { lowerBooleanCall, type BooleanCallLoweringContext } from "./booleanCall
 import { lowerNumericExpression, type NumericExpressionLoweringContext } from "./numericExpressionLowering";
 import { lowerBooleanExpression, type BooleanExpressionLoweringContext } from "./booleanExpressionLowering";
 import { lowerBooleanIdentifier, lowerNumericIdentifier, type IdentifierLoweringContext } from "./identifierLowering";
+import { lowerSwitchStatement, lowerSwitchValue, type SwitchLoweringContext } from "./switchLowering";
 import {
   boolToNum,
   boolToNumericSeries,
@@ -863,58 +864,23 @@ class Converter {
 
   /** switch in value position → nested cond (numeric) or nested logic (boolean). */
   private switchVal(expr: Extract<PineExpr, { t: "switch" }>): Val {
-    const def = expr.arms.find((a) => a.match === undefined);
-    const cases = expr.arms.filter((a) => a.match !== undefined);
-    const stringBodies = expr.arms.map((armExpr) => this.strVal(armExpr.body));
-    if (stringBodies.every((value) => value !== undefined)) {
-      const subject = expr.subject ? this.strVal(expr.subject) : undefined;
-      if (subject !== undefined) {
-        for (const armExpr of cases) {
-          const match = armExpr.match ? this.strVal(armExpr.match) : undefined;
-          if (match === subject) return { t: "str", v: this.strVal(armExpr.body) ?? "" };
-        }
-      }
-      return { t: "str", v: def ? this.strVal(def.body) ?? "" : stringBodies[0] ?? "" };
-    }
-    const anyBool = expr.arms.some((a) => this.val(a.body).t === "bool");
-    if (anyBool) {
-      let acc: BoolExpr = def ? this.bool(def.body) : { k: "bool", v: false };
-      for (let i = cases.length - 1; i >= 0; i -= 1) {
-        const cond = this.switchArmCond(expr.subject, cases[i].match as PineExpr);
-        const then = this.bool(cases[i].body);
-        acc = { k: "logic", op: "or", a: { k: "logic", op: "and", a: cond, b: then }, b: { k: "logic", op: "and", a: { k: "not", a: cond }, b: acc } };
-      }
-      return { t: "bool", e: acc };
-    }
-    if (!def) this.warnOnce("switchdef", "switch without a default arm returns 0 for unmatched cases (Pine returns na).");
-    let acc: NumExpr = def ? this.num(def.body) : { k: "num", v: 0 };
-    for (let i = cases.length - 1; i >= 0; i -= 1) {
-      const cond = this.switchArmCond(expr.subject, cases[i].match as PineExpr);
-      acc = { k: "cond", cond, a: this.num(cases[i].body), b: acc };
-    }
-    return { t: "num", e: acc };
-  }
-
-  private switchArmCond(subject: PineExpr | undefined, match: PineExpr): BoolExpr {
-    if (!subject) return this.bool(match);
-    return { k: "compare", op: "==", a: this.num(subject), b: this.num(match) };
+    return lowerSwitchValue(this.switchContext(), expr);
   }
 
   /** switch in statement position → if/elif/else running each arm's body statement. */
   private switchStmt(expr: Extract<PineExpr, { t: "switch" }>): Stmt[] {
-    const def = expr.arms.find((a) => a.match === undefined);
-    const cases = expr.arms.filter((a) => a.match !== undefined);
-    if (!cases.length) return def ? this.exprStatement(def.body) : [];
-    const first = cases[0];
-    const node: Extract<Stmt, { k: "if" }> = {
-      k: "if",
-      cond: this.switchArmCond(expr.subject, first.match as PineExpr),
-      then: this.exprStatement(first.body)
+    return lowerSwitchStatement(this.switchContext(), expr);
+  }
+
+  private switchContext(): SwitchLoweringContext {
+    return {
+      bool: (value) => this.bool(value),
+      expressionStatement: (value) => this.exprStatement(value),
+      num: (value) => this.num(value),
+      string: (value) => this.strVal(value),
+      value: (value) => this.val(value),
+      warnOnce: (key, message) => this.warnOnce(key, message)
     };
-    const elifs = cases.slice(1).map((c) => ({ cond: this.switchArmCond(expr.subject, c.match as PineExpr), then: this.exprStatement(c.body) }));
-    if (elifs.length) node.elifs = elifs;
-    if (def) node.else = this.exprStatement(def.body);
-    return [node];
   }
 
   private num(expr: PineExpr): NumExpr {
