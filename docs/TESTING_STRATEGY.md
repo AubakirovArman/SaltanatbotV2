@@ -93,7 +93,8 @@ Run the same candles and IR through preview, backtest, paper and backend evaluat
 - DPR 1/2/3 and resize tests;
 - empty, one-bar, NaN, gap, extreme-price and long-history datasets;
 - interaction tests for wheel, drag, touch and keyboard equivalents;
-- accessible OHLC/trade table synchronized with the focused bar.
+- component semantics for captions, scoped column headers, empty states and focused-bar synchronization across OHLC, signals and trades;
+- browser flow proving the Canvas alternative opens from the keyboard and exposes named native tables.
 
 Avoid pixel snapshots for every candle. Use semantic renderer assertions for logic and a small stable visual suite for integration.
 

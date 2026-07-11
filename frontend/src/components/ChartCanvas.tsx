@@ -16,7 +16,7 @@ import {
   Workflow,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   anchorFromPixel,
   createDrawing,
@@ -35,6 +35,7 @@ import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { PriceAlert } from "../market/alerts";
 import type { Candle, ChartType, Instrument, Timeframe } from "../types";
 import { ChartIndicatorOverlay, type StrategyMenuItem } from "./ChartIndicatorOverlay";
+import { ChartDataPanel } from "./ChartDataPanel";
 import { CompareControl, type CompareCandidate } from "./CompareControl";
 
 interface ChartCanvasProps {
@@ -159,6 +160,7 @@ export function ChartCanvas({
     priceMode: PriceMode;
   }>({ zoom: 1, offset: 0, priceMode: "linear" });
   const [compareLegend, setCompareLegend] = useState<CompareLegendSnapshot[]>([]);
+  const chartDataSummaryId = useId();
 
   const latest = candles.at(-1);
   drawingsRef.current = drawings;
@@ -445,6 +447,7 @@ export function ChartCanvas({
           className="chart-canvas chart-canvas-layer chart-canvas-background"
           role="img"
           aria-label={`${instrument.symbol} ${chartType} chart on ${timeframe}`}
+          aria-describedby={chartDataSummaryId}
         />
         <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
         <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />
@@ -560,6 +563,16 @@ export function ChartCanvas({
           }}
         />
         {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay tables={tables} />}
+        <ChartDataPanel
+          candles={candles}
+          decimals={instrument.decimals}
+          focusedIndex={hoverIndex}
+          signals={signals}
+          trades={trades}
+          symbol={instrument.symbol}
+          timeframe={timeframe}
+          summaryId={chartDataSummaryId}
+        />
         {selectedId && drawings.some((d) => d.id === selectedId) && (
           <DrawingStyleBar
             drawing={drawings.find((d) => d.id === selectedId) as DrawingObject}
@@ -590,9 +603,6 @@ export function ChartCanvas({
           />
         )}
       </div>
-      <p className="sr-only" aria-live="polite">
-        Latest {instrument.symbol} close is {latest?.close.toFixed(instrument.decimals) ?? "loading"}.
-      </p>
     </div>
   );
 }

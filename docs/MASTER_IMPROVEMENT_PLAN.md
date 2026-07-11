@@ -177,7 +177,7 @@ The detailed blockers are maintained in `CODE_IMPROVEMENT_PLAN.md`. Release gate
 - watchlist virtualization and quote-stream aggregation;
 - keyboard command discoverability and user-customizable shortcuts;
 - autosaved workspace versions and export/import;
-- accessible tabular alternatives for chart OHLC, indicators, signals and trades;
+- accessible tabular alternatives for chart OHLC, indicators, signals and trades (OHLC/signals/trades DOM fallback delivered; indicator statistics already use native tables);
 - responsive monitoring experience; full Blockly editing remains desktop/tablet focused.
 
 Canvas content needs a maintained DOM alternative today. Experimental HTML-in-Canvas APIs may only be used behind feature detection and cannot replace the fallback until browser support is broad.

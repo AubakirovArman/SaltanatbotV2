@@ -11,6 +11,20 @@ test("loads the terminal and exposes the chart semantically", async ({ page }) =
   await expect(page.getByRole("button", { name: "Toggle markets panel" })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("offers a keyboard-operable tabular alternative to the canvas chart", async ({ page }) => {
+  const toggle = page.getByRole("button", { name: "Chart data", exact: true });
+  await expect(toggle).toBeVisible({ timeout: 20_000 });
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(page.locator(".chart-data-toggle")).toHaveAttribute("aria-expanded", "true");
+  const chartData = page.getByRole("complementary", { name: "Chart data" });
+  await expect(chartData.getByRole("table", { name: "Latest candle" })).toBeVisible();
+  await expect(chartData.getByRole("columnheader", { name: "Open", exact: true }).first()).toBeVisible();
+  await expect(chartData.getByRole("table", { name: /Strategy signals/ })).toBeVisible();
+  await expect(chartData.getByRole("table", { name: /Executed trades/ })).toBeVisible();
+});
+
 test("command palette is keyboard-operable and switches symbols", async ({ page }) => {
   await page.keyboard.press("Control+k");
   const palette = page.getByRole("dialog", { name: "Command palette" });

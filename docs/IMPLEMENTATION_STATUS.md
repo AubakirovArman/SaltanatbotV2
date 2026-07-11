@@ -209,7 +209,7 @@ Verification:
 
 ### Critical browser E2E expansion
 
-Current: 17 scenarios implemented; the original critical-flow checklist is complete.
+Current: 18 scenarios implemented; the original critical-flow checklist is complete.
 
 - [x] Terminal/chart smoke.
 - [x] Keyboard command palette and symbol switch.
@@ -326,7 +326,11 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Reuse one prepared viewport/indicator render plan across passes and rebind volatile overlay inputs without recomputation.
   - [x] Extract canvas ownership/ResizeObserver/invalidation into `useChartRenderer` and chart chrome into a focused renderer.
   - [x] Verify primary, indicator and overlay pass isolation with recording-context tests.
-- [ ] Add an accessible DOM/table alternative for focused OHLC, signals and trades.
+- [x] Add an accessible DOM/table alternative for focused OHLC, signals and trades.
+  - [x] Link the Canvas accessible description to a synchronized focused/latest-candle summary without pointer-driven live-region noise.
+  - [x] Add a keyboard-operable panel with native tables for focused and recent OHLC, signals and executed trades.
+  - [x] Bound each history view to 20 newest rows and preserve total signal/trade counts.
+  - [x] Cover table semantics, empty data and keyboard opening in component and browser tests.
 
 ### Trading engine hardening
 

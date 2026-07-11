@@ -114,12 +114,14 @@ frontend/src/
 │   ├── useCatalog.ts         # Loads /api/catalog
 │   ├── useMarketStream.ts    # Snapshot + live stream, history paging, latency
 │   └── useSparklines.ts      # Watchlist sparkline series
-├── components/               # TopBar, Watchlist, StatsPanel, ChartCanvas, CommandPalette
+├── components/               # Shell UI plus ChartCanvas and its semantic ChartDataPanel fallback
 ├── chart/                    # Canvas ChartEngine, renderers, indicators, drawings
 ├── strategy/                 # Blockly blocks, shared IR, compiler, backtester, library
 ├── trading/                  # TradingView (lazy) client
 └── styles/                   # CSS (theme variables)
 ```
+
+The five Canvas render passes are visual acceleration, not the sole data representation. `ChartDataPanel` supplies a keyboard-operable, browser-readable DOM alternative with native tables for focused/recent OHLC, strategy signals and trades. The visual chart references its synchronized text summary with `aria-describedby`; the fallback stays available regardless of experimental HTML-in-Canvas support.
 
 ## Market-data layer
 
