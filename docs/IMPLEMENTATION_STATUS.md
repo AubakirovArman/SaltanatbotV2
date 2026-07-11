@@ -272,8 +272,9 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [ ] Extract execution/fill simulation.
     - [x] Extract slippage, protective-price and stop/target hit primitives.
     - [x] Move historical execution orchestration behind a dedicated module and stable facade.
-  - [ ] Extract portfolio sizing and accounting.
+  - [x] Extract portfolio sizing and accounting.
     - [x] Extract sizing, leverage/quantity guardrails and unrealized-PnL primitives.
+    - [x] Extract pure position open/close accounting, commissions, excursions and trade records.
   - [x] Keep analytics in the dedicated `backtestMetrics.ts` module.
   - [ ] Extract trace/report assembly.
     - [x] Extract exhaustive warm-up/lookback analysis, including nested control flow and dynamic floors.

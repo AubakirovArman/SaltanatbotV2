@@ -11,14 +11,12 @@ import {
 import { computeBacktestMetrics, medianDelta } from "../backtestMetrics";
 import {
   applySlippage,
-  resolveSize,
-  resolveStop,
-  resolveTarget,
   stopHit,
   targetHit,
   unrealized,
   type Position
 } from "./broker";
+import { closeBacktestPosition, openBacktestPosition } from "./portfolio";
 import { estimateWarmupBars } from "./warmup";
 import { buildEvaluationContext, createVariableTraceCollector } from "./reporting";
 import type { BacktestConfig, BacktestResult, EquityPoint, TestedRange, Trade, TradeMarker } from "../backtestTypes";
@@ -83,28 +81,17 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
 
   const closePosition = (index: number, price: number, reason: Trade["reason"]) => {
     if (!position) return;
-    const gross = position.dir === "long" ? position.qty * (price - position.entryPrice) : position.qty * (position.entryPrice - price);
-    const commission = position.qty * (position.entryPrice + price) * (config.commissionPct / 100);
-    const pnl = gross - commission;
-    equity += pnl;
-    const notional = position.entryPrice * position.qty || 1;
-    trades.push({
-      direction: position.dir,
-      entryIndex: position.entryIndex,
-      exitIndex: index,
-      entryTime: position.entryTime,
-      exitTime: candles[index].time,
-      entryPrice: position.entryPrice,
-      exitPrice: price,
-      qty: position.qty,
-      pnl,
-      pnlPct: (pnl / notional) * 100,
+    const closed = closeBacktestPosition({
+      position,
+      index,
+      time: candles[index].time,
+      price,
       reason,
-      barsHeld: index - position.entryIndex,
-      maePct: (position.maeAbs / notional) * 100,
-      mfePct: (position.mfeAbs / notional) * 100
+      commissionPct: config.commissionPct
     });
-    markers.push({ time: candles[index].time, price, kind: "exit", label: `Exit ${price.toFixed(2)}` });
+    equity += closed.equityDelta;
+    trades.push(closed.trade);
+    markers.push(closed.marker);
     position = null;
   };
 
@@ -114,28 +101,22 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
 
   // Returns the opened position (or null if the entry was skipped/rejected).
   const openPosition = (dir: "long" | "short", fill: number, index: number, stopI: Intents["stop"], targetI: Intents["target"], trailI: Intents["trail"], size: NonNullable<Intents["size"]>): Position | null => {
-    let stopPrice = stopI ? resolveStop(dir, fill, stopI, rt.atr14[index]) : undefined;
-    if (trailI && stopPrice === undefined) {
-      // Seed the trailing stop from the entry bar so risk is bounded immediately.
-      const atr = rt.atr14[index] || 0;
-      stopPrice = trailI.mode === "percent"
-        ? (dir === "long" ? fill * (1 - trailI.value / 100) : fill * (1 + trailI.value / 100))
-        : (dir === "long" ? fill - atr * trailI.value : fill + atr * trailI.value);
-    }
-    const targetPrice = targetI ? resolveTarget(dir, fill, targetI, rt.atr14[index]) : undefined;
-    const sized = resolveSize(size, equity, fill, stopPrice, cfg);
-    if (sized.warning) warnings.push({ time: candles[index].time, message: sized.warning });
-    const qty = sized.qty;
-    if (qty > 0 && Number.isFinite(qty)) {
-      markers.push({
-        time: candles[index].time,
-        price: fill,
-        kind: dir === "long" ? "buy" : "sell",
-        label: `${dir === "long" ? "Long" : "Short"} ${fill.toFixed(2)}`
-      });
-      return { dir, qty, entryPrice: fill, entryIndex: index, entryTime: candles[index].time, stopPrice, targetPrice, trail: trailI, maeAbs: 0, mfeAbs: 0 };
-    }
-    return null;
+    const opened = openBacktestPosition({
+      direction: dir,
+      fill,
+      index,
+      time: candles[index].time,
+      stop: stopI,
+      target: targetI,
+      trail: trailI,
+      size,
+      atr: rt.atr14[index] || 0,
+      equity,
+      config: cfg
+    });
+    if (opened.warning) warnings.push({ time: candles[index].time, message: opened.warning });
+    if (opened.marker) markers.push(opened.marker);
+    return opened.position ?? null;
   };
 
   for (let i = 0; i < rt.n; i += 1) {

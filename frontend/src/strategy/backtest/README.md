@@ -7,6 +7,7 @@ This folder contains browser-side adapters around the runtime-neutral `@saltanat
 - `broker.ts` owns slippage direction, protective-price resolution, sizing/margin guardrails and position hit/PnL primitives.
 - `warmup.ts` performs exhaustive IR lookback analysis for the measured report window.
 - `reporting.ts` builds evaluator context and bounded deterministic variable traces.
+- `portfolio.ts` owns pure position opening/closing accounting and emitted trade records.
 - Trading expression evaluation, mutable state, loops, operation budgets and intents belong to `strategy-core`.
 - Historical fills, portfolio accounting and report assembly currently remain behind the stable `../backtest.ts` facade and are extracted incrementally.
 
