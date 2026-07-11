@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/AubakirovArman/SaltanatbotV2/security/advisories/new
+    about: Report vulnerabilities privately. Never post secrets or exploitable details in a public issue.
+  - name: Support and troubleshooting
+    url: https://github.com/AubakirovArman/SaltanatbotV2/blob/main/SUPPORT.md
+    about: Read the support guide before opening an issue.

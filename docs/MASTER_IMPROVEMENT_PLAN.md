@@ -221,11 +221,11 @@ Accessibility release criteria include keyboard-only operation, visible focus, s
 ## Priority 2: open-source readiness
 
 - add `SECURITY.md`, vulnerability disclosure and supported-version policy;
-- add `CODE_OF_CONDUCT.md`, issue forms and PR templates;
+- add `CODE_OF_CONDUCT.md`, issue forms and PR templates (delivered);
 - document release channels: nightly, alpha, beta, stable;
 - add signed release artifacts, checksums and SBOM;
 - add changelog automation and migration notes;
-- publish threat model and explicit non-goals;
+- publish threat model and explicit non-goals (delivered);
 - add contributor maps for chart, Pine, strategy core, providers and execution;
 - define licensing/provenance rules for Pine corpus and screenshots;
 - add a public demo mode that cannot mutate trade state.

@@ -22,6 +22,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 - Added a multilingual project site for GitHub Pages in English, Russian and Kazakh.
 - Added a documentation currency register with ownership, language coverage and verification dates.
 - Added complete Russian and Kazakh entry points for the current user workflows.
+- Added secret-safe issue forms, a PR safety checklist and a public threat model with explicit
+  trust boundaries, residual risks and deferred funded-soak status.
 
 ## 2026-07-11 — 90-commit development snapshot
 

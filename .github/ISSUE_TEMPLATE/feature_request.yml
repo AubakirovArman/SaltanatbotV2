@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose a user outcome, safety improvement or contributor capability.
+title: "[Feature]: "
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or user outcome
+      description: Describe the job to be done, not only a preferred implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Chart and market data
+        - Strategy Studio / Blockly
+        - Pine Script import
+        - Backtest / research
+        - Paper trading
+        - Execution safety
+        - Accessibility / localization
+        - Open-source tooling / documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Proposed workflow
+      description: Explain the normal path, failure state and how a user verifies the result.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety, compatibility and data impact
+      description: Cover live-trading risk, migrations, Pine fidelity, permissions or privacy where relevant.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I can help specify or test this change.
+        - label: I can prepare a pull request after scope is agreed.

@@ -26,6 +26,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Event traces](EVENT_TRACES.md) | contributors/auditors | current | 2026-07-11 |
 | [Testing strategy](TESTING_STRATEGY.md) | contributors | current | 2026-07-11 |
 | [Release verification](RELEASING.md) | maintainers/users | current | 2026-07-11 |
+| [Threat model](THREAT_MODEL.md) | operators/contributors | current alpha baseline | 2026-07-11 |
 | [Roadmap](ROADMAP.md) | community | current | 2026-07-11 |
 | [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger | 2026-07-11 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |

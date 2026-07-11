@@ -1,0 +1,89 @@
+name: Bug report
+description: Report a reproducible product or engineering defect without including secrets.
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve SaltanatbotV2. Remove API keys, access tokens, account IDs,
+        order IDs and the contents of `backend/data/` before posting. Security vulnerabilities
+        must use the private advisory link instead of this form.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets, tokens, private account/order data and runtime database content.
+          required: true
+        - label: This is not a security vulnerability requiring private disclosure.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Chart and market data
+        - Strategy Studio / Blockly
+        - Pine Script import
+        - Backtest / optimizer
+        - Paper trading
+        - Experimental live trading
+        - API / WebSocket
+        - Installation / deployment
+        - Documentation / localization
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed result and the result you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Start with...
+        2. Open...
+        3. Select...
+        4. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: strategy
+    attributes:
+      label: Minimal strategy or Pine sample
+      description: Include only a minimal sanitized sample. State every Pine conversion warning.
+      render: text
+  - type: input
+    id: commit
+    attributes:
+      label: Version or commit
+      placeholder: git rev-parse --short HEAD
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, browser, exchange/data source, market type and timeframe.
+      placeholder: Ubuntu 24.04; Node 24.x; Chromium; Binance public data; BTCUSDT; 1h
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized logs or screenshots
+      description: Do not attach `backend/data`, `.env`, HAR files with auth headers or exchange credentials.
+  - type: checkboxes
+    id: mode
+    attributes:
+      label: Execution context
+      options:
+        - label: Reproduces in deterministic/synthetic mode
+        - label: Reproduces in paper mode
+        - label: Involves experimental live mode (no credentials attached)

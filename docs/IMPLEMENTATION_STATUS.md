@@ -35,6 +35,14 @@ Verification:
 - [x] Keep mutating calls non-retrying and preserve existing ambiguous transport classification.
 - [x] Add deterministic guard, throttle, cap, expiry and clock-offset tests.
 
+### Open-source security intake — 2026-07-11
+
+- [x] Add structured secret-safe bug and outcome-focused feature request forms.
+- [x] Route vulnerabilities to private GitHub security advisories and disable unsafe blank issues.
+- [x] Add a PR verification/safety/compatibility checklist.
+- [x] Publish assets, trust boundaries, mitigations, residual risks and explicit non-goals.
+- [x] State that funded soak/mainnet readiness has not been proven.
+
 ### Foundation — commit `3a98684`
 
 - [x] Fix zero-price synthetic fallback for dynamically discovered crypto pairs.

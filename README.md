@@ -163,6 +163,7 @@ published by the `Deploy documentation site` workflow and is also set as the rep
 | [**Kazakh user guide**](docs/kk/README.md) | Chart, Strategy Studio, Pine/backtest, trading, traces and safety in Kazakh |
 | [**Contributing**](CONTRIBUTING.md) | Dev setup, repo conventions, and how to add instruments / blocks / commands |
 | [**Security policy**](SECURITY.md) | Private vulnerability reporting, supported versions and secret-handling rules |
+| [**Threat model**](docs/THREAT_MODEL.md) | Assets, trust boundaries, threats, mitigations, non-goals and residual risks |
 | [**Support**](SUPPORT.md) | How to request help or file a reproducible issue safely |
 | [**Code of conduct**](CODE_OF_CONDUCT.md) | Community participation and moderation expectations |
 | [**Changelog**](CHANGELOG.md) | User-visible changes grouped by release |
