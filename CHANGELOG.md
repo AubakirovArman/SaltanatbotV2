@@ -11,6 +11,7 @@ This project follows a keep-a-changelog style. Until the first tagged release, c
 - IR v4 projection zones, accessible metric tables and chart-side Pine input controls.
 - Production Playwright suite covering chart, strategy, backtest, paper trading, reconnect, accessibility and responsive flows.
 - English/Russian documentation structure and an executable implementation ledger.
+- Generated API/block references and a signed release pipeline with SPDX SBOMs and SHA-256 checksums.
 
 ### Changed
 
@@ -22,3 +23,4 @@ This project follows a keep-a-changelog style. Until the first tagged release, c
 
 - Live trading remains opt-in; demo mode disables exchange keys and live execution.
 - Dynamic fallback prices require a positive real reference and are never accepted by strict live-trading routes.
+- Tagged release artifacts use keyless GitHub/Sigstore build-provenance and SBOM attestations.

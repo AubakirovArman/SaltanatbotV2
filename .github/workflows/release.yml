@@ -1,0 +1,136 @@
+name: Release artifacts
+
+on:
+  push:
+    tags:
+      - "v*"
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel for an untagged artifact build
+        required: true
+        type: choice
+        default: nightly
+        options: [nightly, alpha, beta, stable]
+      version:
+        description: Version (required for alpha/beta/stable; e.g. v0.2.0-beta.1)
+        required: false
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.channel || 'tag' }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: package · SBOM · attest
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      artifact-metadata: write
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Resolve release channel and version
+        id: release
+        shell: bash
+        env:
+          REQUESTED_CHANNEL: ${{ inputs.channel }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="$GITHUB_REF_NAME"
+            if [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]; then channel=alpha
+            elif [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(beta|rc)\.[0-9]+$ ]]; then channel=beta
+            elif [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then channel=stable
+            else echo "Unsupported release tag: $version" >&2; exit 2
+            fi
+            publish=true
+          else
+            channel="${REQUESTED_CHANNEL:-nightly}"
+            version="${REQUESTED_VERSION:-nightly-$(date -u +%Y%m%d)-${GITHUB_SHA::8}}"
+            publish=false
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "name=saltanatbotv2-$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify source and build
+        run: |
+          npm run check
+          npm run lint
+          npm run docs:check
+          npm test
+          npm run build
+
+      - name: Create reproducible application archive
+        run: npm run release:package -- --channel "${{ steps.release.outputs.channel }}" --version "${{ steps.release.outputs.version }}"
+
+      - name: Generate SPDX JSON SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .release-staging/${{ steps.release.outputs.name }}
+          format: spdx-json
+          output-file: release/${{ steps.release.outputs.name }}.spdx.json
+          artifact-name: ${{ steps.release.outputs.name }}-sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Write SHA-256 checksums
+        working-directory: release
+        run: sha256sum *.tar.gz *.release-info.json *.spdx.json > SHA256SUMS
+
+      - name: Sign build provenance with GitHub/Sigstore
+        id: provenance
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS
+
+      - name: Sign SBOM attestation with GitHub/Sigstore
+        id: sbom-attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: release/${{ steps.release.outputs.name }}.tar.gz
+          sbom-path: release/${{ steps.release.outputs.name }}.spdx.json
+
+      - name: Preserve verification bundles
+        run: |
+          cp "${{ steps.provenance.outputs.bundle-path }}" "release/${{ steps.release.outputs.name }}.provenance.sigstore.json"
+          cp "${{ steps.sbom-attestation.outputs.bundle-path }}" "release/${{ steps.release.outputs.name }}.sbom.sigstore.json"
+
+      - name: Upload channel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.release.outputs.name }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: ${{ steps.release.outputs.channel == 'nightly' && 14 || 90 }}
+
+      - name: Publish tagged GitHub release
+        if: steps.release.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+        run: |
+          prerelease=()
+          if [[ "$CHANNEL" != "stable" ]]; then prerelease=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes --title "$GITHUB_REF_NAME" "${prerelease[@]}"

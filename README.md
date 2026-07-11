@@ -147,6 +147,7 @@ The access token is printed in the container logs (`docker compose logs`), or se
 | [**Generated Pine compatibility**](docs/PINE_COMPATIBILITY.generated.md) | Corpus-backed exact, display-only, approximation and rejected feature matrix |
 | [**Trading & command language**](docs/TRADING.md) | The Trade tab, all 14 Antares-style actions, paper/Binance/Bybit modes, notifications |
 | [**Configuration & deployment**](docs/CONFIGURATION.md) | Env vars, runtime data, exchange keys, encryption, production & hardening checklist |
+| [**Release policy & verification**](docs/RELEASING.md) | Nightly/alpha/beta/stable channels, SBOM, SHA-256 and Sigstore attestation verification |
 | [**Roadmap**](docs/ROADMAP.md) | What has shipped and what's next |
 | [**Master improvement plan**](docs/MASTER_IMPROVEMENT_PLAN.md) | Product gaps, priorities, release gates and delivery milestones |
 | [**Implementation status**](docs/IMPLEMENTATION_STATUS.md) | Completed commits, verification evidence, active work and remaining checklist |

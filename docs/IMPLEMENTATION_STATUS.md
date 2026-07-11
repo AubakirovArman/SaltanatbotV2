@@ -383,7 +383,7 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Generate the Express HTTP/WS endpoint index and strategy block-catalog reference with deterministic check mode.
 - [x] Add `SECURITY.md`, `CODE_OF_CONDUCT.md`, changelog and support policy.
 - [x] Add documentation link/example checks to CI.
-- [ ] Add release channels, SBOM, checksums and signed artifacts.
+- [x] Add nightly/alpha/beta/stable release channels, SPDX SBOMs, SHA-256 checksums and GitHub/Sigstore-signed provenance/SBOM attestations.
 
 ## Quality gates for every following commit
 

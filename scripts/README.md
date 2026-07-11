@@ -7,6 +7,7 @@ This folder contains deterministic maintenance and release helpers invoked by ro
 - `check-docs.mjs`: validates tracked Markdown links and documented root npm commands.
 - `generate-pine-compatibility.mjs`: generates and checks the Pine compatibility registry.
 - `generate-reference-docs.mjs`: generates and checks the Express endpoint index and strategy block catalog.
+- `package-release.mjs`: validates release channels and creates a deterministic, secret-free application archive plus build metadata.
 - `exchange-testnet-smoke.mjs`: explicitly armed, read-only authenticated Binance Futures Demo and Bybit Testnet release checks.
 
 ## Invariants
@@ -15,6 +16,7 @@ This folder contains deterministic maintenance and release helpers invoked by ro
 - Check-mode scripts never rewrite source files.
 - Networked scripts require an explicit opt-in guard and must reject production endpoints.
 - Secrets are read only from runtime environment variables and are never printed.
+- Release archives must exclude runtime data, databases, environment files and dependency directories.
 
 ## Testing
 

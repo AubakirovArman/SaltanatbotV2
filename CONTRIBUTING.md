@@ -31,6 +31,7 @@ All scripts below are defined in the root `package.json` and delegate to the wor
 | `npm run docs:check` | Validates tracked Markdown links/commands and proves generated Pine, API and block references are current. |
 | `npm run docs:generate` | Regenerates Pine compatibility, API endpoint and strategy block references. |
 | `npm run test:testnet` | Opt-in authenticated Binance/Bybit testnet release smoke; refuses network access unless explicitly armed. |
+| `npm run release:package -- --channel nightly --version nightly-local-<sha>` | Builds a deterministic local application archive after `npm run build`. |
 | `npm start` | Runs the built backend: `node dist/server.js` (run `npm run build` first). |
 
 Run `npm run check` before opening a pull request — it is the fastest way to catch type errors across both workspaces.

@@ -29,6 +29,8 @@ tmp/
 test-results/
 playwright-report/
 blob-report/
+release/
+.release-staging/
 
 # ── Internal dev artifacts (kept local, not published) ────────
 audits/
