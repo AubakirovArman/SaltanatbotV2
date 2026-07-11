@@ -12,7 +12,6 @@ import {
 } from "./language";
 import { PineLexError } from "./lexer";
 import { type PineFuncDef, PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
-import { sanitizeText } from "./text";
 import {
   type DrawingLoweringContext,
   lowerBox,
@@ -42,11 +41,13 @@ import { lowerStrategyCall, type StrategyCallLoweringContext } from "./strategyC
 import { lowerStatement, type StatementLoweringContext } from "./statementLowering";
 import { lowerTupleAssignment, type TupleLoweringContext } from "./tupleLowering";
 import { lowerAssignment, lowerMutableAssignment, type AssignmentLoweringContext } from "./assignmentLowering";
+import { lowerDeclaration, type DeclarationLoweringContext } from "./declarationLowering";
+import { lowerPlotStatement, type PlotStatementLoweringContext } from "./plotStatementLowering";
+import { lowerAlertStatement, type AlertStatementLoweringContext } from "./alertStatementLowering";
 import {
   boolToNumericSeries,
   collectReassigned,
   collectionReceiver,
-  identName,
   isBoolExpr,
   isCollectionCallName,
   isCosmeticConst,
@@ -268,103 +269,19 @@ class Converter {
     }
     const strategyStatements = lowerStrategyCall(this.strategyCallContext(), callee, args);
     if (strategyStatements !== undefined) return strategyStatements;
+    const declarationStatements = lowerDeclaration(this.declarationContext(), callee, args);
+    if (declarationStatements !== undefined) return declarationStatements;
+    const plotStatements = lowerPlotStatement(this.plotStatementContext(), callee, args);
+    if (plotStatements !== undefined) return plotStatements;
+    const alertStatements = lowerAlertStatement(this.alertStatementContext(), callee, args);
+    if (alertStatements !== undefined) return alertStatements;
 
     switch (callee) {
-      case "indicator":
-      case "study":
-      case "strategy":
-        return this.declaration(callee, args);
-      case "plot": {
-        const series = this.plotValue(argRequired(args, 0, "series", "plot").value, "plot");
-        const titleArg = arg(args, 1, "title");
-        const label = titleArg?.value.t === "str" ? sanitizeText(titleArg.value.v) : "plot";
-        const color = this.colorOf(arg(args, 2, "color")?.value) ?? "#4db6ff";
-        return [{ k: "plot", value: series, label, color, pane: this.plotPane() }];
-      }
-      case "hline": {
-        const level = this.num(argRequired(args, 0, "price", "hline").value);
-        const titleArg = arg(args, 1, "title");
-        const label = titleArg?.value.t === "str" ? sanitizeText(titleArg.value.v) : "level";
-        const color = this.colorOf(arg(args, 2, "color")?.value) ?? "#8f9bb3";
-        return [{ k: "plot", value: level, label, color, pane: this.plotPane() }];
-      }
-      case "plotchar": {
-        const seriesExpr = argRequired(args, 0, "series", callee).value;
-        if (!isBoolExpr(seriesExpr, this.boolVars, this.env)) {
-          this.warnOnce("plotchar", "Numeric plotchar() imported as a price plot; the character glyph itself is cosmetic.");
-          const titleArg = arg(args, 1, "title");
-          const charArg = arg(args, undefined, "char");
-          const label = sanitizeText(
-            (titleArg?.value.t === "str" ? titleArg.value.v : undefined) ?? (charArg?.value.t === "str" ? charArg.value.v : "plotchar")
-          );
-          const color = this.colorOf(arg(args, undefined, "color")?.value) ?? "#8f9bb3";
-          return [{ k: "plot", value: this.num(seriesExpr), label, color, pane: this.plotPane() }];
-        }
-        const cond = this.bool(seriesExpr);
-        const titleArg = arg(args, 1, "title");
-        const textArg = arg(args, undefined, "text");
-        const label = sanitizeText(
-          (textArg?.value.t === "str" ? textArg.value.v : undefined) ?? (titleArg?.value.t === "str" ? titleArg.value.v : "")
-        );
-        const styleName = identName(arg(args, undefined, "style")?.value);
-        const locationName = identName(arg(args, undefined, "location")?.value);
-        const dir: "up" | "down" = styleName.includes("down")
-          ? "down"
-          : styleName.includes("up")
-            ? "up"
-            : locationName.includes("below")
-              ? "up"
-              : "down";
-        return [{ k: "marker", dir, label, when: cond }];
-      }
-      case "plotshape": {
-        const cond = this.bool(argRequired(args, 0, "series", callee).value);
-        const titleArg = arg(args, 1, "title");
-        const textArg = arg(args, undefined, "text");
-        const label = sanitizeText(
-          (textArg?.value.t === "str" ? textArg.value.v : undefined) ?? (titleArg?.value.t === "str" ? titleArg.value.v : "")
-        );
-        const styleName = identName(arg(args, undefined, "style")?.value);
-        const locationName = identName(arg(args, undefined, "location")?.value);
-        // Style wins; location breaks ties (belowbar = buy-style marker under the bar).
-        const dir: "up" | "down" = styleName.includes("down")
-          ? "down"
-          : styleName.includes("up")
-            ? "up"
-            : locationName.includes("below")
-              ? "up"
-              : "down";
-        return [{ k: "marker", dir, label, when: cond }];
-      }
-      case "alertcondition": {
-        const cond = this.bool(argRequired(args, 0, "condition", "alertcondition").value);
-        const titleArg = arg(args, 1, "title");
-        const messageArg = arg(args, 2, "message");
-        const message = sanitizeText(
-          (messageArg?.value.t === "str" ? messageArg.value.v : undefined) ?? (titleArg?.value.t === "str" ? titleArg.value.v : "alert")
-        );
-        if (message.includes("{{")) this.warnOnce("tmpl", "TradingView {{placeholders}} in alert messages are kept as literal text.");
-        return [{ k: "alert", message: message || "alert", when: cond }];
-      }
-      case "alert": {
-        const messageArg = arg(args, 0, "message");
-        const message = messageArg?.value.t === "str" ? sanitizeText(messageArg.value.v) : "alert";
-        if (messageArg && messageArg.value.t !== "str") this.warn('alert() message must be a plain string — used "alert".');
-        return [{ k: "alert", message: message || "alert", when: { k: "bool", v: true } }];
-      }
       case "bgcolor":
       case "barcolor":
         // bgcolor/barcolor(cond ? color : na) — shading → a full-height box while
         // the condition holds. Non-conditional/unresolvable colors stay display-skips.
         return this.lowerDrawing(callee, (ctx) => lowerConditionalShading(ctx, arg(args, 0, "color"), callee));
-      case "plotarrow": {
-        // plotarrow(series): up arrow while series > 0, down arrow while series < 0.
-        const series = this.num(argRequired(args, 0, "series", "plotarrow").value);
-        return [
-          { k: "marker", dir: "up", label: "", when: { k: "compare", op: ">", a: series, b: { k: "num", v: 0 } } },
-          { k: "marker", dir: "down", label: "", when: { k: "compare", op: "<", a: series, b: { k: "num", v: 0 } } }
-        ];
-      }
       case "runtime.error":
       case "plotcandle":
       case "plotbar": {
@@ -419,6 +336,37 @@ class Converter {
     };
   }
 
+  private declarationContext(): DeclarationLoweringContext {
+    return {
+      declare: ({ kind, name, overlay }) => {
+        this.declared = true;
+        this.kind = kind;
+        if (name) this.name = name;
+        this.overlay = overlay;
+      },
+      warn: (message) => this.warn(message)
+    };
+  }
+
+  private plotStatementContext(): PlotStatementLoweringContext {
+    return {
+      bool: (value) => this.bool(value),
+      color: (value) => this.colorOf(value),
+      isBooleanExpression: (value) => isBoolExpr(value, this.boolVars, this.env),
+      num: (value) => this.num(value),
+      pane: () => this.overlay ? "price" : "sub",
+      warnOnce: (key, message) => this.warnOnce(key, message)
+    };
+  }
+
+  private alertStatementContext(): AlertStatementLoweringContext {
+    return {
+      bool: (value) => this.bool(value),
+      warn: (message) => this.warn(message),
+      warnOnce: (key, message) => this.warnOnce(key, message)
+    };
+  }
+
   // ---------- drawing-object mapping (display-only approximations) ----------
 
   private lowerDrawing(fn: string, build: (context: DrawingLoweringContext) => Stmt[]): Stmt[] {
@@ -435,48 +383,6 @@ class Converter {
     };
     return lowerDisplay(context, fn, () => build(context));
   }
-  /** indicator()/strategy() declaration: name, overlay, and sizing defaults. */
-  private declaration(callee: string, args: PineArg[]): Stmt[] {
-    this.declared = true;
-    this.kind = callee === "strategy" ? "strategy" : "indicator";
-    const nameArg = arg(args, 0, "title");
-    if (nameArg?.value.t === "str") this.name = sanitizeText(nameArg.value.v) || this.name;
-    const overlayArg = arg(args, undefined, "overlay");
-    this.overlay = overlayArg ? isTrueIdent(overlayArg.value) : false;
-
-    const out: Stmt[] = [];
-    if (callee === "strategy") {
-      const qtyType = identName(arg(args, undefined, "default_qty_type")?.value);
-      const qtyValueArg = arg(args, undefined, "default_qty_value");
-      const qtyValue = qtyValueArg?.value.t === "num" ? qtyValueArg.value.v : undefined;
-      if (qtyType.endsWith("percent_of_equity") && qtyValue !== undefined) {
-        out.push({ k: "size", mode: "equity_pct", value: { k: "num", v: qtyValue } });
-      } else if (qtyType.endsWith("fixed") && qtyValue !== undefined) {
-        out.push({ k: "size", mode: "units", value: { k: "num", v: qtyValue } });
-      } else if (qtyType.endsWith("cash")) {
-        this.warn("strategy.cash sizing isn't supported — set position size explicitly.");
-      }
-      const pyramidingArg = arg(args, undefined, "pyramiding");
-      if (pyramidingArg?.value.t === "num" && pyramidingArg.value.v > 0) {
-        this.warn(`pyramiding=${pyramidingArg.value.v} isn't supported — entries only fire when flat.`);
-      }
-      if (arg(args, undefined, "process_orders_on_close")) {
-        this.warn("process_orders_on_close ignored — orders fill at the next bar's open here.");
-      }
-    }
-    return out;
-  }
-
-  private plotPane(): "price" | "sub" {
-    return this.overlay ? "price" : "sub";
-  }
-
-  /** Plot values are evaluated per bar in the chart preview, so mutable-var and
-   *  dynamic-history reads are fine here (unlike vectorized indicator sources). */
-  private plotValue(expr: PineExpr, _what: string): NumExpr {
-    return this.num(expr);
-  }
-
   private registerInput(name: string, call: Extract<PineExpr, { t: "call" }>): void {
     this.checkName(name);
     const kind = call.callee;
