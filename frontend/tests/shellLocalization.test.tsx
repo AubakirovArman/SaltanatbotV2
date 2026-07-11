@@ -11,6 +11,8 @@ describe("shell localization", () => {
     expect(shellText("ru", "commandPalette")).toBe("Палитра команд");
     expect(shellText("ru", "markets")).toBe("Рынки");
     expect(shellText("ru", "barStatistics")).toBe("Статистика свечи");
+    expect(shellText("ru", "trendLine")).toBe("Линия тренда");
+    expect(shellText("ru", "savedWorkspaces")).toBe("Сохранённые рабочие пространства");
   });
 
   it("renders Russian statistics, alert form and toast semantics", () => {

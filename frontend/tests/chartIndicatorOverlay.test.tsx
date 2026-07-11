@@ -13,6 +13,7 @@ describe("ChartIndicatorOverlay", () => {
     await act(async () => {
       root.render(
         <ChartIndicatorOverlay
+          locale="en"
           indicators={[]}
           onChange={() => {}}
           onEditLogic={() => {}}

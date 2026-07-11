@@ -86,13 +86,17 @@ test("switches and persists the interface locale", async ({ page }) => {
   await page.getByRole("button", { name: "Switch interface language to Russian" }).click();
 
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
-  const workspaceModes = page.getByLabel("Workspace mode");
+  const workspaceModes = page.locator(".mode-tabs");
   await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
   await expect(workspaceModes.getByRole("button", { name: "Стратегия", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Переключить язык интерфейса на английский" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Данные графика", exact: true })).toBeVisible();
   await expect(page.getByText("Рынки", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Статистика свечи")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Линия тренда", exact: true })).toBeVisible();
+  await expect(page.locator(".indicator-add")).toHaveText("Добавить");
+  await expect(page.getByRole("button", { name: "Сохранённые рабочие пространства", exact: true })).toBeVisible();
+  await expect(page.locator(".compare-add")).toContainText("Сравнить");
   await page.keyboard.press("Control+k");
   const localizedPalette = page.getByRole("dialog", { name: "Палитра команд" });
   await expect(localizedPalette.getByPlaceholder("Поиск символов, интервалов, типов графика и действий…")).toBeFocused();

@@ -370,12 +370,13 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 
 ### Documentation, localization and open source
 
-- [ ] Move remaining UI strings into typed messages.
+- [x] Move remaining UI strings into typed messages.
   - [x] Localize the accessible chart-data panel, captions, headers, empty states and signal/trade terminology through typed EN/RU messages.
   - [x] Localize the complete trading workspace: bot creation, settings/secrets, confirmations, runtime cards, command console/reference and order/fill journals.
   - [x] Localize Strategy Studio controls, template library, Pine import, backtest reports and optimizer/walk-forward research.
   - [x] Localize command search/actions, watchlist filters/favorites, bar/feed statistics and price-alert controls/toasts.
-- [ ] Complete Russian user-guide parity.
+  - [x] Localize chart drawings, indicator/artifact inputs, compare controls, chart types and saved workspaces.
+- [x] Complete Russian user-guide parity for the current chart, strategy research and trading product surfaces.
   - [x] Add the Russian chart navigation and accessible table-data guide.
   - [x] Add the Russian paper/live trading, key safety, recovery, command-console and journal guide.
   - [x] Add the Russian Strategy Studio, Pine import, backtest assumptions and optimization guide.

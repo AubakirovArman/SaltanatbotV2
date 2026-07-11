@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { translate, type Locale } from "../i18n";
+import { shellText } from "../i18n/shell";
 import type { CatalogResponse, ChartType, Instrument, Timeframe } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
 import type { Workspace } from "../workspace/workspaces";
@@ -60,15 +61,7 @@ const chartIcons = {
   renko: Blocks
 } satisfies Record<ChartType, typeof CandlestickChart>;
 
-const chartLabels = {
-  candles: "Candles",
-  heikin: "Heikin Ashi",
-  bars: "Bars",
-  line: "Line",
-  area: "Area",
-  baseline: "Baseline",
-  renko: "Renko"
-} satisfies Record<ChartType, string>;
+const chartLabelKeys = { candles: "candlesType", heikin: "heikinType", bars: "barsType", line: "lineType", area: "areaType", baseline: "baselineType", renko: "renkoType" } as const;
 
 /** Timeframes shown inline in the compact top-bar segment. The rest live in the
  * "more" dropdown so every timeframe stays selectable without cluttering the bar. */
@@ -111,8 +104,8 @@ export function TopBar({
         type="button"
         className="symbol-chip"
         onClick={onOpenPalette}
-        title="Switch symbol (⌘K)"
-        aria-label={`Current instrument ${instrument.symbol}. Open symbol search`}
+        title={shellText(locale, "switchSymbol")}
+        aria-label={`${shellText(locale, "currentInstrument")} ${instrument.symbol}. ${shellText(locale, "openSymbolSearch")}`}
       >
         <strong>{instrument.symbol}</strong>
         <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
@@ -120,12 +113,12 @@ export function TopBar({
 
       <span className="divider-v" aria-hidden="true" />
 
-      <TimeframeControl catalog={catalog} timeframe={timeframe} onTimeframeChange={onTimeframeChange} />
+      <TimeframeControl locale={locale} catalog={catalog} timeframe={timeframe} onTimeframeChange={onTimeframeChange} />
 
-      <ChartTypeMenu catalog={catalog} chartType={chartType} onChartTypeChange={onChartTypeChange} />
+      <ChartTypeMenu locale={locale} catalog={catalog} chartType={chartType} onChartTypeChange={onChartTypeChange} />
 
       <div className="topbar-actions">
-        <div className="segmented mode-tabs" aria-label="Workspace mode">
+        <div className="segmented mode-tabs" aria-label={shellText(locale, "workspaceMode")}>
           <button
             type="button"
             className={mode === "chart" ? "active" : ""}
@@ -165,7 +158,7 @@ export function TopBar({
               type="button"
               className={`icon-button ${leftOpen ? "active" : ""}`}
               onClick={onToggleLeft}
-              title="Toggle markets panel"
+              title={translate(locale, "toggleMarkets")}
               aria-label={translate(locale, "toggleMarkets")}
               aria-pressed={leftOpen}
             >
@@ -175,7 +168,7 @@ export function TopBar({
               type="button"
               className={`icon-button ${rightOpen ? "active" : ""}`}
               onClick={onToggleRight}
-              title="Toggle instrument panel"
+              title={translate(locale, "toggleInstrument")}
               aria-label={translate(locale, "toggleInstrument")}
               aria-pressed={rightOpen}
             >
@@ -184,15 +177,16 @@ export function TopBar({
           </>
         )}
         <WorkspacesMenu
+          locale={locale}
           workspaces={workspaces}
           onSave={onSaveWorkspace}
           onApply={onApplyWorkspace}
           onDelete={onDeleteWorkspace}
         />
-        <button type="button" className="icon-button" onClick={onOpenPalette} title="Command palette (⌘K)" aria-label={translate(locale, "openPalette")}>
+        <button type="button" className="icon-button" onClick={onOpenPalette} title={shellText(locale, "commandPalette")} aria-label={translate(locale, "openPalette")}>
           <Command size={14} strokeWidth={1.75} aria-hidden="true" />
         </button>
-        <button type="button" className="icon-button" onClick={onToggleTheme} title="Toggle theme" aria-label={translate(locale, "toggleTheme")}>
+        <button type="button" className="icon-button" onClick={onToggleTheme} title={translate(locale, "toggleTheme")} aria-label={translate(locale, "toggleTheme")}>
           {theme === "dark" ? <Sun size={14} strokeWidth={1.75} aria-hidden="true" /> : <Moon size={14} strokeWidth={1.75} aria-hidden="true" />}
         </button>
         <button
@@ -204,7 +198,7 @@ export function TopBar({
         >
           {locale.toUpperCase()}
         </button>
-        <div className={`status-pill ${connection}`} title={`Feed: ${connection}`} role="status">
+        <div className={`status-pill ${connection}`} title={`${shellText(locale, "feedStatus")}: ${connection}`} role="status">
           <i aria-hidden="true" />
           {translate(locale, connection === "connected" ? "statusConnected" : connection === "fallback" ? "statusFallback" : connection === "error" ? "statusError" : "statusConnecting")}
         </div>
@@ -214,10 +208,12 @@ export function TopBar({
 }
 
 function TimeframeControl({
+  locale,
   catalog,
   timeframe,
   onTimeframeChange
 }: {
+  locale: Locale;
   catalog?: CatalogResponse;
   timeframe: Timeframe;
   onTimeframeChange: (timeframe: Timeframe) => void;
@@ -249,7 +245,7 @@ function TimeframeControl({
 
   return (
     <div className="timeframe-control" ref={wrapRef}>
-      <div className="segmented timeframes" aria-label="Timeframe">
+      <div className="segmented timeframes" aria-label={shellText(locale, "timeframe")}>
         {inline.map((item) => (
           <button
             type="button"
@@ -268,7 +264,7 @@ function TimeframeControl({
             type="button"
             className={`charttype-button timeframe-more ${activeInExtra ? "active" : ""}`}
             onClick={() => setOpen((value) => !value)}
-            title="More timeframes"
+            title={shellText(locale, "moreTimeframes")}
             aria-haspopup="menu"
             aria-expanded={open}
           >
@@ -301,10 +297,12 @@ function TimeframeControl({
 }
 
 function ChartTypeMenu({
+  locale,
   catalog,
   chartType,
   onChartTypeChange
 }: {
+  locale: Locale;
   catalog?: CatalogResponse;
   chartType: ChartType;
   onChartTypeChange: (chartType: ChartType) => void;
@@ -335,7 +333,7 @@ function ChartTypeMenu({
         type="button"
         className="charttype-button"
         onClick={() => setOpen((value) => !value)}
-        title="Chart type"
+        title={shellText(locale, "chartType")}
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -359,7 +357,7 @@ function ChartTypeMenu({
                 }}
               >
                 <ItemIcon size={14} strokeWidth={1.75} aria-hidden="true" />
-                {chartLabels[item]}
+                {shellText(locale, chartLabelKeys[item])}
               </button>
             );
           })}
@@ -370,11 +368,13 @@ function ChartTypeMenu({
 }
 
 function WorkspacesMenu({
+  locale,
   workspaces,
   onSave,
   onApply,
   onDelete
 }: {
+  locale: Locale;
   workspaces: Workspace[];
   onSave: (name: string) => void;
   onApply: (id: string) => void;
@@ -400,7 +400,7 @@ function WorkspacesMenu({
   }, [open]);
 
   const saveCurrent = () => {
-    const name = window.prompt("Save current layout as…");
+    const name = window.prompt(shellText(locale, "saveLayoutPrompt"));
     if (name === null) return;
     if (name.trim()) onSave(name);
   };
@@ -411,8 +411,8 @@ function WorkspacesMenu({
         type="button"
         className="icon-button"
         onClick={() => setOpen((value) => !value)}
-        title="Saved workspaces"
-        aria-label="Saved workspaces"
+        title={shellText(locale, "savedWorkspaces")}
+        aria-label={shellText(locale, "savedWorkspaces")}
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -429,10 +429,10 @@ function WorkspacesMenu({
             }}
           >
             <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
-            Save current as…
+            {shellText(locale, "saveCurrentAs")}
           </button>
           {workspaces.length === 0 ? (
-            <div className="workspace-empty">No saved workspaces yet.</div>
+            <div className="workspace-empty">{shellText(locale, "noSavedWorkspaces")}</div>
           ) : (
             <div className="workspace-list">
               {workspaces.map((workspace) => (
@@ -453,8 +453,8 @@ function WorkspacesMenu({
                     type="button"
                     className="workspace-delete"
                     onClick={() => onDelete(workspace.id)}
-                    title="Delete workspace"
-                    aria-label={`Delete workspace ${workspace.name}`}
+                    title={shellText(locale, "deleteWorkspace")}
+                    aria-label={`${shellText(locale, "deleteWorkspace")} ${workspace.name}`}
                   >
                     <Trash2 size={13} strokeWidth={1.75} aria-hidden="true" />
                   </button>

@@ -34,6 +34,7 @@ import type { ChartLivePosition, ChartMarker, ChartPlot, ChartShapes, ChartTable
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { PriceAlert } from "../market/alerts";
 import type { Locale } from "../i18n";
+import { shellText } from "../i18n/shell";
 import type { Candle, ChartType, Instrument, Timeframe } from "../types";
 import { ChartIndicatorOverlay, type StrategyMenuItem } from "./ChartIndicatorOverlay";
 import { ChartDataPanel } from "./ChartDataPanel";
@@ -136,6 +137,7 @@ export function ChartCanvas({
   onUpdateCompare,
   onRemoveCompare
 }: ChartCanvasProps) {
+  const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const interactionRef = useRef<Interaction>();
   const drawingsRef = useRef<DrawingObject[]>([]);
   const historyRef = useRef<DrawingObject[][]>([]);
@@ -312,58 +314,58 @@ export function ChartCanvas({
 
   return (
     <div className="chart-surface">
-      <div className="tool-rail" aria-label="Drawing tools">
-        <ToolButton active={tool === "cursor"} label="Cursor (Esc)" onClick={() => setTool("cursor")}>
+      <div className="tool-rail" aria-label={t("drawingTools")}>
+        <ToolButton active={tool === "cursor"} label={t("cursor")} onClick={() => setTool("cursor")}>
           <MousePointer2 size={15} aria-hidden="true" />
         </ToolButton>
-        <ToolButton active={tool === "trendline"} label="Trend line" onClick={() => setTool("trendline")}>
+        <ToolButton active={tool === "trendline"} label={t("trendLine")} onClick={() => setTool("trendline")}>
           <TrendingUp size={15} aria-hidden="true" />
         </ToolButton>
-        <ToolButton active={tool === "ray"} label="Ray" onClick={() => setTool("ray")}>
+        <ToolButton active={tool === "ray"} label={t("ray")} onClick={() => setTool("ray")}>
           <Move size={15} aria-hidden="true" />
         </ToolButton>
-        <ToolButton active={tool === "extended"} label="Extended line" onClick={() => setTool("extended")}>
+        <ToolButton active={tool === "extended"} label={t("extendedLine")} onClick={() => setTool("extended")}>
           <MoveDiagonal size={15} aria-hidden="true" />
         </ToolButton>
-        <ToolButton active={tool === "hline"} label="Horizontal line" onClick={() => setTool("hline")}>
+        <ToolButton active={tool === "hline"} label={t("horizontalLine")} onClick={() => setTool("hline")}>
           <MoveHorizontal size={15} aria-hidden="true" />
         </ToolButton>
-        <ToolButton active={tool === "hray"} label="Horizontal ray" onClick={() => setTool("hray")}>
+        <ToolButton active={tool === "hray"} label={t("horizontalRay")} onClick={() => setTool("hray")}>
           <MoveHorizontal size={15} aria-hidden="true" className="ic-ray" />
         </ToolButton>
-        <ToolButton active={tool === "vline"} label="Vertical line" onClick={() => setTool("vline")}>
+        <ToolButton active={tool === "vline"} label={t("verticalLine")} onClick={() => setTool("vline")}>
           <MoveVertical size={15} aria-hidden="true" />
         </ToolButton>
-        <ToolButton active={tool === "rectangle"} label="Rectangle" onClick={() => setTool("rectangle")}>
+        <ToolButton active={tool === "rectangle"} label={t("rectangle")} onClick={() => setTool("rectangle")}>
           <RectangleHorizontal size={15} aria-hidden="true" />
         </ToolButton>
-        <ToolButton active={tool === "fib"} label="Fibonacci retracement" onClick={() => setTool("fib")}>
+        <ToolButton active={tool === "fib"} label={t("fibonacci")} onClick={() => setTool("fib")}>
           <Ratio size={15} aria-hidden="true" />
         </ToolButton>
-        <ToolButton active={tool === "long"} label="Long position" onClick={() => setTool("long")}>
+        <ToolButton active={tool === "long"} label={t("longPosition")} onClick={() => setTool("long")}>
           <TrendingUp size={15} aria-hidden="true" className="ic-up" />
         </ToolButton>
-        <ToolButton active={tool === "short"} label="Short position" onClick={() => setTool("short")}>
+        <ToolButton active={tool === "short"} label={t("shortPosition")} onClick={() => setTool("short")}>
           <TrendingDown size={15} aria-hidden="true" className="ic-down" />
         </ToolButton>
-        <ToolButton active={tool === "measure"} label="Measure (Δ price / % / bars)" onClick={() => setTool("measure")}>
+        <ToolButton active={tool === "measure"} label={t("measure")} onClick={() => setTool("measure")}>
           <Ruler size={15} aria-hidden="true" />
         </ToolButton>
         <span className="rail-divider" aria-hidden="true" />
-        <ToolButton active={magnet} label="Magnet (snap to price)" onClick={() => setMagnet((value) => !value)}>
+        <ToolButton active={magnet} label={t("magnet")} onClick={() => setMagnet((value) => !value)}>
           <Magnet size={15} aria-hidden="true" />
         </ToolButton>
         <span className="rail-spacer" aria-hidden="true" />
-        <ToolButton active={showVolume} label="Toggle volume" onClick={() => setShowVolume((value) => !value)}>
+        <ToolButton active={showVolume} label={t("toggleVolume")} onClick={() => setShowVolume((value) => !value)}>
           <Scaling size={15} aria-hidden="true" />
         </ToolButton>
         <button
           type="button"
           className="rail-trash"
-          aria-label="Delete all drawings"
-          title="Delete all drawings"
+          aria-label={t("deleteDrawings")}
+          title={t("deleteDrawings")}
           onClick={() => {
-            if (drawings.length > 0 && !window.confirm("Delete all drawings?")) return;
+            if (drawings.length > 0 && !window.confirm(t("deleteDrawingsConfirm"))) return;
             setDraft(undefined);
             setSelectedId(undefined);
             setDrawings([]);
@@ -397,22 +399,23 @@ export function ChartCanvas({
             <Workflow size={12} aria-hidden="true" />
             <span>{strategyName}</span>
             {strategySummary && <b>{strategySummary}</b>}
-            {trades && trades.length > 0 && <b>{trades.length} trades</b>}
-            {!strategySummary && signals && signals.length > 0 && <b>{signals.length} signals</b>}
+            {trades && trades.length > 0 && <b>{trades.length} {t("trades")}</b>}
+            {!strategySummary && signals && signals.length > 0 && <b>{signals.length} {t("signals")}</b>}
             {strategyInputs && strategyInputs.length > 0 && onStrategyInputChange && (
-              <button type="button" onClick={() => setShowArtifactSettings((open) => !open)} title="Indicator inputs" aria-label="Edit indicator inputs">
+              <button type="button" onClick={() => setShowArtifactSettings((open) => !open)} title={t("indicatorInputs")} aria-label={t("editIndicatorInputs")}>
                 <SlidersHorizontal size={12} aria-hidden="true" />
               </button>
             )}
-            <button type="button" onClick={() => { setShowArtifactSettings(false); onClearStrategy?.(); }} title="Remove from chart" aria-label="Remove artifact from chart">
+            <button type="button" onClick={() => { setShowArtifactSettings(false); onClearStrategy?.(); }} title={t("removeFromChart")} aria-label={t("removeArtifact")}>
               <X size={12} aria-hidden="true" />
             </button>
           </div>
         )}
         {showArtifactSettings && strategyInputs && onStrategyInputChange && (
-          <ArtifactInputPanel inputs={strategyInputs} onChange={onStrategyInputChange} onClose={() => setShowArtifactSettings(false)} />
+          <ArtifactInputPanel locale={locale} inputs={strategyInputs} onChange={onStrategyInputChange} onClose={() => setShowArtifactSettings(false)} />
         )}
         <ChartIndicatorOverlay
+          locale={locale}
           indicators={indicators}
           onChange={onIndicatorsChange}
           onEditLogic={onEditIndicatorLogic}
@@ -423,6 +426,7 @@ export function ChartCanvas({
         />
         {onAddCompare && onUpdateCompare && onRemoveCompare && (
           <CompareControl
+            locale={locale}
             candidates={compareCandidates ?? []}
             active={compareOverlays ?? []}
             max={MAX_COMPARE}
@@ -439,8 +443,8 @@ export function ChartCanvas({
         <button
           type="button"
           className="scale-toggle"
-          aria-label="Cycle price scale"
-          title="Price scale (linear / log / percent)"
+          aria-label={t("cyclePriceScale")}
+          title={t("priceScale")}
           onClick={cyclePriceMode}
         >
           {view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}
@@ -565,7 +569,7 @@ export function ChartCanvas({
             setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id, price: viewport?.yToPrice(y) });
           }}
         />
-        {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay tables={tables} />}
+        {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay locale={locale} tables={tables} />}
         <ChartDataPanel
           candles={candles}
           decimals={instrument.decimals}
@@ -579,6 +583,7 @@ export function ChartCanvas({
         />
         {selectedId && drawings.some((d) => d.id === selectedId) && (
           <DrawingStyleBar
+            locale={locale}
             drawing={drawings.find((d) => d.id === selectedId) as DrawingObject}
             onChange={(patch) => setDrawings((current) => current.map((d) => (d.id === selectedId ? { ...d, style: { ...d.style, ...patch } } : d)))}
           />
@@ -632,7 +637,7 @@ function ToolButton({
 const DRAW_COLORS = ["#4db6ff", "#f7c948", "#23c97a", "#ef5350", "#bd58a4", "#8f9bb3"];
 
 /** Floating style toolbar for the selected drawing (color / width / dash). */
-function DrawingStyleBar({ drawing, onChange }: { drawing: DrawingObject; onChange: (patch: Partial<DrawingObject["style"]>) => void }) {
+function DrawingStyleBar({ locale, drawing, onChange }: { locale: Locale; drawing: DrawingObject; onChange: (patch: Partial<DrawingObject["style"]>) => void }) {
   return (
     <div
       style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", zIndex: 30, display: "flex", gap: 6, alignItems: "center", padding: "5px 8px", background: "#12161f", border: "1px solid rgba(134,150,166,0.25)", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.35)" }}
@@ -661,7 +666,7 @@ function DrawingStyleBar({ drawing, onChange }: { drawing: DrawingObject; onChan
       ))}
       <button
         type="button"
-        title="Dashed line"
+        title={shellText(locale, "dashedLine")}
         onClick={() => onChange({ dashed: !drawing.style.dashed })}
         style={{ background: drawing.style.dashed ? "rgba(77,182,255,0.25)" : "transparent", border: "none", color: "inherit", cursor: "pointer", borderRadius: 4, padding: "2px 8px", fontSize: 11 }}
       >
@@ -793,19 +798,19 @@ function formatVolume(volume: number) {
   return volume.toFixed(0);
 }
 
-function ChartTablesOverlay({ tables }: { tables: ChartTable[] }) {
+function ChartTablesOverlay({ locale, tables }: { locale: Locale; tables: ChartTable[] }) {
   const [open, setOpen] = useState(true);
   return (
-    <aside className={`chart-tables ${open ? "" : "collapsed"}`} aria-label="Indicator statistics">
+    <aside className={`chart-tables ${open ? "" : "collapsed"}`} aria-label={shellText(locale, "indicatorStatistics")}>
       <button type="button" className="chart-tables-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        {open ? "Hide statistics" : "Show statistics"}
+        {shellText(locale, open ? "hideStatistics" : "showStatistics")}
       </button>
       {open && tables.map((table) => (
         <table key={table.id} className="chart-data-table">
           <caption>{table.id}</caption>
           <thead>
             <tr>
-              <th scope="col">Metric</th>
+              <th scope="col">{shellText(locale, "metric")}</th>
               {table.columns.map((column) => <th key={column} scope="col">{column}</th>)}
             </tr>
           </thead>
@@ -823,12 +828,12 @@ function ChartTablesOverlay({ tables }: { tables: ChartTable[] }) {
   );
 }
 
-function ArtifactInputPanel({ inputs, onChange, onClose }: { inputs: { name: string; value: number }[]; onChange: (name: string, value: number) => void; onClose: () => void }) {
+function ArtifactInputPanel({ locale, inputs, onChange, onClose }: { locale: Locale; inputs: { name: string; value: number }[]; onChange: (name: string, value: number) => void; onClose: () => void }) {
   return (
-    <aside className="artifact-input-panel" aria-label="Indicator inputs">
+    <aside className="artifact-input-panel" aria-label={shellText(locale, "indicatorInputs")}>
       <header>
-        <strong>Inputs</strong>
-        <button type="button" onClick={onClose} aria-label="Close inputs"><X size={13} aria-hidden="true" /></button>
+        <strong>{shellText(locale, "inputs")}</strong>
+        <button type="button" onClick={onClose} aria-label={shellText(locale, "closeInputs")}><X size={13} aria-hidden="true" /></button>
       </header>
       <div className="artifact-input-list">
         {inputs.map((input) => {

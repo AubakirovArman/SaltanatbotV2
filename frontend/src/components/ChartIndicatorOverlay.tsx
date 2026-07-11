@@ -8,6 +8,8 @@ import type {
   PeriodIndicatorConfig,
   StochasticConfig
 } from "../chart/indicatorTypes";
+import type { Locale } from "../i18n";
+import { shellText } from "../i18n/shell";
 
 export interface StrategyMenuItem {
   id: string;
@@ -16,6 +18,7 @@ export interface StrategyMenuItem {
 }
 
 interface ChartIndicatorOverlayProps {
+  locale: Locale;
   indicators: IndicatorConfig[];
   onChange: (indicators: IndicatorConfig[]) => void;
   onEditLogic: (indicator: IndicatorConfig) => void;
@@ -26,6 +29,7 @@ interface ChartIndicatorOverlayProps {
 }
 
 export function ChartIndicatorOverlay({
+  locale,
   indicators,
   onChange,
   onEditLogic,
@@ -34,6 +38,7 @@ export function ChartIndicatorOverlay({
   activeArtifactId,
   onAddArtifact
 }: ChartIndicatorOverlayProps) {
+  const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string>();
   const active = indicators.filter((indicator) => indicator.enabled);
@@ -66,11 +71,12 @@ export function ChartIndicatorOverlay({
           onClick={() => setAdding((value) => !value)}
         >
           <Plus size={14} aria-hidden="true" />
-          ADD
+          {t("addIndicator")}
         </button>
 
         {active.map((indicator) => (
           <IndicatorChip
+            locale={locale}
             key={indicator.id}
             indicator={indicator}
             editing={indicator.id === editingId}
@@ -86,7 +92,7 @@ export function ChartIndicatorOverlay({
 
       {adding && (
         <div className="indicator-menu" role="menu">
-          <span className="menu-group-title">Indicators</span>
+          <span className="menu-group-title">{t("indicators")}</span>
           {available.map((indicator) => (
             <button type="button" key={indicator.id} role="menuitem" onClick={() => addIndicator(indicator.id)}>
               <span style={{ background: indicator.color }} />
@@ -94,11 +100,11 @@ export function ChartIndicatorOverlay({
               <small>{indicatorSummary(indicator)}</small>
             </button>
           ))}
-          {available.length === 0 && <p>All indicators added</p>}
+          {available.length === 0 && <p>{t("allIndicatorsAdded")}</p>}
 
           {onAddArtifact && customIndicators.length > 0 && (
             <>
-              <span className="menu-group-title">Custom indicators</span>
+              <span className="menu-group-title">{t("customIndicators")}</span>
               {customIndicators.map((indicator) => (
                 <button
                   type="button"
@@ -117,7 +123,7 @@ export function ChartIndicatorOverlay({
 
           {onAddArtifact && strategies.length > 0 && (
             <>
-              <span className="menu-group-title">Strategies</span>
+              <span className="menu-group-title">{t("strategies")}</span>
               {strategies.map((strategy) => (
                 <button
                   type="button"
@@ -138,6 +144,7 @@ export function ChartIndicatorOverlay({
 
       {editing && (
         <IndicatorEditor
+          locale={locale}
           indicator={editing}
           onClose={() => setEditingId(undefined)}
           onUpdate={(patch) => update(editing.id, patch)}
@@ -149,12 +156,14 @@ export function ChartIndicatorOverlay({
 }
 
 function IndicatorChip({
+  locale,
   indicator,
   editing,
   onEdit,
   onRemove,
   onToggleVisible
 }: {
+  locale: Locale;
   indicator: IndicatorConfig;
   editing: boolean;
   onEdit: () => void;
@@ -167,13 +176,13 @@ function IndicatorChip({
       <span className="indicator-dot" style={{ background: indicator.color }} />
       <strong>{indicator.label}</strong>
       <small>{indicatorSummary(indicator)}</small>
-      <button type="button" aria-label={`${hidden ? "Show" : "Hide"} ${indicator.label}`} onClick={onToggleVisible}>
+      <button type="button" aria-label={`${shellText(locale, hidden ? "show" : "hide")} ${indicator.label}`} onClick={onToggleVisible}>
         {hidden ? <EyeOff size={13} aria-hidden="true" /> : <Eye size={13} aria-hidden="true" />}
       </button>
-      <button type="button" aria-label={`Edit ${indicator.label}`} onClick={onEdit}>
+      <button type="button" aria-label={`${shellText(locale, "edit")} ${indicator.label}`} onClick={onEdit}>
         <Pencil size={13} aria-hidden="true" />
       </button>
-      <button type="button" aria-label={`Remove ${indicator.label}`} onClick={onRemove}>
+      <button type="button" aria-label={`${shellText(locale, "remove")} ${indicator.label}`} onClick={onRemove}>
         <Trash2 size={13} aria-hidden="true" />
       </button>
     </div>
@@ -181,47 +190,49 @@ function IndicatorChip({
 }
 
 function IndicatorEditor({
+  locale,
   indicator,
   onClose,
   onUpdate,
   onEditLogic
 }: {
+  locale: Locale;
   indicator: IndicatorConfig;
   onClose: () => void;
   onUpdate: (patch: Partial<IndicatorConfig>) => void;
   onEditLogic: () => void;
 }) {
   return (
-    <div className="indicator-editor" role="dialog" aria-label={`${indicator.label} settings`}>
+    <div className="indicator-editor" role="dialog" aria-label={`${indicator.label} ${shellText(locale, "settings")}`}>
       <div className="indicator-editor-head">
         <strong>{indicator.label}</strong>
-        <button type="button" aria-label="Close indicator editor" onClick={onClose}>
+        <button type="button" aria-label={shellText(locale, "closeIndicatorEditor")} onClick={onClose}>
           <X size={14} aria-hidden="true" />
         </button>
       </div>
       <div className="indicator-editor-grid">
         {hasPeriod(indicator) && (
-          <NumberField label="Period" value={indicator.period} min={2} max={300} onChange={(period) => onUpdate({ period })} />
+          <NumberField label={shellText(locale, "period")} value={indicator.period} min={2} max={300} onChange={(period) => onUpdate({ period })} />
         )}
         {indicator.kind === "bollinger" && (
-          <NumberField label="Dev" value={indicator.deviation} min={0.5} max={5} step={0.1} onChange={(deviation) => onUpdate({ deviation })} />
+          <NumberField label={shellText(locale, "deviation")} value={indicator.deviation} min={0.5} max={5} step={0.1} onChange={(deviation) => onUpdate({ deviation })} />
         )}
         {indicator.kind === "stochastic" && (
-          <NumberField label="Smooth" value={indicator.smooth} min={1} max={20} onChange={(smooth) => onUpdate({ smooth })} />
+          <NumberField label={shellText(locale, "smooth")} value={indicator.smooth} min={1} max={20} onChange={(smooth) => onUpdate({ smooth })} />
         )}
-        {indicator.kind === "macd" && <MacdFields indicator={indicator} onUpdate={onUpdate} />}
-        <ColorField label="Line" value={indicator.color} onChange={(color) => onUpdate({ color })} />
+        {indicator.kind === "macd" && <MacdFields locale={locale} indicator={indicator} onUpdate={onUpdate} />}
+        <ColorField label={shellText(locale, "line")} value={indicator.color} onChange={(color) => onUpdate({ color })} />
         {indicator.kind === "bollinger" && (
-          <ColorField label="Band" value={indicator.bandColor} onChange={(bandColor) => onUpdate({ bandColor })} />
+          <ColorField label={shellText(locale, "band")} value={indicator.bandColor} onChange={(bandColor) => onUpdate({ bandColor })} />
         )}
         {indicator.kind === "stochastic" && (
           <ColorField label="%D" value={indicator.signalColor} onChange={(signalColor) => onUpdate({ signalColor })} />
         )}
         {indicator.kind === "macd" && (
           <>
-            <ColorField label="Signal" value={indicator.signalColor} onChange={(signalColor) => onUpdate({ signalColor })} />
-            <ColorField label="Hist +" value={indicator.histogramUp} onChange={(histogramUp) => onUpdate({ histogramUp })} />
-            <ColorField label="Hist -" value={indicator.histogramDown} onChange={(histogramDown) => onUpdate({ histogramDown })} />
+            <ColorField label={shellText(locale, "signal")} value={indicator.signalColor} onChange={(signalColor) => onUpdate({ signalColor })} />
+            <ColorField label={shellText(locale, "histogramUp")} value={indicator.histogramUp} onChange={(histogramUp) => onUpdate({ histogramUp })} />
+            <ColorField label={shellText(locale, "histogramDown")} value={indicator.histogramDown} onChange={(histogramDown) => onUpdate({ histogramDown })} />
           </>
         )}
       </div>
@@ -229,11 +240,11 @@ function IndicatorEditor({
         <div>
           <span>
             <Code2 size={13} aria-hidden="true" />
-            Logic
+            {shellText(locale, "logic")}
           </span>
           <button type="button" onClick={onEditLogic}>
             <Workflow size={13} aria-hidden="true" />
-            Edit
+            {shellText(locale, "edit")}
           </button>
         </div>
         <pre>{indicatorLogicPreview(indicator)}</pre>
@@ -243,17 +254,19 @@ function IndicatorEditor({
 }
 
 function MacdFields({
+  locale,
   indicator,
   onUpdate
 }: {
+  locale: Locale;
   indicator: MacdConfig;
   onUpdate: (patch: Partial<IndicatorConfig>) => void;
 }) {
   return (
     <>
-      <NumberField label="Fast" value={indicator.fast} min={2} max={100} onChange={(fast) => onUpdate({ fast })} />
-      <NumberField label="Slow" value={indicator.slow} min={3} max={160} onChange={(slow) => onUpdate({ slow })} />
-      <NumberField label="Signal" value={indicator.signal} min={2} max={80} onChange={(signal) => onUpdate({ signal })} />
+      <NumberField label={shellText(locale, "fast")} value={indicator.fast} min={2} max={100} onChange={(fast) => onUpdate({ fast })} />
+      <NumberField label={shellText(locale, "slow")} value={indicator.slow} min={3} max={160} onChange={(slow) => onUpdate({ slow })} />
+      <NumberField label={shellText(locale, "signal")} value={indicator.signal} min={2} max={80} onChange={(signal) => onUpdate({ signal })} />
     </>
   );
 }
