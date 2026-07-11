@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { evaluateBar, runInit } from "../src/trading/strategy/evaluator.js";
+import {
+  createStrategyRuntime,
+  evaluateBar,
+  evaluateStrategyBar,
+  runInit,
+  runStrategyInit
+} from "../src/trading/strategy/evaluator.js";
 import type { StrategyIR } from "../src/trading/strategy/ir.js";
 import { securitySeriesKey } from "../src/trading/strategy/securityData.js";
 import type { Candle } from "../src/types.js";
@@ -102,6 +108,30 @@ describe("runInit — on-start initialization", () => {
     expect(vars.get("count")).toBe(11);
     evaluateBar(ir, golden, 1, vars);
     expect(vars.get("count")).toBe(12);
+  });
+});
+
+describe("reusable strategy-core runtime", () => {
+  it("preserves state and returns the same intents as the live convenience facade", () => {
+    const ir: StrategyIR = {
+      name: "reusable-runtime",
+      inputs: [],
+      init: [{ k: "setvar", name: "count", value: { k: "num", v: 0 } }],
+      body: [
+        { k: "setvar", name: "count", value: { k: "arith", op: "+", a: { k: "var", name: "count" }, b: { k: "num", v: 1 } } },
+        { k: "entry", direction: "long", when: { k: "compare", op: ">=", a: { k: "var", name: "count" }, b: { k: "num", v: 2 } } }
+      ]
+    };
+    const runtime = createStrategyRuntime(ir, golden);
+    runStrategyInit(ir, runtime);
+    const liveVars = new Map<string, number>();
+    runInit(ir, golden, liveVars);
+
+    for (let index = 0; index < 3; index += 1) {
+      expect(evaluateStrategyBar(ir, index, runtime)).toEqual(evaluateBar(ir, golden, index, liveVars));
+    }
+    expect(runtime.vars.get("count")).toBe(3);
+    expect(runtime.vars).toEqual(liveVars);
   });
 });
 

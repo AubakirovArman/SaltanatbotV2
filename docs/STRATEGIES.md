@@ -207,18 +207,19 @@ const shared = readSharedFromHash();           // { name, xml } | null on load
 
 ## The same evaluator on the backend
 
-The backtester and live bot engine currently run mirrored per-bar interpreters over the canonical shared IR shape. Both import the same TA implementation from `packages/strategy-core`; a stateful cross-runtime parity test compares frontend preview signals with backend evaluator intents bar-for-bar while the remaining evaluator logic is moved into that package.
+The backtester and live bot engine use the same stateful evaluator from `packages/strategy-core`. The frontend adds historical fills, portfolio accounting and display collection around a reusable runtime; the backend uses the live convenience facade. A stateful cross-runtime parity test compares preview signals with core evaluator intents bar-for-bar.
 
 ```ts
 export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number): BarIntents
+export function evaluateStrategyBar(ir: StrategyIR, index: number, runtime: StrategyRuntime): BarIntents
 export function atrValue(candles: Candle[], period: number, index: number): number
 ```
 
-`evaluateBar` builds a fresh runtime (params from `ir.inputs`, empty vars, a memoized series cache), executes `ir.body` at `index`, and returns the `BarIntents` for that bar (entry, exit, stop, target, trail, size, alerts, markers). The live engine (`backend/src/trading/engine.ts`) imports `evaluateBar` and `atrValue` and calls them on each new candle in the bot's rolling buffer, using `atrValue(buffer, 14, ...)` for ATR-based trailing stops.
+`evaluateBar` builds a fresh runtime around the caller's persistent variable map, executes `ir.body` at `index`, and returns `BarIntents` (entry, exit, stop, target, trail, size, alerts, markers and budget status). Backtest/preview use `createStrategyRuntime()` plus `evaluateStrategyBar()` so pure series stay memoized across a fixed history. The live engine imports `evaluateBar` and `atrValue` through its compatibility facade as its candle buffer grows.
 
 Two properties keep frontend and backend in lockstep:
 
-- **Identical expression/statement evaluation.** `evalNum`, `evalBool`, `computeSeries`, `applyArith`, `applyUnary`, and `constNum` are mirrored in `backtest.ts` and `evaluator.ts` and covered by parity fixtures. Indicators come from the canonical `packages/strategy-core/ta.ts` implementation (`sma`, `ema`, `wma`, `vwma`, `rsi`, `atr` with Wilder smoothing, `bollingerBand`, `macdLine`, `stochK`, `williamsR`, `cci`, `roc`, `stdev`, `highest`, `lowest`, `change`, and the extended Pine-compatible series).
+- **One expression/statement evaluator.** Numeric/boolean evaluation, control flow, state mutation, alert rendering, operation budgets and intent collection live in `packages/strategy-core/evaluator.ts`. Indicators come from the adjacent canonical `ta.ts` implementation.
 - **Determinism.** Series are computed by folding indicator periods to constants (`constNum`) and vectorizing pure numeric expressions once per bar-index-independent key (`getSeries` memoizes on `JSON.stringify(expr)`). Comparisons short-circuit to `false` on `NaN`, and crosses/trends require a valid prior bar, so warm-up bars behave identically in backtest and live.
 
 Because the IR is transported as plain JSON, a strategy authored and backtested in the browser can be sent verbatim to the backend as `bot.config.ir` and produce the same intents on the same candles.

@@ -266,7 +266,7 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 ### Strategy and backtest core
 
 - [x] Move shared TA implementations into `strategy-core` and retain frontend/backend compatibility facades.
-- [ ] Move the canonical evaluator and intent types into `strategy-core`.
+- [x] Move the canonical evaluator, reusable runtime, execution budgets, security-series alignment and intent types into `strategy-core`.
 - [ ] Split backtest into execution, portfolio/accounting, analytics, preview and trace modules.
 - [ ] Add versioned golden event traces across preview/backtest/paper/live.
 - [ ] Add missing/fallback-data provenance to every report.

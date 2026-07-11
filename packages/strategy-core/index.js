@@ -12,3 +12,5 @@ export function isNumExpr(expr) {
 }
 
 export * from "./ta.js";
+export * from "./securityData.js";
+export * from "./evaluator.js";

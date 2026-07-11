@@ -14,7 +14,7 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - No `eval`, `new Function` or arbitrary script execution.
 - Unknown IR nodes fail closed.
 - Backtest assumptions are explicit and reproducible.
-- Frontend and backend use canonical `strategy-core` TA primitives; their remaining evaluator adapters must stay behaviorally identical until evaluator extraction is complete.
+- Frontend backtest and backend live execution use the canonical `strategy-core` evaluator, intent types and TA primitives. Preview remains a display adapter over the same public expression evaluator.
 - Display-only IR nodes (`plot`, drawings, projections and metrics) never create trading intents.
 - Artifact schema/version/hash changes require migration handling.
 
@@ -42,4 +42,4 @@ IR v4 adds explicit future projection zones and accessible metric tables. Both r
 
 ## Planned decomposition
 
-IR and TA now live in `packages/strategy-core`, and Pine lives in `packages/pine-compiler`. Next move the evaluator into `strategy-core` and fills/accounting/metrics into `packages/backtest-core`. The former monolithic `StrategyLab` is now a small composition facade over feature hooks and panels.
+IR, evaluator, intents and TA now live in `packages/strategy-core`, and Pine lives in `packages/pine-compiler`. Next move fills/accounting/metrics into `packages/backtest-core`. The former monolithic `StrategyLab` is now a small composition facade over feature hooks and panels.

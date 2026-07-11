@@ -1,3 +1,4 @@
+/** Verify checked-in strategy-core runtime artifacts match canonical TypeScript. */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,6 +13,8 @@ const tsc = join(root, "node_modules", ".bin", "tsc");
 try {
   execFileSync(tsc, [
     join(packageDir, "ta.ts"),
+    join(packageDir, "securityData.ts"),
+    join(packageDir, "evaluator.ts"),
     "--target", "ES2022",
     "--module", "NodeNext",
     "--moduleResolution", "NodeNext",
@@ -20,14 +23,21 @@ try {
     "--outDir", outputDir
   ]);
 
-  const stale = ["ta.js", "ta.d.ts"].filter(
+  const stale = [
+    "ta.js",
+    "ta.d.ts",
+    "securityData.js",
+    "securityData.d.ts",
+    "evaluator.js",
+    "evaluator.d.ts"
+  ].filter(
     (file) => readFileSync(join(packageDir, file), "utf8") !== readFileSync(join(outputDir, file), "utf8")
   );
   if (stale.length > 0) {
     console.error(`Generated strategy-core artifacts are stale: ${stale.join(", ")}. Run npm run build -w @saltanatbotv2/strategy-core.`);
     process.exitCode = 1;
   } else {
-    console.log("Strategy-core TA runtime and declarations are current.");
+    console.log("Strategy-core runtime and declarations are current.");
   }
 } finally {
   rmSync(outputDir, { force: true, recursive: true });

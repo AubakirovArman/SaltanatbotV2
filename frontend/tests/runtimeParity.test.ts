@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluateBar, runInit } from "../../backend/src/trading/strategy/evaluator.js";
+import { evaluateBar as evaluateCoreBar } from "@saltanatbotv2/strategy-core";
 import type { StrategyIR as BackendStrategyIR } from "../../backend/src/trading/strategy/ir.js";
 import * as backendTa from "../../backend/src/trading/strategy/ta.js";
 import { previewStrategy } from "../src/strategy/backtest";
@@ -82,6 +83,10 @@ describe("frontend preview/backend evaluator parity", () => {
     expect(frontendTa.sma).toBe(backendTa.sma);
     expect(frontendTa.atr).toBe(backendTa.atr);
     expect(frontendTa.sma([1, 2, 3, 4], 2)).toEqual([NaN, 1.5, 2.5, 3.5]);
+  });
+
+  it("exposes the strategy-core evaluator through the backend compatibility facade", () => {
+    expect(evaluateBar).toBe(evaluateCoreBar);
   });
 
   it("emits identical signal counts on every bar for stateful IR", () => {

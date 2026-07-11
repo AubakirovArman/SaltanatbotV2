@@ -115,3 +115,5 @@ export const IR_VERSION: 4;
 export function isNumExpr(expr: NumExpr | BoolExpr): expr is NumExpr;
 
 export * from "./ta.js";
+export * from "./securityData.js";
+export * from "./evaluator.js";
