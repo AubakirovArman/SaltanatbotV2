@@ -28,6 +28,18 @@ a `sourceMap` from generated `body.N`/`init.N` IR paths to Pine source spans so
 editors can navigate between source, blocks and preview output without adding
 non-executable metadata to Strategy IR.
 
+The public `PineResult.report` is a versioned evidence report. It separates
+exact IR nodes, approximation diagnostics, display-only nodes/diagnostics and
+rejections, and includes source/artifact links where available. Its `overall`
+field is the worst observed category; the importer never invents a confidence
+percentage. The Pine import dialog displays this report and remediation text in
+an accessible polite status region.
+
+Unsupported function families are defined in the ordered public
+`PINE_UNSUPPORTED_FEATURES` registry. Look-ahead, request APIs, missing native
+primitives, collections, strings, drawings-as-values, metadata and unknown
+functions each have stable diagnostic codes and remediation.
+
 **Design guarantee.** The target IR is a per-bar, vectorized, `eval`-free dataflow
 that must run **identically in the browser backtest and the live engine**. Every
 construct that would break that guarantee (look-ahead, other-timeframe data,

@@ -308,6 +308,9 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 - [x] Test deterministic profile metadata, diagnostics and budget failures.
 - [x] Add exact token ranges and propagated AST spans without changing executable semantics.
 - [x] Link semantic diagnostics and generated body/init IR paths back to Pine statements.
+- [x] Replace the scattered unsupported-function decision tree with a public ordered registry.
+- [x] Emit a versioned exact/approximation/display-only/rejected evidence report without confidence percentages.
+- [x] Preserve reports through import and render localized summary labels, source lines and remediation.
 
 - [x] Extract AST and public diagnostic types with source-span contracts.
 - [x] Extract semantic scope/symbol/function analysis.

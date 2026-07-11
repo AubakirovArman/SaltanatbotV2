@@ -19,4 +19,10 @@ describe("PineImportDialog overlay", () => {
     expect(html).not.toContain("modal-backdrop");
     expect(html).toContain('aria-modal="true"');
   });
+
+  it("exposes a polite result region for fidelity reports", () => {
+    const html = renderToStaticMarkup(<PineImportDialog locale="en" onClose={() => {}} onImportMany={() => {}} />);
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+  });
 });

@@ -176,15 +176,48 @@ export function PineImportDialog({ locale, onClose, onImportMany }: PineImportDi
                       <span className="pine-result-error">{entry.res.error}</span>
                     )}
                   </div>
-                  {entry.res.ok && entry.res.warnings.length > 0 && (
+                  {entry.res.report && (
+                    <dl className="pine-fidelity" aria-label={t("fidelity")}>
+                      <div>
+                        <dt>{t("fidelity")}</dt>
+                        <dd>{t(entry.res.report.overall === "display-only" ? "displayOnly" : entry.res.report.overall)}</dd>
+                      </div>
+                      {entry.res.ok && (
+                        <div>
+                          <dt>{t("profile")}</dt>
+                          <dd>{entry.res.language.profile}</dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt>{t("exact")}</dt>
+                        <dd>{entry.res.report.counts.exact}</dd>
+                      </div>
+                      <div>
+                        <dt>{t("approximation")}</dt>
+                        <dd>{entry.res.report.counts.approximation}</dd>
+                      </div>
+                      <div>
+                        <dt>{t("displayOnly")}</dt>
+                        <dd>{entry.res.report.counts["display-only"]}</dd>
+                      </div>
+                    </dl>
+                  )}
+                  {entry.res.ok && entry.res.diagnostics.length > 0 && (
                     <ul className="pine-result-warnings">
                       <li className="pine-result-warnings-head">
                         <AlertTriangle size={11} aria-hidden="true" /> {t("approximations")}
                       </li>
-                      {entry.res.warnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
+                      {entry.res.diagnostics.map((diagnostic, diagnosticIndex) => (
+                        <li key={`${diagnostic.code}-${diagnosticIndex}`}>
+                          <code>{diagnostic.code}</code>
+                          {diagnostic.span ? ` · ${t("sourceLine")} ${diagnostic.span.start.line}` : ""}: {diagnostic.message}
+                          {diagnostic.remediation && <small><strong>{t("remediation")}:</strong> {diagnostic.remediation}</small>}
+                        </li>
                       ))}
                     </ul>
+                  )}
+                  {!entry.res.ok && entry.res.diagnostic?.remediation && (
+                    <p className="pine-result-remediation"><strong>{t("remediation")}:</strong> {entry.res.diagnostic.remediation}</p>
                   )}
                 </div>
               ))}

@@ -12,6 +12,11 @@ The package's `ast.ts` owns public AST types. Its `diagnostics.ts` owns stable d
 metadata alongside the editable XML and readable IR text. UI consumers should
 use these fields for source navigation and fidelity presentation rather than
 parsing warning strings.
+
+The import facade also preserves the compiler's versioned evidence `report`.
+The dialog presents its worst category and exact/approximation/display-only
+counts with semantic `<dl>` markup, while diagnostics remain a list with stable
+codes, source lines and concrete remediation.
 `semanticHelpers.ts` owns pure type/classification, constant-folding, collection and reassignment analysis helpers used by lowering.
 `drawingLowering.ts` maps display-only Pine fills, shading, labels, lines, boxes, projections and numeric tables through an explicit lowering context.
 `numericCallLowering.ts` maps numeric built-in calls to IR nodes through an explicit context, keeping converter-owned scope and diagnostics state outside the module.

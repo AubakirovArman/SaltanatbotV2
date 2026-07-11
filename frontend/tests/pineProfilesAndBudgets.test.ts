@@ -1,5 +1,6 @@
 import {
   PINE_BUDGETS,
+  PINE_UNSUPPORTED_FEATURES,
   PineConvertError,
   assertAstBudgets,
   assertGeneratedIrBudget,
@@ -137,5 +138,33 @@ describe("Pine source ranges", () => {
       source: expect.objectContaining({ start: expect.objectContaining({ line: 4 }) })
     }));
     expect(result.diagnostics.find((diagnostic) => diagnostic.message.includes("bar_index"))?.span?.start.line).toBe(3);
+  });
+});
+
+describe("Pine fidelity report and unsupported registry", () => {
+  it("classifies exact, display-only and approximated conversions without percentages", () => {
+    const exact = convertPine(`//@version=6\nstrategy("Exact")\nstrategy.entry("L", strategy.long, when=close > open)`);
+    const display = convertPine(`//@version=6\nindicator("Display")\nplot(close)`);
+    const approximation = convertPine(`//@version=6\nindicator("MTF")\nplot(request.security("BINANCE:BTCUSDT", "60", close))`);
+
+    expect(exact.report.overall).toBe("exact");
+    expect(display.report.overall).toBe("display-only");
+    expect(approximation.report.overall).toBe("approximation");
+    expect(approximation.report.schemaVersion).toBe(1);
+    expect(JSON.stringify(approximation.report)).not.toMatch(/percent|confidence/i);
+  });
+
+  it("uses the ordered unsupported registry for typed fail-closed errors", () => {
+    expect(PINE_UNSUPPORTED_FEATURES.at(-1)?.category).toBe("unknown");
+    try {
+      convertPine(`//@version=6\nindicator("Pivot")\nplot(ta.pivothigh(high, 2, 2))`);
+      throw new Error("Expected conversion to fail");
+    } catch (cause) {
+      expect(cause).toBeInstanceOf(PineConvertError);
+      const diagnostic = (cause as PineConvertError).diagnostic;
+      expect(diagnostic.code).toBe("PINE_UNSUPPORTED_LOOKAHEAD");
+      expect(diagnostic.remediation).toContain("causal");
+      expect(diagnostic.span?.start.line).toBe(3);
+    }
   });
 });

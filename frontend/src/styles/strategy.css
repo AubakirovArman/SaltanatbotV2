@@ -1115,6 +1115,34 @@
 .pine-import .pine-result-error {
   color: #ef8f8c;
 }
+
+.pine-import .pine-fidelity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.8rem;
+  margin: 0.45rem 0 0;
+  font-size: 0.72rem;
+}
+
+.pine-import .pine-fidelity div {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.pine-import .pine-fidelity dt {
+  color: var(--muted);
+}
+
+.pine-import .pine-fidelity dd {
+  margin: 0;
+  font-weight: 650;
+}
+
+.pine-import .pine-result-warnings small,
+.pine-import .pine-result-remediation {
+  display: block;
+  margin-top: 0.25rem;
+}
 .pine-import .pine-result-warnings {
   margin: 6px 0 0;
   padding-left: 18px;

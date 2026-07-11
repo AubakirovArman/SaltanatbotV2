@@ -146,8 +146,8 @@ Required improvements:
 - [x] source spans on tokens, AST nodes, diagnostics and generated artifacts;
 - [x] typed diagnostics with code, severity, source range and remediation;
 - [x] resource budgets for file size, lines, tokens, AST size/nesting, loops and generated IR;
-- explicit unsupported-feature registry instead of scattered conditions;
-- conversion report showing exact, approximated, display-only and rejected constructs;
+- [x] explicit unsupported-feature registry instead of scattered function conditions;
+- [x] conversion report showing exact, approximated, display-only and rejected constructs;
 - side-by-side source, generated blocks and preview comparison;
 - deterministic output snapshots;
 - a public compatibility matrix generated from tests;

@@ -31,4 +31,13 @@ are linked to their statement, and `PineResult.sourceMap` maps generated
 `body.N`/`init.N` IR paths back to the source. Source metadata is deliberately
 kept out of the executable IR so hashes and runtime semantics stay stable.
 
+`PINE_UNSUPPORTED_FEATURES` is the ordered fail-closed registry for unsupported
+function categories. Each rejection has a stable category code, reason and
+remediation; lowering code must not add new ad-hoc function rejection trees.
+
+Every successful result includes a versioned `report` with explicit `exact`,
+`approximation`, `display-only` and `rejected` counts/events. The overall level
+is the worst observed semantic category, never an unexplained confidence
+percentage. `rejectedPineConversionReport()` provides the same schema for errors.
+
 Internal module responsibilities and invariants are documented in [`src/README.md`](./src/README.md).

@@ -3,6 +3,8 @@ import { irToBlocklyXml } from "../irToXml";
 import {
   convertPine,
   PineConvertError,
+  rejectedPineConversionReport,
+  type PineConversionReport,
   type PineDiagnostic,
   type PineLanguageProfile,
   type PineResult,
@@ -42,12 +44,14 @@ export interface PineImport {
   diagnostics: PineDiagnostic[];
   language: PineLanguageProfile;
   sourceMap: PineSourceMapEntry[];
+  report: PineConversionReport;
 }
 
 export interface PineImportError {
   ok: false;
   error: string;
   diagnostic?: PineDiagnostic;
+  report?: PineConversionReport;
 }
 
 export function importPineScript(source: string): PineImport | PineImportError {
@@ -55,7 +59,14 @@ export function importPineScript(source: string): PineImport | PineImportError {
   try {
     result = convertPine(source);
   } catch (cause) {
-    if (cause instanceof PineConvertError) return { ok: false, error: cause.message, diagnostic: cause.diagnostic };
+    if (cause instanceof PineConvertError) {
+      return {
+        ok: false,
+        error: cause.message,
+        diagnostic: cause.diagnostic,
+        report: rejectedPineConversionReport(cause.diagnostic)
+      };
+    }
     return { ok: false, error: cause instanceof Error ? cause.message : "Conversion failed." };
   }
   const warnings = isCyclesAnalysisSource(source, result.name)
@@ -72,6 +83,7 @@ export function importPineScript(source: string): PineImport | PineImportError {
     warnings,
     diagnostics: result.diagnostics,
     language: result.language,
-    sourceMap: result.sourceMap
+    sourceMap: result.sourceMap,
+    report: result.report
   };
 }

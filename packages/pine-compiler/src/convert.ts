@@ -13,6 +13,8 @@ import {
 import { PineLexError } from "./lexer";
 import { PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
 import { resolvePineProfile, type PineLanguageProfile } from "./profile";
+import { createPineConversionReport, type PineConversionReport } from "./fidelity";
+import { unsupportedFunctionError } from "./unsupportedFeatures";
 import { type PlotHandleValue } from "./drawingLowering";
 import { lowerNumericCall, type NumericCallLoweringContext } from "./numericCallLowering";
 import { lowerBooleanCall, type BooleanCallLoweringContext } from "./booleanCallLowering";
@@ -76,6 +78,7 @@ export interface PineResult {
   language: PineLanguageProfile;
   /** Stable links from generated IR paths back to their originating Pine statement. */
   sourceMap: PineSourceMapEntry[];
+  report: PineConversionReport;
 }
 
 export interface PineSourceMapEntry {
@@ -118,12 +121,13 @@ export function convertPine(source: string): PineResult {
   const result = new Converter(analyzePine(ast)).run(ast);
   assertGeneratedIrBudget(result.ir);
   const diagnostics = [...profile.diagnostics, ...result.diagnostics];
-  return {
+  const combined = {
     ...result,
     language: profile.language,
     warnings: [...profile.diagnostics.map((diagnostic) => diagnostic.message), ...result.warnings],
     diagnostics
   };
+  return { ...combined, report: createPineConversionReport(combined.ir, diagnostics, combined.sourceMap) };
 }
 
 class Converter {
@@ -165,7 +169,7 @@ class Converter {
     for (const [name, definition] of analysis.functions) this.funcs.set(name, definition);
   }
 
-  run(ast: PineStmt[]): Omit<PineResult, "language"> {
+  run(ast: PineStmt[]): Omit<PineResult, "language" | "report"> {
     const body: Stmt[] = [];
     for (const stmt of ast) {
       const bodyStart = body.length;
@@ -649,35 +653,7 @@ class Converter {
 
   /** Friendly, namespace-aware rejection for a function we can't map to the IR. */
   private unsupportedFn(callee: string): PineConvertError {
-    const lookahead = ["ta.pivothigh", "ta.pivotlow", "ta.pivot_point_levels"];
-    if (lookahead.includes(callee)) {
-      return new PineConvertError(`${callee}() looks ahead in time (it confirms a pivot using future bars) — it can't run in a live per-bar engine.`);
-    }
-    if (callee.startsWith("request.")) {
-      return new PineConvertError(`${callee}() is not supported yet; only request.security() has an import approximation.`);
-    }
-    const needsBlock: Record<string, string> = {
-      "ta.kcw": "Keltner width", "ta.correlation": "correlation", "ta.mode": "mode",
-      "ta.percentile_linear_interpolation": "percentile", "ta.percentile_nearest_rank": "percentile",
-      "ta.wpr": "Williams %R", "ta.rci": "RCI", "ta.range": "range"
-    };
-    if (needsBlock[callee]) {
-      return new PineConvertError(`${callee}() (${needsBlock[callee]}) has no matching indicator primitive yet — rebuild it from the supported blocks, or request native support.`);
-    }
-    if (callee.startsWith("array.") || callee.startsWith("matrix.") || callee.startsWith("map.")) {
-      return new PineConvertError(`${callee}() uses collections (arrays/matrices/maps), which the scalar per-bar IR can't represent.`);
-    }
-    if (callee.startsWith("str.") || callee.startsWith("format.")) {
-      return new PineConvertError(`${callee}() manipulates strings, which aren't part of the numeric strategy IR.`);
-    }
-    const drawing = ["label.", "line.", "linefill.", "box.", "table.", "polyline.", "chart."];
-    if (drawing.some((prefix) => callee.startsWith(prefix))) {
-      return new PineConvertError(`${callee}() draws on the chart (labels/lines/boxes/tables) — visual objects can't run in the trading engine. If the script's core logic is computable, remove the drawing code and import the rest.`);
-    }
-    if (callee.startsWith("ticker.") || callee === "timeframe.period" || callee.startsWith("syminfo.")) {
-      return new PineConvertError(`${callee}() reads symbol/timeframe metadata that isn't available to the engine.`);
-    }
-    return new PineConvertError(`Unsupported function: ${callee}().`);
+    return unsupportedFunctionError(callee);
   }
 
   /** True Range = max(high - low, |high - close[1]|, |low - close[1]|). */
