@@ -7,3 +7,4 @@ export * from "./metrics.js";
 export * from "./provenance.js";
 export * from "./report.js";
 export * from "./executionTrace.js";
+export * from "./replay.js";

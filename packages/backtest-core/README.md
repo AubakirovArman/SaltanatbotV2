@@ -17,6 +17,8 @@ Runtime-neutral historical trading primitives shared independently of the React 
 - schema-v1 immutable report metadata with normalized execution assumptions,
   strategy/data identity, gap/partial-history audit and a comparison key;
 - deterministic compatibility checks plus exportable versioned research files.
+- deterministic random-access bar replay joining evaluator explanations,
+  variable changes, broker events, equity, signals and trade boundaries.
 
 The package may depend on `@saltanatbotv2/contracts` and `@saltanatbotv2/strategy-core`. It must not import React, Blockly, browser globals, storage, network or exchange adapters.
 

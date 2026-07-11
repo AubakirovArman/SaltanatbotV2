@@ -226,6 +226,12 @@ fill assumptions. Data quality records requested/loaded bars and bounded gap
 details. The UI exports `.saltanat-report.json`; comparison is permitted only
 when `compareBacktestReports()` confirms matching settings, data and provenance.
 
+`createBacktestReplay()` turns the versioned evaluator and execution traces into
+a deterministic random-access frame per bar. Each frame joins signals,
+expression explanations, variable changes, scheduled/actual fills, position
+events, equity and trade boundaries. The report exposes native previous/next
+buttons and a range input for keyboard-accessible stepping.
+
 Two properties keep frontend and backend in lockstep:
 
 - **One expression/statement evaluator.** Numeric/boolean evaluation, control flow, state mutation, alert rendering, operation budgets and intent collection live in `packages/strategy-core/evaluator.ts`. Indicators come from the adjacent canonical `ta.ts` implementation.

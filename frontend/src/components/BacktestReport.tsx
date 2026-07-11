@@ -5,6 +5,7 @@ import { monteCarlo, type MonteCarloStats } from "../strategy/montecarlo";
 import type { Locale } from "../i18n";
 import { strategyText } from "../i18n/strategy";
 import { serializeBacktestResearchFile } from "@saltanatbotv2/backtest-core";
+import { BacktestReplayPanel } from "../strategy/components/BacktestReplayPanel";
 
 interface BacktestReportProps {
   locale: Locale;
@@ -90,6 +91,8 @@ export function BacktestReport({ locale, result, decimals, config, onShowOnChart
 
       <EquityCurve locale={locale} result={result} mc={mc} />
       <UnderwaterCurve locale={locale} result={result} />
+
+      <BacktestReplayPanel locale={locale} result={result} />
 
       {mc && <MonteCarloPanel locale={locale} mc={mc} initial={reportConfig?.initialCapital ?? 10_000} />}
 

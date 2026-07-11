@@ -41,6 +41,10 @@ execution settings, fill assumptions және missing/partially-loaded history
 мәліметтерін сақтайды. Export батырмасы versioned `.saltanat-report.json`
 жасайды. Settings, range, quality немесе provenance әртүрлі runs салыстырылмайды.
 
+Bar replay previous/next батырмалары және range control арқылы deterministic
+қадам жасайды. Әр frame strategy/broker events, equity, expression explanations
+және variable changes көрсетеді.
+
 Live-ке дейін бірнеше нарық/кезеңді, out-of-sample нәтижені және paper журналын тексеріңіз.
 
 Қосымша: [trading нұсқаулығы](TRADING.md) және [Pine матрицасы](../PINE_COMPATIBILITY.generated.md).
