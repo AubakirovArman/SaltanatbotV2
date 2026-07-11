@@ -139,6 +139,12 @@ Verification:
 - [x] Move sweep-state creation and worker-spec shaping into `optimization/model.ts`.
 - [x] Reduce `StrategyLab.tsx` further to 617 lines and add direct model tests.
 
+### Trading engine decomposition — current engine-risk commit
+
+- [x] Extract pure position-sizing and stop/target calculations into `engineRisk.ts`.
+- [x] Add focused quote/equity/risk sizing and long/short stop/target tests.
+- [x] Keep exchange orchestration and order lifecycle unchanged behind the `TradingEngine` facade.
+
 ## Completed browser baseline
 
 ### Critical browser E2E expansion

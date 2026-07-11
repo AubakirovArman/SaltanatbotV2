@@ -6,6 +6,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 
 - `routes.ts`: authenticated HTTP/WS adapter.
 - `engine.ts`: trading orchestration facade.
+- `engineRisk.ts`: pure position-sizing and stop/target resolution.
 - `types.ts`: trading models.
 - `exchange/`: paper, Binance and Bybit adapters.
 - `strategy/`: temporary backend copy of IR/evaluator/TA.

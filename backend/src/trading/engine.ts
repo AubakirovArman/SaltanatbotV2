@@ -6,6 +6,7 @@ import { ProviderRouter } from "../providers/router.js";
 import type { DataMarketType, MarketSubscription } from "../providers/provider.js";
 import { commandToExec, formatExec, parseMessageSet } from "./commands.js";
 import { findLiveCollision } from "./collision.js";
+import { resolvePositionQty, resolveStopPrice, resolveTargetPrice } from "./engineRisk.js";
 import { atrValue, evaluateBar, runInit, type BarIntents } from "./strategy/evaluator.js";
 import { PaperAdapter, type PaperState } from "./exchange/paper.js";
 import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
@@ -571,9 +572,9 @@ export class TradingEngine {
       const equity = account.equity || bot.config.sizeValue;
       const atr = atrValue(bot.buffer, 14, index) || 0;
 
-      const stop = this.resolvePrice(intents.stop, dir, price, atr);
-      const target = this.resolveTarget(intents.target, dir, price, atr);
-      let qty = this.resolveQty(bot, intents, price, equity, stop);
+      const stop = resolveStopPrice(intents.stop, dir, price, atr);
+      const target = resolveTargetPrice(intents.target, dir, price, atr);
+      let qty = resolvePositionQty(bot.config, intents, price, equity, stop);
       if (!qty || qty <= 0) {
         this.log(bot.config.id, "warn", "Entry skipped — computed size is zero");
         return;
@@ -772,37 +773,6 @@ export class TradingEngine {
 
   // ---------- helpers ----------
 
-  private resolveQty(bot: RunningBot, intents: BarIntents, price: number, equity: number, stop?: number): number {
-    const size = intents.size ?? { mode: mapSizeMode(bot.config.sizeMode), value: bot.config.sizeValue };
-    const lev = Math.max(1, bot.config.leverage);
-    switch (size.mode) {
-      case "units":
-        return bot.config.sizeMode === "quote" && !intents.size ? size.value / price : size.value;
-      case "equity_pct":
-        return (equity * (size.value / 100) * lev) / price;
-      case "risk_pct": {
-        if (stop && Math.abs(price - stop) > 0) return (equity * (size.value / 100)) / Math.abs(price - stop);
-        return (equity * lev) / price;
-      }
-      default:
-        return size.value;
-    }
-  }
-
-  private resolvePrice(stop: BarIntents["stop"], dir: "long" | "short", entry: number, atr: number): number | undefined {
-    if (!stop) return undefined;
-    if (stop.mode === "price") return stop.value;
-    if (stop.mode === "percent") return dir === "long" ? entry * (1 - stop.value / 100) : entry * (1 + stop.value / 100);
-    return dir === "long" ? entry - atr * stop.value : entry + atr * stop.value;
-  }
-
-  private resolveTarget(target: BarIntents["target"], dir: "long" | "short", entry: number, atr: number): number | undefined {
-    if (!target) return undefined;
-    if (target.mode === "price") return target.value;
-    if (target.mode === "percent") return dir === "long" ? entry * (1 + target.value / 100) : entry * (1 - target.value / 100);
-    return dir === "long" ? entry + atr * target.value : entry - atr * target.value;
-  }
-
   private buildAdapter(config: BotConfig, getPrice: () => number): ExchangeAdapter {
     if (config.exchange === "binance" || config.exchange === "bybit") {
       const keys = getSetting<ExchangeKeys>(`keys:${config.exchange}`) ?? { apiKey: "", apiSecret: "" };
@@ -903,12 +873,6 @@ export class TradingEngine {
     const bot = this.running.get(id);
     this.broadcast({ type: "bot", botId: id, bot: bot?.config });
   }
-}
-
-function mapSizeMode(mode: BotConfig["sizeMode"]): "units" | "equity_pct" | "risk_pct" {
-  if (mode === "equity_pct") return "equity_pct";
-  if (mode === "risk_pct") return "risk_pct";
-  return "units";
 }
 
 function round(value: number): number {
