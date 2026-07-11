@@ -6,6 +6,11 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 
 - `routes.ts`: authenticated HTTP/WS adapter.
 - `engine.ts`: trading orchestration facade.
+- `engineRuntime.ts`: in-memory bot/runtime state contracts.
+- `engineAdapters.ts`: exchange/paper adapter construction and market routing.
+- `engineState.ts`: durable state, equity and evaluator-context helpers.
+- `enginePortfolio.ts`: cross-bot account aggregation without double counting.
+- `engineOrderCoordinator.ts`: private streams, polling fallback, idempotent execution ingestion and restart reconciliation.
 - `engineRisk.ts`: pure position-sizing and stop/target resolution.
 - `orderLifecycle.ts`: durable intent/result/fill transitions around exchange I/O.
 - `orderEventIngest.ts`: venue/client identity resolution and idempotent snapshot ingest shared by polling and private streams.
@@ -50,6 +55,9 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 
 Test every lifecycle transition, duplicate/out-of-order event, partial fill, protection rejection, timeout, restart phase and reconciliation mismatch. All exchange adapters must pass the same conformance suite.
 
-## Planned decomposition
+## Decomposition boundary
 
-Split `engine.ts` into BotActor, lifecycle, market-event, strategy-runner, risk and reconciliation modules. Split order lifecycle/idempotency/protection from exchange adapters. Move shared IR/evaluator to `strategy-core`.
+`engine.ts` remains the sub-600-line public BotActor/lifecycle coordinator. Order recovery, adapter
+selection, portfolio reads, durable runtime state and risk calculations are independent modules;
+order lifecycle/idempotency/protection remain separate from exchange adapters. Shared IR/evaluation
+already lives in `strategy-core` behind the backend facade.

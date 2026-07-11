@@ -21,6 +21,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
   preserving the public compiler contract and complete regression suite.
 - Decomposed the chart Canvas facade into drawing controls, localized menus, accessible overlays,
   interaction helpers and a stable prop contract, reducing the coordinator below the module budget.
+- Reduced the trading engine facade below the module budget by extracting runtime state, adapter
+  routing, portfolio aggregation and the private-stream/poll/reconciliation coordinator.
 
 ### Operations and recovery
 

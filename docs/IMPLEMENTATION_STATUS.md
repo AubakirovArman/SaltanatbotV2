@@ -496,6 +496,9 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 
 ### Trading engine hardening
 
+- [x] Reduce the 940-line `TradingEngine` below 600 lines by extracting runtime contracts, adapter routing, durable state/context, portfolio aggregation and order/reconciliation coordination.
+  - [x] Retain one public lifecycle/market-event facade and serial per-bot actor queues.
+  - [x] Keep polling/private-stream events on the same durable identity and execution-accounting boundary.
 - [x] Preserve Binance/Bybit private execution IDs, incremental quantities/prices, actual fee assets and venue realized PnL.
 - [x] Deduplicate replayed private executions before durable fill/accounting writes.
 - [x] Display fee amount and asset in the localized fill journal.

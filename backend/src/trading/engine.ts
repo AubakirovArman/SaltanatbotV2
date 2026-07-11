@@ -2,36 +2,21 @@ import type { Candle, Instrument, Timeframe } from "../types.js";
 import { findInstrument } from "../market/catalog.js";
 import { timeframeMs } from "../market/timeframes.js";
 import { ProviderRouter } from "../providers/router.js";
-import type { DataMarketType, MarketSubscription } from "../providers/provider.js";
 import { commandToExec, formatExec, parseMessageSet } from "./commands.js";
 import { findLiveCollision } from "./collision.js";
 import { resolvePositionQty, resolveStopPrice, resolveTargetPrice } from "./engineRisk.js";
 import { atrValue, evaluateBar, runInit, type BarIntents } from "./strategy/evaluator.js";
 import { PaperAdapter, type PaperState } from "./exchange/paper.js";
-import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
-import { BybitAdapter } from "./exchange/bybit.js";
 import { notify } from "./notifications.js";
 import { orderLifecycle } from "./orderLifecycle.js";
-import { pollOrderUpdates } from "./orderPolling.js";
-import { ingestExchangeOrderEvent } from "./orderEventIngest.js";
-import { fillFromExchangeExecution, hasRecordedExecution } from "./executionAccounting.js";
 import { classifyCandleSequence } from "./candleSequence.js";
-import { reconcileLiveRuntime } from "./reconciliation.js";
-import { reconcileStartupOrders } from "./startupOrderReconciliation.js";
-import { getSetting, insertFill, insertLog, listBots, listFills, listOrderEvents, listOrderJournal, setSetting, upsertBot, withStoreTransaction } from "./store.js";
-import type {
-  AccountState,
-  BotConfig,
-  ExchangeAdapter,
-  ExchangeOrderSnapshot,
-  ExecOrder,
-  ExecResult,
-  FillRecord,
-  PortfolioExchange,
-  PortfolioSummary,
-  PrivateOrderSubscription,
-  PositionState
-} from "./types.js";
+import { getSetting, insertFill, insertLog, listBots, listOrderJournal, setSetting, upsertBot } from "./store.js";
+import type { Managed, BotStateSnapshot, RunningBot } from "./engineRuntime.js";
+import { EngineOrderCoordinator } from "./engineOrderCoordinator.js";
+import { buildPortfolioSummary } from "./enginePortfolio.js";
+import { buildEngineAdapter, engineMarketRoute } from "./engineAdapters.js";
+import { equityOf, pauseRunningBot, persistPaper, persistRuntimeState, positionContext, realizedToday } from "./engineState.js";
+import type { AccountState, BotConfig, ExecOrder, ExecResult, FillRecord, PortfolioSummary, PositionState } from "./types.js";
 
 const BUFFER_CAP = 1500;
 /**
@@ -55,76 +40,23 @@ export interface TradeEvent {
   position?: PositionState | null;
 }
 
-interface Managed {
-  side: "long" | "short";
-  entry: number;
-  /** Filled base quantity — used for unrealized-PnL ctx reads. */
-  qty: number;
-  /** Bar time at entry — used for bars-in-position ctx reads. */
-  entryTime: number;
-  stop?: number;
-  target?: number;
-  trail?: { mode: "percent" | "atr"; value: number };
-}
-
-/**
- * Durable strategy runtime state, persisted to `state:<botId>` so a process
- * restart/crash does NOT wipe `setvar` counters (which would reset martingale
- * steps / loss streaks) or the managed-position tracking (whose loss would make
- * the strategy see "flat" and re-enter an already-open live position).
- */
-interface BotStateSnapshot {
-  vars: Record<string, number>;
-  managed?: Managed;
-  paused?: boolean;
-  pauseReason?: string;
-  /** Time of the last bar this bot evaluated — used for the resume staleness gate. */
-  lastBarTime: number;
-  savedAt: number;
-}
-
-interface RunningBot {
-  config: BotConfig;
-  adapter: ExchangeAdapter;
-  paper?: PaperAdapter;
-  instrument: Instrument;
-  buffer: Candle[];
-  sub?: MarketSubscription;
-  price: number;
-  managed?: Managed;
-  /** Persistent `setvar` store — survives across bars for backtest/live parity. */
-  vars: Map<string, number>;
-  /** Last known account equity (for the ctx equity read; carried on read failure). */
-  lastEquity?: number;
-  /**
-   * True when the bot was auto-resumed with stale risky state (open position or
-   * nonzero counters after a long downtime). It buffers data but does NOT trade
-   * until an operator confirms via confirmResume() — see the resume staleness gate.
-   */
-  paused?: boolean;
-  pauseReason?: string;
-  /** Serializes market-event handling so one candle cannot race another. */
-  eventQueue: Promise<void>;
-  /** Last closed bar already evaluated by this runtime. */
-  lastEvaluatedBarTime?: number;
-  /** Exchange request in flight; prevents duplicate entry/exit calls. */
-  orderInFlight?: boolean;
-  /** Signed REST fallback while private order streams are not connected. */
-  orderPollTimer?: ReturnType<typeof setInterval>;
-  orderPollOffset?: number;
-  privateOrderSubscription?: PrivateOrderSubscription;
-}
-
 export class TradingEngine {
   private running = new Map<string, RunningBot>();
   /** Bot ids whose per-bar alert/marker notifications are muted (persisted). */
   private muted: Set<string>;
+  private readonly orderCoordinator: EngineOrderCoordinator;
 
   constructor(
     private readonly provider: ProviderRouter,
     private readonly broadcast: (event: TradeEvent) => void
   ) {
     this.muted = new Set(getSetting<string[]>("mutedBots") ?? []);
+    this.orderCoordinator = new EngineOrderCoordinator(
+      (id) => this.running.get(id),
+      (botId, level, message) => this.log(botId, level, message),
+      (event) => this.broadcast(event),
+      (bot, reason) => pauseRunningBot(bot, reason)
+    );
   }
 
   /** Mute/unmute a bot's alert & marker notifications (persisted). */
@@ -171,7 +103,10 @@ export class TradingEngine {
    * isolated sims and never collide. Returns the offending bot's config, if any.
    */
   liveCollision(config: BotConfig): BotConfig | undefined {
-    return findLiveCollision(config, [...this.running.values()].map((bot) => bot.config));
+    return findLiveCollision(
+      config,
+      [...this.running.values()].map((bot) => bot.config)
+    );
   }
 
   async start(config: BotConfig, options: { override?: boolean; resumed?: boolean } = {}) {
@@ -195,7 +130,7 @@ export class TradingEngine {
       }
     }
 
-    const adapter = this.buildAdapter(config, () => this.running.get(config.id)?.price ?? 0);
+    const adapter = buildEngineAdapter(config, () => this.running.get(config.id)?.price ?? 0);
     const bot: RunningBot = { config, adapter, instrument, buffer: [], price: 0, vars: new Map(), eventQueue: Promise.resolve() };
     if (adapter instanceof PaperAdapter) {
       bot.paper = adapter;
@@ -220,22 +155,22 @@ export class TradingEngine {
       const hasRisk = !!bot.managed || Object.values(savedState.vars ?? {}).some((v) => v !== 0);
       const gap = Date.now() - (savedState.lastBarTime || 0);
       const stale = gap > 3 * (timeframeMs[config.timeframe] ?? 60_000);
-      if (options.resumed && hasRisk && stale) this.pauseBot(bot, "Resumed with stale state (open position or nonzero counters) pending operator confirmation.");
+      if (options.resumed && hasRisk && stale) pauseRunningBot(bot, "Resumed with stale state (open position or nonzero counters) pending operator confirmation.");
     }
 
     if (options.resumed && config.exchange !== "paper") {
-      persistAfterSeed = await this.reconcileOnResume(bot, savedState?.managed);
+      persistAfterSeed = await this.orderCoordinator.reconcileOnResume(bot, savedState?.managed);
     }
 
     // Live bots must never see synthetic fallback data — trade on real prices only.
     const strict = config.exchange !== "paper";
-    const route = this.marketRoute(config);
+    const route = engineMarketRoute(config);
 
     // Seed history so indicators have warmup.
     const seed = await this.provider.getCandles(instrument, config.timeframe, { limit: SEED_BARS }, { ...route, strict });
     bot.buffer = seed.slice(-BUFFER_CAP);
     bot.price = bot.buffer.at(-1)?.close ?? 0;
-    if (persistAfterSeed || bot.paused) this.persistState(bot);
+    if (persistAfterSeed || bot.paused) persistRuntimeState(bot);
 
     // Fresh start (no restored state): run the strategy's one-time on-start init.
     if (!savedState) runInit(config.ir, bot.buffer, bot.vars);
@@ -249,8 +184,8 @@ export class TradingEngine {
     );
 
     this.running.set(config.id, bot);
-    this.startOrderPolling(bot);
-    this.startPrivateOrderStream(bot);
+    this.orderCoordinator.startOrderPolling(bot);
+    this.orderCoordinator.startPrivateOrderStream(bot);
     config.status = "running";
     config.updatedAt = Date.now();
     upsertBot(config);
@@ -270,7 +205,7 @@ export class TradingEngine {
     if (!bot?.paused) return false;
     bot.paused = false;
     bot.pauseReason = undefined;
-    this.persistState(bot);
+    persistRuntimeState(bot);
     this.log(id, "info", "Trading resumed by operator");
     void notify({ event: "start", bot: bot.config.name, symbol: bot.config.symbol, text: "Trading resumed by operator" });
     return true;
@@ -286,8 +221,8 @@ export class TradingEngine {
     bot.sub?.close();
     if (bot.orderPollTimer) clearInterval(bot.orderPollTimer);
     bot.privateOrderSubscription?.close();
-    if (bot.paper) this.persistPaper(bot);
-    this.persistState(bot);
+    if (bot.paper) persistPaper(bot);
+    persistRuntimeState(bot);
     this.running.delete(id);
     bot.config.status = "stopped";
     bot.config.updatedAt = Date.now();
@@ -311,8 +246,8 @@ export class TradingEngine {
       bot.sub?.close();
       if (bot.orderPollTimer) clearInterval(bot.orderPollTimer);
       bot.privateOrderSubscription?.close();
-      if (bot.paper) this.persistPaper(bot);
-      this.persistState(bot);
+      if (bot.paper) persistPaper(bot);
+      persistRuntimeState(bot);
     }
     this.running.clear();
   }
@@ -333,14 +268,6 @@ export class TradingEngine {
     }
   }
 
-  /** Realized PnL booked so far in the current UTC day, for the daily-loss guard. */
-  private realizedToday(botId: string): number {
-    const startOfDay = Math.floor(Date.now() / 86_400_000) * 86_400_000;
-    return listFills(botId, 500)
-      .filter((fill) => fill.ts >= startOfDay)
-      .reduce((sum, fill) => sum + fill.realizedPnl, 0);
-  }
-
   async orders(id: string) {
     const bot = this.running.get(id);
     return bot?.adapter.orders ? bot.adapter.orders(bot.config.symbol) : [];
@@ -354,76 +281,7 @@ export class TradingEngine {
    * exchange degrades to an `error` field instead of breaking the response.
    */
   async portfolio(): Promise<PortfolioSummary> {
-    const realizedTodayByBot: Record<string, number> = {};
-    let totalRealizedToday = 0;
-    const paper: PortfolioSummary["paper"] = [];
-
-    // Group running live bots by exchange+market; collect their symbols.
-    const groups = new Map<string, { adapter: ExchangeAdapter; symbols: Set<string> }>();
-
-    for (const bot of this.running.values()) {
-      const realized = this.realizedToday(bot.config.id);
-      realizedTodayByBot[bot.config.id] = realized;
-      totalRealizedToday += realized;
-
-      if (bot.adapter.id === "paper") {
-        const state = bot.paper?.getState();
-        paper.push({
-          botId: bot.config.id,
-          name: bot.config.name,
-          symbol: bot.config.symbol,
-          equity: (await bot.adapter.account().catch(() => undefined))?.equity ?? state?.balance ?? 0,
-          balance: state?.balance ?? 0,
-          position: state?.position ?? null,
-          openOrders: state?.orders ?? []
-        });
-        continue;
-      }
-
-      const key = `${bot.adapter.id}:${bot.adapter.market}`;
-      const group = groups.get(key) ?? { adapter: bot.adapter, symbols: new Set<string>() };
-      group.symbols.add(bot.config.symbol);
-      groups.set(key, group);
-    }
-
-    const exchanges: PortfolioExchange[] = [];
-    for (const [id, group] of groups) {
-      const entry: PortfolioExchange = {
-        id,
-        exchange: group.adapter.id,
-        market: group.adapter.market,
-        equity: 0,
-        balance: 0,
-        currency: "USDT",
-        positions: [],
-        openOrders: []
-      };
-      try {
-        const account = await group.adapter.account();
-        entry.equity = account.equity;
-        entry.balance = account.balance;
-        entry.currency = account.currency;
-      } catch (error) {
-        entry.error = error instanceof Error ? error.message : "account read failed";
-      }
-      // One position + open-order read per traded symbol on this account.
-      for (const symbol of group.symbols) {
-        try {
-          const pos = await group.adapter.position(symbol);
-          if (pos) entry.positions.push(pos);
-        } catch {
-          // A single symbol failing shouldn't drop the whole account.
-        }
-        try {
-          if (group.adapter.orders) entry.openOrders.push(...(await group.adapter.orders(symbol)));
-        } catch {
-          // Ignore open-order read failure for this symbol.
-        }
-      }
-      exchanges.push(entry);
-    }
-
-    return { exchanges, realizedTodayByBot, totalRealizedToday, paper };
+    return buildPortfolioSummary(this.running.values(), (botId) => realizedToday(botId));
   }
 
   /**
@@ -462,9 +320,7 @@ export class TradingEngine {
   private onCandle(id: string, candle: Candle) {
     const bot = this.running.get(id);
     if (!bot) return;
-    bot.eventQueue = bot.eventQueue
-      .then(() => this.handleCandle(bot, candle))
-      .catch((error) => this.log(id, "error", `Market event failed: ${error instanceof Error ? error.message : error}`));
+    bot.eventQueue = bot.eventQueue.then(() => this.handleCandle(bot, candle)).catch((error) => this.log(id, "error", `Market event failed: ${error instanceof Error ? error.message : error}`));
   }
 
   private async handleCandle(bot: RunningBot, candle: Candle) {
@@ -485,17 +341,14 @@ export class TradingEngine {
       for (const fill of fills) {
         insertFill(fill);
         if (fill.orderId || fill.clientId) {
-          const record = listOrderJournal(bot.config.id, 500).find((candidate) =>
-            (fill.orderId !== undefined && candidate.exchangeOrderId === fill.orderId) ||
-            (fill.clientId !== undefined && candidate.clientId === fill.clientId)
-          );
+          const record = listOrderJournal(bot.config.id, 500).find((candidate) => (fill.orderId !== undefined && candidate.exchangeOrderId === fill.orderId) || (fill.clientId !== undefined && candidate.clientId === fill.clientId));
           if (record) orderLifecycle.recordFill(record, fill);
         }
         this.log(bot.config.id, "info", `Order ${fill.kind} ${fill.qty} @ ${fill.price}${fill.kind === "close" ? ` · PnL ${round(fill.realizedPnl)}` : ""}`);
         this.broadcast({ type: "fill", botId: bot.config.id, fill });
         if (fill.kind === "close") void notify({ event: "close", bot: bot.config.name, symbol: bot.config.symbol, text: `Order fill · PnL ${round(fill.realizedPnl)}` });
       }
-      if (fills.length && bot.paper) this.persistPaper(bot);
+      if (fills.length && bot.paper) persistPaper(bot);
     }
 
     if (!last || candle.time === last.time) {
@@ -542,9 +395,9 @@ export class TradingEngine {
       bot.lastEvaluatedBarTime = barTime;
     }
     let intents: BarIntents;
-    const equity = await this.equityOf(bot);
+    const equity = await equityOf(bot);
     try {
-      intents = evaluateBar(bot.config.ir, bot.buffer, index, bot.vars, this.positionCtx(bot, equity));
+      intents = evaluateBar(bot.config.ir, bot.buffer, index, bot.vars, positionContext(bot, equity));
     } catch (error) {
       this.log(bot.config.id, "error", `Strategy error: ${error instanceof Error ? error.message : error}`);
       return;
@@ -571,7 +424,7 @@ export class TradingEngine {
       await this.openPosition(bot, intents, index);
     }
     // Persist counters + managed state every closed bar so a crash can't reset them.
-    this.persistState(bot);
+    persistRuntimeState(bot);
   }
 
   // ---------- position actions ----------
@@ -589,7 +442,7 @@ export class TradingEngine {
 
       // Daily-loss circuit breaker: stop the bot for the day once the cap is hit.
       const dailyCap = bot.config.maxDailyLossQuote ?? 0;
-      if (dailyCap > 0 && this.realizedToday(bot.config.id) <= -dailyCap) {
+      if (dailyCap > 0 && realizedToday(bot.config.id) <= -dailyCap) {
         this.log(bot.config.id, "warn", `Daily loss limit (${dailyCap}) reached — stopping bot`);
         void notify({ event: "error", bot: bot.config.name, symbol: bot.config.symbol, text: `Daily loss limit reached — bot stopped` });
         this.stop(bot.config.id);
@@ -642,14 +495,12 @@ export class TradingEngine {
       if (result.ok) {
         // When the exchange holds the SL/TP, don't also manage them locally (avoids double-close).
         const entryTime = bot.buffer[index]?.time ?? bot.buffer.at(-1)?.time ?? 0;
-        bot.managed = exchangeManaged && protectionConfirmed
-          ? { side: dir, entry: bot.price, qty, entryTime }
-          : { side: dir, entry: bot.price, qty, entryTime, stop, target, trail: intents.trail };
+        bot.managed = exchangeManaged && protectionConfirmed ? { side: dir, entry: bot.price, qty, entryTime } : { side: dir, entry: bot.price, qty, entryTime, stop, target, trail: intents.trail };
         if (!protectionConfirmed) {
-          this.pauseBot(bot, "Exchange accepted the entry without confirming requested protection; trading is paused for operator review.");
+          pauseRunningBot(bot, "Exchange accepted the entry without confirming requested protection; trading is paused for operator review.");
           this.log(bot.config.id, "error", bot.pauseReason ?? "Exchange protection was not confirmed.");
         }
-        this.persistState(bot);
+        persistRuntimeState(bot);
       } else {
         this.log(bot.config.id, "error", `Open failed: ${result.message}`);
       }
@@ -688,7 +539,7 @@ export class TradingEngine {
       if (result.ok) {
         const pnl = result.fills.reduce((sum, f) => sum + f.realizedPnl, 0);
         bot.managed = undefined;
-        this.persistState(bot);
+        persistRuntimeState(bot);
         await notify({ event: "close", bot: bot.config.name, symbol: bot.config.symbol, text: `Closed (${reason}) · PnL ${round(pnl)}` });
       } else {
         this.log(bot.config.id, "error", `Close failed: ${result.message}`);
@@ -704,7 +555,7 @@ export class TradingEngine {
       this.broadcast({ type: "fill", botId: bot.config.id, fill, account: result.account, position: result.position });
     }
     if (result.message) this.log(bot.config.id, result.ok ? "info" : "error", result.message);
-    if (bot.paper) this.persistPaper(bot);
+    if (bot.paper) persistPaper(bot);
     if (result.account || result.position !== undefined) {
       this.broadcast({ type: "bot", botId: bot.config.id, account: result.account, position: result.position });
     }
@@ -721,202 +572,6 @@ export class TradingEngine {
       order,
       () => bot.adapter.execute(order)
     );
-  }
-
-  private startOrderPolling(bot: RunningBot) {
-    if (!bot.adapter.orderStatus) return;
-    const enqueue = () => {
-      bot.eventQueue = bot.eventQueue
-        .then(() => this.pollOrders(bot))
-        .catch((error) => this.log(bot.config.id, "warn", `Order polling failed: ${error instanceof Error ? error.message : error}`));
-    };
-    bot.orderPollTimer = setInterval(enqueue, 30_000);
-    bot.orderPollTimer.unref?.();
-    enqueue();
-  }
-
-  private startPrivateOrderStream(bot: RunningBot) {
-    if (!bot.adapter.subscribeOrderUpdates) return;
-    void bot.adapter.subscribeOrderUpdates(
-      (snapshot) => this.ingestOrderEvent(bot, snapshot, false),
-      (connected, message) => {
-        if (this.running.get(bot.config.id) !== bot) return;
-        this.log(bot.config.id, connected ? "info" : "warn", message);
-        bot.eventQueue = bot.eventQueue
-          .then(() => this.pollOrders(bot, true))
-          .catch((error) => this.log(bot.config.id, "warn", `Order reconnect reconciliation failed: ${error instanceof Error ? error.message : error}`));
-      }
-    ).then((subscription) => {
-      if (this.running.get(bot.config.id) === bot) bot.privateOrderSubscription = subscription;
-      else subscription.close();
-    }).catch((error) => {
-      this.log(bot.config.id, "warn", `Private order stream unavailable: ${error instanceof Error ? error.message : error}; REST polling fallback active.`);
-    });
-  }
-
-  private async pollOrders(bot: RunningBot, force = false) {
-    if (this.running.get(bot.config.id) !== bot) return;
-    if (!force && bot.privateOrderSubscription?.connected()) return;
-    const result = await pollOrderUpdates(
-      listOrderJournal(bot.config.id, 500),
-      bot.adapter,
-      (_record, snapshot) => this.ingestOrderEvent(bot, snapshot),
-      10,
-      bot.orderPollOffset ?? 0
-    );
-    bot.orderPollOffset = result.nextOffset;
-    for (const failure of result.failures) {
-      this.log(bot.config.id, "warn", `Order ${failure.record.id} status poll failed: ${failure.error instanceof Error ? failure.error.message : failure.error}`);
-    }
-  }
-
-  /** Shared transport boundary for signed polling and authenticated streams. */
-  private ingestOrderEvent(bot: RunningBot, snapshot: ExchangeOrderSnapshot, warnUnmatched = true) {
-    const result = ingestExchangeOrderEvent(listOrderJournal(bot.config.id, 500), snapshot, orderLifecycle);
-    if (result.kind === "unmatched" && warnUnmatched) {
-      this.log(bot.config.id, "warn", `Ignored unmatched exchange order event ${snapshot.id}.`);
-    } else if (result.kind === "ignored" && result.reason === "identity_conflict") {
-      this.log(bot.config.id, "warn", `Ignored exchange order event ${snapshot.id} with conflicting client identity.`);
-    }
-    if (result.kind !== "unmatched" && snapshot.execution && !(result.kind === "ignored" && result.reason === "identity_conflict")) {
-      const fill = fillFromExchangeExecution(result.record, snapshot);
-      if (!fill) return result;
-      const recorded = withStoreTransaction(() => {
-        if (hasRecordedExecution(listOrderEvents(result.record.id, 1_000), snapshot.execution?.id ?? "")) return false;
-        insertFill(fill);
-        orderLifecycle.recordFill(result.record, fill);
-        return true;
-      });
-      if (recorded) {
-        this.broadcast({ type: "fill", botId: bot.config.id, fill });
-        this.log(bot.config.id, "info", `Venue execution ${fill.qty} @ ${fill.price} · fee ${fill.fee} ${fill.feeAsset ?? "unknown"} · PnL ${fill.realizedPnl}`);
-      }
-    }
-    return result;
-  }
-
-  private async reconcileOnResume(bot: RunningBot, savedManaged?: Managed): Promise<boolean> {
-    try {
-      const exchangePosition = await bot.adapter.position(bot.config.symbol);
-      const openOrders = bot.adapter.orders ? await bot.adapter.orders(bot.config.symbol).catch(() => []) : [];
-      const orderReconciliation = await reconcileStartupOrders(
-        listOrderJournal(bot.config.id, 500),
-        openOrders,
-        bot.adapter,
-        orderLifecycle
-      );
-      const result = reconcileLiveRuntime({
-        config: bot.config,
-        savedManaged,
-        exchangePosition,
-        openOrders,
-        now: Date.now()
-      });
-      bot.managed = result.managed;
-      if (orderReconciliation.unresolved.length > 0) {
-        result.pause = true;
-        result.messages.push(`${orderReconciliation.unresolved.length} in-flight exchange order outcome(s) remain unproven after restart; trading is paused for operator review.`);
-      }
-      if (result.pause) this.pauseBot(bot, result.messages.join(" "));
-      for (const message of result.messages) this.log(bot.config.id, result.pause ? "warn" : "info", `Reconcile: ${message}`);
-      return true;
-    } catch (error) {
-      this.pauseBot(bot, `Resume reconciliation failed — trading paused: ${error instanceof Error ? error.message : error}`);
-      this.log(bot.config.id, "warn", bot.pauseReason ?? "Resume reconciliation failed — trading paused.");
-      return true;
-    }
-  }
-
-  // ---------- helpers ----------
-
-  private buildAdapter(config: BotConfig, getPrice: () => number): ExchangeAdapter {
-    if (config.exchange === "binance" || config.exchange === "bybit") {
-      const keys = getSetting<ExchangeKeys>(`keys:${config.exchange}`) ?? { apiKey: "", apiSecret: "" };
-      return config.exchange === "binance"
-        ? new BinanceAdapter(config.id, keys, config.market)
-        : new BybitAdapter(config.id, keys, config.market);
-    }
-    return new PaperAdapter({
-      botId: config.id,
-      market: config.market,
-      startBalance: config.sizeMode === "quote" ? Math.max(config.sizeValue * 10, 10_000) : 10_000,
-      feePct: 0.05,
-      slipPct: 0.02,
-      getPrice: () => getPrice()
-    });
-  }
-
-  private marketRoute(config: BotConfig): { exchange: "binance" | "bybit"; marketType: DataMarketType; priceType: "last" } {
-    return {
-      exchange: config.exchange === "bybit" ? "bybit" : "binance",
-      marketType: config.market === "futures" ? "linear" : "spot",
-      priceType: "last"
-    };
-  }
-
-  private persistPaper(bot: RunningBot) {
-    if (!bot.paper) return;
-    setSetting(`paper:${bot.config.id}`, bot.paper.getState());
-  }
-
-  /** Latest account equity, cached so a failed read carries the last known value. */
-  private async equityOf(bot: RunningBot): Promise<number> {
-    const account = await bot.adapter.account().catch(() => undefined);
-    if (account) bot.lastEquity = account.equity;
-    return bot.lastEquity ?? 0;
-  }
-
-  /**
-   * Build the per-bar position/PnL context for `ctx` reads. Trade-history values
-   * (last trade PnL, loss streak, trades/realized today) are derived from the fills
-   * table each bar — same shape the backtester derives from its trade list.
-   */
-  private positionCtx(bot: RunningBot, equity: number): Record<string, number> {
-    const closes = listFills(bot.config.id, 500).filter((fill) => fill.kind === "close"); // newest first
-    let consecutiveLosses = 0;
-    for (const fill of closes) {
-      if (fill.realizedPnl < 0) consecutiveLosses += 1;
-      else break;
-    }
-    const dayStart = Math.floor(Date.now() / 86_400_000) * 86_400_000;
-    const todays = closes.filter((fill) => fill.ts >= dayStart);
-    const ctx: Record<string, number> = {
-      last_trade_pnl: closes[0]?.realizedPnl ?? 0,
-      consecutive_losses: consecutiveLosses,
-      trades_today: todays.length,
-      realized_today: todays.reduce((sum, fill) => sum + fill.realizedPnl, 0),
-      equity
-    };
-    const m = bot.managed;
-    if (m) {
-      const move = m.side === "long" ? bot.price - m.entry : m.entry - bot.price;
-      const tf = timeframeMs[bot.config.timeframe] ?? 60_000;
-      const lastBarTime = bot.buffer.at(-1)?.time ?? m.entryTime ?? 0;
-      ctx.position_dir = m.side === "long" ? 1 : -1;
-      ctx.entry_price = m.entry;
-      ctx.unrealized_pnl = (m.qty ?? 0) * move;
-      ctx.unrealized_pnl_pct = m.entry ? (move / m.entry) * 100 : 0;
-      ctx.bars_in_position = Math.max(0, Math.round((lastBarTime - (m.entryTime ?? lastBarTime)) / tf));
-    }
-    return ctx;
-  }
-
-  /** Persist durable strategy state (setvar counters + managed position) for crash recovery. */
-  private persistState(bot: RunningBot) {
-    const snapshot: BotStateSnapshot = {
-      vars: Object.fromEntries(bot.vars),
-      managed: bot.managed,
-      paused: bot.paused === true,
-      pauseReason: bot.pauseReason,
-      lastBarTime: bot.buffer.at(-1)?.time ?? 0,
-      savedAt: Date.now()
-    };
-    setSetting(`state:${bot.config.id}`, snapshot);
-  }
-
-  private pauseBot(bot: RunningBot, reason: string) {
-    bot.paused = true;
-    bot.pauseReason = reason;
   }
 
   private log(botId: string, level: "info" | "warn" | "error", message: string) {
