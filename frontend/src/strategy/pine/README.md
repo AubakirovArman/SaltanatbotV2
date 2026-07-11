@@ -18,6 +18,7 @@ Consumers should import from `index.ts`. Lexer, parser and conversion internals 
 `userFunctionInlining.ts` owns call-by-value argument binding, temporary lexical shadowing, tuple returns, recursion guards and side-effect rejection.
 `valueLowering.ts` is the typed value classifier that orders user calls, switches, static strings, conditions and numeric expressions without guessing.
 `strategyCallLowering.ts` maps entries, closes, absolute-price protections and sizing while rejecting unsupported tick/trailing and risk-control semantics.
+`statementLowering.ts` dispatches declarations, assignments, expressions and functions and lowers bounded `if`/`for`/`while` control flow with constant-branch folding.
 `generatedCompatibility.ts` is the checked-in machine-readable feature matrix generated from both Pine corpora; regenerate it with `npm run pine:compat`.
 
 ## Current pipeline
@@ -42,4 +43,4 @@ The corpus classifies scripts as exact, approximation, display-only or rejected.
 
 ## Decomposition target
 
-`convert.ts` remains a temporary lowering coordinator, while pure semantic analysis, drawing lowering, typed value/switch/identifier resolution, user-function inlining, strategy commands, and numeric/boolean call and expression lowering have moved to dedicated modules. Expression lowering is decomposed; continue with generic statement lowering and Blockly serialization in the order defined by `docs/MODULAR_ARCHITECTURE.md`. Keep `convertPine()` as the stable facade during the migration.
+`convert.ts` remains a temporary lowering coordinator, while pure semantic analysis, drawing lowering, typed value/switch/identifier resolution, user-function inlining, strategy commands, bounded statement control flow, and numeric/boolean lowering have moved to dedicated modules. Continue extracting assignment/tuple and display-call statements, then Blockly serialization, in the order defined by `docs/MODULAR_ARCHITECTURE.md`. Keep `convertPine()` as the stable facade during the migration.

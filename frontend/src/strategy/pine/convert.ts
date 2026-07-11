@@ -42,12 +42,12 @@ import {
 } from "./userFunctionInlining";
 import { lowerValue, type ValueLoweringContext } from "./valueLowering";
 import { lowerStrategyCall, type StrategyCallLoweringContext } from "./strategyCallLowering";
+import { lowerStatement, type StatementLoweringContext } from "./statementLowering";
 import {
   boolToNum,
   boolToNumericSeries,
   collectReassigned,
   collectionReceiver,
-  constBool,
   identName,
   isBoolExpr,
   isCollectionCallName,
@@ -169,62 +169,27 @@ class Converter {
   // ---------- statements ----------
 
   private stmt(stmt: PineStmt): Stmt[] {
-    switch (stmt.t) {
-      case "version":
-        return [];
-      case "assign":
-        return this.assign(stmt.name, stmt.value, stmt.declaredVar);
-      case "reassign":
-        return this.setMutable(stmt.name, this.desugarCompound(stmt));
-      case "tuple":
-        return this.tuple(stmt.names, stmt.value);
-      case "expr":
-        return this.exprStatement(stmt.value);
-      case "if":
-        return this.ifStmt(stmt);
-      case "for":
-        return [this.forStmt(stmt)];
-      case "while":
-        return [{ k: "while", cond: this.bool(stmt.cond), body: stmt.body.flatMap((s) => this.stmt(s)), cap: 1000 }];
-      case "func":
-        this.checkName(stmt.def.name);
-        this.funcs.set(stmt.def.name, stmt.def);
-        return [];
-      case "multi":
-        return stmt.stmts.flatMap((inner) => this.stmt(inner));
-      case "unsupported":
-        if (stmt.what.startsWith("collection")) {
-          this.warnOnce("collections", "Collections (arrays/matrices/maps) are imported as opaque visual state; unsupported collection operations are skipped.");
-          return [];
-        }
-        if (stmt.what === "type block") {
-          this.warnOnce("types", "User-defined Pine object types are imported as opaque visual objects.");
-          return [];
-        }
-        if (stmt.what.startsWith("for…in")) {
-          this.warnOnce("forin", "for…in collection loops are skipped; scalar for loops still convert.");
-          return [];
-        }
-        this.warn(`Skipped unsupported statement (“${stmt.what}”, line ${stmt.line}).`);
-        return [];
-    }
+    return lowerStatement(this.statementContext(), stmt);
   }
 
-  private forStmt(stmt: Extract<PineStmt, { t: "for" }>): Stmt {
-    this.checkName(stmt.var);
-    this.loopVars.add(stmt.var);
-    this.numVars.add(stmt.var);
-    const from = this.num(stmt.from);
-    const to = this.num(stmt.to);
-    const step = stmt.step ? this.num(stmt.step) : { k: "num" as const, v: 1 };
-    const body = stmt.body.flatMap((s) => this.stmt(s));
-    return { k: "for", var: stmt.var, from, to, step, body, cap: 10_000 };
-  }
-
-  private desugarCompound(stmt: Extract<PineStmt, { t: "reassign" }>): PineExpr {
-    if (stmt.op === ":=") return stmt.value;
-    const op = stmt.op[0];
-    return { t: "binary", op, a: { t: "ident", name: stmt.name }, b: stmt.value };
+  private statementContext(): StatementLoweringContext {
+    return {
+      assign: (name, value, declaredVar) => this.assign(name, value, declaredVar),
+      bool: (value) => this.bool(value),
+      checkName: (name) => this.checkName(name),
+      expressionStatement: (value) => this.exprStatement(value),
+      lower: (value) => this.stmt(value),
+      num: (value) => this.num(value),
+      registerFunction: (definition) => this.funcs.set(definition.name, definition),
+      registerLoopVariable: (name) => {
+        this.loopVars.add(name);
+        this.numVars.add(name);
+      },
+      setMutable: (name, value) => this.setMutable(name, value),
+      tuple: (names, value) => this.tuple(names, value),
+      warn: (message) => this.warn(message),
+      warnOnce: (key, message) => this.warnOnce(key, message)
+    };
   }
 
   private assign(name: string, value: PineExpr, declaredVar: boolean): Stmt[] {
@@ -428,33 +393,6 @@ class Converter {
       if (i < parts.length) this.env.set(n, { t: "num", e: parts[i] });
     });
     return [];
-  }
-
-  private ifStmt(stmt: Extract<PineStmt, { t: "if" }>): Stmt[] {
-    let node: Extract<Stmt, { k: "if" }> | undefined;
-    for (const clause of stmt.clauses) {
-      if (!clause.cond) {
-        const body = clause.body.flatMap((s) => this.stmt(s));
-        if (!node) return body;
-        node.else = body;
-        return [node];
-      }
-      const cond = this.bool(clause.cond);
-      const folded = constBool(cond);
-      if (folded === false) continue;
-      const body = clause.body.flatMap((s) => this.stmt(s));
-      if (folded === true) {
-        if (!node) return body;
-        node.else = body;
-        return [node];
-      }
-      if (!node) {
-        node = { k: "if", cond, then: body };
-      } else {
-        node.elifs = [...(node.elifs ?? []), { cond, then: body }];
-      }
-    }
-    return node ? [node] : [];
   }
 
   // ---------- call statements (plot / strategy.* / alerts / declarations) ----------
