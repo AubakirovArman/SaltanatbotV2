@@ -8,7 +8,6 @@ import {
   COLOR_HEX,
   DRAWING_MUTATE_RE,
   DRAWING_NEW_RE,
-  MATH_CONSTS,
   NAME_RE,
   PLOT_CALLS,
   PRICE_FIELDS,
@@ -32,6 +31,7 @@ import { lowerNumericCall, type NumericCallLoweringContext } from "./numericCall
 import { lowerBooleanCall, type BooleanCallLoweringContext } from "./booleanCallLowering";
 import { lowerNumericExpression, type NumericExpressionLoweringContext } from "./numericExpressionLowering";
 import { lowerBooleanExpression, type BooleanExpressionLoweringContext } from "./booleanExpressionLowering";
+import { lowerBooleanIdentifier, lowerNumericIdentifier, type IdentifierLoweringContext } from "./identifierLowering";
 import {
   boolToNum,
   boolToNumericSeries,
@@ -949,101 +949,7 @@ class Converter {
   }
 
   private numIdent(name: string): NumExpr {
-    const target = this.storageName(name, false);
-    const bound = this.boundValue(name);
-    if (bound) {
-      if (bound.t === "str") throw new PineConvertError(`"${name}" is a text value ("${bound.v}"), not a number.`);
-      if (bound.t !== "num") throw new PineConvertError(`"${name}" is a condition, not a number.`);
-      return bound.e;
-    }
-    if (this.collectionVars.has(name) || this.opaqueVars.has(name) || this.collectionVars.has(target) || this.opaqueVars.has(target)) {
-      this.warnOnce("opaqueread", "Reads from imported collection/object state return na unless mapped to a scalar plot.");
-      return NAN_NUM;
-    }
-    if (PRICE_FIELDS.has(name)) return { k: "price", field: name as never };
-    if (this.numVars.has(name)) return { k: "var", name };
-    if (target !== name && this.numVars.has(target)) return { k: "var", name: target };
-    const constant = MATH_CONSTS[name];
-    if (constant !== undefined) return { k: "num", v: constant };
-    // `ta.tr` / `ta.vwap` are built-in series used without parentheses.
-    if (name === "ta.tr") return this.trueRange();
-    if (name === "ta.vwap") return { k: "vwap" };
-    if (name.startsWith("ta.")) throw this.unsupportedFn(name);
-    if (name === "strategy.position_size") {
-      this.warnOnce("possize", "strategy.position_size is mapped to the position DIRECTION sign (+1/-1/0), not the size.");
-      return { k: "ctx", key: "position_dir" };
-    }
-    if (name === "strategy.equity") return { k: "ctx", key: "equity" };
-    if (name === "strategy.position_avg_price") return { k: "ctx", key: "entry_price" };
-    if (name === "strategy.openprofit") return { k: "ctx", key: "unrealized_pnl" };
-    if (name === "strategy.wintrades" || name === "strategy.losstrades" || name === "strategy.closedtrades" || name === "strategy.netprofit") {
-      throw new PineConvertError(`${name} (whole-backtest strategy stats) isn't available to a live per-bar engine.`);
-    }
-    if (name === "bar_index" || name === "n") {
-      this.warnOnce(
-        "barindex",
-        "bar_index is relative to the loaded history window — absolute values differ between backtest and live; differences (bar_index - x) are safe."
-      );
-      return { k: "barindex" };
-    }
-    if (name === "last_bar_index") {
-      throw new PineConvertError("last_bar_index (the index of the final bar) needs knowledge of the future — it isn't available in a live per-bar engine.");
-    }
-    if (name.startsWith("barstate.")) {
-      this.warnOnce("barstate", "barstate.* is approximated for import: last-bar visual branches are skipped, confirmed-bar logic remains deterministic.");
-      return { k: "num", v: name === "barstate.isconfirmed" || name === "barstate.ishistory" ? 1 : 0 };
-    }
-    if (name === "time" || name === "time_close" || name === "time_tradingday") return { k: "time" };
-    if (["year", "month", "weekofyear", "dayofmonth", "dayofweek", "hour", "minute", "second"].includes(name)) {
-      this.warnOnce("timeparts", "Calendar built-ins (year/month/day/hour) are approximated until exchange timezone calendars are modeled.");
-      return { k: "num", v: name === "month" || name === "dayofmonth" || name === "dayofweek" ? 1 : name === "year" ? 1970 : 0 };
-    }
-    if (name === "timenow") {
-      throw new PineConvertError("timenow reads wall-clock time and is non-deterministic — it can't run identically in backtest and live.");
-    }
-    if (name === "timeframe.multiplier") {
-      this.warnOnce("tfmeta", "timeframe metadata is approximated during import until chart-bound timeframe context is available.");
-      return { k: "num", v: 60 };
-    }
-    if (name.startsWith("timeframe.is")) {
-      this.warnOnce("tfmeta", "timeframe metadata is approximated during import until chart-bound timeframe context is available.");
-      return { k: "num", v: 0 };
-    }
-    if (name.startsWith("syminfo.")) {
-      this.warnOnce("symmeta", "symbol metadata is approximated during import; text metadata is frozen/skipped.");
-      return { k: "num", v: 0 };
-    }
-    const drawingNs = ["label.", "line.", "linefill.", "box.", "table.", "polyline.", "chart."];
-    if (drawingNs.some((prefix) => name.startsWith(prefix))) {
-      if (name === "chart.left_visible_bar_time" || name === "chart.right_visible_bar_time") {
-        this.warnOnce("chartmeta", "chart visible-range metadata is approximated with the current bar time during import.");
-        return { k: "time" };
-      }
-      this.warnOnce("drawread", "Drawing/table/chart object values are imported as opaque visual state; reads return na.");
-      return NAN_NUM;
-    }
-    if (this.plotHandles.has(name) || this.plotHandles.has(target)) throw new PineConvertError(`"${name}" is a plot handle — it can't be used as a value.`);
-    // Drawing handles read as values (the `if na(l)` first-bar idiom) → na.
-    if (this.drawingHandles.has(name) || this.drawingHandles.has(target)) {
-      this.warnOnce("handleread", `Drawing handles ("${name}") have no value here — reads yield na.`);
-      return NAN_NUM;
-    }
-    // `someVar.field` — field access on a known binding (user objects).
-    if (name.includes(".")) {
-      const head = name.split(".")[0];
-      if (this.env.has(head) || this.numVars.has(head) || this.boolVars.has(head)) {
-        this.warnOnce("objfield", "User-defined object fields are imported as opaque values; dependent visuals may be approximated.");
-        return NAN_NUM;
-      }
-    }
-    // `na` as a numeric value → NaN (0/0). nz()/na()/isfinite handling all treat it correctly.
-    if (name === "na") return NAN_NUM;
-    if (target !== name && isUserObjectFieldName(name)) {
-      this.warnOnce("objstate", "User-defined object fields are flattened into scalar state variables; collection/object fidelity is approximate.");
-      this.numVars.add(target);
-      return { k: "var", name: target };
-    }
-    throw new PineConvertError(`Unknown identifier "${name}" — it was never assigned (or its definition was skipped).`);
+    return lowerNumericIdentifier(this.identifierContext(), name);
   }
 
   private numCall(expr: Extract<PineExpr, { t: "call" }>): NumExpr {
@@ -1235,38 +1141,25 @@ class Converter {
   }
 
   private boolIdent(name: string): BoolExpr {
-    const target = this.storageName(name, false);
-    if (name === "true") return { k: "bool", v: true };
-    if (name === "false") return { k: "bool", v: false };
-    if (name.startsWith("barstate.")) {
-      this.warnOnce("barstate", "barstate.* is approximated for import: last-bar visual branches are skipped, confirmed-bar logic remains deterministic.");
-      return { k: "bool", v: name === "barstate.isconfirmed" || name === "barstate.ishistory" };
-    }
-    if (name.startsWith("timeframe.is")) {
-      this.warnOnce("tfmeta", "timeframe metadata is approximated during import until chart-bound timeframe context is available.");
-      return { k: "bool", v: false };
-    }
-    if (this.boolInputs.has(name)) return { k: "compare", op: "!=", a: { k: "input", name }, b: { k: "num", v: 0 } };
-    const bound = this.boundValue(name);
-    if (bound) {
-      if (bound.t === "str") throw new PineConvertError(`"${name}" is a text value ("${bound.v}"), not a condition.`);
-      if (bound.t === "num") return { k: "compare", op: "!=", a: bound.e, b: { k: "num", v: 0 } };
-      return bound.e;
-    }
-    if (this.boolVars.has(name)) return { k: "varb", name };
-    if (target !== name && this.boolVars.has(target)) return { k: "varb", name: target };
-    if (this.numVars.has(name)) return { k: "compare", op: "!=", a: { k: "var", name }, b: { k: "num", v: 0 } };
-    if (target !== name && this.numVars.has(target)) return { k: "compare", op: "!=", a: { k: "var", name: target }, b: { k: "num", v: 0 } };
-    if (this.collectionVars.has(name) || this.opaqueVars.has(name) || this.collectionVars.has(target) || this.opaqueVars.has(target)) {
-      this.warnOnce("opaqueread", "Reads from imported collection/object state return na unless mapped to a scalar plot.");
-      return { k: "bool", v: false };
-    }
-    if (target !== name && isUserObjectFieldName(name)) {
-      this.warnOnce("objstate", "User-defined object fields are flattened into scalar state variables; collection/object fidelity is approximate.");
-      this.boolVars.add(target);
-      return { k: "varb", name: target };
-    }
-    throw new PineConvertError(`Unknown condition "${name}".`);
+    return lowerBooleanIdentifier(this.identifierContext(), name);
+  }
+
+  private identifierContext(): IdentifierLoweringContext {
+    return {
+      addBooleanVariable: (name) => this.boolVars.add(name),
+      addNumericVariable: (name) => this.numVars.add(name),
+      boundValue: (name) => this.boundValue(name),
+      hasBooleanInput: (name) => this.boolInputs.has(name),
+      hasBooleanVariable: (name) => this.boolVars.has(name),
+      hasDrawingHandle: (name) => this.drawingHandles.has(name),
+      hasNumericVariable: (name) => this.numVars.has(name),
+      hasOpaqueState: (name) => this.collectionVars.has(name) || this.opaqueVars.has(name),
+      hasPlotHandle: (name) => this.plotHandles.has(name),
+      storageName: (name) => this.storageName(name, false),
+      trueRange: () => this.trueRange(),
+      unsupportedFunction: (name) => this.unsupportedFn(name),
+      warnOnce: (key, message) => this.warnOnce(key, message)
+    };
   }
 
   private booleanCallContext(): BooleanCallLoweringContext {
