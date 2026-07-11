@@ -3,7 +3,8 @@
 ## Goals
 
 - English is the canonical engineering and API documentation language.
-- Russian is the first fully supported product and user-documentation translation.
+- Russian and Kazakh are supported user-documentation languages; Russian is currently the complete
+  UI locale and Kazakh UI messages are the next localization milestone.
 - The UI is locale-aware and structurally ready for additional languages and RTL.
 - Documentation stays versioned with the code and cannot silently describe old behavior.
 
@@ -38,6 +39,8 @@ docs/
       adding-exchanges/
   ru/
     ...same user-facing structure...
+  kk/
+    ...same user-facing structure...
   adr/
   assets/
 ```
@@ -69,6 +72,7 @@ frontend/src/i18n/
   messages/
     en.ts
     ru.ts
+    kk.ts
   format/
     number.ts
     date.ts
@@ -93,7 +97,9 @@ Requirements:
 
 1. English source message/document changes.
 2. CI extracts or compares message keys.
-3. Russian translation is updated in the same PR for stable features, or marked with an explicit fallback for experimental copy.
+3. Russian and Kazakh user documentation is updated in the same PR for stable workflows, or marked
+   with an explicit fallback for experimental copy. UI message parity follows the locale support
+   stated in `DOCUMENTATION_STATUS.md`.
 4. Code examples are executed/compiled where possible.
 5. Links, headings and screenshots are checked.
 6. A native-language review is requested before a stable release.
@@ -128,7 +134,7 @@ Generate rather than hand-maintain:
 - Markdown lint and heading/anchor validation;
 - compile TypeScript/JSON examples;
 - execute safe CLI/curl smoke examples against a test server;
-- verify all English user pages have Russian counterparts;
+- verify all English user journeys have Russian and Kazakh counterparts or an explicit canonical link;
 - screenshot freshness metadata for major UI changes;
 - detect source paths referenced by docs that no longer exist;
 - vocabulary check for deprecated or unsafe claims such as “full Pine support” or “production-ready live trading”.
@@ -155,5 +161,5 @@ A feature is documented when:
 - safety limitations are explicit;
 - UI labels match the current application;
 - API/schema examples validate;
-- English and Russian pages/messages are synchronized according to release status;
+- English, Russian and Kazakh user pages are synchronized according to the coverage register;
 - the page is linked from a discoverable index.

@@ -18,11 +18,12 @@
     "test:e2e:ui": "playwright test --ui",
     "test:testnet": "node scripts/exchange-testnet-smoke.mjs",
     "release:package": "node scripts/package-release.mjs",
-    "docs:check": "node scripts/check-docs.mjs && node scripts/generate-pine-compatibility.mjs --check && node scripts/generate-reference-docs.mjs --check",
+    "docs:check": "node scripts/check-docs.mjs && node scripts/check-site.mjs && node scripts/generate-pine-compatibility.mjs --check && node scripts/generate-reference-docs.mjs --check",
     "docs:generate": "node scripts/generate-pine-compatibility.mjs && node scripts/generate-reference-docs.mjs",
     "docs:generate:check": "node scripts/generate-pine-compatibility.mjs --check && node scripts/generate-reference-docs.mjs --check",
     "pine:compat": "node scripts/generate-pine-compatibility.mjs",
     "pine:compat:check": "node scripts/generate-pine-compatibility.mjs --check",
+    "site:check": "node scripts/check-site.mjs",
     "lint": "biome check --formatter-enabled=false --assists-enabled=false .",
     "format": "biome format --write ."
   },

@@ -1,6 +1,6 @@
 <div align="center">
 
-[English](README.md) · [Русский](README.ru.md)
+[English](README.md) · **Русский** · [Қазақша](README.kk.md)
 
 <img src="assets/logo.svg" alt="Логотип SaltanatbotV2" width="140" height="140" />
 
@@ -68,6 +68,7 @@ npm run build
 ## Документация
 
 - [Русский индекс документации](docs/ru/README.md)
+- [Публичная страница проекта](https://aubakirovarman.github.io/SaltanatbotV2/)
 - [Архитектура](docs/ARCHITECTURE.md)
 - [Стратегии и backtest](docs/STRATEGIES.md)
 - [Сгенерированная матрица совместимости Pine](docs/PINE_COMPATIBILITY.generated.md)
@@ -82,6 +83,8 @@ npm run build
 - [Поддержка](SUPPORT.md)
 - [Кодекс поведения](CODE_OF_CONDUCT.md)
 - [История изменений](CHANGELOG.md)
+- [Обновление за 90 коммитов](docs/ru/RELEASE_2026-07-11.md)
+- [Реестр актуальности документации](docs/DOCUMENTATION_STATUS.md)
 
 Полный перевод технической документации выполняется поэтапно. Английские документы пока являются каноническими.
 

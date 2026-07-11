@@ -1,26 +1,85 @@
 # Changelog
 
-This project follows a keep-a-changelog style. Until the first tagged release, completed work is recorded under **Unreleased** and in `docs/IMPLEMENTATION_STATUS.md`.
+All notable user-visible and engineering changes are recorded here. The project follows a
+Keep a Changelog–style structure and uses semantic versioning for tagged releases.
 
 ## Unreleased
 
+### Documentation and distribution
+
+- Added a multilingual project site for GitHub Pages in English, Russian and Kazakh.
+- Added a documentation currency register with ownership, language coverage and verification dates.
+- Added complete Russian and Kazakh entry points for the current user workflows.
+
+## 2026-07-11 — 90-commit development snapshot
+
+This snapshot covers commits `d5c45c6` through `b6ca124` from 10–11 July 2026: 90 commits,
+363 changed files, 27,757 insertions and 12,039 deletions.
+
 ### Added
 
-- Shared contracts and strategy-core workspaces with versioned strategy IR.
-- Pine Script import with explicit compatibility diagnostics and a native Cycles Analysis preview.
-- IR v4 projection zones, accessible metric tables and chart-side Pine input controls.
-- Production Playwright suite covering chart, strategy, backtest, paper trading, reconnect, accessibility and responsive flows.
-- English/Russian documentation structure and an executable implementation ledger.
-- Generated API/block references and a signed release pipeline with SPDX SBOMs and SHA-256 checksums.
+- Pine Script v4–v6 import now has a standalone compiler workspace, scoped symbols, semantic
+  analysis, typed AST/diagnostics and deterministic compatibility reporting.
+- Pine lowering gained multiline object state, `fill()` between plots, drawing/display primitives,
+  chart inputs, tuple assignments, switches, user functions, alerts and broader numeric/boolean
+  expression coverage. Unsupported behavior continues to fail closed or report an approximation.
+- Strategy Studio loads `request.security` data from the selected exchange and aligns external
+  series consistently across preview, backtest and runtime evaluation.
+- A reusable `strategy-core` and `backtest-core` now provide canonical TA, evaluation, broker,
+  portfolio, warm-up, reporting, provenance and trace contracts.
+- Backtest reports include data provenance, versioned strategy-event traces, deterministic
+  execution traces and human-readable explanations of conditions, fills and state transitions.
+- The chart exposes an accessible HTML alternative for focused/recent OHLC candles, strategy
+  signals and executed trades.
+- Trading gained durable order lifecycle states, signed status polling, private Binance/Bybit order
+  streams, idempotent event ingestion and startup reconciliation for every in-flight order.
+- Protected live entries require confirmed exchange-side stop-loss/take-profit acknowledgement;
+  ambiguous outcomes pause automation and require operator review.
+- English/Russian localization now covers chart controls, market shell, Strategy Studio, backtest,
+  optimizer, trading access, bot creation, settings, commands and activity journals.
+- Generated Pine compatibility, API endpoint and Blockly block-catalog references were added.
+- Open-source governance documents, documentation checks, protected exchange-testnet smoke tests,
+  reproducible release archives, SPDX SBOMs, SHA-256 checksums and Sigstore attestations were added.
 
 ### Changed
 
-- Began modular decomposition of Pine conversion and backtest preview/analytics.
-- Removed zero-price synthetic fallback and made unavailable market data explicit.
-- Upgraded the test toolchain and removed known dependency audit findings.
+- The former monolithic Pine converter was decomposed into parser, semantic, expression,
+  statement, drawing, strategy-call and serialization modules; its main coordinator fell from
+  roughly 2,300 lines to under 1,000.
+- `StrategyLab`, `TradingView`, `App` and bot activity views were split into feature controllers,
+  panels, hooks and pure models with documented folder boundaries.
+- Backtest execution, accounting, analytics and reporting were removed from the UI layer and placed
+  behind reusable package APIs shared by frontend and backend runtimes.
+- Chart rendering was divided into dirty base/interaction layers and isolated render passes so
+  crosshair movement does not redraw the complete chart.
+- Market disconnect, fallback and unavailable states are explicit; no zero-price synthetic value is
+  accepted as trustworthy live-market data.
 
-### Security
+### Fixed
 
-- Live trading remains opt-in; demo mode disables exchange keys and live execution.
-- Dynamic fallback prices require a positive real reference and are never accepted by strict live-trading routes.
-- Tagged release artifacts use keyless GitHub/Sigstore build-provenance and SBOM attestations.
+- Selected-exchange handling in Strategy Studio and external-series alignment were corrected.
+- Ambiguous exchange failures are classified without blind resubmission.
+- Indicator add-label behavior and the CI secret-scan ignore probe were corrected.
+
+### Tests
+
+- Added deterministic browser coverage for chart, indicators, Pine import, strategy research,
+  backtests, authentication, paper-bot lifecycle, reconnect/unavailable states, keyboard focus and
+  responsive layouts.
+- Added Pine parser mutation/fuzz and conversion-determinism tests.
+- Added parity/golden tests across preview, backtest, paper and live strategy evaluation.
+- Added exchange failure-injection, lifecycle, polling, private-stream and startup-reconciliation
+  suites. Authenticated testnet checks remain manually armed and never place production orders.
+
+### Safety notes
+
+- Pine compatibility is intentionally partial: every imported script must be reviewed for warnings
+  and compared against TradingView on identical candles.
+- Live trading remains experimental, opt-in and fail-closed. Start with paper/testnet, use keys
+  without withdrawal rights, configure risk caps and verify exchange state independently.
+
+## Earlier work
+
+Work before this snapshot established the custom chart, visual strategy builder, initial Pine
+importer, backtester, paper/live bot shell and Binance/Bybit market-data providers. See the Git
+history and [implementation ledger](docs/IMPLEMENTATION_STATUS.md) for commit-level evidence.

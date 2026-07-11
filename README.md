@@ -1,6 +1,6 @@
 <div align="center">
 
-[English](README.md) · [Русский](README.ru.md)
+**English** · [Русский](README.ru.md) · [Қазақша](README.kk.md)
 
 <img src="assets/logo.svg" alt="SaltanatbotV2 logo" width="140" height="140" />
 
@@ -137,6 +137,9 @@ The access token is printed in the container logs (`docker compose logs`), or se
 
 ## Documentation
 
+Public multilingual overview: **GitHub Pages** (English · Русский · Қазақша). The deployment URL is
+published by the `Deploy documentation site` workflow and is also set as the repository homepage.
+
 | Guide | What's inside |
 | --- | --- |
 | [**Architecture**](docs/ARCHITECTURE.md) | Monorepo layout, backend/frontend tiers, the provider router, the shared strategy IR, end-to-end data flow |
@@ -154,6 +157,9 @@ The access token is printed in the container logs (`docker compose logs`), or se
 | [**Modular architecture**](docs/MODULAR_ARCHITECTURE.md) | Target packages, module boundaries and safe decomposition sequence |
 | [**Testing strategy**](docs/TESTING_STRATEGY.md) | Unit, parity, browser E2E, visual, accessibility, performance and recovery testing |
 | [**Internationalization & docs**](docs/I18N_AND_DOCUMENTATION.md) | English/Russian structure, UI i18n and documentation quality gates |
+| [**Documentation status**](docs/DOCUMENTATION_STATUS.md) | Currency audit, ownership, verification dates and EN/RU/KK user-guide coverage |
+| [**Russian user guide**](docs/ru/README.md) | Chart, Strategy Studio, Pine/backtest, trading, traces and safety in Russian |
+| [**Kazakh user guide**](docs/kk/README.md) | Chart, Strategy Studio, Pine/backtest, trading, traces and safety in Kazakh |
 | [**Contributing**](CONTRIBUTING.md) | Dev setup, repo conventions, and how to add instruments / blocks / commands |
 | [**Security policy**](SECURITY.md) | Private vulnerability reporting, supported versions and secret-handling rules |
 | [**Support**](SUPPORT.md) | How to request help or file a reproducible issue safely |

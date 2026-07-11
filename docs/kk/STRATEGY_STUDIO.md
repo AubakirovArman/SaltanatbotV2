@@ -1,0 +1,36 @@
+# Strategy Studio, Pine Script және backtest
+
+Strategy Studio блоктардан индикатор/стратегия құруға, Pine Script-тің қолдау көрсетілетін бөлігін
+импорттауға, тарихи деректермен тексеруге және параметрлерді зерттеуге мүмкіндік береді.
+
+## Жұмыс тәртібі
+
+1. **Стратегия** бөлімін ашып, жаңа артефакт, template, `.strategy` немесе Pine Script таңдаңыз.
+2. Блоктарды біріктіріп, JSON preview мен diagnostics-ті тексеріңіз.
+3. Нарық, биржа, timeframe, candle саны, капитал және шығын моделін таңдаңыз.
+4. Backtest іске қосып, assumptions, data provenance, metrics, trades және equity curve қараңыз.
+5. Сандық inputs болса, optimizer және walk-forward қолданыңыз.
+
+## Pine импорты
+
+Диалог мәтінді немесе 25-ке дейін `.pine` файлын қабылдайды. `indicator()` индикаторға,
+`strategy()` стратегияға айналады. Pine v4–v6 танылады, алайда нақты үйлесімділік нұсқа нөмірімен
+емес, іске асырылған конструкциялармен анықталады.
+
+- exact конструкциялар блоктар мен IR-ге айналады;
+- approximations ескерту береді;
+- қауіпсіз candle execution мүмкін емес конструкциялар себеппен қабылданбайды;
+- техникалық identifiers пен Pine коды аударылмайды.
+
+Ескерту TradingView-пен эквиваленттілікті растамайды. Бірдей candles қолданып сигналдарды салыстырыңыз.
+
+## Нәтижені түсіндіру
+
+Backtest execution model, комиссия, slippage, funding, warm-up және position sizing-ке тәуелді.
+Report деректердің шығу тегін және versioned traces көрсетеді. Mixed, synthetic, fallback немесе
+unknown деректер performance claim үшін жарамсыз. Monte Carlo — болжам емес, іске асқан trades
+ретін өзгерту арқылы robustness зерттеуі.
+
+Live-ке дейін бірнеше нарық/кезеңді, out-of-sample нәтижені және paper журналын тексеріңіз.
+
+Қосымша: [trading нұсқаулығы](TRADING.md) және [Pine матрицасы](../PINE_COMPATIBILITY.generated.md).
