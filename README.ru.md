@@ -74,6 +74,7 @@ npm run build
 - [Сгенерированная матрица совместимости Pine](docs/PINE_COMPATIBILITY.generated.md)
 - [Trading](docs/TRADING.md)
 - [Конфигурация и безопасность](docs/CONFIGURATION.md)
+- [Резервное копирование и восстановление](docs/ru/BACKUP_RESTORE.md)
 - [Общий план развития](docs/MASTER_IMPROVEMENT_PLAN.md)
 - [Целевая модульная архитектура](docs/MODULAR_ARCHITECTURE.md)
 - [Стратегия тестирования](docs/TESTING_STRATEGY.md)

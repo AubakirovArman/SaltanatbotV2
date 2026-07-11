@@ -80,6 +80,7 @@ npm run build
 - [Paper/live trading](docs/kk/TRADING.md)
 - [Оқиғалар мен орындалу трассалары](docs/kk/EVENT_TRACES.md)
 - [Қауіпсіздік бойынша қысқаша нұсқаулық](docs/kk/SECURITY.md)
+- [Backup және қалпына келтіру](docs/kk/BACKUP_RESTORE.md)
 - [90 коммит жаңартуы](docs/kk/RELEASE_2026-07-11.md)
 - [Құжаттаманың өзектілік тізілімі](docs/DOCUMENTATION_STATUS.md)
 - [Толық ағылшын құжаттамасы](README.md#documentation)

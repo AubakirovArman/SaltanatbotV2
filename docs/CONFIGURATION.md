@@ -72,8 +72,8 @@ In development the Vite dev server (frontend) runs separately and proxies API an
 
 | Service          | Port   | Notes                                              |
 | ---------------- | ------ | -------------------------------------------------- |
-| Backend (Express)| `4180` | HTTP `/api/*`, WebSockets `/stream`, `/trade-stream`. |
-| Frontend (Vite)  | `4181` | `strictPort: false`, proxies `/api`, `/stream`, and `/trade-stream` to `127.0.0.1:4180`. |
+| Backend (Express)| `4181` | Root `npm run dev` sets `PORT=4181`; serves HTTP `/api/*` and WebSockets. |
+| Frontend (Vite)  | `4180` | Proxies `/api`, `/stream`, and `/trade-stream` to `127.0.0.1:4181`. |
 
 In production this split disappears — the backend serves the built frontend directly (see [Production deployment](#production-deployment)).
 
@@ -95,6 +95,9 @@ const secretPath = path.join(dataDir, ".secret");
 Both are **created automatically at runtime** the first time the store initializes — `initStore()` calls `mkdirSync(dataDir, { recursive: true })` if the directory is missing, generates `.secret` if absent, and runs `CREATE TABLE IF NOT EXISTS` for every table. You do not create these by hand.
 
 Both are **gitignored and must never be committed.** The repository's `.gitignore` explicitly excludes `backend/data/`, `data/`, `*.secret`, `*.db`, and `*.sqlite*`.
+
+Use the verified [backup and restore workflow](./BACKUP_RESTORE.md) before upgrades or deployment
+changes. A backup must keep `trading.db` and `.secret` together and must be treated as secret data.
 
 ### Database schema
 

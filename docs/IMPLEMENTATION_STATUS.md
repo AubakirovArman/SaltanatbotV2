@@ -2,13 +2,28 @@
 
 Updated: 2026-07-11
 
-Active branch: `codex/improvement-roadmap`
+Active branch: `main`
 
 Source plan: [MASTER_IMPROVEMENT_PLAN.md](./MASTER_IMPROVEMENT_PLAN.md)
 
 This is the execution ledger. It records what is proven complete, what is active, and what remains. A checked item requires code plus the listed verification evidence.
 
 ## Completed
+
+### Runtime backup and recovery — 2026-07-11
+
+- [x] Create consistent online SQLite snapshots instead of copying active database files directly.
+- [x] Preserve `trading.db`, optional `candles.db`, `.secret` and `.authtoken` with owner-only modes.
+- [x] Generate a versioned SHA-256 manifest and reject missing, extra, symlinked or modified files.
+- [x] Run SQLite `PRAGMA quick_check` before backup, after backup and before restore.
+- [x] Refuse accidental overwrite and use a verified staging directory plus rollback-safe atomic swap.
+- [x] Add isolated tests for backup, verification, tamper detection, overwrite refusal and restore.
+- [x] Document backup/recovery in English, Russian and Kazakh.
+
+Verification:
+
+- Dedicated runtime backup/restore tests pass without reading or modifying real `backend/data`.
+- Biome and documentation link/command checks pass.
 
 ### Foundation — commit `3a98684`
 

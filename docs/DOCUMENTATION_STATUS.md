@@ -19,6 +19,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current | 2026-07-11 |
 | [Trading guide](TRADING.md) | users/operators | current; live is experimental | 2026-07-11 |
 | [Configuration](CONFIGURATION.md) | operators | current | 2026-07-11 |
+| [Backup and restore](BACKUP_RESTORE.md) | operators | current; tested | 2026-07-11 |
 | [Pine coverage](PINE_COVERAGE.md) | users/contributors | current | 2026-07-11 |
 | [Generated Pine matrix](PINE_COMPATIBILITY.generated.md) | users/contributors | generated/current | 2026-07-11 |
 | [Generated block catalog](BLOCK_CATALOG.generated.md) | users/contributors | generated/current | 2026-07-11 |
@@ -43,6 +44,7 @@ They must be read together with `IMPLEMENTATION_STATUS.md` and must not be prese
 | Paper/live trading | [trading reference](TRADING.md) | [guide](ru/TRADING.md) | [guide](kk/TRADING.md) |
 | Event/execution traces | [reference](EVENT_TRACES.md) | [guide](ru/EVENT_TRACES.md) | [guide](kk/EVENT_TRACES.md) |
 | Safety summary | [security policy](../SECURITY.md) | [summary](ru/SECURITY.md) | [summary](kk/SECURITY.md) |
+| Backup and recovery | [operator guide](BACKUP_RESTORE.md) | [guide](ru/BACKUP_RESTORE.md) | [guide](kk/BACKUP_RESTORE.md) |
 | 90-commit update | [changelog](../CHANGELOG.md) | [release notes](ru/RELEASE_2026-07-11.md) | [release notes](kk/RELEASE_2026-07-11.md) |
 
 English remains canonical for exact API schemas and developer internals. Generated reference tables

@@ -25,15 +25,15 @@ It is not enough to resemble TradingView visually. The differentiator must be tr
 | Area | Current state | Maturity |
 | --- | --- | --- |
 | Chart | Custom Canvas chart, seven chart types, indicators, drawings, compare, alerts | Alpha, broad functionality |
-| Market data | Binance, Bybit, synthetic data, REST history, WebSocket updates, SQLite candle cache | Alpha, correctness work required |
+| Market data | Binance, Bybit, explicit fallback/unavailable states, REST/WebSocket history and SQLite cache | Alpha, guarded fallback behavior |
 | Strategy authoring | Blockly editor, templates, indicator artifacts, safe JSON IR | Alpha |
-| Pine import | Pine v5/v6 lexer, parser and conversion with warnings and corpus tests | Experimental |
-| Research | Backtest, optimizer, walk-forward and Monte Carlo | Alpha |
-| Execution | Paper, Binance and Bybit adapters, order journal, reconciliation and safeguards | Experimental; live is not production-ready |
-| Security | Local binding, roles, HttpOnly session, CSRF, one-use WS tickets, encrypted keys, audit log | Strong alpha baseline |
-| Tests | 285 unit/integration/parity tests plus a 17-scenario Playwright production suite | Strong baseline, expanding |
-| Documentation | Substantial English docs plus several internal plans | Useful but drifting |
-| Localization | UI strings are embedded in components | Not started |
+| Pine import | Modular v4/v5/v6 compiler, semantic analysis, typed diagnostics, compatibility registry and fuzz tests | Experimental, explicit fidelity |
+| Research | Shared evaluator/backtest cores, provenance, traces, optimizer, walk-forward and Monte Carlo | Alpha, reproducible contracts |
+| Execution | Durable lifecycle, polling/private streams, reconciliation and fail-closed protection | Experimental; live is not production-ready |
+| Security | Scoped sessions, CSRF/WS tickets, encrypted keys, audit log and verified backup/restore | Strong alpha baseline |
+| Tests | 500+ unit/integration/parity tests plus an 18-scenario Playwright production suite | Strong baseline, expanding |
+| Documentation | Source-checked English docs and current RU/KK user guides with public Pages | Current alpha baseline |
+| Localization | Typed English/Russian UI catalogs; English/Russian/Kazakh user documentation | RU UI complete; KK UI pending |
 
 ## Guiding engineering rules
 
@@ -45,6 +45,14 @@ It is not enough to resemble TradingView visually. The differentiator must be tr
 - Documentation changes in the same pull request as behavior.
 - Accessibility, keyboard operation and reduced motion are release criteria, not optional polish.
 - Performance work is measured with budgets and traces rather than inferred from file size alone.
+
+## Active P0/P1/P2 scope decision
+
+All unfinished Priority 0, 1 and 2 work remains active except **Mainnet readiness and the continuous
+7–14-day Binance/Bybit testnet soak**. The owner has explicitly deferred that epic because funded
+testnet/mainnet validation is not currently available. No release note or UI may imply that this
+external soak was completed. Deterministic fake-exchange, failure-injection and offline recovery
+tests remain in scope and continue to be required.
 
 ## Priority 0: establish a trustworthy baseline
 
@@ -163,7 +171,8 @@ The detailed blockers are maintained in `CODE_IMPROVEMENT_PLAN.md`. Release gate
 - clock-skew detection;
 - rate-limit budgets and circuit breakers;
 - real fee asset, partial-fill and realized-PnL accounting;
-- backup/restore and migration tests for SQLite;
+- backup/restore and migration tests for SQLite (verified backup/atomic restore delivered;
+  forward schema-migration coverage remains active);
 - disaster scenarios: process death, network partition, duplicate event, stale candle, exchange timeout and rejected protection.
 
 ## Priority 2: chart and terminal experience

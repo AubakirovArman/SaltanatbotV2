@@ -11,6 +11,8 @@ This folder contains deterministic maintenance and release helpers invoked by ro
 - `generate-reference-docs.mjs`: generates and checks the Express endpoint index and strategy block catalog.
 - `package-release.mjs`: validates release channels and creates a deterministic, secret-free application archive plus build metadata.
 - `exchange-testnet-smoke.mjs`: explicitly armed, read-only authenticated Binance Futures Demo and Bybit Testnet release checks.
+- `runtime-data.mjs`: creates checksum-manifested online SQLite backups, verifies integrity and
+  performs explicit atomic restore of `backend/data` while preserving secret file permissions.
 
 ## Invariants
 
