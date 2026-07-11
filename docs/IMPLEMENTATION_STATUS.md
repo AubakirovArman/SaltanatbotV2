@@ -360,6 +360,8 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 - [x] Export a versioned `.saltanat-report.json` envelope from the report UI.
 - [x] Build a deterministic random-access replay timeline joining strategy explanations, variable changes, broker events, equity, signals and trades.
 - [x] Add accessible previous/next/range replay controls to every non-empty backtest report.
+- [x] Publish versioned deterministic execution benchmarks for next-open/final-close, gap stops, favourable gap targets and pessimistic stop priority.
+- [x] Verify reviewed expected trades and byte-deterministic reports for every benchmark.
 
 - [x] Move shared TA implementations into `strategy-core` and retain frontend/backend compatibility facades.
 - [x] Move the canonical evaluator, reusable runtime, execution budgets, security-series alignment and intent types into `strategy-core`.

@@ -162,7 +162,7 @@ Conversion confidence must never be a vague percentage. It should be derived fro
 - [x] publish all fill assumptions in every report;
 - [x] make timeframe, exchange, market type, price type and data range immutable report metadata;
 - [x] identify missing bars, fallback data and partially loaded history;
-- add benchmark/reference strategies with expected trades;
+- [x] add benchmark/reference strategies with expected trades;
 - model limit orders, gaps, partial fills, fees, funding, borrow costs and liquidation consistently;
 - [x] separate strategy performance from execution assumptions through immutable config/assumption metadata;
 - [x] add bar replay with deterministic stepping and an explanation trace;

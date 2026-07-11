@@ -81,6 +81,12 @@ stable warnings and provenance
 
 Run the same candles and IR through preview, backtest, paper and backend evaluator. Differences must be intentional and declared by layer; unexplained differences fail CI. See [Strategy event traces](./EVENT_TRACES.md).
 
+`BACKTEST_BENCHMARKS` is the public reviewed execution catalog. Every entry owns
+deterministic candles, Strategy IR, normalized zero-cost settings and exact
+expected trades. Default CI covers next-open timing/final close, a gap through a
+market stop, a favourable gap through a limit target and the pessimistic
+stop-before-target rule when both prices occur in one candle.
+
 ## Chart testing
 
 - pure tests for time/price coordinate round trips;
