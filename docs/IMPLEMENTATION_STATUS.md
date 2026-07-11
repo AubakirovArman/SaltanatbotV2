@@ -99,14 +99,14 @@ Verification:
 - 27 Vitest files / 271 tests pass, including IR round-trip, schema, preview and Pine-conversion coverage.
 - Biome and backend/frontend TypeScript checks pass.
 
-### Backtest decomposition — commit `0e024cb` and current architecture commit
+### Backtest decomposition — commits `0e024cb`, `a5dda9b`
 
 - [x] Extract display-metric collection and table shaping into `previewTables.ts`.
 - [x] Extract public backtest contracts into `backtestTypes.ts` without breaking facade imports.
 - [x] Extract deterministic performance analytics into `backtestMetrics.ts`.
 - [x] Preserve all existing broker, preview, optimizer and report behavior through regression tests.
 
-### Cycles Analysis modes and future chart space — current architecture commit
+### Cycles Analysis modes and future chart space — commit `a5dda9b`
 
 - [x] Add Percentage, Duration and Both direction modes with day/candle units.
 - [x] Add minimum-duration filters, first-direction selection, stagnation and high/low markers.
@@ -186,7 +186,7 @@ Current: 16 scenarios implemented; the original critical-flow checklist is compl
 - [ ] Move remaining UI strings into typed messages.
 - [ ] Complete Russian user-guide parity.
 - [ ] Generate API/block/Pine compatibility reference from source contracts.
-- [ ] Add `SECURITY.md`, `CODE_OF_CONDUCT.md`, changelog and support policy.
+- [x] Add `SECURITY.md`, `CODE_OF_CONDUCT.md`, changelog and support policy.
 - [ ] Add documentation link/example checks to CI.
 - [ ] Add release channels, SBOM, checksums and signed artifacts.
 

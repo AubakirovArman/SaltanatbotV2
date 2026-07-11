@@ -151,6 +151,10 @@ The access token is printed in the container logs (`docker compose logs`), or se
 | [**Testing strategy**](docs/TESTING_STRATEGY.md) | Unit, parity, browser E2E, visual, accessibility, performance and recovery testing |
 | [**Internationalization & docs**](docs/I18N_AND_DOCUMENTATION.md) | English/Russian structure, UI i18n and documentation quality gates |
 | [**Contributing**](CONTRIBUTING.md) | Dev setup, repo conventions, and how to add instruments / blocks / commands |
+| [**Security policy**](SECURITY.md) | Private vulnerability reporting, supported versions and secret-handling rules |
+| [**Support**](SUPPORT.md) | How to request help or file a reproducible issue safely |
+| [**Code of conduct**](CODE_OF_CONDUCT.md) | Community participation and moderation expectations |
+| [**Changelog**](CHANGELOG.md) | User-visible changes grouped by release |
 
 ---
 
