@@ -1,54 +1,63 @@
 # Roadmap
 
-> This page tracks feature direction. The prioritized engineering and release program is maintained in [MASTER_IMPROVEMENT_PLAN.md](./MASTER_IMPROVEMENT_PLAN.md), with separate [modular architecture](./MODULAR_ARCHITECTURE.md), [testing](./TESTING_STRATEGY.md), and [internationalization/documentation](./I18N_AND_DOCUMENTATION.md) specifications.
+> P0, P1 and P2 delivery evidence is maintained in
+> [MASTER_IMPROVEMENT_PLAN.md](./MASTER_IMPROVEMENT_PLAN.md) and
+> [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md). This page contains only work beyond that
+> completed repository scope.
 
-This tracks what a multi-dimension code audit surfaced and what has shipped. The app has a strong alpha foundation, but live-trading safety is not considered production-ready until the release gates in [Code Improvement Plan](./CODE_IMPROVEMENT_PLAN.md) are proven by tests and testnet/live reconciliation. Some remaining items need a funded exchange account / third-party keys / deploy infra to validate.
+SaltanatbotV2 is a strong open-source alpha for charting, Pine import, visual strategy authoring,
+reproducible research, paper trading and experimental exchange execution. Live trading is not
+production-ready until the explicitly deferred funded soak and mainnet-readiness program are done.
 
-## Shipped
+## Delivered baseline
 
-**Security**
-- Access-token auth on the trading API + `/trade-stream`; loopback bind default; CORS allowlist; zod validation on all trade routes; live-trading arming + per-request confirmation + global kill switch; `DEMO_MODE`.
+- Strict Binance/Bybit market routing, shared feeds, persistent history and explicit unavailable/fallback states.
+- Version-aware Pine compiler with typed fidelity diagnostics, corpus, compatibility matrix and fuzz tests.
+- Versioned Strategy Studio, shared evaluator/backtest cores, reproducible reports, replay, optimizer and walk-forward.
+- Durable order/fill/position/run lifecycle, private streams plus polling, recovery and bot-attributed spot inventory.
+- Professional multi-chart workspaces, pane/scales, drawing management, accessible tables and responsive monitoring.
+- Scoped session security, encrypted keys, audit logs, verified backup/restore and fail-closed demo mode.
+- EN/RU UI, EN/RU/KK user documentation, public Pages, release artifacts, SBOM, checksums and attestations.
+- Enforced TypeScript, Biome, docs, architecture, unit/integration, build, performance and Playwright gates.
 
-**Live-trading safety & correctness**
-- Strict market-data routing (no synthetic fallback for live bots); exchange WebSocket auto-reconnect with backoff + gap backfill; bot resume after restart/crash; per-bot risk caps (max notional, max daily loss); exchange-side protective stops with fail-loud; dry-run for manual commands; `clientOrderId`.
-- **Exchange precision rounding** (LOT_SIZE/PRICE_FILTER/minNotional from exchangeInfo — prevents -1013 rejections); **portfolio view** (`GET /api/trade/portfolio`); **cross-bot collision guard** (no two live bots on one exchange+symbol).
+## Explicitly deferred external validation
 
-**Backtest realism & power**
-- Next-bar-open fills; gap-aware stop/target fills with slippage; trailing-stop look-ahead fix; sizing/margin guardrails + simulated liquidation; warm-up exclusion; Monte Carlo robustness; drawdown curve, trade table, MAE/MFE; slippage + cost presets; backend↔frontend `setvar` parity.
-- **Parameter optimizer** (grid/random search, in-/out-of-sample split, Web Worker) + **walk-forward**; **funding/borrow cost** model.
+| Item | Why deferred | Required before claim |
+| --- | --- | --- |
+| Continuous 7–14-day Binance/Bybit testnet soak | Requires funded accounts and protected external credentials | Reconnect, fills, protection and recovery evidence over the full window |
+| Mainnet readiness | Requires the soak plus controlled real-account operational review | Signed operator evidence and removal of every Experimental warning only after approval |
 
-**Market data**
-- Binance + Bybit providers with runtime source selector; timeframes 1m–1M; **persistent SQLite candle store** (deep history / instant re-backtest); **dynamic instrument catalog** (~200 USDT-spot pairs from exchangeInfo ∩ instruments-info, curated fallback); **rate-limit handling** (429/418 backoff, Retry-After).
+These are not silently marked complete and are not included in the P0/P1/P2 repository closure.
 
-**UX**
-- VWAP/ATR/Stochastic/OBV indicators; watchlist favorites + %-change sort; price alerts (notification + sound); **symbol compare overlay** (normalized, engine-rendered).
+## P3 product opportunities
 
-**Product**
-- **Strategy template gallery** (categorized); **`.strategy` export/import**; **saved workspaces** (named chart layouts); **two-way Telegram control** (`/status` `/stop` `/start` `/kill`, chatId-authorized).
+| Epic | Outcome | Relative effort |
+| --- | --- | --- |
+| Additional exchange adapters | Conformance-tested OKX and later KuCoin/MEXC data/execution adapters | L |
+| Multi-symbol portfolio backtests | One capital pool, correlated positions and portfolio-level risk | XL |
+| Order-book and derivatives data | Depth, tape, funding, open interest and licensed advanced feeds | L–XL |
+| Plugin API | Declarative versioned extension schemas without arbitrary in-process JavaScript | XL |
+| Signed community packages | Moderated indicator/strategy sharing with permissions and supply-chain policy | XL |
+| Optional encrypted sync | User-controlled cross-device strategies and workspace synchronization | XL |
+| Hosted read-only demo | Public deployment of the existing non-mutating demo mode | M, infrastructure |
+| Mobile/PWA expansion | Touch-first monitoring, offline shell and installable experience | L |
+| Kazakh UI locale | Extend the typed catalog beyond the completed EN/RU UI baseline | M |
+| More locale and RTL coverage | Formatting, long-string and bidirectional layout conformance | L |
+| Timezone/session axis | Exchange sessions, timezone-aware labels and calendars | M |
+| AI-assisted strategy drafts | Optional BYO-model natural language to validated blocks/IR | M |
+| Collaboration | Opt-in review/sharing service separated from local-first core | XL |
+| Advanced execution analytics | TCA, slippage attribution and venue-quality comparisons | L |
 
-**Engineering**
-- 262 Vitest tests (commands, paper engine, filters, collision, Telegram, backtest, Pine and evaluator parity) plus an initial Playwright production E2E suite; GitHub Actions CI, Docker and Biome gates.
+## Stable-release gates beyond alpha
 
-## Remaining
-
-| Item | Layer | Impact | Effort | Notes |
-| --- | --- | --- | --- | --- |
-| Parse live exchange fills into the journal (real PnL) | trading | high | L | Needs a funded testnet/live account to validate. |
-| Live order-status polling (partial fills, resting-order lifecycle) | trading | high | L | Private user-data stream or REST poll; funded account. |
-| Idempotent placement (query-by-clientId on timeout) | trading | high | M | Plumbing exists; needs live retry validation. |
-| Share one upstream WS per (exchange, symbol, tf) | data | high | M | Fan out to browser clients from one socket. |
-| OKX (and KuCoin/MEXC) as data sources | data | medium | M | |
-| Multi-symbol portfolio backtests | backtest | medium | XL | Shared capital pool across symbols. |
-| AI strategy generation (NL → blocks) | product | high | M | BYO LLM key; validates against the JSON IR. |
-| Hosted read-only demo instance | product | critical | M | Deploy-time; `DEMO_MODE` is ready. |
-| Docs site + tutorials; mobile PWA; plugin API | product | medium | L–XL | |
-| RU/EN localization | ux | medium | M | Large mechanical string externalization. |
-| Multi-chart layouts / saved multi-pane grids | ux | high | L | Symbol compare shipped; multi-pane grid remains. |
-| Timezone/session-aware time axis; touch gestures | ux | medium | M | |
-| Order book depth + trade tape; funding/OI display | data | medium/low | L | |
+- Complete the funded exchange validation above.
+- Maintain a current manual multi-screen-reader/browser matrix in addition to automated axe checks.
+- Publish and exercise an operational incident-response/rollback drill for the deployed distribution.
+- Promote release channels only through the documented alpha → beta → stable criteria.
 
 ## See also
 
-- [Configuration & deployment](./CONFIGURATION.md)
+- [Configuration and deployment](./CONFIGURATION.md)
 - [Trading engine](./TRADING.md)
-- [Strategies & backtesting](./STRATEGIES.md)
+- [Strategies and backtesting](./STRATEGIES.md)
+- [Release verification](./RELEASING.md)

@@ -35,6 +35,6 @@ Preview, historical backtest and the backend evaluator used by paper/live bots a
 - Never include wall-clock timestamps, random identifiers, localized text or exchange secrets.
 - Candle time/index, normalized numeric values and stable semantic identifiers are allowed.
 
-## Remaining trace scope
+## Layer-specific execution trace scope
 
 Strategy V2 proves cross-runtime intent, explanation and variable-change parity. Historical execution additionally emits `BacktestExecutionTrace` v1 from `packages/backtest-core/executionTrace.ts`. Its stable events cover scheduled/dropped fills, rejected entries, position open/close transitions with equity, funding charges, warning codes and a final provenance snapshot. Preview cannot invent fill events, so layer-specific differences stay explicit rather than being forced into false equality.

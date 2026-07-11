@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrateTradingStore } from "./storeSchema.js";
+import { recordBotStatusTransition, writePositionSnapshot, type PositionSnapshotRecord, type StrategyRunRecord } from "./storeLifecycle.js";
 import type { AuditLogRecord, BotConfig, FillRecord, OrderEventRecord, OrderJournalRecord } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,8 +33,17 @@ export function listBots(): BotConfig[] {
 }
 
 export function upsertBot(bot: BotConfig) {
-  db.prepare("INSERT INTO bots (id, config, updatedAt) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET config = excluded.config, updatedAt = excluded.updatedAt")
-    .run(bot.id, JSON.stringify(bot), bot.updatedAt);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const previous = db.prepare("SELECT config FROM bots WHERE id = ?").get(bot.id) as { config: string } | undefined;
+    const previousStatus = previous ? (JSON.parse(previous.config) as BotConfig).status : undefined;
+    db.prepare("INSERT INTO bots (id, config, updatedAt) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET config = excluded.config, updatedAt = excluded.updatedAt").run(bot.id, JSON.stringify(bot), bot.updatedAt);
+    recordBotStatusTransition(db, bot, previousStatus);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function deleteBot(id: string) {
@@ -42,8 +52,11 @@ export function deleteBot(id: string) {
   db.prepare("DELETE FROM order_events WHERE botId = ?").run(id);
   db.prepare("DELETE FROM orders WHERE botId = ?").run(id);
   db.prepare("DELETE FROM logs WHERE botId = ?").run(id);
+  db.prepare("DELETE FROM positions WHERE botId = ?").run(id);
+  db.prepare("DELETE FROM strategy_runs WHERE botId = ?").run(id);
   // Drop this bot's persisted paper-sim and durable strategy state.
   db.prepare("DELETE FROM settings WHERE key = ? OR key = ?").run(`paper:${id}`, `state:${id}`);
+  db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`inventory:${id}:%`);
 }
 
 /** Remove a single setting (e.g. resetting a bot's durable strategy state). */
@@ -54,8 +67,7 @@ export function deleteSetting(key: string) {
 // ---------- fills (trade journal) ----------
 
 export function insertFill(fill: FillRecord) {
-  return db.prepare("INSERT OR IGNORE INTO fills (id, botId, data, ts) VALUES (?, ?, ?, ?)")
-    .run(fill.id, fill.botId, JSON.stringify(fill), fill.ts).changes > 0;
+  return db.prepare("INSERT OR IGNORE INTO fills (id, botId, data, ts) VALUES (?, ?, ?, ?)").run(fill.id, fill.botId, JSON.stringify(fill), fill.ts).changes > 0;
 }
 
 /** Keep a fill and its durable order event all-or-nothing across process crashes. */
@@ -78,6 +90,32 @@ export function listFills(botId: string, limit = 200): FillRecord[] {
     .map((row) => JSON.parse((row as { data: string }).data) as FillRecord);
 }
 
+// ---------- durable position snapshots ----------
+
+export function upsertPositionSnapshot(position: PositionSnapshotRecord) {
+  writePositionSnapshot(db, position);
+}
+
+export function listPositionSnapshots(botId: string): PositionSnapshotRecord[] {
+  return db.prepare("SELECT botId, symbol, market, status, data, updatedAt FROM positions WHERE botId = ? ORDER BY updatedAt DESC")
+    .all(botId)
+    .map((row) => {
+      const typed = row as Omit<PositionSnapshotRecord, "data" | "market" | "status"> & { market: PositionSnapshotRecord["market"]; status: PositionSnapshotRecord["status"]; data: string };
+      return { ...typed, data: JSON.parse(typed.data) } satisfies PositionSnapshotRecord;
+    });
+}
+
+// ---------- strategy run lifecycle ----------
+
+export function listStrategyRuns(botId: string, limit = 200): StrategyRunRecord[] {
+  return db.prepare("SELECT id, botId, strategyName, status, startedAt, endedAt, data FROM strategy_runs WHERE botId = ? ORDER BY startedAt DESC LIMIT ?")
+    .all(botId, limit)
+    .map((row) => {
+      const typed = row as Omit<StrategyRunRecord, "data" | "endedAt" | "status"> & { status: StrategyRunRecord["status"]; endedAt: number | null; data: string };
+      return { ...typed, endedAt: typed.endedAt ?? undefined, data: JSON.parse(typed.data) } satisfies StrategyRunRecord;
+    });
+}
+
 // ---------- orders (durable lifecycle journal) ----------
 
 export function upsertOrderJournal(order: OrderJournalRecord) {
@@ -92,8 +130,7 @@ export function upsertOrderJournal(order: OrderJournalRecord) {
 }
 
 export function insertOrderEvent(event: OrderEventRecord) {
-  db.prepare("INSERT INTO order_events (id, orderId, botId, type, data, ts) VALUES (?, ?, ?, ?, ?, ?)")
-    .run(event.id, event.orderId, event.botId, event.type, JSON.stringify(event.data), event.ts);
+  db.prepare("INSERT INTO order_events (id, orderId, botId, type, data, ts) VALUES (?, ?, ?, ?, ?, ?)").run(event.id, event.orderId, event.botId, event.type, JSON.stringify(event.data), event.ts);
 }
 
 export function listOrderJournal(botId: string, limit = 200): OrderJournalRecord[] {
@@ -124,21 +161,27 @@ export interface LogRecord {
 }
 
 export function insertLog(log: LogRecord) {
-  db.prepare("INSERT INTO logs (botId, level, message, ts) VALUES (?, ?, ?, ?)")
-    .run(log.botId, log.level, log.message, log.ts);
+  db.prepare("INSERT INTO logs (botId, level, message, ts) VALUES (?, ?, ?, ?)").run(log.botId, log.level, log.message, log.ts);
 }
 
 export function listLogs(botId: string, limit = 200): LogRecord[] {
-  return db
-    .prepare("SELECT botId, level, message, ts FROM logs WHERE botId = ? ORDER BY ts DESC LIMIT ?")
-    .all(botId, limit) as unknown as LogRecord[];
+  return db.prepare("SELECT botId, level, message, ts FROM logs WHERE botId = ? ORDER BY ts DESC LIMIT ?").all(botId, limit) as unknown as LogRecord[];
 }
 
 // ---------- audit log ----------
 
 export function insertAuditLog(record: AuditLogRecord) {
-  db.prepare("INSERT INTO audit_log (id, actor, role, action, target, statusCode, ip, data, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(record.id, record.actor, record.role, record.action, record.target ?? null, record.statusCode, record.ip ?? null, record.data === undefined ? null : JSON.stringify(record.data), record.ts);
+  db.prepare("INSERT INTO audit_log (id, actor, role, action, target, statusCode, ip, data, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+    record.id,
+    record.actor,
+    record.role,
+    record.action,
+    record.target ?? null,
+    record.statusCode,
+    record.ip ?? null,
+    record.data === undefined ? null : JSON.stringify(record.data),
+    record.ts
+  );
 }
 
 export function listAuditLog(limit = 200): AuditLogRecord[] {
@@ -154,9 +197,7 @@ export function listAuditLog(limit = 200): AuditLogRecord[] {
 // ---------- settings (exchange keys, notifications) ----------
 
 export function getSetting<T>(key: string): T | undefined {
-  const row = db.prepare("SELECT value, encrypted FROM settings WHERE key = ?").get(key) as
-    | { value: string; encrypted: number }
-    | undefined;
+  const row = db.prepare("SELECT value, encrypted FROM settings WHERE key = ?").get(key) as { value: string; encrypted: number } | undefined;
   if (!row) return undefined;
   const raw = row.encrypted ? decrypt(row.value) : row.value;
   try {
@@ -169,8 +210,7 @@ export function getSetting<T>(key: string): T | undefined {
 export function setSetting(key: string, value: unknown, encrypted = false) {
   const serialized = JSON.stringify(value);
   const stored = encrypted ? encrypt(serialized) : serialized;
-  db.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, encrypted = excluded.encrypted")
-    .run(key, stored, encrypted ? 1 : 0);
+  db.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, encrypted = excluded.encrypted").run(key, stored, encrypted ? 1 : 0);
 }
 
 // ---------- encryption for API keys at rest ----------

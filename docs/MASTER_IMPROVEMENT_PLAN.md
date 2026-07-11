@@ -1,10 +1,10 @@
 # SaltanatbotV2 master improvement plan
 
-Status: active  
+Status: P0/P1/P2 delivered; funded exchange soak explicitly deferred
 Created: 2026-07-11  
 Product stage: early alpha
 
-This document is the single entry point for improving SaltanatbotV2. Detailed safety work remains in [CODE_IMPROVEMENT_PLAN.md](./CODE_IMPROVEMENT_PLAN.md); Pine language coverage remains in [PINE_COVERAGE.md](./PINE_COVERAGE.md).
+This document is the single entry point for improving SaltanatbotV2. Detailed safety evidence is in [CODE_IMPROVEMENT_PLAN.md](./CODE_IMPROVEMENT_PLAN.md); Pine language coverage remains in [PINE_COVERAGE.md](./PINE_COVERAGE.md).
 
 ## Product promise
 
@@ -31,9 +31,9 @@ It is not enough to resemble TradingView visually. The differentiator must be tr
 | Research | Shared evaluator/backtest cores, provenance, traces, optimizer, walk-forward and Monte Carlo | Alpha, reproducible contracts |
 | Execution | Durable lifecycle, polling/private streams, reconciliation and fail-closed protection | Experimental; live is not production-ready |
 | Security | Scoped sessions, CSRF/WS tickets, encrypted keys, audit log and verified backup/restore | Strong alpha baseline |
-| Tests | 500+ unit/integration/parity tests plus an 18-scenario Playwright production suite | Strong baseline, expanding |
+| Tests | 600+ unit/integration/parity tests plus a 21-scenario Playwright production suite | Strong baseline, enforced in CI |
 | Documentation | Source-checked English docs and current RU/KK user guides with public Pages | Current alpha baseline |
-| Localization | Typed English/Russian UI catalogs; English/Russian/Kazakh user documentation | RU UI complete; KK UI pending |
+| Localization | Typed English/Russian UI catalogs; English/Russian/Kazakh user documentation | P2 language baseline complete; further UI locales are P3 |
 
 ## Guiding engineering rules
 
@@ -46,13 +46,14 @@ It is not enough to resemble TradingView visually. The differentiator must be tr
 - Accessibility, keyboard operation and reduced motion are release criteria, not optional polish.
 - Performance work is measured with budgets and traces rather than inferred from file size alone.
 
-## Active P0/P1/P2 scope decision
+## Completed P0/P1/P2 scope decision
 
-All unfinished Priority 0, 1 and 2 work remains active except **Mainnet readiness and the continuous
+All Priority 0, 1 and 2 repository work is delivered except **Mainnet readiness and the continuous
 7–14-day Binance/Bybit testnet soak**. The owner has explicitly deferred that epic because funded
 testnet/mainnet validation is not currently available. No release note or UI may imply that this
 external soak was completed. Deterministic fake-exchange, failure-injection and offline recovery
-tests remain in scope and continue to be required.
+tests remained in scope and are part of the enforced release gate. The external soak is not silently
+reclassified as complete and live trading remains Experimental.
 
 ## Priority 0: establish a trustworthy baseline
 
@@ -62,7 +63,7 @@ These items precede broad feature work.
 
 Status: delivered and covered by provider/router regression tests.
 
-Dynamic crypto instruments currently use `basePrice: 0`. If a public provider fails, the synthetic fallback produces zero OHLC candles.
+Before P0, dynamic crypto instruments could use `basePrice: 0`, allowing a failed public provider to produce zero-valued fallback OHLC candles.
 
 Required outcome:
 
@@ -103,14 +104,19 @@ Introduce npm workspaces incrementally:
 - `packages/strategy-core`: IR, schema, evaluator and TA primitives;
 - `packages/execution-core`: fill assumptions, sizing and order lifecycle primitives (delivered and
   consumed by backtest plus backend trading facades);
-- `packages/test-fixtures`: candle series, strategy fixtures and fake exchanges (initial canonical
-  candle/Fetch builders delivered; broader strategy/fake-adapter migration remains active).
+- `packages/test-fixtures`: candle series, strategy fixtures and fake exchanges (canonical
+  candle/Fetch builders and a transport-neutral scripted exchange are delivered and checked).
 
 No package may depend on React, Express, browser globals or exchange SDK details unless its name explicitly describes that adapter.
 
 ## Priority 1: modular architecture
 
 Follow [MODULAR_ARCHITECTURE.md](./MODULAR_ARCHITECTURE.md).
+
+Status: delivered for the P1 boundary. All selected facades were decomposed and CI now rejects any
+undocumented source file above 600 lines. Four cohesive pure-domain algorithm modules retain narrow,
+reasoned ceilings in `config/source-file-budgets.json`; increasing or adding an exception requires an
+explicit architecture change.
 
 The first decomposition targets are selected by size, churn and risk:
 
@@ -235,7 +241,7 @@ release gate rather than an alpha P2 blocker.
 ## Priority 2: open-source readiness
 
 - [x] add `SECURITY.md`, vulnerability disclosure and supported-version policy;
-- add `CODE_OF_CONDUCT.md`, issue forms and PR templates (delivered);
+- [x] add `CODE_OF_CONDUCT.md`, issue forms and PR templates;
 - [x] document release channels: nightly, alpha, beta, stable;
 - [x] add signed release artifacts, checksums and SBOM;
 - [x] add categorized GitHub release-note automation and migration notes;
@@ -271,43 +277,43 @@ No milestone is complete merely because it builds.
 | Security | Dependency audit + auth tests | Threat model + release review |
 | Data migration | Forward migration | Backup/restore/rollback rehearsal |
 
-## Proposed delivery sequence
+## Delivered sequence
 
 ### Milestone A: trustworthy alpha foundation
 
-- fix zero-price fallback;
-- correct documentation drift;
-- install browser E2E harness and first five critical journeys;
-- extract shared contracts and strategy core;
-- publish explicit experimental/live-trading warnings.
+- [x] fix zero-price fallback;
+- [x] correct documentation drift;
+- [x] install the browser E2E harness and critical journeys;
+- [x] extract shared contracts and strategy core;
+- [x] publish explicit experimental/live-trading warnings.
 
 ### Milestone B: compiler and studio modularization
 
-- split Pine converter into pipeline modules;
-- split block definitions/compiler by category;
-- decompose Strategy Lab into feature panels and hooks;
-- add conversion diagnostics UI and golden corpus reports.
+- [x] split Pine converter into pipeline modules;
+- [x] split block definitions/compiler by category;
+- [x] decompose Strategy Lab into feature panels and hooks;
+- [x] add conversion diagnostics UI and golden corpus reports.
 
 ### Milestone C: research confidence
 
-- split backtest engine into evaluation, execution, accounting and metrics;
-- add replay/explanation traces;
-- enforce data provenance and report versioning;
-- add cross-runtime golden parity tests.
+- [x] split backtest engine into evaluation, execution, accounting and metrics;
+- [x] add replay/explanation traces;
+- [x] enforce data provenance and report versioning;
+- [x] add cross-runtime golden parity tests.
 
 ### Milestone D: execution hardening
 
-- complete order lifecycle, private fill ingestion and reconciliation;
-- finish spot inventory or keep it disabled;
-- add exchange testnet conformance and failure-injection suites;
-- rehearse backup and crash recovery.
+- [x] complete order lifecycle, private fill ingestion and reconciliation;
+- [x] finish fail-closed spot inventory;
+- [x] add offline exchange conformance, opt-in testnet smoke and failure-injection suites;
+- [x] rehearse backup and crash recovery deterministically.
 
 ### Milestone E: open-source beta
 
-- complete English/Russian product and documentation coverage;
-- meet accessibility and performance budgets;
-- publish contributor/security/release policies;
-- tag reproducible signed beta releases.
+- [x] complete English/Russian product and EN/RU/KK user-documentation coverage;
+- [x] meet accessibility and performance budgets;
+- [x] publish contributor/security/release policies;
+- [x] implement reproducible signed release packaging for configured channels.
 
 ## Definition of done for any feature
 

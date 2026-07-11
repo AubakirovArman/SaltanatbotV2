@@ -1,0 +1,21 @@
+{
+  "defaultMaxLines": 600,
+  "exceptions": {
+    "packages/pine-compiler/src/convert.ts": {
+      "maxLines": 1050,
+      "reason": "Typed Pine lowering coordinator over independently tested semantic, call, statement, drawing and strategy modules; shrinking now would split one stateful conversion transaction."
+    },
+    "packages/pine-compiler/src/parser.ts": {
+      "maxLines": 760,
+      "reason": "Bounded recursive-descent grammar implementation whose token cursor and recovery invariants are intentionally cohesive."
+    },
+    "packages/strategy-core/evaluator.ts": {
+      "maxLines": 850,
+      "reason": "Canonical exhaustive IR interpreter and vector-series dispatcher shared by preview, backtest, paper and live; node families are golden-parity checked."
+    },
+    "packages/strategy-core/ta.ts": {
+      "maxLines": 680,
+      "reason": "Canonical dependency-free TA function library generated into runtime/declarations; functions are independent and direct-tested despite sharing one public module."
+    }
+  }
+}

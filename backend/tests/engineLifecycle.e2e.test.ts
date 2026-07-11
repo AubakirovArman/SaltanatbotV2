@@ -29,6 +29,7 @@ vi.mock("../src/trading/store.js", () => {
     insertFill: () => {},
     withStoreTransaction: <T>(operation: () => T) => operation(),
     listFills: () => [],
+    upsertPositionSnapshot: () => {},
     upsertOrderJournal: (order: { id: string }) => orders.set(order.id, clone(order)),
     insertOrderEvent: (event: unknown) => orderEvents.push(clone(event)),
     listOrderJournal: () => [],
@@ -88,6 +89,11 @@ function fakeProvider() {
       async subscribe(_i: unknown, _tf: unknown, onCandle: (c: unknown) => void, _onStatus?: unknown, options?: unknown) {
         state.subscribeOptions = options;
         state.push = onCandle;
+        return { close() {} };
+      },
+      async subscribeMarket(_i: unknown, _tf: unknown, onEvent: (event: { candle: unknown }) => void, _onStatus?: unknown, options?: unknown) {
+        state.subscribeOptions = options;
+        state.push = (candle) => onEvent({ candle });
         return { close() {} };
       },
     },

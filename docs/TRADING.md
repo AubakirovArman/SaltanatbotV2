@@ -190,16 +190,27 @@ The full paper state — `balance`, `position`, `orders`, `leverage`, `isolated`
 
 Setting a bot's `exchange` to `binance` or `bybit` builds a live adapter with the stored keys (`keys:binance` / `keys:bybit`). If no keys are stored, the adapter is constructed with empty strings and any signed call throws `"… API keys are not set"` — public price reads still work, but nothing can trade.
 
-Live spot is fail-closed by default while complete inventory/fee-asset accounting remains experimental. Enabling the explicit `ENABLE_LIVE_SPOT` override transfers responsibility to the operator; paper and futures testnet validation should be completed first.
+Live spot is fail-closed by default and requires the explicit `ENABLE_LIVE_SPOT` override. The engine
+tracks bot-attributed quantity, weighted average, base/quote fee assets and remaining quantity from
+deduplicated confirmed fills. Automated and manual bot closes use only that attributed quantity,
+never the account-wide base balance. A restart restores the inventory but pauses the bot until the
+operator verifies the exchange balance and confirms resume. Paper and futures testnet validation
+should still be completed first; live spot remains experimental.
 
 Every mutating live request is journaled before network I/O. A definitive HTTP/API rejection becomes `rejected`; a network failure or HTTP 5xx during POST/DELETE is ambiguous and becomes `unknown`, because the venue may have accepted the request. The engine never blindly resubmits that order. Authenticated Binance USDⓈ-M and Bybit private streams are the primary order-state source; bounded signed REST polling runs every 30 seconds only while the stream is unavailable. Disconnect and reconnect edges force an immediate REST gap reconciliation. Poll and stream snapshots enter through one identity-aware ingest boundary: reconnect replays are idempotent, conflicting venue IDs are rejected, cumulative filled quantity cannot decrease, and accepted/partial/terminal state cannot regress.
+
+Trading schema v2 durably stores orders, order events, confirmed fills, the latest position/manual-action
+snapshot and logical strategy runs. Protected entries additionally record the execution lifecycle from
+`entry_submitted` through `open_protected` or `open_unprotected/error`. Binance supplies entry/SL/TP
+order IDs. Bybit supplies the entry ID and a typed `exchange_ack` for its position-level
+`trading-stop` endpoint, which does not return individual protective-order IDs.
 
 Trade executions additionally persist the venue execution ID, incremental
 quantity/price, actual commission amount and asset, and venue realized PnL.
 Duplicate execution IDs after reconnect do not create a second fill. The fill
 journal displays both fee amount and asset.
 
-Binance renews its 60-minute listenKey every 50 minutes and rotates it after expiry. Bybit authenticates with HMAC-SHA256, subscribes to both `order` and `execution`, and sends a heartbeat every 20 seconds. Both transports use capped reconnect backoff and are closed during bot stop or server shutdown. Binance live spot remains outside this stream implementation because live spot inventory is still fail-closed by default.
+Binance renews its 60-minute listenKey every 50 minutes and rotates it after expiry. Bybit authenticates with HMAC-SHA256, subscribes to both `order` and `execution`, and sends a heartbeat every 20 seconds. Both transports use capped reconnect backoff and are closed during bot stop or server shutdown. Live spot remains explicitly armed and inventory-constrained; a missing confirmed fill prevents automated close rather than falling back to an unrelated account balance.
 
 Before a live bot resumes after process restart, the engine sequentially queries signed order status for every `intent`, `unknown`, `accepted`, and `partially_filled` journal row. A matching open order is only a fallback proof for ordinary order placement; it cannot prove that an interrupted cancel or replace command completed. Missing, conflicting, regressing, or action-ambiguous evidence leaves the existing durable state intact, records crash-left intent as `unknown`, and pauses trading for operator review. Terminal journal rows are never queried or rewritten.
 

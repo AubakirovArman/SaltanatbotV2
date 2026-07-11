@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { canAdvanceOrderState, deriveDurableOrderStatus } from "@saltanatbotv2/execution-core";
 import { insertOrderEvent, listOrderEvents, upsertOrderJournal } from "./store.js";
-import type { BotConfig, ExchangeOrderSnapshot, ExecOrder, ExecResult, FillRecord, OrderEventRecord, OrderJournalRecord, OrderJournalStatus } from "./types.js";
+import type { BotConfig, ExchangeOrderSnapshot, ExecOrder, ExecResult, ExecutionLifecycleStatus, FillRecord, OrderEventRecord, OrderJournalRecord, OrderJournalStatus } from "./types.js";
 
 export interface OrderLifecycleContext {
   botId: string;
@@ -63,6 +63,7 @@ export class OrderLifecycle {
       clientId: order.clientId,
       exchangeOrderId: order.orderId,
       status: "intent",
+      executionStatus: initialExecutionStatus(order),
       barTime: context.barTime,
       ts: now,
       updatedAt: now
@@ -82,12 +83,14 @@ export class OrderLifecycle {
   complete(record: OrderJournalRecord, result: ExecResult): OrderJournalRecord {
     const now = this.now();
     const status = deriveOrderJournalStatus(record, result);
+    const lifecycleTransitions = executionLifecycleTransitions(record, result);
     const filledQty = result.fills.reduce((sum, fill) => sum + Math.abs(fill.qty), 0);
     const filledNotional = result.fills.reduce((sum, fill) => sum + Math.abs(fill.qty) * fill.price, 0);
     const next: OrderJournalRecord = {
       ...record,
       exchangeOrderId: result.order?.id ?? result.pendingOrder?.id ?? record.exchangeOrderId,
       status,
+      executionStatus: lifecycleTransitions.at(-1) ?? record.executionStatus,
       message: result.message,
       filledQty: filledQty > 0 ? filledQty : record.filledQty,
       avgFillPrice: filledQty > 0 ? filledNotional / filledQty : record.avgFillPrice,
@@ -108,7 +111,8 @@ export class OrderLifecycle {
         order: result.order,
         position: result.position,
         account: result.account,
-        fills: result.fills
+        fills: result.fills,
+        lifecycleTransitions
       },
       ts: now
     });
@@ -238,6 +242,24 @@ export class OrderLifecycle {
       throw error;
     }
   }
+}
+
+function initialExecutionStatus(order: ExecOrder): ExecutionLifecycleStatus | undefined {
+  if (order.action === "close" || order.action === "flatten" || order.reduceOnly) return "exiting";
+  if (order.action === "open" || order.action === "neworder") return "entry_submitted";
+  return undefined;
+}
+
+export function executionLifecycleTransitions(record: OrderJournalRecord, result: ExecResult): ExecutionLifecycleStatus[] {
+  if (record.executionStatus === "exiting") return result.ok ? ["exiting"] : ["exiting", "error"];
+  if (record.executionStatus !== "entry_submitted") return result.ok ? [] : ["error"];
+  if (!result.ok && !result.protection?.requested) return ["entry_submitted", "error"];
+  const transitions: ExecutionLifecycleStatus[] = ["entry_submitted", "entry_confirmed"];
+  if (!result.protection?.requested) return transitions;
+  transitions.push("protection_submitted");
+  if (result.protection.confirmed) transitions.push("protection_confirmed", "open_protected");
+  else transitions.push("open_unprotected", "error");
+  return transitions;
 }
 
 export const orderLifecycle = new OrderLifecycle(durableWriter);

@@ -115,6 +115,16 @@ export type OrderJournalStatus =
   | "rejected"
   | "unknown";
 
+export type ExecutionLifecycleStatus =
+  | "entry_submitted"
+  | "entry_confirmed"
+  | "protection_submitted"
+  | "protection_confirmed"
+  | "open_protected"
+  | "open_unprotected"
+  | "exiting"
+  | "error";
+
 export interface OrderJournalRecord {
   id: string;
   botId: string;
@@ -130,6 +140,7 @@ export interface OrderJournalRecord {
   clientId?: string;
   exchangeOrderId?: string;
   status: OrderJournalStatus;
+  executionStatus?: ExecutionLifecycleStatus;
   message?: string;
   filledQty?: number;
   avgFillPrice?: number;
@@ -243,7 +254,15 @@ export interface ExecResult {
   message: string;
   fills: FillRecord[];
   /** Exchange-side SL/TP acknowledgement for an entry that requested protection. */
-  protection?: { requested: boolean; confirmed: boolean; message?: string };
+  protection?: {
+    requested: boolean;
+    confirmed: boolean;
+    message?: string;
+    entryOrderId?: string;
+    stopOrderIds?: string[];
+    takeProfitOrderIds?: string[];
+    verification?: "order_ids" | "exchange_ack";
+  };
   /** Resting order accepted by an adapter; used to correlate later fills. */
   pendingOrder?: PendingOrder;
   order?: OrderRecord;

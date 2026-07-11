@@ -3,8 +3,8 @@
 ## Goals
 
 - English is the canonical engineering and API documentation language.
-- Russian and Kazakh are supported user-documentation languages; Russian is currently the complete
-  UI locale and Kazakh UI messages are the next localization milestone.
+- Russian and Kazakh are supported user-documentation languages; Russian is the complete second UI
+  locale. Kazakh UI messages are a future P3 localization opportunity, not an unfinished P2 gate.
 - The UI is locale-aware and structurally ready for additional languages and RTL.
 - Documentation stays versioned with the code and cannot silently describe old behavior.
 

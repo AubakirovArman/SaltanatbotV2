@@ -4,7 +4,7 @@ import { BinanceProvider } from "./binance.js";
 import { BybitProvider } from "./bybit.js";
 import { CandleCache } from "./cache.js";
 import { readCandles, saveCandles, storedRange } from "./candleStore.js";
-import type { CandleRange, DataExchange, DataMarketType, MarketKey, MarketProvider, MarketSubscription, PriceType } from "./provider.js";
+import type { CandleRange, DataExchange, DataMarketType, MarketCandleEvent, MarketKey, MarketProvider, MarketSubscription, PriceType } from "./provider.js";
 import { SyntheticProvider } from "./synthetic.js";
 
 /** `strict` disables the synthetic fallback — live trading must never see fake data. */
@@ -174,6 +174,21 @@ export class ProviderRouter implements MarketProvider {
         );
       }
     }
+  }
+
+  /** Strict event envelope for execution consumers; no route component may default silently. */
+  async subscribeMarket(
+    instrument: Instrument,
+    timeframe: Timeframe,
+    onEvent: (event: MarketCandleEvent) => void,
+    onStatus: ((message: string) => void) | undefined,
+    options: Required<Pick<RouteOptions, "exchange" | "marketType" | "priceType">> & Pick<RouteOptions, "strict">
+  ): Promise<MarketSubscription> {
+    if (!options.exchange || !options.marketType || !options.priceType) {
+      throw new Error("Trading market subscription requires a complete MarketKey");
+    }
+    const marketKey = this.marketKey(instrument, timeframe, options.exchange, options.marketType, options.priceType);
+    return this.subscribe(instrument, timeframe, (candle) => onEvent({ marketKey, candle }), onStatus, options);
   }
 
   private addStreamListener(

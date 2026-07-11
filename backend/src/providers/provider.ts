@@ -12,6 +12,11 @@ export interface MarketKey {
   priceType: PriceType;
 }
 
+export interface MarketCandleEvent {
+  marketKey: MarketKey;
+  candle: Candle;
+}
+
 export interface MarketRouteOptions {
   marketType?: DataMarketType;
   priceType?: PriceType;

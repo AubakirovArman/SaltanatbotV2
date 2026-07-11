@@ -4,7 +4,8 @@ import { orderLifecycle } from "./orderLifecycle.js";
 import { pollOrderUpdates } from "./orderPolling.js";
 import { reconcileLiveRuntime } from "./reconciliation.js";
 import { reconcileStartupOrders } from "./startupOrderReconciliation.js";
-import { insertFill, listOrderEvents, listOrderJournal, withStoreTransaction } from "./store.js";
+import { listOrderEvents, listOrderJournal, withStoreTransaction } from "./store.js";
+import { getSpotInventory, recordConfirmedFill } from "./spotInventory.js";
 import type { Managed, RunningBot } from "./engineRuntime.js";
 import type { ExchangeOrderSnapshot } from "./types.js";
 import type { TradeEvent } from "./engine.js";
@@ -69,7 +70,8 @@ export class EngineOrderCoordinator {
       if (!fill) return result;
       const recorded = withStoreTransaction(() => {
         if (hasRecordedExecution(listOrderEvents(result.record.id, 1_000), snapshot.execution?.id ?? "")) return false;
-        insertFill(fill);
+        const inserted = recordConfirmedFill(fill, result.record.market);
+        if (!inserted) return false;
         orderLifecycle.recordFill(result.record, fill);
         return true;
       });
@@ -83,6 +85,20 @@ export class EngineOrderCoordinator {
 
   async reconcileOnResume(bot: RunningBot, savedManaged?: Managed): Promise<boolean> {
     try {
+      if (bot.config.market === "spot") {
+        const inventory = getSpotInventory(bot.config.id, bot.config.symbol);
+        if (inventory?.remainingQty) {
+          bot.managed = { side: "long", entry: inventory.avgPrice, qty: inventory.remainingQty, entryTime: inventory.updatedAt };
+          this.pauseBot(bot, "Spot inventory restored after restart; verify exchange balance before confirming resume.");
+        } else if (savedManaged) {
+          bot.managed = savedManaged;
+          this.pauseBot(bot, "Legacy spot position has no attributed inventory; automatic close is disabled pending operator review.");
+        } else {
+          bot.managed = undefined;
+        }
+        this.log(bot.config.id, bot.paused ? "warn" : "info", bot.pauseReason ?? "Spot inventory is flat after reconciliation.");
+        return true;
+      }
       const exchangePosition = await bot.adapter.position(bot.config.symbol);
       const openOrders = bot.adapter.orders ? await bot.adapter.orders(bot.config.symbol).catch(() => []) : [];
       const orderReconciliation = await reconcileStartupOrders(listOrderJournal(bot.config.id, 500), openOrders, bot.adapter, orderLifecycle);

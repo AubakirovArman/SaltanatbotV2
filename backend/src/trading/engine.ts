@@ -10,12 +10,13 @@ import { PaperAdapter, type PaperState } from "./exchange/paper.js";
 import { notify } from "./notifications.js";
 import { orderLifecycle } from "./orderLifecycle.js";
 import { classifyCandleSequence } from "./candleSequence.js";
-import { getSetting, insertFill, insertLog, listBots, listOrderJournal, setSetting, upsertBot } from "./store.js";
+import { getSetting, insertLog, listBots, listOrderJournal, setSetting, upsertBot, withStoreTransaction } from "./store.js";
 import type { Managed, BotStateSnapshot, RunningBot } from "./engineRuntime.js";
 import { EngineOrderCoordinator } from "./engineOrderCoordinator.js";
 import { buildPortfolioSummary } from "./enginePortfolio.js";
 import { buildEngineAdapter, engineMarketRoute } from "./engineAdapters.js";
-import { equityOf, pauseRunningBot, persistPaper, persistRuntimeState, positionContext, realizedToday } from "./engineState.js";
+import { equityOf, pauseRunningBot, persistPaper, persistRuntimeState, positionContext, realizedToday, roundTradingValue as round } from "./engineState.js";
+import { constrainSpotInventoryOrder, getSpotInventory, liveSpotInventoryEnabled, recordConfirmedFill, resolveSpotCloseQuantity } from "./spotInventory.js";
 import type { AccountState, BotConfig, ExecOrder, ExecResult, FillRecord, PortfolioSummary, PositionState } from "./types.js";
 
 const BUFFER_CAP = 1500;
@@ -117,7 +118,7 @@ export class TradingEngine {
       if (instrument.provider !== "binance") {
         throw new Error(`Live trading requires a real exchange feed for ${config.symbol}`);
       }
-      if (config.market === "spot" && !liveSpotEnabled()) {
+      if (config.market === "spot" && !liveSpotInventoryEnabled()) {
         throw new Error("Live spot trading is disabled until the spot inventory model is enabled.");
       }
     }
@@ -175,10 +176,10 @@ export class TradingEngine {
     // Fresh start (no restored state): run the strategy's one-time on-start init.
     if (!savedState) runInit(config.ir, bot.buffer, bot.vars);
 
-    bot.sub = await this.provider.subscribe(
+    bot.sub = await this.provider.subscribeMarket(
       instrument,
       config.timeframe,
-      (candle) => this.onCandle(config.id, candle),
+      ({ candle }) => this.onCandle(config.id, candle),
       (message) => this.log(config.id, message.toLowerCase().includes("error") || message.toLowerCase().includes("closed") ? "warn" : "info", message),
       { ...route, strict }
     );
@@ -297,8 +298,9 @@ export class TradingEngine {
       const messages: string[] = [];
       for (const step of steps) {
         if (step.command) {
-          const exec = commandToExec(step.command);
+          let exec = commandToExec(step.command);
           if (!exec.symbol) exec.symbol = bot.config.symbol;
+          exec = constrainSpotInventoryOrder(bot.config.id, bot.config.market, exec);
           if (dryRun) {
             messages.push(`would ${formatExec(exec)}`);
             continue;
@@ -314,8 +316,6 @@ export class TradingEngine {
       return { ok: false, message: error instanceof Error ? error.message : "Command failed" };
     }
   }
-
-  // ---------- stream handling ----------
 
   private onCandle(id: string, candle: Candle) {
     const bot = this.running.get(id);
@@ -339,7 +339,8 @@ export class TradingEngine {
     if (bot.adapter.onPrice) {
       const fills = bot.adapter.onPrice(bot.config.symbol, candle.close);
       for (const fill of fills) {
-        insertFill(fill);
+        const recorded = withStoreTransaction(() => recordConfirmedFill(fill, bot.config.market));
+        if (!recorded) continue;
         if (fill.orderId || fill.clientId) {
           const record = listOrderJournal(bot.config.id, 500).find((candidate) => (fill.orderId !== undefined && candidate.exchangeOrderId === fill.orderId) || (fill.clientId !== undefined && candidate.clientId === fill.clientId));
           if (record) orderLifecycle.recordFill(record, fill);
@@ -426,8 +427,6 @@ export class TradingEngine {
     // Persist counters + managed state every closed bar so a crash can't reset them.
     persistRuntimeState(bot);
   }
-
-  // ---------- position actions ----------
 
   private async openPosition(bot: RunningBot, intents: BarIntents, index: number) {
     if (bot.orderInFlight) {
@@ -534,6 +533,18 @@ export class TradingEngine {
         clientId: `${bot.config.id.slice(0, 8)}-c-${bot.buffer.at(-1)?.time ?? Date.now()}`,
         reason: `signal:${reason}`
       };
+      if (bot.config.market === "spot") {
+        const qty = resolveSpotCloseQuantity(getSpotInventory(bot.config.id, bot.config.symbol));
+        if (qty <= 0) {
+          const reason = "Spot close refused: this bot has no confirmed attributed inventory.";
+          pauseRunningBot(bot, reason);
+          persistRuntimeState(bot);
+          this.log(bot.config.id, "error", reason);
+          return;
+        }
+        order.qty = qty;
+        order.closePct = undefined;
+      }
       const result = await this.executeOrder(bot, order, bot.buffer.at(-1)?.time);
       this.applyResult(bot, result, `signal:${reason}`);
       if (result.ok) {
@@ -551,8 +562,7 @@ export class TradingEngine {
 
   private applyResult(bot: RunningBot, result: ExecResult, _reason: string) {
     for (const fill of result.fills) {
-      insertFill(fill);
-      this.broadcast({ type: "fill", botId: bot.config.id, fill, account: result.account, position: result.position });
+      if (withStoreTransaction(() => recordConfirmedFill(fill, bot.config.market))) this.broadcast({ type: "fill", botId: bot.config.id, fill, account: result.account, position: result.position });
     }
     if (result.message) this.log(bot.config.id, result.ok ? "info" : "error", result.message);
     if (bot.paper) persistPaper(bot);
@@ -584,12 +594,4 @@ export class TradingEngine {
     const bot = this.running.get(id);
     this.broadcast({ type: "bot", botId: id, bot: bot?.config });
   }
-}
-
-function round(value: number): number {
-  return Math.round(value * 1e4) / 1e4;
-}
-
-function liveSpotEnabled(): boolean {
-  return process.env.ENABLE_LIVE_SPOT === "1" || process.env.ENABLE_LIVE_SPOT === "true" || getSetting<boolean>("liveSpotEnabled") === true;
 }

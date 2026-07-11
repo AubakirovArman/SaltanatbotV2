@@ -165,8 +165,14 @@ export class BybitAdapter implements ExchangeAdapter {
     const qty = roundToStep(await this.resolveQty(order, price), filters?.stepSize);
     const violation = checkMinimums(qty, order.type === "limit" ? order.price ?? price : price, filters);
     if (violation) return { ok: false, message: `Order rejected on ${order.symbol}: ${violation}`, fills: [] };
-    await this.createOrder(order, order.side === "sell" ? "Sell" : "Buy", qty, price, order.reduceOnly ?? false, filters);
+    const entryResponse = await this.createOrder(order, order.side === "sell" ? "Sell" : "Buy", qty, price, order.reduceOnly ?? false, filters) as { result?: { orderId?: string } };
+    const entryOrderId = entryResponse.result?.orderId;
     if (this.market === "futures" && (order.stop || order.takeProfits?.length)) {
+      if (!entryOrderId) {
+        const closeSide = order.side === "sell" ? "Buy" : "Sell";
+        await this.createOrder({ ...order, type: "market" }, closeSide, qty, price, true, filters).catch(() => undefined);
+        return { ok: false, message: "Entry acknowledgement omitted its order ID — entry closed for safety", fills: [], protection: { requested: true, confirmed: false, message: "missing entry order ID", verification: "exchange_ack" } };
+      }
       try {
         await this.applyTradingStop(order, order.side === "sell" ? "Sell" : "Buy", price, filters);
       } catch (error) {
@@ -177,12 +183,12 @@ export class BybitAdapter implements ExchangeAdapter {
           ok: false,
           message: `Protection rejected (${message}) — entry closed for safety`,
           fills: [],
-          protection: { requested: true, confirmed: false, message },
+          protection: { requested: true, confirmed: false, message, entryOrderId, verification: "exchange_ack" },
           position: await this.position(order.symbol).catch(() => null),
           account: await this.account().catch(() => undefined)
         };
       }
-      return { ok: true, message: `Placed ${order.type} ${order.side} ${qty} ${order.symbol}`, fills: [], protection: { requested: true, confirmed: true }, position: await this.position(order.symbol), account: await this.account() };
+      return { ok: true, message: `Placed ${order.type} ${order.side} ${qty} ${order.symbol}`, fills: [], protection: { requested: true, confirmed: true, entryOrderId, verification: "exchange_ack" }, position: await this.position(order.symbol), account: await this.account() };
     }
     return { ok: true, message: `Placed ${order.type} ${order.side} ${qty} ${order.symbol}`, fills: [], position: await this.position(order.symbol), account: await this.account() };
   }

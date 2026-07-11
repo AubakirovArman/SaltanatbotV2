@@ -100,6 +100,34 @@ describe("durable order lifecycle", () => {
     expect(h.events.at(-1)?.data).toMatchObject({ status: "rejected", ok: false });
   });
 
+  it("records the complete protected-entry state machine", () => {
+    const h = harness();
+    const protectedOrder = { ...order, action: "open", market: "futures", stop: { basis: "price", value: 95 } } as const;
+    const record = h.lifecycle.begin({ ...context, market: "futures" }, protectedOrder);
+    const next = h.lifecycle.complete(record, {
+      ok: true, message: "protected", fills: [],
+      protection: { requested: true, confirmed: true, entryOrderId: "entry", stopOrderIds: ["stop"], verification: "order_ids" },
+    });
+
+    expect(record.executionStatus).toBe("entry_submitted");
+    expect(next.executionStatus).toBe("open_protected");
+    expect(h.events.at(-1)?.data).toMatchObject({
+      lifecycleTransitions: ["entry_submitted", "entry_confirmed", "protection_submitted", "protection_confirmed", "open_protected"],
+    });
+  });
+
+  it("marks rejected protection as unprotected and erroneous", () => {
+    const h = harness();
+    const record = h.lifecycle.begin({ ...context, market: "futures" }, { ...order, action: "open" });
+    const next = h.lifecycle.complete(record, {
+      ok: false, message: "entry closed", fills: [],
+      protection: { requested: true, confirmed: false, message: "stop rejected" },
+    });
+
+    expect(next.executionStatus).toBe("error");
+    expect(h.events.at(-1)?.data).toMatchObject({ lifecycleTransitions: expect.arrayContaining(["open_unprotected", "error"]) });
+  });
+
   it("distinguishes partial fills and successful command outcomes", () => {
     const partial = harness();
     const partialResult: ExecResult = { ...accepted, fills: [{ ...accepted.fills[0], qty: 0.4 }] };

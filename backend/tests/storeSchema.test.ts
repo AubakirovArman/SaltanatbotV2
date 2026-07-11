@@ -29,7 +29,10 @@ describe("trading store schema migrations", () => {
     expect(result).toEqual({
       fromVersion: 0,
       toVersion: TRADING_SCHEMA_VERSION,
-      applied: [{ version: 1, name: "initial_durable_trading_schema" }],
+      applied: [
+        { version: 1, name: "initial_durable_trading_schema" },
+        { version: 2, name: "durable_positions_and_strategy_runs" },
+      ],
     });
     expect(tableNames(database)).toEqual([
       "audit_log",
@@ -38,10 +41,12 @@ describe("trading store schema migrations", () => {
       "logs",
       "order_events",
       "orders",
+      "positions",
       "schema_migrations",
       "settings",
+      "strategy_runs",
     ]);
-    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 1 });
+    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 2 });
   });
 
   it("upgrades an unversioned legacy database without deleting existing records", () => {
@@ -53,11 +58,30 @@ describe("trading store schema migrations", () => {
 
     expect(database.prepare("SELECT id, updatedAt FROM bots").get()).toMatchObject({ id: "legacy", updatedAt: 10 });
     expect(tableNames(database)).toContain("order_events");
-    expect(database.prepare("SELECT version, name, appliedAt FROM schema_migrations").get()).toMatchObject({
+    expect(database.prepare("SELECT version, name, appliedAt FROM schema_migrations ORDER BY version LIMIT 1").get()).toMatchObject({
       version: 1,
       name: "initial_durable_trading_schema",
       appliedAt: 20,
     });
+  });
+
+  it("upgrades v1 transactionally with durable positions and strategy runs", () => {
+    const database = memoryDatabase();
+    migrateTradingStore(database, () => 10);
+    database.exec("PRAGMA user_version = 1");
+    database.prepare("DELETE FROM schema_migrations WHERE version = 2").run();
+    database.exec("DROP TABLE strategy_runs; DROP TABLE positions");
+    database.prepare("INSERT INTO fills (id, botId, data, ts) VALUES (?, ?, ?, ?)").run("fill-1", "bot", "{}", 11);
+
+    const result = migrateTradingStore(database, () => 20);
+
+    expect(result).toEqual({
+      fromVersion: 1,
+      toVersion: 2,
+      applied: [{ version: 2, name: "durable_positions_and_strategy_runs" }],
+    });
+    expect(tableNames(database)).toEqual(expect.arrayContaining(["positions", "strategy_runs"]));
+    expect(database.prepare("SELECT id FROM fills").get()).toMatchObject({ id: "fill-1" });
   });
 
   it("is idempotent after the current schema has been applied", () => {
@@ -65,8 +89,8 @@ describe("trading store schema migrations", () => {
     migrateTradingStore(database, () => 1);
     const result = migrateTradingStore(database, () => 2);
 
-    expect(result).toEqual({ fromVersion: 1, toVersion: 1, applied: [] });
-    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 1 });
+    expect(result).toEqual({ fromVersion: 2, toVersion: 2, applied: [] });
+    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 2 });
   });
 
   it("refuses to open a database created by a newer application version", () => {

@@ -1,7 +1,7 @@
 # Documentation status
 
 Last full repository documentation audit: **2026-07-11**
-Application version reviewed: `0.1.0` at commit `b6ca124`
+Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
 means local links and documented npm commands pass `npm run docs:check`, generated references match

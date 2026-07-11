@@ -197,21 +197,24 @@ export class BinanceAdapter implements ExchangeAdapter {
     // Reject exchange-filter violations up front with a clear reason.
     const violation = checkMinimums(qty, order.type === "limit" ? order.price ?? price : price, filters);
     if (violation) return { ok: false, message: `Order rejected on ${order.symbol}: ${violation}`, fills: [] };
-    await this.placeOrder(order, side, qty, price, filters);
+    const entryPlaced = await this.placeOrder(order, side, qty, price, filters) as { orderId?: string | number };
+    const entryOrderId = entryPlaced.orderId === undefined ? undefined : String(entryPlaced.orderId);
     // Attached protection (single stop / first TP) for futures.
     if (this.market === "futures" && (order.stop || order.takeProfits?.length)) {
       const closeSide = side === "BUY" ? "SELL" : "BUY";
-      const protectionOrderIds: string[] = [];
+      const stopOrderIds: string[] = [];
+      const takeProfitOrderIds: string[] = [];
       if (order.stop) {
         const trg = order.stop.basis === "price" ? order.stop.value : side === "BUY" ? price * (1 - order.stop.value / 100) : price * (1 + order.stop.value / 100);
         try {
           const placed = await this.signed("POST", "/fapi/v1/order", { symbol: order.symbol, side: closeSide, type: "STOP_MARKET", stopPrice: fmtPrice(trg, filters), closePosition: "true" }) as { orderId?: string | number };
-          if (placed.orderId !== undefined) protectionOrderIds.push(String(placed.orderId));
+          if (placed.orderId === undefined) throw new Error("stop acknowledgement did not include an order ID");
+          stopOrderIds.push(String(placed.orderId));
         } catch (error) {
           // Fail loud: an unprotected position is worse than none. Close it and report.
           await this.placeMarket(order.symbol, closeSide, qty, true).catch(() => undefined);
           const message = error instanceof Error ? error.message : "stop rejected";
-          return { ok: false, message: `Stop-loss rejected (${message}) — entry closed for safety`, fills: [], protection: { requested: true, confirmed: false, message }, position: await this.position(order.symbol).catch(() => null), account: await this.account().catch(() => undefined) };
+          return { ok: false, message: `Stop-loss rejected (${message}) — entry closed for safety`, fills: [], protection: { requested: true, confirmed: false, message, entryOrderId, stopOrderIds, takeProfitOrderIds, verification: "order_ids" }, position: await this.position(order.symbol).catch(() => null), account: await this.account().catch(() => undefined) };
         }
       }
       try {
@@ -219,17 +222,18 @@ export class BinanceAdapter implements ExchangeAdapter {
           const trg = tp.priceBasis === "price" ? tp.price : side === "BUY" ? price * (1 + tp.price / 100) : price * (1 - tp.price / 100);
           const tpQty = roundToStep(tp.qtyBasis === "abs" ? tp.qty : qty * (tp.qty / 100), filters?.stepSize);
           const placed = await this.signed("POST", "/fapi/v1/order", { symbol: order.symbol, side: closeSide, type: "TAKE_PROFIT_MARKET", stopPrice: fmtPrice(trg, filters), quantity: fmtQty(tpQty, filters), reduceOnly: "true" }) as { orderId?: string | number };
-          if (placed.orderId !== undefined) protectionOrderIds.push(String(placed.orderId));
+          if (placed.orderId === undefined) throw new Error("take-profit acknowledgement did not include an order ID");
+          takeProfitOrderIds.push(String(placed.orderId));
         }
       } catch (error) {
-        await Promise.allSettled(protectionOrderIds.map((orderId) =>
+        await Promise.allSettled([...stopOrderIds, ...takeProfitOrderIds].map((orderId) =>
           this.signed("DELETE", "/fapi/v1/order", { symbol: order.symbol, orderId })
         ));
         await this.placeMarket(order.symbol, closeSide, qty, true).catch(() => undefined);
         const message = error instanceof Error ? error.message : "take-profit rejected";
-        return { ok: false, message: `Take-profit rejected (${message}) — entry closed for safety`, fills: [], protection: { requested: true, confirmed: false, message }, position: await this.position(order.symbol).catch(() => null), account: await this.account().catch(() => undefined) };
+        return { ok: false, message: `Take-profit rejected (${message}) — entry closed for safety`, fills: [], protection: { requested: true, confirmed: false, message, entryOrderId, stopOrderIds, takeProfitOrderIds, verification: "order_ids" }, position: await this.position(order.symbol).catch(() => null), account: await this.account().catch(() => undefined) };
       }
-      return { ok: true, message: `Placed ${order.type} ${side} ${qty} ${order.symbol}`, fills: [], protection: { requested: true, confirmed: true }, position: await this.position(order.symbol), account: await this.account() };
+      return { ok: true, message: `Placed ${order.type} ${side} ${qty} ${order.symbol}`, fills: [], protection: { requested: true, confirmed: true, entryOrderId, stopOrderIds, takeProfitOrderIds, verification: "order_ids" }, position: await this.position(order.symbol), account: await this.account() };
     }
     return { ok: true, message: `Placed ${order.type} ${side} ${qty} ${order.symbol}`, fills: [], position: await this.position(order.symbol), account: await this.account() };
   }

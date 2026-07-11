@@ -1,5 +1,5 @@
 import { timeframeMs } from "../market/timeframes.js";
-import { listFills, setSetting } from "./store.js";
+import { listFills, setSetting, upsertPositionSnapshot, withStoreTransaction } from "./store.js";
 import type { BotStateSnapshot, RunningBot } from "./engineRuntime.js";
 
 export function realizedToday(botId: string, now = Date.now()): number {
@@ -58,10 +58,29 @@ export function persistRuntimeState(bot: RunningBot, now = Date.now()) {
     lastBarTime: bot.buffer.at(-1)?.time ?? 0,
     savedAt: now
   };
-  setSetting(`state:${bot.config.id}`, snapshot);
+  withStoreTransaction(() => {
+    setSetting(`state:${bot.config.id}`, snapshot);
+    upsertPositionSnapshot({
+      botId: bot.config.id,
+      symbol: bot.config.symbol,
+      market: bot.config.market,
+      status: bot.paused ? "requires_manual_action" : bot.managed ? "open" : "flat",
+      data: {
+        exchange: bot.config.exchange,
+        managed: bot.managed,
+        lastBarTime: snapshot.lastBarTime,
+        pauseReason: bot.pauseReason
+      },
+      updatedAt: now
+    });
+  });
 }
 
 export function pauseRunningBot(bot: RunningBot, reason: string) {
   bot.paused = true;
   bot.pauseReason = reason;
+}
+
+export function roundTradingValue(value: number): number {
+  return Math.round(value * 1e4) / 1e4;
 }

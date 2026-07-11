@@ -23,6 +23,16 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
   interaction helpers and a stable prop contract, reducing the coordinator below the module budget.
 - Reduced the trading engine facade below the module budget by extracting runtime state, adapter
   routing, portfolio aggregation and the private-stream/poll/reconciliation coordinator.
+- Added an enforced 600-line TypeScript architecture budget with narrow reviewed ceilings for four
+  cohesive pure-domain algorithm modules.
+- Completed the shared fixture baseline with a transport-neutral scripted fake exchange for
+  deterministic outcomes, account reads and private-stream disconnect/reconnect tests.
+- Added durable bot-attributed live-spot inventory with weighted average, per-asset fees,
+  deduplication and inventory-constrained close/restart behavior.
+- Added complete `MarketKey` envelopes for execution candles and protected-entry lifecycle evidence,
+  including Binance entry/SL/TP identities and typed Bybit position-level acknowledgement.
+- Upgraded trading persistence to schema v2 with durable position snapshots and logical strategy-run
+  records alongside orders, events and confirmed fills.
 
 ### Operations and recovery
 

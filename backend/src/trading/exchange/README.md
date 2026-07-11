@@ -21,7 +21,9 @@ This folder implements the `ExchangeAdapter` boundary for paper, Binance and Byb
 - Never blindly resubmit after a mutating network/5xx failure; return an ambiguous error so the journal becomes `unknown`.
 - Treat definitive HTTP/API rejection as `rejected`.
 - Require explicit exchange-side protection acknowledgement for protected live futures entries.
-- Keep live spot fail-closed by default while inventory accounting remains experimental.
+- Preserve Binance entry/SL/TP order IDs; preserve the Bybit entry ID and typed position-level
+  `trading-stop` acknowledgement because that endpoint exposes no individual SL/TP IDs.
+- Keep live spot fail-closed by default; when explicitly armed, engine closes use confirmed bot-attributed inventory rather than account-wide balances.
 - Poll non-terminal live orders in bounded rotating batches when a private stream is unavailable.
 - Prefer authenticated order/execution streams: Binance USDⓈ-M `ORDER_TRADE_UPDATE` with listenKey renewal, and Bybit v5 `order` + `execution` with HMAC auth and 20-second heartbeat.
 - Reconcile through signed REST immediately on every private-stream disconnect/reconnect boundary before trusting subsequent events.

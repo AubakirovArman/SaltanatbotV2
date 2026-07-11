@@ -12,6 +12,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - `enginePortfolio.ts`: cross-bot account aggregation without double counting.
 - `engineOrderCoordinator.ts`: private streams, polling fallback, idempotent execution ingestion and restart reconciliation.
 - `engineRisk.ts`: pure position-sizing and stop/target resolution.
+- `spotInventory.ts`: versioned bot-attributed live-spot inventory and close constraints.
 - `orderLifecycle.ts`: durable intent/result/fill transitions around exchange I/O.
 - `orderEventIngest.ts`: venue/client identity resolution and idempotent snapshot ingest shared by polling and private streams.
 - `startupOrderReconciliation.ts`: sequential signed-status proof for every crash-left in-flight journal row.
@@ -21,6 +22,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - `strategy/`: temporary backend copy of IR/evaluator/TA.
 - `store.ts`: SQLite persistence and encrypted settings.
 - `storeSchema.ts`: ordered forward-only SQLite migrations and supported schema version.
+- `storeLifecycle.ts`: database-independent position-snapshot and strategy-run transitions.
 
 ## Safety invariants
 
@@ -37,6 +39,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
   logged as explicit market-data gaps.
 - Resting paper orders retain venue/client identity so later tick fills advance the original journal row.
 - Live entry is not considered protected until exchange-side protection is confirmed.
+- Protected entries record their execution lifecycle and available entry/SL/TP exchange identities.
 - A rejected SL or TP triggers a best-effort emergency close and a failed execution result.
 - Network/5xx failures during mutating exchange calls are classified as ambiguous and journaled `unknown`; definitive 4xx/API rejects remain `rejected`.
 - Reconciliation completes before a resumed live bot can become running.
@@ -46,10 +49,11 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - Connected private streams suppress periodic polling; disconnect and reconnect edges trigger an immediate signed-REST gap reconciliation.
 - Replayed, duplicate, identity-conflicting and state-regressing exchange events never mutate a durable order.
 - Paper is the default; live requires explicit global and per-bot authorization.
-- Incomplete spot inventory behavior remains feature-gated.
+- Live spot remains explicitly feature-gated and uses confirmed bot-attributed inventory; account-wide balances never determine an automated bot close.
 - Risk guards use confirmed fills and positions where available.
 - Store startup migrates legacy schemas transactionally and refuses databases from a newer,
   unsupported application version.
+- Schema v2 durably records orders, events, fills, current positions and logical strategy runs.
 
 ## Testing
 

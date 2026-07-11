@@ -31,6 +31,9 @@ jobs:
       - name: Typecheck
         run: npm run check
 
+      - name: Source architecture budgets
+        run: npm run architecture:check
+
       - name: Lint (Biome)
         run: npm run lint
 

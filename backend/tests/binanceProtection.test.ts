@@ -15,7 +15,10 @@ describe("Binance futures protection", () => {
     const result = await executeProtectedEntry();
 
     expect(result.ok).toBe(true);
-    expect(result.protection).toEqual({ requested: true, confirmed: true });
+    expect(result.protection).toEqual({
+      requested: true, confirmed: true, entryOrderId: "1", stopOrderIds: ["2"],
+      takeProfitOrderIds: ["3"], verification: "order_ids",
+    });
     expect(orderTypes).toEqual(["MARKET", "STOP_MARKET", "TAKE_PROFIT_MARKET"]);
   });
 
@@ -31,6 +34,17 @@ describe("Binance futures protection", () => {
     expect(result.protection).toMatchObject({ requested: true, confirmed: false });
     expect(orderTypes).toEqual(["MARKET", "STOP_MARKET", "TAKE_PROFIT_MARKET", "MARKET"]);
     expect(cancelledOrderIds).toEqual(["2"]);
+  });
+
+  it("refuses to confirm protection when a stop acknowledgement omits its ID", async () => {
+    const orderTypes: string[] = [];
+    vi.stubGlobal("fetch", binanceFetch(orderTypes, { omitStopId: true }));
+
+    const result = await executeProtectedEntry();
+
+    expect(result).toMatchObject({ ok: false, protection: { requested: true, confirmed: false } });
+    expect(result.message).toMatch(/order ID.*entry closed/i);
+    expect(orderTypes).toEqual(["MARKET", "STOP_MARKET", "MARKET"]);
   });
 });
 
@@ -49,7 +63,7 @@ function executeProtectedEntry() {
   });
 }
 
-function binanceFetch(orderTypes: string[], options: { rejectTakeProfit?: boolean; cancelledOrderIds?: string[] } = {}) {
+function binanceFetch(orderTypes: string[], options: { rejectTakeProfit?: boolean; omitStopId?: boolean; cancelledOrderIds?: string[] } = {}) {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input));
     if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
@@ -78,6 +92,7 @@ function binanceFetch(orderTypes: string[], options: { rejectTakeProfit?: boolea
       const type = url.searchParams.get("type") ?? "";
       orderTypes.push(type);
       if (type === "TAKE_PROFIT_MARKET" && options.rejectTakeProfit) return error(400, "invalid take profit");
+      if (type === "STOP_MARKET" && options.omitStopId) return json({});
       return json({ orderId: orderTypes.length });
     }
     return json({});

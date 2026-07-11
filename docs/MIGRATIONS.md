@@ -8,6 +8,9 @@ migration.
 
 - Trading SQLite state is upgraded transactionally through ordered `schema_migrations`; a database
   declaring a newer unsupported version is rejected without mutation.
+- Trading schema v2 adds durable `positions` and `strategy_runs` to the existing `orders`,
+  `order_events` and `fills`. Bot status transitions maintain one active logical run, while runtime
+  persistence updates the latest position/manual-action snapshot.
 - Strategy/indicator artifacts stored in the browser migrate from implicit schema 1 to schema 2 by
   adding semantic version, bounded immutable history, parameters, dependencies and provenance.
 - Legacy `.strategy` envelope v1 can be imported through an explicit unverified migration path. New

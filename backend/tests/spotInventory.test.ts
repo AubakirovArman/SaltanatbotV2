@@ -51,6 +51,12 @@ describe("live spot inventory sizing", () => {
     expect(result.ok).toBe(true);
     const orderUrl = new URL(orderUrls[0]);
     expect(orderUrl.searchParams.get("quantity")).toBe("1");
+
+    await adapter.execute({
+      action: "neworder", market: "spot", symbol: "BTCUSDT", side: "sell", type: "market",
+      qty: 0.25, reduceOnly: true, reason: "bot-attributed close",
+    });
+    expect(new URL(orderUrls[1]).searchParams.get("quantity")).toBe("0.25");
   });
 
   it("sizes Bybit spot closePct from the base asset balance", async () => {
@@ -104,6 +110,12 @@ describe("live spot inventory sizing", () => {
 
     expect(result.ok).toBe(true);
     expect(orderBodies[0]).toMatchObject({ category: "spot", symbol: "BTCUSDT", side: "Sell", qty: "1" });
+
+    await adapter.execute({
+      action: "neworder", market: "spot", symbol: "BTCUSDT", side: "sell", type: "market",
+      qty: 0.25, reduceOnly: true, reason: "bot-attributed close",
+    });
+    expect(orderBodies[1]).toMatchObject({ category: "spot", symbol: "BTCUSDT", side: "Sell", qty: "0.25" });
   });
 });
 

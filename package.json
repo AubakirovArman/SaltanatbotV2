@@ -22,6 +22,7 @@
     "data:restore": "node scripts/runtime-data.mjs restore",
     "release:package": "node scripts/package-release.mjs",
     "perf:check": "node scripts/check-bundle-budgets.mjs",
+    "architecture:check": "node scripts/check-source-file-budgets.mjs",
     "docs:check": "node scripts/check-docs.mjs && node scripts/check-site.mjs && node scripts/check-pine-provenance.mjs && node scripts/generate-pine-compatibility.mjs --check && node scripts/generate-reference-docs.mjs --check",
     "docs:generate": "node scripts/generate-pine-compatibility.mjs && node scripts/generate-reference-docs.mjs",
     "docs:generate:check": "node scripts/generate-pine-compatibility.mjs --check && node scripts/generate-reference-docs.mjs --check",

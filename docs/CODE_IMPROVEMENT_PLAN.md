@@ -1,301 +1,166 @@
-# Code Improvement Plan
+# План улучшения кода: фактическое закрытие P0–P2
 
-Дата: 2026-07-10
+Дата первоначального аудита: 2026-07-10
+Последняя проверка: 2026-07-11
+Статус: P0, P1 и P2 реализованы и проверяются обязательными gates.
 
-Основание: внешний аудит из беседы "Обзор и улучшение кода" и точечная проверка текущего дерева проекта.
+Единственное исключение — **Mainnet readiness и непрерывный 7–14-дневный funded soak Binance/Bybit**.
+Владелец проекта явно отложил этот внешний прогон. Live trading остаётся Experimental, и документы
+или интерфейс не должны утверждать, что mainnet-готовность доказана.
 
-## Выполнено 2026-07-10
+## Итог
 
-- Trading engine теперь передает в market-data layer явные route options: `exchange`, `marketType`, `priceType`, `strict`.
-- Binance/Bybit public providers различают spot и futures/linear candles; Bybit futures больше не получает spot feed по умолчанию.
-- Market events каждого бота обрабатываются последовательно через per-bot queue; дублирующий websocket update одного закрытого бара не запускает повторную оценку стратегии.
-- Live spot стартует fail-closed без `ENABLE_LIVE_SPOT` / `liveSpotEnabled`, пока не реализован полноценный inventory model.
-- Bybit futures entry с `stop` / `takeProfits` вызывает `/v5/position/trading-stop`; если защита отклонена, entry закрывается и возвращается ошибка.
-- Paper slippage исправлен: buy всегда исполняется хуже вверх, sell всегда хуже вниз, включая exits.
-- Backtest проверяет stop/target уже на свече входа при `next_open`.
-- REST providers помечают текущую формирующуюся свечу как `final:false`, чтобы candle store не сохранял её как закрытую историю.
-- Frontend history loading получил `AbortController` и generation guard, чтобы старые запросы после смены symbol/timeframe/exchange не загрязняли новый chart state.
-- Trade WebSocket больше не отправляет новый token в URL query; frontend передает его через websocket subprotocol. Trading token мигрирован из persistent `localStorage` в tab-scoped `sessionStorage`.
-- Chart engine кэширует расчеты индикаторов на один и тот же массив candles, поэтому crosshair/drawing redraw не пересчитывает SMA/EMA/RSI/MACD без новых свечей.
-- Strategy/Indicator Studio получил artifact `version`/`hash`; сохранение связанного индикатора переносит `logicVersion`/`logicHash` обратно в chart indicator.
-- Добавлен durable order journal: таблицы `orders` / `order_events`, REST endpoints и UI-блок в торговой панели бота.
-- Live/manual execution теперь пишет intent/result/fill events в журнал ордеров через `clientOrderId`.
-- Добавлен базовый startup reconciliation для live-ботов: при resume сверяются exchange position/open orders и локальный managed state; при расхождении бот уходит в paused/fail-safe режим.
-- Binance/Bybit spot `closePct` больше не превращается в `1 / price`: adapter запрашивает base balance и закрывает процент от фактического доступного base asset.
-- Browser auth переведен на HttpOnly `sbv2_session` cookie + CSRF для mutating trade endpoints; admin token больше не сохраняется в web storage.
-- `/trade-stream` перешел на короткоживущий одноразовый WS ticket; token-in-query больше не принимается.
-- Добавлены CSP / browser hardening headers для bundled SPA.
-- Добавлены роли `read-only`, `paper-trade`, `live-trade`, `admin` с отдельными env-токенами и permission gates на trade endpoints.
-- Добавлен `audit_log` для mutating trade API calls; секретные поля в body редактируются перед сохранением.
-- Runtime paused/requires-action состояние теперь сохраняется в `state:<botId>` и возвращается через `liveState` как `runtimeStatus` / `pauseReason`.
-- ProviderRouter теперь делает fan-out live subscriptions: один upstream stream на `(exchange, marketType, priceType, symbol, timeframe)` обслуживает несколько UI/бот subscribers.
+Проект имеет проверяемую alpha-базу: один и тот же Strategy IR используется в preview, backtest,
+paper и live evaluator; торговые намерения и результаты журналируются; неоднозначные исходы fail
+closed; состояние восстанавливается после перезапуска; крупные фасады разделены на модули; P2
+пользовательские сценарии, доступность, документация и open-source release pipeline реализованы.
 
-## Короткий вывод
+## P0.1 — полный MarketKey во всех trading data flows
 
-Проект уже выглядит как сильная alpha-версия: есть собственный canvas-график, Blockly/IR, backtest, paper/live режимы, базовая авторизация, Docker, CI, сохранение стратегий и рабочий UX вокруг графика. Но live trading нельзя позиционировать как production-ready, пока не доказаны инварианты исполнения ордеров, защиты позиции и восстановления после сбоя.
+Статус: **выполнено**.
 
-Главная цель ближайших этапов:
+- Канонический `MarketKey` содержит venue, market type, symbol, timeframe и price type.
+- `TradingEngine` строит route из конфигурации бота и не использует неявный Binance/spot default.
+- Строгий `subscribeMarket()` выдаёт каждую execution-свечу в envelope с полным `MarketKey`.
+- Bybit futures направляется в Bybit linear feed; live запрещает synthetic fallback.
+- Неполный execution route отклоняется до подписки.
 
-> Сделать платформу не просто аналогом TradingView, а воспроизводимой open-source лабораторией, где один и тот же сигнал одинаково объясняется в chart preview, backtest, replay, paper и live.
+Доказательства: `marketProviders.test.ts`, `engineLifecycle.e2e.test.ts`, runtime contract tests.
 
-## Что уже частично закрыто
+## P0.2 — подтверждённая exchange-side защита
 
-- Появилась строгая схема IR в `backend/src/trading/strategy/irSchema.ts`: неизвестные node-типы отклоняются, есть лимиты на глубину, размер и массивы. Это закрывает часть риска "произвольный JSON вместо IR", но нужно проверить, что все API-входы реально идут через `parseStrategyIR`.
-- Есть `strict` режим для live data, который запрещает synthetic fallback для живых ботов.
-- Есть сохранение части runtime-состояния бота: `vars`, `managed`, `lastBarTime`.
-- Есть exchange-side protection для Bybit futures через `trading-stop`; следующий шаг - private/order-stream подтверждения, lifecycle статусы и reconciliation по реальным order IDs.
-- Есть roadmap и тестовая база, но формулировку "safety-critical layers are done" нужно считать слишком сильной до закрытия release gates ниже.
+Статус: **выполнено в доступном offline/test-fixture scope**.
 
-## Release Blockers
+- Журнал моделирует `entry_submitted`, `entry_confirmed`, `protection_submitted`,
+  `protection_confirmed`, `open_protected`, `open_unprotected`, `exiting`, `error`.
+- Binance возвращает ID entry, SL и TP; цепочка сохраняется в lifecycle result event.
+- Bybit сохраняет ID entry и подтверждение position-level `trading-stop`; endpoint Bybit не возвращает
+  отдельные SL/TP IDs, поэтому используется явный тип доказательства `exchange_ack`.
+- Отклонение SL/TP приводит к best-effort emergency close и ошибке; automation не получает
+  `open_protected`.
+- После рестарта открытая futures-позиция без видимой защиты требует ручного действия.
 
-### P0.1. Явный MarketKey во всех data и execution потоках
+Доказательства: `binanceProtection.test.ts`, `bybitProtection.test.ts`, `orderLifecycle.test.ts`,
+`reconciliation.test.ts`.
 
-Текущая проверка:
+## P0.3 — per-bot actor и idempotency
 
-- `ProviderRouter` умеет принимать `{ exchange }`.
-- `TradingEngine.start()` передает только `{ strict }` в `getCandles()` и `subscribe()`.
-- Если `exchange` не передан, роутер выбирает Binance по умолчанию.
+Статус: **выполнено**.
 
-Риск: Bybit-бот может принимать свечи Binance, а исполнять ордера через Bybit.
+- Все market/order события одного бота проходят через последовательную очередь.
+- `lastEvaluatedBarTime` устраняет повторную оценку закрытого бара.
+- `orderInFlight` не допускает параллельные entry/exit.
+- `clientOrderId` записывается до exchange I/O; timeout становится `unknown`, а не повторной отправкой.
+- Startup reconciliation сначала ищет результат по exchange/client identity; недоказанный исход
+  переводит runtime в `requires_manual_action`.
+
+Доказательства: `engineLifecycle.e2e.test.ts`, `orderLifecycle.test.ts`,
+`startupOrderReconciliation.test.ts`, failure-injection tests.
 
-Что делаем:
+## P0.4 — bot-attributed spot inventory
 
-- Ввести единый `MarketKey`:
+Статус: **выполнено**.
 
-```ts
-interface MarketKey {
-  venue: "binance" | "bybit";
-  marketType: "spot" | "linear" | "inverse";
-  symbol: string;
-  timeframe: Timeframe;
-  priceType: "last" | "mark" | "index";
-}
-```
+- Подтверждённые fills формируют durable quantity, weighted average, fees по asset и remaining qty.
+- Повторный execution ID не меняет inventory второй раз.
+- Engine и manual bot-close заменяют `closePct` на attributed quantity.
+- Отсутствие inventory отклоняет close и ставит automation на паузу вместо продажи account balance.
+- После restart inventory восстанавливается, но требуется ручная сверка биржевого баланса.
+- Live spot требует явного feature flag и встроенную версию inventory model 1.
 
-- Передавать `exchange: config.exchange` и `marketType: config.market` во все market-data запросы.
-- Убрать дефолт "если не указано, то Binance" из trading-контекста.
-- Добавить тест: Bybit live/paper-like bot не получает Binance provider events.
+Доказательства: `spotInventoryModel.test.ts`, `spotInventory.test.ts`, lifecycle/reconnect tests. Сценарий
+«бот купил 0.25 BTC при account balance 2 BTC» отправляет только 0.25 BTC до exchange rounding.
 
-Acceptance:
+Низкоуровневый adapter `closePct` сохранён только для совместимости raw manual API; engine bot-close
+не использует account-wide ветку.
 
-- В логах и тестах каждый `MarketEvent` содержит `MarketKey`.
-- Бот не стартует, если `MarketKey` неполный.
-- Для futures используется futures/linear feed, а не spot REST/WS.
+## P0.5 — durable journal и реальный PnL
 
-### P0.2. Exchange-side stop/take-profit должны быть подтверждены
+Статус: **выполнено**.
 
-Текущая проверка:
+- Transactional schema v2 содержит `orders`, `order_events`, `fills`, `positions`, `strategy_runs`.
+- Bot status transitions создают и закрывают ровно один активный strategy run.
+- Runtime persistence обновляет durable position snapshot, включая manual-action state.
+- Private Binance/Bybit streams и REST polling сохраняют partial fills, execution ID, fee amount,
+  fee asset и venue realized PnL.
+- Повторные executions дедуплицируются до accounting write.
+- Daily-loss guard считает только durable confirmed fills.
+- Backup/restore проверяет SQLite, SHA-256 manifest и rollback-safe atomic swap; forward migrations
+  транзакционны и не удаляют legacy rows.
 
-- Engine проставляет `order.stop` и `order.takeProfits` для live futures.
-- `BybitAdapter.createOrder()` после entry вызывает `/v5/position/trading-stop`.
-- Если protection rejected, adapter пытается закрыть entry и возвращает ошибку.
-- Полной state machine с private order/fill stream и проверкой exchange-side protection по order IDs еще нет.
+Доказательства: `storeSchema.test.ts`, `storeLifecycle.test.ts`, `privateOrderStreams.test.ts`,
+`executionAccounting.test.ts`, `orderEventIngest.test.ts`, `runtimeDataBackup.test.ts`.
 
-Риск: позиция может быть открыта без защитного стопа, хотя engine думает, что защита есть.
+## P0.6 — startup reconciliation
 
-Что делаем:
+Статус: **выполнено**.
 
-- Ввести order lifecycle:
-
-```text
-ENTRY_SUBMITTED
-ENTRY_CONFIRMED
-PROTECTION_SUBMITTED
-PROTECTION_CONFIRMED
-OPEN_PROTECTED
-OPEN_UNPROTECTED
-EXITING
-ERROR
-```
-
-- Bybit/Binance adapters должны возвращать ID entry, SL, TP orders.
-- `OPEN_PROTECTED` разрешен только после проверки активных exchange orders.
-- Если protection не создана, позиция закрывается или бот уходит в fail-safe state.
-
-Acceptance:
-
-- Тест с fake exchange: entry accepted, stop rejected -> bot не считает позицию защищенной.
-- Live/testnet dry run показывает созданные SL/TP order IDs.
-
-### P0.3. Per-bot serial queue и idempotency
-
-Текущая проверка:
-
-- `onCandle()` запускает `void this.onClosedBar(...).finally(...)`.
-- Пока async-обработка бара идет, следующий update той же свечи может снова увидеть старый `last`.
-- `onTick()` тоже запускается async и может повторно закрывать позицию до завершения первого close.
-
-Риск: один закрытый бар или серия тиков могут создать повторный entry/exit intent.
-
-Что делаем:
-
-- Каждый бот получает single-thread actor queue.
-- Хранить `lastEvaluatedBarTime`, `orderInFlight`, `lastIntentId`, `lastClientOrderId`.
-- Все market events проходят через очередь, а не через параллельные `void` calls.
-- На timeout сначала искать order по `clientOrderId`, а не отправлять второй order.
-
-Acceptance:
-
-- Тест "duplicate closed candle" создает максимум один intent.
-- Тест "close in flight + повторный tick" создает максимум один close.
-- Повторный запуск после timeout не открывает дублирующую позицию.
-
-### P0.4. Spot inventory model
-
-Текущая проверка:
-
-- `closePosition()` для spot создает `neworder` с `closePct: 100`.
-- Binance/Bybit adapters теперь запрашивают base balance и превращают `closePct` в процент от доступного base asset.
-- `position()` для spot все еще не восстанавливает bot-attributed lots, avg price и комиссии.
-
-Риск: `close 100%` закрывает неправильный объем.
-
-Что делаем:
-
-- До готового inventory model выключить live spot отдельным feature flag.
-- Для spot хранить bot-attributed lots: base quantity, avg price, fees, remaining qty.
-- При закрытии запрашивать balances и фильтры symbol metadata.
-- Округлять по lot size и сверять остаток после fill.
-
-Acceptance:
-
-- Тест: bot купил 0.25 BTC, close 100% продает 0.25 BTC с учетом step size.
-- Нельзя включить live spot без `ENABLE_LIVE_SPOT=true` и подтвержденного inventory model.
-
-### P0.5. Durable order/fill journal и real PnL
-
-Текущая проверка:
-
-- Добавлены таблицы `orders` / `order_events` и API/UI для durable order journal.
-- Live adapters часто возвращают `fills: []`.
-- Daily-loss guard считает локальные fills, но не подтвержденные private exchange fills.
-
-Риск: лимит дневного убытка не знает реального PnL, комиссий и partial fills.
-
-Что делаем:
-
-- Таблицы: `orders`, `order_events`, `fills`, `positions`, `strategy_runs`.
-- Сохранять `clientOrderId`, `exchangeOrderId`, status transitions, partial fills, fee asset, realized PnL.
-- Добавить private user-data stream или polling fallback.
-- Daily-loss guard считает только подтвержденные real fills.
-
-Acceptance:
-
-- Тест partial fill обновляет qty, avg price и realized PnL.
-- Тест daily loss использует реальные fill events, а не локальное предположение.
-
-### P0.6. Startup reconciliation
-
-Текущая проверка:
-
-- Состояние `vars` и `managed` восстанавливается.
-- Добавлена базовая сверка с exchange position и open orders при resume live-бота.
-- Еще нет полной сверки recent fills, order lifecycle фаз и ручного `REQUIRES_MANUAL_ACTION` статуса перед `running`.
-
-Риск: после рестарта бот может не совпадать с биржей и открыть/закрыть не то.
-
-Что делаем:
-
-- Перед запуском live bot вводим фазу `SYNCING`.
-- Сверяем persisted state, exchange position, open orders, recent fills.
-- При расхождении переводим в `REQUIRES_MANUAL_ACTION`.
-
-Acceptance:
-
-- Restart во время `ENTERING`, `OPEN_UNPROTECTED`, `EXITING` восстанавливает корректный state.
-- Бот не получает `running`, пока reconciliation не завершен.
-
-## High Priority Improvements
-
-### Backtest, paper и preview parity
-
-- Исправить paper slippage, чтобы exit тоже ухудшал цену.
-- Проверять stop/target на свече входа при `next_open`.
-- Исправить preview, если он показывает сигналы из `if` без проверки условия.
-- Вынести общий evaluator/fill model в shared packages.
-
-Acceptance: один event trace дает одинаковый результат в preview explanation, backtest и paper simulation.
-
-### Market data correctness
-
-- Не сохранять незакрытую REST-свечу как финальную.
-- Для candle store хранить `knownRemoteStart`, `fullyBackfilledUntil`, `lastVerifiedAt`.
-- Выбрать один snapshot path: REST snapshot + WS updates или WS snapshot + updates.
-- Добавить `AbortController` / generation ID для `loadOlder()` после смены symbol.
-- Уже сделано: один upstream WS на `(exchange, marketType, priceType, symbol, timeframe)` с fan-out на UI и ботов.
-
-### Chart performance
-
-- Разделить renderer на слои: grid, candles, indicators, drawings, crosshair.
-- Crosshair не должен пересчитывать индикаторы.
-- Indicator cache должен обновляться инкрементально.
-- Тяжелые TA-расчеты вынести в Web Worker.
-- Watchlist перевести на quote stream и виртуализацию.
-
-### Security для публичного доступа
-
-- Уже сделано: trading token не хранится в `localStorage` / `sessionStorage`, browser-flow использует HttpOnly session cookie, CSRF и одноразовый WS ticket.
-- Уже сделано: CSP headers для bundled SPA, audit log для state-changing endpoints, roles/permissions: read-only, paper-trade, live-trade, admin.
-- В production docs явно требовать TLS reverse proxy, `COOKIE_SECURE=1`, firewall и секретный `AUTH_TOKEN`.
-
-### Strategy and Indicator Studio
-
-- Страница "Стратегии" должна быть не только бот-конструктором, а студией стратегий и индикаторов.
-- Индикатор, добавленный на график, должен открываться в редакторе с загруженной логикой.
-- Сохранение должно создавать версию: `indicatorId`, `version`, `inputs`, `style`, `irHash`.
-- Для каждого встроенного индикатора нужен открываемый blueprint: SMA, EMA, Bollinger, RSI, MACD.
-- Пользовательские индикаторы должны компилироваться в тот же IR и проходить те же лимиты, что стратегии.
-
-Acceptance: пользователь открывает Bollinger с графика, меняет period/color/logic, сохраняет версию и видит обновление на графике без перезагрузки.
-
-## Первые 12 PR
-
-| PR | Тема | Готово, когда |
-| --- | --- | --- |
-| 1 | `MarketKey` в provider/router/engine/API | Bybit bot не может получить Binance candles |
-| 2 | Per-bot actor queue | Один бар создает максимум один order intent |
-| 3 | Exchange-side protection confirmation | `OPEN_PROTECTED` только после подтвержденных SL/TP |
-| 4 | Live spot feature flag | Неполный spot execution нельзя включить случайно |
-| 5 | Spot inventory accounting | `close 100%` закрывает реальный base qty |
-| 6 | Durable order/fill journal | Partial fills, fees и PnL сохраняются |
-| 7 | Startup reconciliation | Live bot стартует только после сверки с биржей |
-| 8 | Shared `strategy-core` | Frontend/backend используют один IR/evaluator |
-| 9 | Shared `execution-core` | Backtest/paper используют одну fill/slippage модель |
-| 10 | MarketHub fan-out | Один upstream feed обслуживает график и ботов |
-| 11 | Chart incremental indicators | Redraw не пересчитывает все индикаторы |
-| 12 | Public security hardening | Session cookie, WS ticket, CSP, audit log |
-
-## Product Positioning
-
-Не стоит обещать "мы сразу лучше TradingView во всем". Сильное позиционирование:
-
-> Open-source, local-first trading workstation для исследования, визуального конструирования, backtest, replay, paper/live исполнения и объяснимого аудита каждого сигнала.
-
-Что берем как ориентир:
-
-- У TradingView берем скорость графика, привычные drawing tools, multi-pane UX, alerts, replay.
-- У Deriv Bot Builder берем понятную пошаговую структуру: market setup, conditions, purchase/entry, risk, restart/exit, analysis.
-- У Blockly берем визуальное программирование, но скрываем сырой `if/else` там, где трейдеру понятнее доменные блоки: "когда RSI ниже 30", "цена пересекла SMA", "после 3 убыточных сделок остановить".
-
-Что делаем своим преимуществом:
-
-- Версионированный IR.
-- Воспроизводимый run manifest.
-- Одинаковая логика для indicator, strategy, backtest, paper и live.
-- Локальное владение данными.
-- Полный order/fill audit trail.
-
-## Release Invariants
-
-Перед публичным live-релизом тесты должны доказывать:
-
-1. Один бар не создает два одинаковых ордера.
-2. Bybit-бот не принимает Binance data events.
-3. Позиция не считается защищенной без подтвержденного exchange stop.
-4. После рестарта local state совпадает с биржей.
-5. Daily-loss limit считается по реальным fills.
-6. Timeout order submission не открывает повторную позицию.
-7. Partial fill корректно меняет qty и PnL.
-8. `close 100%` закрывает реальный объем.
-9. Backtest и paper совпадают на одном trace.
-10. Каждый run воспроизводится по сохраненному manifest.
+- Resume выполняет reconciliation до подписки и до перехода к разрешённой автоматической торговле.
+- Последовательно проверяются `intent`, `unknown`, `accepted`, `partially_filled`, exchange position,
+  open orders, durable fills и managed state.
+- Terminal status восстанавливается по signed order-status; open-order fallback используется только
+  когда действительно доказывает исход команды.
+- `ENTERING`, partial, interrupted cancel/replace, unprotected position и `EXITING` не продолжаются
+  вслепую: неоднозначность сохраняется и требует оператора.
+- Spot inventory после restart также всегда проходит ручную balance verification.
+
+Доказательства: `startupOrderReconciliation.test.ts`, `reconciliation.test.ts`,
+`engineLifecycle.e2e.test.ts`, private-stream reconnect tests.
+
+## P1 — архитектура и техническая достоверность
+
+Статус: **выполнено**.
+
+- Созданы независимые packages: contracts, strategy-core, execution-core, backtest-core,
+  pine-compiler и test-fixtures.
+- Pine — version-aware compiler pipeline с budgets, spans, typed diagnostics, compatibility registry,
+  golden corpus, fuzz/property tests и честными fidelity категориями.
+- Strategy/backtest используют общий evaluator, immutable provenance, gap/fallback detection,
+  reference benchmarks, historical order simulator, walk-forward, stability и replay trace.
+- Большие Strategy Lab, TradingView, App, ChartCanvas, Blockly blocks/compiler и TradingEngine
+  разделены на feature/domain modules с совместимыми фасадами.
+- CI запрещает source-файлы больше 600 строк без конкретного reviewed exception. Четыре цельных
+  pure-domain алгоритма имеют узкие лимиты в `config/source-file-budgets.json`; любое увеличение
+  требует явного архитектурного изменения.
+
+## P2 — пользовательский продукт и open source
+
+Статус: **выполнено**.
+
+- Профессиональные 1/2/4-chart workspaces, связанные symbol/timeframe/crosshair, panes/scales,
+  drawing tree/templates/undo, replay, data status, virtual watchlist и custom shortcuts.
+- Strategy Studio разделяет Build/Validate/Preview/Backtest/Optimize/Run/Learn; имеет inspector,
+  wizard, linked diagnostics, bounded functions, version history, dependency graph, diff/rollback и
+  checksum-verified share files.
+- Keyboard-only flow, modal focus, reduced motion, 200% text, semantic chart tables и automated axe
+  WCAG A/AA входят в browser gate.
+- UI полностью локализован на EN/RU; пользовательская документация синхронизирована на EN/RU/KK.
+  Дополнительные UI locales, включая KK, относятся к P3, а не к незакрытому P2 minimum.
+- Security policy, Code of Conduct, issue/PR templates, threat model, contributor map, asset policy,
+  demo-mode, changelog, Pages site, release notes, SBOM, checksums и attestations опубликованы.
+
+## Обязательные release invariants
+
+Локальные и CI-тесты доказывают:
+
+1. Один бар не создаёт два одинаковых order intent.
+2. Bybit-бот не принимает Binance market route.
+3. Позиция не считается защищённой без подтверждения exchange stop.
+4. После restart неоднозначное local/exchange состояние не получает право торговать.
+5. Daily-loss limit считается по подтверждённым fills.
+6. Timeout submission не вызывает слепой повторный order.
+7. Partial fill корректно меняет qty, fee и PnL.
+8. Spot close 100% ограничен bot-attributed объёмом.
+9. Preview/backtest/paper/live evaluator trace имеет единые семантики.
+10. Research run воспроизводится по versioned manifest и fingerprints.
+
+## Что не считается выполненным
+
+- 7–14-дневный непрерывный Binance/Bybit testnet soak;
+- mainnet readiness и production-ready live claim;
+- ручная проверка реальными деньгами.
+
+Эти пункты требуют внешних средств и отдельно отложены владельцем. Они не блокируют закрытие
+репозиторных P0/P1/P2 работ, но блокируют снятие Experimental label с live trading.
+
+Дальнейшие продуктовые возможности находятся в [ROADMAP.md](./ROADMAP.md).

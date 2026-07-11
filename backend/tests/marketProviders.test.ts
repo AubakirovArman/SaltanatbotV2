@@ -171,6 +171,29 @@ describe("ProviderRouter stream fan-out", () => {
     subB.close();
     expect(closeCount).toBe(1);
   });
+
+  it("envelopes every execution candle with a complete immutable market key", async () => {
+    let push: ((value: unknown) => void) | undefined;
+    const fake = {
+      async getCandles() { return []; },
+      async subscribe(_instrument: unknown, _timeframe: unknown, onCandle: (value: unknown) => void) {
+        push = onCandle;
+        return { close() {} };
+      }
+    };
+    const router = new ProviderRouter() as unknown as { binance: typeof fake; subscribeMarket: ProviderRouter["subscribeMarket"] };
+    router.binance = fake;
+    const seen: unknown[] = [];
+    await router.subscribeMarket(instrument, "1m", (event) => seen.push(event), undefined, {
+      exchange: "binance", marketType: "linear", priceType: "mark", strict: true,
+    });
+    push?.({ time: 1, close: 100 });
+
+    expect(seen).toEqual([{
+      marketKey: { venue: "binance", marketType: "linear", symbol: "BTCUSDT", timeframe: "1m", priceType: "mark" },
+      candle: { time: 1, close: 100 },
+    }]);
+  });
 });
 
 function json(payload: unknown): Response {

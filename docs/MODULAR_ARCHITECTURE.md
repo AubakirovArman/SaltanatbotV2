@@ -51,6 +51,10 @@ Budgets are review signals, not automatic design laws:
 - each module exposes a deliberate public API through `index.ts`;
 - tests live beside a module or in a mirrored test directory, but use one convention per package.
 
+`npm run architecture:check` enforces the 600-line ceiling across application/package TypeScript.
+The four cohesive pure-domain algorithm exceptions and their non-expandable ceilings are reviewed in
+`config/source-file-budgets.json`; an undocumented, stale or enlarged exception fails CI.
+
 ## Pine compiler decomposition
 
 Compiler package: `packages/pine-compiler`.

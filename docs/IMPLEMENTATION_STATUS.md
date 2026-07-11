@@ -10,6 +10,21 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### P0/P1/P2 closure and architecture enforcement — 2026-07-11
+
+- [x] Require complete `MarketKey` envelopes for trading candle events and prove Bybit/linear routing.
+- [x] Persist protected-entry lifecycle stages and Binance entry/SL/TP identities; fail closed on rejected protection.
+- [x] Persist bot-attributed spot inventory and constrain closes independently of account-wide holdings.
+- [x] Migrate the trading store to schema v2 with orders, events, fills, positions and strategy runs.
+- [x] Reconcile every non-terminal order state before resumed automation can trade; ambiguous outcomes require operator action.
+- [x] Enforce a repository-wide 600-line source budget with four reviewed pure-domain exceptions.
+- [x] Complete deterministic scripted-exchange fixtures for failures, private-stream disconnect/reconnect and state recovery.
+
+Verification:
+
+- Complete TypeScript, Biome, documentation, architecture, Vitest, production build, bundle-budget and 21-scenario Playwright gates pass.
+- The funded 7–14-day Binance/Bybit soak and mainnet-readiness claim remain explicitly excluded.
+
 ### Accessibility and open-source release baseline — 2026-07-11
 
 - [x] Enforce initial focus, Tab containment, Escape and focus restoration across core modal dialogs.
@@ -58,7 +73,7 @@ Verification:
 Verification:
 
 - Workspace/checksum, virtual-list, data-quality, shortcut, drawing-template, pane-render and resize tests pass.
-- Production build and the 18-scenario Playwright suite pass (the funded exchange soak remains excluded).
+- Production build and the 21-scenario Playwright suite pass (the funded exchange soak remains excluded).
 
 ### Runtime backup and recovery — 2026-07-11
 
@@ -106,6 +121,7 @@ Verification:
 - [x] Provide validated candle-series builders with timing, spread, volume and provenance controls.
 - [x] Provide real Fetch API JSON/text responses and fail-closed scripted routing.
 - [x] Migrate cross-runtime parity and exchange failure-injection tests to the shared fixtures.
+- [x] Add a transport-neutral structural fake exchange with fail-closed submission queues, mutable account/position/order reads and private-stream recovery controls.
 - [x] Type-check the package independently and cover validation/unexpected-network behavior.
 
 ### Canonical execution core — 2026-07-11
@@ -327,7 +343,7 @@ Verification:
 
 ### Critical browser E2E expansion
 
-Current: 18 scenarios implemented; the original critical-flow checklist is complete.
+Current: 21 scenarios implemented; the critical-flow and accessibility checklists are complete.
 
 - [x] Terminal/chart smoke.
 - [x] Keyboard command palette and symbol switch.
@@ -347,7 +363,7 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 - [x] Keyboard/focus behavior for modal dialogs and menus.
 - [x] Responsive monitoring smoke test.
 
-## Remaining architecture work
+## Completed architecture program
 
 ### Pine compiler
 
@@ -493,6 +509,9 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Add a keyboard-operable panel with native tables for focused and recent OHLC, signals and executed trades.
   - [x] Bound each history view to 20 newest rows and preserve total signal/trade counts.
   - [x] Cover table semantics, empty data and keyboard opening in component and browser tests.
+- [x] Enforce a 600-line application/package source ceiling in push, PR and release CI.
+  - [x] Give four cohesive pure-domain algorithm modules narrow reviewed ceilings and concrete reasons.
+  - [x] Fail undocumented, enlarged or stale exceptions.
 
 ### Trading engine hardening
 
@@ -533,6 +552,9 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Require terminal evidence for interrupted cancel commands and manual review for ambiguous replace commands.
   - [x] Mark crash-left intent `unknown` and pause the bot whenever an outcome remains unproven.
 - [x] Keep live spot fail-closed by default behind an explicit experimental inventory override.
+  - [x] Persist deduplicated bot-attributed quantity, weighted average, per-asset fees and remaining quantity from confirmed fills.
+  - [x] Constrain automated/manual bot closes to attributed inventory and pause instead of using account-wide balance when attribution is missing.
+  - [x] Restore attributed inventory on restart and require operator balance verification before resume.
 - [x] Add fake-exchange transport, protection, status-polling and failure-injection suites.
 - [x] Add opt-in Binance/Bybit testnet release checks.
   - [x] Refuse network access without an explicit runtime arm flag and reject every production/non-HTTPS base URL.

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const TRADING_SCHEMA_VERSION = 1;
+export const TRADING_SCHEMA_VERSION = 2;
 
 interface Migration {
   version: number;
@@ -68,6 +68,34 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_order_events_order ON order_events(orderId, ts);
       CREATE INDEX IF NOT EXISTS idx_logs_bot ON logs(botId, ts);
       CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts);
+    `,
+  },
+  {
+    version: 2,
+    name: "durable_positions_and_strategy_runs",
+    sql: `
+      CREATE TABLE IF NOT EXISTS positions (
+        botId TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        market TEXT NOT NULL,
+        status TEXT NOT NULL,
+        data TEXT NOT NULL,
+        updatedAt INTEGER NOT NULL,
+        PRIMARY KEY (botId, symbol)
+      );
+      CREATE TABLE IF NOT EXISTS strategy_runs (
+        id TEXT PRIMARY KEY,
+        botId TEXT NOT NULL,
+        strategyName TEXT NOT NULL,
+        status TEXT NOT NULL,
+        startedAt INTEGER NOT NULL,
+        endedAt INTEGER,
+        data TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_positions_bot ON positions(botId, updatedAt);
+      CREATE INDEX IF NOT EXISTS idx_strategy_runs_bot ON strategy_runs(botId, startedAt);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_strategy_runs_active
+        ON strategy_runs(botId) WHERE endedAt IS NULL;
     `,
   },
 ];
