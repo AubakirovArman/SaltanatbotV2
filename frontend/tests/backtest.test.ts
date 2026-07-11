@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type BacktestConfig, DEFAULT_CONFIG, previewStrategy, runBacktest } from "../src/strategy/backtest";
+import { previewStrategy as previewStrategyModule } from "../src/strategy/backtest/preview";
 import type { StrategyIR } from "../src/strategy/ir";
 import { securitySeriesKey } from "../src/strategy/securityData";
 import type { Candle } from "../src/types";
@@ -132,6 +133,10 @@ describe("known crossover produces the expected trade", () => {
 });
 
 describe("previewStrategy runs bar-major (setvar state accumulates)", () => {
+  it("keeps the stable backtest facade wired to the preview module", () => {
+    expect(previewStrategy).toBe(previewStrategyModule);
+  });
+
   it("plots a per-bar counter that increments across bars", () => {
     // Each bar: count = count + 1; then plot count. State must carry across bars,
     // which the old statement-major preview (that never ran setvar) could not do.
@@ -191,6 +196,27 @@ describe("previewStrategy runs bar-major (setvar state accumulates)", () => {
       columns: ["Value"],
       rows: [{ label: "Latest close", values: [101.5] }]
     }]);
+  });
+
+  it("pre-registers plots nested in bounded for loops", () => {
+    const ir: StrategyIR = {
+      name: "loop-plot",
+      inputs: [],
+      body: [
+        {
+          k: "for",
+          var: "index",
+          from: { k: "num", v: 0 },
+          to: { k: "num", v: 0 },
+          step: { k: "num", v: 1 },
+          cap: 1,
+          body: [{ k: "plot", value: { k: "price", field: "close" }, label: "Close", color: "#fff" }]
+        }
+      ]
+    };
+    const candles = [candle(0, 10, 11, 9, 10), candle(MIN, 12, 13, 11, 12)];
+
+    expect(previewStrategy(ir, candles).plots[0].points.map((point) => point.value)).toEqual([10, 12]);
   });
 });
 

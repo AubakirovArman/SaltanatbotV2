@@ -1,12 +1,8 @@
 import type { Candle } from "../types";
 import {
-  beginStrategyBar,
   createStrategyRuntime,
-  evaluateCondition as evaluateCoreCondition,
-  evaluateNumber as evaluateCoreNumber,
   evaluateStrategyBar,
   MAX_OPS_PER_BAR,
-  MAX_REPEAT,
   runStrategyInit,
   type BarIntents,
   type SecurityDataContext,
@@ -15,7 +11,6 @@ import {
 import { computeBacktestMetrics, medianDelta } from "./backtestMetrics";
 import type { BacktestConfig, BacktestResult, EquityPoint, TestedRange, Trade, TradeMarker } from "./backtestTypes";
 import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "./ir";
-import { buildPreviewTables, type PreviewTable } from "./previewTables";
 import { atr as atrSeries } from "./ta";
 
 export const DEFAULT_CONFIG: BacktestConfig = {
@@ -30,6 +25,16 @@ export const DEFAULT_CONFIG: BacktestConfig = {
 };
 
 export type { BacktestConfig, BacktestMetrics, BacktestResult, EquityPoint, TestedRange, Trade, TradeMarker } from "./backtestTypes";
+export {
+  previewStrategy,
+  type PlotSeries,
+  type ShapeBox,
+  type ShapeOverlays,
+  type ShapeRay,
+  type ShapeVLine,
+  type StrategyPreview
+} from "./backtest/preview";
+export type { PreviewTable } from "./previewTables";
 
 interface Runtime extends StrategyRuntime {
   atr14: number[];
@@ -477,259 +482,6 @@ function computeWarmup(ir: StrategyIR): number {
   return Math.max(max, 1);
 }
 
-export interface PlotSeries {
-  label: string;
-  color: string;
-  points: { time: number; value: number }[];
-  /** Where to draw: overlaid on the price pane (default) or in a separate sub-pane. */
-  pane?: "price" | "sub";
-}
-
-/** A shaded rectangle over a run of consecutive bars. Non-finite top/bottom = the
- *  full pane height (bgcolor-style background shading). */
-export interface ShapeBox {
-  t1: number;
-  t2: number;
-  top: number;
-  bottom: number;
-  color: string;
-  label?: string;
-}
-export interface ShapeVLine {
-  time: number;
-  color: string;
-  label?: string;
-}
-/** A horizontal level anchored where its condition fired, extending right. */
-export interface ShapeRay {
-  time: number;
-  price: number;
-  color: string;
-  label?: string;
-}
-export interface ShapeOverlays {
-  boxes: ShapeBox[];
-  vlines: ShapeVLine[];
-  rays: ShapeRay[];
-}
-
-export type { PreviewTable } from "./previewTables";
-
-/** Render-safety caps for drawing overlays (a hostile/buggy strategy can fire every bar). */
-const MAX_BOXES = 500;
-const MAX_VLINES = 500;
-const MAX_RAYS = 200;
-
-/**
- * Analyse a strategy on history WITHOUT position gating: return every plotted
- * indicator line and every bar where an entry / exit / marker condition fires.
- * This is what "add strategy to chart" shows — the lines it uses and all the
- * signal points, so you can see how it would have triggered.
- */
-export function previewStrategy(ir: StrategyIR, candles: Candle[], securityData?: SecurityDataContext): { plots: PlotSeries[]; signals: TradeMarker[]; shapes: ShapeOverlays; tables: PreviewTable[] } {
-  const rt: Runtime = {
-    ...createStrategyRuntime(ir, candles, { securityData }),
-    atr14: candles.length ? atrSeries(candles, 14) : [],
-  };
-  runStrategyInit(ir, rt);
-  const signals: TradeMarker[] = [];
-  const shapes: ShapeOverlays = { boxes: [], vlines: [], rays: [] };
-  // Open box runs: one per box statement, extended while its condition stays true
-  // on consecutive bars and flushed when the run breaks (or at the end of history).
-  const boxRuns = new Map<Stmt, { t1: number; t2: number; top: number; bottom: number; lastBar: number }>();
-  // Keep-NEWEST eviction: the most recent (on-screen) shapes matter most, so when
-  // the cap overflows we drop the oldest instead of refusing new ones.
-  const flushBox = (stmt: Extract<Stmt, { k: "box" }>, run: { t1: number; t2: number; top: number; bottom: number }) => {
-    shapes.boxes.push({ t1: run.t1, t2: run.t2, top: run.top, bottom: run.bottom, color: stmt.color, label: stmt.label || undefined });
-    if (shapes.boxes.length > MAX_BOXES) shapes.boxes.shift();
-  };
-  // One vline/ray per statement per bar — loop bodies re-execute statements.
-  const drawnAtBar = new Map<Stmt, number>();
-  const projections = new Map<Stmt, ShapeBox>();
-  const metricValues = new Map<Stmt, number>();
-
-  // Pre-register plots in AST order so their series keep a stable order even when
-  // a plot lives inside an `if` that first fires on a late bar.
-  const plotMap = new Map<Stmt, PlotSeries>();
-  const registerPlots = (stmts: Stmt[]) => {
-    for (const stmt of stmts) {
-      if (stmt.k === "plot") plotMap.set(stmt, { label: stmt.label, color: stmt.color, points: [], pane: stmt.pane ?? "price" });
-      else if (stmt.k === "if") {
-        registerPlots(stmt.then);
-        for (const clause of stmt.elifs ?? []) registerPlots(clause.then);
-        if (stmt.else) registerPlots(stmt.else);
-      } else if (stmt.k === "repeat" || stmt.k === "while") registerPlots(stmt.body);
-    }
-  };
-  registerPlots(ir.body);
-
-  // Execute bar-by-bar (statements in order) so `setvar` state accumulates and any
-  // stateful expression previews exactly as it would in the backtest — walking
-  // statement-by-statement (the old approach) never ran setvar and mis-ordered state.
-  const execBar = (stmts: Stmt[], i: number) => {
-    for (const stmt of stmts) {
-      if (rt.ops >= MAX_OPS_PER_BAR) {
-        rt.budgetHit = true;
-        return;
-      }
-      rt.ops += 1;
-      switch (stmt.k) {
-        case "setvar":
-          rt.vars.set(stmt.name, evalNum(stmt.value, i, rt));
-          break;
-        case "setvarb":
-          rt.vars.set(stmt.name, evalBool(stmt.value, i, rt) ? 1 : 0);
-          break;
-        case "plot": {
-          const value = evalNum(stmt.value, i, rt);
-          if (Number.isFinite(value)) (plotMap.get(stmt) as PlotSeries).points.push({ time: candles[i].time, value });
-          break;
-        }
-        case "entry":
-          if (i >= 1 && evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: stmt.direction === "long" ? candles[i].low : candles[i].high, kind: stmt.direction === "long" ? "buy" : "sell", label: stmt.direction === "long" ? "Buy" : "Sell" });
-          break;
-        case "exit":
-          if (i >= 1 && evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: candles[i].high, kind: "exit", label: "Exit" });
-          break;
-        case "marker":
-          if (i >= 1 && evalBool(stmt.when, i, rt)) signals.push({ time: candles[i].time, price: stmt.dir === "up" ? candles[i].low : candles[i].high, kind: stmt.dir === "up" ? "buy" : "sell", label: stmt.label });
-          break;
-        case "box": {
-          if (!evalBool(stmt.when, i, rt)) break;
-          const top = evalNum(stmt.top, i, rt);
-          const bottom = evalNum(stmt.bottom, i, rt);
-          const run = boxRuns.get(stmt);
-          if (run && (run.lastBar === i || run.lastBar === i - 1)) {
-            run.t2 = candles[i].time;
-            // Finite-aware extremes: warm-up NaNs are skipped instead of poisoning the
-            // edge; runs whose edges are NaN on EVERY bar stay NaN (full-height shading).
-            run.top = Number.isFinite(top) ? (Number.isFinite(run.top) ? Math.max(run.top, top) : top) : run.top;
-            run.bottom = Number.isFinite(bottom) ? (Number.isFinite(run.bottom) ? Math.min(run.bottom, bottom) : bottom) : run.bottom;
-            run.lastBar = i;
-          } else {
-            if (run) flushBox(stmt as Extract<Stmt, { k: "box" }>, run);
-            boxRuns.set(stmt, { t1: candles[i].time, t2: candles[i].time, top, bottom, lastBar: i });
-          }
-          break;
-        }
-        case "projection": {
-          if (!evalBool(stmt.when, i, rt)) break;
-          const left = evalNum(stmt.left, i, rt);
-          const right = evalNum(stmt.right, i, rt);
-          const top = evalNum(stmt.top, i, rt);
-          const bottom = evalNum(stmt.bottom, i, rt);
-          if ([left, right, top, bottom].every(Number.isFinite)) {
-            projections.set(stmt, { t1: left, t2: right, top, bottom, color: stmt.color, label: stmt.label || undefined });
-          }
-          break;
-        }
-        case "metric": {
-          if (!evalBool(stmt.when, i, rt)) break;
-          const value = evalNum(stmt.value, i, rt);
-          if (Number.isFinite(value)) metricValues.set(stmt, value);
-          break;
-        }
-        case "vline":
-          if (evalBool(stmt.when, i, rt) && drawnAtBar.get(stmt) !== i) {
-            drawnAtBar.set(stmt, i);
-            shapes.vlines.push({ time: candles[i].time, color: stmt.color, label: stmt.label || undefined });
-            if (shapes.vlines.length > MAX_VLINES) shapes.vlines.shift();
-          }
-          break;
-        case "ray": {
-          if (!evalBool(stmt.when, i, rt) || drawnAtBar.get(stmt) === i) break;
-          const price = evalNum(stmt.price, i, rt);
-          if (Number.isFinite(price)) {
-            drawnAtBar.set(stmt, i);
-            shapes.rays.push({ time: candles[i].time, price, color: stmt.color, label: stmt.label || undefined });
-            if (shapes.rays.length > MAX_RAYS) shapes.rays.shift();
-          }
-          break;
-        }
-        case "if": {
-          if (evalBool(stmt.cond, i, rt)) {
-            execBar(stmt.then, i);
-            break;
-          }
-          let matched = false;
-          for (const clause of stmt.elifs ?? []) {
-            if (evalBool(clause.cond, i, rt)) {
-              execBar(clause.then, i);
-              matched = true;
-              break;
-            }
-          }
-          if (!matched && stmt.else) execBar(stmt.else, i);
-          break;
-        }
-        case "repeat": {
-          const raw = Math.round(evalNum(stmt.count, i, rt));
-          const n = Number.isFinite(raw) ? Math.max(0, Math.min(MAX_REPEAT, raw)) : 0;
-          for (let k = 0; k < n; k += 1) {
-            if (rt.ops >= MAX_OPS_PER_BAR) {
-              rt.budgetHit = true;
-              break;
-            }
-            rt.ops += 1;
-            execBar(stmt.body, i);
-          }
-          break;
-        }
-        case "while": {
-          let iter = 0;
-          while (iter < stmt.cap && evalBool(stmt.cond, i, rt)) {
-            if (rt.ops >= MAX_OPS_PER_BAR) {
-              rt.budgetHit = true;
-              break;
-            }
-            rt.ops += 1;
-            execBar(stmt.body, i);
-            iter += 1;
-          }
-          break;
-        }
-        case "for": {
-          const fromVal = evalNum(stmt.from, i, rt);
-          const toVal = evalNum(stmt.to, i, rt);
-          const rawStep = evalNum(stmt.step, i, rt);
-          // Pine infers direction from from/to; `by` is a magnitude (auto-subtracted when to<from).
-          const mag = Number.isNaN(rawStep) || rawStep === 0 ? 1 : Math.abs(rawStep);
-          const asc = toVal >= fromVal;
-          const step = asc ? mag : -mag;
-          let iter = 0;
-          for (let v = fromVal; asc ? v <= toVal : v >= toVal; v += step) {
-            if (iter >= stmt.cap || rt.ops >= MAX_OPS_PER_BAR) {
-              rt.budgetHit = true;
-              break;
-            }
-            rt.ops += 1;
-            rt.vars.set(stmt.var, v);
-            execBar(stmt.body, i);
-            iter += 1;
-          }
-          break;
-        }
-        // stop/target/trail/size/alert have no chart preview — skipped here.
-      }
-    }
-  };
-  for (let i = 0; i < candles.length; i += 1) {
-    beginStrategyBar(rt);
-    execBar(ir.body, i);
-  }
-
-  for (const [stmt, run] of boxRuns) flushBox(stmt as Extract<Stmt, { k: "box" }>, run);
-  for (const box of projections.values()) {
-    shapes.boxes.push(box);
-    if (shapes.boxes.length > MAX_BOXES) shapes.boxes.shift();
-  }
-
-  const plots = [...plotMap.values()].filter((plot) => plot.points.length > 0);
-  return { plots, signals, shapes, tables: buildPreviewTables(ir.body, metricValues) };
-}
-
-// ---------- statement execution ----------
-
 /** Build the per-bar position/PnL context for `ctx` reads (identical shape to the live engine). */
 function buildCtx(position: Position | null, price: number, i: number, trades: Trade[], equity: number, barTime: number): Record<string, number> {
   let consecutiveLosses = 0;
@@ -762,14 +514,6 @@ function buildCtx(position: Position | null, price: number, i: number, trades: T
     ctx.bars_in_position = i - position.entryIndex;
   }
   return ctx;
-}
-
-function evalNum(expr: NumExpr, i: number, rt: Runtime): number {
-  return evaluateCoreNumber(expr, i, rt);
-}
-
-function evalBool(expr: BoolExpr, i: number, rt: Runtime): boolean {
-  return evaluateCoreCondition(expr, i, rt);
 }
 
 // ---------- broker helpers ----------

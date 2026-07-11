@@ -268,6 +268,11 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [x] Move shared TA implementations into `strategy-core` and retain frontend/backend compatibility facades.
 - [x] Move the canonical evaluator, reusable runtime, execution budgets, security-series alignment and intent types into `strategy-core`.
 - [ ] Split backtest into execution, portfolio/accounting, analytics, preview and trace modules.
+  - [x] Extract chart preview, display-statement execution and preview result types.
+  - [ ] Extract execution/fill simulation.
+  - [ ] Extract portfolio sizing and accounting.
+  - [x] Keep analytics in the dedicated `backtestMetrics.ts` module.
+  - [ ] Extract trace/report assembly.
 - [ ] Add versioned golden event traces across preview/backtest/paper/live.
 - [ ] Add missing/fallback-data provenance to every report.
 
