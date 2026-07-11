@@ -9,6 +9,7 @@ export interface CandleHistoryRequest {
   exchange?: DataExchange;
   /** Stop paging once the oldest loaded candle reaches this timestamp. */
   stopAt?: number;
+  signal?: AbortSignal;
 }
 
 export type CandlePageLoader = (
@@ -16,7 +17,8 @@ export type CandlePageLoader = (
   timeframe: Timeframe,
   limit: number,
   endTime?: number,
-  exchange?: DataExchange
+  exchange?: DataExchange,
+  init?: { signal?: AbortSignal }
 ) => Promise<{ candles: Candle[] }>;
 
 /** Loads a deterministic, de-duplicated candle window in bounded API pages. */
@@ -31,7 +33,8 @@ export async function loadCandleHistory(
     request.timeframe,
     Math.min(target, 1_000),
     request.endTime,
-    request.exchange
+    request.exchange,
+    { signal: request.signal }
   )).candles);
 
   while (candles.length < target && candles.length > 0) {
@@ -42,7 +45,8 @@ export async function loadCandleHistory(
       request.timeframe,
       Math.min(1_000, target - candles.length),
       oldest - 1,
-      request.exchange
+      request.exchange,
+      { signal: request.signal }
     )).candles).filter((candle) => candle.time < oldest);
     if (older.length === 0) break;
     candles = normalize([...older, ...candles]);

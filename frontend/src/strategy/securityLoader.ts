@@ -13,6 +13,7 @@ export interface SecurityLoadBase {
   timeframe: Timeframe;
   chartCandles: Candle[];
   exchange?: DataExchange;
+  signal?: AbortSignal;
 }
 
 export interface ResolvedSecurityRequest {
@@ -110,7 +111,7 @@ async function fetchSecurityWindow(symbol: string, timeframe: Timeframe, base: S
   const chartStart = base.chartCandles[0].time;
   const chartEnd = base.chartCandles.at(-1)?.time;
   const target = Math.min(Math.max(base.chartCandles.length, 1000), MAX_SECURITY_BARS);
-  return loadCandleHistory({ symbol, timeframe, bars: target, endTime: chartEnd, exchange: base.exchange, stopAt: chartStart });
+  return loadCandleHistory({ symbol, timeframe, bars: target, endTime: chartEnd, exchange: base.exchange, stopAt: chartStart, signal: base.signal });
 }
 
 function minutesToTimeframe(minutes: number): Timeframe | undefined {

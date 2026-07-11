@@ -6,19 +6,14 @@ import type { PineImport } from "../strategy/pine";
 import { compileWorkspace } from "../strategy/compile";
 import { buildShareUrl } from "../strategy/share";
 import { irToText } from "../strategy/irText";
-import { DEFAULT_CONFIG, runBacktest, previewStrategy, type BacktestConfig, type BacktestResult, type PlotSeries, type ShapeOverlays } from "../strategy/backtest";
-import { cloneWithInputs, type OptimizeResult, type WalkForwardResult } from "../strategy/optimizer";
-import { runOptimizeInWorker, runWalkForwardInWorker } from "../strategy/optimizerClient";
-import { loadSecurityDataForIr } from "../strategy/securityLoader";
-import type { SecurityDataContext } from "../strategy/securityData";
+import type { BacktestResult, PlotSeries, ShapeOverlays } from "../strategy/backtest";
 import type { StrategyArtifact, StrategyArtifactKind } from "../strategy/library";
 import type { StrategyTemplate } from "../strategy/templates";
 import type { StrategyIR } from "../strategy/ir";
-import type { Candle, CatalogResponse, DataExchange, Timeframe } from "../types";
+import type { CatalogResponse, DataExchange, Timeframe } from "../types";
 import { StrategyLibrary } from "../strategy/components/StrategyLibrary";
 import { StrategyExecutionPanel } from "../strategy/components/StrategyExecutionPanel";
-import { buildSpec, initOptSpec, type OptSpecState } from "../strategy/optimization/model";
-import { loadCandleHistory } from "../strategy/candleHistory";
+import { useStrategyResearch } from "../strategy/useStrategyResearch";
 
 const blocklyMessages = Object.fromEntries(Object.entries(En).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 let localeReady = false;
@@ -107,31 +102,19 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
   const [selectedType, setSelectedType] = useState<string>();
   const [strategyInputs, setStrategyInputs] = useState<StrategyIR["inputs"]>([]);
   const [jsonSize, setJsonSize] = useState(0);
-  const [errors, setErrors] = useState<string[]>([]);
   const [initError, setInitError] = useState<string>();
   const [savedAt, setSavedAt] = useState<number>();
-  const [result, setResult] = useState<BacktestResult>();
-  const [config, setConfig] = useState<BacktestConfig>(DEFAULT_CONFIG);
   const [shareState, setShareState] = useState<"idle" | "copied">("idle");
-  const [btSymbol, setBtSymbol] = useState(initialSymbol);
-  const [btTimeframe, setBtTimeframe] = useState<Timeframe>(initialTimeframe);
-  const [btBars, setBtBars] = useState(1000);
-  const [running, setRunning] = useState(false);
+  const research = useStrategyResearch({
+    workspaceRef,
+    strategyInputs,
+    initialSymbol,
+    initialTimeframe,
+    exchange,
+    onApplyResult
+  });
 
-  // Optimizer state.
-  const [optOpen, setOptOpen] = useState(false);
-  const [optimizing, setOptimizing] = useState(false);
-  const [optProgress, setOptProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
-  const [optSpec, setOptSpec] = useState<OptSpecState | null>(null);
-  const [optimizeResult, setOptimizeResult] = useState<OptimizeResult>();
-  const [walkForwardOn, setWalkForwardOn] = useState(false);
-  const [optFolds, setOptFolds] = useState(4);
-  const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult>();
-  const optCandlesRef = useRef<Candle[]>([]);
-  const optIrRef = useRef<StrategyIR>();
-  const optSecurityRef = useRef<SecurityDataContext>({});
-
-  const btInstrument = catalog?.instruments.find((item) => item.symbol === btSymbol);
+  const btInstrument = catalog?.instruments.find((item) => item.symbol === research.symbol);
   const decimals = btInstrument?.decimals ?? 2;
 
   const activeArtifact = artifacts.find((artifact) => artifact.id === activeArtifactId) ?? artifacts[0];
@@ -173,7 +156,7 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
       const compiled = compileWorkspace(workspace);
       setPreview(compiled.ir ? irToText(compiled.ir) : "");
       setStrategyInputs(compiled.ir ? compiled.ir.inputs : []);
-      setErrors(compiled.errors);
+      research.setErrors(compiled.errors);
       setJsonSize(JSON.stringify(Blockly.serialization.workspaces.save(workspace)).length);
     };
     previewRef.current = doPreview;
@@ -228,18 +211,6 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
     workspaceRef.current?.setTheme(theme === "light" ? forgeLight : forgeDark);
   }, [theme]);
 
-  // (Re)seed the optimizer sweep spec whenever the SET of numeric inputs changes
-  // (added/removed/renamed) — not on every value tweak, so edited ranges stick.
-  const inputKey = strategyInputs.map((input) => input.name).join("|");
-  useEffect(() => {
-    if (strategyInputs.length === 0) {
-      setOptSpec(null);
-      return;
-    }
-    setOptSpec(initOptSpec({ name: "", inputs: strategyInputs, body: [] }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputKey]);
-
   // Load the active artifact into the workspace when the selection changes.
   useEffect(() => {
     const workspace = workspaceRef.current;
@@ -249,7 +220,7 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
       Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(activeArtifact.xml), workspace);
       setInitError(undefined);
       setSavedAt(undefined);
-      setResult(undefined);
+      research.clearResult();
       requestAnimationFrame(() => {
         fitWorkspaceView(workspace);
         previewRef.current();
@@ -273,116 +244,6 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
       updatedAt: Date.now()
     });
     setSavedAt(Date.now());
-  };
-
-  // Fetch `btBars` of history for the selected market/interval, paging back as
-  // needed. Shared by the plain backtest and the optimizer so both run on the
-  // exact same candle window.
-  const fetchHistory = async (): Promise<Candle[]> => {
-    return loadCandleHistory({ symbol: btSymbol, timeframe: btTimeframe, bars: btBars, exchange });
-  };
-
-  const runNow = async () => {
-    const workspace = workspaceRef.current;
-    if (!workspace || running) return;
-    const compiled = compileWorkspace(workspace);
-    // Refuse to backtest a strategy with compile errors — the IR may be missing
-    // dropped blocks, so its results would be misleading.
-    if (!compiled.ir || compiled.errors.length) {
-      setErrors(compiled.errors.length ? compiled.errors : ["Nothing to run."]);
-      setResult(undefined);
-      return;
-    }
-    setErrors([]);
-    setRunning(true);
-    try {
-      const candles = await fetchHistory();
-      if (candles.length < 30) {
-        setErrors([...compiled.errors, "Not enough history for this market/interval."]);
-        return;
-      }
-      const securityData = await loadSecurityDataForIr(compiled.ir, {
-        symbol: btSymbol,
-        timeframe: btTimeframe,
-        chartCandles: candles,
-        exchange
-      });
-      const backtest = runBacktest(compiled.ir, candles, config, securityData);
-      setResult(backtest);
-      setOptimizeResult(undefined);
-      const visuals = previewStrategy(compiled.ir, candles, securityData);
-      onApplyResult?.(backtest, btSymbol, btTimeframe, { plots: visuals.plots, shapes: visuals.shapes });
-    } catch (cause) {
-      setErrors([...compiled.errors, cause instanceof Error ? cause.message : "History request failed."]);
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  // Run the parameter optimizer (grid + OOS, optionally walk-forward) in a
-  // worker, then render either the ranked table or a normal backtest of the
-  // combo the user clicked.
-  const optimizeNow = async () => {
-    const workspace = workspaceRef.current;
-    if (!workspace || running || optimizing) return;
-    const compiled = compileWorkspace(workspace);
-    if (!compiled.ir || compiled.errors.length || compiled.ir.inputs.length === 0 || !optSpec) {
-      setErrors(compiled.errors.length ? compiled.errors : ["This strategy has no numeric inputs to optimize."]);
-      return;
-    }
-    const spec = buildSpec(optSpec);
-    if (spec.params.length === 0) {
-      setErrors([...compiled.errors, "Pick at least one input to sweep."]);
-      return;
-    }
-    setErrors(compiled.errors);
-    setOptimizing(true);
-    setOptProgress({ done: 0, total: 0 });
-    setResult(undefined);
-    setOptimizeResult(undefined);
-    setWalkForwardResult(undefined);
-    try {
-      const candles = await fetchHistory();
-      if (candles.length < 60) {
-        setErrors([...compiled.errors, "Need at least 60 bars to split into in-sample / out-of-sample."]);
-        return;
-      }
-      optCandlesRef.current = candles;
-      optIrRef.current = compiled.ir;
-      const securityData = await loadSecurityDataForIr(compiled.ir, {
-        symbol: btSymbol,
-        timeframe: btTimeframe,
-        chartCandles: candles,
-        exchange
-      });
-      optSecurityRef.current = securityData;
-      const onProgress = (done: number, total: number) => setOptProgress({ done, total });
-      if (walkForwardOn) {
-        const wf = await runWalkForwardInWorker(compiled.ir, candles, config, spec, { folds: optFolds }, onProgress, securityData);
-        setWalkForwardResult(wf);
-      }
-      const opt = await runOptimizeInWorker(compiled.ir, candles, config, spec, onProgress, securityData);
-      setOptimizeResult(opt);
-    } catch (cause) {
-      setErrors([...compiled.errors, cause instanceof Error ? cause.message : "Optimization failed."]);
-    } finally {
-      setOptimizing(false);
-    }
-  };
-
-  // Re-run a full backtest on the whole window with a chosen combo's params and
-  // show it via the normal BacktestReport.
-  const applyCombo = (params: Record<string, number>) => {
-    const ir = optIrRef.current;
-    const candles = optCandlesRef.current;
-    if (!ir || !candles.length) return;
-    const cloned = cloneWithInputs(ir, params);
-    const securityData = optSecurityRef.current;
-    const backtest = runBacktest(cloned, candles, config, securityData);
-    setResult(backtest);
-    setOptimizeResult(undefined);
-    const visuals = previewStrategy(cloned, candles, securityData);
-    onApplyResult?.(backtest, btSymbol, btTimeframe, { plots: visuals.plots, shapes: visuals.shapes });
   };
 
   const shareNow = () => {
@@ -415,39 +276,39 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
         <StrategyExecutionPanel
           activeArtifact={activeArtifact}
           selectedType={selectedType}
-          running={running}
-          optimizing={optimizing}
-          onRun={() => void runNow()}
-          onToggleOptimize={() => setOptOpen((value) => !value)}
+          running={research.running}
+          optimizing={research.optimizing}
+          onRun={() => void research.run()}
+          onToggleOptimize={() => research.setOptOpen((value) => !value)}
           onShare={shareNow}
           onSave={saveNow}
           shareState={shareState}
           strategyInputs={strategyInputs}
-          optOpen={optOpen}
+          optOpen={research.optOpen}
           catalog={catalog}
-          symbol={btSymbol}
-          onSymbolChange={setBtSymbol}
-          timeframe={btTimeframe}
-          onTimeframeChange={setBtTimeframe}
-          bars={btBars}
-          onBarsChange={setBtBars}
-          config={config}
-          onConfigChange={setConfig}
-          optSpec={optSpec}
-          onOptSpecChange={setOptSpec}
-          onOptimize={() => void optimizeNow()}
-          optProgress={optProgress}
-          walkForwardOn={walkForwardOn}
-          onToggleWalkForward={setWalkForwardOn}
-          optFolds={optFolds}
-          onFoldsChange={setOptFolds}
-          optimizeResult={optimizeResult}
-          walkForwardResult={walkForwardResult}
-          onApplyCombo={applyCombo}
-          errors={errors}
-          result={result}
+          symbol={research.symbol}
+          onSymbolChange={research.setSymbol}
+          timeframe={research.timeframe}
+          onTimeframeChange={research.setTimeframe}
+          bars={research.bars}
+          onBarsChange={research.setBars}
+          config={research.config}
+          onConfigChange={research.setConfig}
+          optSpec={research.optSpec}
+          onOptSpecChange={research.setOptSpec}
+          onOptimize={() => void research.optimize()}
+          optProgress={research.optProgress}
+          walkForwardOn={research.walkForwardOn}
+          onToggleWalkForward={research.setWalkForwardOn}
+          optFolds={research.optFolds}
+          onFoldsChange={research.setOptFolds}
+          optimizeResult={research.optimizeResult}
+          walkForwardResult={research.walkForwardResult}
+          onApplyCombo={research.applyCombo}
+          errors={research.errors}
+          result={research.result}
           decimals={decimals}
-          onShowOnChart={onShowOnChart ? () => onShowOnChart(btSymbol, btTimeframe) : undefined}
+          onShowOnChart={onShowOnChart ? () => onShowOnChart(research.symbol, research.timeframe) : undefined}
           jsonSize={jsonSize}
           preview={preview}
           savedAt={savedAt}
