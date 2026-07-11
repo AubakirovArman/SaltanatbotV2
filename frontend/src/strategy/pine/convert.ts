@@ -10,7 +10,6 @@ import {
   DRAWING_NEW_RE,
   MATH_CONSTS,
   NAME_RE,
-  PINE_NAMESPACES,
   PLOT_CALLS,
   PRICE_FIELDS,
   normalizeTa,
@@ -19,6 +18,39 @@ import {
 import { PineLexError } from "./lexer";
 import { type PineFuncDef, PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
 import { sanitizeText } from "./text";
+import {
+  type DrawingLoweringContext,
+  lowerBox,
+  lowerConditionalShading,
+  lowerDisplay,
+  lowerFill,
+  lowerLabel,
+  lowerLine,
+  lowerTableCell,
+  type PlotHandleValue
+} from "./drawingLowering";
+import {
+  boolToNum,
+  boolToNumericSeries,
+  collectReassigned,
+  collectionReceiver,
+  constBool,
+  identName,
+  isBoolExpr,
+  isCollectionCallName,
+  isCollectionConstructor,
+  isCosmeticConst,
+  isFalseIdent,
+  isNaIdent,
+  isObjectConstructor,
+  isObjectMethodCallName,
+  isTrueIdent,
+  isUserObjectFieldName,
+  literalColorByte,
+  methodArgs,
+  methodName,
+  type PineValue
+} from "./semanticHelpers";
 
 /**
  * Semantic mapping: Pine AST → StrategyIR.
@@ -45,8 +77,8 @@ export interface PineResult {
 
 export { PineConvertError } from "./errors";
 
-type Val = { t: "num"; e: NumExpr } | { t: "bool"; e: BoolExpr } | { t: "str"; v: string };
-type PlotHandle = { value: NumExpr; pane: "price" | "sub"; label: string };
+type Val = PineValue;
+type PlotHandle = PlotHandleValue;
 
 /** Pine `na` as a numeric value: 0/0 → NaN, so nz()/na()/isfinite handle it uniformly. */
 const NAN_NUM: NumExpr = { k: "arith", op: "/", a: { k: "num", v: 0 }, b: { k: "num", v: 0 } };
@@ -562,7 +594,7 @@ class Converter {
       case "barcolor":
         // bgcolor/barcolor(cond ? color : na) — shading → a full-height box while
         // the condition holds. Non-conditional/unresolvable colors stay display-skips.
-        return this.displayMapped(callee, () => this.conditionalShading(arg(args, 0, "color"), callee));
+        return this.lowerDrawing(callee, (ctx) => lowerConditionalShading(ctx, arg(args, 0, "color"), callee));
       case "plotarrow": {
         // plotarrow(series): up arrow while series > 0, down arrow while series < 0.
         const series = this.num(argRequired(args, 0, "series", "plotarrow").value);
@@ -580,15 +612,15 @@ class Converter {
         return [];
       }
       case "fill":
-        return this.displayMapped(callee, () => this.mapFill(args));
+        return this.lowerDrawing(callee, (ctx) => lowerFill(ctx, args));
       case "label.new":
-        return this.displayMapped(callee, () => this.mapLabelNew(args));
+        return this.lowerDrawing(callee, (ctx) => lowerLabel(ctx, args));
       case "line.new":
-        return this.displayMapped(callee, () => this.mapLineNew(args));
+        return this.lowerDrawing(callee, (ctx) => lowerLine(ctx, args));
       case "box.new":
-        return this.displayMapped(callee, () => this.mapBoxNew(args));
+        return this.lowerDrawing(callee, (ctx) => lowerBox(ctx, args));
       case "table.cell":
-        return this.displayMapped(callee, () => this.mapTableCell(args));
+        return this.lowerDrawing(callee, (ctx) => lowerTableCell(ctx, args));
       default: {
         if (DRAWING_MUTATE_RE.test(callee)) {
           this.warnOnce("drawmut", `Drawing updates/removals (${callee} and similar) are ignored — drawings are approximated statically.`);
@@ -615,159 +647,20 @@ class Converter {
 
   // ---------- drawing-object mapping (display-only approximations) ----------
 
-  /** Drawing calls are display-only, so a mapping that trips over an unsupported
-   *  sub-expression degrades to a skip+warning instead of failing the whole import. */
-  private displayMapped(fn: string, build: () => Stmt[]): Stmt[] {
-    try {
-      return build();
-    } catch (cause) {
-      if (cause instanceof PineConvertError) {
-        this.warn(`Skipped ${fn}() — ${cause.message}`);
-        return [];
-      }
-      throw cause;
-    }
+  private lowerDrawing(fn: string, build: (context: DrawingLoweringContext) => Stmt[]): Stmt[] {
+    const context: DrawingLoweringContext = {
+      nan: NAN_NUM,
+      bool: (expr) => this.bool(expr),
+      num: (expr) => this.num(expr),
+      color: (expr) => this.colorOf(expr),
+      string: (expr) => this.strVal(expr),
+      isColor: (expr) => this.isColorExpr(expr),
+      plotHandle: (expr) => expr?.t === "ident" ? this.plotHandleValues.get(expr.name) : undefined,
+      warn: (message) => this.warn(message),
+      warnOnce: (key, message) => this.warnOnce(key, message)
+    };
+    return lowerDisplay(context, fn, () => build(context));
   }
-
-  /** bgcolor/barcolor with a `cond ? color : na` ternary → a full-height box while
-   *  the condition holds; anything else stays a display-skip with a warning. */
-  private conditionalShading(colorArg: PineArg | undefined, fn: string): Stmt[] {
-    if (colorArg?.value.t === "ternary") {
-      const { cond, a, b } = colorArg.value;
-      const aIsNa = isNaIdent(a);
-      const bIsNa = isNaIdent(b);
-      if (aIsNa !== bIsNa) {
-        const when = aIsNa ? ({ k: "not", a: this.bool(cond) } as BoolExpr) : this.bool(cond);
-        const hex = this.colorOf(aIsNa ? b : a) ?? "#8f9bb3";
-        return [{ k: "box", top: NAN_NUM, bottom: NAN_NUM, when, label: "", color: hex }];
-      }
-    }
-    this.warn(`Skipped ${fn}() — only conditional shading (cond ? color : na) is convertible.`);
-    return [];
-  }
-
-  /** fill(plotA, plotB, color) / gradient fill(plotA, plotB, top, bottom, ...)
-   *  becomes a chart band between two per-bar series. */
-  private mapFill(args: PineArg[]): Stmt[] {
-    const first = this.plotHandleOf(arg(args, 0, "plot1")?.value);
-    const second = this.plotHandleOf(arg(args, 1, "plot2")?.value);
-    if (!first || !second) {
-      this.warn("Skipped fill() — it needs two assigned plot()/hline() handles.");
-      return [];
-    }
-    if (first.pane === "sub" || second.pane === "sub") {
-      this.warnOnce("subfill", "Sub-pane fill() is skipped until strategy shape overlays support sub-panes.");
-      return [];
-    }
-
-    const third = arg(args, 2, "color")?.value;
-    const simpleColor = third && this.isColorExpr(third);
-    const topArg = simpleColor ? undefined : arg(args, 2, "top_value")?.value;
-    const bottomArg = simpleColor ? undefined : arg(args, 3, "bottom_value")?.value;
-    const colorExpr = simpleColor ? third : (arg(args, 4, "top_color")?.value ?? third);
-
-    this.warnOnce("fill", "fill() imported as band shading between plot series; transparency/fillgaps are approximated.");
-    return [
-      {
-        k: "box",
-        top: topArg ? this.num(topArg) : first.value,
-        bottom: bottomArg ? this.num(bottomArg) : second.value,
-        when: { k: "bool", v: true },
-        label: "",
-        color: this.colorOf(colorExpr) ?? "#8f9bb3"
-      }
-    ];
-  }
-
-  private plotHandleOf(expr: PineExpr | undefined): PlotHandle | undefined {
-    if (expr?.t !== "ident") return undefined;
-    return this.plotHandleValues.get(expr.name);
-  }
-
-  /** label.new(x, y, text, …) → a chart marker at the bars where this statement
-   *  runs. Direction comes from style/yloc; dynamic text falls back to static. */
-  private mapLabelNew(args: PineArg[]): Stmt[] {
-    const textArg = arg(args, 2, "text");
-    let text = textArg ? this.strVal(textArg.value) : undefined;
-    if (textArg && text === undefined) {
-      this.warnOnce("dyntext", "Dynamic label text (str.* formatting) isn't supported — labels imported without text.");
-      text = "";
-    }
-    const styleName = identName(arg(args, undefined, "style")?.value);
-    const ylocName = identName(arg(args, undefined, "yloc")?.value);
-    const dir: "up" | "down" = styleName.includes("down") || ylocName.includes("above") ? "down" : "up";
-    return [{ k: "marker", dir, label: sanitizeText(text ?? ""), when: { k: "bool", v: true } }];
-  }
-
-  /** line.new(x1, y1, x2, y2, …) → a vertical event line when x1/x2 match, or a
-   *  horizontal level when y1/y2 match. Other segments have no representation. */
-  private mapLineNew(args: PineArg[]): Stmt[] {
-    const x1 = arg(args, 0, "x1");
-    const y1 = arg(args, 1, "y1");
-    const x2 = arg(args, 2, "x2");
-    const y2 = arg(args, 3, "y2");
-    if (!x1 || !y1) {
-      this.warn("Skipped line.new() without coordinates.");
-      return [];
-    }
-    const color = this.colorOf(arg(args, undefined, "color")?.value) ?? "#8f9bb3";
-    const sameX = !!x2 && JSON.stringify(x1.value) === JSON.stringify(x2.value);
-    if (sameX) {
-      this.warnOnce("linevertical", "Vertical line.new() imported at the firing bar (its x-coordinate/extend are approximated).");
-      return [{ k: "vline", when: { k: "bool", v: true }, label: "", color }];
-    }
-    const sameY = !y2 || JSON.stringify(y1.value) === JSON.stringify(y2.value);
-    if (sameY) {
-      this.warnOnce("linelevel", "line.new() imported as a horizontal level from the firing bar (x-coordinates/extend are approximated).");
-      return [{ k: "ray", price: this.num(y1.value), when: { k: "bool", v: true }, label: "", color }];
-    }
-    this.warnOnce("slanted", "Slanted line.new() segments can't be drawn per-bar — skipped.");
-    return [];
-  }
-
-  /** box.new(left, top, right, bottom, …) → a box over the bars where this statement
-   *  runs; the drawn top/bottom come from the price arguments, x-args are ignored. */
-  private mapBoxNew(args: PineArg[]): Stmt[] {
-    const left = arg(args, 0, "left");
-    const top = arg(args, 1, "top");
-    const right = arg(args, 2, "right");
-    const bottom = arg(args, 3, "bottom");
-    if (!top || !bottom) {
-      this.warn("Skipped box.new() without top/bottom prices.");
-      return [];
-    }
-    this.warnOnce("boxspan", "box.new() imported as a zone over the bars where it fires (left/right x-coordinates are approximated).");
-    const color =
-      this.colorOf(arg(args, undefined, "bgcolor")?.value) ?? this.colorOf(arg(args, undefined, "border_color")?.value) ?? "#26a69a";
-    const xloc = identName(arg(args, undefined, "xloc")?.value);
-    if (left && right && xloc === "xloc.bar_time") {
-      this.warnOnce("boxprojection", "Time-based box.new() imported as an explicit projection zone.");
-      return [{ k: "projection", left: this.num(left.value), right: this.num(right.value), top: this.num(top.value), bottom: this.num(bottom.value), when: { k: "bool", v: true }, label: "", color }];
-    }
-    return [{ k: "box", top: this.num(top.value), bottom: this.num(bottom.value), when: { k: "bool", v: true }, label: "", color }];
-  }
-
-  /** Numeric table.cell(..., str.tostring(value)) → an accessible chart metric.
-   * Complex string/object tables remain a compatibility warning. */
-  private mapTableCell(args: PineArg[]): Stmt[] {
-    const tableExpr = arg(args, 0, "table_id")?.value;
-    const columnExpr = arg(args, 1, "column")?.value;
-    const rowExpr = arg(args, 2, "row")?.value;
-    const textExpr = arg(args, 3, "text")?.value;
-    const valueExpr = textExpr?.t === "call" && textExpr.callee === "str.tostring"
-      ? textExpr.args[0]?.value
-      : textExpr;
-    if (!valueExpr || valueExpr.t === "str" || valueExpr.t === "field" || valueExpr.t === "method") {
-      this.warnOnce("tabletext", "Text/object table cells are not numeric metrics and remain display-only.");
-      return [];
-    }
-    const table = tableExpr?.t === "ident" ? sanitizeText(tableExpr.name) : "Pine table";
-    const column = columnExpr?.t === "num" ? `Column ${columnExpr.v + 1}` : "Value";
-    const label = rowExpr?.t === "num" ? `Row ${rowExpr.v + 1}` : "Metric";
-    this.warnOnce("tablemetric", "Numeric table.cell() imported as an accessible chart metric table.");
-    return [{ k: "metric", table, column, label, value: this.num(valueExpr), when: { k: "bool", v: true } }];
-  }
-
   /** indicator()/strategy() declaration: name, overlay, and sizing defaults. */
   private declaration(callee: string, args: PineArg[]): Stmt[] {
     this.declared = true;
@@ -2019,215 +1912,5 @@ class Converter {
     if (this.warned.has(key)) return;
     this.warned.add(key);
     this.warnings.push(message);
-  }
-}
-
-// ---------- module helpers ----------
-
-function identName(expr: PineExpr | undefined): string {
-  return expr?.t === "ident" ? expr.name : "";
-}
-
-function isNaIdent(expr: PineExpr): boolean {
-  return expr.t === "ident" && expr.name === "na";
-}
-
-function isTrueIdent(expr: PineExpr): boolean {
-  return expr.t === "ident" && expr.name === "true";
-}
-
-function isFalseIdent(expr: PineExpr): boolean {
-  return expr.t === "ident" && expr.name === "false";
-}
-
-function isCosmeticConst(name: string): boolean {
-  return (
-    name.startsWith("line.style_") ||
-    name.startsWith("label.style_") ||
-    name.startsWith("size.") ||
-    name.startsWith("shape.") ||
-    name.startsWith("location.") ||
-    name.startsWith("display.") ||
-    name.startsWith("barmerge.") ||
-    name.startsWith("extend.") ||
-    name.startsWith("position.") ||
-    name.startsWith("xloc.") ||
-    name.startsWith("yloc.") ||
-    name.startsWith("plot.style_")
-  );
-}
-
-function isUserObjectFieldName(name: string): boolean {
-  if (!name.includes(".")) return false;
-  const head = name.split(".")[0];
-  return !PINE_NAMESPACES.has(head);
-}
-
-const COLLECTION_METHODS = new Set([
-  "size", "length", "get", "first", "last", "set", "push", "pop", "shift", "unshift", "clear", "remove", "insert",
-  "max", "min", "sum", "range", "sort", "reverse", "slice", "indexof", "includes",
-  "rows", "columns", "add_row", "add_col", "put", "delete"
-]);
-
-function isCollectionConstructor(callee: string): boolean {
-  return (
-    callee === "array.from" ||
-    /^array\.new(?:_|$)/.test(callee) ||
-    /^matrix\.new(?:_|$)/.test(callee) ||
-    /^map\.new(?:_|$)/.test(callee)
-  );
-}
-
-function isObjectConstructor(callee: string): boolean {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*\.new$/.test(callee)) return false;
-  return !(
-    callee.startsWith("array.") ||
-    callee.startsWith("matrix.") ||
-    callee.startsWith("map.") ||
-    callee.startsWith("color.") ||
-    DRAWING_NEW_RE.test(callee)
-  );
-}
-
-function methodName(callee: string): string {
-  return callee.split(".").at(-1) ?? callee;
-}
-
-function isCollectionCallName(callee: string): boolean {
-  if (isCollectionConstructor(callee)) return false;
-  if (/^(array|matrix|map)\./.test(callee)) return true;
-  const head = callee.split(".")[0];
-  if (["ta", "math", "str", "request", "timeframe", "input", "color", "strategy", "ticker", "syminfo"].includes(head)) return false;
-  return callee.includes(".") && COLLECTION_METHODS.has(methodName(callee));
-}
-
-function isObjectMethodCallName(callee: string): boolean {
-  if (!callee.includes(".")) return false;
-  if (isCollectionCallName(callee) || DRAWING_NEW_RE.test(callee)) return false;
-  const head = callee.split(".")[0];
-  if (["ta", "math", "str", "request", "timeframe", "input", "color", "strategy", "ticker", "syminfo"].includes(head)) return false;
-  const method = methodName(callee);
-  return method.startsWith("set_") || method.startsWith("get_") || method === "delete" || method === "copy";
-}
-
-function collectionReceiver(callee: string, args: PineArg[]): string | undefined {
-  if (/^(array|matrix|map)\./.test(callee)) {
-    const first = arg(args, 0, "id")?.value ?? arg(args, 0, "array")?.value ?? arg(args, 0, "matrix")?.value ?? arg(args, 0, "map")?.value;
-    return first?.t === "ident" ? first.name : undefined;
-  }
-  const parts = callee.split(".");
-  if (parts.length > 1) return parts.slice(0, -1).join(".");
-  return undefined;
-}
-
-function methodArgs(callee: string, args: PineArg[]): PineArg[] {
-  return /^(array|matrix|map)\./.test(callee) ? args.slice(1) : args;
-}
-
-function constBool(expr: BoolExpr): boolean | undefined {
-  switch (expr.k) {
-    case "bool":
-      return expr.v;
-    case "not": {
-      const v = constBool(expr.a);
-      return v === undefined ? undefined : !v;
-    }
-    case "logic": {
-      const a = constBool(expr.a);
-      const b = constBool(expr.b);
-      if (expr.op === "and") {
-        if (a === false || b === false) return false;
-        if (a === true && b === true) return true;
-      } else {
-        if (a === true || b === true) return true;
-        if (a === false && b === false) return false;
-      }
-      return undefined;
-    }
-    case "compare":
-      if (expr.a.k === "num" && expr.b.k === "num") {
-        switch (expr.op) {
-          case "==":
-            return expr.a.v === expr.b.v;
-          case "!=":
-            return expr.a.v !== expr.b.v;
-          case ">":
-            return expr.a.v > expr.b.v;
-          case ">=":
-            return expr.a.v >= expr.b.v;
-          case "<":
-            return expr.a.v < expr.b.v;
-          case "<=":
-            return expr.a.v <= expr.b.v;
-        }
-      }
-      return undefined;
-    default:
-      return undefined;
-  }
-}
-
-function literalColorByte(expr: PineExpr | undefined): number | undefined {
-  if (!expr) return undefined;
-  const value = expr.t === "num"
-    ? expr.v
-    : expr.t === "unary" && expr.op === "-" && expr.a.t === "num"
-      ? -expr.a.v
-      : undefined;
-  if (value === undefined || !Number.isFinite(value)) return undefined;
-  return Math.max(0, Math.min(255, Math.round(value)));
-}
-
-/** Encode a BoolExpr as 0/1 for the numeric-only init section. */
-function boolToNum(expr: BoolExpr): NumExpr {
-  if (expr.k === "bool") return { k: "num", v: expr.v ? 1 : 0 };
-  return { k: "num", v: 0 };
-}
-
-function boolToNumericSeries(expr: BoolExpr): NumExpr {
-  return { k: "cond", cond: expr, a: { k: "num", v: 1 }, b: { k: "num", v: 0 } };
-}
-
-/** Pre-scan: every name that is ever reassigned (:=, +=…) anywhere in the script. */
-function collectReassigned(stmts: PineStmt[]): Set<string> {
-  const out = new Set<string>();
-  const walk = (list: PineStmt[]) => {
-    for (const stmt of list) {
-      if (stmt.t === "reassign") out.add(stmt.name);
-      if (stmt.t === "if") for (const clause of stmt.clauses) walk(clause.body);
-      if (stmt.t === "for" || stmt.t === "while") walk(stmt.body);
-      if (stmt.t === "multi") walk(stmt.stmts);
-      // Function bodies are inlined in their own scope — their locals aren't global vars.
-    }
-  };
-  walk(stmts);
-  return out;
-}
-
-/** Detect whether a Pine expression is boolean-typed in our mapping. */
-function isBoolExpr(expr: PineExpr, boolVars: Set<string>, env: Map<string, Val>): boolean {
-  switch (expr.t) {
-    case "binary":
-      return ["and", "or", "==", "!=", "<", "<=", ">", ">="].includes(expr.op);
-    case "unary":
-      return expr.op === "not";
-    case "ident": {
-      if (expr.name === "true" || expr.name === "false" || expr.name.startsWith("barstate.") || expr.name.startsWith("timeframe.is")) return true;
-      const bound = env.get(expr.name);
-      if (bound) return bound.t === "bool";
-      return boolVars.has(expr.name);
-    }
-    case "call": {
-      const callee = normalizeTa(expr.callee);
-      if (callee === "na") return true;
-      if (callee === "timeframe.change") return true;
-      return ["ta.crossover", "ta.crossunder", "ta.cross", "ta.rising", "ta.falling"].includes(callee);
-    }
-    case "ternary":
-      return isBoolExpr(expr.a, boolVars, env) && isBoolExpr(expr.b, boolVars, env);
-    case "switch":
-      return expr.arms.every((armExpr) => isBoolExpr(armExpr.body, boolVars, env));
-    default:
-      return false;
   }
 }

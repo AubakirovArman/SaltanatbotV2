@@ -164,6 +164,15 @@ Verification:
 - [x] Preserve legacy warning strings while exposing structured diagnostics to future editors.
 - [x] Attach typed diagnostics to public `PineConvertError` instances.
 
+### Pine semantic decomposition — current semantic-helpers commit
+
+- [x] Extract pure boolean folding/type detection from `convert.ts`.
+- [x] Extract collection/object call classification and reassignment analysis.
+- [x] Extract fill/shading/label/line/box/projection/table lowering behind an explicit drawing context.
+- [x] Add direct semantic-helper tests in addition to the Pine corpus.
+- [x] Add direct drawing-lowering tests in addition to display-primitive corpus coverage.
+- [x] Reduce `convert.ts` from 2,233 to 1,916 lines without changing its public facade.
+
 ### Trading activity decomposition — commit `4335465`
 
 - [x] Split command composition/saved commands into `BotCommandConsole.tsx`.
@@ -201,9 +210,11 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 
 - [ ] Extract AST and public diagnostic types with source spans.
 - [ ] Extract semantic scope/symbol/function analysis.
+  - [x] Extract current pure semantic classification helpers from lowering.
+  - [ ] Introduce explicit nested scopes and typed symbol/function tables.
 - [ ] Extract expression lowering.
 - [ ] Extract statement and strategy-call lowering.
-- [ ] Extract drawing lowering.
+- [x] Extract drawing lowering.
 - [ ] Extract Blockly serialization.
 - [ ] Add compatibility registry generated from corpus metadata.
 - [ ] Add parser fuzz/property tests.

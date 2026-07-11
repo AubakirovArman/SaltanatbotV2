@@ -7,6 +7,8 @@ The Pine subsystem converts a supported subset of Pine Script into editable Bloc
 Consumers should import from `index.ts`. Lexer, parser and conversion internals are not stable APIs.
 
 `ast.ts` is the public AST type facade. `diagnostics.ts` owns stable diagnostic codes and source-span contracts for editor integrations.
+`semanticHelpers.ts` owns pure type/classification, constant-folding, collection and reassignment analysis helpers used by lowering.
+`drawingLowering.ts` maps display-only Pine fills, shading, labels, lines, boxes, projections and numeric tables through an explicit lowering context.
 
 ## Current pipeline
 
@@ -30,4 +32,4 @@ The corpus classifies scripts as exact, approximation, display-only or rejected.
 
 ## Decomposition target
 
-`convert.ts` is a temporary monolith. Extract language registries, semantic analysis, normalization, expression/statement/drawing lowering and Blockly serialization in the order defined by `docs/MODULAR_ARCHITECTURE.md`. Keep `convertPine()` as the stable facade during the migration.
+`convert.ts` remains a temporary lowering monolith, while pure semantic analysis and drawing lowering have moved to dedicated modules. Continue extracting normalization, expression/statement lowering and Blockly serialization in the order defined by `docs/MODULAR_ARCHITECTURE.md`. Keep `convertPine()` as the stable facade during the migration.
