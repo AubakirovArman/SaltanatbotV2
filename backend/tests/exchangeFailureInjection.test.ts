@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { jsonResponse, scriptedFetch, textResponse } from "@saltanatbotv2/test-fixtures";
 import { BinanceAdapter } from "../src/trading/exchange/binance.js";
 import { BybitAdapter } from "../src/trading/exchange/bybit.js";
 import { ExchangeTransportError } from "../src/trading/exchange/errors.js";
@@ -13,13 +14,11 @@ afterEach(() => {
 
 describe("exchange failure injection", () => {
   it("persists unknown when the connection drops during an order POST", async () => {
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/ticker/price")) return json({ price: "100" });
-      if (url.includes("/exchangeInfo")) return json({ symbols: [{ symbol: "BTCUSDT", filters: [] }] });
-      if (url.includes("/order")) throw new TypeError("socket closed after write");
-      return json({});
-    });
+    vi.stubGlobal("fetch", scriptedFetch([
+      { match: "/ticker/price", respond: () => jsonResponse({ price: "100" }) },
+      { match: "/exchangeInfo", respond: () => jsonResponse({ symbols: [{ symbol: "BTCUSDT", filters: [] }] }) },
+      { match: "/order", respond: () => { throw new TypeError("socket closed after write"); } },
+    ], () => jsonResponse({})));
     const adapter = new BinanceAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
     const records: OrderJournalRecord[] = [];
     const events: OrderEventRecord[] = [];
@@ -41,37 +40,31 @@ describe("exchange failure injection", () => {
   });
 
   it("keeps a definitive HTTP 400 response as a normal rejection", async () => {
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/ticker/price")) return json({ price: "100" });
-      if (url.includes("/exchangeInfo")) return json({ symbols: [{ symbol: "BTCUSDT", filters: [] }] });
-      return error(400, "invalid quantity");
-    });
+    vi.stubGlobal("fetch", scriptedFetch([
+      { match: "/ticker/price", respond: () => jsonResponse({ price: "100" }) },
+      { match: "/exchangeInfo", respond: () => jsonResponse({ symbols: [{ symbol: "BTCUSDT", filters: [] }] }) },
+    ], () => textResponse("invalid quantity", 400)));
     const adapter = new BinanceAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
 
     await expect(adapter.execute(marketOrder())).resolves.toMatchObject({ ok: false, message: expect.stringMatching(/400.*invalid quantity/) });
   });
 
   it("treats a mutating HTTP 5xx response as ambiguous", async () => {
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/ticker/price")) return json({ price: "100" });
-      if (url.includes("/exchangeInfo")) return json({ symbols: [{ symbol: "BTCUSDT", filters: [] }] });
-      return error(503, "upstream unavailable");
-    });
+    vi.stubGlobal("fetch", scriptedFetch([
+      { match: "/ticker/price", respond: () => jsonResponse({ price: "100" }) },
+      { match: "/exchangeInfo", respond: () => jsonResponse({ symbols: [{ symbol: "BTCUSDT", filters: [] }] }) },
+    ], () => textResponse("upstream unavailable", 503)));
     const adapter = new BinanceAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
 
     await expect(adapter.execute(marketOrder())).rejects.toMatchObject({ name: "ExchangeTransportError", ambiguous: true });
   });
 
   it("applies the same ambiguous network contract to Bybit", async () => {
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
-      if (url.includes("/v5/market/instruments-info")) return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: {}, priceFilter: {} }] } });
-      if (url.includes("/v5/order/create")) throw new TypeError("connection reset");
-      return json({ retCode: 0, retMsg: "OK", result: {} });
-    });
+    vi.stubGlobal("fetch", scriptedFetch([
+      { match: "/v5/market/tickers", respond: () => jsonResponse({ result: { list: [{ lastPrice: "100" }] } }) },
+      { match: "/v5/market/instruments-info", respond: () => jsonResponse({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: {}, priceFilter: {} }] } }) },
+      { match: "/v5/order/create", respond: () => { throw new TypeError("connection reset"); } },
+    ], () => jsonResponse({ retCode: 0, retMsg: "OK", result: {} })));
     const adapter = new BybitAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
 
     await expect(adapter.execute(marketOrder())).rejects.toMatchObject({ name: "ExchangeTransportError", ambiguous: true });
@@ -85,12 +78,4 @@ describe("exchange failure injection", () => {
 
 function marketOrder(): ExecOrder {
   return { action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1, reason: "test" };
-}
-
-function json(payload: unknown): Response {
-  return { ok: true, status: 200, json: async () => payload, text: async () => JSON.stringify(payload) } as Response;
-}
-
-function error(status: number, message: string): Response {
-  return { ok: false, status, json: async () => ({ message }), text: async () => message } as Response;
 }
