@@ -62,11 +62,22 @@ Verification:
 - Dedicated preview, compatibility and chart-overlay tests pass.
 - Full Vitest and Playwright suites pass.
 
+### Indicator and paper-trading browser flows — commit `eac37ec`
+
+- [x] Configure and persist a built-in chart indicator.
+- [x] Import a custom Pine indicator and add it to the live chart.
+- [x] Create, start, command, inspect and stop a paper bot.
+
+Verification:
+
+- 12 Playwright scenarios passed on the production build.
+- Biome, TypeScript and all 267 Vitest tests passed.
+
 ## In progress
 
 ### Critical browser E2E expansion
 
-Current: 12 scenarios implemented.
+Current: 14 scenarios implemented.
 
 - [x] Terminal/chart smoke.
 - [x] Keyboard command palette and symbol switch.
@@ -82,8 +93,8 @@ Current: 12 scenarios implemented.
 - [x] Create/start/stop a paper bot and inspect its order journal.
 - [ ] WebSocket disconnect/reconnect without duplicated candles.
 - [ ] Visible unavailable/fallback market-data state.
-- [ ] Keyboard/focus behavior for modal dialogs and menus.
-- [ ] Responsive monitoring smoke test.
+- [x] Keyboard/focus behavior for modal dialogs and menus.
+- [x] Responsive monitoring smoke test.
 
 ## Remaining architecture work
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export interface Command {
@@ -19,13 +19,19 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (open) {
+      returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setQuery("");
       setIndex(0);
-      requestAnimationFrame(() => inputRef.current?.focus());
+      inputRef.current?.focus();
     }
+    return () => {
+      if (open && returnFocusRef.current?.isConnected) returnFocusRef.current.focus();
+    };
   }, [open]);
 
   const filtered = useMemo(() => {
@@ -47,7 +53,22 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
 
   return createPortal(
     <div className="cmdk-backdrop" onClick={onClose} role="presentation">
-      <div className="cmdk" onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Command palette">
+      <div
+        ref={dialogRef}
+        className="cmdk"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onClose();
+          } else if (event.key === "Tab") {
+            trapTabKey(event, dialogRef.current);
+          }
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+      >
         <input
           ref={inputRef}
           value={query}
@@ -64,8 +85,6 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
               event.preventDefault();
               const command = filtered[index];
               if (command) run(command);
-            } else if (event.key === "Escape") {
-              onClose();
             }
           }}
         />
@@ -94,4 +113,21 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
     </div>,
     document.body
   );
+}
+
+function trapTabKey(event: ReactKeyboardEvent, root: HTMLElement | null) {
+  if (!root) return;
+  const focusable = Array.from(root.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+  )).filter((element) => !element.hidden && element.getClientRects().length > 0);
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last?.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }

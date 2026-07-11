@@ -19,6 +19,7 @@ test("command palette is keyboard-operable and switches symbols", async ({ page 
   const search = palette.getByPlaceholder("Search symbols, timeframes, chart types, actions...");
   await expect(search).toBeFocused();
   await search.fill("EURUSD");
+  await expect(palette.getByRole("button").filter({ hasText: "EURUSD" }).first()).toBeVisible({ timeout: 20_000 });
   await search.press("Enter");
 
   await expect(page.getByRole("button", { name: /Current instrument EURUSD/i })).toBeVisible();
@@ -86,6 +87,7 @@ test("saves and restores a named chart workspace", async ({ page }) => {
   const palette = page.getByRole("dialog", { name: "Command palette" });
   const search = palette.getByPlaceholder("Search symbols, timeframes, chart types, actions...");
   await search.fill("EURUSD");
+  await expect(palette.getByRole("button").filter({ hasText: "EURUSD" }).first()).toBeVisible({ timeout: 20_000 });
   await search.press("Enter");
   await expect(page.getByRole("button", { name: /Current instrument EURUSD/i })).toBeVisible();
 
@@ -191,4 +193,31 @@ test("creates, starts, journals and stops a paper bot", async ({ page }) => {
   await detail.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(detail.getByRole("button", { name: "Start", exact: true })).toBeVisible({ timeout: 15_000 });
   await detail.getByRole("button", { name: "Delete bot" }).click();
+});
+
+test("traps command-palette focus and restores it on Escape", async ({ page }) => {
+  const trigger = page.getByRole("button", { name: "Open command palette" });
+  await trigger.click();
+
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await expect(palette).toHaveAttribute("aria-modal", "true");
+  const search = palette.getByPlaceholder("Search symbols, timeframes, chart types, actions...");
+  await expect(search).toBeFocused();
+
+  await search.press("Shift+Tab");
+  await expect(palette.getByRole("button").last()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(palette).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
+
+test("keeps the chart usable at a narrow mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Toggle markets panel" })).toBeVisible();
+  await expect(page.locator(".stats-panel")).toBeHidden();
+
+  await page.getByRole("button", { name: "Toggle markets panel" }).click();
+  await expect(page.locator(".watchlist")).toBeHidden();
+  await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible();
 });
