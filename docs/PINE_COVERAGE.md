@@ -21,6 +21,13 @@ Syntax and tokenization failures use `PINE_PARSE_ERROR` and `PINE_LEX_ERROR`.
 The canonical limits are exported from `@saltanatbotv2/pine-compiler` as
 `PINE_BUDGETS`.
 
+Tokens expose exact half-open line/column/UTF-16-offset ranges. AST expressions,
+arguments and statements retain source spans; semantic errors and compatibility
+warnings are linked to their originating statement. Successful results include
+a `sourceMap` from generated `body.N`/`init.N` IR paths to Pine source spans so
+editors can navigate between source, blocks and preview output without adding
+non-executable metadata to Strategy IR.
+
 **Design guarantee.** The target IR is a per-bar, vectorized, `eval`-free dataflow
 that must run **identically in the browser backtest and the live engine**. Every
 construct that would break that guarantee (look-ahead, other-timeframe data,

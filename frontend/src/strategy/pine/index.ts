@@ -1,6 +1,13 @@
 import { irToText } from "../irText";
 import { irToBlocklyXml } from "../irToXml";
-import { convertPine, PineConvertError, type PineResult } from "@saltanatbotv2/pine-compiler";
+import {
+  convertPine,
+  PineConvertError,
+  type PineDiagnostic,
+  type PineLanguageProfile,
+  type PineResult,
+  type PineSourceMapEntry
+} from "@saltanatbotv2/pine-compiler";
 import { CYCLES_ANALYSIS_WARNINGS, isCyclesAnalysisSource, warningHeader } from "./compatibility";
 export type {
   PineArg,
@@ -32,11 +39,15 @@ export interface PineImport {
   xml: string;
   code: string;
   warnings: string[];
+  diagnostics: PineDiagnostic[];
+  language: PineLanguageProfile;
+  sourceMap: PineSourceMapEntry[];
 }
 
 export interface PineImportError {
   ok: false;
   error: string;
+  diagnostic?: PineDiagnostic;
 }
 
 export function importPineScript(source: string): PineImport | PineImportError {
@@ -44,7 +55,7 @@ export function importPineScript(source: string): PineImport | PineImportError {
   try {
     result = convertPine(source);
   } catch (cause) {
-    if (cause instanceof PineConvertError) return { ok: false, error: cause.message };
+    if (cause instanceof PineConvertError) return { ok: false, error: cause.message, diagnostic: cause.diagnostic };
     return { ok: false, error: cause instanceof Error ? cause.message : "Conversion failed." };
   }
   const warnings = isCyclesAnalysisSource(source, result.name)
@@ -58,6 +69,9 @@ export function importPineScript(source: string): PineImport | PineImportError {
     name: result.name,
     xml: irToBlocklyXml(result.ir),
     code: header + irToText(result.ir),
-    warnings
+    warnings,
+    diagnostics: result.diagnostics,
+    language: result.language,
+    sourceMap: result.sourceMap
   };
 }

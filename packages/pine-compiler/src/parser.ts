@@ -1,6 +1,7 @@
 /** Recursive-descent parser package implementation. */
 import { PineLexError, type Token, tokenize } from "./lexer";
 import { PINE_BUDGETS } from "./budgetLimits";
+import type { SourceSpan } from "./diagnostics";
 
 /**
  * Recursive-descent parser for the supported Pine Script subset. Produces a
@@ -11,7 +12,7 @@ import { PINE_BUDGETS } from "./budgetLimits";
  * Recursion depth is capped so hostile nesting can't overflow the stack.
  */
 
-export type PineExpr =
+export type PineExpr = (
   | { t: "num"; v: number }
   | { t: "str"; v: string }
   | { t: "ident"; name: string }
@@ -23,17 +24,20 @@ export type PineExpr =
   | { t: "binary"; op: string; a: PineExpr; b: PineExpr }
   | { t: "ternary"; cond: PineExpr; a: PineExpr; b: PineExpr }
   | { t: "switch"; subject?: PineExpr; arms: PineSwitchArm[] }
-  | { t: "tuplelit"; items: PineExpr[] };
+  | { t: "tuplelit"; items: PineExpr[] }
+) & { span?: SourceSpan };
 
 /** One `match => body` arm of a switch (match absent = the default `=> body` arm). */
 export interface PineSwitchArm {
   match?: PineExpr;
   body: PineExpr;
+  span?: SourceSpan;
 }
 
 export interface PineArg {
   name?: string;
   value: PineExpr;
+  span?: SourceSpan;
 }
 
 /** A user function definition: single-expression (`f(x) => x*2`) or a multi-line
@@ -43,9 +47,10 @@ export interface PineFuncDef {
   params: { name: string; def?: PineExpr }[];
   body: PineStmt[];
   ret?: PineExpr;
+  span?: SourceSpan;
 }
 
-export type PineStmt =
+export type PineStmt = (
   | { t: "version"; v: number }
   | { t: "assign"; name: string; value: PineExpr; declaredVar: boolean }
   | { t: "reassign"; name: string; op: ":=" | "+=" | "-=" | "*=" | "/="; value: PineExpr }
@@ -57,7 +62,8 @@ export type PineStmt =
   | { t: "func"; def: PineFuncDef }
   /** Several comma-separated declarations on one line: `var a = 0, var b = false`. */
   | { t: "multi"; stmts: PineStmt[] }
-  | { t: "unsupported"; what: string; line: number };
+  | { t: "unsupported"; what: string; line: number }
+) & { span?: SourceSpan };
 
 export class PineParseError extends Error {}
 
@@ -91,6 +97,13 @@ class Parser {
   // ---------- statements ----------
 
   private parseStatement(indent: number): PineStmt | undefined {
+    const start = this.peek();
+    const statement = this.parseStatementNode(indent);
+    if (statement) attachMissingSpans(statement, tokenRange(start, this.previous()));
+    return statement;
+  }
+
+  private parseStatementNode(indent: number): PineStmt | undefined {
     const tok = this.peek();
 
     if (tok.type === "ident") {
@@ -417,10 +430,12 @@ class Parser {
   // ---------- expressions (precedence climbing) ----------
 
   private parseExpr(): PineExpr {
+    const start = this.peek();
     this.depth += 1;
     if (this.depth > MAX_DEPTH) throw new PineParseError("Expression nested too deeply.");
     const expr = this.parseTernary();
     this.depth -= 1;
+    attachMissingSpans(expr, tokenRange(start, this.previous()));
     return expr;
   }
 
@@ -591,6 +606,10 @@ class Parser {
     return this.tokens[this.pos] ?? this.tokens[this.tokens.length - 1];
   }
 
+  private previous(): Token {
+    return this.tokens[Math.max(0, this.pos - 1)] ?? this.peek();
+  }
+
   private peekOp(text: string): boolean {
     const tok = this.peek();
     return tok.type === "op" && tok.text === text;
@@ -702,3 +721,21 @@ class Parser {
 }
 
 export { PineLexError };
+
+function tokenRange(start: Token, end: Token): SourceSpan {
+  return { start: start.span.start, end: end.span.end };
+}
+
+function attachMissingSpans(value: unknown, fallback: SourceSpan): void {
+  if (Array.isArray(value)) {
+    for (const item of value) attachMissingSpans(item, fallback);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  const record = value as Record<string, unknown> & { span?: SourceSpan };
+  const own = record.span ?? fallback;
+  record.span = own;
+  for (const [key, nested] of Object.entries(record)) {
+    if (key !== "span") attachMissingSpans(nested, own);
+  }
+}

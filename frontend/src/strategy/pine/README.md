@@ -7,6 +7,11 @@ The Pine subsystem converts a supported subset of Pine Script into editable Bloc
 Application consumers should import from `index.ts`. The pure compiler implementation lives in the `@saltanatbotv2/pine-compiler` workspace package; local implementation-named files are temporary one-line compatibility facades and are not stable APIs.
 
 The package's `ast.ts` owns public AST types. Its `diagnostics.ts` owns stable diagnostic codes and source-span contracts for editor integrations.
+
+`importPineScript()` preserves compiler `language`, `diagnostics` and `sourceMap`
+metadata alongside the editable XML and readable IR text. UI consumers should
+use these fields for source navigation and fidelity presentation rather than
+parsing warning strings.
 `semanticHelpers.ts` owns pure type/classification, constant-folding, collection and reassignment analysis helpers used by lowering.
 `drawingLowering.ts` maps display-only Pine fills, shading, labels, lines, boxes, projections and numeric tables through an explicit lowering context.
 `numericCallLowering.ts` maps numeric built-in calls to IR nodes through an explicit context, keeping converter-owned scope and diagnostics state outside the module.

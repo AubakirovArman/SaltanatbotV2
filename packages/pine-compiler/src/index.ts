@@ -1,4 +1,4 @@
-export { convertPine, type PineResult } from "./convert";
+export { convertPine, type PineResult, type PineSourceMapEntry } from "./convert";
 export { PineConvertError } from "./errors";
 export type { PineAst, PineArg, PineExpr, PineFuncDef, PineStmt } from "./ast";
 export * from "./diagnostics";

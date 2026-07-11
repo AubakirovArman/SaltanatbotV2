@@ -25,4 +25,10 @@ stable codes, severity and remediation. Safety limits are exported as
 `PINE_BUDGETS`; callers may inspect AST/IR usage with the pure budget helpers,
 but production conversion always applies the canonical limits.
 
+Every token has an exact half-open line/column/UTF-16-offset span. Parsed AST
+objects inherit the narrowest available range, conversion failures and warnings
+are linked to their statement, and `PineResult.sourceMap` maps generated
+`body.N`/`init.N` IR paths back to the source. Source metadata is deliberately
+kept out of the executable IR so hashes and runtime semantics stay stable.
+
 Internal module responsibilities and invariants are documented in [`src/README.md`](./src/README.md).

@@ -1,7 +1,7 @@
 import type { BoolExpr, NumExpr, Stmt, StrategyIR, StrategyInput } from "@saltanatbotv2/strategy-core";
 import { IR_VERSION } from "@saltanatbotv2/strategy-core";
 import { arg, argRequired } from "./arguments";
-import { diagnosticFromMessage, type PineDiagnostic } from "./diagnostics";
+import { diagnosticFromMessage, type PineDiagnostic, type SourceSpan } from "./diagnostics";
 import { assertAstBudgets, assertGeneratedIrBudget, assertSourceBudgets } from "./budgets";
 import { PineConvertError } from "./errors";
 import { containsVar } from "./expressionHistory";
@@ -74,6 +74,13 @@ export interface PineResult {
   warnings: string[];
   diagnostics: PineDiagnostic[];
   language: PineLanguageProfile;
+  /** Stable links from generated IR paths back to their originating Pine statement. */
+  sourceMap: PineSourceMapEntry[];
+}
+
+export interface PineSourceMapEntry {
+  artifactPath: `body.${number}` | `init.${number}`;
+  source: SourceSpan;
 }
 
 export { PineConvertError } from "./errors";
@@ -143,12 +150,15 @@ class Converter {
   private readonly inputs: StrategyInput[] = [];
   private readonly init: Extract<Stmt, { k: "setvar" }>[] = [];
   private readonly warnings: string[] = [];
+  private readonly diagnostics: PineDiagnostic[] = [];
+  private readonly sourceMap: PineSourceMapEntry[] = [];
   private readonly warned = new Set<string>();
   private readonly reassigned: ReadonlySet<string>;
   private declared = false;
   private hasLongEntry = false;
   private hasShortEntry = false;
   private hasExplicitExit = false;
+  private activeSpan: SourceSpan | undefined;
 
   constructor(analysis: PineSemanticAnalysis) {
     this.reassigned = analysis.reassigned;
@@ -158,7 +168,29 @@ class Converter {
   run(ast: PineStmt[]): Omit<PineResult, "language"> {
     const body: Stmt[] = [];
     for (const stmt of ast) {
-      body.push(...this.stmt(stmt));
+      const bodyStart = body.length;
+      const initStart = this.init.length;
+      this.activeSpan = stmt.span;
+      let lowered: Stmt[];
+      try {
+        lowered = this.stmt(stmt);
+      } catch (cause) {
+        if (cause instanceof PineConvertError && stmt.span && !cause.diagnostic.span) {
+          throw new PineConvertError(cause.message, { ...cause.diagnostic, span: stmt.span });
+        }
+        throw cause;
+      } finally {
+        this.activeSpan = undefined;
+      }
+      body.push(...lowered);
+      if (stmt.span) {
+        for (let index = bodyStart; index < body.length; index += 1) {
+          this.sourceMap.push({ artifactPath: `body.${index}`, source: stmt.span });
+        }
+        for (let index = initStart; index < this.init.length; index += 1) {
+          this.sourceMap.push({ artifactPath: `init.${index}`, source: stmt.span });
+        }
+      }
     }
     if (!this.declared) {
       this.warn("No indicator()/strategy() declaration found — importing as an indicator.");
@@ -180,7 +212,8 @@ class Converter {
       name: this.name,
       ir,
       warnings: this.warnings,
-      diagnostics: this.warnings.map((warning) => diagnosticFromMessage(warning, "warning", "PINE_COMPATIBILITY_WARNING"))
+      diagnostics: this.diagnostics,
+      sourceMap: this.sourceMap
     };
   }
 
@@ -1000,11 +1033,13 @@ class Converter {
 
   private warn(message: string): void {
     this.warnings.push(message);
+    const diagnostic = diagnosticFromMessage(message, "warning", "PINE_COMPATIBILITY_WARNING");
+    this.diagnostics.push(this.activeSpan ? { ...diagnostic, span: this.activeSpan } : diagnostic);
   }
 
   private warnOnce(key: string, message: string): void {
     if (this.warned.has(key)) return;
     this.warned.add(key);
-    this.warnings.push(message);
+    this.warn(message);
   }
 }

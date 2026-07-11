@@ -29,4 +29,17 @@ describe("Pine diagnostics", () => {
       expect(error.diagnostic.span?.start.line).toBeGreaterThanOrEqual(1);
     }
   });
+
+  it("links semantic conversion failures to their complete source statement", () => {
+    try {
+      convertPine('//@version=6\nindicator("Mapped")\nplot(unknown_series)');
+      throw new Error("Expected conversion to fail");
+    } catch (cause) {
+      expect(cause).toBeInstanceOf(PineConvertError);
+      expect((cause as PineConvertError).diagnostic.span).toEqual({
+        start: { line: 3, column: 1, offset: 33 },
+        end: { line: 3, column: 21, offset: 53 }
+      });
+    }
+  });
 });

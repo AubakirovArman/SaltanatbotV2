@@ -4,7 +4,8 @@ import {
   assertAstBudgets,
   assertGeneratedIrBudget,
   convertPine,
-  parsePine
+  parsePine,
+  tokenize
 } from "@saltanatbotv2/pine-compiler";
 import { describe, expect, it } from "vitest";
 
@@ -91,5 +92,50 @@ describe("Pine resource budgets", () => {
   it("returns deterministic diagnostics and language metadata", () => {
     const source = '//@version=5\nstudy("Stable")\nplot(close)';
     expect(convertPine(source)).toEqual(convertPine(source));
+  });
+});
+
+describe("Pine source ranges", () => {
+  it("tracks exact token line, column and byte-independent UTF-16 offsets", () => {
+    const tokens = tokenize("plot(close)\n  plot(open)");
+
+    expect(tokens[0]).toEqual(expect.objectContaining({
+      text: "plot",
+      span: { start: { line: 1, column: 1, offset: 0 }, end: { line: 1, column: 5, offset: 4 } }
+    }));
+    expect(tokens.find((token) => token.text === "open")?.span).toEqual({
+      start: { line: 2, column: 8, offset: 19 },
+      end: { line: 2, column: 12, offset: 23 }
+    });
+  });
+
+  it("attaches ranges to every parsed AST object", () => {
+    const ast = parsePine("value = close + open\nplot(value)");
+    const missing: string[] = [];
+    const visit = (value: unknown, path: string): void => {
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => visit(item, `${path}.${index}`));
+        return;
+      }
+      if (!value || typeof value !== "object") return;
+      const record = value as Record<string, unknown>;
+      if ((typeof record.t === "string" || "value" in record) && !record.span) missing.push(path);
+      for (const [key, nested] of Object.entries(record)) if (key !== "span") visit(nested, `${path}.${key}`);
+    };
+    visit(ast, "ast");
+
+    expect(missing).toEqual([]);
+    expect(ast[0]?.span?.start).toEqual({ line: 1, column: 1, offset: 0 });
+    expect(ast[1]?.span?.start.line).toBe(2);
+  });
+
+  it("links generated IR and compatibility diagnostics to Pine statements", () => {
+    const result = convertPine(`//@version=6\nindicator("Mapped")\nvalue = bar_index\nplot(value)`);
+
+    expect(result.sourceMap).toContainEqual(expect.objectContaining({
+      artifactPath: "body.0",
+      source: expect.objectContaining({ start: expect.objectContaining({ line: 4 }) })
+    }));
+    expect(result.diagnostics.find((diagnostic) => diagnostic.message.includes("bar_index"))?.span?.start.line).toBe(3);
   });
 });

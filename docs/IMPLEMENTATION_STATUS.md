@@ -306,6 +306,8 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 - [x] Attach remediation to all public compiler diagnostics.
 - [x] Enforce canonical source, token, AST, nesting, loop and generated-IR resource budgets.
 - [x] Test deterministic profile metadata, diagnostics and budget failures.
+- [x] Add exact token ranges and propagated AST spans without changing executable semantics.
+- [x] Link semantic diagnostics and generated body/init IR paths back to Pine statements.
 
 - [x] Extract AST and public diagnostic types with source-span contracts.
 - [x] Extract semantic scope/symbol/function analysis.

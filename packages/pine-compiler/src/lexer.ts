@@ -11,6 +11,7 @@
  */
 
 import { PINE_BUDGETS } from "./budgetLimits";
+import type { SourceSpan } from "./diagnostics";
 
 export const MAX_SOURCE_CHARS = PINE_BUDGETS.sourceChars;
 export const MAX_TOKENS = PINE_BUDGETS.tokens;
@@ -22,6 +23,8 @@ export interface Token {
   /** Token text. For newline tokens: the indentation (spaces) of the next line. */
   text: string;
   line: number;
+  /** Exact half-open source range for editor and diagnostic integrations. */
+  span: SourceSpan;
 }
 
 const TWO_CHAR_OPS = new Set([":=", "==", "!=", "<=", ">=", "=>", "+=", "-=", "*=", "/="]);
@@ -36,14 +39,29 @@ export function tokenize(source: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
   let line = 1;
+  let lineStart = 0;
   let depth = 0; // ( [ nesting — newlines inside are not statement breaks
+  let tokenStart = 0;
+  let tokenLine = 1;
+  let tokenLineStart = 0;
 
   const push = (type: TokenType, text: string) => {
     if (tokens.length >= MAX_TOKENS) throw new PineLexError("Script too large (token limit).");
-    tokens.push({ type, text, line });
+    tokens.push({
+      type,
+      text,
+      line: tokenLine,
+      span: {
+        start: { line: tokenLine, column: tokenStart - tokenLineStart + 1, offset: tokenStart },
+        end: { line, column: i - lineStart + 1, offset: i }
+      }
+    });
   };
 
   while (i < source.length) {
+    tokenStart = i;
+    tokenLine = line;
+    tokenLineStart = lineStart;
     const ch = source[i];
 
     // Comments run to end of line.
@@ -55,6 +73,7 @@ export function tokenize(source: string): Token[] {
     if (ch === "\n") {
       line += 1;
       i += 1;
+      lineStart = i;
       // Measure indentation of the next non-empty line.
       let indent = 0;
       while (i < source.length && (source[i] === " " || source[i] === "\t")) {
@@ -155,15 +174,15 @@ export function tokenize(source: string): Token[] {
 
     const two = source.slice(i, i + 2);
     if (TWO_CHAR_OPS.has(two)) {
-      push("op", two);
       i += 2;
+      push("op", two);
       continue;
     }
     if (ONE_CHAR_OPS.has(ch)) {
       if (ch === "(" || ch === "[") depth += 1;
       if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
-      push("op", ch);
       i += 1;
+      push("op", ch);
       continue;
     }
 
@@ -171,6 +190,9 @@ export function tokenize(source: string): Token[] {
     throw new PineLexError(`Unexpected character "${ch}" on line ${line}.`);
   }
 
+  tokenStart = i;
+  tokenLine = line;
+  tokenLineStart = lineStart;
   push("eof", "");
   return tokens;
 }

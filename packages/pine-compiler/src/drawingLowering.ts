@@ -99,16 +99,21 @@ export function lowerLine(ctx: DrawingLoweringContext, args: PineArg[]): Stmt[] 
     return [];
   }
   const color = ctx.color(arg(args, undefined, "color")?.value) ?? "#8f9bb3";
-  if (x2 && JSON.stringify(x1.value) === JSON.stringify(x2.value)) {
+  if (x2 && sameExpression(x1.value, x2.value)) {
     ctx.warnOnce("linevertical", "Vertical line.new() imported at the firing bar (its x-coordinate/extend are approximated).");
     return [{ k: "vline", when: { k: "bool", v: true }, label: "", color }];
   }
-  if (!y2 || JSON.stringify(y1.value) === JSON.stringify(y2.value)) {
+  if (!y2 || sameExpression(y1.value, y2.value)) {
     ctx.warnOnce("linelevel", "line.new() imported as a horizontal level from the firing bar (x-coordinates/extend are approximated).");
     return [{ k: "ray", price: ctx.num(y1.value), when: { k: "bool", v: true }, label: "", color }];
   }
   ctx.warnOnce("slanted", "Slanted line.new() segments can't be drawn per-bar — skipped.");
   return [];
+}
+
+function sameExpression(left: PineExpr, right: PineExpr): boolean {
+  const withoutSourceMetadata = (key: string, value: unknown) => key === "span" ? undefined : value;
+  return JSON.stringify(left, withoutSourceMetadata) === JSON.stringify(right, withoutSourceMetadata);
 }
 
 export function lowerBox(ctx: DrawingLoweringContext, args: PineArg[]): Stmt[] {

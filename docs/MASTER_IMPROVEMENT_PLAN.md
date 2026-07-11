@@ -143,8 +143,8 @@ source -> lexer -> parser -> normalized AST -> semantic analysis
 Required improvements:
 
 - [x] version-aware language profiles for Pine v4/v5/v6;
-- source spans on tokens, AST nodes, diagnostics and generated artifacts;
-- [x] typed diagnostics with code, severity and remediation (complete source-range propagation remains below);
+- [x] source spans on tokens, AST nodes, diagnostics and generated artifacts;
+- [x] typed diagnostics with code, severity, source range and remediation;
 - [x] resource budgets for file size, lines, tokens, AST size/nesting, loops and generated IR;
 - explicit unsupported-feature registry instead of scattered conditions;
 - conversion report showing exact, approximated, display-only and rejected constructs;
