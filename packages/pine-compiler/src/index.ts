@@ -19,6 +19,7 @@ export * from "./numericExpressionLowering";
 export * from "./parser";
 export * from "./plotStatementLowering";
 export * from "./semanticHelpers";
+export * from "./semanticAnalysis";
 export * from "./statementLowering";
 export * from "./strategyCallLowering";
 export * from "./switchLowering";

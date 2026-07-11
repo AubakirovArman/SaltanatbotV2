@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { convertPine, PineSymbolTable } from "@saltanatbotv2/pine-compiler";
+import { analyzePine, convertPine, parsePine, PineSymbolTable } from "@saltanatbotv2/pine-compiler";
 
 const packageSource = fileURLToPath(new URL("../../packages/pine-compiler/src/", import.meta.url));
 
@@ -15,6 +15,7 @@ describe("Pine compiler package boundary", () => {
     expect(result.name).toBe("Boundary");
     expect(result.ir.body).toHaveLength(1);
     expect(symbols.values.get("source")).toEqual({ k: "price", field: "close" });
+    expect(analyzePine(parsePine('indicator("Boundary")')).scopes[0].kind).toBe("program");
   });
 
   it("does not import UI, browser, chart or frontend implementation code", () => {

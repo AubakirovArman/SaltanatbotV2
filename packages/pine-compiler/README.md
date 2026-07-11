@@ -11,6 +11,9 @@ Public consumers should import from `@saltanatbotv2/pine-compiler`. The package 
 - May depend on `@saltanatbotv2/strategy-core` and other pure domain packages.
 - Must not depend on React, Blockly, charts, browser globals, filesystem or network code.
 - Owns source parsing, diagnostics, scoped symbols and lowering to `StrategyIR`.
+- Runs `semanticAnalysis.ts` before lowering to build lexical scopes, symbols/references, forward function definitions and reassignment metadata.
 - Does not own Blockly serialization, preview adaptations or UI compatibility presentation.
 
 Run `npm run check -w @saltanatbotv2/pine-compiler` for its independent type check. The frontend architecture test also verifies forbidden dependencies and the stable package entry point.
+
+Internal module responsibilities and invariants are documented in [`src/README.md`](./src/README.md).

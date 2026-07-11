@@ -68,6 +68,7 @@ packages/pine-compiler/
     parser.ts                  parser and internal AST
     ast.ts                     public AST facade
     diagnostics.ts             stable diagnostic contracts
+    semanticAnalysis.ts        pre-lowering scopes, symbols, references and functions
     symbolTable.ts             nested semantic scopes
     convert.ts                 lowering coordinator
     *Lowering.ts               focused expression/statement modules
@@ -86,7 +87,7 @@ Safe extraction order:
 4. extract expression conversion;
 5. extract statements and strategy calls;
 6. extract drawing conversion;
-7. introduce semantic-analysis and normalization passes;
+7. introduce semantic-analysis and normalization passes; Done for lexical scopes/symbols/functions/reassignments; normalization stays feature-driven.
 8. move the resulting pure compiler into `packages/pine-compiler`. Done; old frontend implementation paths remain compatibility re-exports during caller migration.
 
 `convertPine()` remains the facade throughout. Golden tests must prove identical output after every extraction.

@@ -234,9 +234,10 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 ### Pine compiler
 
 - [x] Extract AST and public diagnostic types with source-span contracts.
-- [ ] Extract semantic scope/symbol/function analysis.
+- [x] Extract semantic scope/symbol/function analysis.
   - [x] Extract current pure semantic classification helpers from lowering.
   - [x] Introduce explicit nested scopes and typed symbol/function tables.
+  - [x] Add a pure pre-lowering analysis pass for scope trees, symbols, references, shadowing, forward functions and reassignment classification.
 - [x] Extract expression lowering.
   - [x] Extract numeric built-in function-call dispatch.
   - [x] Extract boolean built-in function-call dispatch.

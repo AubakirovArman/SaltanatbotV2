@@ -35,9 +35,9 @@ import { lowerPlotStatement, type PlotStatementLoweringContext } from "./plotSta
 import { lowerAlertStatement, type AlertStatementLoweringContext } from "./alertStatementLowering";
 import { lowerDrawingStatement, type DrawingStatementLoweringContext } from "./drawingStatementLowering";
 import { PineSymbolTable } from "./symbolTable";
+import { analyzePine, type PineSemanticAnalysis } from "./semanticAnalysis";
 import {
   boolToNumericSeries,
-  collectReassigned,
   collectionReceiver,
   isBoolExpr,
   isCosmeticConst,
@@ -89,7 +89,7 @@ export function convertPine(source: string): PineResult {
     if (cause instanceof PineLexError || cause instanceof PineParseError) throw new PineConvertError(cause.message);
     throw cause;
   }
-  return new Converter().run(ast);
+  return new Converter(analyzePine(ast)).run(ast);
 }
 
 class Converter {
@@ -117,14 +117,18 @@ class Converter {
   private readonly init: Extract<Stmt, { k: "setvar" }>[] = [];
   private readonly warnings: string[] = [];
   private readonly warned = new Set<string>();
-  private reassigned = new Set<string>();
+  private readonly reassigned: ReadonlySet<string>;
   private declared = false;
   private hasLongEntry = false;
   private hasShortEntry = false;
   private hasExplicitExit = false;
 
+  constructor(analysis: PineSemanticAnalysis) {
+    this.reassigned = analysis.reassigned;
+    for (const [name, definition] of analysis.functions) this.funcs.set(name, definition);
+  }
+
   run(ast: PineStmt[]): PineResult {
-    this.reassigned = collectReassigned(ast);
     const body: Stmt[] = [];
     for (const stmt of ast) {
       body.push(...this.stmt(stmt));
