@@ -454,6 +454,10 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 
 ### Frontend decomposition
 
+- [x] Split the 1,096-line Blockly definition monolith into eleven domain category modules behind a 188-line stable registration/toolbox facade.
+  - [x] Preserve every saved XML type and generated catalog entry.
+  - [x] Enforce globally unique block types and per-row field/input names.
+  - [x] Make registration idempotent across HMR/module re-evaluation without overwrite warnings.
 - [x] Split `StrategyLab` into build/validate/preview/backtest/optimize/library controllers and panels.
   - [x] Extract library, optimizer and execution/result panels.
   - [x] Extract Blockly workspace lifecycle/autosave controller.

@@ -15,6 +15,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
   global reduced-motion handling, 200% text verification and corrected secondary-text contrast.
 - Added contributor, asset-provenance, accessibility and migration policies plus categorized automatic
   GitHub release notes.
+- Split Blockly definitions into domain-owned category modules with invariant tests while retaining the
+  existing registration/toolbox facade and saved XML compatibility.
 
 ### Operations and recovery
 
