@@ -10,8 +10,7 @@ import {
   DRAWING_NEW_RE,
   NAME_RE,
   PLOT_CALLS,
-  PRICE_FIELDS,
-  normalizeTa
+  PRICE_FIELDS
 } from "./language";
 import { PineLexError } from "./lexer";
 import { type PineFuncDef, PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
@@ -43,6 +42,7 @@ import {
 import { lowerValue, type ValueLoweringContext } from "./valueLowering";
 import { lowerStrategyCall, type StrategyCallLoweringContext } from "./strategyCallLowering";
 import { lowerStatement, type StatementLoweringContext } from "./statementLowering";
+import { lowerTupleAssignment, type TupleLoweringContext } from "./tupleLowering";
 import {
   boolToNum,
   boolToNumericSeries,
@@ -329,70 +329,19 @@ class Converter {
   }
 
   private tuple(names: string[], value: PineExpr): Stmt[] {
-    // `[a, b] = [x, y]` — direct tuple literal.
-    if (value.t === "tuplelit") {
-      names.forEach((n, i) => {
-        this.checkName(n);
-        if (i < value.items.length) this.env.set(n, this.val(value.items[i]));
-      });
-      return [];
-    }
-    if (value.t !== "call") throw new PineConvertError("Tuple assignment must destructure a function call.");
-    // `[a, b] = myFn(...)` — user function returning a tuple.
-    if (this.funcs.has(value.callee)) {
-      const parts = this.inlineUserFuncTuple(value.callee, value.args);
-      names.forEach((n, i) => {
-        this.checkName(n);
-        if (i < parts.length) this.env.set(n, parts[i]);
-      });
-      return [];
-    }
-    const callee = normalizeTa(value.callee);
-    let parts: NumExpr[];
-    if (callee === "ta.macd") {
-      const src = this.numArg(value.args, 0, "source", { k: "price", field: "close" });
-      const fast = this.numArg(value.args, 1, "fastlen");
-      const slow = this.numArg(value.args, 2, "slowlen");
-      const signal = this.numArg(value.args, 3, "siglen");
-      parts = [
-        { k: "macd", line: "macd", fast, slow, signal, source: src },
-        { k: "macd", line: "signal", fast, slow, signal, source: src },
-        { k: "macd", line: "histogram", fast, slow, signal, source: src }
-      ];
-    } else if (callee === "ta.bb") {
-      const src = this.numArg(value.args, 0, "series");
-      const period = this.numArg(value.args, 1, "length");
-      const dev = this.numArg(value.args, 2, "mult");
-      parts = [
-        { k: "bollinger", band: "middle", period, dev, source: src },
-        { k: "bollinger", band: "upper", period, dev, source: src },
-        { k: "bollinger", band: "lower", period, dev, source: src }
-      ];
-    } else if (callee === "ta.supertrend") {
-      const factor = this.numArg(value.args, 0, "factor");
-      const period = this.numArg(value.args, 1, "atrPeriod");
-      parts = [
-        { k: "supertrend", line: "value", factor, period },
-        { k: "supertrend", line: "dir", factor, period }
-      ];
-    } else if (callee === "ta.dmi") {
-      const period = this.numArg(value.args, 0, "diLength");
-      const smoothing = this.numArg(value.args, 1, "adxSmoothing");
-      parts = [
-        { k: "dmi", line: "plus", period, smoothing },
-        { k: "dmi", line: "minus", period, smoothing },
-        { k: "dmi", line: "adx", period, smoothing }
-      ];
-    } else if (callee === "ta.kc") {
-      parts = [this.kcNode(value.args, "middle"), this.kcNode(value.args, "upper"), this.kcNode(value.args, "lower")];
-    } else {
-      throw new PineConvertError(`Tuple destructuring is only supported for ta.macd, ta.bb, ta.supertrend, ta.dmi and ta.kc (got ${value.callee}).`);
-    }
-    names.forEach((n, i) => {
-      this.checkName(n);
-      if (i < parts.length) this.env.set(n, { t: "num", e: parts[i] });
-    });
-    return [];
+    return lowerTupleAssignment(this.tupleContext(), names, value);
+  }
+
+  private tupleContext(): TupleLoweringContext {
+    return {
+      bind: (name, bound) => this.env.set(name, bound),
+      checkName: (name) => this.checkName(name),
+      hasUserFunction: (name) => this.funcs.has(name),
+      inlineUserFunctionTuple: (name, args) => this.inlineUserFuncTuple(name, args),
+      keltner: (args, band) => this.kcNode(args, band),
+      numArg: (args, position, name, fallback) => this.numArg(args, position, name, fallback),
+      value: (expression) => this.val(expression)
+    };
   }
 
   // ---------- call statements (plot / strategy.* / alerts / declarations) ----------
