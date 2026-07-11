@@ -1,11 +1,10 @@
-import { AlertTriangle, Code2, Download, FileCode2, FileJson, LayoutGrid, Loader2, Play, Plus, Save, Share2, SlidersHorizontal, Upload, Workflow, X } from "lucide-react";
+import { AlertTriangle, Code2, FileJson, Loader2, Play, Plus, Save, Share2, SlidersHorizontal, Workflow } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import * as Blockly from "blockly/core";
 import * as En from "blockly/msg/en";
 import { getCandles } from "../api/marketClient";
 import { registerStrategyBlocks, strategyToolbox } from "../strategy/blocks";
 import { blockCatalog } from "../strategy/blockCatalog";
-import { PineImportDialog } from "./PineImportDialog";
 import type { PineImport } from "../strategy/pine";
 import { compileWorkspace } from "../strategy/compile";
 import { buildShareUrl } from "../strategy/share";
@@ -16,11 +15,11 @@ import { runOptimizeInWorker, runWalkForwardInWorker } from "../strategy/optimiz
 import { loadSecurityDataForIr } from "../strategy/securityLoader";
 import type { SecurityDataContext } from "../strategy/securityData";
 import type { StrategyArtifact, StrategyArtifactKind } from "../strategy/library";
-import { strategyTemplates, type StrategyTemplate, type TemplateCategory } from "../strategy/templates";
-import { downloadStrategyFile, parseStrategyFile } from "../strategy/strategyFile";
+import type { StrategyTemplate } from "../strategy/templates";
 import type { StrategyIR } from "../strategy/ir";
 import type { Candle, CatalogResponse, DataExchange, Timeframe } from "../types";
 import { BacktestReport } from "./BacktestReport";
+import { StrategyLibrary } from "../strategy/components/StrategyLibrary";
 
 const blocklyMessages = Object.fromEntries(Object.entries(En).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 let localeReady = false;
@@ -916,212 +915,6 @@ function fmtScore(v: number): string {
 
 function clamp01(v: number): number {
   return Math.min(0.95, Math.max(0.05, v));
-}
-
-function StrategyLibrary({
-  artifacts,
-  activeId,
-  onSelect,
-  onCreate,
-  onUseTemplate,
-  onImportStrategy,
-  onImportPineMany
-}: {
-  artifacts: StrategyArtifact[];
-  activeId?: string;
-  onSelect: (id: string) => void;
-  onCreate: (kind: StrategyArtifactKind) => void;
-  onUseTemplate: (template: StrategyTemplate) => void;
-  onImportStrategy: (input: { name: string; description: string; xml: string }) => void;
-  onImportPineMany: (inputs: PineImport[]) => void;
-}) {
-  const indicators = artifacts.filter((artifact) => artifact.kind === "indicator");
-  const strategies = artifacts.filter((artifact) => artifact.kind === "strategy");
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [importError, setImportError] = useState<string>();
-  const [pineOpen, setPineOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const importFile = async (file: File) => {
-    setImportError(undefined);
-    try {
-      const parsed = parseStrategyFile(await file.text());
-      if (!parsed) {
-        setImportError("Not a valid .strategy file.");
-        return;
-      }
-      onImportStrategy({ name: parsed.name, description: parsed.description, xml: parsed.xml });
-    } catch {
-      setImportError("Could not read that file.");
-    }
-  };
-
-  return (
-    <aside className="strategy-library">
-      <div className="strategy-library-actions">
-        <button type="button" onClick={() => onCreate("indicator")}>
-          <Plus size={14} aria-hidden="true" /> Indicator
-        </button>
-        <button type="button" onClick={() => onCreate("strategy")}>
-          <Plus size={14} aria-hidden="true" /> Strategy
-        </button>
-        <button type="button" onClick={() => setGalleryOpen(true)} title="Browse ready-made strategy templates">
-          <LayoutGrid size={14} aria-hidden="true" /> Gallery
-        </button>
-        <button type="button" onClick={() => fileInputRef.current?.click()} title="Import a .strategy file">
-          <Upload size={14} aria-hidden="true" /> Import
-        </button>
-        <button type="button" onClick={() => setPineOpen(true)} title="Convert a TradingView Pine Script into an indicator or strategy">
-          <FileCode2 size={14} aria-hidden="true" /> Pine
-        </button>
-      </div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".strategy,.json,application/json"
-        hidden
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) void importFile(file);
-          event.target.value = "";
-        }}
-      />
-      {importError && (
-        <div className="import-error" role="alert">
-          {importError}
-        </div>
-      )}
-      <LibraryGroup title="Indicators" items={indicators} activeId={activeId} onSelect={onSelect} />
-      <LibraryGroup title="Strategies" items={strategies} activeId={activeId} onSelect={onSelect} />
-      {pineOpen && (
-        <PineImportDialog
-          onClose={() => setPineOpen(false)}
-          onImportMany={(results) => {
-            setPineOpen(false);
-            onImportPineMany(results);
-          }}
-        />
-      )}
-      {galleryOpen && (
-        <TemplateGallery
-          onClose={() => setGalleryOpen(false)}
-          onUse={(template) => {
-            onUseTemplate(template);
-            setGalleryOpen(false);
-          }}
-        />
-      )}
-    </aside>
-  );
-}
-
-function LibraryGroup({
-  title,
-  items,
-  activeId,
-  onSelect
-}: {
-  title: string;
-  items: StrategyArtifact[];
-  activeId?: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <section className="library-group">
-      <div className="panel-header">
-        <strong>{title}</strong>
-        <span>{items.length}</span>
-      </div>
-      <div className="library-items">
-        {items.map((item) => (
-          <div key={item.id} className={`library-item ${item.id === activeId ? "active" : ""}`}>
-            <button type="button" className="library-item-main" onClick={() => onSelect(item.id)}>
-              <strong>{item.name}</strong>
-              <span>{item.description}</span>
-            </button>
-            <button
-              type="button"
-              className="library-item-export"
-              title="Export as .strategy file"
-              aria-label={`Export ${item.name}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                downloadStrategyFile(item);
-              }}
-            >
-              <Download size={13} aria-hidden="true" />
-            </button>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-const TEMPLATE_CATEGORIES: TemplateCategory[] = ["Trend", "Mean reversion", "Breakout", "Momentum"];
-
-function TemplateGallery({
-  onClose,
-  onUse
-}: {
-  onClose: () => void;
-  onUse: (template: StrategyTemplate) => void;
-}) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const categories = TEMPLATE_CATEGORIES.map((category) => ({
-    category,
-    items: strategyTemplates.filter((template) => template.category === category)
-  })).filter((group) => group.items.length > 0);
-
-  return (
-    <div className="gallery-backdrop" role="dialog" aria-modal="true" aria-label="Strategy template gallery" onClick={onClose}>
-      <div className="gallery-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="gallery-head">
-          <strong>
-            <LayoutGrid size={15} aria-hidden="true" /> Strategy Gallery
-          </strong>
-          <button type="button" className="icon-button" onClick={onClose} title="Close" aria-label="Close gallery">
-            <X size={15} aria-hidden="true" />
-          </button>
-        </div>
-        <div className="gallery-body">
-          {categories.map((group) => (
-            <section key={group.category} className="gallery-group">
-              <div className="panel-header">
-                <strong>{group.category}</strong>
-                <span>{group.items.length}</span>
-              </div>
-              <div className="gallery-cards">
-                {group.items.map((template) => (
-                  <article key={template.id} className="gallery-card">
-                    <strong>{template.name}</strong>
-                    <p>{template.description}</p>
-                    <div className="gallery-tags">
-                      {template.tags.map((tag) => (
-                        <span key={tag} className="gallery-tag">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                    <button type="button" className="gallery-use" onClick={() => onUse(template)}>
-                      Use
-                    </button>
-                  </article>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function extractWorkspaceName(workspace: Blockly.WorkspaceSvg) {

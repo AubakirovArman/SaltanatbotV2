@@ -118,7 +118,7 @@ Verification:
 - 28 Vitest files / 275 tests pass, including duration-mode and projection-viewport coverage.
 - Biome and backend/frontend TypeScript checks pass.
 
-### Trading frontend decomposition — commits `94d68d1`, `f45ed09` and current bot-detail commit
+### Trading frontend decomposition — commits `94d68d1`, `f45ed09`, `3461c2a`
 
 - [x] Move the authentication gate and empty trading state into feature-owned components.
 - [x] Move bot creation and validation into a feature-owned semantic form.
@@ -129,6 +129,12 @@ Verification:
 - [x] Reduce `TradingView.tsx` further to 578 lines.
 - [x] Move bot lifecycle actions, runtime cards, command console and journals into `BotDetail.tsx`.
 - [x] Reduce `TradingView.tsx` to a 241-line socket/list/selection controller.
+
+### Strategy Lab decomposition — current strategy-library commit
+
+- [x] Move artifact browsing, import/export, Pine entry and template gallery into `strategy/components/StrategyLibrary.tsx`.
+- [x] Add a feature-folder README documenting the new UI boundary.
+- [x] Reduce `StrategyLab.tsx` from 1,138 to 931 lines without changing its public facade.
 
 ## Completed browser baseline
 
