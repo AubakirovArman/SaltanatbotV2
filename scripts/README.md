@@ -3,6 +3,7 @@
 This folder contains deterministic maintenance and release helpers invoked by root npm commands or CI.
 
 - `check-backtest-core-generated.mjs`: verifies generated backtest-core runtime/declarations remain synchronized.
+- `check-execution-core-generated.mjs`: verifies generated execution-core runtime/declarations remain synchronized.
 - `check-strategy-core-generated.mjs`: verifies generated strategy-core runtime/declarations remain synchronized.
 - `check-docs.mjs`: validates tracked Markdown links and documented root npm commands.
 - `check-site.mjs`: validates the EN/RU/KK GitHub Pages entry points, relative assets, language

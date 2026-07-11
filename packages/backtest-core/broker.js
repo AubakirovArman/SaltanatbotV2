@@ -1,56 +1,19 @@
+import { applyExecutionSlippage, resolveExecutionSize, resolveProtectionPrice, } from "@saltanatbotv2/execution-core";
 export function applySlippage(price, direction, entering, config) {
-    const worseUp = (direction === "long") === entering;
-    const factor = worseUp ? 1 + config.slippagePct / 100 : 1 - config.slippagePct / 100;
-    return price * factor;
+    return applyExecutionSlippage(price, direction, entering, config.slippagePct);
 }
 export function resolveStop(direction, entry, stop, atr) {
-    if (stop.mode === "price")
-        return stop.value;
-    if (stop.mode === "percent") {
-        return direction === "long" ? entry * (1 - stop.value / 100) : entry * (1 + stop.value / 100);
-    }
-    const distance = (atr || 0) * stop.value;
-    return direction === "long" ? entry - distance : entry + distance;
+    return resolveProtectionPrice("stop", direction, entry, stop, atr) ?? 0;
 }
 export function resolveTarget(direction, entry, target, atr) {
-    if (target.mode === "price")
-        return target.value;
-    if (target.mode === "percent") {
-        return direction === "long" ? entry * (1 + target.value / 100) : entry * (1 - target.value / 100);
-    }
-    const distance = (atr || 0) * target.value;
-    return direction === "long" ? entry + distance : entry - distance;
+    return resolveProtectionPrice("target", direction, entry, target, atr) ?? 0;
 }
 export function resolveSize(sizing, equity, price, stopPrice, config) {
-    if (price <= 0 || !Number.isFinite(price))
-        return { qty: 0 };
-    let qty;
-    if (sizing.mode === "units") {
-        qty = sizing.value;
-    }
-    else if (sizing.mode === "risk_pct") {
-        if (stopPrice === undefined || Math.abs(price - stopPrice) === 0) {
-            return { qty: 0, warning: "Skipped risk_pct entry: no stop set, so risk-based size is undefined." };
-        }
-        qty = (equity * (sizing.value / 100)) / Math.abs(price - stopPrice);
-    }
-    else {
-        qty = (equity * (sizing.value / 100)) / price;
-    }
-    if (!(qty > 0) || !Number.isFinite(qty))
-        return { qty: 0 };
-    let warning;
-    const maxNotional = equity * config.maxLeverage;
-    if (price * qty > maxNotional && maxNotional > 0) {
-        qty = maxNotional / price;
-        warning = `Position clipped to ${config.maxLeverage}x leverage (requested notional exceeded margin).`;
-    }
-    if (config.qtyStep > 0) {
-        qty = Math.floor(qty / config.qtyStep) * config.qtyStep;
-        if (!(qty > 0))
-            return { qty: 0, warning };
-    }
-    return { qty, warning };
+    return resolveExecutionSize(sizing, equity, price, stopPrice, {
+        leverage: 1,
+        maxLeverage: config.maxLeverage,
+        qtyStep: config.qtyStep,
+    });
 }
 export function stopHit(position, candle) {
     if (position.stopPrice === undefined)

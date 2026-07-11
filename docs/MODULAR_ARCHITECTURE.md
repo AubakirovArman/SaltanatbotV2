@@ -28,7 +28,7 @@ packages/
   strategy-core/               IR, schema, evaluator, TA, traces
   pine-compiler/               lexer, parser, analysis, lowering
   backtest-core/               fills, portfolio, accounting, metrics
-  execution-core/              order state machine and risk primitives
+  execution-core/              sizing, protection, slippage and order-state primitives (delivered)
   chart-core/                  viewport, scales, drawings, render model
   test-fixtures/               candles and scripted exchange responses (initial package delivered)
 docs/

@@ -187,6 +187,7 @@ SaltanatbotV2/
 │       ├── trading/         # Trade tab UI
 │       ├── components/  hooks/  api/  styles/
 │       └── App.tsx
+├── packages/                # contracts, Pine, strategy, execution, backtest and test-fixture cores
 ├── docs/                    # architecture, API, trading, strategies, configuration
 └── assets/                  # logo
 ```

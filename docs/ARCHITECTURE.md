@@ -14,6 +14,7 @@ The repository is a private npm workspace root that owns two applications and in
 | Contracts | `@saltanatbotv2/contracts` | `packages/contracts/` | Canonical market and WebSocket types |
 | Strategy core | `@saltanatbotv2/strategy-core` | `packages/strategy-core/` | Canonical IR types, version and shared runtime primitives |
 | Backtest core | `@saltanatbotv2/backtest-core` | `packages/backtest-core/` | Broker, portfolio, warm-up, metrics, provenance and traces |
+| Execution core | `@saltanatbotv2/execution-core` | `packages/execution-core/` | Canonical sizing, slippage, protection and durable order-state rules |
 | Pine compiler | `@saltanatbotv2/pine-compiler` | `packages/pine-compiler/` | Lexer, parser, semantic analysis, lowering and diagnostics |
 | Test fixtures | `@saltanatbotv2/test-fixtures` | `packages/test-fixtures/` | Deterministic candles and scripted Fetch responses for all tiers |
 
@@ -182,7 +183,7 @@ Notes grounded in the code:
 
 ## Shared strategy IR
 
-Strategies are not stored as executable code — they compile to a typed **intermediate representation** that both tiers understand. Canonical IR declarations, evaluator, intent types, security-series alignment and TA live in `packages/strategy-core`. Historical fills, portfolio accounting, warm-up, reporting contracts, metrics and chart/external candle-source provenance live in `packages/backtest-core`. Frontend and backend strategy files retain narrow compatibility facades.
+Strategies are not stored as executable code — they compile to a typed **intermediate representation** that both tiers understand. Canonical IR declarations, evaluator, intent types, security-series alignment and TA live in `packages/strategy-core`. Slippage, protection-price resolution, sizing and monotonic order-state semantics live in `packages/execution-core`. Historical fills, portfolio accounting, warm-up, reporting contracts, metrics and chart/external candle-source provenance live in `packages/backtest-core`. Frontend and backend strategy files retain narrow compatibility facades.
 
 This is what lets a strategy backtested in the browser be executed identically on the server for live trading. The IR is a small algebra of numeric expressions, boolean expressions, and statements:
 

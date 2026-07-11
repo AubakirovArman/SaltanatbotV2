@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@saltanatbotv2/contracts": "0.1.0",
+    "@saltanatbotv2/execution-core": "0.1.0",
     "@saltanatbotv2/strategy-core": "0.1.0"
   },
   "devDependencies": {

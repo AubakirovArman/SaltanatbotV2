@@ -18,6 +18,9 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
   host clock-skew detection; mutating requests are never automatically replayed.
 - Added a canonical test-fixtures workspace for deterministic candle series and fail-closed scripted
   exchange HTTP responses shared across frontend and backend tests.
+- Added a canonical execution-core workspace shared by backtest and trading for slippage,
+  protection prices, sizing and durable order transitions. Risk-percent entries without a stop now
+  fail closed instead of falling back to maximum leveraged exposure.
 
 ### Documentation and distribution
 

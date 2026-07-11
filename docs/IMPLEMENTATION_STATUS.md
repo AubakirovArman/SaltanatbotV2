@@ -58,6 +58,16 @@ Verification:
 - [x] Migrate cross-runtime parity and exchange failure-injection tests to the shared fixtures.
 - [x] Type-check the package independently and cover validation/unexpected-network behavior.
 
+### Canonical execution core — 2026-07-11
+
+- [x] Add a UI/transport/storage-free `@saltanatbotv2/execution-core` workspace.
+- [x] Centralize adverse slippage and stop/target price resolution.
+- [x] Centralize units, equity-percent and fail-closed risk-percent sizing with leverage/step caps.
+- [x] Centralize monotonic durable order transitions and result-status derivation.
+- [x] Connect both backtest-core and backend trading through compatibility facades.
+- [x] Change live/paper risk-percent sizing without a stop from max-exposure fallback to skipped entry.
+- [x] Check generated runtime/declarations and enforce the dependency boundary with parity tests.
+
 ### Foundation — commit `3a98684`
 
 - [x] Fix zero-price synthetic fallback for dynamically discovered crypto pairs.

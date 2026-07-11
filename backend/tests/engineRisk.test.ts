@@ -32,6 +32,10 @@ describe("trading engine risk helpers", () => {
     expect(resolvePositionQty(config, { ...intents, size: { mode: "risk_pct", value: 2 } }, 100, 10_000, 95)).toBe(40);
   });
 
+  it("fails closed when risk sizing has no stop", () => {
+    expect(resolvePositionQty(config, { ...intents, size: { mode: "risk_pct", value: 2 } }, 100, 10_000)).toBe(0);
+  });
+
   it("resolves percent and ATR stops symmetrically", () => {
     expect(resolveStopPrice({ mode: "percent", value: 5 }, "long", 100, 10)).toBe(95);
     expect(resolveStopPrice({ mode: "percent", value: 5 }, "short", 100, 10)).toBe(105);

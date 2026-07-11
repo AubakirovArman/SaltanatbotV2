@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { canAdvanceOrderState, deriveDurableOrderStatus } from "@saltanatbotv2/execution-core";
 import { insertOrderEvent, listOrderEvents, upsertOrderJournal } from "./store.js";
 import type { BotConfig, ExchangeOrderSnapshot, ExecOrder, ExecResult, FillRecord, OrderEventRecord, OrderJournalRecord, OrderJournalStatus } from "./types.js";
 
@@ -241,41 +242,19 @@ export class OrderLifecycle {
 
 export const orderLifecycle = new OrderLifecycle(durableWriter);
 
-const TERMINAL_ORDER_STATUSES = new Set<OrderJournalStatus>(["filled", "cancelled", "replaced", "expired", "rejected"]);
-
 /** Reject replayed or out-of-order venue updates that would regress durable state. */
 export function canApplySnapshot(record: OrderJournalRecord, snapshot: ExchangeOrderSnapshot): boolean {
-  if (TERMINAL_ORDER_STATUSES.has(record.status)) return false;
-  if ((record.filledQty ?? 0) > snapshot.filledQty + Number.EPSILON) return false;
-
-  switch (record.status) {
-    case "intent":
-    case "unknown":
-      return true;
-    case "accepted":
-      return snapshot.status !== "unknown";
-    case "partially_filled":
-      return snapshot.status === "partially_filled"
-        || snapshot.status === "filled"
-        || snapshot.status === "cancelled"
-        || snapshot.status === "expired";
-    default:
-      return false;
-  }
+  return canAdvanceOrderState(record, snapshot);
 }
 
 export function deriveOrderJournalStatus(record: OrderJournalRecord, result: ExecResult): OrderJournalStatus {
-  if (!result.ok) return "rejected";
-  if (record.action === "cancel" || record.action === "cancelall" || record.action === "cancelorphans") return "cancelled";
-  if (record.action === "replace") return "replaced";
-  if (result.order?.status === "filled") return "filled";
-
-  const filledQty = result.fills.reduce((sum, fill) => sum + Math.abs(fill.qty), 0);
-  if (filledQty > 0) {
-    if (record.qty !== undefined && filledQty + Number.EPSILON < Math.abs(record.qty)) return "partially_filled";
-    return "filled";
-  }
-  return "accepted";
+  return deriveDurableOrderStatus({
+    ok: result.ok,
+    action: record.action,
+    requestedQty: record.qty,
+    orderStatus: result.order?.status === "filled" ? "filled" : undefined,
+    fillQuantities: result.fills.map((fill) => fill.qty),
+  });
 }
 
 function isFillData(value: unknown): value is Pick<FillRecord, "qty"> {
