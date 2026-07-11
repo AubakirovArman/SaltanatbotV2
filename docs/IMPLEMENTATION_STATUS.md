@@ -84,7 +84,7 @@ Verification:
 - 14 Playwright scenarios passed together on the production build.
 - Biome, TypeScript and all 267 Vitest tests passed.
 
-### Pine display primitives and richer Cycles Analysis — current display-primitives commit
+### Pine display primitives and richer Cycles Analysis — commit `4f4134f`
 
 - [x] Upgrade the shared strategy IR to version 4 with projection-zone and table-metric statements.
 - [x] Round-trip both display primitives through Blockly, schema validation and text preview.

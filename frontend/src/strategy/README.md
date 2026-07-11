@@ -23,6 +23,7 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - `pine/` parses and lowers Pine; it should not own React UI.
 - Blockly definitions describe editing; compiler modules lower blocks to IR.
 - Backtest accounting does not depend on Blockly.
+- `previewTables.ts` owns display-metric collection and table shaping; the broker loop must not depend on presentation models.
 - Storage and sharing are adapters around versioned artifacts.
 
 ## Testing

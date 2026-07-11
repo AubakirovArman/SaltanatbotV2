@@ -1,5 +1,6 @@
 import type { Candle } from "../types";
 import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "./ir";
+import { buildPreviewTables, type PreviewTable } from "./previewTables";
 import { alignSecuritySeries, getSecurityCandles, type SecurityDataContext } from "./securityData";
 import {
   almaSeries,
@@ -679,11 +680,7 @@ export interface ShapeOverlays {
   rays: ShapeRay[];
 }
 
-export interface PreviewTable {
-  id: string;
-  columns: string[];
-  rows: { label: string; values: (number | null)[] }[];
-}
+export type { PreviewTable } from "./previewTables";
 
 /** Render-safety caps for drawing overlays (a hostile/buggy strategy can fire every bar). */
 const MAX_BOXES = 500;
@@ -907,44 +904,6 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[], securityData?
 
   const plots = [...plotMap.values()].filter((plot) => plot.points.length > 0);
   return { plots, signals, shapes, tables: buildPreviewTables(ir.body, metricValues) };
-}
-
-function buildPreviewTables(stmts: Stmt[], values: Map<Stmt, number>): PreviewTable[] {
-  const metrics: Extract<Stmt, { k: "metric" }>[] = [];
-  const collect = (items: Stmt[]) => {
-    for (const stmt of items) {
-      if (stmt.k === "metric") metrics.push(stmt);
-      else if (stmt.k === "if") {
-        collect(stmt.then);
-        for (const clause of stmt.elifs ?? []) collect(clause.then);
-        if (stmt.else) collect(stmt.else);
-      } else if (stmt.k === "repeat" || stmt.k === "while" || stmt.k === "for") collect(stmt.body);
-    }
-  };
-  collect(stmts);
-
-  const groups = new Map<string, { columns: string[]; rows: Map<string, Map<string, number>> }>();
-  for (const metric of metrics) {
-    const value = values.get(metric);
-    if (value === undefined) continue;
-    const group = groups.get(metric.table) ?? {
-      columns: [] as string[],
-      rows: new Map<string, Map<string, number>>()
-    };
-    if (!group.columns.includes(metric.column)) group.columns.push(metric.column);
-    const row = group.rows.get(metric.label) ?? new Map<string, number>();
-    row.set(metric.column, value);
-    group.rows.set(metric.label, row);
-    groups.set(metric.table, group);
-  }
-  return [...groups].map(([id, group]) => ({
-    id,
-    columns: group.columns,
-    rows: [...group.rows].map(([label, row]) => ({
-      label,
-      values: group.columns.map((column) => row.get(column) ?? null)
-    }))
-  }));
 }
 
 // ---------- statement execution ----------
