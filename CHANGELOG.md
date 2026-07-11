@@ -19,6 +19,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
   existing registration/toolbox facade and saved XML compatibility.
 - Split Blockly compilation into focused statement, numeric, boolean and context modules while
   preserving the public compiler contract and complete regression suite.
+- Decomposed the chart Canvas facade into drawing controls, localized menus, accessible overlays,
+  interaction helpers and a stable prop contract, reducing the coordinator below the module budget.
 
 ### Operations and recovery
 

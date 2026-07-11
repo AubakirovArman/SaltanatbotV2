@@ -11,6 +11,7 @@ This directory currently contains both reusable terminal components and large fe
   semantic `ChartDataPanel` fallback;
 - strategy UI: `StrategyLab`, Pine import and backtest report;
 - trading UI: `TradingView`.
+- `chartCanvas/` owns focused drawing controls, overlays, pure interaction helpers and the stable facade prop contract.
 
 ## Dependency rules
 

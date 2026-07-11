@@ -486,6 +486,8 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Reuse one prepared viewport/indicator render plan across passes and rebind volatile overlay inputs without recomputation.
   - [x] Extract canvas ownership/ResizeObserver/invalidation into `useChartRenderer` and chart chrome into a focused renderer.
   - [x] Verify primary, indicator and overlay pass isolation with recording-context tests.
+  - [x] Reduce the 960-line `ChartCanvas` facade below 600 lines by extracting drawing controls, menus, accessible overlays, pure interaction helpers and its prop contract.
+  - [x] Localize every extracted drawing context action and add direct immutable movement/legend/format tests.
 - [x] Add an accessible DOM/table alternative for focused OHLC, signals and trades.
   - [x] Link the Canvas accessible description to a synchronized focused/latest-candle summary without pointer-driven live-region noise.
   - [x] Add a keyboard-operable panel with native tables for focused and recent OHLC, signals and executed trades.
