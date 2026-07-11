@@ -73,11 +73,22 @@ Verification:
 - 12 Playwright scenarios passed on the production build.
 - Biome, TypeScript and all 267 Vitest tests passed.
 
-## In progress
+### Keyboard and responsive browser flows — commit `cff3382`
+
+- [x] Trap command-palette focus and restore it to the opener on Escape.
+- [x] Verify the chart remains usable at a narrow mobile viewport.
+- [x] Stabilize catalog-dependent browser scenarios under full parallel load.
+
+Verification:
+
+- 14 Playwright scenarios passed together on the production build.
+- Biome, TypeScript and all 267 Vitest tests passed.
+
+## Completed browser baseline
 
 ### Critical browser E2E expansion
 
-Current: 14 scenarios implemented.
+Current: 16 scenarios implemented; the original critical-flow checklist is complete.
 
 - [x] Terminal/chart smoke.
 - [x] Keyboard command palette and symbol switch.
@@ -91,8 +102,8 @@ Current: 14 scenarios implemented.
 - [x] Add/configure/persist a built-in indicator.
 - [x] Add a saved custom indicator to the chart.
 - [x] Create/start/stop a paper bot and inspect its order journal.
-- [ ] WebSocket disconnect/reconnect without duplicated candles.
-- [ ] Visible unavailable/fallback market-data state.
+- [x] WebSocket disconnect/reconnect without duplicated candles.
+- [x] Visible unavailable/fallback market-data state.
 - [x] Keyboard/focus behavior for modal dialogs and menus.
 - [x] Responsive monitoring smoke test.
 
