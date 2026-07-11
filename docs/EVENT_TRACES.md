@@ -25,4 +25,6 @@ Preview, historical backtest and the backend evaluator used by paper/live bots a
 
 ## Remaining trace scope
 
-V1 proves cross-runtime intent parity. A later trace version must add declared layer-specific events for expression explanations, variable changes, fill decisions, position/equity transitions, data provenance and warnings. Preview cannot invent fill events, so layer-specific differences must be explicit rather than forced into false equality.
+Strategy V1 proves cross-runtime intent parity. Historical execution additionally emits `BacktestExecutionTrace` v1 from `packages/backtest-core/executionTrace.ts`. Its stable events cover scheduled/dropped fills, rejected entries, position open/close transitions with equity, funding charges, warning codes and a final provenance snapshot. Non-finite numbers normalize to `null`.
+
+Expression explanations and compact variable-change events remain future trace scope. Preview cannot invent fill events, so layer-specific differences stay explicit rather than being forced into false equality.

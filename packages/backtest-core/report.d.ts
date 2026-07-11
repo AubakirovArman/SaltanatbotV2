@@ -1,5 +1,6 @@
 import type { Candle } from "@saltanatbotv2/contracts";
 import type { SecurityDataContext, StrategyBarTrace } from "@saltanatbotv2/strategy-core";
+import { type BacktestExecutionEvent } from "./executionTrace.js";
 import type { VariableTracePoint } from "./reporting.js";
 import type { BacktestConfig, BacktestResult, EquityPoint, Trade, TradeMarker } from "./types.js";
 export interface BacktestReportAssembly {
@@ -19,6 +20,7 @@ export interface BacktestReportAssembly {
         message: string;
     }[];
     eventTrace: StrategyBarTrace[];
+    executionEvents: BacktestExecutionEvent[];
     varTrace?: VariableTracePoint[];
     warmupBars: number;
     barsInMarket: number;

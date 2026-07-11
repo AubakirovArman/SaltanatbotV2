@@ -1,4 +1,5 @@
 import { computeBacktestMetrics } from "./metrics.js";
+import { buildBacktestExecutionTrace } from "./executionTrace.js";
 import { buildBacktestDataProvenance } from "./provenance.js";
 /** Assemble the canonical immutable report after the execution loop completes. */
 export function assembleBacktestReport(input) {
@@ -10,6 +11,7 @@ export function assembleBacktestReport(input) {
         bars: measured.length,
         warmupBars
     };
+    const provenance = buildBacktestDataProvenance(input.candles, input.securityData);
     return {
         name: input.name,
         trades: input.trades,
@@ -22,6 +24,7 @@ export function assembleBacktestReport(input) {
         tested,
         varTrace: input.varTrace,
         eventTrace: input.eventTrace,
-        provenance: buildBacktestDataProvenance(input.candles, input.securityData)
+        executionTrace: buildBacktestExecutionTrace(input.executionEvents, provenance),
+        provenance
     };
 }

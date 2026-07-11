@@ -12,8 +12,8 @@
     }
   },
   "scripts": {
-    "build": "tsc index.ts types.ts broker.ts portfolio.ts warmup.ts reporting.ts metrics.ts provenance.ts report.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --declaration --outDir .",
-    "check": "tsc index.ts types.ts broker.ts portfolio.ts warmup.ts reporting.ts metrics.ts provenance.ts report.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --noEmit && node ../../scripts/check-backtest-core-generated.mjs"
+    "build": "tsc index.ts types.ts broker.ts portfolio.ts warmup.ts reporting.ts metrics.ts provenance.ts report.ts executionTrace.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --declaration --outDir .",
+    "check": "tsc index.ts types.ts broker.ts portfolio.ts warmup.ts reporting.ts metrics.ts provenance.ts report.ts executionTrace.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --noEmit && node ../../scripts/check-backtest-core-generated.mjs"
   },
   "dependencies": {
     "@saltanatbotv2/contracts": "0.1.0",

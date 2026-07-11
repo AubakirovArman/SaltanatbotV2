@@ -1,5 +1,6 @@
 import type { StrategyBarTrace } from "@saltanatbotv2/strategy-core";
 import type { BacktestDataProvenance } from "./provenance.js";
+import type { BacktestExecutionTrace } from "./executionTrace.js";
 /** Runtime-neutral backtest result and configuration contracts. */
 export interface BacktestConfig {
     initialCapital: number;
@@ -86,6 +87,8 @@ export interface BacktestResult {
     }[];
     /** Versioned evaluator intents for parity/debugging across runtime layers. */
     eventTrace: StrategyBarTrace[];
+    /** Versioned broker/fill/position/equity trace for historical execution. */
+    executionTrace: BacktestExecutionTrace;
     /** Complete primary/external candle-source summary for this run. */
     provenance: BacktestDataProvenance;
 }

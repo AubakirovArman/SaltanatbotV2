@@ -1,6 +1,7 @@
 import type { Candle } from "@saltanatbotv2/contracts";
 import type { SecurityDataContext, StrategyBarTrace } from "@saltanatbotv2/strategy-core";
 import { computeBacktestMetrics } from "./metrics.js";
+import { buildBacktestExecutionTrace, type BacktestExecutionEvent } from "./executionTrace.js";
 import { buildBacktestDataProvenance } from "./provenance.js";
 import type { VariableTracePoint } from "./reporting.js";
 import type {
@@ -22,6 +23,7 @@ export interface BacktestReportAssembly {
   alerts: { time: number; message: string }[];
   warnings: { time: number; message: string }[];
   eventTrace: StrategyBarTrace[];
+  executionEvents: BacktestExecutionEvent[];
   varTrace?: VariableTracePoint[];
   warmupBars: number;
   barsInMarket: number;
@@ -41,6 +43,7 @@ export function assembleBacktestReport(input: BacktestReportAssembly): BacktestR
     warmupBars
   };
 
+  const provenance = buildBacktestDataProvenance(input.candles, input.securityData);
   return {
     name: input.name,
     trades: input.trades,
@@ -62,6 +65,7 @@ export function assembleBacktestReport(input: BacktestReportAssembly): BacktestR
     tested,
     varTrace: input.varTrace,
     eventTrace: input.eventTrace,
-    provenance: buildBacktestDataProvenance(input.candles, input.securityData)
+    executionTrace: buildBacktestExecutionTrace(input.executionEvents, provenance),
+    provenance
   };
 }

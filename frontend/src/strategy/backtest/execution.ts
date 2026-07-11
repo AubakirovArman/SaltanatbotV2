@@ -1,5 +1,5 @@
 import type { Candle } from "../../types";
-import { assembleBacktestReport } from "@saltanatbotv2/backtest-core";
+import { assembleBacktestReport, type BacktestExecutionEvent } from "@saltanatbotv2/backtest-core";
 import {
   createStrategyRuntime,
   evaluateStrategyBar,
@@ -61,6 +61,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
   const alerts: { time: number; message: string }[] = [];
   const warnings: { time: number; message: string }[] = [];
   const eventTrace: StrategyBarTrace[] = [];
+  const executionEvents: BacktestExecutionEvent[] = [];
 
   let equity = config.initialCapital;
   let position: Position | null = null;
@@ -85,8 +86,10 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
 
   const closePosition = (index: number, price: number, reason: Trade["reason"]) => {
     if (!position) return;
+    const closing = position;
+    const equityBefore = equity;
     const closed = closeBacktestPosition({
-      position,
+      position: closing,
       index,
       time: candles[index].time,
       price,
@@ -94,6 +97,18 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
       commissionPct: config.commissionPct
     });
     equity += closed.equityDelta;
+    executionEvents.push({
+      kind: "position_closed",
+      barIndex: index,
+      barTime: candles[index].time,
+      direction: closing.dir,
+      price,
+      qty: closing.qty,
+      reason,
+      pnl: closed.trade.pnl,
+      equityBefore,
+      equityAfter: equity
+    });
     trades.push(closed.trade);
     markers.push(closed.marker);
     position = null;
@@ -118,8 +133,26 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
       equity,
       config: cfg
     });
-    if (opened.warning) warnings.push({ time: candles[index].time, message: opened.warning });
+    if (opened.warning) {
+      warnings.push({ time: candles[index].time, message: opened.warning });
+      executionEvents.push({ kind: "warning", barIndex: index, barTime: candles[index].time, code: "position_size_adjusted" });
+    }
     if (opened.marker) markers.push(opened.marker);
+    if (opened.position) {
+      executionEvents.push({
+        kind: "position_opened",
+        barIndex: index,
+        barTime: candles[index].time,
+        direction: opened.position.dir,
+        price: opened.position.entryPrice,
+        qty: opened.position.qty,
+        equity,
+        stopPrice: opened.position.stopPrice ?? null,
+        targetPrice: opened.position.targetPrice ?? null
+      });
+    } else {
+      executionEvents.push({ kind: "entry_rejected", barIndex: index, barTime: candles[index].time, direction: dir, reason: "invalid_size" });
+    }
     return opened.position ?? null;
   };
 
@@ -187,6 +220,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
       // force-close at the point equity hits zero and stop trading.
       if (equity + worst <= 0) {
         warnings.push({ time: candle.time, message: "Account liquidated — equity reached zero." });
+        executionEvents.push({ kind: "warning", barIndex: i, barTime: candle.time, code: "liquidated" });
         closePosition(i, worstPrice, "liquidation");
         liquidated = true;
       }
@@ -200,6 +234,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     eventTrace.push(intents.trace ?? traceBarIntents(intents, i, candle.time));
     if (intents.budgetExceeded && !budgetWarned) {
       warnings.push({ time: candle.time, message: `A loop hit the per-bar execution budget (${MAX_OPS_PER_BAR}) and was truncated.` });
+      executionEvents.push({ kind: "warning", barIndex: i, barTime: candle.time, code: "execution_budget_exceeded" });
       budgetWarned = true;
     }
     variableTrace.capture(i, candle.time, rt.vars);
@@ -217,13 +252,17 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     if (!liquidated) {
       if (nextOpen) {
         // Carry intent; it fills at the NEXT bar's open (or is dropped at end of data).
-        if (position && intents.exit) pendingExit = true;
+        if (position && intents.exit) {
+          pendingExit = true;
+          executionEvents.push({ kind: "fill_scheduled", barIndex: i, barTime: candle.time, action: "exit", direction: position.dir });
+        }
         if (!position && intents.entry && !pendingExit) {
           const dir = intents.entry;
           if (dir === "short" && !cfg.allowShort) {
-            // skip disallowed shorts
+            executionEvents.push({ kind: "entry_rejected", barIndex: i, barTime: candle.time, direction: dir, reason: "short_disabled" });
           } else {
             pendingEntry = { dir, stop: intents.stop, target: intents.target, trail: intents.trail, size: sizing };
+            executionEvents.push({ kind: "fill_scheduled", barIndex: i, barTime: candle.time, action: "entry", direction: dir });
           }
         }
       } else {
@@ -234,7 +273,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
         if (!position && intents.entry) {
           const dir = intents.entry;
           if (dir === "short" && !cfg.allowShort) {
-            // skip disallowed shorts
+            executionEvents.push({ kind: "entry_rejected", barIndex: i, barTime: candle.time, direction: dir, reason: "short_disabled" });
           } else {
             const fill = applySlippage(candle.close, dir, true, cfg);
             position = openPosition(dir, fill, i, intents.stop, intents.target, intents.trail, sizing);
@@ -252,10 +291,18 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
         if (Number.isFinite(cost) && cost !== 0) {
           equity -= cost;
           fundingPaid += cost;
+          executionEvents.push({ kind: "funding_charged", barIndex: i, barTime: candle.time, amount: cost, equityAfter: equity });
         }
       }
     }
     equityCurve.push({ time: candle.time, equity: equity + unrealized(position, candle.close) });
+  }
+
+  if (pendingEntry && rt.n > 0) {
+    executionEvents.push({ kind: "fill_dropped", barIndex: rt.n - 1, barTime: candles[rt.n - 1].time, action: "entry", reason: "end_of_data" });
+  }
+  if (pendingExit && rt.n > 0) {
+    executionEvents.push({ kind: "fill_dropped", barIndex: rt.n - 1, barTime: candles[rt.n - 1].time, action: "exit", reason: "end_of_data" });
   }
 
   // Close any open position at the last bar for reporting (slippage on the forced close).
@@ -276,6 +323,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     warnings,
     varTrace: variableTrace.result(),
     eventTrace,
+    executionEvents,
     warmupBars: warmup,
     barsInMarket,
     liquidated,
