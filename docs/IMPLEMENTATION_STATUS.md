@@ -186,9 +186,10 @@ Verification:
 - [x] Extract strategy entries, closes, protections, sizing and fail-closed risk semantics.
 - [x] Extract bounded generic statement/control-flow dispatch and constant branch folding.
 - [x] Extract direct, user-function and built-in tuple destructuring.
+- [x] Extract immutable/mutable assignment state, one-time initialization and special handle bindings.
 - [x] Add direct tests for indicator, arithmetic, external boolean-series and fail-closed paths.
 - [x] Add direct tests for cross, multi-bar trend, external boolean-series and conservative timeframe paths.
-- [x] Reduce `convert.ts` from 1,916 to 1,225 lines after extracting tuple lowering.
+- [x] Reduce `convert.ts` from 1,916 to 1,127 lines after extracting assignment lowering.
 
 ### Trading activity decomposition — commit `4335465`
 
@@ -243,7 +244,8 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Extract strategy-call lowering.
   - [x] Extract generic statement/control-flow lowering.
   - [x] Extract tuple statements.
-  - [ ] Extract assignment state and display-call statements.
+  - [x] Extract assignment state.
+  - [ ] Extract display-call statements.
 - [x] Extract drawing lowering.
 - [ ] Extract Blockly serialization.
 - [x] Add a typed compatibility registry and Markdown matrix generated from both Pine corpora.

@@ -3,13 +3,11 @@ import { IR_VERSION } from "../ir";
 import { arg, argRequired } from "./arguments";
 import { diagnosticFromMessage, type PineDiagnostic } from "./diagnostics";
 import { PineConvertError } from "./errors";
-import { containsVar, isConstNum } from "./expressionHistory";
+import { containsVar } from "./expressionHistory";
 import {
   COLOR_HEX,
   DRAWING_MUTATE_RE,
-  DRAWING_NEW_RE,
   NAME_RE,
-  PLOT_CALLS,
   PRICE_FIELDS
 } from "./language";
 import { PineLexError } from "./lexer";
@@ -43,18 +41,16 @@ import { lowerValue, type ValueLoweringContext } from "./valueLowering";
 import { lowerStrategyCall, type StrategyCallLoweringContext } from "./strategyCallLowering";
 import { lowerStatement, type StatementLoweringContext } from "./statementLowering";
 import { lowerTupleAssignment, type TupleLoweringContext } from "./tupleLowering";
+import { lowerAssignment, lowerMutableAssignment, type AssignmentLoweringContext } from "./assignmentLowering";
 import {
-  boolToNum,
   boolToNumericSeries,
   collectReassigned,
   collectionReceiver,
   identName,
   isBoolExpr,
   isCollectionCallName,
-  isCollectionConstructor,
   isCosmeticConst,
   isFalseIdent,
-  isObjectConstructor,
   isObjectMethodCallName,
   isTrueIdent,
   isUserObjectFieldName,
@@ -193,138 +189,45 @@ class Converter {
   }
 
   private assign(name: string, value: PineExpr, declaredVar: boolean): Stmt[] {
-    const target = this.storageName(name);
-    this.checkName(target);
-    // input.*() bindings become strategy inputs regardless of mutability.
-    if (value.t === "call" && (value.callee.startsWith("input.") || value.callee === "input")) {
-      this.registerInput(target, value);
-      return [];
-    }
-    // `p = plot(...)` binds a plot handle for later fill(p, other, ...).
-    if (value.t === "call" && PLOT_CALLS.has(value.callee)) {
-      const out = this.exprStatement(value);
-      this.plotHandles.add(target);
-      const plot = out.find((node): node is Extract<Stmt, { k: "plot" }> => node.k === "plot");
-      if (plot) this.plotHandleValues.set(target, { value: plot.value, pane: plot.pane ?? "price", label: plot.label });
-      return out;
-    }
-    // `l = line.new(...)` — draws AND binds a handle. Emit the mapped drawing (or a
-    // skip-warning) and remember the handle so later set_*/delete calls are understood.
-    if (value.t === "call" && DRAWING_NEW_RE.test(value.callee)) {
-      this.drawingHandles.add(target);
-      return this.exprStatement(value);
-    }
-    if (this.isDrawingCollectionIdent(value)) {
-      this.collectionVars.add(target);
-      this.warnOnce("drawall", "Drawing object collections (box.all/label.all/line.all) are imported as opaque visual state.");
-      return [];
-    }
-    if (value.t === "call" && isCollectionConstructor(value.callee)) {
-      this.registerCollection(target, value);
-      return [];
-    }
-    if (value.t === "call" && isObjectConstructor(value.callee)) {
-      this.opaqueVars.add(target);
-      this.warnOnce("objects", "User-defined Pine objects are imported as opaque visual state; scalar plots are preserved where possible.");
-      return [];
-    }
-    // Color-valued bindings (`col = trendUp ? color.lime : color.red`) are cosmetic —
-    // record the resolved color (if constant) and drop the binding.
-    if (this.isColorExpr(value)) {
-      this.colorVars.set(target, this.colorOf(value));
-      return [];
-    }
-    // String constants (`string GROUP = "Main"`, mode names, concatenations) — bind
-    // as compile-time strings so comparisons against them fold to constants.
-    const str = this.strVal(value);
-    if (str !== undefined) {
-      if (this.reassigned.has(name) || this.reassigned.has(target)) {
-        this.env.set(target, { t: "str", v: str });
-        this.warnOnce("mutstr", "Mutable text/style variables are fixed to their imported values; drawing style edits are cosmetic.");
-        return [];
-      }
-      this.env.set(target, { t: "str", v: str });
-      return [];
-    }
-    const mutable = declaredVar || this.reassigned.has(name) || this.reassigned.has(target);
-    if (!mutable) {
-      this.env.set(target, this.val(value));
-      return [];
-    }
-    // Numeric ternary initializer for a mutable maps losslessly to if/else setvars.
-    if (value.t === "ternary" && !isBoolExpr(value, this.boolVars, this.env)) {
-      this.numVars.add(target);
-      return [this.ternaryToIf(target, value)];
-    }
-    const val = this.val(value);
-    if (val.t === "str") {
-      this.env.set(target, val);
-      this.warnOnce("mutstr", "Mutable text/style variables are fixed to their imported values; drawing style edits are cosmetic.");
-      return [];
-    }
-    if (val.t === "bool") {
-      this.boolVars.add(target);
-      if (declaredVar) {
-        this.init.push({ k: "setvar", name: target, value: boolToNum(val.e) });
-        if (val.e.k !== "bool") this.warn(`var "${target}" initialized to false — series initializers run per-bar in Pine but once here.`);
-        return [];
-      }
-      return [{ k: "setvarb", name: target, value: val.e }];
-    }
-    this.numVars.add(target);
-    if (declaredVar) {
-      if (!isConstNum(val.e)) {
-        this.warn(`var "${target}" is initialized from the first history bar here (Pine uses the first live bar).`);
-      }
-      this.init.push({ k: "setvar", name: target, value: val.e });
-      return [];
-    }
-    return [{ k: "setvar", name: target, value: val.e }];
+    return lowerAssignment(this.assignmentContext(), name, value, declaredVar);
   }
 
   private setMutable(name: string, value: PineExpr): Stmt[] {
-    const target = this.storageName(name);
-    this.checkName(target);
-    if (value.t === "call" && DRAWING_NEW_RE.test(value.callee)) {
-      this.drawingHandles.add(target);
-      return this.exprStatement(value);
-    }
-    if (value.t === "call" && isCollectionConstructor(value.callee)) {
-      this.registerCollection(target, value);
-      return [];
-    }
-    if (value.t === "call" && isObjectConstructor(value.callee)) {
-      this.opaqueVars.add(target);
-      this.warnOnce("objects", "User-defined Pine objects are imported as opaque visual state; scalar plots are preserved where possible.");
-      return [];
-    }
-    if (value.t === "ternary" && !isBoolExpr(value, this.boolVars, this.env)) {
-      this.numVars.add(target);
-      return [this.ternaryToIf(target, value)];
-    }
-    const val = this.val(value);
-    if (val.t === "str") {
-      this.env.set(target, val);
-      this.warnOnce("mutstr", "Mutable text/style variables are fixed to their imported values; drawing style edits are cosmetic.");
-      return [];
-    }
-    if (this.boolVars.has(target) || (val.t === "bool" && !this.numVars.has(target))) {
-      if (val.t !== "bool") throw new PineConvertError(`Variable "${target}" mixes boolean and numeric values.`);
-      this.boolVars.add(target);
-      return [{ k: "setvarb", name: target, value: val.e }];
-    }
-    if (val.t !== "num") throw new PineConvertError(`Variable "${target}" mixes boolean and numeric values.`);
-    this.numVars.add(target);
-    return [{ k: "setvar", name: target, value: val.e }];
+    return lowerMutableAssignment(this.assignmentContext(), name, value);
   }
 
-  /** `x := c ? a : b` → if c { x = a } else { x = b } (audit: lossless mapping). */
-  private ternaryToIf(name: string, value: Extract<PineExpr, { t: "ternary" }>): Stmt {
+  private assignmentContext(): AssignmentLoweringContext {
     return {
-      k: "if",
-      cond: this.bool(value.cond),
-      then: [{ k: "setvar", name, value: this.num(value.a) }],
-      else: [{ k: "setvar", name, value: this.num(value.b) }]
+      addBooleanVariable: (name) => this.boolVars.add(name),
+      addDrawingHandle: (name) => this.drawingHandles.add(name),
+      addInit: (statement) => this.init.push(statement),
+      addNumericVariable: (name) => this.numVars.add(name),
+      addOpaqueVariable: (name) => this.opaqueVars.add(name),
+      bind: (name, value) => this.env.set(name, value),
+      bindColor: (name, color) => this.colorVars.set(name, color),
+      bindDrawingCollection: (name) => this.collectionVars.add(name),
+      bindPlotHandle: (name, plot) => {
+        this.plotHandles.add(name);
+        if (plot) this.plotHandleValues.set(name, { value: plot.value, pane: plot.pane ?? "price", label: plot.label });
+      },
+      bool: (value) => this.bool(value),
+      checkName: (name) => this.checkName(name),
+      color: (value) => this.colorOf(value),
+      expressionStatement: (value) => this.exprStatement(value),
+      isBooleanExpression: (value) => isBoolExpr(value, this.boolVars, this.env),
+      isBooleanVariable: (name) => this.boolVars.has(name),
+      isColorExpression: (value) => this.isColorExpr(value),
+      isDrawingCollection: (value) => this.isDrawingCollectionIdent(value),
+      isNumericVariable: (name) => this.numVars.has(name),
+      isReassigned: (name) => this.reassigned.has(name),
+      num: (value) => this.num(value),
+      registerCollection: (name, value) => this.registerCollection(name, value),
+      registerInput: (name, value) => this.registerInput(name, value),
+      storageName: (name) => this.storageName(name),
+      string: (value) => this.strVal(value),
+      value: (value) => this.val(value),
+      warn: (message) => this.warn(message),
+      warnOnce: (key, message) => this.warnOnce(key, message)
     };
   }
 
