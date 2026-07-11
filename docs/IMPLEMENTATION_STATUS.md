@@ -173,6 +173,12 @@ Verification:
 - [x] Add direct drawing-lowering tests in addition to display-primitive corpus coverage.
 - [x] Reduce `convert.ts` from 2,233 to 1,916 lines without changing its public facade.
 
+### Pine numeric call decomposition
+
+- [x] Extract numeric built-in dispatch behind a typed lowering context.
+- [x] Add direct tests for indicator, arithmetic, external boolean-series and fail-closed paths.
+- [x] Reduce `convert.ts` from 1,916 to 1,680 lines without changing its public facade.
+
 ### Trading activity decomposition — commit `4335465`
 
 - [x] Split command composition/saved commands into `BotCommandConsole.tsx`.
@@ -213,6 +219,8 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Extract current pure semantic classification helpers from lowering.
   - [ ] Introduce explicit nested scopes and typed symbol/function tables.
 - [ ] Extract expression lowering.
+  - [x] Extract numeric built-in function-call dispatch.
+  - [ ] Extract identifier/operator and boolean expression lowering.
 - [ ] Extract statement and strategy-call lowering.
 - [x] Extract drawing lowering.
 - [ ] Extract Blockly serialization.
