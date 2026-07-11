@@ -27,6 +27,7 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - `backtestTypes.ts` is the stable public contract; `backtestMetrics.ts` owns analytics derived from trades and equity.
 - Storage and sharing are adapters around versioned artifacts.
 - `components/StrategyLibrary.tsx` owns artifact browsing/import/export and template/Pine entry flows.
+- `components/OptimizePanel.tsx` owns optimizer controls/results; `optimization/model.ts` owns sweep-state construction.
 
 ## Testing
 

@@ -130,11 +130,14 @@ Verification:
 - [x] Move bot lifecycle actions, runtime cards, command console and journals into `BotDetail.tsx`.
 - [x] Reduce `TradingView.tsx` to a 241-line socket/list/selection controller.
 
-### Strategy Lab decomposition — current strategy-library commit
+### Strategy Lab decomposition — commit `cbf6b4c` and current optimizer commit
 
 - [x] Move artifact browsing, import/export, Pine entry and template gallery into `strategy/components/StrategyLibrary.tsx`.
 - [x] Add a feature-folder README documenting the new UI boundary.
 - [x] Reduce `StrategyLab.tsx` from 1,138 to 931 lines without changing its public facade.
+- [x] Move optimizer/walk-forward controls and results into `OptimizePanel.tsx`.
+- [x] Move sweep-state creation and worker-spec shaping into `optimization/model.ts`.
+- [x] Reduce `StrategyLab.tsx` further to 617 lines and add direct model tests.
 
 ## Completed browser baseline
 
