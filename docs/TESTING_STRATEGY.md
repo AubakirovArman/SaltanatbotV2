@@ -60,25 +60,23 @@ Corpus entries carry expected classification: `EXACT`, `APPROXIMATION`, `DISPLAY
 
 ## Cross-runtime golden traces
 
-Version 1 is implemented in `strategy-core` and checked against the same golden JSON through preview, backtest and the backend evaluator used by paper/live:
+StrategyBarTrace v2 is implemented in `strategy-core`. Tests preserve the same V1 semantic golden JSON and compare the complete V2 payload through preview, backtest and the backend evaluator used by paper/live:
 
 ```text
 bar index/time
 entry/exit/risk intents
 alerts/markers
 execution-budget status
+bounded statement-path explanations
+sorted variable changes
 ```
 
-The next trace version extends the declared format with:
+Historical execution additionally verifies BacktestExecutionTrace v1:
 
 ```text
-bar time
-evaluated expressions
-variable changes
-entry/exit/risk intents
-fill decision and price
-position/equity after event
-warnings
+scheduled/dropped/rejected fills
+position/equity transitions and funding
+stable warnings and provenance
 ```
 
 Run the same candles and IR through preview, backtest, paper and backend evaluator. Differences must be intentional and declared by layer; unexplained differences fail CI. See [Strategy event traces](./EVENT_TRACES.md).

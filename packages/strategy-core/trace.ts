@@ -1,6 +1,6 @@
 import type { BarIntents } from "./evaluator.js";
 
-export const STRATEGY_TRACE_VERSION = 1 as const;
+export const STRATEGY_TRACE_VERSION = 2 as const;
 
 export type StrategyTraceEvent =
   | { kind: "entry"; direction: "long" | "short" }
@@ -12,17 +12,48 @@ export type StrategyTraceEvent =
   | { kind: "marker"; direction: "up" | "down"; label: string }
   | { kind: "budget_exceeded" };
 
+export interface StrategyExpressionExplanation {
+  path: string;
+  role: "condition" | "value" | "loop_bound";
+  expressionKind: string;
+  result: number | boolean | null;
+  evaluations: number;
+  trueCount?: number;
+}
+
+export interface StrategyVariableChange {
+  name: string;
+  before: number | null;
+  after: number | null;
+}
+
+export interface StrategyTraceDiagnostics {
+  explanations?: StrategyExpressionExplanation[];
+  variableChanges?: StrategyVariableChange[];
+  explanationsTruncated?: boolean;
+  variableChangesTruncated?: boolean;
+}
+
 export interface StrategyBarTrace {
   v: typeof STRATEGY_TRACE_VERSION;
   barIndex: number;
   barTime: number;
   events: StrategyTraceEvent[];
+  explanations: StrategyExpressionExplanation[];
+  variableChanges: StrategyVariableChange[];
+  explanationsTruncated: boolean;
+  variableChangesTruncated: boolean;
 }
 
 const finite = (value: number): number | null => Number.isFinite(value) ? value : null;
 
 /** Normalize evaluator intents into a stable JSON-safe semantic event order. */
-export function traceBarIntents(intents: BarIntents, barIndex: number, barTime: number): StrategyBarTrace {
+export function traceBarIntents(
+  intents: BarIntents,
+  barIndex: number,
+  barTime: number,
+  diagnostics: StrategyTraceDiagnostics = {}
+): StrategyBarTrace {
   const events: StrategyTraceEvent[] = [];
   if (intents.entry) events.push({ kind: "entry", direction: intents.entry });
   if (intents.exit) events.push({ kind: "exit" });
@@ -35,5 +66,14 @@ export function traceBarIntents(intents: BarIntents, barIndex: number, barTime: 
     events.push({ kind: "marker", direction: marker.dir, label: marker.label });
   }
   if (intents.budgetExceeded) events.push({ kind: "budget_exceeded" });
-  return { v: STRATEGY_TRACE_VERSION, barIndex, barTime, events };
+  return {
+    v: STRATEGY_TRACE_VERSION,
+    barIndex,
+    barTime,
+    events,
+    explanations: diagnostics.explanations ?? [],
+    variableChanges: diagnostics.variableChanges ?? [],
+    explanationsTruncated: diagnostics.explanationsTruncated ?? false,
+    variableChangesTruncated: diagnostics.variableChangesTruncated ?? false
+  };
 }

@@ -2,7 +2,7 @@
 
 SaltanatbotV2 emits a versioned, deterministic semantic trace for every evaluated candle. The canonical schema and normalizer live in `packages/strategy-core/trace.ts`.
 
-## Version 1
+## Version 1 compatibility
 
 Each `StrategyBarTrace` contains:
 
@@ -13,7 +13,19 @@ Each `StrategyBarTrace` contains:
 
 V1 events cover entry, exit, stop, target, trail, size, alerts, markers and execution-budget exhaustion. Non-finite numeric values are normalized to `null`, so every trace is safe to serialize as JSON. Event order is semantic and stable rather than dependent on object property order.
 
-Preview, historical backtest and the backend evaluator used by paper/live bots all receive traces from the same `traceBarIntents()` normalizer. The checked-in `frontend/tests/strategyEventTrace.golden.json` fixture must match every path bar-for-bar.
+The checked-in `frontend/tests/strategyEventTrace.golden.json` fixture preserves this semantic V1 projection for compatibility.
+
+## Version 2
+
+V2 retains V1 event meaning and ordering, then adds:
+
+- statement-path explanations for evaluated conditions, values and loop bounds;
+- expression kind, final result and evaluation count without evaluating an expression twice;
+- `trueCount` for repeatedly evaluated boolean expressions;
+- alphabetically ordered per-bar variable changes with before/after values;
+- explicit truncation flags and 256-item per-bar bounds for explanations and variable changes.
+
+Preview, historical backtest and the backend evaluator used by paper/live bots all receive the same complete V2 trace from the canonical evaluator. Cross-runtime tests compare the full explanation and variable-change payload bar-for-bar while also checking the V1 semantic golden.
 
 ## Versioning rules
 
@@ -25,6 +37,4 @@ Preview, historical backtest and the backend evaluator used by paper/live bots a
 
 ## Remaining trace scope
 
-Strategy V1 proves cross-runtime intent parity. Historical execution additionally emits `BacktestExecutionTrace` v1 from `packages/backtest-core/executionTrace.ts`. Its stable events cover scheduled/dropped fills, rejected entries, position open/close transitions with equity, funding charges, warning codes and a final provenance snapshot. Non-finite numbers normalize to `null`.
-
-Expression explanations and compact variable-change events remain future trace scope. Preview cannot invent fill events, so layer-specific differences stay explicit rather than being forced into false equality.
+Strategy V2 proves cross-runtime intent, explanation and variable-change parity. Historical execution additionally emits `BacktestExecutionTrace` v1 from `packages/backtest-core/executionTrace.ts`. Its stable events cover scheduled/dropped fills, rejected entries, position open/close transitions with equity, funding charges, warning codes and a final provenance snapshot. Preview cannot invent fill events, so layer-specific differences stay explicit rather than being forced into false equality.

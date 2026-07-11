@@ -1,7 +1,7 @@
-export const STRATEGY_TRACE_VERSION = 1;
+export const STRATEGY_TRACE_VERSION = 2;
 const finite = (value) => Number.isFinite(value) ? value : null;
 /** Normalize evaluator intents into a stable JSON-safe semantic event order. */
-export function traceBarIntents(intents, barIndex, barTime) {
+export function traceBarIntents(intents, barIndex, barTime, diagnostics = {}) {
     const events = [];
     if (intents.entry)
         events.push({ kind: "entry", direction: intents.entry });
@@ -22,5 +22,14 @@ export function traceBarIntents(intents, barIndex, barTime) {
     }
     if (intents.budgetExceeded)
         events.push({ kind: "budget_exceeded" });
-    return { v: STRATEGY_TRACE_VERSION, barIndex, barTime, events };
+    return {
+        v: STRATEGY_TRACE_VERSION,
+        barIndex,
+        barTime,
+        events,
+        explanations: diagnostics.explanations ?? [],
+        variableChanges: diagnostics.variableChanges ?? [],
+        explanationsTruncated: diagnostics.explanationsTruncated ?? false,
+        variableChangesTruncated: diagnostics.variableChangesTruncated ?? false
+    };
 }

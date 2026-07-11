@@ -14,4 +14,4 @@ This folder contains browser-side adapters around the runtime-neutral `@saltanat
 
 Modules here must remain independent of React and Blockly. User-facing code imports the stable exports from `../backtest.ts`; direct module imports are reserved for focused tests and internal composition.
 
-Preview and execution results expose the same StrategyBarTrace v1 intent events produced by `strategy-core`; fill/accounting trace extensions remain layer-specific roadmap work.
+Preview and execution expose the same StrategyBarTrace v2 intents, bounded statement explanations and variable diffs produced by `strategy-core`; historical fill/accounting events use the layer-specific BacktestExecutionTrace v1 contract.

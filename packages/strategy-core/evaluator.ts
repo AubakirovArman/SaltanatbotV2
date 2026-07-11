@@ -36,7 +36,12 @@ import {
   williamsR,
   wma
 } from "./ta.js";
-import { traceBarIntents, type StrategyBarTrace } from "./trace.js";
+import {
+  traceBarIntents,
+  type StrategyBarTrace,
+  type StrategyExpressionExplanation,
+  type StrategyVariableChange
+} from "./trace.js";
 
 export interface BarIntents {
   entry?: "long" | "short";
@@ -57,6 +62,8 @@ export interface BarIntents {
 export const MAX_OPS_PER_BAR = 10_000;
 /** Max iterations a single `repeat` can request (also clamped by the op budget). */
 export const MAX_REPEAT = 1000;
+const MAX_EXPLANATIONS_PER_BAR = 256;
+const MAX_VARIABLE_CHANGES_PER_BAR = 256;
 
 export interface StrategyRuntime {
   candles: Candle[];
@@ -73,6 +80,8 @@ export interface StrategyRuntime {
   securityData?: SecurityDataContext;
   /** Snapshot of vars at the START of the bar — reads for `varprev` (x[1] on a var). */
   varsPrev: Map<string, number>;
+  explanations: Map<string, StrategyExpressionExplanation>;
+  explanationsTruncated: boolean;
 }
 
 /**
@@ -121,7 +130,9 @@ export function createStrategyRuntime(
     ops: 0,
     budgetHit: false,
     ctx: options.ctx ?? {},
-    securityData: options.securityData
+    securityData: options.securityData,
+    explanations: new Map(),
+    explanationsTruncated: false
   };
 }
 
@@ -131,6 +142,8 @@ export function beginStrategyBar(rt: StrategyRuntime, ctx: Record<string, number
   rt.budgetHit = false;
   rt.ctx = ctx;
   rt.varsPrev = new Map(rt.vars);
+  rt.explanations.clear();
+  rt.explanationsTruncated = false;
 }
 
 /** Execute one bar against a reusable runtime and return canonical intents. */
@@ -142,9 +155,15 @@ export function evaluateStrategyBar(
 ): BarIntents {
   beginStrategyBar(rt, ctx);
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };
-  execStatements(ir.body, index, rt, intents);
+  execStatements(ir.body, index, rt, intents, "body");
   if (rt.budgetHit) intents.budgetExceeded = true;
-  intents.trace = traceBarIntents(intents, index, rt.candles[index]?.time ?? 0);
+  const variableDiff = collectVariableChanges(rt.varsPrev, rt.vars);
+  intents.trace = traceBarIntents(intents, index, rt.candles[index]?.time ?? 0, {
+    explanations: [...rt.explanations.values()],
+    variableChanges: variableDiff.changes,
+    explanationsTruncated: rt.explanationsTruncated,
+    variableChangesTruncated: variableDiff.truncated
+  });
   return intents;
 }
 
@@ -161,7 +180,7 @@ export function runInit(ir: StrategyIR, candles: Candle[], vars: Map<string, num
 export function runStrategyInit(ir: StrategyIR, rt: StrategyRuntime): void {
   if (!ir.init?.length) return;
   const intents: BarIntents = { exit: false, alerts: [], markers: [] };
-  for (const stmt of ir.init) execStatement(stmt, 0, rt, intents);
+  for (const [index, stmt] of ir.init.entries()) execStatement(stmt, 0, rt, intents, `init.${index}`);
 }
 
 /** Current ATR(period) value at a bar — used by the engine for atr-based stops. */
@@ -170,48 +189,54 @@ export function atrValue(candles: Candle[], period: number, index: number): numb
   return series[index];
 }
 
-function execStatements(stmts: Stmt[], i: number, rt: StrategyRuntime, intents: BarIntents) {
-  for (const stmt of stmts) {
+function execStatements(stmts: Stmt[], i: number, rt: StrategyRuntime, intents: BarIntents, path: string) {
+  for (const [statementIndex, stmt] of stmts.entries()) {
     if (rt.ops >= MAX_OPS_PER_BAR) {
       rt.budgetHit = true;
       return;
     }
     rt.ops += 1;
-    execStatement(stmt, i, rt, intents);
+    execStatement(stmt, i, rt, intents, `${path}.${statementIndex}`);
   }
 }
 
-function execStatement(stmt: Stmt, i: number, rt: StrategyRuntime, intents: BarIntents) {
+function execStatement(stmt: Stmt, i: number, rt: StrategyRuntime, intents: BarIntents, path: string) {
   switch (stmt.k) {
-    case "entry":
-      if (!intents.entry && evaluateCondition(stmt.when, i, rt)) intents.entry = stmt.direction;
+    case "entry": {
+      if (!intents.entry) {
+        const matched = explainCondition(stmt.when, i, rt, `${path}.when`);
+        if (matched) intents.entry = stmt.direction;
+      }
       break;
-    case "exit":
-      if (evaluateCondition(stmt.when, i, rt)) intents.exit = true;
+    }
+    case "exit": {
+      const matched = explainCondition(stmt.when, i, rt, `${path}.when`);
+      if (matched) intents.exit = true;
       break;
+    }
     case "stop":
-      intents.stop = { mode: stmt.mode, value: evaluateNumber(stmt.value, i, rt) };
+      intents.stop = { mode: stmt.mode, value: explainNumber(stmt.value, i, rt, `${path}.value`) };
       break;
     case "target":
-      intents.target = { mode: stmt.mode, value: evaluateNumber(stmt.value, i, rt) };
+      intents.target = { mode: stmt.mode, value: explainNumber(stmt.value, i, rt, `${path}.value`) };
       break;
     case "trail":
-      intents.trail = { mode: stmt.mode, value: evaluateNumber(stmt.value, i, rt) };
+      intents.trail = { mode: stmt.mode, value: explainNumber(stmt.value, i, rt, `${path}.value`) };
       break;
     case "size":
-      intents.size = { mode: stmt.mode, value: evaluateNumber(stmt.value, i, rt) };
+      intents.size = { mode: stmt.mode, value: explainNumber(stmt.value, i, rt, `${path}.value`) };
       break;
     case "setvar":
-      rt.vars.set(stmt.name, evaluateNumber(stmt.value, i, rt));
+      rt.vars.set(stmt.name, explainNumber(stmt.value, i, rt, `${path}.value`));
       break;
     case "setvarb":
-      rt.vars.set(stmt.name, evaluateCondition(stmt.value, i, rt) ? 1 : 0);
+      rt.vars.set(stmt.name, explainCondition(stmt.value, i, rt, `${path}.value`) ? 1 : 0);
       break;
     case "alert":
-      if (evaluateCondition(stmt.when, i, rt)) intents.alerts.push({ message: renderAlert(stmt.message, stmt.args, i, rt) });
+      if (explainCondition(stmt.when, i, rt, `${path}.when`)) intents.alerts.push({ message: renderAlert(stmt.message, stmt.args, i, rt) });
       break;
     case "marker":
-      if (evaluateCondition(stmt.when, i, rt)) intents.markers.push({ dir: stmt.dir, label: stmt.label });
+      if (explainCondition(stmt.when, i, rt, `${path}.when`)) intents.markers.push({ dir: stmt.dir, label: stmt.label });
       break;
     case "plot":
     case "box":
@@ -222,23 +247,23 @@ function execStatement(stmt: Stmt, i: number, rt: StrategyRuntime, intents: BarI
       // Display-only chart drawings — nothing to do in the live engine.
       break;
     case "if": {
-      if (evaluateCondition(stmt.cond, i, rt)) {
-        execStatements(stmt.then, i, rt, intents);
+      if (explainCondition(stmt.cond, i, rt, `${path}.cond`)) {
+        execStatements(stmt.then, i, rt, intents, `${path}.then`);
         break;
       }
       let matched = false;
-      for (const clause of stmt.elifs ?? []) {
-        if (evaluateCondition(clause.cond, i, rt)) {
-          execStatements(clause.then, i, rt, intents);
+      for (const [clauseIndex, clause] of (stmt.elifs ?? []).entries()) {
+        if (explainCondition(clause.cond, i, rt, `${path}.elifs.${clauseIndex}.cond`)) {
+          execStatements(clause.then, i, rt, intents, `${path}.elifs.${clauseIndex}.then`);
           matched = true;
           break;
         }
       }
-      if (!matched && stmt.else) execStatements(stmt.else, i, rt, intents);
+      if (!matched && stmt.else) execStatements(stmt.else, i, rt, intents, `${path}.else`);
       break;
     }
     case "repeat": {
-      const raw = Math.round(evaluateNumber(stmt.count, i, rt));
+      const raw = Math.round(explainNumber(stmt.count, i, rt, `${path}.count`, "loop_bound"));
       const n = Number.isFinite(raw) ? Math.max(0, Math.min(MAX_REPEAT, raw)) : 0;
       for (let k = 0; k < n; k += 1) {
         if (rt.ops >= MAX_OPS_PER_BAR) {
@@ -246,27 +271,27 @@ function execStatement(stmt: Stmt, i: number, rt: StrategyRuntime, intents: BarI
           break;
         }
         rt.ops += 1;
-        execStatements(stmt.body, i, rt, intents);
+        execStatements(stmt.body, i, rt, intents, `${path}.body`);
       }
       break;
     }
     case "while": {
       let iter = 0;
-      while (iter < stmt.cap && evaluateCondition(stmt.cond, i, rt)) {
+      while (iter < stmt.cap && explainCondition(stmt.cond, i, rt, `${path}.cond`)) {
         if (rt.ops >= MAX_OPS_PER_BAR) {
           rt.budgetHit = true;
           break;
         }
         rt.ops += 1;
-        execStatements(stmt.body, i, rt, intents);
+        execStatements(stmt.body, i, rt, intents, `${path}.body`);
         iter += 1;
       }
       break;
     }
     case "for": {
-      const fromVal = evaluateNumber(stmt.from, i, rt);
-      const toVal = evaluateNumber(stmt.to, i, rt);
-      const rawStep = evaluateNumber(stmt.step, i, rt);
+      const fromVal = explainNumber(stmt.from, i, rt, `${path}.from`, "loop_bound");
+      const toVal = explainNumber(stmt.to, i, rt, `${path}.to`, "loop_bound");
+      const rawStep = explainNumber(stmt.step, i, rt, `${path}.step`, "loop_bound");
       // Pine infers direction from from/to; `by` is a magnitude (auto-subtracted when to<from).
       const mag = Number.isNaN(rawStep) || rawStep === 0 ? 1 : Math.abs(rawStep);
       const asc = toVal >= fromVal;
@@ -279,12 +304,78 @@ function execStatement(stmt: Stmt, i: number, rt: StrategyRuntime, intents: BarI
         }
         rt.ops += 1;
         rt.vars.set(stmt.var, v);
-        execStatements(stmt.body, i, rt, intents);
+        execStatements(stmt.body, i, rt, intents, `${path}.body`);
         iter += 1;
       }
       break;
     }
   }
+}
+
+function recordExplanation(
+  rt: StrategyRuntime,
+  path: string,
+  role: StrategyExpressionExplanation["role"],
+  expressionKind: string,
+  result: number | boolean
+): void {
+  const normalized = typeof result === "number" && !Number.isFinite(result) ? null : result;
+  const current = rt.explanations.get(path);
+  if (current) {
+    current.result = normalized;
+    current.evaluations += 1;
+    if (typeof result === "boolean" && result) current.trueCount = (current.trueCount ?? 0) + 1;
+    return;
+  }
+  if (rt.explanations.size >= MAX_EXPLANATIONS_PER_BAR) {
+    rt.explanationsTruncated = true;
+    return;
+  }
+  rt.explanations.set(path, {
+    path,
+    role,
+    expressionKind,
+    result: normalized,
+    evaluations: 1,
+    ...(typeof result === "boolean" ? { trueCount: result ? 1 : 0 } : {})
+  });
+}
+
+function explainNumber(
+  expr: NumExpr,
+  i: number,
+  rt: StrategyRuntime,
+  path: string,
+  role: StrategyExpressionExplanation["role"] = "value"
+): number {
+  const result = evaluateNumber(expr, i, rt);
+  recordExplanation(rt, path, role, expr.k, result);
+  return result;
+}
+
+function explainCondition(expr: BoolExpr, i: number, rt: StrategyRuntime, path: string): boolean {
+  const result = evaluateCondition(expr, i, rt);
+  recordExplanation(rt, path, "condition", expr.k, result);
+  return result;
+}
+
+function collectVariableChanges(
+  before: Map<string, number>,
+  after: Map<string, number>
+): { changes: StrategyVariableChange[]; truncated: boolean } {
+  const names = [...new Set([...before.keys(), ...after.keys()])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  const finite = (value: number | undefined): number | null =>
+    value !== undefined && Number.isFinite(value) ? value : null;
+  const changes = names.flatMap((name) => {
+    const previous = before.get(name);
+    const next = after.get(name);
+    if (Object.is(previous, next)) return [];
+    return [{ name, before: finite(previous), after: finite(next) }];
+  });
+  return {
+    changes: changes.slice(0, MAX_VARIABLE_CHANGES_PER_BAR),
+    truncated: changes.length > MAX_VARIABLE_CHANGES_PER_BAR
+  };
 }
 
 /** Render an alert template: replace {name} placeholders with the numeric value of

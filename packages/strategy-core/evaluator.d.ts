@@ -1,7 +1,7 @@
 import type { Candle } from "@saltanatbotv2/contracts";
 import type { BoolExpr, NumExpr, StrategyIR } from "./index.js";
 import { type SecurityDataContext } from "./securityData.js";
-import { type StrategyBarTrace } from "./trace.js";
+import { type StrategyBarTrace, type StrategyExpressionExplanation } from "./trace.js";
 export interface BarIntents {
     entry?: "long" | "short";
     exit: boolean;
@@ -52,6 +52,8 @@ export interface StrategyRuntime {
     securityData?: SecurityDataContext;
     /** Snapshot of vars at the START of the bar — reads for `varprev` (x[1] on a var). */
     varsPrev: Map<string, number>;
+    explanations: Map<string, StrategyExpressionExplanation>;
+    explanationsTruncated: boolean;
 }
 /**
  * Evaluate the strategy IR at bar `index` over `candles`, returning the raw
