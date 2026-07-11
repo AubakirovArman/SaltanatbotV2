@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type BacktestConfig, DEFAULT_CONFIG, previewStrategy, runBacktest } from "../src/strategy/backtest";
+import { runBacktest as runBacktestExecution } from "../src/strategy/backtest/execution";
 import { previewStrategy as previewStrategyModule } from "../src/strategy/backtest/preview";
 import type { StrategyIR } from "../src/strategy/ir";
 import { securitySeriesKey } from "../src/strategy/securityData";
@@ -69,6 +70,10 @@ const noFriction: BacktestConfig = {
 };
 
 describe("backtest determinism", () => {
+  it("keeps the stable facade wired to the execution module", () => {
+    expect(runBacktest).toBe(runBacktestExecution);
+  });
+
   it("produces byte-identical results for the same (ir, candles, config) twice", () => {
     const ir = crossStrategy();
     const candles: Candle[] = [];
