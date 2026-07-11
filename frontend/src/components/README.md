@@ -22,4 +22,4 @@ Test keyboard behavior, accessible names, error states and focus restoration for
 
 ## Planned moves
 
-`StrategyLab`, `PineImportDialog`, `BacktestReport` and `TradingView` will move into feature-owned directories. This directory will then contain only genuinely shared UI.
+`StrategyLab`, `PineImportDialog`, `BacktestReport` and the remaining `TradingView` controller will move into feature-owned directories. Trading access and bot-creation panels already live under `trading/components/`.

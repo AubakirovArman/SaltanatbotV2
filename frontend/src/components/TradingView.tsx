@@ -1,6 +1,5 @@
-import { AlertTriangle, BookOpen, Bookmark, Bot, KeyRound, Pencil, Play, Plus, Save, Send, Settings2, Square, Terminal, Trash2, XOctagon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { compileXmlToIr } from "../strategy/compileArtifact";
+import { AlertTriangle, BookOpen, Bookmark, KeyRound, Pencil, Play, Plus, Save, Send, Settings2, Square, Terminal, Trash2, XOctagon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { StrategyArtifact } from "../strategy/library";
 import type { CatalogResponse } from "../types";
 import {
@@ -17,12 +16,10 @@ import {
   getSettings,
   killAll,
   listBots,
-  saveBot,
   saveKeys,
   saveNotify,
   sendCommand,
   setLiveTrading,
-  setToken,
   startBot,
   stopBot,
   testNotify,
@@ -38,6 +35,8 @@ import {
   type TradingBot
 } from "../trading/tradeClient";
 import { COMMAND_REFERENCE } from "../trading/commandReference";
+import { CreateBotForm } from "../trading/components/CreateBotForm";
+import { EmptyTradingState, TradeTokenGate } from "../trading/components/TradeAccess";
 import { loadSavedCommands, newCommandId, persistSavedCommands, type SavedCommand } from "../trading/savedCommands";
 
 interface TradingViewProps {
@@ -165,7 +164,7 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
   if (!authed) {
     return (
       <section className="trading trade-gate-wrap">
-        <TokenGate
+        <TradeTokenGate
           onAuthed={(state) => {
             setAuth(state);
             setAuthChecked(true);
@@ -223,7 +222,7 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
       </aside>
 
       <div className="trade-content">
-        {view.kind === "empty" && <EmptyCenter onNew={() => setView({ kind: "new" })} />}
+        {view.kind === "empty" && <EmptyTradingState onNew={() => setView({ kind: "new" })} />}
         {view.kind === "new" && (
           <CreateBotForm
             strategies={strategies}
@@ -252,246 +251,6 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
         )}
       </div>
     </section>
-  );
-}
-
-function TokenGate({ onAuthed }: { onAuthed: (state: AuthState) => void }) {
-  const [token, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-
-  const submit = async () => {
-    if (!token.trim()) return;
-    setBusy(true);
-    setError(undefined);
-    try {
-      const state = await checkAuth(token.trim());
-      setToken(token.trim());
-      onAuthed(state);
-    } catch {
-      setError("Invalid access token.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form
-      className="trade-gate"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-    >
-      <KeyRound size={26} aria-hidden="true" />
-      <h2>Trading is locked</h2>
-      <p>Enter the admin access token to manage paper and live bots. Public charts stay open; trading controls remain locked until this token is verified.</p>
-      <label className="trade-token-label" htmlFor="trade-access-token">
-        Access token
-      </label>
-      <input
-        id="trade-access-token"
-        name="access-token"
-        type="password"
-        value={token}
-        autoComplete="current-password"
-        enterKeyHint="done"
-        required
-        autoFocus
-        onChange={(event) => setInput(event.target.value)}
-        aria-describedby={error ? "trade-access-error" : undefined}
-      />
-      {error && <span id="trade-access-error" className="trade-gate-error" role="alert">{error}</span>}
-      <button type="submit" className="run-button" disabled={busy}>
-        {busy ? "Checking…" : "Unlock"}
-      </button>
-    </form>
-  );
-}
-
-function EmptyCenter({ onNew }: { onNew: () => void }) {
-  return (
-    <div className="trade-empty">
-      <Bot size={22} aria-hidden="true" />
-      <strong>Live &amp; paper trading</strong>
-      <p>Start with a saved strategy in paper mode, verify signals, then arm live execution only when keys and risk settings are ready.</p>
-      <ol className="trade-empty-steps">
-        <li>Choose a saved strategy</li>
-        <li>Run it on paper</li>
-        <li>Review logs, fills and risk</li>
-      </ol>
-      <button type="button" className="run-button" onClick={onNew}>
-        <Plus size={14} aria-hidden="true" /> Create paper bot
-      </button>
-    </div>
-  );
-}
-
-function CreateBotForm({ strategies, catalog, onCreated }: { strategies: StrategyArtifact[]; catalog?: CatalogResponse; onCreated: (bot: TradingBot) => void }) {
-  const runnable = useMemo(() => strategies.filter((item) => item.kind === "strategy"), [strategies]);
-  const [strategyId, setStrategyId] = useState(runnable[0]?.id ?? "");
-  const [name, setName] = useState("");
-  const [symbol, setSymbol] = useState("BTCUSDT");
-  const [timeframe, setTimeframe] = useState<TradingBot["timeframe"]>("1m");
-  const [exchange, setExchange] = useState<ExchangeId>("paper");
-  const [market, setMarket] = useState<"spot" | "futures">("futures");
-  const [sizeMode, setSizeMode] = useState<TradingBot["sizeMode"]>("quote");
-  const [sizeValue, setSizeValue] = useState(100);
-  const [leverage, setLeverage] = useState(3);
-  const [notifyMarkers, setNotifyMarkers] = useState(true);
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-
-  const strategy = runnable.find((item) => item.id === strategyId);
-
-  const create = async () => {
-    if (!strategy) {
-      setError("Pick a strategy");
-      return;
-    }
-    const compiled = compileXmlToIr(strategy.xml);
-    if (!compiled.ir || compiled.errors.length) {
-      setError(compiled.errors[0] ?? "Strategy has errors");
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    try {
-      const bot = await saveBot({
-        name: name.trim() || strategy.name,
-        strategyName: strategy.name,
-        ir: compiled.ir,
-        symbol,
-        timeframe,
-        exchange,
-        market,
-        sizeMode,
-        sizeValue,
-        leverage,
-        notifyMarkers
-      });
-      onCreated(bot);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to create bot");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="trade-form">
-      <div className="trade-form-title">
-        <Bot size={16} aria-hidden="true" />
-        <strong>New trading bot</strong>
-        <span>Run a strategy live or on paper</span>
-      </div>
-
-      <fieldset className="form-section">
-        <legend>Strategy</legend>
-        <label>
-          From strategy
-          <select value={strategyId} onChange={(e) => setStrategyId(e.target.value)}>
-            {runnable.length === 0 && <option value="">No saved strategies — build one first</option>}
-            {runnable.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Bot name
-          <input value={name} placeholder={strategy?.name ?? "Bot"} onChange={(e) => setName(e.target.value)} />
-        </label>
-      </fieldset>
-
-      <fieldset className="form-section">
-        <legend>Market</legend>
-        <div className="form-grid">
-          <label>
-            Symbol
-            <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
-              {(catalog?.instruments ?? []).map((item) => (
-                <option key={item.symbol} value={item.symbol}>
-                  {item.symbol}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Interval
-            <select value={timeframe} onChange={(e) => setTimeframe(e.target.value as TradingBot["timeframe"])}>
-              {(catalog?.timeframes ?? []).map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <p className="field-help">The bot evaluates the strategy on every closed {timeframe} candle — same signals as the backtest.</p>
-      </fieldset>
-
-      <fieldset className="form-section">
-        <legend>Execution</legend>
-        <div className="form-grid">
-          <label>
-            Exchange
-            <select value={exchange} onChange={(e) => setExchange(e.target.value as ExchangeId)}>
-              <option value="paper">Paper (simulated)</option>
-              <option value="binance">Binance</option>
-              <option value="bybit">Bybit</option>
-            </select>
-          </label>
-          <label>
-            Type
-            <select value={market} onChange={(e) => setMarket(e.target.value as "spot" | "futures")}>
-              <option value="futures">Futures</option>
-              <option value="spot">Spot</option>
-            </select>
-          </label>
-        </div>
-        <div className="form-grid">
-          <label>
-            Sizing
-            <select value={sizeMode} onChange={(e) => setSizeMode(e.target.value as TradingBot["sizeMode"])}>
-              <option value="quote">Quote (USDT)</option>
-              <option value="base">Base units</option>
-              <option value="equity_pct">% equity</option>
-              <option value="risk_pct">% risk</option>
-            </select>
-          </label>
-          <label>
-            Amount
-            <input type="number" value={sizeValue} min={0} step={1} onChange={(e) => setSizeValue(Number(e.target.value) || 0)} />
-          </label>
-          <label>
-            Leverage
-            <input type="number" value={leverage} min={1} max={125} step={1} onChange={(e) => setLeverage(Number(e.target.value) || 1)} />
-          </label>
-        </div>
-        <label className="check-row">
-          <input type="checkbox" checked={notifyMarkers} onChange={(e) => setNotifyMarkers(e.target.checked)} />
-          Send a notification on signal markers
-        </label>
-      </fieldset>
-
-      {exchange !== "paper" && (
-        <div className="trade-warn">
-          <AlertTriangle size={13} aria-hidden="true" /> Real trading uses your saved API keys and real funds. Add keys in Settings and test on paper first.
-        </div>
-      )}
-      {error && (
-        <div className="strategy-warnings">
-          <span>
-            <AlertTriangle size={12} aria-hidden="true" /> {error}
-          </span>
-        </div>
-      )}
-      <button type="button" className="run-button form-submit" onClick={create} disabled={busy || !strategy}>
-        {busy ? "Creating…" : "Create bot"}
-      </button>
-    </div>
   );
 }
 
