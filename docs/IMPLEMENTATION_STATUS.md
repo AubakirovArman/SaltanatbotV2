@@ -311,7 +311,10 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [ ] Reduce `App.tsx` to composition and routing state.
   - [x] Extract strategy artifact persistence, sharing, creation, import, version/hash and linked-indicator synchronization into `useArtifactLibrary` plus a pure model.
   - [x] Reduce `App.tsx` from 782 to under 600 lines without changing workspace flows.
-  - [ ] Extract chart overlay and shell/workspace controllers.
+  - [x] Extract artifact compilation, `request.security`, preview/backtest overlay, input overrides and chart focus into `useChartArtifactOverlay`.
+  - [x] Reject stale async overlay results after market/timeframe/request changes and cover the race directly.
+  - [x] Reduce `App.tsx` further to 529 lines.
+  - [ ] Extract shell/workspace persistence and command controllers.
 - [ ] Split chart orchestration into dirty render layers.
 - [ ] Add an accessible DOM/table alternative for focused OHLC, signals and trades.
 

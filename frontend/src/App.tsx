@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { compareColor } from "./chart/compareColors";
-import type { ChartMarker, ChartPlot, ChartShapes, ChartTable, ChartTrade, CompareChartType, CompareOverlayConfig } from "./chart/types";
+import type { CompareChartType, CompareOverlayConfig } from "./chart/types";
+import { useChartArtifactOverlay } from "./chart/useChartArtifactOverlay";
 import { AlertToasts } from "./components/AlertToasts";
 import { ChartCanvas } from "./components/ChartCanvas";
 import { CommandPalette, type Command } from "./components/CommandPalette";
@@ -61,21 +62,6 @@ export default function App() {
   });
   const strategyLibrary = artifactLibrary.artifacts;
   const activeArtifactId = artifactLibrary.activeArtifactId;
-  const artifactInputOverrides = artifactLibrary.inputOverrides;
-  const [overlay, setOverlay] = useState<{
-    id?: string;
-    name: string;
-    signals: ChartMarker[];
-    trades: ChartTrade[];
-    plots?: ChartPlot[];
-    shapes?: ChartShapes;
-    tables?: ChartTable[];
-    inputs?: { name: string; value: number }[];
-    summary?: string;
-    symbol: string;
-    timeframe: Timeframe;
-  }>();
-  const [chartFocus, setChartFocus] = useState<number>();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     (typeof localStorage !== "undefined" && localStorage.getItem("mf:theme") === "light") ? "light" : "dark"
@@ -87,6 +73,21 @@ export default function App() {
   const [compareOverlays, setCompareOverlays] = useState<CompareOverlayConfig[]>(() => loadCompare(timeframe, chartType));
   const stream = useMarketStream(symbol, timeframe, cryptoExchange);
   const compareState = useCompareSeries(compareOverlays, cryptoExchange);
+  const showChart = useCallback((nextSymbol: string, nextTimeframe: Timeframe) => {
+    setSymbol(nextSymbol);
+    setTimeframe(nextTimeframe);
+    setMode("chart");
+  }, []);
+  const artifactOverlay = useChartArtifactOverlay({
+    artifacts: strategyLibrary,
+    inputOverrides: artifactLibrary.inputOverrides,
+    setInputOverrides: artifactLibrary.setInputOverrides,
+    symbol,
+    timeframe,
+    candles: stream.candles,
+    exchange: cryptoExchange,
+    showChart
+  });
 
   useEffect(() => {
     saveWorkspaces(workspaces);
@@ -124,10 +125,6 @@ export default function App() {
     document.documentElement.lang = locale;
     storeLocale(locale);
   }, [locale]);
-
-  // The strategy overlay is bound to the market/interval it was computed on.
-  const activeOverlay =
-    overlay && overlay.symbol === symbol && overlay.timeframe === timeframe ? overlay : undefined;
 
   useEffect(() => {
     const run = () => warmStrategyLab();
@@ -215,47 +212,6 @@ export default function App() {
 
   const chartCustomIndicators = artifactLibrary.customIndicators;
   const chartStrategies = artifactLibrary.strategies;
-
-  // Compile any saved custom indicator or strategy and overlay its chart visuals.
-  const addArtifactToChart = async (id: string, explicitOverrides?: Record<string, number>) => {
-    const artifact = strategyLibrary.find((item) => item.id === id);
-    if (!artifact) return;
-    const [{ compileXmlToIr }, backtest, { loadSecurityDataForIr }, cycles] = await Promise.all([
-      import("./strategy/compileArtifact"),
-      import("./strategy/backtest"),
-      import("./strategy/securityLoader"),
-      import("./strategy/pine/cyclesAnalysisPreview")
-    ]);
-    const compiled = compileXmlToIr(artifact.xml);
-    if (!compiled.ir) return;
-    const overrides = explicitOverrides ?? artifactInputOverrides[id] ?? {};
-    const compatibleIr = cycles.withCyclesAnalysisInputs(compiled.ir);
-    const ir = {
-      ...compatibleIr,
-      inputs: compatibleIr.inputs.map((input) => ({ ...input, value: overrides[input.name] ?? input.value }))
-    };
-    const securityData = await loadSecurityDataForIr(ir, {
-      symbol,
-      timeframe,
-      chartCandles: stream.candles,
-      exchange: cryptoExchange
-    });
-    // Show the strategy's plotted lines + every signal point, plus the trades it took.
-    const preview = cycles.previewCyclesAnalysis(ir, stream.candles) ??
-      backtest.previewStrategy(ir, stream.candles, securityData);
-    const result = backtest.runBacktest(ir, stream.candles, backtest.DEFAULT_CONFIG, securityData);
-    setOverlay({ id, name: artifact.name, plots: preview.plots, shapes: preview.shapes, tables: preview.tables, inputs: ir.inputs, signals: preview.signals, trades: result.trades, summary: "summary" in preview ? preview.summary : undefined, symbol, timeframe });
-    const times = [...preview.signals.map((s) => s.time), ...result.trades.map((t) => t.exitTime)];
-    setChartFocus(times.length ? Math.max(...times) : Date.now());
-  };
-
-  const updateActiveArtifactInput = (name: string, value: number) => {
-    const id = activeOverlay?.id;
-    if (!id) return;
-    const next = { ...(artifactInputOverrides[id] ?? {}), [name]: value };
-    artifactLibrary.setInputOverrides((current) => ({ ...current, [id]: next }));
-    void addArtifactToChart(id, next);
-  };
 
   const commands = useMemo<Command[]>(() => {
     const list: Command[] = [];
@@ -406,11 +362,11 @@ export default function App() {
               indicators={indicators}
               onIndicatorsChange={setIndicators}
               onEditIndicatorLogic={artifactLibrary.selectIndicatorLogic}
-              signals={activeOverlay?.signals}
-              trades={activeOverlay?.trades}
-              plots={activeOverlay?.plots}
-              shapes={activeOverlay?.shapes}
-              tables={activeOverlay?.tables}
+              signals={artifactOverlay.activeOverlay?.signals}
+              trades={artifactOverlay.activeOverlay?.trades}
+              plots={artifactOverlay.activeOverlay?.plots}
+              shapes={artifactOverlay.activeOverlay?.shapes}
+              tables={artifactOverlay.activeOverlay?.tables}
               alerts={priceAlerts.alerts}
               onAddAlert={(price) =>
                 priceAlerts.addAlert({
@@ -420,16 +376,16 @@ export default function App() {
                 })
               }
               livePositions={livePositions}
-              strategyName={activeOverlay?.name}
-              strategySummary={activeOverlay?.summary}
-              strategyInputs={activeOverlay?.inputs}
-              onStrategyInputChange={updateActiveArtifactInput}
-              onClearStrategy={() => setOverlay(undefined)}
+              strategyName={artifactOverlay.activeOverlay?.name}
+              strategySummary={artifactOverlay.activeOverlay?.summary}
+              strategyInputs={artifactOverlay.activeOverlay?.inputs}
+              onStrategyInputChange={artifactOverlay.updateInput}
+              onClearStrategy={artifactOverlay.clear}
               customIndicators={chartCustomIndicators}
               strategies={chartStrategies}
-              activeArtifactId={activeOverlay?.id}
-              onAddArtifact={addArtifactToChart}
-              focusTime={activeOverlay ? chartFocus : undefined}
+              activeArtifactId={artifactOverlay.activeOverlay?.id}
+              onAddArtifact={artifactOverlay.addArtifact}
+              focusTime={artifactOverlay.activeOverlay ? artifactOverlay.focusTime : undefined}
               theme={theme}
               onNeedHistory={stream.loadOlder}
               compareSeries={compareState.series}
@@ -465,28 +421,8 @@ export default function App() {
                 initialTimeframe={timeframe}
                 exchange={cryptoExchange}
                 theme={theme}
-                onApplyResult={(result, btSymbol, btTimeframe, visuals) =>
-                  setOverlay({
-                    name: result.name,
-                    signals: result.signals,
-                    trades: result.trades,
-                    plots: visuals?.plots,
-                    shapes: visuals?.shapes,
-                    symbol: btSymbol,
-                    timeframe: btTimeframe
-                  })
-                }
-                onShowOnChart={(btSymbol, btTimeframe) => {
-                  setSymbol(btSymbol);
-                  setTimeframe(btTimeframe);
-                  setMode("chart");
-                  // Focus the most recent signal / trade exit so it's on screen.
-                  const times = [
-                    ...(overlay?.signals ?? []).map((marker) => marker.time),
-                    ...(overlay?.trades ?? []).map((trade) => trade.exitTime)
-                  ];
-                  setChartFocus(times.length ? Math.max(...times) : Date.now());
-                }}
+                onApplyResult={artifactOverlay.applyBacktestResult}
+                onShowOnChart={artifactOverlay.showOnChart}
               />
             </Suspense>
           )}

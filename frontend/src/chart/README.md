@@ -9,6 +9,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `viewport.ts` and `scales.ts`: coordinate transforms.
 - `drawings.ts` and `objects/`: drawing behavior and hit testing.
 - `renderers/`: primitive rendering layers.
+- `useChartArtifactOverlay.ts`: cancellable artifact compilation, external-series loading, preview/backtest overlay state, input overrides and chart focus.
 
 ## Invariants
 
@@ -17,6 +18,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Pointer-only behavior must have a documented keyboard or UI alternative.
 - Crosshair/drawing redraws must not recompute unchanged indicators.
 - Renderers do not fetch data or write browser storage.
+- Late artifact-overlay results for an obsolete market, timeframe or request never replace current chart state.
 
 ## Testing
 
