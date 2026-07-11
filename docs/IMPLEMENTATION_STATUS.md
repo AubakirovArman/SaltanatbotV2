@@ -270,7 +270,9 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [ ] Split backtest into execution, portfolio/accounting, analytics, preview and trace modules.
   - [x] Extract chart preview, display-statement execution and preview result types.
   - [ ] Extract execution/fill simulation.
+    - [x] Extract slippage, protective-price and stop/target hit primitives.
   - [ ] Extract portfolio sizing and accounting.
+    - [x] Extract sizing, leverage/quantity guardrails and unrealized-PnL primitives.
   - [x] Keep analytics in the dedicated `backtestMetrics.ts` module.
   - [ ] Extract trace/report assembly.
 - [ ] Add versioned golden event traces across preview/backtest/paper/live.

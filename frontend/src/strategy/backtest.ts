@@ -9,6 +9,16 @@ import {
   type StrategyRuntime
 } from "@saltanatbotv2/strategy-core";
 import { computeBacktestMetrics, medianDelta } from "./backtestMetrics";
+import {
+  applySlippage,
+  resolveSize,
+  resolveStop,
+  resolveTarget,
+  stopHit,
+  targetHit,
+  unrealized,
+  type Position
+} from "./backtest/broker";
 import type { BacktestConfig, BacktestResult, EquityPoint, TestedRange, Trade, TradeMarker } from "./backtestTypes";
 import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "./ir";
 import { atr as atrSeries } from "./ta";
@@ -38,20 +48,6 @@ export type { PreviewTable } from "./previewTables";
 
 interface Runtime extends StrategyRuntime {
   atr14: number[];
-}
-
-interface Position {
-  dir: "long" | "short";
-  qty: number;
-  entryPrice: number;
-  entryIndex: number;
-  entryTime: number;
-  stopPrice?: number;
-  targetPrice?: number;
-  trail?: { mode: "percent" | "atr"; value: number };
-  /** Worst / best unrealised PnL seen while open (absolute currency). */
-  maeAbs: number;
-  mfeAbs: number;
 }
 
 type Intents = BarIntents;
@@ -514,90 +510,4 @@ function buildCtx(position: Position | null, price: number, i: number, trades: T
     ctx.bars_in_position = i - position.entryIndex;
   }
   return ctx;
-}
-
-// ---------- broker helpers ----------
-
-function applySlippage(price: number, dir: "long" | "short", entering: boolean, config: BacktestConfig): number {
-  const worseUp = (dir === "long") === entering; // long entry & short exit fill higher
-  const factor = worseUp ? 1 + config.slippagePct / 100 : 1 - config.slippagePct / 100;
-  return price * factor;
-}
-
-function resolveStop(dir: "long" | "short", entry: number, stop: NonNullable<Intents["stop"]>, atr: number): number {
-  if (stop.mode === "price") return stop.value;
-  if (stop.mode === "percent") return dir === "long" ? entry * (1 - stop.value / 100) : entry * (1 + stop.value / 100);
-  const distance = (atr || 0) * stop.value;
-  return dir === "long" ? entry - distance : entry + distance;
-}
-
-function resolveTarget(dir: "long" | "short", entry: number, target: NonNullable<Intents["target"]>, atr: number): number {
-  if (target.mode === "price") return target.value;
-  if (target.mode === "percent") return dir === "long" ? entry * (1 + target.value / 100) : entry * (1 - target.value / 100);
-  const distance = (atr || 0) * target.value;
-  return dir === "long" ? entry + distance : entry - distance;
-}
-
-interface SizeResult {
-  qty: number;
-  warning?: string;
-}
-
-function resolveSize(
-  sizing: NonNullable<Intents["size"]>,
-  equity: number,
-  price: number,
-  stopPrice: number | undefined,
-  cfg: Required<BacktestConfig>
-): SizeResult {
-  if (price <= 0 || !Number.isFinite(price)) return { qty: 0 };
-
-  let qty: number;
-  if (sizing.mode === "units") {
-    qty = sizing.value;
-  } else if (sizing.mode === "risk_pct") {
-    if (stopPrice !== undefined && Math.abs(price - stopPrice) > 0) {
-      qty = (equity * (sizing.value / 100)) / Math.abs(price - stopPrice);
-    } else {
-      // No stop → risk is unbounded, so we can't size by risk. Skip the entry
-      // rather than silently taking a ~100%-equity position (old behaviour).
-      return { qty: 0, warning: "Skipped risk_pct entry: no stop set, so risk-based size is undefined." };
-    }
-  } else {
-    qty = (equity * (sizing.value / 100)) / price;
-  }
-
-  if (!(qty > 0) || !Number.isFinite(qty)) return { qty: 0 };
-
-  // Margin guardrail: cap notional at equity * maxLeverage.
-  let warning: string | undefined;
-  const maxNotional = equity * cfg.maxLeverage;
-  if (price * qty > maxNotional && maxNotional > 0) {
-    const capped = maxNotional / price;
-    warning = `Position clipped to ${cfg.maxLeverage}x leverage (requested notional exceeded margin).`;
-    qty = capped;
-  }
-
-  // Round quantity down to a sane step so fills aren't infinitely divisible.
-  if (cfg.qtyStep > 0) {
-    qty = Math.floor(qty / cfg.qtyStep) * cfg.qtyStep;
-    if (!(qty > 0)) return { qty: 0, warning };
-  }
-
-  return { qty, warning };
-}
-
-function stopHit(position: Position, candle: Candle): boolean {
-  if (position.stopPrice === undefined) return false;
-  return position.dir === "long" ? candle.low <= position.stopPrice : candle.high >= position.stopPrice;
-}
-
-function targetHit(position: Position, candle: Candle): boolean {
-  if (position.targetPrice === undefined) return false;
-  return position.dir === "long" ? candle.high >= position.targetPrice : candle.low <= position.targetPrice;
-}
-
-function unrealized(position: Position | null, price: number): number {
-  if (!position) return 0;
-  return position.dir === "long" ? position.qty * (price - position.entryPrice) : position.qty * (position.entryPrice - price);
 }
