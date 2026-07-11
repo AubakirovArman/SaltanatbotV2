@@ -240,8 +240,8 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [x] Require explicit Binance/Bybit SL/TP acknowledgement before protected runtime state.
 - [x] Fail the entry result and issue a best-effort emergency close when requested SL or TP is rejected.
 - [ ] Complete startup reconciliation for every in-flight state.
-- [ ] Complete spot inventory accounting or keep live spot disabled.
-- [ ] Add fake-exchange conformance and failure-injection suites.
+- [x] Keep live spot fail-closed by default behind an explicit experimental inventory override.
+- [x] Add fake-exchange transport, protection, status-polling and failure-injection suites.
 - [ ] Add opt-in Binance/Bybit testnet release checks.
 
 ### Documentation, localization and open source

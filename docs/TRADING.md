@@ -190,6 +190,10 @@ The full paper state — `balance`, `position`, `orders`, `leverage`, `isolated`
 
 Setting a bot's `exchange` to `binance` or `bybit` builds a live adapter with the stored keys (`keys:binance` / `keys:bybit`). If no keys are stored, the adapter is constructed with empty strings and any signed call throws `"… API keys are not set"` — public price reads still work, but nothing can trade.
 
+Live spot is fail-closed by default while complete inventory/fee-asset accounting remains experimental. Enabling the explicit `ENABLE_LIVE_SPOT` override transfers responsibility to the operator; paper and futures testnet validation should be completed first.
+
+Every mutating live request is journaled before network I/O. A definitive HTTP/API rejection becomes `rejected`; a network failure or HTTP 5xx during POST/DELETE is ambiguous and becomes `unknown`, because the venue may have accepted the request. The engine never blindly resubmits that order. Non-terminal Binance/Bybit orders are checked through bounded signed REST polling every 30 seconds until authenticated private streams are available.
+
 ### 4.1 Binance (`exchange/binance.ts`)
 
 - **Markets:** Spot (`api.binance.com`) and USDT-M Futures (`fapi.binance.com`).
@@ -206,7 +210,7 @@ Setting a bot's `exchange` to `binance` or `bybit` builds a live adapter with th
 
 ### 4.3 The strategy-driven path
 
-Beyond manual commands, a running strategy emits entry/exit intents on each closed bar (`onClosedBar()`). The engine opens a plain market position and manages **stop / target / trailing-stop intrabar itself** (`onTick()`) rather than resting exchange-side protective orders for strategy trades. Position sizing follows the bot's `sizeMode` (`units`, `equity_pct`, `risk_pct`) when the strategy does not specify a size.
+Beyond manual commands, a running strategy emits entry/exit intents on each closed bar (`onClosedBar()`). Paper entries and live entries with trailing protection keep stop/target management inside the engine (`onTick()`). Live futures entries with fixed stop or target request exchange-side protection so it survives a process/network failure. The adapter must explicitly confirm every requested protection order; otherwise it performs a best-effort emergency close and returns a failed result. Position sizing follows the bot's `sizeMode` when the strategy does not specify a size.
 
 ---
 

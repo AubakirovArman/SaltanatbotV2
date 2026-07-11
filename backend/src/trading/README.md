@@ -22,6 +22,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - Resting paper orders retain venue/client identity so later tick fills advance the original journal row.
 - Live entry is not considered protected until exchange-side protection is confirmed.
 - A rejected SL or TP triggers a best-effort emergency close and a failed execution result.
+- Network/5xx failures during mutating exchange calls are classified as ambiguous and journaled `unknown`; definitive 4xx/API rejects remain `rejected`.
 - Reconciliation completes before a resumed live bot can become running.
 - Unresolved journal rows are matched by venue/client id; ambiguous absences pause trading for operator review.
 - Live Binance/Bybit non-terminal orders use bounded, sequential signed-REST polling as a private-stream fallback.

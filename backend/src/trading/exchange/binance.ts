@@ -11,6 +11,7 @@ import type {
   PositionState
 } from "../types.js";
 import { binanceFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
+import { ExchangeTransportError, isAmbiguousExchangeError } from "./errors.js";
 import { normalizeBinanceOrderStatus } from "./orderStatus.js";
 
 export interface ExchangeKeys {
@@ -156,18 +157,19 @@ export class BinanceAdapter implements ExchangeAdapter {
           await this.cancelAll(order.symbol);
           return { ok: true, message: `Cancelled orders on ${order.symbol}`, fills: [] };
         case "set":
-          return this.applySet(order);
+          return await this.applySet(order);
         case "get":
-          return this.getInfo(order);
+          return await this.getInfo(order);
         case "turnover": {
           const pos = await this.position(order.symbol);
           if (pos) await this.placeMarket(order.symbol, pos.side === "long" ? "SELL" : "BUY", pos.qty, true);
-          return this.placeEntry(order);
+          return await this.placeEntry(order);
         }
         default:
-          return this.placeEntry(order);
+          return await this.placeEntry(order);
       }
     } catch (error) {
+      if (isAmbiguousExchangeError(error)) throw error;
       return { ok: false, message: error instanceof Error ? error.message : "Binance error", fills: [] };
     }
   }
@@ -297,8 +299,17 @@ export class BinanceAdapter implements ExchangeAdapter {
     const signature = createHmac("sha256", this.keys.apiSecret).update(query.toString()).digest("hex");
     query.append("signature", signature);
     const url = `${this.base}${path}?${query.toString()}`;
-    const res = await fetch(url, { method, headers: { "X-MBX-APIKEY": this.keys.apiKey } });
-    if (!res.ok) throw new Error(`Binance HTTP ${res.status}: ${await res.text()}`);
+    let res: Response;
+    try {
+      res = await fetch(url, { method, headers: { "X-MBX-APIKEY": this.keys.apiKey } });
+    } catch (error) {
+      throw new ExchangeTransportError(`Binance transport failed: ${error instanceof Error ? error.message : error}`, method !== "GET", { cause: error });
+    }
+    if (!res.ok) {
+      const message = `Binance HTTP ${res.status}: ${await res.text()}`;
+      if (method !== "GET" && res.status >= 500) throw new ExchangeTransportError(message, true);
+      throw new Error(message);
+    }
     return res.json();
   }
 }

@@ -11,6 +11,7 @@ import type {
 } from "../types.js";
 import type { ExchangeKeys } from "./binance.js";
 import { bybitFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
+import { ExchangeTransportError, isAmbiguousExchangeError } from "./errors.js";
 import { normalizeBybitOrderStatus } from "./orderStatus.js";
 
 /**
@@ -128,18 +129,19 @@ export class BybitAdapter implements ExchangeAdapter {
           await this.signed("POST", "/v5/order/cancel-all", { category: this.category, symbol: order.symbol });
           return { ok: true, message: `Cancelled orders on ${order.symbol}`, fills: [] };
         case "set":
-          return this.applySet(order);
+          return await this.applySet(order);
         case "get":
-          return this.getInfo(order);
+          return await this.getInfo(order);
         case "turnover": {
           const pos = await this.position(order.symbol);
           if (pos) await this.createOrder(order, pos.side === "long" ? "Sell" : "Buy", pos.qty, await this.price(order.symbol), true);
-          return this.placeEntry(order);
+          return await this.placeEntry(order);
         }
         default:
-          return this.placeEntry(order);
+          return await this.placeEntry(order);
       }
     } catch (error) {
+      if (isAmbiguousExchangeError(error)) throw error;
       return { ok: false, message: error instanceof Error ? error.message : "Bybit error", fills: [] };
     }
   }
@@ -289,18 +291,27 @@ export class BybitAdapter implements ExchangeAdapter {
     const sign = createHmac("sha256", this.keys.apiSecret)
       .update(timestamp + this.keys.apiKey + this.recvWindow + payload)
       .digest("hex");
-    const res = await fetch(url, {
-      method,
-      headers: {
-        "X-BAPI-API-KEY": this.keys.apiKey,
-        "X-BAPI-TIMESTAMP": timestamp,
-        "X-BAPI-RECV-WINDOW": this.recvWindow,
-        "X-BAPI-SIGN": sign,
-        "Content-Type": "application/json"
-      },
-      body: method === "POST" ? body : undefined
-    });
-    if (!res.ok) throw new Error(`Bybit HTTP ${res.status}: ${await res.text()}`);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method,
+        headers: {
+          "X-BAPI-API-KEY": this.keys.apiKey,
+          "X-BAPI-TIMESTAMP": timestamp,
+          "X-BAPI-RECV-WINDOW": this.recvWindow,
+          "X-BAPI-SIGN": sign,
+          "Content-Type": "application/json"
+        },
+        body: method === "POST" ? body : undefined
+      });
+    } catch (error) {
+      throw new ExchangeTransportError(`Bybit transport failed: ${error instanceof Error ? error.message : error}`, method !== "GET", { cause: error });
+    }
+    if (!res.ok) {
+      const message = `Bybit HTTP ${res.status}: ${await res.text()}`;
+      if (method !== "GET" && res.status >= 500) throw new ExchangeTransportError(message, true);
+      throw new Error(message);
+    }
     const json = (await res.json()) as { retCode: number; retMsg: string };
     if (json.retCode !== 0) throw new Error(`Bybit: ${json.retMsg}`);
     return json;
