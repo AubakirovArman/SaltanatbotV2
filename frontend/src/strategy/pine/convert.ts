@@ -40,6 +40,7 @@ import {
   type UserFunctionInliningContext,
   type UserFunctionInliningState
 } from "./userFunctionInlining";
+import { lowerValue, type ValueLoweringContext } from "./valueLowering";
 import {
   boolToNum,
   boolToNumericSeries,
@@ -768,13 +769,19 @@ class Converter {
   // ---------- expressions ----------
 
   private val(expr: PineExpr): Val {
-    // User functions and switch can yield either type — resolve by evaluating them.
-    if (expr.t === "call" && this.funcs.has(expr.callee)) return this.inlineUserFunc(expr.callee, expr.args);
-    if (expr.t === "switch") return this.switchVal(expr);
-    const str = this.strVal(expr);
-    if (str !== undefined) return { t: "str", v: str };
-    if (isBoolExpr(expr, this.boolVars, this.env)) return { t: "bool", e: this.bool(expr) };
-    return { t: "num", e: this.num(expr) };
+    return lowerValue(this.valueContext(), expr);
+  }
+
+  private valueContext(): ValueLoweringContext {
+    return {
+      bool: (value) => this.bool(value),
+      hasUserFunction: (name) => this.funcs.has(name),
+      inlineUserFunction: (name, args) => this.inlineUserFunc(name, args),
+      isBooleanExpression: (value) => isBoolExpr(value, this.boolVars, this.env),
+      num: (value) => this.num(value),
+      string: (value) => this.strVal(value),
+      switchValue: (value) => this.switchVal(value)
+    };
   }
 
   // ---------- user-function inlining ----------
