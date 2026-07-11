@@ -115,8 +115,16 @@
   cursor: crosshair;
 }
 
-.chart-canvas-base {
+.chart-canvas-layer {
   pointer-events: none;
+}
+
+.chart-canvas-primary,
+.chart-canvas-indicators,
+.chart-canvas-overlays {
+  position: absolute;
+  inset: 0;
+  background: transparent;
 }
 
 .chart-canvas-interaction {

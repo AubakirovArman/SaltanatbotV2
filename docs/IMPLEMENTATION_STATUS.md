@@ -318,11 +318,14 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Extract command construction, palette state and global shortcuts into `useAppCommands`.
   - [x] Apply persisted theme before React boot and synchronize native `color-scheme`/theme metadata.
   - [x] Reduce `App.tsx` to a 291-line workspace composition root.
-- [ ] Split chart orchestration into dirty render layers.
+- [x] Split chart orchestration into dirty render layers.
   - [x] Separate persistent base and transparent interaction canvases.
   - [x] Coalesce rapid invalidations in one RAF with base-before-interaction ordering.
   - [x] Prove crosshair-only invalidation never calls the base renderer.
-  - [ ] Split the base layer into axes/grid, primary series, indicators and drawing/strategy overlay caches.
+  - [x] Split the base layer into axes/grid, primary series, indicators and drawing/strategy overlay canvases.
+  - [x] Reuse one prepared viewport/indicator render plan across passes and rebind volatile overlay inputs without recomputation.
+  - [x] Extract canvas ownership/ResizeObserver/invalidation into `useChartRenderer` and chart chrome into a focused renderer.
+  - [x] Verify primary, indicator and overlay pass isolation with recording-context tests.
 - [ ] Add an accessible DOM/table alternative for focused OHLC, signals and trades.
 
 ### Trading engine hardening

@@ -11,6 +11,8 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `renderers/`: primitive rendering layers.
 - `useChartArtifactOverlay.ts`: cancellable artifact compilation, external-series loading, preview/backtest overlay state, input overrides and chart focus.
 - `dirtyLayers.ts`: requestAnimationFrame invalidation scheduler with deterministic base-before-interaction ordering.
+- `useChartRenderer.ts`: five-canvas ownership, ResizeObserver synchronization, render-plan reuse and dirty-pass invalidation.
+- `renderers/chartChrome.ts`: axes, grid, last-price and crosshair chrome.
 
 ## Invariants
 
@@ -19,6 +21,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Pointer-only behavior must have a documented keyboard or UI alternative.
 - Crosshair/drawing redraws must not recompute unchanged indicators.
 - Crosshair-only movement paints the transparent interaction canvas without clearing or repainting the base canvas.
+- Primary-series, indicator and drawing/strategy passes use separate transparent canvases and reuse one prepared viewport/indicator plan.
 - Renderers do not fetch data or write browser storage.
 - Late artifact-overlay results for an obsolete market, timeframe or request never replace current chart state.
 

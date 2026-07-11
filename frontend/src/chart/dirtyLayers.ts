@@ -1,4 +1,6 @@
-export type ChartDirtyLayer = "base" | "interaction";
+export type ChartDirtyLayer = "background" | "primary" | "indicators" | "overlays" | "interaction";
+
+const LAYER_ORDER: ChartDirtyLayer[] = ["background", "primary", "indicators", "overlays", "interaction"];
 
 interface FrameDriver {
   request(callback: FrameRequestCallback): number;
@@ -8,30 +10,24 @@ interface FrameDriver {
 /** Coalesce rapid invalidations and always paint base before interaction. */
 export function createChartLayerScheduler(driver: FrameDriver) {
   let frame: number | undefined;
-  let base: (() => void) | undefined;
-  let interaction: (() => void) | undefined;
+  const draws = new Map<ChartDirtyLayer, () => void>();
 
   const flush = () => {
     frame = undefined;
-    const drawBase = base;
-    const drawInteraction = interaction;
-    base = undefined;
-    interaction = undefined;
-    drawBase?.();
-    drawInteraction?.();
+    const pending = new Map(draws);
+    draws.clear();
+    for (const layer of LAYER_ORDER) pending.get(layer)?.();
   };
 
   return {
     schedule(layer: ChartDirtyLayer, draw: () => void) {
-      if (layer === "base") base = draw;
-      else interaction = draw;
+      draws.set(layer, draw);
       if (frame === undefined) frame = driver.request(flush);
     },
     dispose() {
       if (frame !== undefined) driver.cancel(frame);
       frame = undefined;
-      base = undefined;
-      interaction = undefined;
+      draws.clear();
     }
   };
 }

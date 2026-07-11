@@ -26,7 +26,7 @@ describe("chart dirty-layer scheduler", () => {
   it("coalesces rapid crosshair invalidations without drawing the base layer", () => {
     const frames = frameDriver();
     const scheduler = createChartLayerScheduler(frames.driver);
-    const base = vi.fn();
+    const background = vi.fn();
     const firstInteraction = vi.fn();
     const latestInteraction = vi.fn();
 
@@ -36,7 +36,7 @@ describe("chart dirty-layer scheduler", () => {
     expect(frames.frames.size).toBe(1);
     frames.flush();
 
-    expect(base).not.toHaveBeenCalled();
+    expect(background).not.toHaveBeenCalled();
     expect(firstInteraction).not.toHaveBeenCalled();
     expect(latestInteraction).toHaveBeenCalledTimes(1);
   });
@@ -47,17 +47,20 @@ describe("chart dirty-layer scheduler", () => {
     const order: string[] = [];
 
     scheduler.schedule("interaction", () => order.push("interaction"));
-    scheduler.schedule("base", () => order.push("base"));
+    scheduler.schedule("overlays", () => order.push("overlays"));
+    scheduler.schedule("indicators", () => order.push("indicators"));
+    scheduler.schedule("primary", () => order.push("primary"));
+    scheduler.schedule("background", () => order.push("background"));
     frames.flush();
 
-    expect(order).toEqual(["base", "interaction"]);
+    expect(order).toEqual(["background", "primary", "indicators", "overlays", "interaction"]);
   });
 
   it("cancels pending work on disposal", () => {
     const frames = frameDriver();
     const scheduler = createChartLayerScheduler(frames.driver);
     const draw = vi.fn();
-    scheduler.schedule("base", draw);
+    scheduler.schedule("background", draw);
     scheduler.dispose();
     frames.flush();
     expect(draw).not.toHaveBeenCalled();

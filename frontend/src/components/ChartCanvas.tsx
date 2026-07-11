@@ -26,8 +26,7 @@ import {
   type DrawingTool,
   type ShapeTool
 } from "../chart/drawings";
-import { drawChart, drawChartInteraction, setChartTheme } from "../chart/ChartEngine";
-import { createChartLayerScheduler } from "../chart/dirtyLayers";
+import { useChartRenderer } from "../chart/useChartRenderer";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import { visibleCandles } from "../chart/scales";
@@ -133,16 +132,6 @@ export function ChartCanvas({
   onUpdateCompare,
   onRemoveCompare
 }: ChartCanvasProps) {
-  const baseCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const interactionCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const schedulerRef = useRef<ReturnType<typeof createChartLayerScheduler>>();
-  if (!schedulerRef.current) {
-    schedulerRef.current = createChartLayerScheduler({
-      request: (callback) => requestAnimationFrame(callback),
-      cancel: (id) => cancelAnimationFrame(id)
-    });
-  }
-  const viewportRef = useRef<Viewport>();
   const interactionRef = useRef<Interaction>();
   const drawingsRef = useRef<DrawingObject[]>([]);
   const historyRef = useRef<DrawingObject[][]>([]);
@@ -170,12 +159,9 @@ export function ChartCanvas({
     priceMode: PriceMode;
   }>({ zoom: 1, offset: 0, priceMode: "linear" });
   const [compareLegend, setCompareLegend] = useState<CompareLegendSnapshot[]>([]);
-  const [renderRevision, setRenderRevision] = useState(0);
 
   const latest = candles.at(-1);
   drawingsRef.current = drawings;
-
-  useEffect(() => () => schedulerRef.current?.dispose(), []);
 
   useEffect(() => setShowArtifactSettings(false), [activeArtifactId]);
 
@@ -255,68 +241,41 @@ export function ChartCanvas({
     return { tool: draft.tool, points };
   }, [draft, hoverAnchor]);
 
-  useEffect(() => {
-    const canvas = baseCanvasRef.current;
-    if (!canvas) return;
-    const render = () => {
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      applyCanvasTheme(canvas);
-      drawChart({
-        ctx,
-        width: canvas.width,
-        height: canvas.height,
-        candles,
-        chartType,
-        decimals: instrument.decimals,
-        view: { zoom: view.zoom, offset: view.offset, priceMode: view.priceMode },
-        indicators,
-        drawings,
-        draftDrawing: draftPreview,
-        selectedDrawingId: selectedId,
-        hoveredDrawingId: hoveredId,
-        signals,
-        trades,
-        plots,
-        shapes,
-        alerts: chartAlerts,
-        livePositions,
-        showVolume,
-        compare,
-        baseSymbol: instrument.symbol,
-        onViewport: (viewport) => {
-          viewportRef.current = viewport;
-        },
-        onCompareLegend: (entries) => {
-          setCompareLegend((current) => (sameLegend(current, entries) ? current : entries));
-        }
-      });
-    };
-    schedulerRef.current?.schedule("base", render);
-  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, instrument.symbol, signals, trades, plots, shapes, chartAlerts, livePositions, compare, selectedId, showVolume, theme, view.zoom, view.offset, view.priceMode, renderRevision]);
-
-  useEffect(() => {
-    const canvas = interactionCanvasRef.current;
-    if (!canvas) return;
-    schedulerRef.current?.schedule("interaction", () => {
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      drawChartInteraction({
-        ctx,
-        width: canvas.width,
-        height: canvas.height,
-        viewport: viewportRef.current,
-        crosshair: view.crosshair,
-        decimals: instrument.decimals
-      });
-    });
-  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, instrument.symbol, signals, trades, plots, shapes, chartAlerts, livePositions, compare, selectedId, showVolume, theme, view.crosshair, view.zoom, view.offset, view.priceMode, renderRevision]);
+  const {
+    backgroundCanvasRef,
+    primaryCanvasRef,
+    indicatorsCanvasRef,
+    overlaysCanvasRef,
+    interactionCanvasRef,
+    viewportRef
+  } = useChartRenderer({
+    candles,
+    chartType,
+    decimals: instrument.decimals,
+    symbol: instrument.symbol,
+    view,
+    indicators,
+    drawings,
+    draftDrawing: draftPreview,
+    selectedDrawingId: selectedId,
+    hoveredDrawingId: hoveredId,
+    signals,
+    trades,
+    plots,
+    shapes,
+    alerts: chartAlerts,
+    livePositions,
+    showVolume,
+    compare,
+    theme,
+    onCompareLegend: (entries) => setCompareLegend((current) => sameLegend(current, entries) ? current : entries)
+  });
 
   // Lazy-load older history when the viewport nears the left (oldest) edge.
   useEffect(() => {
     const viewport = viewportRef.current;
     if (viewport && viewport.start <= 40 && candles.length > 0) onNeedHistory?.();
-  }, [view, candles.length, onNeedHistory]);
+  }, [view.zoom, view.offset, candles.length, onNeedHistory]);
 
   // Scroll to a requested time (e.g. the latest backtest signal).
   useEffect(() => {
@@ -328,27 +287,6 @@ export function ChartCanvas({
       offset: Math.max(0, candles.length - 1 - idx - 20)
     }));
   }, [focusTime]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const baseCanvas = baseCanvasRef.current;
-    const interactionCanvas = interactionCanvasRef.current;
-    if (!baseCanvas || !interactionCanvas) return;
-    const resize = ([entry]: ResizeObserverEntry[]) => {
-      const dpc = entry.devicePixelContentBoxSize?.[0];
-      const width = dpc?.inlineSize ?? Math.round(entry.contentRect.width * devicePixelRatio);
-      const height = dpc?.blockSize ?? Math.round(entry.contentRect.height * devicePixelRatio);
-      if (baseCanvas.width !== width || baseCanvas.height !== height) {
-        baseCanvas.width = width;
-        baseCanvas.height = height;
-        interactionCanvas.width = width;
-        interactionCanvas.height = height;
-        setRenderRevision((current) => current + 1);
-      }
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(baseCanvas);
-    return () => observer.disconnect();
-  }, []);
 
   const devicePoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -503,11 +441,14 @@ export function ChartCanvas({
           {view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}
         </button>
         <canvas
-          ref={baseCanvasRef}
-          className="chart-canvas chart-canvas-base"
+          ref={backgroundCanvasRef}
+          className="chart-canvas chart-canvas-layer chart-canvas-background"
           role="img"
           aria-label={`${instrument.symbol} ${chartType} chart on ${timeframe}`}
         />
+        <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
+        <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />
+        <canvas ref={overlaysCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-overlays" aria-hidden="true" />
         <canvas
           ref={interactionCanvasRef}
           className={`chart-canvas chart-canvas-interaction ${tool === "cursor" ? "" : "drawing"}`}
@@ -923,20 +864,4 @@ function formatTableValue(value: string | number | null) {
   if (value === null) return "—";
   if (typeof value === "string") return value;
   return Number.isInteger(value) ? String(value) : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-/** Sync the canvas palette to the active CSS theme variables. */
-function applyCanvasTheme(el: HTMLElement) {
-  const styles = getComputedStyle(el);
-  const read = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
-  setChartTheme({
-    background: read("--chart-bg", "#0b0d10"),
-    panel: read("--chart-panel", "#101419"),
-    grid: read("--chart-grid", "rgba(134, 150, 166, 0.16)"),
-    text: read("--text", "#e5edf4"),
-    muted: read("--muted", "#7d8a96"),
-    up: read("--up", "#23c97a"),
-    down: read("--down", "#ef5350"),
-    accent: read("--accent", "#4db6ff")
-  });
 }
