@@ -28,7 +28,7 @@ source -> lexer.ts -> parser.ts -> convert.ts -> Blockly XML -> StrategyIR
 
 ## Testing
 
-The corpus classifies scripts as exact, approximation, display-only or rejected. Tests cover conversion, round trip, backend schema acceptance and executable preview/backtest behavior. Fuzz/property tests are planned for lexer/parser robustness.
+The corpus classifies scripts as exact, approximation, display-only or rejected. Tests cover conversion, round trip, backend schema acceptance and executable preview/backtest behavior. A deterministic fuzz/mutation suite verifies typed fail-closed outcomes and deterministic valid-program conversion.
 
 ## Decomposition target
 

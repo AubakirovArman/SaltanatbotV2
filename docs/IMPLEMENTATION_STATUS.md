@@ -164,7 +164,7 @@ Verification:
 - [x] Preserve legacy warning strings while exposing structured diagnostics to future editors.
 - [x] Attach typed diagnostics to public `PineConvertError` instances.
 
-### Pine semantic decomposition — current semantic-helpers commit
+### Pine semantic and drawing decomposition — commit `fe41a7a`
 
 - [x] Extract pure boolean folding/type detection from `convert.ts`.
 - [x] Extract collection/object call classification and reassignment analysis.
@@ -217,7 +217,7 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [x] Extract drawing lowering.
 - [ ] Extract Blockly serialization.
 - [ ] Add compatibility registry generated from corpus metadata.
-- [ ] Add parser fuzz/property tests.
+- [x] Add deterministic parser fuzz, valid-seed mutation and conversion-determinism property tests.
 - [ ] Move the pure compiler into `packages/pine-compiler`.
 
 ### Strategy and backtest core
