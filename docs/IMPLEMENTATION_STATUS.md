@@ -378,9 +378,9 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Add the Russian chart navigation and accessible table-data guide.
   - [x] Add the Russian paper/live trading, key safety, recovery, command-console and journal guide.
   - [x] Add the Russian Strategy Studio, Pine import, backtest assumptions and optimization guide.
-- [ ] Generate API/block/Pine compatibility reference from source contracts.
+- [x] Generate API/block/Pine compatibility reference from source contracts.
   - [x] Generate Pine compatibility TypeScript and Markdown references from corpus metadata.
-  - [ ] Generate API and block-catalog references.
+  - [x] Generate the Express HTTP/WS endpoint index and strategy block-catalog reference with deterministic check mode.
 - [x] Add `SECURITY.md`, `CODE_OF_CONDUCT.md`, changelog and support policy.
 - [x] Add documentation link/example checks to CI.
 - [ ] Add release channels, SBOM, checksums and signed artifacts.

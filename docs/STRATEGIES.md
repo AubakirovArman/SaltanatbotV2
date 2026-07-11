@@ -2,6 +2,8 @@
 
 SaltanatbotV2 ships a no-code strategy builder: you assemble trading logic from drag-and-drop [Blockly](https://developers.google.com/blockly) blocks, the workspace compiles into a small, safe **JSON intermediate representation (IR)** — never into an executable code string — and that same IR is interpreted by a shared evaluator. The frontend runs the IR through a vectorized backtester and a chart preview, while the backend engine runs the *identical* per-bar evaluator on live candles, so a running bot's signals match its backtest bar-for-bar.
 
+The generated [strategy block catalog](./BLOCK_CATALOG.generated.md) lists stable block type identifiers and canonical help text directly from the source catalog.
+
 ## Contents
 
 - [From blocks to IR](#from-blocks-to-ir)

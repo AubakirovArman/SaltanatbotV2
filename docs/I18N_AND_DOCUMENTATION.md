@@ -115,9 +115,9 @@ Maintain a glossary for terms that must remain consistent, including:
 
 Generate rather than hand-maintain:
 
-- REST/WS schema reference from contracts;
-- Pine compatibility matrix from corpus metadata;
-- block catalog from block metadata;
+- REST/WS route index from Express sources (implemented; detailed schemas remain hand-maintained);
+- Pine compatibility matrix from corpus metadata (implemented);
+- block catalog from block metadata (implemented);
 - command reference from command schemas;
 - environment variable table from a typed configuration definition;
 - release notes from categorized changes.
