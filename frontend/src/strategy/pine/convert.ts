@@ -29,6 +29,7 @@ import {
   type PlotHandleValue
 } from "./drawingLowering";
 import { lowerNumericCall, type NumericCallLoweringContext } from "./numericCallLowering";
+import { lowerBooleanCall, type BooleanCallLoweringContext } from "./booleanCallLowering";
 import {
   boolToNum,
   boolToNumericSeries,
@@ -1353,42 +1354,7 @@ class Converter {
         };
       }
       case "call": {
-        if (this.funcs.has(expr.callee)) {
-          const v = this.inlineUserFuncSafely(expr.callee, expr.args);
-          if (v.t !== "bool") throw new PineConvertError(`"${expr.callee}()" returns a number, not a condition.`);
-          return v.e;
-        }
-        const callee = normalizeTa(expr.callee);
-        if (callee === "request.security" || callee === "security") {
-          const value = this.securityVal(expr.args);
-          if (value.t === "str") throw new PineConvertError("request.security() can't return text.");
-          return value.t === "bool" ? value.e : { k: "compare", op: "!=", a: value.e, b: { k: "num", v: 0 } };
-        }
-        if (callee === "time" || callee === "time_close") {
-          return { k: "compare", op: "!=", a: this.timeCall(expr.args), b: { k: "num", v: 0 } };
-        }
-        if (callee === "timeframe.change") {
-          this.warnOnce("tfchange", "timeframe.change() is approximated as false until multi-timeframe bar-boundary context is available.");
-          return { k: "bool", v: false };
-        }
-        if (isCollectionCallName(expr.callee) || isObjectMethodCallName(expr.callee)) {
-          return { k: "compare", op: "!=", a: this.numCall(expr), b: { k: "num", v: 0 } };
-        }
-        if (callee === "ta.crossover") return { k: "cross", dir: "above", a: this.numArg(expr.args, 0, "a"), b: this.numArg(expr.args, 1, "b") };
-        if (callee === "ta.crossunder") return { k: "cross", dir: "below", a: this.numArg(expr.args, 0, "a"), b: this.numArg(expr.args, 1, "b") };
-        if (callee === "ta.cross") return { k: "cross", dir: "any", a: this.numArg(expr.args, 0, "a"), b: this.numArg(expr.args, 1, "b") };
-        if (callee === "ta.rising" || callee === "ta.falling") return this.risingFalling(callee, expr.args);
-        if (callee === "na") return { k: "isna", a: this.num(argRequired(expr.args, 0, "x", "na").value) };
-        if (callee === "iff") {
-          const cond = this.bool(argRequired(expr.args, 0, "condition", "iff").value);
-          return {
-            k: "logic",
-            op: "or",
-            a: { k: "logic", op: "and", a: cond, b: this.bool(argRequired(expr.args, 1, "then", "iff").value) },
-            b: { k: "logic", op: "and", a: { k: "not", a: cond }, b: this.bool(argRequired(expr.args, 2, "else", "iff").value) }
-          };
-        }
-        return { k: "compare", op: "!=", a: this.numCall(expr), b: { k: "num", v: 0 } };
+        return lowerBooleanCall(this.booleanCallContext(), expr);
       }
       case "num":
         // Pine treats a nonzero number as truthy in a few idioms; only 0/1 make sense here.
@@ -1406,20 +1372,19 @@ class Converter {
     }
   }
 
-  /**
-   * Pine ta.rising(src, len) is true iff src exceeds EVERY one of the previous
-   * len values. len==1 matches our trend node; for len>1 compare against the
-   * highest/lowest of the shifted window (audit correction).
-   */
-  private risingFalling(callee: string, args: PineArg[]): BoolExpr {
-    const src = this.seriesArg(args, 0, "source");
-    const len = this.numArg(args, 1, "length");
-    const rising = callee === "ta.rising";
-    if (len.k === "num" && len.v === 1) {
-      return { k: "trend", dir: rising ? "rising" : "falling", period: { k: "num", v: 1 }, source: src };
-    }
-    const window: NumExpr = { k: "extreme", kind: rising ? "highest" : "lowest", period: len, source: { k: "shift", src, offset: 1 } };
-    return { k: "compare", op: rising ? ">" : "<", a: src, b: window };
+  private booleanCallContext(): BooleanCallLoweringContext {
+    return {
+      bool: (value) => this.bool(value),
+      hasUserFunction: (name) => this.funcs.has(name),
+      inlineUserFunction: (name, args) => this.inlineUserFuncSafely(name, args),
+      num: (value) => this.num(value),
+      numArg: (args, position, name) => this.numArg(args, position, name),
+      numCall: (value) => this.numCall(value),
+      securityVal: (args) => this.securityVal(args),
+      seriesArg: (args, position, name) => this.seriesArg(args, position, name),
+      timeCall: (args) => this.timeCall(args),
+      warnOnce: (key, message) => this.warnOnce(key, message)
+    };
   }
 
   // ---------- helpers ----------
