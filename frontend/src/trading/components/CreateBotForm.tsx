@@ -81,7 +81,7 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
           </select>
         </label>
         <label>{tradingText(locale, "botName")}
-          <input name="bot-name" value={name} placeholder={strategy?.name ?? "Bot"} onChange={(event) => setName(event.target.value)} />
+          <input name="bot-name" value={name} placeholder={strategy?.name ?? tradingText(locale, "botFallbackName")} onChange={(event) => setName(event.target.value)} />
         </label>
       </fieldset>
 
@@ -107,19 +107,19 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
         <div className="form-grid">
           <label>{tradingText(locale, "exchange")}
             <select name="exchange" value={exchange} onChange={(event) => setExchange(event.target.value as ExchangeId)}>
-              <option value="paper">Paper (simulated)</option><option value="binance">Binance</option><option value="bybit">Bybit</option>
+              <option value="paper">{tradingText(locale, "paperSimulated")}</option><option value="binance">Binance</option><option value="bybit">Bybit</option>
             </select>
           </label>
           <label>{tradingText(locale, "marketType")}
             <select name="market" value={market} onChange={(event) => setMarket(event.target.value as "spot" | "futures")}>
-              <option value="futures">Futures</option><option value="spot">Spot</option>
+              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot">{tradingText(locale, "spot")}</option>
             </select>
           </label>
         </div>
         <div className="form-grid">
           <label>{tradingText(locale, "sizing")}
             <select name="size-mode" value={sizeMode} onChange={(event) => setSizeMode(event.target.value as TradingBot["sizeMode"])}>
-              <option value="quote">Quote (USDT)</option><option value="base">Base units</option><option value="equity_pct">% equity</option><option value="risk_pct">% risk</option>
+              <option value="quote">{tradingText(locale, "quoteUsdt")}</option><option value="base">{tradingText(locale, "baseUnits")}</option><option value="equity_pct">{tradingText(locale, "equityPercent")}</option><option value="risk_pct">{tradingText(locale, "riskPercent")}</option>
             </select>
           </label>
           <label>{tradingText(locale, "amount")}
@@ -135,7 +135,7 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
         </label>
       </fieldset>
 
-      {exchange !== "paper" && <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> Real trading uses your saved API keys and real funds. Add keys in Settings and test on paper first.</div>}
+      {exchange !== "paper" && <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> {tradingText(locale, "realTradingWarning")}</div>}
       {error && <div className="strategy-warnings" role="alert"><span><AlertTriangle size={12} aria-hidden="true" /> {error}</span></div>}
       <button type="submit" className="run-button form-submit" disabled={busy}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
     </form>

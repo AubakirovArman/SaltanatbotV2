@@ -372,8 +372,10 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 
 - [ ] Move remaining UI strings into typed messages.
   - [x] Localize the accessible chart-data panel, captions, headers, empty states and signal/trade terminology through typed EN/RU messages.
+  - [x] Localize the complete trading workspace: bot creation, settings/secrets, confirmations, runtime cards, command console/reference and order/fill journals.
 - [ ] Complete Russian user-guide parity.
   - [x] Add the Russian chart navigation and accessible table-data guide.
+  - [x] Add the Russian paper/live trading, key safety, recovery, command-console and journal guide.
 - [ ] Generate API/block/Pine compatibility reference from source contracts.
   - [x] Generate Pine compatibility TypeScript and Markdown references from corpus metadata.
   - [ ] Generate API and block-catalog references.

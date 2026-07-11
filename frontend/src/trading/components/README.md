@@ -10,3 +10,5 @@ Feature-owned trading components live here instead of the shared component direc
 - `BotActivity.tsx` renders open orders, order history, fills and logs with semantic tables.
 
 Components receive typed domain inputs and callbacks. API orchestration that coordinates multiple panels remains in `TradingView` until it moves into a controller hook.
+
+All user-facing labels, confirmations, accessible names, table headers and trading-domain terms come from `i18n/trading.ts`. The Antares reference localizes descriptions while preserving executable command syntax exactly.

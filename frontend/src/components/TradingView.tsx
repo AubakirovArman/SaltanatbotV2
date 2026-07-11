@@ -1,7 +1,7 @@
 import { Plus, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Locale } from "../i18n";
-import { tradingText } from "../i18n/trading";
+import { tradingTerm, tradingText } from "../i18n/trading";
 import type { StrategyArtifact } from "../strategy/library";
 import type { CatalogResponse } from "../types";
 import {
@@ -196,13 +196,13 @@ export function TradingView({ strategies, catalog, locale }: TradingViewProps) {
                   {bot.status === "running" ? (
                     pos ? (
                       <em className={pos.side === "long" ? "up" : "down"}>
-                        {pos.side === "long" ? "▲" : "▼"} {pos.side}
+                        {pos.side === "long" ? "▲" : "▼"} {tradingTerm(locale, pos.side)}
                       </em>
                     ) : (
-                      <em className="live-text">live</em>
+                      <em className="live-text">{tradingText(locale, "live")}</em>
                     )
                   ) : (
-                    <em className="off-text">off</em>
+                    <em className="off-text">{tradingText(locale, "off")}</em>
                   )}
                 </span>
               </button>
@@ -224,7 +224,7 @@ export function TradingView({ strategies, catalog, locale }: TradingViewProps) {
             }}
           />
         )}
-        {view.kind === "settings" && <TradingSettings />}
+        {view.kind === "settings" && <TradingSettings locale={locale} />}
         {view.kind === "bot" && selectedBot && (
           <BotDetail
             bot={selectedBot}
@@ -233,6 +233,7 @@ export function TradingView({ strategies, catalog, locale }: TradingViewProps) {
             orderJournal={orderJournal[selectedBot.id] ?? []}
             fills={fills[selectedBot.id] ?? []}
             logs={logs[selectedBot.id] ?? []}
+            locale={locale}
             onChanged={refreshBots}
             onDeleted={() => {
               refreshBots();

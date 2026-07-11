@@ -1,5 +1,7 @@
 import { Play, Square, Trash2, XOctagon } from "lucide-react";
 import { useState } from "react";
+import type { Locale } from "../../i18n";
+import { tradingLiveConfirm, tradingTerm, tradingText } from "../../i18n/trading";
 import {
   deleteBot,
   sendCommand,
@@ -24,9 +26,10 @@ interface BotDetailProps {
   logs: LogRow[];
   onChanged: () => void;
   onDeleted: () => void;
+  locale: Locale;
 }
 
-export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChanged, onDeleted }: BotDetailProps) {
+export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChanged, onDeleted, locale }: BotDetailProps) {
   const [commandOutput, setCommandOutput] = useState<string>();
   const position = live?.position;
   const unrealizedPnl = position && live
@@ -38,7 +41,7 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
       if (bot.status === "running") {
         await stopBot(bot.id);
       } else if (bot.exchange !== "paper") {
-        if (!window.confirm(`Start LIVE trading on ${bot.exchange} with REAL funds?`)) return;
+        if (!window.confirm(tradingLiveConfirm(locale, bot.exchange))) return;
         const result = await startBot(bot.id, true);
         if (!result.ok && result.error) setCommandOutput(result.error);
       } else {
@@ -46,7 +49,7 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
         if (!result.ok && result.error) setCommandOutput(result.error);
       }
     } catch (error) {
-      setCommandOutput(error instanceof Error ? error.message : "Failed to start");
+      setCommandOutput(error instanceof Error ? error.message : tradingText(locale, "failedToStart"));
     }
     onChanged();
   };
@@ -57,7 +60,7 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
       const result = await sendCommand(bot.id, input, dryRun);
       setCommandOutput(result.message);
     } catch (error) {
-      setCommandOutput(error instanceof Error ? error.message : "Command failed");
+      setCommandOutput(error instanceof Error ? error.message : tradingText(locale, "commandFailed"));
     }
   };
 
@@ -67,27 +70,27 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
         <div>
           <strong>{bot.name}</strong>
           <span>{bot.exchange} · {bot.market} · {bot.symbol} · {bot.timeframe} · {bot.strategyName}</span>
-          {live?.runtimeStatus === "requires_manual_action" && <span className="trade-runtime-badge" title={live.pauseReason ?? "Operator confirmation required"}>Requires action</span>}
+          {live?.runtimeStatus === "requires_manual_action" && <span className="trade-runtime-badge" title={live.pauseReason ?? tradingText(locale, "operatorConfirmation")}>{tradingText(locale, "requiresAction")}</span>}
         </div>
         <div className="trade-detail-actions">
           <button type="button" className={bot.status === "running" ? "danger" : "run-button"} onClick={() => void toggle()}>
-            {bot.status === "running" ? <><Square size={13} aria-hidden="true" /> Stop</> : <><Play size={13} aria-hidden="true" /> Start</>}
+            {bot.status === "running" ? <><Square size={13} aria-hidden="true" /> {tradingText(locale, "stop")}</> : <><Play size={13} aria-hidden="true" /> {tradingText(locale, "start")}</>}
           </button>
-          <button type="button" className="icon-button" title="Flatten (close position)" onClick={() => void runCommand(`exit=${bot.symbol}`)} disabled={bot.status !== "running"}><XOctagon size={15} aria-hidden="true" /></button>
-          <button type="button" className="icon-button" title="Delete bot" onClick={() => void deleteBot(bot.id).then(onDeleted)}><Trash2 size={15} aria-hidden="true" /></button>
+          <button type="button" className="icon-button" aria-label={tradingText(locale, "flatten")} title={tradingText(locale, "flatten")} onClick={() => void runCommand(`exit=${bot.symbol}`)} disabled={bot.status !== "running"}><XOctagon size={15} aria-hidden="true" /></button>
+          <button type="button" className="icon-button" aria-label={tradingText(locale, "deleteBot")} title={tradingText(locale, "deleteBot")} onClick={() => void deleteBot(bot.id).then(onDeleted)}><Trash2 size={15} aria-hidden="true" /></button>
         </div>
       </header>
 
-      <section className="trade-cards" aria-label="Bot runtime summary">
-        <MetricCard label="Balance" value={live?.account ? live.account.balance.toFixed(2) : "—"} />
-        <MetricCard label="Equity" value={live?.account ? live.account.equity.toFixed(2) : "—"} />
-        <MetricCard label="Price" value={live?.price ? live.price.toFixed(4) : "—"} />
-        <MetricCard label="Position" value={position ? `${position.side} ${position.qty.toFixed(4)}` : "flat"} tone={position ? position.side === "long" ? "up" : "down" : undefined} sub={position ? `@ ${position.entryPrice.toFixed(4)}` : undefined} />
-        <MetricCard label="Unreal. PnL" value={unrealizedPnl.toFixed(2)} tone={unrealizedPnl >= 0 ? "up" : "down"} />
+      <section className="trade-cards" aria-label={tradingText(locale, "runtimeSummary")}>
+        <MetricCard label={tradingText(locale, "balance")} value={live?.account ? live.account.balance.toFixed(2) : "—"} />
+        <MetricCard label={tradingText(locale, "equity")} value={live?.account ? live.account.equity.toFixed(2) : "—"} />
+        <MetricCard label={tradingText(locale, "price")} value={live?.price ? live.price.toFixed(4) : "—"} />
+        <MetricCard label={tradingText(locale, "position")} value={position ? `${tradingTerm(locale, position.side)} ${position.qty.toFixed(4)}` : tradingText(locale, "flat")} tone={position ? position.side === "long" ? "up" : "down" : undefined} sub={position ? `@ ${position.entryPrice.toFixed(4)}` : undefined} />
+        <MetricCard label={tradingText(locale, "unrealizedPnl")} value={unrealizedPnl.toFixed(2)} tone={unrealizedPnl >= 0 ? "up" : "down"} />
       </section>
 
-      <BotCommandConsole bot={bot} output={commandOutput} onRun={runCommand} />
-      <BotActivity symbol={bot.symbol} orders={orders} orderJournal={orderJournal} fills={fills} logs={logs} onCommand={runCommand} />
+      <BotCommandConsole bot={bot} output={commandOutput} onRun={runCommand} locale={locale} />
+      <BotActivity symbol={bot.symbol} orders={orders} orderJournal={orderJournal} fills={fills} logs={logs} onCommand={runCommand} locale={locale} />
     </div>
   );
 }

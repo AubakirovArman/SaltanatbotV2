@@ -97,7 +97,12 @@ test("switches and persists the interface locale", async ({ page }) => {
   await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
   await workspaceModes.getByRole("button", { name: "Торговля", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Торговля заблокирована" })).toBeVisible();
-  await expect(page.getByLabel("Токен доступа")).toBeVisible();
+  await page.getByLabel("Токен доступа").fill("e2e-local-admin-token");
+  await page.getByRole("button", { name: "Разблокировать" }).click();
+  await page.getByRole("button", { name: "Настройки" }).click();
+  await expect(page.getByText("Включён демонстрационный режим — доступна только paper-торговля.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Сохранить ключи binance" })).toBeVisible();
+  await expect(page.getByLabel("Токен бота")).toBeVisible();
 });
 
 test("saves and restores a named chart workspace", async ({ page }) => {
@@ -210,7 +215,7 @@ test("creates, starts, journals and stops a paper bot", async ({ page }) => {
   const command = detail.getByPlaceholder("action=openposition;side=buy;openpro=25;lev=5");
   await command.fill("action=openposition;symbol=EURUSD;side=buy;qty=0.001;lev=1");
   await command.press("Enter");
-  await expect(detail.getByText("Order journal", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(detail.locator("#order-journal-title")).toBeVisible({ timeout: 15_000 });
   const orderTable = detail.locator(".trade-order-journal table");
   await orderTable.scrollIntoViewIfNeeded();
   await expect(orderTable).toBeVisible();

@@ -95,6 +95,7 @@ Run the same candles and IR through preview, backtest, paper and backend evaluat
 - interaction tests for wheel, drag, touch and keyboard equivalents;
 - component semantics for captions, scoped column headers, empty states and focused-bar synchronization across OHLC, signals and trades;
 - typed English/Russian parity for chart-table accessible names, headers, domain terms, dates and numbers;
+- typed English/Russian parity for trading settings, destructive confirmations, command references, runtime cards and semantic order/fill tables;
 - browser flow proving the Canvas alternative opens from the keyboard and exposes named native tables.
 
 Avoid pixel snapshots for every candle. Use semantic renderer assertions for logic and a small stable visual suite for integration.
