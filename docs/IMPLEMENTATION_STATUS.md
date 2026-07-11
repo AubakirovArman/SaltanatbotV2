@@ -118,7 +118,7 @@ Verification:
 - 28 Vitest files / 275 tests pass, including duration-mode and projection-viewport coverage.
 - Biome and backend/frontend TypeScript checks pass.
 
-### Trading frontend decomposition — commit `94d68d1` and current settings commit
+### Trading frontend decomposition — commits `94d68d1`, `f45ed09` and current bot-detail commit
 
 - [x] Move the authentication gate and empty trading state into feature-owned components.
 - [x] Move bot creation and validation into a feature-owned semantic form.
@@ -127,6 +127,8 @@ Verification:
 - [x] Move live arming, kill switch, API-key and notification settings into `TradingSettings.tsx`.
 - [x] Give secret/notification controls visible labels, stable names and semantic submit behavior.
 - [x] Reduce `TradingView.tsx` further to 578 lines.
+- [x] Move bot lifecycle actions, runtime cards, command console and journals into `BotDetail.tsx`.
+- [x] Reduce `TradingView.tsx` to a 241-line socket/list/selection controller.
 
 ## Completed browser baseline
 
