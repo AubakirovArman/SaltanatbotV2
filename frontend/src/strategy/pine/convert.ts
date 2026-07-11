@@ -41,6 +41,7 @@ import {
   type UserFunctionInliningState
 } from "./userFunctionInlining";
 import { lowerValue, type ValueLoweringContext } from "./valueLowering";
+import { lowerStrategyCall, type StrategyCallLoweringContext } from "./strategyCallLowering";
 import {
   boolToNum,
   boolToNumericSeries,
@@ -475,6 +476,8 @@ class Converter {
       this.warn(`Skipped bare call to "${callee}()" — its return value isn't used.`);
       return [];
     }
+    const strategyStatements = lowerStrategyCall(this.strategyCallContext(), callee, args);
+    if (strategyStatements !== undefined) return strategyStatements;
 
     switch (callee) {
       case "indicator":
@@ -559,48 +562,6 @@ class Converter {
         if (messageArg && messageArg.value.t !== "str") this.warn('alert() message must be a plain string — used "alert".');
         return [{ k: "alert", message: message || "alert", when: { k: "bool", v: true } }];
       }
-      case "strategy.entry":
-      case "strategy.order": {
-        if (callee === "strategy.order") this.warn("strategy.order treated as strategy.entry (market entry).");
-        const dirArg = arg(args, 1, "direction");
-        const dirName = identName(dirArg?.value) || "strategy.long";
-        const direction: "long" | "short" = dirName.endsWith("short") ? "short" : "long";
-        if (direction === "long") this.hasLongEntry = true;
-        else this.hasShortEntry = true;
-        const whenArg = arg(args, undefined, "when"); // v4 compat
-        const when = whenArg ? this.bool(whenArg.value) : ({ k: "bool", v: true } as BoolExpr);
-        const out: Stmt[] = [{ k: "entry", direction, when }];
-        const qtyArg = arg(args, undefined, "qty");
-        if (qtyArg) out.push({ k: "size", mode: "units", value: this.num(qtyArg.value) });
-        return out;
-      }
-      case "strategy.close":
-      case "strategy.close_all": {
-        this.hasExplicitExit = true;
-        const whenArg = arg(args, undefined, "when");
-        return [{ k: "exit", when: whenArg ? this.bool(whenArg.value) : { k: "bool", v: true } }];
-      }
-      case "strategy.exit": {
-        const out: Stmt[] = [];
-        const stopArg = arg(args, undefined, "stop");
-        const limitArg = arg(args, undefined, "limit");
-        if (stopArg) {
-          const stop = this.num(stopArg.value);
-          if (!isConstNum(stop)) this.warnOnce("exitfreeze", "strategy.exit stop/limit prices are frozen at entry here (Pine re-evaluates them every bar).");
-          out.push({ k: "stop", mode: "price", value: stop });
-        }
-        if (limitArg) out.push({ k: "target", mode: "price", value: this.num(limitArg.value) });
-        for (const bad of ["profit", "loss", "trail_price", "trail_points", "trail_offset"]) {
-          if (arg(args, undefined, bad)) {
-            throw new PineConvertError(
-              `strategy.exit ${bad}= (tick-based) is not supported — use stop=/limit= absolute prices, or rebuild with stop-loss/take-profit blocks.`
-            );
-          }
-        }
-        if (out.length) this.hasExplicitExit = true;
-        else this.warn("strategy.exit had no stop=/limit= — nothing converted.");
-        return out;
-      }
       case "bgcolor":
       case "barcolor":
         // bgcolor/barcolor(cond ? color : na) — shading → a full-height box while
@@ -615,8 +576,6 @@ class Converter {
         ];
       }
       case "runtime.error":
-      case "strategy.cancel":
-      case "strategy.cancel_all":
       case "plotcandle":
       case "plotbar": {
         this.warn(`Skipped display-only/unsupported call: ${callee}().`);
@@ -654,6 +613,20 @@ class Converter {
         throw new PineConvertError(`Unsupported statement call: ${callee}().`);
       }
     }
+  }
+
+  private strategyCallContext(): StrategyCallLoweringContext {
+    return {
+      bool: (value) => this.bool(value),
+      markEntry: (direction) => {
+        if (direction === "long") this.hasLongEntry = true;
+        else this.hasShortEntry = true;
+      },
+      markExplicitExit: () => { this.hasExplicitExit = true; },
+      num: (value) => this.num(value),
+      warn: (message) => this.warn(message),
+      warnOnce: (key, message) => this.warnOnce(key, message)
+    };
   }
 
   // ---------- drawing-object mapping (display-only approximations) ----------
