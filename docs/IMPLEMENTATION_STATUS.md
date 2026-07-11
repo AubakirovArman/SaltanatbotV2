@@ -334,7 +334,7 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 
 ### Trading engine hardening
 
-- [ ] Complete durable exchange order state machine.
+- [x] Complete durable exchange order state machine.
   - [x] Persist intent before exchange I/O in a dedicated lifecycle module.
   - [x] Persist accepted, rejected and fill outcomes in deterministic order.
   - [x] Classify thrown/ambiguous adapter outcomes as `unknown` and rethrow them.
@@ -343,16 +343,16 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Pause resumed trading when an unresolved result cannot be proven from exchange state.
   - [x] Model accepted, partial-fill, filled, cancel, expire and replace states explicitly.
   - [x] Correlate asynchronous paper fills to their original resting-order journal entries.
-  - [ ] Ingest asynchronous exchange events that advance accepted/partial states to terminal states.
+  - [x] Ingest asynchronous exchange events that advance accepted/partial states to terminal states.
     - [x] Resolve aggregate snapshots to one durable intent by venue or client identity.
     - [x] Share one ingest boundary between signed polling and future private streams.
     - [x] Ignore duplicate/replayed updates and reject identity conflicts or state/quantity regressions.
-    - [ ] Connect authenticated Binance/Bybit stream events to the ingest boundary.
-- [ ] Add private fill/order stream with polling fallback.
+    - [x] Connect authenticated Binance/Bybit stream events to the ingest boundary.
+- [x] Add private fill/order stream with polling fallback.
   - [x] Add bounded signed REST order-status polling for Binance and Bybit.
   - [x] Normalize partial, filled, cancelled, expired and rejected venue states.
   - [x] Persist idempotent aggregate execution snapshots and polling audit events.
-  - [ ] Add authenticated private WebSocket order/fill streams and reconnect replay.
+  - [x] Add authenticated Binance USDⓈ-M and Bybit private order/execution streams with heartbeat, reconnect and REST gap reconciliation.
 - [x] Require explicit Binance/Bybit SL/TP acknowledgement before protected runtime state.
 - [x] Fail the entry result and issue a best-effort emergency close when requested SL or TP is rejected.
 - [ ] Complete startup reconciliation for every in-flight state.

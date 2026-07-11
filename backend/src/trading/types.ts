@@ -251,6 +251,11 @@ export interface ExchangeOrderSnapshot {
   updatedAt: number;
 }
 
+export interface PrivateOrderSubscription {
+  close(): void;
+  connected(): boolean;
+}
+
 /** One exchange account's aggregated live state (deduped across bots). */
 export interface PortfolioExchange {
   /** Adapter id + market, e.g. "binance:futures". Also the dedupe key. */
@@ -287,6 +292,11 @@ export interface ExchangeAdapter {
   orders?(symbol?: string): Promise<PendingOrder[]>;
   /** Signed fallback query used when a private order stream is unavailable. */
   orderStatus?(symbol: string, identity: { orderId?: string; clientId?: string }): Promise<ExchangeOrderSnapshot | null>;
+  /** Authenticated order updates; REST status polling remains the disconnect fallback. */
+  subscribeOrderUpdates?(
+    onSnapshot: (snapshot: ExchangeOrderSnapshot) => void,
+    onConnection: (connected: boolean, message: string) => void
+  ): Promise<PrivateOrderSubscription>;
   /** Feed a live price so resting orders can trigger (paper). */
   onPrice?(symbol: string, price: number): FillRecord[];
 }

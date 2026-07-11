@@ -176,10 +176,11 @@ export class OrderLifecycle {
 
   applySnapshot(record: OrderJournalRecord, snapshot: ExchangeOrderSnapshot): OrderJournalRecord {
     if (!canApplySnapshot(record, snapshot)) return record;
+    const avgFillPrice = snapshot.avgFillPrice ?? record.avgFillPrice;
     if (
       record.status === snapshot.status &&
       record.filledQty === snapshot.filledQty &&
-      record.avgFillPrice === snapshot.avgFillPrice &&
+      record.avgFillPrice === avgFillPrice &&
       record.exchangeOrderId === snapshot.id
     ) return record;
     const next: OrderJournalRecord = {
@@ -188,7 +189,7 @@ export class OrderLifecycle {
       clientId: snapshot.clientId ?? record.clientId,
       status: snapshot.status,
       filledQty: snapshot.filledQty,
-      avgFillPrice: snapshot.avgFillPrice,
+      avgFillPrice,
       message: `Exchange status: ${snapshot.status}`,
       updatedAt: Math.max(this.now(), snapshot.updatedAt)
     };

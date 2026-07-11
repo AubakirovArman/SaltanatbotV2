@@ -9,6 +9,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - `engineRisk.ts`: pure position-sizing and stop/target resolution.
 - `orderLifecycle.ts`: durable intent/result/fill transitions around exchange I/O.
 - `orderEventIngest.ts`: venue/client identity resolution and idempotent snapshot ingest shared by polling and private streams.
+- `exchange/privateOrderStreams.ts`: authenticated Binance/Bybit order and execution sockets, normalization, heartbeat, listenKey rotation and reconnect backoff.
 - `types.ts`: trading models.
 - `exchange/`: paper, Binance and Bybit adapters.
 - `strategy/`: temporary backend copy of IR/evaluator/TA.
@@ -27,6 +28,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - Reconciliation completes before a resumed live bot can become running.
 - Unresolved journal rows are matched by venue/client id; ambiguous absences pause trading for operator review.
 - Live Binance/Bybit non-terminal orders use bounded, sequential signed-REST polling as a private-stream fallback.
+- Connected private streams suppress periodic polling; disconnect and reconnect edges trigger an immediate signed-REST gap reconciliation.
 - Replayed, duplicate, identity-conflicting and state-regressing exchange events never mutate a durable order.
 - Paper is the default; live requires explicit global and per-bot authorization.
 - Incomplete spot inventory behavior remains feature-gated.

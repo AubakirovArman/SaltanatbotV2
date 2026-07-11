@@ -41,6 +41,6 @@ function unique(records: OrderJournalRecord[]) {
 function sameSnapshot(record: OrderJournalRecord, snapshot: ExchangeOrderSnapshot) {
   return record.status === snapshot.status
     && record.filledQty === snapshot.filledQty
-    && record.avgFillPrice === snapshot.avgFillPrice
+    && record.avgFillPrice === (snapshot.avgFillPrice ?? record.avgFillPrice)
     && record.exchangeOrderId === snapshot.id;
 }

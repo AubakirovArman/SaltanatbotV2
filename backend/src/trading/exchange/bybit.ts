@@ -13,6 +13,7 @@ import type { ExchangeKeys } from "./binance.js";
 import { bybitFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
 import { ExchangeTransportError, isAmbiguousExchangeError } from "./errors.js";
 import { normalizeBybitOrderStatus } from "./orderStatus.js";
+import { subscribeBybitOrders } from "./privateOrderStreams.js";
 
 /**
  * Bybit adapter (v5 unified API). `linear` category for USDT futures, `spot`
@@ -110,6 +111,13 @@ export class BybitAdapter implements ExchangeAdapter {
       avgFillPrice: Number(row.avgPrice) || undefined,
       updatedAt: Number(row.updatedTime ?? row.createdTime) || Date.now()
     };
+  }
+
+  async subscribeOrderUpdates(
+    onSnapshot: (snapshot: ExchangeOrderSnapshot) => void,
+    onConnection: (connected: boolean, message: string) => void
+  ) {
+    return subscribeBybitOrders(this.keys, { onSnapshot, onConnection });
   }
 
   async execute(order: ExecOrder): Promise<ExecResult> {

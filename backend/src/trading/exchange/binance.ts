@@ -13,6 +13,7 @@ import type {
 import { binanceFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
 import { ExchangeTransportError, isAmbiguousExchangeError } from "./errors.js";
 import { normalizeBinanceOrderStatus } from "./orderStatus.js";
+import { subscribeBinanceOrders } from "./privateOrderStreams.js";
 
 export interface ExchangeKeys {
   apiKey: string;
@@ -138,6 +139,14 @@ export class BinanceAdapter implements ExchangeAdapter {
       avgFillPrice: Number(row.avgPrice) || Number(row.price) || undefined,
       updatedAt: row.updateTime ?? row.time ?? Date.now()
     };
+  }
+
+  async subscribeOrderUpdates(
+    onSnapshot: (snapshot: ExchangeOrderSnapshot) => void,
+    onConnection: (connected: boolean, message: string) => void
+  ) {
+    if (this.market !== "futures") throw new Error("Binance private order stream is currently enabled for USDⓈ-M futures only");
+    return subscribeBinanceOrders(this.keys, { onSnapshot, onConnection });
   }
 
   async execute(order: ExecOrder): Promise<ExecResult> {

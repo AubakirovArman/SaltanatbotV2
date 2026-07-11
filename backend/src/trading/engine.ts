@@ -26,6 +26,7 @@ import type {
   FillRecord,
   PortfolioExchange,
   PortfolioSummary,
+  PrivateOrderSubscription,
   PositionState
 } from "./types.js";
 
@@ -108,6 +109,7 @@ interface RunningBot {
   /** Signed REST fallback while private order streams are not connected. */
   orderPollTimer?: ReturnType<typeof setInterval>;
   orderPollOffset?: number;
+  privateOrderSubscription?: PrivateOrderSubscription;
 }
 
 export class TradingEngine {
@@ -245,6 +247,7 @@ export class TradingEngine {
 
     this.running.set(config.id, bot);
     this.startOrderPolling(bot);
+    this.startPrivateOrderStream(bot);
     config.status = "running";
     config.updatedAt = Date.now();
     upsertBot(config);
@@ -279,6 +282,7 @@ export class TradingEngine {
     if (!bot) return;
     bot.sub?.close();
     if (bot.orderPollTimer) clearInterval(bot.orderPollTimer);
+    bot.privateOrderSubscription?.close();
     if (bot.paper) this.persistPaper(bot);
     this.persistState(bot);
     this.running.delete(id);
@@ -303,6 +307,7 @@ export class TradingEngine {
     for (const bot of this.running.values()) {
       bot.sub?.close();
       if (bot.orderPollTimer) clearInterval(bot.orderPollTimer);
+      bot.privateOrderSubscription?.close();
       if (bot.paper) this.persistPaper(bot);
       this.persistState(bot);
     }
@@ -720,8 +725,28 @@ export class TradingEngine {
     enqueue();
   }
 
-  private async pollOrders(bot: RunningBot) {
+  private startPrivateOrderStream(bot: RunningBot) {
+    if (!bot.adapter.subscribeOrderUpdates) return;
+    void bot.adapter.subscribeOrderUpdates(
+      (snapshot) => this.ingestOrderEvent(bot, snapshot, false),
+      (connected, message) => {
+        if (this.running.get(bot.config.id) !== bot) return;
+        this.log(bot.config.id, connected ? "info" : "warn", message);
+        bot.eventQueue = bot.eventQueue
+          .then(() => this.pollOrders(bot, true))
+          .catch((error) => this.log(bot.config.id, "warn", `Order reconnect reconciliation failed: ${error instanceof Error ? error.message : error}`));
+      }
+    ).then((subscription) => {
+      if (this.running.get(bot.config.id) === bot) bot.privateOrderSubscription = subscription;
+      else subscription.close();
+    }).catch((error) => {
+      this.log(bot.config.id, "warn", `Private order stream unavailable: ${error instanceof Error ? error.message : error}; REST polling fallback active.`);
+    });
+  }
+
+  private async pollOrders(bot: RunningBot, force = false) {
     if (this.running.get(bot.config.id) !== bot) return;
+    if (!force && bot.privateOrderSubscription?.connected()) return;
     const result = await pollOrderUpdates(
       listOrderJournal(bot.config.id, 500),
       bot.adapter,
@@ -736,9 +761,9 @@ export class TradingEngine {
   }
 
   /** Shared transport boundary for signed polling and authenticated streams. */
-  private ingestOrderEvent(bot: RunningBot, snapshot: ExchangeOrderSnapshot) {
+  private ingestOrderEvent(bot: RunningBot, snapshot: ExchangeOrderSnapshot, warnUnmatched = true) {
     const result = ingestExchangeOrderEvent(listOrderJournal(bot.config.id, 500), snapshot, orderLifecycle);
-    if (result.kind === "unmatched") {
+    if (result.kind === "unmatched" && warnUnmatched) {
       this.log(bot.config.id, "warn", `Ignored unmatched exchange order event ${snapshot.id}.`);
     } else if (result.kind === "ignored" && result.reason === "identity_conflict") {
       this.log(bot.config.id, "warn", `Ignored exchange order event ${snapshot.id} with conflicting client identity.`);

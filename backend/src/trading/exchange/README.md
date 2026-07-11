@@ -18,5 +18,7 @@ This folder implements the `ExchangeAdapter` boundary for paper, Binance and Byb
 - Require explicit exchange-side protection acknowledgement for protected live futures entries.
 - Keep live spot fail-closed by default while inventory accounting remains experimental.
 - Poll non-terminal live orders in bounded rotating batches when a private stream is unavailable.
+- Prefer authenticated order/execution streams: Binance USDⓈ-M `ORDER_TRADE_UPDATE` with listenKey renewal, and Bybit v5 `order` + `execution` with HMAC auth and 20-second heartbeat.
+- Reconcile through signed REST immediately on every private-stream disconnect/reconnect boundary before trusting subsequent events.
 
 Every adapter change requires fake-transport tests for success, definitive rejection, ambiguous failure, identity correlation and status normalization.
