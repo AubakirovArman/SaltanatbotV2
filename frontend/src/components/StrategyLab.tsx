@@ -1,10 +1,8 @@
-import { AlertTriangle, Code2, FileJson, Loader2, Play, Plus, Save, Share2, SlidersHorizontal, Workflow } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import * as Blockly from "blockly/core";
 import * as En from "blockly/msg/en";
 import { getCandles } from "../api/marketClient";
 import { registerStrategyBlocks, strategyToolbox } from "../strategy/blocks";
-import { blockCatalog } from "../strategy/blockCatalog";
 import type { PineImport } from "../strategy/pine";
 import { compileWorkspace } from "../strategy/compile";
 import { buildShareUrl } from "../strategy/share";
@@ -18,9 +16,8 @@ import type { StrategyArtifact, StrategyArtifactKind } from "../strategy/library
 import type { StrategyTemplate } from "../strategy/templates";
 import type { StrategyIR } from "../strategy/ir";
 import type { Candle, CatalogResponse, DataExchange, Timeframe } from "../types";
-import { BacktestReport } from "./BacktestReport";
 import { StrategyLibrary } from "../strategy/components/StrategyLibrary";
-import { OptimizePanel } from "../strategy/components/OptimizePanel";
+import { StrategyExecutionPanel } from "../strategy/components/StrategyExecutionPanel";
 import { buildSpec, initOptSpec, type OptSpecState } from "../strategy/optimization/model";
 
 const blocklyMessages = Object.fromEntries(Object.entries(En).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
@@ -95,20 +92,6 @@ interface StrategyLabProps {
     visuals?: { plots: PlotSeries[]; shapes: ShapeOverlays }
   ) => void;
   onShowOnChart?: (symbol: string, timeframe: Timeframe) => void;
-}
-
-const BAR_CHOICES = [500, 1000, 3000, 5000, 10000, 20000, 50000];
-
-/** Cost presets set commission + slippage together to match a venue/instrument tier. */
-const COST_PRESETS: { id: string; label: string; commissionPct: number; slippagePct: number }[] = [
-  { id: "majors", label: "Majors / taker", commissionPct: 0.04, slippagePct: 0.02 },
-  { id: "altcoin", label: "Altcoin", commissionPct: 0.075, slippagePct: 0.08 },
-  { id: "custom", label: "Custom", commissionPct: NaN, slippagePct: NaN }
-];
-
-function matchPreset(commissionPct: number, slippagePct: number): string {
-  const hit = COST_PRESETS.find((p) => p.commissionPct === commissionPct && p.slippagePct === slippagePct);
-  return hit ? hit.id : "custom";
 }
 
 export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onCreateArtifact, onSaveArtifact, onUseTemplate, onImportStrategy, onImportPineMany, catalog, initialSymbol, initialTimeframe, exchange = "binance", theme = "dark", onApplyResult, onShowOnChart }: StrategyLabProps) {
@@ -437,167 +420,46 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
             </div>
           )}
         </div>
-        <aside className="code-preview">
-          <div className="lab-breadcrumb">
-            <Workflow size={13} aria-hidden="true" />
-            <strong>{activeArtifact?.name ?? "Strategy Lab"}</strong>
-            <span>{activeArtifact ? `${activeArtifact.kind} v${activeArtifact.version ?? 1}` : ""}</span>
-          </div>
-          {selectedType && blockCatalog[selectedType] && (
-            <div className="block-help" style={{ padding: "8px 10px", margin: "0 0 8px", borderRadius: 8, background: "rgba(134,150,166,0.10)", fontSize: 12, lineHeight: 1.45 }}>
-              <strong>{blockCatalog[selectedType].title}</strong>
-              <div style={{ opacity: 0.85, marginTop: 3 }}>{blockCatalog[selectedType].body}</div>
-              {blockCatalog[selectedType].example && (
-                <code style={{ display: "block", marginTop: 4, opacity: 0.75 }}>e.g. {blockCatalog[selectedType].example}</code>
-              )}
-            </div>
-          )}
-          <div className="backtest-controls">
-            <button type="button" className="run-button" onClick={runNow} disabled={running || optimizing}>
-              {running ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}
-              {running ? "Loading history…" : "Run backtest"}
-            </button>
-            <button type="button" onClick={() => setOptOpen((v) => !v)} disabled={strategyInputs.length === 0} className={optOpen ? "shared" : ""} title={strategyInputs.length === 0 ? "Add a numeric input block to enable optimization" : "Optimize parameters"}>
-              <SlidersHorizontal size={15} aria-hidden="true" />
-            </button>
-            <button type="button" onClick={shareNow} title="Copy share link" className={shareState === "copied" ? "shared" : ""}>
-              <Share2 size={15} aria-hidden="true" />
-            </button>
-            <button type="button" onClick={saveNow} disabled={!activeArtifact} title="Save">
-              <Save size={15} aria-hidden="true" />
-            </button>
-          </div>
-          {strategyInputs.length === 0 && optOpen && <div className="opt-hint">This strategy has no numeric inputs to optimize. Add an input block first.</div>}
-          {shareState === "copied" && <div className="share-toast">Share link copied to clipboard</div>}
-          <div className="config-row">
-            <label>
-              Market
-              <select value={btSymbol} onChange={(event) => setBtSymbol(event.target.value)}>
-                {(catalog?.instruments ?? []).map((item) => (
-                  <option key={item.symbol} value={item.symbol}>
-                    {item.symbol}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Interval
-              <select value={btTimeframe} onChange={(event) => setBtTimeframe(event.target.value as Timeframe)}>
-                {(catalog?.timeframes ?? []).map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Bars
-              <select value={btBars} onChange={(event) => setBtBars(Number(event.target.value))}>
-                {BAR_CHOICES.map((count) => (
-                  <option key={count} value={count}>
-                    {count}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="config-row">
-            <label>
-              Capital
-              <input type="number" value={config.initialCapital} min={100} step={100} onChange={(event) => setConfig((current) => ({ ...current, initialCapital: Number(event.target.value) || 0 }))} />
-            </label>
-            <label>
-              Cost preset
-              <select
-                value={matchPreset(config.commissionPct, config.slippagePct ?? 0)}
-                onChange={(event) => {
-                  const preset = COST_PRESETS.find((p) => p.id === event.target.value);
-                  if (!preset || preset.id === "custom") return;
-                  setConfig((current) => ({ ...current, commissionPct: preset.commissionPct, slippagePct: preset.slippagePct }));
-                }}
-              >
-                {COST_PRESETS.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={config.allowShort} onChange={(event) => setConfig((current) => ({ ...current, allowShort: event.target.checked }))} />
-              Shorts
-            </label>
-          </div>
-          <div className="config-row">
-            <label>
-              Fee %
-              <input type="number" value={config.commissionPct} min={0} step={0.01} onChange={(event) => setConfig((current) => ({ ...current, commissionPct: Number(event.target.value) || 0 }))} />
-            </label>
-            <label>
-              Slippage %
-              <input type="number" value={config.slippagePct ?? 0} min={0} step={0.01} onChange={(event) => setConfig((current) => ({ ...current, slippagePct: Number(event.target.value) || 0 }))} />
-            </label>
-            <label title="Perp funding / borrow cost per 8h a position is held (pro-rated to each bar)">
-              Funding %/8h
-              <input type="number" value={config.fundingRatePctPer8h ?? 0} step={0.001} onChange={(event) => setConfig((current) => ({ ...current, fundingRatePctPer8h: Number(event.target.value) || 0 }))} />
-            </label>
-            <label>
-              Fills
-              <select value={config.fillTiming ?? "next_open"} onChange={(event) => setConfig((current) => ({ ...current, fillTiming: event.target.value as "next_open" | "same_close" }))}>
-                <option value="next_open">Next open</option>
-                <option value="same_close">Same close</option>
-              </select>
-            </label>
-          </div>
-
-          {optOpen && optSpec && (
-            <OptimizePanel
-              spec={optSpec}
-              inputs={strategyInputs}
-              onSpecChange={setOptSpec}
-              onRun={optimizeNow}
-              optimizing={optimizing}
-              progress={optProgress}
-              walkForwardOn={walkForwardOn}
-              onToggleWalkForward={setWalkForwardOn}
-              folds={optFolds}
-              onFoldsChange={setOptFolds}
-              result={optimizeResult}
-              walkForwardResult={walkForwardResult}
-              onApplyCombo={applyCombo}
-              decimals={decimals}
-            />
-          )}
-
-          {errors.length > 0 && (
-            <div className="strategy-warnings" role="status">
-              {errors.map((message, index) => (
-                <span key={index}>
-                  <AlertTriangle size={12} aria-hidden="true" /> {message}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {result ? (
-            <BacktestReport result={result} decimals={decimals} config={config} onShowOnChart={onShowOnChart ? () => onShowOnChart(btSymbol, btTimeframe) : undefined} />
-          ) : (
-            <>
-              <div className="panel-header">
-                <strong>
-                  <Code2 size={15} aria-hidden="true" /> Preview
-                </strong>
-                <span>{jsonSize} bytes</span>
-              </div>
-              <pre>{preview || "Connect blocks to compile a strategy."}</pre>
-            </>
-          )}
-
-          <div className="ir-note">
-            <FileJson size={15} aria-hidden="true" />
-            {savedAt ? `Autosaved ${new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Changes autosave locally."}
-          </div>
-        </aside>
+        <StrategyExecutionPanel
+          activeArtifact={activeArtifact}
+          selectedType={selectedType}
+          running={running}
+          optimizing={optimizing}
+          onRun={() => void runNow()}
+          onToggleOptimize={() => setOptOpen((value) => !value)}
+          onShare={shareNow}
+          onSave={saveNow}
+          shareState={shareState}
+          strategyInputs={strategyInputs}
+          optOpen={optOpen}
+          catalog={catalog}
+          symbol={btSymbol}
+          onSymbolChange={setBtSymbol}
+          timeframe={btTimeframe}
+          onTimeframeChange={setBtTimeframe}
+          bars={btBars}
+          onBarsChange={setBtBars}
+          config={config}
+          onConfigChange={setConfig}
+          optSpec={optSpec}
+          onOptSpecChange={setOptSpec}
+          onOptimize={() => void optimizeNow()}
+          optProgress={optProgress}
+          walkForwardOn={walkForwardOn}
+          onToggleWalkForward={setWalkForwardOn}
+          optFolds={optFolds}
+          onFoldsChange={setOptFolds}
+          optimizeResult={optimizeResult}
+          walkForwardResult={walkForwardResult}
+          onApplyCombo={applyCombo}
+          errors={errors}
+          result={result}
+          decimals={decimals}
+          onShowOnChart={onShowOnChart ? () => onShowOnChart(btSymbol, btTimeframe) : undefined}
+          jsonSize={jsonSize}
+          preview={preview}
+          savedAt={savedAt}
+        />
       </div>
     </section>
   );

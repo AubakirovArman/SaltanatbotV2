@@ -28,6 +28,7 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - Storage and sharing are adapters around versioned artifacts.
 - `components/StrategyLibrary.tsx` owns artifact browsing/import/export and template/Pine entry flows.
 - `components/OptimizePanel.tsx` owns optimizer controls/results; `optimization/model.ts` owns sweep-state construction.
+- `components/StrategyExecutionPanel.tsx` owns backtest configuration, execution actions, diagnostics and report/preview presentation.
 
 ## Testing
 

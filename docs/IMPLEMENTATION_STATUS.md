@@ -138,6 +138,8 @@ Verification:
 - [x] Move optimizer/walk-forward controls and results into `OptimizePanel.tsx`.
 - [x] Move sweep-state creation and worker-spec shaping into `optimization/model.ts`.
 - [x] Reduce `StrategyLab.tsx` further to 617 lines and add direct model tests.
+- [x] Extract backtest configuration, execution toolbar, diagnostics and result/preview rendering into `StrategyExecutionPanel.tsx`.
+- [x] Reduce `StrategyLab.tsx` to a Blockly lifecycle and execution controller.
 
 ### Trading engine decomposition — commit `9e048b6`
 
@@ -215,6 +217,9 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 ### Frontend decomposition
 
 - [ ] Split `StrategyLab` into build/validate/preview/backtest/optimize/library controllers and panels.
+  - [x] Extract library, optimizer and execution/result panels.
+  - [ ] Extract Blockly workspace lifecycle/autosave controller.
+  - [ ] Extract history/security-data/backtest controller.
 - [x] Split `TradingView` into auth/bots/orders/portfolio/settings feature modules.
 - [ ] Reduce `App.tsx` to composition and routing state.
 - [ ] Split chart orchestration into dirty render layers.
