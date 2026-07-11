@@ -61,6 +61,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 - Added secret-safe issue forms, a PR safety checklist and a public threat model with explicit
   trust boundaries, residual risks and deferred funded-soak status.
 - Added enforced production frontend raw/gzip budgets to push, pull-request and release CI.
+- Upgraded official checkout/setup actions to their Node 24-compatible majors, removing GitHub's
+  Node 20 deprecation annotations from CI, Pages, release and opt-in testnet workflows.
 
 ## 2026-07-11 — 90-commit development snapshot
 
