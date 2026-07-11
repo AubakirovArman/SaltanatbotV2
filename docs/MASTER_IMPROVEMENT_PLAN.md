@@ -253,7 +253,7 @@ No milestone is complete merely because it builds.
 | Visual regression | Core desktop views | Desktop/mobile/themes/locales |
 | Backtest/live parity | Fixture coverage | Versioned golden traces |
 | Exchange adapter | Fake server | Testnet conformance |
-| Performance | Bundle warning tracked | Enforced budgets |
+| Performance | Enforced HTML/CSS/JS bundle budgets | Runtime/interaction benchmarks plus tightened budgets |
 | Security | Dependency audit + auth tests | Threat model + release review |
 | Data migration | Forward migration | Backup/restore/rollback rehearsal |
 

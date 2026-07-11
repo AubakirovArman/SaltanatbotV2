@@ -24,6 +24,7 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 - Added complete Russian and Kazakh entry points for the current user workflows.
 - Added secret-safe issue forms, a PR safety checklist and a public threat model with explicit
   trust boundaries, residual risks and deferred funded-soak status.
+- Added enforced production frontend raw/gzip budgets to push, pull-request and release CI.
 
 ## 2026-07-11 — 90-commit development snapshot
 

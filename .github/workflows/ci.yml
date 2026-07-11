@@ -43,6 +43,9 @@ jobs:
       - name: Build (backend + frontend)
         run: npm run build
 
+      - name: Frontend bundle budgets
+        run: npm run perf:check
+
   secret-scan:
     name: secret scan
     runs-on: ubuntu-latest

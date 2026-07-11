@@ -81,6 +81,7 @@ jobs:
           npm run docs:check
           npm test
           npm run build
+          npm run perf:check
 
       - name: Create reproducible application archive
         run: npm run release:package -- --channel "${{ steps.release.outputs.channel }}" --version "${{ steps.release.outputs.version }}"

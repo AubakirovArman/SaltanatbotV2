@@ -166,10 +166,20 @@ Nightly/release:
 
 ## Performance budgets
 
-Initial budgets should be measured, recorded and then tightened:
+The production bundle has an enforced CI gate after `npm run build`:
+
+```bash
+npm run perf:check
+```
+
+Reviewed raw/gzip ceilings live in `performance-budgets.json`. The checker covers HTML, every CSS
+asset, the largest individual JavaScript chunk and total JavaScript gzip size. A limit may only be
+raised with measured justification. Current limits preserve a small regression margin around the
+measured baseline; the longer-term targets remain:
 
 - initial JS gzip <= 150 KB target;
-- no lazy feature chunk > 200 KB gzip without an approved exception;
+- no lazy feature chunk > 200 KB gzip without an approved exception (Blockly is currently near this
+  threshold and remains an explicit split/optimization target);
 - chart crosshair update p95 <= 16 ms on reference hardware;
 - pan/zoom maintains responsive frames on 10,000 visible/loaded candles;
 - Pine import of the maximum supported file completes or rejects within a fixed timeout;

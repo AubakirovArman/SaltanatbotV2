@@ -7,6 +7,8 @@ This folder contains deterministic maintenance and release helpers invoked by ro
 - `check-docs.mjs`: validates tracked Markdown links and documented root npm commands.
 - `check-site.mjs`: validates the EN/RU/KK GitHub Pages entry points, relative assets, language
   metadata, semantic main/skip navigation and baseline focus/reduced-motion CSS requirements.
+- `check-bundle-budgets.mjs`: measures production frontend HTML, CSS and JavaScript using raw/gzip
+  sizes and enforces the reviewed limits in `performance-budgets.json`.
 - `generate-pine-compatibility.mjs`: generates and checks the Pine compatibility registry.
 - `generate-reference-docs.mjs`: generates and checks the Express endpoint index and strategy block catalog.
 - `package-release.mjs`: validates release channels and creates a deterministic, secret-free application archive plus build metadata.

@@ -43,6 +43,13 @@ Verification:
 - [x] Publish assets, trust boundaries, mitigations, residual risks and explicit non-goals.
 - [x] State that funded soak/mainnet readiness has not been proven.
 
+### Frontend performance budgets — 2026-07-11
+
+- [x] Record reviewed HTML, CSS, single-JS and total-JS gzip ceilings in version control.
+- [x] Measure production output deterministically after build.
+- [x] Fail pull-request, push and release CI when a budget regresses.
+- [x] Keep the large Blockly chunk visible as an explicit optimization target.
+
 ### Foundation — commit `3a98684`
 
 - [x] Fix zero-price synthetic fallback for dynamically discovered crypto pairs.
