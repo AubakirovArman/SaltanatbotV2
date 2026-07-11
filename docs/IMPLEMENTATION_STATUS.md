@@ -276,6 +276,7 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Keep analytics in the dedicated `backtestMetrics.ts` module.
   - [ ] Extract trace/report assembly.
     - [x] Extract exhaustive warm-up/lookback analysis, including nested control flow and dynamic floors.
+    - [x] Extract position/daily-stat evaluator context and bounded variable-trace collection.
 - [ ] Add versioned golden event traces across preview/backtest/paper/live.
 - [ ] Add missing/fallback-data provenance to every report.
 

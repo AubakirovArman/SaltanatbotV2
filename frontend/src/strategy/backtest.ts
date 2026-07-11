@@ -20,6 +20,7 @@ import {
   type Position
 } from "./backtest/broker";
 import { estimateWarmupBars } from "./backtest/warmup";
+import { buildEvaluationContext, createVariableTraceCollector } from "./backtest/reporting";
 import type { BacktestConfig, BacktestResult, EquityPoint, TestedRange, Trade, TradeMarker } from "./backtestTypes";
 import type { StrategyIR } from "./ir";
 import { atr as atrSeries } from "./ta";
@@ -78,8 +79,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
   let liquidated = false;
   let fundingPaid = 0;
   let budgetWarned = false;
-  const varTrace: { time: number; vars: Record<string, number> }[] = [];
-  const traceStep = Math.max(1, Math.floor(rt.n / 600)); // cap the trace at ~600 points
+  const variableTrace = createVariableTraceCollector(rt.n);
 
   // Bar duration (ms) inferred from the candle spacing — the same value used to
   // annualise Sharpe. Funding is pro-rated to this bar length: a rate quoted per
@@ -220,7 +220,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     }
 
     // 2. Evaluate the strategy body to gather intents for this bar.
-    const ctx = buildCtx(position, candle.close, i, trades, equity, candle.time);
+    const ctx = buildEvaluationContext(position, candle.close, i, trades, equity, candle.time);
     const intents: Intents = liquidated
       ? { exit: false, alerts: [], markers: [] }
       : evaluateStrategyBar(ir, i, rt, ctx);
@@ -228,9 +228,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
       warnings.push({ time: candle.time, message: `A loop hit the per-bar execution budget (${MAX_OPS_PER_BAR}) and was truncated.` });
       budgetWarned = true;
     }
-    if (rt.vars.size && (i % traceStep === 0 || i === rt.n - 1)) {
-      varTrace.push({ time: candle.time, vars: Object.fromEntries(rt.vars) });
-    }
+    variableTrace.capture(i, candle.time, rt.vars);
     if (intents.size) sizing = intents.size;
     for (const alert of intents.alerts) alerts.push({ time: candle.time, message: alert.message });
     for (const marker of intents.markers) {
@@ -312,47 +310,6 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     warnings,
     metrics: computeBacktestMetrics(trades, measured, config, barsInMarket, measured.length, candles, liquidated, fundingPaid),
     tested,
-    varTrace: varTrace.length ? varTrace : undefined
+    varTrace: variableTrace.result()
   };
-}
-
-/** Build the per-bar position/PnL context for canonical `ctx` reads. */
-function buildCtx(
-  position: Position | null,
-  price: number,
-  i: number,
-  trades: Trade[],
-  equity: number,
-  barTime: number
-): Record<string, number> {
-  let consecutiveLosses = 0;
-  for (let t = trades.length - 1; t >= 0; t -= 1) {
-    if (trades[t].pnl < 0) consecutiveLosses += 1;
-    else break;
-  }
-  const dayStart = Math.floor(barTime / 86_400_000) * 86_400_000;
-  let tradesToday = 0;
-  let realizedToday = 0;
-  for (const tr of trades) {
-    if (tr.exitTime >= dayStart) {
-      tradesToday += 1;
-      realizedToday += tr.pnl;
-    }
-  }
-  const ctx: Record<string, number> = {
-    last_trade_pnl: trades.at(-1)?.pnl ?? 0,
-    consecutive_losses: consecutiveLosses,
-    trades_today: tradesToday,
-    realized_today: realizedToday,
-    equity
-  };
-  if (position) {
-    const move = position.dir === "long" ? price - position.entryPrice : position.entryPrice - price;
-    ctx.position_dir = position.dir === "long" ? 1 : -1;
-    ctx.entry_price = position.entryPrice;
-    ctx.unrealized_pnl = position.qty * move;
-    ctx.unrealized_pnl_pct = position.entryPrice ? (move / position.entryPrice) * 100 : 0;
-    ctx.bars_in_position = i - position.entryIndex;
-  }
-  return ctx;
 }
