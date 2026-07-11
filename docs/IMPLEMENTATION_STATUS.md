@@ -362,6 +362,9 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 - [x] Add accessible previous/next/range replay controls to every non-empty backtest report.
 - [x] Publish versioned deterministic execution benchmarks for next-open/final-close, gap stops, favourable gap targets and pessimistic stop priority.
 - [x] Verify reviewed expected trades and byte-deterministic reports for every benchmark.
+- [x] Add expanding anchored and independent rolling walk-forward modes.
+- [x] Keep OOS windows disjoint, compound stitched equity and expose deterministic fold boundaries.
+- [x] Calculate winning-parameter min/max/mean/deviation/normalized range and label unstable neighbours in the UI.
 
 - [x] Move shared TA implementations into `strategy-core` and retain frontend/backend compatibility facades.
 - [x] Move the canonical evaluator, reusable runtime, execution budgets, security-series alignment and intent types into `strategy-core`.

@@ -166,7 +166,7 @@ Conversion confidence must never be a vague percentage. It should be derived fro
 - model limit orders, gaps, partial fills, fees, funding, borrow costs and liquidation consistently;
 - [x] separate strategy performance from execution assumptions through immutable config/assumption metadata;
 - [x] add bar replay with deterministic stepping and an explanation trace;
-- add out-of-sample, anchored/rolling walk-forward and parameter stability views;
+- [x] add out-of-sample, anchored/rolling walk-forward and parameter stability views;
 - [x] add exportable, versioned research reports;
 - [x] prevent accidental comparison of runs using different data or settings.
 

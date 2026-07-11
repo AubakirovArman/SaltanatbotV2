@@ -40,6 +40,7 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
   const [optimizeResult, setOptimizeResult] = useState<OptimizeResult>();
   const [walkForwardOn, setWalkForwardOn] = useState(false);
   const [optFolds, setOptFolds] = useState(4);
+  const [walkForwardMode, setWalkForwardMode] = useState<"rolling" | "anchored">("rolling");
   const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult>();
   const optCandlesRef = useRef<Candle[]>([]);
   const optIrRef = useRef<StrategyIR>();
@@ -162,7 +163,7 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
         if (isCurrent(operation.id)) setOptProgress({ done, total });
       };
       if (walkForwardOn) {
-        const walkForward = await runWalkForwardInWorker(compiled.ir, candles, config, spec, { folds: optFolds }, onProgress, securityData);
+        const walkForward = await runWalkForwardInWorker(compiled.ir, candles, config, spec, { folds: optFolds, mode: walkForwardMode }, onProgress, securityData);
         if (!isCurrent(operation.id)) return;
         setWalkForwardResult(walkForward);
       }
@@ -203,6 +204,7 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
     config, setConfig, symbol, setSymbol, timeframe, setTimeframe, bars, setBars,
     running, run, optOpen, setOptOpen, optimizing, optProgress, optSpec, setOptSpec,
     optimizeResult, walkForwardOn, setWalkForwardOn, optFolds, setOptFolds,
+    walkForwardMode, setWalkForwardMode,
     walkForwardResult, optimize, applyCombo
   };
 

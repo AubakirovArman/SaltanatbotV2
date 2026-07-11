@@ -276,10 +276,23 @@ export interface FoldResult {
 export interface WalkForwardResult {
   folds: FoldResult[];
   objective: Objective;
+  mode: "rolling" | "anchored";
   /** Aggregate metrics of the stitched OOS equity across all folds. */
   aggregate?: BacktestMetrics;
   /** Stitched out-of-sample equity curve across every fold. */
   stitchedEquity: { time: number; equity: number }[];
+  stability: ParameterStability[];
+}
+
+export interface ParameterStability {
+  name: string;
+  values: number[];
+  mean: number;
+  min: number;
+  max: number;
+  standardDeviation: number;
+  normalizedRange: number;
+  stable: boolean;
 }
 
 export interface WalkForwardOptions {
@@ -287,6 +300,8 @@ export interface WalkForwardOptions {
   folds?: number;
   /** Fraction of each fold window used to train (rest is the OOS test). */
   foldTrainFrac?: number;
+  /** Rolling uses independent windows; anchored expands training from the first bar. */
+  mode?: "rolling" | "anchored";
 }
 
 /**
@@ -308,15 +323,16 @@ export function walkForward(
   const foldCount = Math.max(2, Math.floor(options.folds ?? 4));
   const foldTrainFrac = Math.min(0.9, Math.max(0.1, options.foldTrainFrac ?? spec.trainFrac ?? DEFAULT_TRAIN_FRAC));
   const objective = spec.objective;
+  const mode = options.mode ?? "rolling";
 
   const folds: FoldResult[] = [];
   const stitchedEquity: { time: number; equity: number }[] = [];
   const stitchedTrades: BacktestResult["trades"] = [];
 
-  const windowSize = Math.floor(candles.length / foldCount);
+  const windowSize = Math.floor(candles.length / (mode === "anchored" ? foldCount + 1 : foldCount));
   // Not enough data to form meaningful folds.
   if (windowSize < 4) {
-    return { folds, objective, stitchedEquity };
+    return { folds, objective, mode, stitchedEquity, stability: [] };
   }
 
   // Equity is compounded across folds: each fold's OOS run starts from the
@@ -327,18 +343,20 @@ export function walkForward(
     const from = f * windowSize;
     const to = f === foldCount - 1 ? candles.length : (f + 1) * windowSize;
     const window = candles.slice(from, to);
-    if (window.length < 4) continue;
+    const anchoredTrainEnd = (f + 1) * windowSize;
+    const anchoredTestEnd = f === foldCount - 1 ? candles.length : (f + 2) * windowSize;
+    const split = mode === "anchored"
+      ? { train: candles.slice(0, anchoredTrainEnd), test: candles.slice(anchoredTrainEnd, anchoredTestEnd) }
+      : splitCandles(window, foldTrainFrac);
+    if (split.train.length < 2 || split.test.length < 2) continue;
 
     const foldSpec: OptimizeSpec = { ...spec, trainFrac: foldTrainFrac };
-    const opt = optimize(ir, window, { ...config, initialCapital: runningEquity }, foldSpec, undefined, securityData);
+    const opt = optimize(ir, split.train, { ...config, initialCapital: runningEquity }, foldSpec, undefined, securityData);
     const best = opt.best;
     if (!best) continue;
 
-    const { train, test } = splitCandles(window, foldTrainFrac);
-    if (test.length < 2) continue;
-
     const cloned = cloneWithInputs(ir, best.params);
-    const oosRun = runBacktest(cloned, test, { ...config, initialCapital: runningEquity }, securityData);
+    const oosRun = runBacktest(cloned, split.test, { ...config, initialCapital: runningEquity }, securityData);
 
     for (const point of oosRun.equityCurve) stitchedEquity.push(point);
     for (const trade of oosRun.trades) stitchedTrades.push(trade);
@@ -346,10 +364,10 @@ export function walkForward(
 
     folds.push({
       fold: f,
-      trainFrom: train[0]?.time ?? 0,
-      trainTo: train.at(-1)?.time ?? 0,
-      testFrom: test[0]?.time ?? 0,
-      testTo: test.at(-1)?.time ?? 0,
+      trainFrom: split.train[0]?.time ?? 0,
+      trainTo: split.train.at(-1)?.time ?? 0,
+      testFrom: split.test[0]?.time ?? 0,
+      testTo: split.test.at(-1)?.time ?? 0,
       params: best.params,
       inSample: best.inSample,
       outSample: oosRun.metrics,
@@ -359,7 +377,22 @@ export function walkForward(
   }
 
   const aggregate = folds.length ? aggregateOos(folds, stitchedEquity, config.initialCapital ?? DEFAULT_CONFIG.initialCapital) : undefined;
-  return { folds, objective, aggregate, stitchedEquity };
+  return { folds, objective, mode, aggregate, stitchedEquity, stability: parameterStability(folds) };
+}
+
+export function parameterStability(folds: readonly FoldResult[]): ParameterStability[] {
+  const names = [...new Set(folds.flatMap((fold) => Object.keys(fold.params)))].sort();
+  return names.map((name) => {
+    const values = folds.map((fold) => fold.params[name]).filter(Number.isFinite);
+    const mean = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+    const min = values.length ? Math.min(...values) : 0;
+    const max = values.length ? Math.max(...values) : 0;
+    const variance = values.length ? values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length : 0;
+    const standardDeviation = Math.sqrt(variance);
+    const scale = Math.max(1e-12, Math.abs(mean), ...values.map(Math.abs));
+    const normalizedRange = (max - min) / scale;
+    return { name, values, mean, min, max, standardDeviation, normalizedRange, stable: normalizedRange <= 0.25 };
+  });
 }
 
 /** Summarise the stitched OOS folds into a single metrics block. */

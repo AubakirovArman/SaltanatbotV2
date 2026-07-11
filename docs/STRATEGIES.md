@@ -232,6 +232,12 @@ expression explanations, variable changes, scheduled/actual fills, position
 events, equity and trade boundaries. The report exposes native previous/next
 buttons and a range input for keyboard-accessible stepping.
 
+Research supports a fixed in-sample/out-of-sample split plus two deterministic
+walk-forward modes. Rolling uses independent train/test windows; anchored keeps
+the first bar fixed and expands training before each disjoint OOS segment. The
+result view stitches OOS equity and reports the winning value range and
+normalized stability of every swept parameter.
+
 Two properties keep frontend and backend in lockstep:
 
 - **One expression/statement evaluator.** Numeric/boolean evaluation, control flow, state mutation, alert rendering, operation budgets and intent collection live in `packages/strategy-core/evaluator.ts`. Indicators come from the adjacent canonical `ta.ts` implementation.

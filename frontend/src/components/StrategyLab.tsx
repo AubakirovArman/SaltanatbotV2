@@ -143,6 +143,8 @@ export function StrategyLab({
           onToggleWalkForward={research.setWalkForwardOn}
           optFolds={research.optFolds}
           onFoldsChange={research.setOptFolds}
+          walkForwardMode={research.walkForwardMode}
+          onWalkForwardModeChange={research.setWalkForwardMode}
           optimizeResult={research.optimizeResult}
           walkForwardResult={research.walkForwardResult}
           onApplyCombo={research.applyCombo}

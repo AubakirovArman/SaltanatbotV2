@@ -50,6 +50,8 @@ interface StrategyExecutionPanelProps {
   onToggleWalkForward: (enabled: boolean) => void;
   optFolds: number;
   onFoldsChange: (folds: number) => void;
+  walkForwardMode: "rolling" | "anchored";
+  onWalkForwardModeChange: (mode: "rolling" | "anchored") => void;
   optimizeResult?: OptimizeResult;
   walkForwardResult?: WalkForwardResult;
   onApplyCombo: (params: Record<string, number>) => void;
@@ -107,6 +109,8 @@ export function StrategyExecutionPanel(props: StrategyExecutionPanelProps) {
           onToggleWalkForward={props.onToggleWalkForward}
           folds={props.optFolds}
           onFoldsChange={props.onFoldsChange}
+          walkForwardMode={props.walkForwardMode}
+          onWalkForwardModeChange={props.onWalkForwardModeChange}
           result={props.optimizeResult}
           walkForwardResult={props.walkForwardResult}
           onApplyCombo={props.onApplyCombo}

@@ -865,6 +865,22 @@
   background: var(--bg);
 }
 
+.opt-stability {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.45rem;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+.opt-stability-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--fs-xs);
+}
+
 .backtest-replay .panel-header strong,
 .replay-controls,
 .replay-summary {

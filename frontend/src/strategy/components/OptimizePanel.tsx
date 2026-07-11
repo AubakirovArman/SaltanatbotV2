@@ -19,6 +19,8 @@ export function OptimizePanel({
   onToggleWalkForward,
   folds,
   onFoldsChange,
+  walkForwardMode,
+  onWalkForwardModeChange,
   result,
   walkForwardResult,
   onApplyCombo,
@@ -35,6 +37,8 @@ export function OptimizePanel({
   onToggleWalkForward: (on: boolean) => void;
   folds: number;
   onFoldsChange: (n: number) => void;
+  walkForwardMode: "rolling" | "anchored";
+  onWalkForwardModeChange: (mode: "rolling" | "anchored") => void;
   result?: OptimizeResult;
   walkForwardResult?: WalkForwardResult;
   onApplyCombo: (params: Record<string, number>) => void;
@@ -119,10 +123,19 @@ export function OptimizePanel({
           {t("walkForwardShort")}
         </label>
         {walkForwardOn && (
-          <label>
-            {t("folds")}
-            <input type="number" value={folds} min={2} max={12} step={1} onChange={(event) => onFoldsChange(Math.max(2, Math.min(12, Number(event.target.value) || 4)))} />
-          </label>
+          <>
+            <label>
+              {t("walkForwardMode")}
+              <select value={walkForwardMode} onChange={(event) => onWalkForwardModeChange(event.target.value as "rolling" | "anchored")}>
+                <option value="rolling">{t("rolling")}</option>
+                <option value="anchored">{t("anchored")}</option>
+              </select>
+            </label>
+            <label>
+              {t("folds")}
+              <input type="number" value={folds} min={2} max={12} step={1} onChange={(event) => onFoldsChange(Math.max(2, Math.min(12, Number(event.target.value) || 4)))} />
+            </label>
+          </>
         )}
       </div>
 
@@ -231,6 +244,18 @@ function WalkForwardResults({ locale, wf, decimals }: { locale: Locale; wf: Walk
           <span>PF {Number.isFinite(agg.profitFactor) ? agg.profitFactor.toFixed(2) : "∞"}</span>
           <span>{t("maxDrawdownShort")} {agg.maxDrawdownPct.toFixed(1)}%</span>
           <span title={t("finalEquity")}>{t("final")} {agg.finalEquity.toFixed(decimals === 0 ? 0 : 2)}</span>
+        </div>
+      )}
+      {wf.stability.length > 0 && (
+        <div className="opt-stability">
+          <div className="panel-header small"><strong>{t("parameterStability")}</strong><span>{t(wf.mode)}</span></div>
+          {wf.stability.map((item) => (
+            <div key={item.name} className="opt-stability-row">
+              <code>{item.name}</code>
+              <span>{item.min.toFixed(3)}–{item.max.toFixed(3)}</span>
+              <strong className={item.stable ? "up" : "down"}>{t(item.stable ? "stable" : "unstable")}</strong>
+            </div>
+          ))}
         </div>
       )}
     </div>
