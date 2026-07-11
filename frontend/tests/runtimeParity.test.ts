@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { evaluateBar, runInit } from "../../backend/src/trading/strategy/evaluator.js";
 import type { StrategyIR as BackendStrategyIR } from "../../backend/src/trading/strategy/ir.js";
+import * as backendTa from "../../backend/src/trading/strategy/ta.js";
 import { previewStrategy } from "../src/strategy/backtest";
 import type { StrategyIR } from "../src/strategy/ir";
+import * as frontendTa from "../src/strategy/ta";
 import type { Candle } from "../src/types";
 
 const MINUTE = 60_000;
@@ -20,8 +22,7 @@ function candle(index: number, close: number): Candle {
 
 /**
  * A stateful fixture intentionally exercises init, numeric/boolean variables,
- * an indicator, nested control flow and markers. It runs through both copied
- * runtimes until strategy-core becomes the single canonical implementation.
+ * an indicator, nested control flow and markers across both runtime adapters.
  */
 const parityIR: StrategyIR = {
   name: "runtime-parity",
@@ -77,6 +78,12 @@ function emptyCounts(): SignalCounts {
 }
 
 describe("frontend preview/backend evaluator parity", () => {
+  it("uses the same strategy-core TA implementation in browser and server adapters", () => {
+    expect(frontendTa.sma).toBe(backendTa.sma);
+    expect(frontendTa.atr).toBe(backendTa.atr);
+    expect(frontendTa.sma([1, 2, 3, 4], 2)).toEqual([NaN, 1.5, 2.5, 3.5]);
+  });
+
   it("emits identical signal counts on every bar for stateful IR", () => {
     const preview = previewStrategy(parityIR, candles);
     const previewByTime = new Map<number, SignalCounts>();

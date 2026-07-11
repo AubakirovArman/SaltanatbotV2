@@ -10,3 +10,5 @@ const NUM_KINDS = new Set([
 export function isNumExpr(expr) {
   return NUM_KINDS.has(expr.k);
 }
+
+export * from "./ta.js";

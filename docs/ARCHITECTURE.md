@@ -85,7 +85,7 @@ backend/src/
     ├── store.ts              # node:sqlite persistence + AES-256-GCM key storage
     ├── types.ts              # BotConfig, ExchangeAdapter, account/position types
     ├── exchange/             # paper / binance / bybit execution adapters
-    └── strategy/             # Backend evaluator/TA plus a facade over shared IR
+    └── strategy/             # Backend evaluator plus facades over shared IR and TA
 ```
 
 ## Frontend (`@saltanatbotv2/frontend`)
@@ -176,7 +176,7 @@ Notes grounded in the code:
 
 ## Shared strategy IR
 
-Strategies are not stored as executable code — they compile to a typed **intermediate representation** that both tiers understand. The canonical IR declarations and schema version live in `packages/strategy-core`; the frontend and backend `ir.ts` files are compatibility facades while evaluator/TA extraction continues.
+Strategies are not stored as executable code — they compile to a typed **intermediate representation** that both tiers understand. The canonical IR declarations, schema version and TA series live in `packages/strategy-core`; frontend and backend `ir.ts`/`ta.ts` files are compatibility facades while evaluator extraction continues.
 
 This is what lets a strategy backtested in the browser be executed identically on the server for live trading. The IR is a small algebra of numeric expressions, boolean expressions, and statements:
 
@@ -194,7 +194,7 @@ export interface StrategyIR {
 | `BoolExpr` | `bool`, `compare`, `logic`, `not`, `cross`, `trend`, `between`, `session`, `dayofweek` |
 | `Stmt` | `entry`, `exit`, `stop`, `target`, `trail`, `size`, `setvar`, `alert`, `plot`, `marker`, `if` |
 
-The frontend backtester (`strategy/backtest.ts`) walks candles bar-by-bar through this IR to produce `signals`, `plots`, and `trades`; the backend evaluator walks the same IR against the live candle buffer. TA/evaluator implementations are still mirrored temporarily, protected by a stateful cross-runtime parity test, and are scheduled to move into `strategy-core`.
+The frontend backtester (`strategy/backtest.ts`) walks candles bar-by-bar through this IR to produce `signals`, `plots`, and `trades`; the backend evaluator walks the same IR against the live candle buffer. Both use the canonical TA implementation from `strategy-core`. The remaining evaluator logic is mirrored temporarily, protected by a stateful cross-runtime parity test, and scheduled to move into the same package.
 
 ## Request and data flow
 

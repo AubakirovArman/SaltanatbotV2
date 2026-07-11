@@ -207,7 +207,7 @@ const shared = readSharedFromHash();           // { name, xml } | null on load
 
 ## The same evaluator on the backend
 
-The backtester and live bot engine currently run mirrored per-bar interpreters over the canonical shared IR shape. A stateful cross-runtime parity test compares frontend preview signals with backend evaluator intents bar-for-bar while the evaluator and TA implementations are moved into `strategy-core`.
+The backtester and live bot engine currently run mirrored per-bar interpreters over the canonical shared IR shape. Both import the same TA implementation from `packages/strategy-core`; a stateful cross-runtime parity test compares frontend preview signals with backend evaluator intents bar-for-bar while the remaining evaluator logic is moved into that package.
 
 ```ts
 export function evaluateBar(ir: StrategyIR, candles: Candle[], index: number): BarIntents
@@ -218,7 +218,7 @@ export function atrValue(candles: Candle[], period: number, index: number): numb
 
 Two properties keep frontend and backend in lockstep:
 
-- **Identical expression/statement evaluation.** `evalNum`, `evalBool`, `computeSeries`, `applyArith`, `applyUnary`, and `constNum` are the same in `backtest.ts` and `evaluator.ts`. Indicators come from a shared `ta.ts` implementation (`sma`, `ema`, `wma`, `vwma`, `rsi`, `atr` with Wilder smoothing, `bollingerBand`, `macdLine`, `stochK`, `williamsR`, `cci`, `roc`, `stdev`, `highest`, `lowest`, `change`).
+- **Identical expression/statement evaluation.** `evalNum`, `evalBool`, `computeSeries`, `applyArith`, `applyUnary`, and `constNum` are mirrored in `backtest.ts` and `evaluator.ts` and covered by parity fixtures. Indicators come from the canonical `packages/strategy-core/ta.ts` implementation (`sma`, `ema`, `wma`, `vwma`, `rsi`, `atr` with Wilder smoothing, `bollingerBand`, `macdLine`, `stochK`, `williamsR`, `cci`, `roc`, `stdev`, `highest`, `lowest`, `change`, and the extended Pine-compatible series).
 - **Determinism.** Series are computed by folding indicator periods to constants (`constNum`) and vectorizing pure numeric expressions once per bar-index-independent key (`getSeries` memoizes on `JSON.stringify(expr)`). Comparisons short-circuit to `false` on `NaN`, and crosses/trends require a valid prior bar, so warm-up bars behave identically in backtest and live.
 
 Because the IR is transported as plain JSON, a strategy authored and backtested in the browser can be sent verbatim to the backend as `bot.config.ir` and produce the same intents on the same candles.
