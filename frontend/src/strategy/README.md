@@ -25,6 +25,7 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - Backtest accounting does not depend on Blockly.
 - `previewTables.ts` owns display-metric collection and table shaping; the broker loop must not depend on presentation models.
 - `backtestTypes.ts` is the stable public contract; `backtestMetrics.ts` owns analytics derived from trades and equity.
+- `candleHistory.ts` owns bounded, de-duplicated backward pagination shared by backtests, optimization and `request.security` loading.
 - Storage and sharing are adapters around versioned artifacts.
 - `components/StrategyLibrary.tsx` owns artifact browsing/import/export and template/Pine entry flows.
 - `components/OptimizePanel.tsx` owns optimizer controls/results; `optimization/model.ts` owns sweep-state construction.

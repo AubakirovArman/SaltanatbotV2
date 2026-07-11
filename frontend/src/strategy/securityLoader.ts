@@ -1,5 +1,5 @@
-import { getCandles } from "../api/marketClient";
 import type { Candle, DataExchange, Timeframe } from "../types";
+import { loadCandleHistory } from "./candleHistory";
 import type { StrategyIR } from "./ir";
 import { securitySeriesKey, type SecurityDataContext } from "./securityData";
 import { collectSecurityRequirements, type SecurityRequirement } from "./securityRequirements";
@@ -110,18 +110,7 @@ async function fetchSecurityWindow(symbol: string, timeframe: Timeframe, base: S
   const chartStart = base.chartCandles[0].time;
   const chartEnd = base.chartCandles.at(-1)?.time;
   const target = Math.min(Math.max(base.chartCandles.length, 1000), MAX_SECURITY_BARS);
-  let candles = (await getCandles(symbol, timeframe, Math.min(target, 1000), chartEnd, base.exchange)).candles;
-
-  while (candles.length < target && candles.length > 0 && candles[0].time > chartStart) {
-    const oldest = candles[0].time;
-    const older = (await getCandles(symbol, timeframe, 1000, oldest - 1, base.exchange)).candles.filter(
-      (candle) => candle.time < oldest
-    );
-    if (older.length === 0) break;
-    candles = [...older, ...candles];
-  }
-
-  return candles.slice(-target);
+  return loadCandleHistory({ symbol, timeframe, bars: target, endTime: chartEnd, exchange: base.exchange, stopAt: chartStart });
 }
 
 function minutesToTimeframe(minutes: number): Timeframe | undefined {

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as Blockly from "blockly/core";
 import * as En from "blockly/msg/en";
-import { getCandles } from "../api/marketClient";
 import { registerStrategyBlocks, strategyToolbox } from "../strategy/blocks";
 import type { PineImport } from "../strategy/pine";
 import { compileWorkspace } from "../strategy/compile";
@@ -19,6 +18,7 @@ import type { Candle, CatalogResponse, DataExchange, Timeframe } from "../types"
 import { StrategyLibrary } from "../strategy/components/StrategyLibrary";
 import { StrategyExecutionPanel } from "../strategy/components/StrategyExecutionPanel";
 import { buildSpec, initOptSpec, type OptSpecState } from "../strategy/optimization/model";
+import { loadCandleHistory } from "../strategy/candleHistory";
 
 const blocklyMessages = Object.fromEntries(Object.entries(En).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 let localeReady = false;
@@ -279,15 +279,7 @@ export function StrategyLab({ artifacts, activeArtifactId, onSelectArtifact, onC
   // needed. Shared by the plain backtest and the optimizer so both run on the
   // exact same candle window.
   const fetchHistory = async (): Promise<Candle[]> => {
-    const chunk = Math.min(btBars, 1000);
-    let candles = (await getCandles(btSymbol, btTimeframe, chunk, undefined, exchange)).candles;
-    while (candles.length < btBars && candles.length > 0) {
-      const oldest = candles[0].time;
-      const older = (await getCandles(btSymbol, btTimeframe, 1000, oldest - 1, exchange)).candles.filter((candle) => candle.time < oldest);
-      if (older.length === 0) break;
-      candles = [...older, ...candles];
-    }
-    return candles.slice(-btBars);
+    return loadCandleHistory({ symbol: btSymbol, timeframe: btTimeframe, bars: btBars, exchange });
   };
 
   const runNow = async () => {

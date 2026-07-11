@@ -219,7 +219,8 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [ ] Split `StrategyLab` into build/validate/preview/backtest/optimize/library controllers and panels.
   - [x] Extract library, optimizer and execution/result panels.
   - [ ] Extract Blockly workspace lifecycle/autosave controller.
-  - [ ] Extract history/security-data/backtest controller.
+  - [x] Extract shared paginated history loading for backtest, optimizer and security-data windows.
+  - [ ] Extract the remaining backtest execution controller hook.
 - [x] Split `TradingView` into auth/bots/orders/portfolio/settings feature modules.
 - [ ] Reduce `App.tsx` to composition and routing state.
 - [ ] Split chart orchestration into dirty render layers.
