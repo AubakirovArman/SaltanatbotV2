@@ -31,7 +31,7 @@ It is not enough to resemble TradingView visually. The differentiator must be tr
 | Research | Backtest, optimizer, walk-forward and Monte Carlo | Alpha |
 | Execution | Paper, Binance and Bybit adapters, order journal, reconciliation and safeguards | Experimental; live is not production-ready |
 | Security | Local binding, roles, HttpOnly session, CSRF, one-use WS tickets, encrypted keys, audit log | Strong alpha baseline |
-| Tests | 262 unit/integration/parity tests plus an initial 6-scenario Playwright production suite | Partial, expanding |
+| Tests | 267 unit/integration/parity tests plus a 9-scenario Playwright production suite | Partial, expanding |
 | Documentation | Substantial English docs plus several internal plans | Useful but drifting |
 | Localization | UI strings are embedded in components | Not started |
 

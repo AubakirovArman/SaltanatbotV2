@@ -66,6 +66,7 @@ export default function App() {
     trades: ChartTrade[];
     plots?: ChartPlot[];
     shapes?: ChartShapes;
+    summary?: string;
     symbol: string;
     timeframe: Timeframe;
   }>();
@@ -265,7 +266,7 @@ export default function App() {
     const preview = previewCyclesAnalysis(compiled.ir, stream.candles) ??
       backtest.previewStrategy(compiled.ir, stream.candles, securityData);
     const result = backtest.runBacktest(compiled.ir, stream.candles, backtest.DEFAULT_CONFIG, securityData);
-    setOverlay({ id, name: artifact.name, plots: preview.plots, shapes: preview.shapes, signals: preview.signals, trades: result.trades, symbol, timeframe });
+    setOverlay({ id, name: artifact.name, plots: preview.plots, shapes: preview.shapes, signals: preview.signals, trades: result.trades, summary: "summary" in preview ? preview.summary : undefined, symbol, timeframe });
     const times = [...preview.signals.map((s) => s.time), ...result.trades.map((t) => t.exitTime)];
     setChartFocus(times.length ? Math.max(...times) : Date.now());
   };
@@ -537,6 +538,7 @@ export default function App() {
               }
               livePositions={livePositions}
               strategyName={activeOverlay?.name}
+              strategySummary={activeOverlay?.summary}
               onClearStrategy={() => setOverlay(undefined)}
               customIndicators={chartCustomIndicators}
               strategies={chartStrategies}

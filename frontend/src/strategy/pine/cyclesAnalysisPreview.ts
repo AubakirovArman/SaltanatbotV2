@@ -6,6 +6,7 @@ export interface CyclesAnalysisPreview {
   plots: [];
   signals: ChartMarker[];
   shapes: ChartShapes;
+  summary: string;
 }
 
 /**
@@ -35,7 +36,7 @@ export function previewCyclesAnalysis(ir: StrategyIR, candles: Candle[]): Cycles
 
   const shapes: ChartShapes = { boxes: [], vlines: [], rays: [] };
   const signals: ChartMarker[] = [];
-  if (active.length === 0) return { plots: [], signals, shapes };
+  if (active.length === 0) return { plots: [], signals, shapes, summary: `0 cycles · ${bullPct}%` };
 
   let direction: "bull" | "bear" = "bull";
   let high = active[0].high;
@@ -44,8 +45,8 @@ export function previewCyclesAnalysis(ir: StrategyIR, candles: Candle[]): Cycles
   let lowTime = active[0].time;
   let previousCrestTime = active[0].time;
 
-  const closeCycle = (crestTime: number, color: string, candle: Candle, kind: "buy" | "sell", label: string) => {
-    shapes.vlines.push({ time: crestTime, color, label });
+  const closeCycle = (crestTime: number, color: string, candle: Candle) => {
+    shapes.vlines.push({ time: crestTime, color });
     if (showBackground && crestTime >= previousCrestTime) {
       shapes.boxes.push({
         t1: previousCrestTime,
@@ -53,15 +54,17 @@ export function previewCyclesAnalysis(ir: StrategyIR, candles: Candle[]): Cycles
         top: Number.NaN,
         bottom: Number.NaN,
         color,
-        label: ""
+        label: "",
+        opacity: 0.1,
+        border: false
       });
     }
     if (showMarkers) {
       signals.push({
         time: candle.time,
-        price: kind === "sell" ? candle.high : candle.low,
-        kind,
-        label
+        price: candle.low,
+        kind: "marker",
+        color: "#d946ef"
       });
     }
     previousCrestTime = crestTime;
@@ -86,7 +89,7 @@ export function previewCyclesAnalysis(ir: StrategyIR, candles: Candle[]): Cycles
         lowTime = candle.time;
       }
       if (!newHigh && candle.low < high * (1 - bearPct / 100)) {
-        closeCycle(highTime, "#23c97a", candle, "sell", "Cycle peak");
+        closeCycle(highTime, "#23c97a", candle);
         direction = "bear";
         high = candle.high;
         highTime = candle.time;
@@ -97,7 +100,7 @@ export function previewCyclesAnalysis(ir: StrategyIR, candles: Candle[]): Cycles
         highTime = candle.time;
       }
       if (!newLow && candle.high > low * (1 + bullPct / 100)) {
-        closeCycle(lowTime, "#ef5350", candle, "buy", "Cycle trough");
+        closeCycle(lowTime, "#ef5350", candle);
         direction = "bull";
         low = candle.low;
         lowTime = candle.time;
@@ -113,11 +116,13 @@ export function previewCyclesAnalysis(ir: StrategyIR, candles: Candle[]): Cycles
       top: Number.NaN,
       bottom: Number.NaN,
       color: direction === "bull" ? "#23c97a" : "#ef5350",
-      label: ""
+      label: "",
+      opacity: 0.1,
+      border: false
     });
   }
 
-  return { plots: [], signals, shapes };
+  return { plots: [], signals, shapes, summary: `${signals.length} cycles · ${bullPct}%` };
 }
 
 function isCyclesAnalysis(ir: StrategyIR) {

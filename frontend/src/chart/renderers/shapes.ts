@@ -30,12 +30,14 @@ export function drawShapes(ctx: CanvasRenderingContext2D, viewport: Viewport, sh
     const y = Math.min(yTop, yBottom);
     const h = Math.max(1, Math.abs(yBottom - yTop));
     ctx.fillStyle = box.color;
-    ctx.globalAlpha = 0.14;
+    ctx.globalAlpha = box.opacity ?? 0.14;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = box.color;
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.55;
-    ctx.strokeRect(x, y, w, h);
+    if (box.border !== false) {
+      ctx.strokeStyle = box.color;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.55;
+      ctx.strokeRect(x, y, w, h);
+    }
     ctx.globalAlpha = 1;
     if (box.label && w > 34) {
       ctx.fillStyle = box.color;

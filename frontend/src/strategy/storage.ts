@@ -2,6 +2,7 @@ import type { IndicatorConfig } from "../chart/indicatorTypes";
 import { createDefaultIndicators } from "../chart/defaultIndicators";
 import type { StrategyArtifact } from "./library";
 import { mergeDefaultStrategyLibrary } from "./library";
+import { normalizeCyclesAnalysisArtifact } from "./pine/compatibility";
 
 const indicatorsKey = "marketforge.indicators.v1";
 const libraryKey = "marketforge.strategyLibrary.v1";
@@ -11,6 +12,7 @@ export function loadInitialWorkspaceState() {
   return {
     indicators,
     strategyLibrary: mergeDefaultStrategyLibrary(readJson<StrategyArtifact[]>(libraryKey), indicators)
+      .map(normalizeCyclesAnalysisArtifact)
   };
 }
 

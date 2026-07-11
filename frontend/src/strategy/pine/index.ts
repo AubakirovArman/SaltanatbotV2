@@ -1,6 +1,7 @@
 import { irToText } from "../irText";
 import { irToBlocklyXml } from "../irToXml";
 import { convertPine, PineConvertError, type PineResult } from "./convert";
+import { CYCLES_ANALYSIS_WARNINGS, isCyclesAnalysisSource, warningHeader } from "./compatibility";
 
 /**
  * Public entry point: Pine Script source → an importable strategy/indicator
@@ -34,15 +35,16 @@ export function importPineScript(source: string): PineImport | PineImportError {
     if (cause instanceof PineConvertError) return { ok: false, error: cause.message };
     return { ok: false, error: cause instanceof Error ? cause.message : "Conversion failed." };
   }
-  const header = result.warnings.length
-    ? `// Imported from Pine Script — ${result.warnings.length} fidelity warning${result.warnings.length === 1 ? "" : "s"}:\n${result.warnings.map((w) => `//  • ${w}`).join("\n")}\n\n`
-    : "// Imported from Pine Script\n\n";
+  const warnings = isCyclesAnalysisSource(source, result.name)
+    ? CYCLES_ANALYSIS_WARNINGS
+    : result.warnings;
+  const header = warningHeader(warnings);
   return {
     ok: true,
     kind: result.kind,
     name: result.name,
     xml: irToBlocklyXml(result.ir),
     code: header + irToText(result.ir),
-    warnings: result.warnings
+    warnings
   };
 }

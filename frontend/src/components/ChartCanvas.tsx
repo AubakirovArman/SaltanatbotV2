@@ -47,6 +47,7 @@ interface ChartCanvasProps {
   signals?: ChartMarker[];
   trades?: ChartTrade[];
   strategyName?: string;
+  strategySummary?: string;
   onClearStrategy?: () => void;
   customIndicators?: StrategyMenuItem[];
   strategies?: StrategyMenuItem[];
@@ -99,6 +100,7 @@ export function ChartCanvas({
   signals,
   trades,
   strategyName,
+  strategySummary,
   onClearStrategy,
   customIndicators,
   strategies,
@@ -412,8 +414,9 @@ export function ChartCanvas({
           <div className="strategy-chip">
             <Workflow size={12} aria-hidden="true" />
             <span>{strategyName}</span>
+            {strategySummary && <b>{strategySummary}</b>}
             {trades && trades.length > 0 && <b>{trades.length} trades</b>}
-            {signals && signals.length > 0 && <b>{signals.length} signals</b>}
+            {!strategySummary && signals && signals.length > 0 && <b>{signals.length} signals</b>}
             <button type="button" onClick={onClearStrategy} title="Remove from chart" aria-label="Remove strategy from chart">
               <X size={12} aria-hidden="true" />
             </button>

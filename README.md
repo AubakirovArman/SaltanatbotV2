@@ -146,6 +146,7 @@ The access token is printed in the container logs (`docker compose logs`), or se
 | [**Configuration & deployment**](docs/CONFIGURATION.md) | Env vars, runtime data, exchange keys, encryption, production & hardening checklist |
 | [**Roadmap**](docs/ROADMAP.md) | What has shipped and what's next |
 | [**Master improvement plan**](docs/MASTER_IMPROVEMENT_PLAN.md) | Product gaps, priorities, release gates and delivery milestones |
+| [**Implementation status**](docs/IMPLEMENTATION_STATUS.md) | Completed commits, verification evidence, active work and remaining checklist |
 | [**Modular architecture**](docs/MODULAR_ARCHITECTURE.md) | Target packages, module boundaries and safe decomposition sequence |
 | [**Testing strategy**](docs/TESTING_STRATEGY.md) | Unit, parity, browser E2E, visual, accessibility, performance and recovery testing |
 | [**Internationalization & docs**](docs/I18N_AND_DOCUMENTATION.md) | English/Russian structure, UI i18n and documentation quality gates |

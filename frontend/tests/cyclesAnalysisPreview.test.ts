@@ -30,8 +30,10 @@ describe("Cycles Analysis native preview", () => {
     expect(preview).toBeDefined();
     expect(preview?.shapes.vlines.length).toBeGreaterThanOrEqual(2);
     expect(preview?.shapes.boxes.length).toBeGreaterThanOrEqual(3);
-    expect(preview?.signals.map((signal) => signal.kind)).toEqual(expect.arrayContaining(["buy", "sell"]));
+    expect(preview?.signals.every((signal) => signal.kind === "marker" && signal.color === "#d946ef")).toBe(true);
+    expect(preview?.summary).toMatch(/cycles · 20%/);
     expect(preview?.shapes.boxes.at(-1)?.t2).toBe(candles.at(-1)?.time);
+    expect(preview?.shapes.boxes.every((box) => box.border === false && box.opacity === 0.1)).toBe(true);
   });
 
   it("does not intercept unrelated imported indicators", () => {

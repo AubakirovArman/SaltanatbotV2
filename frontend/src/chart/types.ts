@@ -125,8 +125,9 @@ export interface DraftDrawing {
 export interface ChartMarker {
   time: number;
   price: number;
-  kind: "buy" | "sell" | "exit";
+  kind: "buy" | "sell" | "exit" | "marker";
   label?: string;
+  color?: string;
 }
 
 /** A named line the strategy plots on the price pane (e.g. an EMA it uses). */
@@ -141,7 +142,7 @@ export interface ChartPlot {
 /** Strategy drawing overlays (boxes / vertical lines / horizontal rays). Non-finite
  *  box edges mean "full pane height" (bgcolor-style background shading). */
 export interface ChartShapes {
-  boxes: { t1: number; t2: number; top: number; bottom: number; color: string; label?: string }[];
+  boxes: { t1: number; t2: number; top: number; bottom: number; color: string; label?: string; opacity?: number; border?: boolean }[];
   vlines: { time: number; color: string; label?: string }[];
   rays: { time: number; price: number; color: string; label?: string }[];
 }
