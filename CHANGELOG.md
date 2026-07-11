@@ -21,6 +21,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 - Added a canonical execution-core workspace shared by backtest and trading for slippage,
   protection prices, sizing and durable order transitions. Risk-percent entries without a stop now
   fail closed instead of falling back to maximum leveraged exposure.
+- Added generated runtime market contracts for catalog, candles, sparklines and WebSocket messages;
+  malformed REST/stream payloads are rejected before entering frontend state.
 
 ### Documentation and distribution
 

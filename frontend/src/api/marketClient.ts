@@ -1,7 +1,14 @@
-import type { CatalogResponse, Candle, DataExchange, StreamMessage, Timeframe } from "../types";
+import {
+  parseCandlesResponse,
+  parseCatalogResponse,
+  parseSparklinesResponse,
+  parseStreamMessage as parseContractStreamMessage,
+  type SparklineSeries,
+} from "@saltanatbotv2/contracts";
+import type { DataExchange, Timeframe } from "../types";
 
 export async function getCatalog() {
-  return request<CatalogResponse>("/api/catalog");
+  return request("/api/catalog", undefined, parseCatalogResponse);
 }
 
 export async function getCandles(
@@ -14,14 +21,10 @@ export async function getCandles(
 ) {
   const query = new URLSearchParams({ symbol, timeframe, limit: String(limit), exchange });
   if (endTime !== undefined) query.set("endTime", String(endTime));
-  return request<{ candles: Candle[]; provider: string; hasMore?: boolean }>(`/api/candles?${query}`, init);
+  return request(`/api/candles?${query}`, init, parseCandlesResponse);
 }
 
-export interface SparklineSeries {
-  last: number | null;
-  changePct: number;
-  points: number[];
-}
+export type { SparklineSeries };
 
 export async function getSparklines(
   symbols: string[],
@@ -35,9 +38,7 @@ export async function getSparklines(
     points: String(points),
     exchange
   });
-  return request<{ timeframe: Timeframe; series: Record<string, SparklineSeries | null> }>(
-    `/api/sparklines?${query}`
-  );
+  return request(`/api/sparklines?${query}`, undefined, parseSparklinesResponse);
 }
 
 export function createMarketSocket(symbol: string, timeframe: Timeframe, exchange: DataExchange = "binance") {
@@ -47,13 +48,17 @@ export function createMarketSocket(symbol: string, timeframe: Timeframe, exchang
 }
 
 export function parseStreamMessage(data: string) {
-  return JSON.parse(data) as StreamMessage;
+  return parseContractStreamMessage(JSON.parse(data) as unknown);
 }
 
-async function request<T>(path: string, init?: { signal?: AbortSignal }): Promise<T> {
+async function request<T>(
+  path: string,
+  init: { signal?: AbortSignal } | undefined,
+  parse: (value: unknown) => T,
+): Promise<T> {
   const response = await fetch(path, { headers: { Accept: "application/json" }, signal: init?.signal });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} for ${path}`);
   }
-  return response.json() as Promise<T>;
+  return parse(await response.json());
 }

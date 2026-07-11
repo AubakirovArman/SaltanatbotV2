@@ -60,6 +60,8 @@ These items precede broad feature work.
 
 ### P0.1 Correct dynamic-market fallback
 
+Status: delivered and covered by provider/router regression tests.
+
 Dynamic crypto instruments currently use `basePrice: 0`. If a public provider fails, the synthetic fallback produces zero OHLC candles.
 
 Required outcome:
@@ -70,12 +72,17 @@ Required outcome:
 
 ### P0.2 Make documentation match runtime behavior
 
+Status: delivered with source/generated documentation checks in CI.
+
 - document `next_open` as the default fill timing;
 - document leverage caps, quantity steps, funding, liquidation, warm-up and MAE/MFE;
 - correct the default host and shutdown behavior;
 - add an automated documentation link check and examples compiled in CI where practical.
 
 ### P0.3 Freeze behavioral contracts before decomposition
+
+Status: delivered for Pine round-trip, evaluator parity, viewport/hit testing, trading lifecycle and
+public market REST/WebSocket runtime schemas.
 
 Add characterization tests for:
 
@@ -86,6 +93,9 @@ Add characterization tests for:
 - REST and WebSocket message schemas.
 
 ### P0.4 Create canonical shared packages
+
+Status: delivered. Contracts, strategy, execution, backtest and deterministic fixture workspaces are
+independently checked; further fixture migration is maintenance rather than a P0 blocker.
 
 Introduce npm workspaces incrementally:
 

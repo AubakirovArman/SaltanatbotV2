@@ -2,6 +2,11 @@
 
 SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), a live market stream, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and two WebSocket endpoints are exposed at `/stream` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
 
+Public market catalog, candle, sparkline and WebSocket payloads have canonical TypeScript contracts
+plus fail-closed runtime parsers in `packages/contracts`. The frontend validates untrusted JSON at
+the transport edge before updating state; malformed or unknown stream messages produce an explicit
+connection error instead of being trusted through a type assertion.
+
 The generated [API endpoint index](./API_ENDPOINTS.generated.md) is the route-presence contract and is checked against the Express sources in CI.
 
 - Base URL (default): `http://localhost:4180`

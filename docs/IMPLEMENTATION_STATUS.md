@@ -68,6 +68,16 @@ Verification:
 - [x] Change live/paper risk-percent sizing without a stop from max-exposure fallback to skipped entry.
 - [x] Check generated runtime/declarations and enforce the dependency boundary with parity tests.
 
+### Runtime contracts and final P0 characterization — 2026-07-11
+
+- [x] Upgrade `@saltanatbotv2/contracts` from declarations-only to generated runtime/declarations.
+- [x] Validate catalog, candle-history and sparkline REST responses at the frontend transport edge.
+- [x] Validate all snapshot/candle/status/error WebSocket variants and reject unknown messages.
+- [x] Add OHLC consistency, enum, finite-number and unexpected-message failure coverage.
+- [x] Move malformed WebSocket payloads into an explicit frontend error state.
+- [x] Add direct chart drawing hit-test coverage for handles, bodies, z-order, locks and position areas.
+- [x] Complete the P0 package/contract baseline; remaining work starts at P1.
+
 ### Foundation — commit `3a98684`
 
 - [x] Fix zero-price synthetic fallback for dynamically discovered crypto pairs.

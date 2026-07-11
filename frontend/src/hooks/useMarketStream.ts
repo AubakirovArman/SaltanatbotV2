@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createMarketSocket, getCandles, parseStreamMessage } from "../api/marketClient";
-import type { Candle, DataExchange, Timeframe } from "../types";
+import type { Candle, DataExchange, StreamMessage, Timeframe } from "../types";
 
 export type ConnectionState = "connecting" | "connected" | "fallback" | "error";
 
@@ -86,7 +86,14 @@ export function useMarketStream(
 
       socket.onmessage = (event) => {
         if (!alive || typeof event.data !== "string") return;
-        const data = parseStreamMessage(event.data);
+        let data: StreamMessage;
+        try {
+          data = parseStreamMessage(event.data);
+        } catch (error) {
+          setConnection("error");
+          setMessage(error instanceof Error ? `Invalid market message: ${error.message}` : "Invalid market message");
+          return;
+        }
         setLatencyMs(Math.max(0, Date.now() - data.ts));
 
         if (data.type === "snapshot") {

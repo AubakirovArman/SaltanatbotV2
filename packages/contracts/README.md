@@ -1,12 +1,14 @@
 # Shared contracts
 
-This type-only workspace is the canonical source for transport-neutral market and WebSocket contracts used by the frontend and backend.
+This workspace is the canonical source for transport-neutral market REST and WebSocket contracts
+used by the frontend and backend. `index.ts` owns both TypeScript declarations and fail-closed
+runtime parsers for untrusted JSON.
 
 ## Rules
 
 - Contracts contain no React, Express, filesystem or network implementation.
 - Breaking changes require coordinated client/server migration and contract tests.
-- Runtime validation schemas will be added beside these declarations; TypeScript types alone do not validate untrusted input.
+- Runtime parsers validate catalog, candles, sparklines and every public market-stream message.
 - Domain-specific trading and strategy contracts move here only when they are genuinely shared public boundaries.
 
-The package is currently type-only, so consumers must use `import type`. This avoids a build-order dependency while the monorepo package structure is introduced incrementally.
+Use `import type` for declarations and ordinary imports only for runtime parsing at transport edges.

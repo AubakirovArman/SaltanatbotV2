@@ -11,7 +11,7 @@ The repository is a private npm workspace root that owns two applications and in
 | Root | `saltanatbotv2` | `/` | Workspace host + orchestration scripts |
 | Backend | `@saltanatbotv2/backend` | `backend/` | HTTP + WebSocket server, market providers, trading engine |
 | Frontend | `@saltanatbotv2/frontend` | `frontend/` | React SPA, canvas chart engine, strategy lab |
-| Contracts | `@saltanatbotv2/contracts` | `packages/contracts/` | Canonical market and WebSocket types |
+| Contracts | `@saltanatbotv2/contracts` | `packages/contracts/` | Canonical market REST/WS types and runtime parsers |
 | Strategy core | `@saltanatbotv2/strategy-core` | `packages/strategy-core/` | Canonical IR types, version and shared runtime primitives |
 | Backtest core | `@saltanatbotv2/backtest-core` | `packages/backtest-core/` | Broker, portfolio, warm-up, metrics, provenance and traces |
 | Execution core | `@saltanatbotv2/execution-core` | `packages/execution-core/` | Canonical sizing, slippage, protection and durable order-state rules |
