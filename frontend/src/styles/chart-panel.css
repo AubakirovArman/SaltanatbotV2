@@ -115,6 +115,16 @@
   cursor: crosshair;
 }
 
+.chart-canvas-base {
+  pointer-events: none;
+}
+
+.chart-canvas-interaction {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+}
+
 /* Single legend line: identity + OHLC. No plaque — TV-style text over chart. */
 .chart-legend {
   position: absolute;

@@ -86,6 +86,7 @@ Run the same candles and IR through preview, backtest, paper and backend evaluat
 - pure tests for time/price coordinate round trips;
 - viewport zoom/pan invariants;
 - hit-testing fixtures for every drawing;
+- dirty-layer scheduler tests proving crosshair invalidations do not redraw the base chart;
 - renderer tests against a recording/mock canvas context;
 - screenshot tests for representative candles and indicators;
 - DPR 1/2/3 and resize tests;

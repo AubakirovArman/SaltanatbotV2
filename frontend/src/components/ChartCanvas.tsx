@@ -26,7 +26,8 @@ import {
   type DrawingTool,
   type ShapeTool
 } from "../chart/drawings";
-import { drawChart, setChartTheme } from "../chart/ChartEngine";
+import { drawChart, drawChartInteraction, setChartTheme } from "../chart/ChartEngine";
+import { createChartLayerScheduler } from "../chart/dirtyLayers";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import { visibleCandles } from "../chart/scales";
@@ -132,8 +133,15 @@ export function ChartCanvas({
   onUpdateCompare,
   onRemoveCompare
 }: ChartCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const frameRef = useRef<number>();
+  const baseCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const interactionCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const schedulerRef = useRef<ReturnType<typeof createChartLayerScheduler>>();
+  if (!schedulerRef.current) {
+    schedulerRef.current = createChartLayerScheduler({
+      request: (callback) => requestAnimationFrame(callback),
+      cancel: (id) => cancelAnimationFrame(id)
+    });
+  }
   const viewportRef = useRef<Viewport>();
   const interactionRef = useRef<Interaction>();
   const drawingsRef = useRef<DrawingObject[]>([]);
@@ -162,9 +170,12 @@ export function ChartCanvas({
     priceMode: PriceMode;
   }>({ zoom: 1, offset: 0, priceMode: "linear" });
   const [compareLegend, setCompareLegend] = useState<CompareLegendSnapshot[]>([]);
+  const [renderRevision, setRenderRevision] = useState(0);
 
   const latest = candles.at(-1);
   drawingsRef.current = drawings;
+
+  useEffect(() => () => schedulerRef.current?.dispose(), []);
 
   useEffect(() => setShowArtifactSettings(false), [activeArtifactId]);
 
@@ -245,7 +256,7 @@ export function ChartCanvas({
   }, [draft, hoverAnchor]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = baseCanvasRef.current;
     if (!canvas) return;
     const render = () => {
       const ctx = canvas.getContext("2d");
@@ -258,7 +269,7 @@ export function ChartCanvas({
         candles,
         chartType,
         decimals: instrument.decimals,
-        view,
+        view: { zoom: view.zoom, offset: view.offset, priceMode: view.priceMode },
         indicators,
         drawings,
         draftDrawing: draftPreview,
@@ -281,10 +292,25 @@ export function ChartCanvas({
         }
       });
     };
-    cancelAnimationFrame(frameRef.current ?? 0);
-    frameRef.current = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(frameRef.current ?? 0);
-  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, instrument.symbol, signals, trades, plots, shapes, chartAlerts, livePositions, compare, selectedId, showVolume, theme, view]);
+    schedulerRef.current?.schedule("base", render);
+  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, instrument.symbol, signals, trades, plots, shapes, chartAlerts, livePositions, compare, selectedId, showVolume, theme, view.zoom, view.offset, view.priceMode, renderRevision]);
+
+  useEffect(() => {
+    const canvas = interactionCanvasRef.current;
+    if (!canvas) return;
+    schedulerRef.current?.schedule("interaction", () => {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      drawChartInteraction({
+        ctx,
+        width: canvas.width,
+        height: canvas.height,
+        viewport: viewportRef.current,
+        crosshair: view.crosshair,
+        decimals: instrument.decimals
+      });
+    });
+  }, [candles, chartType, draftPreview, drawings, hoveredId, indicators, instrument.decimals, instrument.symbol, signals, trades, plots, shapes, chartAlerts, livePositions, compare, selectedId, showVolume, theme, view.crosshair, view.zoom, view.offset, view.priceMode, renderRevision]);
 
   // Lazy-load older history when the viewport nears the left (oldest) edge.
   useEffect(() => {
@@ -304,20 +330,23 @@ export function ChartCanvas({
   }, [focusTime]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const baseCanvas = baseCanvasRef.current;
+    const interactionCanvas = interactionCanvasRef.current;
+    if (!baseCanvas || !interactionCanvas) return;
     const resize = ([entry]: ResizeObserverEntry[]) => {
       const dpc = entry.devicePixelContentBoxSize?.[0];
       const width = dpc?.inlineSize ?? Math.round(entry.contentRect.width * devicePixelRatio);
       const height = dpc?.blockSize ?? Math.round(entry.contentRect.height * devicePixelRatio);
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-        setView((current) => ({ ...current }));
+      if (baseCanvas.width !== width || baseCanvas.height !== height) {
+        baseCanvas.width = width;
+        baseCanvas.height = height;
+        interactionCanvas.width = width;
+        interactionCanvas.height = height;
+        setRenderRevision((current) => current + 1);
       }
     };
     const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
+    observer.observe(baseCanvas);
     return () => observer.disconnect();
   }, []);
 
@@ -474,10 +503,15 @@ export function ChartCanvas({
           {view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}
         </button>
         <canvas
-          ref={canvasRef}
-          className={`chart-canvas ${tool === "cursor" ? "" : "drawing"}`}
+          ref={baseCanvasRef}
+          className="chart-canvas chart-canvas-base"
           role="img"
           aria-label={`${instrument.symbol} ${chartType} chart on ${timeframe}`}
+        />
+        <canvas
+          ref={interactionCanvasRef}
+          className={`chart-canvas chart-canvas-interaction ${tool === "cursor" ? "" : "drawing"}`}
+          aria-hidden="true"
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
             const viewport = viewportRef.current;

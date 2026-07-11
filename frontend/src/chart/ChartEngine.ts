@@ -166,6 +166,21 @@ export function drawChart(options: DrawChartOptions) {
   if (view.crosshair) drawCrosshair(ctx, plot, viewport, view.crosshair, decimals);
 }
 
+/** Paint only volatile pointer interaction on a transparent overlay canvas. */
+export function drawChartInteraction(options: {
+  ctx: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  viewport?: Viewport;
+  crosshair?: { x: number; y: number };
+  decimals: number;
+}) {
+  options.ctx.clearRect(0, 0, options.width, options.height);
+  if (options.viewport && options.crosshair) {
+    drawCrosshair(options.ctx, options.viewport.plot, options.viewport, options.crosshair, options.decimals);
+  }
+}
+
 function clampOffset(candles: Candle[], offset: number) {
   return Math.max(0, Math.min(offset, Math.max(0, candles.length - 24)));
 }
