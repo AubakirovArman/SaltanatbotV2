@@ -10,8 +10,10 @@
  * capped, and every loop advances the cursor, so lexing is strictly linear.
  */
 
-export const MAX_SOURCE_CHARS = 200_000;
-const MAX_TOKENS = 60_000;
+import { PINE_BUDGETS } from "./budgetLimits";
+
+export const MAX_SOURCE_CHARS = PINE_BUDGETS.sourceChars;
+export const MAX_TOKENS = PINE_BUDGETS.tokens;
 
 export type TokenType = "ident" | "number" | "string" | "op" | "newline" | "eof";
 

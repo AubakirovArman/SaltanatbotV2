@@ -24,7 +24,8 @@ describe("Pine diagnostics", () => {
       expect(cause).toBeInstanceOf(PineConvertError);
       const error = cause as PineConvertError;
       expect(error.diagnostic.severity).toBe("error");
-      expect(error.diagnostic.code).toBe("PINE_CONVERSION_ERROR");
+      expect(error.diagnostic.code).toBe("PINE_PARSE_ERROR");
+      expect(error.diagnostic.remediation).toContain("syntax");
       expect(error.diagnostic.span?.start.line).toBeGreaterThanOrEqual(1);
     }
   });

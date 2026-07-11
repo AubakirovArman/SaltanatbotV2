@@ -2,6 +2,7 @@ import type { BoolExpr, NumExpr, Stmt, StrategyIR, StrategyInput } from "@saltan
 import { IR_VERSION } from "@saltanatbotv2/strategy-core";
 import { arg, argRequired } from "./arguments";
 import { diagnosticFromMessage, type PineDiagnostic } from "./diagnostics";
+import { assertAstBudgets, assertGeneratedIrBudget, assertSourceBudgets } from "./budgets";
 import { PineConvertError } from "./errors";
 import { containsVar } from "./expressionHistory";
 import {
@@ -11,6 +12,7 @@ import {
 } from "./language";
 import { PineLexError } from "./lexer";
 import { PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
+import { resolvePineProfile, type PineLanguageProfile } from "./profile";
 import { type PlotHandleValue } from "./drawingLowering";
 import { lowerNumericCall, type NumericCallLoweringContext } from "./numericCallLowering";
 import { lowerBooleanCall, type BooleanCallLoweringContext } from "./booleanCallLowering";
@@ -71,6 +73,7 @@ export interface PineResult {
   ir: StrategyIR;
   warnings: string[];
   diagnostics: PineDiagnostic[];
+  language: PineLanguageProfile;
 }
 
 export { PineConvertError } from "./errors";
@@ -82,14 +85,38 @@ type PlotHandle = PlotHandleValue;
 const NAN_NUM: NumExpr = { k: "arith", op: "/", a: { k: "num", v: 0 }, b: { k: "num", v: 0 } };
 
 export function convertPine(source: string): PineResult {
+  assertSourceBudgets(source);
+  const profile = resolvePineProfile(source);
   let ast: PineStmt[];
   try {
     ast = parsePine(source);
   } catch (cause) {
-    if (cause instanceof PineLexError || cause instanceof PineParseError) throw new PineConvertError(cause.message);
+    if (cause instanceof PineLexError || cause instanceof PineParseError) {
+      const resourceFailure = /too large|token limit|nested too deeply/i.test(cause.message);
+      const diagnostic = diagnosticFromMessage(
+        cause.message,
+        "error",
+        resourceFailure ? "PINE_RESOURCE_BUDGET" : cause instanceof PineLexError ? "PINE_LEX_ERROR" : "PINE_PARSE_ERROR"
+      );
+      throw new PineConvertError(cause.message, {
+        ...diagnostic,
+        remediation: resourceFailure
+          ? "Reduce or flatten the script before importing."
+          : "Fix the reported Pine syntax and import the script again."
+      });
+    }
     throw cause;
   }
-  return new Converter(analyzePine(ast)).run(ast);
+  assertAstBudgets(ast);
+  const result = new Converter(analyzePine(ast)).run(ast);
+  assertGeneratedIrBudget(result.ir);
+  const diagnostics = [...profile.diagnostics, ...result.diagnostics];
+  return {
+    ...result,
+    language: profile.language,
+    warnings: [...profile.diagnostics.map((diagnostic) => diagnostic.message), ...result.warnings],
+    diagnostics
+  };
 }
 
 class Converter {
@@ -128,7 +155,7 @@ class Converter {
     for (const [name, definition] of analysis.functions) this.funcs.set(name, definition);
   }
 
-  run(ast: PineStmt[]): PineResult {
+  run(ast: PineStmt[]): Omit<PineResult, "language"> {
     const body: Stmt[] = [];
     for (const stmt of ast) {
       body.push(...this.stmt(stmt));

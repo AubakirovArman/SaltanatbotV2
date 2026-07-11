@@ -1,5 +1,6 @@
 /** Recursive-descent parser package implementation. */
 import { PineLexError, type Token, tokenize } from "./lexer";
+import { PINE_BUDGETS } from "./budgetLimits";
 
 /**
  * Recursive-descent parser for the supported Pine Script subset. Produces a
@@ -60,7 +61,7 @@ export type PineStmt =
 
 export class PineParseError extends Error {}
 
-const MAX_DEPTH = 120;
+export const MAX_DEPTH = PINE_BUDGETS.astNesting;
 const TYPE_KEYWORDS = new Set(["float", "int", "bool", "color", "string", "series", "simple", "const"]);
 /** Generic collection type heads (`array<T>`, `matrix<T>`, `map<K,V>`). */
 const COLLECTION_TYPES = new Set(["array", "matrix", "map"]);

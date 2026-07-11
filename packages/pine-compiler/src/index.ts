@@ -2,6 +2,8 @@ export { convertPine, type PineResult } from "./convert";
 export { PineConvertError } from "./errors";
 export type { PineAst, PineArg, PineExpr, PineFuncDef, PineStmt } from "./ast";
 export * from "./diagnostics";
+export * from "./budgets";
+export * from "./profile";
 export * from "./alertStatementLowering";
 export * from "./arguments";
 export * from "./assignmentLowering";

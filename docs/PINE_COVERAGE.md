@@ -5,6 +5,22 @@ Script (v4, v5, or v6) into the app's editable Blockly/IR strategy or indicator.
 The declaration in the script decides the artifact type: `indicator()`/`study()`
 → indicator, `strategy()` → strategy.
 
+## Language profiles and safety budgets
+
+The compiler reads `//@version` before comments are removed and selects a real
+v4, v5 or v6 compatibility profile. Unsupported versions fail with
+`PINE_UNSUPPORTED_VERSION`. A missing pragma is converted under explicit v6
+rules and produces `PINE_VERSION_MISSING`; mixing legacy v4 APIs with v5/v6 (or
+the reverse) produces `PINE_PROFILE_API_MISMATCH` instead of being silently
+accepted. Compatibility aliases remain available so older scripts stay usable.
+
+Untrusted imports have deterministic limits for source characters and lines,
+token count, AST nodes/nesting, loop count/nesting and generated IR nodes. A
+limit violation fails closed with `PINE_RESOURCE_BUDGET` and a remediation.
+Syntax and tokenization failures use `PINE_PARSE_ERROR` and `PINE_LEX_ERROR`.
+The canonical limits are exported from `@saltanatbotv2/pine-compiler` as
+`PINE_BUDGETS`.
+
 **Design guarantee.** The target IR is a per-bar, vectorized, `eval`-free dataflow
 that must run **identically in the browser backtest and the live engine**. Every
 construct that would break that guarantee (look-ahead, other-timeframe data,
@@ -88,6 +104,9 @@ These are **structural** limits of a per-bar scalar IR, not missing polish:
   nz/na, math/ta breadth, dynamic & boolean history) with per-feature semantic
   assertions, plus a 31-script corpus robustness sweep (every script converts and
   round-trips **or** fails cleanly; REJECT-tagged scripts must fail closed).
+- `frontend/tests/pineProfilesAndBudgets.test.ts` — v4/v5/v6 profile selection,
+  missing/unsupported versions, API mismatch diagnostics and every compiler
+  resource-budget layer.
 - `backend/tests/pineV6Schema.test.ts` — the backend deploy-time whitelist accepts
   exactly the new IR node shapes (frontend/backend parity).
 

@@ -301,6 +301,12 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 
 ### Pine compiler
 
+- [x] Resolve explicit Pine v4/v5/v6 profiles before lexing removes pragmas.
+- [x] Reject unsupported versions and surface missing/mixed-version APIs through typed diagnostics.
+- [x] Attach remediation to all public compiler diagnostics.
+- [x] Enforce canonical source, token, AST, nesting, loop and generated-IR resource budgets.
+- [x] Test deterministic profile metadata, diagnostics and budget failures.
+
 - [x] Extract AST and public diagnostic types with source-span contracts.
 - [x] Extract semantic scope/symbol/function analysis.
   - [x] Extract current pure semantic classification helpers from lowering.
