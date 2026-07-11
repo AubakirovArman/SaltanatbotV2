@@ -42,6 +42,6 @@ IR v4 adds explicit future projection zones and accessible metric tables. Both r
 
 ## Planned decomposition
 
-IR, evaluator, intents and TA now live in `packages/strategy-core`, and Pine lives in `packages/pine-compiler`. Next move fills/accounting/metrics into `packages/backtest-core`. The former monolithic `StrategyLab` is now a small composition facade over feature hooks and panels.
+IR, evaluator, intents and TA live in `packages/strategy-core`; fills, accounting, warm-up, reporting contracts and metrics live in `packages/backtest-core`; Pine lives in `packages/pine-compiler`. The former monolithic `StrategyLab` is now a small composition facade over feature hooks and panels.
 
 Browser backtest adapters are decomposed under `backtest/`: chart preview owns display-only execution and result shapes, while `backtest.ts` remains the stable public facade for callers during extraction.

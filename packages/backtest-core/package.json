@@ -1,0 +1,25 @@
+{
+  "name": "@saltanatbotv2/backtest-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc index.ts types.ts broker.ts portfolio.ts warmup.ts reporting.ts metrics.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --declaration --outDir .",
+    "check": "tsc index.ts types.ts broker.ts portfolio.ts warmup.ts reporting.ts metrics.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --noEmit && node ../../scripts/check-backtest-core-generated.mjs"
+  },
+  "dependencies": {
+    "@saltanatbotv2/contracts": "0.1.0",
+    "@saltanatbotv2/strategy-core": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

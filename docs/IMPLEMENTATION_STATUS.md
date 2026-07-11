@@ -267,15 +267,19 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 
 - [x] Move shared TA implementations into `strategy-core` and retain frontend/backend compatibility facades.
 - [x] Move the canonical evaluator, reusable runtime, execution budgets, security-series alignment and intent types into `strategy-core`.
+- [x] Create `backtest-core` with canonical contracts, broker, portfolio, warm-up, reporting and analytics modules.
+  - [x] Keep frontend import compatibility through one-line facades.
+  - [x] Independently compile runtime/declaration artifacts and fail checks when they are stale.
+  - [x] Enforce the UI/browser-free package boundary with an architecture test.
 - [ ] Split backtest into execution, portfolio/accounting, analytics, preview and trace modules.
   - [x] Extract chart preview, display-statement execution and preview result types.
-  - [ ] Extract execution/fill simulation.
+  - [x] Extract execution/fill simulation.
     - [x] Extract slippage, protective-price and stop/target hit primitives.
     - [x] Move historical execution orchestration behind a dedicated module and stable facade.
   - [x] Extract portfolio sizing and accounting.
     - [x] Extract sizing, leverage/quantity guardrails and unrealized-PnL primitives.
     - [x] Extract pure position open/close accounting, commissions, excursions and trade records.
-  - [x] Keep analytics in the dedicated `backtestMetrics.ts` module.
+  - [x] Move deterministic analytics into `backtest-core/metrics.ts`.
   - [ ] Extract trace/report assembly.
     - [x] Extract exhaustive warm-up/lookback analysis, including nested control flow and dynamic floors.
     - [x] Extract position/daily-stat evaluator context and bounded variable-trace collection.

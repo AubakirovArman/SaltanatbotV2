@@ -93,6 +93,8 @@ Safe extraction order:
 
 ## Backtest decomposition
 
+Canonical domain package: `packages/backtest-core`. Browser execution orchestration and display preview remain under `frontend/src/strategy/backtest`, with `frontend/src/strategy/backtest.ts` as the stable facade.
+
 ```text
 backtest/
   index.ts
@@ -125,7 +127,7 @@ backtest/
     explanations.ts
 ```
 
-The orchestrator should describe the bar loop; pricing and accounting rules should be independently testable pure functions.
+The orchestrator now describes the bar loop; pricing, sizing, accounting, warm-up, trace context and metrics are independently tested pure package functions. Remaining work is versioned event traces and final report/provenance extraction.
 
 ## Strategy Lab decomposition
 

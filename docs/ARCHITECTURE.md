@@ -176,7 +176,7 @@ Notes grounded in the code:
 
 ## Shared strategy IR
 
-Strategies are not stored as executable code — they compile to a typed **intermediate representation** that both tiers understand. The canonical IR declarations, schema version, evaluator, intent types, security-series alignment and TA series live in `packages/strategy-core`; frontend and backend strategy files retain narrow compatibility facades.
+Strategies are not stored as executable code — they compile to a typed **intermediate representation** that both tiers understand. Canonical IR declarations, evaluator, intent types, security-series alignment and TA live in `packages/strategy-core`. Historical fills, portfolio accounting, warm-up, reporting contracts and metrics live in `packages/backtest-core`. Frontend and backend strategy files retain narrow compatibility facades.
 
 This is what lets a strategy backtested in the browser be executed identically on the server for live trading. The IR is a small algebra of numeric expressions, boolean expressions, and statements:
 
@@ -194,7 +194,7 @@ export interface StrategyIR {
 | `BoolExpr` | `bool`, `compare`, `logic`, `not`, `cross`, `trend`, `between`, `session`, `dayofweek` |
 | `Stmt` | `entry`, `exit`, `stop`, `target`, `trail`, `size`, `setvar`, `alert`, `plot`, `marker`, `if` |
 
-The frontend backtester (`strategy/backtest.ts`) delegates every trading bar to the reusable `strategy-core` runtime and adds historical fill/accounting behavior. The backend live engine uses the same evaluator through its compatibility facade. `strategy/backtest/preview.ts` executes display-only statements itself but evaluates all numeric and boolean expressions through the core runtime. Stateful cross-runtime parity fixtures protect these adapters.
+The frontend backtest facade delegates trading bars to the reusable `strategy-core` runtime. Its execution adapter composes the pure `backtest-core` broker, portfolio, reporting and metric functions. The backend live engine uses the same evaluator through its compatibility facade. `strategy/backtest/preview.ts` executes display-only statements itself but evaluates all numeric and boolean expressions through the core runtime. Stateful cross-runtime parity fixtures protect these adapters.
 
 ## Request and data flow
 
