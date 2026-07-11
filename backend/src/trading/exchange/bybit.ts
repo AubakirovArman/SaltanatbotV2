@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import type {
   AccountState,
   ExchangeAdapter,
+  ExchangeOrderSnapshot,
   ExecOrder,
   ExecResult,
   MarketType,
@@ -10,6 +11,7 @@ import type {
 } from "../types.js";
 import type { ExchangeKeys } from "./binance.js";
 import { bybitFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
+import { normalizeBybitOrderStatus } from "./orderStatus.js";
 
 /**
  * Bybit adapter (v5 unified API). `linear` category for USDT futures, `spot`
@@ -86,6 +88,27 @@ export class BybitAdapter implements ExchangeAdapter {
       tif: (row.timeInForce as PendingOrder["tif"]) ?? "GTC",
       createdAt: row.createdTime ? Number(row.createdTime) : Date.now()
     }));
+  }
+
+  async orderStatus(symbol: string, identity: { orderId?: string; clientId?: string }): Promise<ExchangeOrderSnapshot | null> {
+    if (!identity.orderId && !identity.clientId) return null;
+    const params: Record<string, unknown> = { category: this.category, symbol, limit: 1 };
+    if (identity.orderId) params.orderId = identity.orderId;
+    else if (identity.clientId) params.orderLinkId = identity.clientId;
+    const data = await this.signed("GET", "/v5/order/history", params) as {
+      result: { list: Array<{ orderId: string; orderLinkId?: string; orderStatus: string; qty: string; cumExecQty: string; avgPrice?: string; updatedTime?: string; createdTime?: string }> };
+    };
+    const row = data.result.list[0];
+    if (!row) return null;
+    return {
+      id: row.orderId,
+      clientId: row.orderLinkId || undefined,
+      status: normalizeBybitOrderStatus(row.orderStatus),
+      qty: Number(row.qty),
+      filledQty: Number(row.cumExecQty),
+      avgFillPrice: Number(row.avgPrice) || undefined,
+      updatedAt: Number(row.updatedTime ?? row.createdTime) || Date.now()
+    };
   }
 
   async execute(order: ExecOrder): Promise<ExecResult> {

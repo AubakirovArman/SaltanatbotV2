@@ -78,6 +78,7 @@ backend/src/
     ├── engine.ts             # TradingEngine — live bar evaluation & order management
     ├── engineRisk.ts         # Pure sizing and stop/target resolution
     ├── orderLifecycle.ts     # Durable intent/result/fill state transitions
+    ├── orderPolling.ts       # Bounded private REST status fallback
     ├── reconciliation.ts     # Resume-time exchange/runtime comparison
     ├── commands.ts           # Notification/command parsing helpers
     ├── notifications.ts      # Outbound notifications

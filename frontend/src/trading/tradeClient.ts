@@ -93,6 +93,8 @@ export interface OrderJournal {
   exchangeOrderId?: string;
   status: "intent" | "accepted" | "partially_filled" | "filled" | "cancelled" | "replaced" | "expired" | "rejected" | "unknown";
   message?: string;
+  filledQty?: number;
+  avgFillPrice?: number;
   barTime?: number;
   ts: number;
   updatedAt: number;
@@ -102,7 +104,7 @@ export interface OrderEvent {
   id: string;
   orderId: string;
   botId: string;
-  type: "intent" | "result" | "fill" | "reconcile";
+  type: "intent" | "result" | "fill" | "reconcile" | "update";
   data: unknown;
   ts: number;
 }

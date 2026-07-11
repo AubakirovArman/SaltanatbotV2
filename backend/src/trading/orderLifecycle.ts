@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { insertOrderEvent, listOrderEvents, upsertOrderJournal } from "./store.js";
-import type { BotConfig, ExecOrder, ExecResult, FillRecord, OrderEventRecord, OrderJournalRecord, OrderJournalStatus } from "./types.js";
+import type { BotConfig, ExchangeOrderSnapshot, ExecOrder, ExecResult, FillRecord, OrderEventRecord, OrderJournalRecord, OrderJournalStatus } from "./types.js";
 
 export interface OrderLifecycleContext {
   botId: string;
@@ -45,8 +45,10 @@ export class OrderLifecycle {
 
   begin(context: OrderLifecycleContext, order: ExecOrder): OrderJournalRecord {
     const now = this.now();
+    const identity = order.clientId || order.orderId || this.createId();
+    if (!order.clientId && !order.orderId) order.clientId = identity;
     const record: OrderJournalRecord = {
-      id: order.clientId || order.orderId || this.createId(),
+      id: identity,
       botId: context.botId,
       exchange: context.exchange,
       market: context.market,
@@ -79,11 +81,15 @@ export class OrderLifecycle {
   complete(record: OrderJournalRecord, result: ExecResult): OrderJournalRecord {
     const now = this.now();
     const status = deriveOrderJournalStatus(record, result);
+    const filledQty = result.fills.reduce((sum, fill) => sum + Math.abs(fill.qty), 0);
+    const filledNotional = result.fills.reduce((sum, fill) => sum + Math.abs(fill.qty) * fill.price, 0);
     const next: OrderJournalRecord = {
       ...record,
       exchangeOrderId: result.order?.id ?? result.pendingOrder?.id ?? record.exchangeOrderId,
       status,
       message: result.message,
+      filledQty: filledQty > 0 ? filledQty : record.filledQty,
+      avgFillPrice: filledQty > 0 ? filledNotional / filledQty : record.avgFillPrice,
       updatedAt: now
     };
     this.writer.upsertOrder(next);
@@ -164,6 +170,35 @@ export class OrderLifecycle {
       type: "fill",
       data: fill,
       ts: fill.ts
+    });
+    return next;
+  }
+
+  applySnapshot(record: OrderJournalRecord, snapshot: ExchangeOrderSnapshot): OrderJournalRecord {
+    if (
+      record.status === snapshot.status &&
+      record.filledQty === snapshot.filledQty &&
+      record.avgFillPrice === snapshot.avgFillPrice &&
+      record.exchangeOrderId === snapshot.id
+    ) return record;
+    const next: OrderJournalRecord = {
+      ...record,
+      exchangeOrderId: snapshot.id,
+      clientId: snapshot.clientId ?? record.clientId,
+      status: snapshot.status,
+      filledQty: snapshot.filledQty,
+      avgFillPrice: snapshot.avgFillPrice,
+      message: `Exchange status: ${snapshot.status}`,
+      updatedAt: Math.max(this.now(), snapshot.updatedAt)
+    };
+    this.writer.upsertOrder(next);
+    this.writer.insertEvent({
+      id: this.createId(),
+      orderId: next.id,
+      botId: next.botId,
+      type: "update",
+      data: snapshot,
+      ts: snapshot.updatedAt
     });
     return next;
   }

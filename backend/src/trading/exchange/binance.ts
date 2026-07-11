@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import type {
   AccountState,
   ExchangeAdapter,
+  ExchangeOrderSnapshot,
   ExecOrder,
   ExecResult,
   MarketType,
@@ -10,6 +11,7 @@ import type {
   PositionState
 } from "../types.js";
 import { binanceFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
+import { normalizeBinanceOrderStatus } from "./orderStatus.js";
 
 export interface ExchangeKeys {
   apiKey: string;
@@ -107,6 +109,34 @@ export class BinanceAdapter implements ExchangeAdapter {
       tif: (row.timeInForce as PendingOrder["tif"]) ?? "GTC",
       createdAt: row.time ?? Date.now()
     }));
+  }
+
+  async orderStatus(symbol: string, identity: { orderId?: string; clientId?: string }): Promise<ExchangeOrderSnapshot | null> {
+    if (!identity.orderId && !identity.clientId) return null;
+    const path = this.market === "futures" ? "/fapi/v1/order" : "/api/v3/order";
+    const params: Record<string, string> = { symbol };
+    if (identity.orderId) params.orderId = identity.orderId;
+    else if (identity.clientId) params.origClientOrderId = identity.clientId;
+    const row = await this.signed("GET", path, params) as {
+      orderId: string | number;
+      clientOrderId?: string;
+      status: string;
+      origQty: string;
+      executedQty: string;
+      avgPrice?: string;
+      price?: string;
+      updateTime?: number;
+      time?: number;
+    };
+    return {
+      id: String(row.orderId),
+      clientId: row.clientOrderId,
+      status: normalizeBinanceOrderStatus(row.status),
+      qty: Number(row.origQty),
+      filledQty: Number(row.executedQty),
+      avgFillPrice: Number(row.avgPrice) || Number(row.price) || undefined,
+      updatedAt: row.updateTime ?? row.time ?? Date.now()
+    };
   }
 
   async execute(order: ExecOrder): Promise<ExecResult> {

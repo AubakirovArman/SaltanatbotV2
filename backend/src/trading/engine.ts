@@ -12,6 +12,7 @@ import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
 import { BybitAdapter } from "./exchange/bybit.js";
 import { notify } from "./notifications.js";
 import { orderLifecycle } from "./orderLifecycle.js";
+import { pollOrderUpdates } from "./orderPolling.js";
 import { reconcileLiveRuntime, reconcileUnresolvedOrders } from "./reconciliation.js";
 import { getSetting, insertFill, insertLog, listBots, listFills, listOrderJournal, setSetting, upsertBot } from "./store.js";
 import type {
@@ -102,6 +103,9 @@ interface RunningBot {
   lastEvaluatedBarTime?: number;
   /** Exchange request in flight; prevents duplicate entry/exit calls. */
   orderInFlight?: boolean;
+  /** Signed REST fallback while private order streams are not connected. */
+  orderPollTimer?: ReturnType<typeof setInterval>;
+  orderPollOffset?: number;
 }
 
 export class TradingEngine {
@@ -238,6 +242,7 @@ export class TradingEngine {
     );
 
     this.running.set(config.id, bot);
+    this.startOrderPolling(bot);
     config.status = "running";
     config.updatedAt = Date.now();
     upsertBot(config);
@@ -271,6 +276,7 @@ export class TradingEngine {
     const bot = this.running.get(id);
     if (!bot) return;
     bot.sub?.close();
+    if (bot.orderPollTimer) clearInterval(bot.orderPollTimer);
     if (bot.paper) this.persistPaper(bot);
     this.persistState(bot);
     this.running.delete(id);
@@ -294,6 +300,7 @@ export class TradingEngine {
   shutdown() {
     for (const bot of this.running.values()) {
       bot.sub?.close();
+      if (bot.orderPollTimer) clearInterval(bot.orderPollTimer);
       if (bot.paper) this.persistPaper(bot);
       this.persistState(bot);
     }
@@ -697,6 +704,33 @@ export class TradingEngine {
       order,
       () => bot.adapter.execute(order)
     );
+  }
+
+  private startOrderPolling(bot: RunningBot) {
+    if (!bot.adapter.orderStatus) return;
+    const enqueue = () => {
+      bot.eventQueue = bot.eventQueue
+        .then(() => this.pollOrders(bot))
+        .catch((error) => this.log(bot.config.id, "warn", `Order polling failed: ${error instanceof Error ? error.message : error}`));
+    };
+    bot.orderPollTimer = setInterval(enqueue, 30_000);
+    bot.orderPollTimer.unref?.();
+    enqueue();
+  }
+
+  private async pollOrders(bot: RunningBot) {
+    if (this.running.get(bot.config.id) !== bot) return;
+    const result = await pollOrderUpdates(
+      listOrderJournal(bot.config.id, 500),
+      bot.adapter,
+      (record, snapshot) => orderLifecycle.applySnapshot(record, snapshot),
+      10,
+      bot.orderPollOffset ?? 0
+    );
+    bot.orderPollOffset = result.nextOffset;
+    for (const failure of result.failures) {
+      this.log(bot.config.id, "warn", `Order ${failure.record.id} status poll failed: ${failure.error instanceof Error ? failure.error.message : failure.error}`);
+    }
   }
 
   private async reconcileOnResume(bot: RunningBot, savedManaged?: Managed): Promise<boolean> {

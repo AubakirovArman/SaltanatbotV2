@@ -131,6 +131,8 @@ export interface OrderJournalRecord {
   exchangeOrderId?: string;
   status: OrderJournalStatus;
   message?: string;
+  filledQty?: number;
+  avgFillPrice?: number;
   barTime?: number;
   ts: number;
   updatedAt: number;
@@ -140,7 +142,7 @@ export interface OrderEventRecord {
   id: string;
   orderId: string;
   botId: string;
-  type: "intent" | "result" | "fill" | "reconcile";
+  type: "intent" | "result" | "fill" | "reconcile" | "update";
   data: unknown;
   ts: number;
 }
@@ -239,6 +241,16 @@ export interface ExecResult {
   data?: unknown;
 }
 
+export interface ExchangeOrderSnapshot {
+  id: string;
+  clientId?: string;
+  status: Exclude<OrderJournalStatus, "intent" | "replaced">;
+  qty: number;
+  filledQty: number;
+  avgFillPrice?: number;
+  updatedAt: number;
+}
+
 /** One exchange account's aggregated live state (deduped across bots). */
 export interface PortfolioExchange {
   /** Adapter id + market, e.g. "binance:futures". Also the dedupe key. */
@@ -273,6 +285,8 @@ export interface ExchangeAdapter {
   execute(order: ExecOrder): Promise<ExecResult>;
   /** Resting orders (paper/futures). */
   orders?(symbol?: string): Promise<PendingOrder[]>;
+  /** Signed fallback query used when a private order stream is unavailable. */
+  orderStatus?(symbol: string, identity: { orderId?: string; clientId?: string }): Promise<ExchangeOrderSnapshot | null>;
   /** Feed a live price so resting orders can trigger (paper). */
   onPrice?(symbol: string, price: number): FillRecord[];
 }

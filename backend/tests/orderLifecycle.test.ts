@@ -61,6 +61,20 @@ const accepted: ExecResult = {
 };
 
 describe("durable order lifecycle", () => {
+  it("assigns an idempotent client id before sending an order that omitted one", async () => {
+    const h = harness();
+    const withoutIdentity = { ...order, clientId: undefined };
+    let sentClientId: string | undefined;
+
+    await h.lifecycle.execute(context, withoutIdentity, async () => {
+      sentClientId = withoutIdentity.clientId;
+      return { ok: true, message: "accepted", fills: [] };
+    });
+
+    expect(sentClientId).toMatch(/^event-/);
+    expect(h.records[0]).toMatchObject({ id: sentClientId, clientId: sentClientId });
+  });
+
   it("persists intent before exchange I/O and then accepted result and fills", async () => {
     const h = harness();
     const send = vi.fn(async () => {
@@ -72,6 +86,7 @@ describe("durable order lifecycle", () => {
 
     expect(h.calls).toEqual(["order:intent", "event:intent", "exchange", "order:filled", "event:result", "event:fill"]);
     expect(h.records.map((record) => record.status)).toEqual(["intent", "filled"]);
+    expect(h.records.at(-1)).toMatchObject({ filledQty: 1, avgFillPrice: 100 });
     expect(h.events.at(-2)?.data).toMatchObject({ status: "filled", ok: true });
   });
 
@@ -158,5 +173,18 @@ describe("durable order lifecycle", () => {
 
     expect(first.status).toBe("partially_filled");
     expect(second.status).toBe("filled");
+  });
+
+  it("applies polling snapshots idempotently", () => {
+    const h = harness();
+    const record = h.lifecycle.complete(h.lifecycle.begin(context, order), { ok: true, message: "accepted", fills: [] });
+    const snapshot = { id: "exchange-1", clientId: order.clientId, status: "partially_filled", qty: 1, filledQty: 0.5, avgFillPrice: 100, updatedAt: 150 } as const;
+
+    const next = h.lifecycle.applySnapshot(record, snapshot);
+    const unchanged = h.lifecycle.applySnapshot(next, snapshot);
+
+    expect(next).toMatchObject({ status: "partially_filled", filledQty: 0.5, avgFillPrice: 100 });
+    expect(unchanged).toBe(next);
+    expect(h.events.filter((event) => event.type === "update")).toHaveLength(1);
   });
 });

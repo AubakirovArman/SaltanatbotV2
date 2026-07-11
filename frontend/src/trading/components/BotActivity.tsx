@@ -38,7 +38,7 @@ export function BotActivity({ symbol, orders, orderJournal, fills, logs, onComma
                 <tr key={order.id}>
                   <td>{formatTime(order.updatedAt)}</td><td><span className={orderStatusTone(order.status)} data-order-status={order.status}>{order.status.replace("_", " ")}</span></td>
                   <td>{order.action}</td><td className={order.side === "buy" ? "up" : order.side === "sell" ? "down" : ""}>{order.side ?? "flat"}</td>
-                  <td>{order.qty ?? "-"}</td><td>{order.reason.replace("signal:", "")}</td>
+                  <td>{order.filledQty !== undefined ? `${order.filledQty}/${order.qty ?? "?"}` : order.qty ?? "-"}</td><td>{order.reason.replace("signal:", "")}</td>
                 </tr>
               ))}</tbody>
             </table>

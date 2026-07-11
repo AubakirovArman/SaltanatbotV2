@@ -233,6 +233,10 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Correlate asynchronous paper fills to their original resting-order journal entries.
   - [ ] Ingest asynchronous exchange events that advance accepted/partial states to terminal states.
 - [ ] Add private fill/order stream with polling fallback.
+  - [x] Add bounded signed REST order-status polling for Binance and Bybit.
+  - [x] Normalize partial, filled, cancelled, expired and rejected venue states.
+  - [x] Persist idempotent aggregate execution snapshots and polling audit events.
+  - [ ] Add authenticated private WebSocket order/fill streams and reconnect replay.
 - [x] Require explicit Binance/Bybit SL/TP acknowledgement before protected runtime state.
 - [x] Fail the entry result and issue a best-effort emergency close when requested SL or TP is rejected.
 - [ ] Complete startup reconciliation for every in-flight state.

@@ -24,6 +24,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - A rejected SL or TP triggers a best-effort emergency close and a failed execution result.
 - Reconciliation completes before a resumed live bot can become running.
 - Unresolved journal rows are matched by venue/client id; ambiguous absences pause trading for operator review.
+- Live Binance/Bybit non-terminal orders use bounded, sequential signed-REST polling as a private-stream fallback.
 - Paper is the default; live requires explicit global and per-bot authorization.
 - Incomplete spot inventory behavior remains feature-gated.
 - Risk guards use confirmed fills and positions where available.
