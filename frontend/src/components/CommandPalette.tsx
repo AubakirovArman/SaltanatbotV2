@@ -1,5 +1,7 @@
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { Locale } from "../i18n";
+import { shellText } from "../i18n/shell";
 
 export interface Command {
   id: string;
@@ -10,12 +12,13 @@ export interface Command {
 }
 
 interface CommandPaletteProps {
+  locale: Locale;
   open: boolean;
   onClose: () => void;
   commands: Command[];
 }
 
-export function CommandPalette({ open, onClose, commands }: CommandPaletteProps) {
+export function CommandPalette({ locale, open, onClose, commands }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -67,12 +70,12 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
         }}
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={shellText(locale, "commandPalette")}
       >
         <input
           ref={inputRef}
           value={query}
-          placeholder="Search symbols, timeframes, chart types, actions..."
+          placeholder={shellText(locale, "commandSearch")}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown") {
@@ -102,12 +105,12 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
               {command.hint && <span className="cmdk-hint">{command.hint}</span>}
             </button>
           ))}
-          {filtered.length === 0 && <div className="cmdk-empty">No matching commands</div>}
+          {filtered.length === 0 && <div className="cmdk-empty">{shellText(locale, "noCommands")}</div>}
         </div>
         <div className="cmdk-footer">
           <span>↑↓ navigate</span>
           <span>↵ select</span>
-          <span>esc close</span>
+          <span>{shellText(locale, "closeHint")}</span>
         </div>
       </div>
     </div>,

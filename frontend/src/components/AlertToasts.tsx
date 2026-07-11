@@ -1,30 +1,35 @@
 import { Bell, X } from "lucide-react";
 import { useEffect } from "react";
 import type { AlertToast } from "../hooks/usePriceAlerts";
+import type { Locale } from "../i18n";
+import { shellText } from "../i18n/shell";
 
 interface AlertToastsProps {
+  locale: Locale;
   toasts: AlertToast[];
   decimalsFor: (symbol: string) => number;
   onDismiss: (id: string) => void;
 }
 
 /** Fixed-position stack of alert notifications; each auto-dismisses after a few seconds. */
-export function AlertToasts({ toasts, decimalsFor, onDismiss }: AlertToastsProps) {
+export function AlertToasts({ locale, toasts, decimalsFor, onDismiss }: AlertToastsProps) {
   if (toasts.length === 0) return null;
   return (
     <div className="alert-toasts" role="status" aria-live="polite">
       {toasts.map((toast) => (
-        <AlertToastCard key={toast.id} toast={toast} decimals={decimalsFor(toast.symbol)} onDismiss={onDismiss} />
+        <AlertToastCard locale={locale} key={toast.id} toast={toast} decimals={decimalsFor(toast.symbol)} onDismiss={onDismiss} />
       ))}
     </div>
   );
 }
 
 function AlertToastCard({
+  locale,
   toast,
   decimals,
   onDismiss
 }: {
+  locale: Locale;
   toast: AlertToast;
   decimals: number;
   onDismiss: (id: string) => void;
@@ -40,12 +45,12 @@ function AlertToastCard({
       <div className="alert-toast-body">
         <strong>{toast.symbol}</strong>
         <span>
-          {toast.direction === "above" ? "rose above" : "fell below"}{" "}
-          <span className="num">{toast.price.toFixed(decimals)}</span> · now{" "}
+          {shellText(locale, toast.direction === "above" ? "roseAbove" : "fellBelow")}{" "}
+          <span className="num">{toast.price.toFixed(decimals)}</span> · {shellText(locale, "now")}{" "}
           <span className="num">{toast.hitPrice.toFixed(decimals)}</span>
         </span>
       </div>
-      <button type="button" aria-label="Dismiss alert" onClick={() => onDismiss(toast.id)}>
+      <button type="button" aria-label={shellText(locale, "dismissAlert")} onClick={() => onDismiss(toast.id)}>
         <X size={14} aria-hidden="true" />
       </button>
     </div>

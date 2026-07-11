@@ -91,6 +91,12 @@ test("switches and persists the interface locale", async ({ page }) => {
   await expect(workspaceModes.getByRole("button", { name: "Стратегия", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Переключить язык интерфейса на английский" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Данные графика", exact: true })).toBeVisible();
+  await expect(page.getByText("Рынки", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Статистика свечи")).toBeVisible();
+  await page.keyboard.press("Control+k");
+  const localizedPalette = page.getByRole("dialog", { name: "Палитра команд" });
+  await expect(localizedPalette.getByPlaceholder("Поиск символов, интервалов, типов графика и действий…")).toBeFocused();
+  await page.keyboard.press("Escape");
 
   await workspaceModes.getByRole("button", { name: "Стратегия", exact: true }).click();
   await expect(page.getByRole("button", { name: "Запустить бэктест", exact: true })).toBeVisible({ timeout: 20_000 });

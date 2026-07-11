@@ -19,6 +19,8 @@ import { useArtifactLibrary } from "./strategy/useArtifactLibrary";
 import type { AssetClass, ChartType, Instrument, Timeframe } from "./types";
 import { useAppShell, type AppMode } from "./app/useAppShell";
 import { useAppCommands } from "./app/useAppCommands";
+import { shellText } from "./i18n/shell";
+import type { Locale } from "./i18n";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
@@ -113,6 +115,7 @@ export default function App() {
   const priceAlerts = usePriceAlerts(prices, decimalsFor);
   const livePositions = useLivePositions(instrument.symbol);
   const appCommands = useAppCommands({
+    locale,
     catalog,
     indicators,
     setIndicators,
@@ -166,6 +169,7 @@ export default function App() {
       >
         {mode === "chart" && leftOpen && (
           <Watchlist
+            locale={locale}
             instruments={instruments}
             selectedSymbol={symbol}
             selectedAsset={asset}
@@ -181,7 +185,7 @@ export default function App() {
 
         <section className="chart-panel">
           {error && <div className="error-banner">{error}</div>}
-          {loading && <div className="loading-banner">Loading market catalog</div>}
+          {loading && <div className="loading-banner">{shellText(locale, "loadingCatalog")}</div>}
           {mode === "chart" && (
             <ChartCanvas
               candles={stream.candles}
@@ -231,12 +235,12 @@ export default function App() {
             />
           )}
           {mode === "trade" && (
-            <Suspense fallback={<StrategyLoading />}>
+            <Suspense fallback={<StrategyLoading locale={locale} />}>
               <TradingView strategies={strategyLibrary} catalog={catalog} locale={locale} />
             </Suspense>
           )}
           {mode === "strategy" && (
-            <Suspense fallback={<StrategyLoading />}>
+            <Suspense fallback={<StrategyLoading locale={locale} />}>
               <StrategyLab
                 artifacts={strategyLibrary}
                 activeArtifactId={activeArtifactId}
@@ -261,6 +265,7 @@ export default function App() {
 
         {mode === "chart" && rightOpen && (
           <StatsPanel
+            locale={locale}
             instrument={instrument}
             candles={stream.candles}
             provider={stream.provider}
@@ -276,18 +281,18 @@ export default function App() {
         {mode === "chart" && !rightOpen && <span aria-hidden="true" />}
       </main>
 
-      <CommandPalette open={appCommands.paletteOpen} onClose={appCommands.closePalette} commands={appCommands.commands} />
-      <AlertToasts toasts={priceAlerts.toasts} decimalsFor={decimalsFor} onDismiss={priceAlerts.dismissToast} />
+      <CommandPalette locale={locale} open={appCommands.paletteOpen} onClose={appCommands.closePalette} commands={appCommands.commands} />
+      <AlertToasts locale={locale} toasts={priceAlerts.toasts} decimalsFor={decimalsFor} onDismiss={priceAlerts.dismissToast} />
     </div>
   );
 }
 
-function StrategyLoading() {
+function StrategyLoading({ locale }: { locale: Locale }) {
   return (
     <div className="strategy-loading" role="status" aria-live="polite">
       <span className="loader-ring" aria-hidden="true" />
-      <strong>Loading Strategy Lab</strong>
-      <span>Preparing Blockly blocks and strategy compiler preview.</span>
+      <strong>{shellText(locale, "loadingStrategy")}</strong>
+      <span>{shellText(locale, "preparingStrategy")}</span>
     </div>
   );
 }

@@ -4,8 +4,11 @@ import type { PriceAlert } from "../market/alerts";
 import type { NewAlertInput } from "../hooks/usePriceAlerts";
 import type { Candle, Instrument } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
+import type { Locale } from "../i18n";
+import { shellText } from "../i18n/shell";
 
 interface StatsPanelProps {
+  locale: Locale;
   instrument: Instrument;
   candles: Candle[];
   provider: string;
@@ -19,6 +22,7 @@ interface StatsPanelProps {
 }
 
 export function StatsPanel({
+  locale,
   instrument,
   candles,
   provider,
@@ -30,6 +34,7 @@ export function StatsPanel({
   onRemoveAlert,
   onResetAlert
 }: StatsPanelProps) {
+  const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const latest = candles.at(-1);
   const previous = candles.at(-2);
   const change = latest && previous ? latest.close - previous.close : 0;
@@ -51,16 +56,17 @@ export function StatsPanel({
         </div>
       </section>
 
-      <section className="stat-table" aria-label="Bar statistics">
-        <StatRow label="Open" value={format(latest?.open, instrument.decimals)} />
-        <StatRow label="High" value={format(latest?.high, instrument.decimals)} />
-        <StatRow label="Low" value={format(latest?.low, instrument.decimals)} />
-        <StatRow label="Range" value={format(range, instrument.decimals)} />
-        <StatRow label="Change" value={`${change >= 0 ? "+" : ""}${change.toFixed(instrument.decimals)}`} tone={direction} />
-        <StatRow label="Volume" value={compact(latest?.volume)} />
+      <section className="stat-table" aria-label={t("barStatistics")}>
+        <StatRow label={t("open")} value={format(latest?.open, instrument.decimals)} />
+        <StatRow label={t("high")} value={format(latest?.high, instrument.decimals)} />
+        <StatRow label={t("low")} value={format(latest?.low, instrument.decimals)} />
+        <StatRow label={t("range")} value={format(range, instrument.decimals)} />
+        <StatRow label={t("change")} value={`${change >= 0 ? "+" : ""}${change.toFixed(instrument.decimals)}`} tone={direction} />
+        <StatRow label={t("volume")} value={compact(latest?.volume, locale)} />
       </section>
 
       <AlertsSection
+        locale={locale}
         instrument={instrument}
         price={latest?.close}
         alerts={alerts.filter((alert) => alert.symbol === instrument.symbol)}
@@ -71,14 +77,14 @@ export function StatsPanel({
 
       <section>
         <div className="panel-header">
-          <strong>Feed</strong>
+          <strong>{t("feed")}</strong>
           <span className={connection}>{connection}</span>
         </div>
         <div className="feed-list">
-          <FeedRow label="Provider" value={provider} />
-          <FeedRow label="Latency" value={latencyMs !== undefined ? `${latencyMs} ms` : "…"} num />
-          <FeedRow label="Candles" value={String(candles.length)} num />
-          <FeedRow label="Status" value={message} />
+          <FeedRow label={t("provider")} value={provider} />
+          <FeedRow label={t("latency")} value={latencyMs !== undefined ? `${latencyMs} ms` : "…"} num />
+          <FeedRow label={t("candles")} value={String(candles.length)} num />
+          <FeedRow label={t("status")} value={message} />
         </div>
       </section>
     </aside>
@@ -86,6 +92,7 @@ export function StatsPanel({
 }
 
 function AlertsSection({
+  locale,
   instrument,
   price,
   alerts,
@@ -93,6 +100,7 @@ function AlertsSection({
   onRemoveAlert,
   onResetAlert
 }: {
+  locale: Locale;
   instrument: Instrument;
   price?: number;
   alerts: PriceAlert[];
@@ -100,6 +108,7 @@ function AlertsSection({
   onRemoveAlert: (id: string) => void;
   onResetAlert: (id: string) => void;
 }) {
+  const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const [draft, setDraft] = useState("");
 
   const submit = () => {
@@ -112,10 +121,10 @@ function AlertsSection({
   };
 
   return (
-    <section className="alerts-section" aria-label="Price alerts">
+    <section className="alerts-section" aria-label={t("priceAlerts")}>
       <div className="panel-header">
-        <strong>Alerts</strong>
-        <span>{alerts.length ? `${alerts.length} on ${instrument.symbol}` : instrument.symbol}</span>
+        <strong>{t("alerts")}</strong>
+        <span>{alerts.length ? `${alerts.length} ${t("on")} ${instrument.symbol}` : instrument.symbol}</span>
       </div>
       <form
         className="alert-add"
@@ -132,12 +141,12 @@ function AlertsSection({
           step="any"
           min={0}
           value={draft}
-          placeholder={price !== undefined ? price.toFixed(instrument.decimals) : "Price"}
-          aria-label={`Alert price for ${instrument.symbol}`}
+          placeholder={price !== undefined ? price.toFixed(instrument.decimals) : t("price")}
+          aria-label={`${t("alertPrice")} ${instrument.symbol}`}
           onChange={(event) => setDraft(event.target.value)}
         />
         <button type="submit" disabled={!draft.trim()}>
-          Add
+          {t("add")}
         </button>
       </form>
       {alerts.length > 0 && (
@@ -149,13 +158,13 @@ function AlertsSection({
               <li key={alert.id} className={`alert-item ${alert.triggered ? "triggered" : ""}`}>
                 <span className={`alert-dir ${alert.direction}`}>{alert.direction === "above" ? "▲" : "▼"}</span>
                 <span className="alert-price num">{alert.price.toFixed(instrument.decimals)}</span>
-                <span className="alert-state">{alert.triggered ? "hit" : "armed"}</span>
+                <span className="alert-state">{t(alert.triggered ? "hit" : "armed")}</span>
                 {alert.triggered && (
-                  <button type="button" aria-label="Re-arm alert" title="Re-arm" onClick={() => onResetAlert(alert.id)}>
+                  <button type="button" aria-label={t("rearmAlert")} title={t("rearm")} onClick={() => onResetAlert(alert.id)}>
                     <RotateCcw size={12} aria-hidden="true" />
                   </button>
                 )}
-                <button type="button" aria-label="Remove alert" title="Remove" onClick={() => onRemoveAlert(alert.id)}>
+                <button type="button" aria-label={t("removeAlert")} title={t("remove")} onClick={() => onRemoveAlert(alert.id)}>
                   <X size={12} aria-hidden="true" />
                 </button>
               </li>
@@ -188,8 +197,8 @@ function format(value: number | undefined, decimals: number) {
   return value === undefined ? "…" : value.toFixed(decimals);
 }
 
-function compact(value: number | undefined) {
+function compact(value: number | undefined, locale: Locale) {
   return value === undefined
     ? "…"
-    : Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 2 }).format(value);
+    : Intl.NumberFormat(locale === "ru" ? "ru-RU" : "en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value);
 }

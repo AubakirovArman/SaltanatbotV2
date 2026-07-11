@@ -374,6 +374,7 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Localize the accessible chart-data panel, captions, headers, empty states and signal/trade terminology through typed EN/RU messages.
   - [x] Localize the complete trading workspace: bot creation, settings/secrets, confirmations, runtime cards, command console/reference and order/fill journals.
   - [x] Localize Strategy Studio controls, template library, Pine import, backtest reports and optimizer/walk-forward research.
+  - [x] Localize command search/actions, watchlist filters/favorites, bar/feed statistics and price-alert controls/toasts.
 - [ ] Complete Russian user-guide parity.
   - [x] Add the Russian chart navigation and accessible table-data guide.
   - [x] Add the Russian paper/live trading, key safety, recovery, command-console and journal guide.

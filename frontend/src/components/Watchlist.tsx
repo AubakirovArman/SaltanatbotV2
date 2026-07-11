@@ -4,8 +4,11 @@ import type { SparklineSeries } from "../api/marketClient";
 import { loadFavorites, storeFavorites } from "../market/favorites";
 import { loadWatchlistSort, storeWatchlistSort, type WatchlistSort } from "../market/watchlistPrefs";
 import type { AssetClass, Candle, DataExchange, Instrument } from "../types";
+import type { Locale } from "../i18n";
+import { shellText } from "../i18n/shell";
 
 interface WatchlistProps {
+  locale: Locale;
   instruments: Instrument[];
   selectedSymbol: string;
   selectedAsset: AssetClass | "all";
@@ -18,14 +21,6 @@ interface WatchlistProps {
 }
 
 const assets: Array<AssetClass | "all"> = ["all", "crypto", "forex", "stock", "index"];
-const assetLabels: Record<AssetClass | "all", string> = {
-  all: "All",
-  crypto: "Crypto",
-  forex: "FX",
-  stock: "Stocks",
-  index: "Index"
-};
-
 const exchanges: Array<{ id: DataExchange; label: string }> = [
   { id: "binance", label: "Binance" },
   { id: "bybit", label: "Bybit" }
@@ -33,13 +28,14 @@ const exchanges: Array<{ id: DataExchange; label: string }> = [
 
 // Sort cycles: A→Z, then % desc (top gainers), then % asc (top losers).
 const sortCycle: WatchlistSort[] = ["symbol", "change-desc", "change-asc"];
-const sortMeta: Record<WatchlistSort, { label: string; Icon: typeof ArrowDownUp }> = {
-  symbol: { label: "A → Z", Icon: ArrowDownUp },
-  "change-desc": { label: "% high → low", Icon: ArrowDownWideNarrow },
-  "change-asc": { label: "% low → high", Icon: ArrowUpNarrowWide }
+const sortMeta: Record<WatchlistSort, { labelKey: "sortHighLow" | "sortLowHigh" | undefined; Icon: typeof ArrowDownUp }> = {
+  symbol: { labelKey: undefined, Icon: ArrowDownUp },
+  "change-desc": { labelKey: "sortHighLow", Icon: ArrowDownWideNarrow },
+  "change-asc": { labelKey: "sortLowHigh", Icon: ArrowUpNarrowWide }
 };
 
 export function Watchlist({
+  locale,
   instruments,
   selectedSymbol,
   selectedAsset,
@@ -50,9 +46,11 @@ export function Watchlist({
   onSelectAsset,
   onSelectExchange
 }: WatchlistProps) {
+  const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const [query, setQuery] = useState("");
   const [favorites, setFavorites] = useState<string[]>(() => loadFavorites());
   const [sort, setSort] = useState<WatchlistSort>(() => loadWatchlistSort());
+  const sortLabel = sortMeta[sort].labelKey ? t(sortMeta[sort].labelKey) : "A → Z";
   const showExchange = useMemo(
     () => instruments.some((instrument) => instrument.assetClass === "crypto"),
     [instruments]
@@ -121,15 +119,15 @@ export function Watchlist({
   return (
     <aside className="watchlist">
       <div className="panel-header">
-        <strong>Markets</strong>
+        <strong>{t("markets")}</strong>
         <div className="panel-header-meta">
-          <span>{filtered.length} symbols</span>
+          <span>{filtered.length} {t("symbols")}</span>
           <button
             type="button"
             className="watchlist-sort"
             onClick={cycleSort}
-            title={`Sort: ${sortMeta[sort].label}`}
-            aria-label={`Change sort. Currently ${sortMeta[sort].label}`}
+            title={`${t("sort")}: ${sortLabel}`}
+            aria-label={`${t("changeSort")} ${sortLabel}`}
           >
             {(() => {
               const { Icon } = sortMeta[sort];
@@ -141,10 +139,10 @@ export function Watchlist({
 
       <label className="market-search">
         <Search size={15} aria-hidden="true" />
-        <span className="sr-only">Search instruments</span>
+        <span className="sr-only">{t("searchInstruments")}</span>
         <input
           value={query}
-          placeholder="Search BTC, NASDAQ, EUR..."
+          placeholder={t("searchPlaceholder")}
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
@@ -158,14 +156,14 @@ export function Watchlist({
             onClick={() => onSelectAsset(asset)}
             aria-pressed={asset === selectedAsset}
           >
-            {assetLabels[asset]}
+            {t(asset === "all" ? "all" : asset === "stock" ? "stocks" : asset)}
           </button>
         ))}
       </div>
 
       {showExchange && (
-        <div className="exchange-select" role="group" aria-label="Crypto data source">
-          <span className="exchange-select-label">Source</span>
+        <div className="exchange-select" role="group" aria-label={t("cryptoSource")}>
+          <span className="exchange-select-label">{t("source")}</span>
           <div className="exchange-select-options">
             {exchanges.map((exchange) => (
               <button
@@ -174,7 +172,7 @@ export function Watchlist({
                 className={exchange.id === cryptoExchange ? "active" : ""}
                 onClick={() => onSelectExchange(exchange.id)}
                 aria-pressed={exchange.id === cryptoExchange}
-                title={`Show crypto prices from ${exchange.label}`}
+                title={`${t("showPricesFrom")} ${exchange.label}`}
               >
                 {exchange.label}
               </button>
@@ -201,8 +199,8 @@ export function Watchlist({
                 className={`symbol-star ${pinned ? "active" : ""}`}
                 onClick={() => toggleFavorite(instrument.symbol)}
                 aria-pressed={pinned}
-                aria-label={`${pinned ? "Unpin" : "Pin"} ${instrument.symbol}`}
-                title={pinned ? "Unpin" : "Pin to top"}
+                aria-label={`${t(pinned ? "unpin" : "pin")} ${instrument.symbol}`}
+                title={pinned ? t("unpin") : t("pinTop")}
               >
                 <Star size={13} strokeWidth={1.75} fill={pinned ? "currentColor" : "none"} aria-hidden="true" />
               </button>
@@ -230,8 +228,8 @@ export function Watchlist({
         })}
         {filtered.length === 0 && (
           <div className="empty-state">
-            <strong>No matches</strong>
-            <span>Try another symbol, venue, or asset class.</span>
+            <strong>{t("noMatches")}</strong>
+            <span>{t("noMatchesHint")}</span>
           </div>
         )}
       </div>
