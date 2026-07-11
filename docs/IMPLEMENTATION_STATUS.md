@@ -189,6 +189,8 @@ Verification:
 - [x] Extract immutable/mutable assignment state, one-time initialization and special handle bindings.
 - [x] Extract declaration/default sizing, plot/marker and alert statement calls.
 - [x] Extract drawing, mutation, collection and unsupported-call statement coordination.
+- [x] Split Blockly XML serialization into XML primitives, statement, numeric and boolean modules.
+- [x] Preserve `irToXml.ts` as a backward-compatible facade and add direct serializer round-trip tests.
 - [x] Add direct tests for indicator, arithmetic, external boolean-series and fail-closed paths.
 - [x] Add direct tests for cross, multi-bar trend, external boolean-series and conservative timeframe paths.
 - [x] Reduce `convert.ts` from 1,916 to 977 lines after completing statement lowering decomposition.
@@ -250,7 +252,7 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Extract declaration, plot/marker and alert statements.
   - [x] Extract final drawing/fallback call coordinator.
 - [x] Extract drawing lowering.
-- [ ] Extract Blockly serialization.
+- [x] Extract Blockly serialization.
 - [x] Add a typed compatibility registry and Markdown matrix generated from both Pine corpora.
 - [x] Fail documentation CI when generated compatibility artifacts are stale.
 - [x] Add deterministic parser fuzz, valid-seed mutation and conversion-determinism property tests.

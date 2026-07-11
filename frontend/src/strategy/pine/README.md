@@ -24,6 +24,7 @@ Consumers should import from `index.ts`. Lexer, parser and conversion internals 
 `declarationLowering.ts`, `plotStatementLowering.ts` and `alertStatementLowering.ts` own script metadata/default sizing, chart plots/markers and sanitized alert commands respectively.
 `drawingStatementLowering.ts` coordinates shading/fill/object/table calls and classifies static mutations, collection operations and unsupported display calls.
 `generatedCompatibility.ts` is the checked-in machine-readable feature matrix generated from both Pine corpora; regenerate it with `npm run pine:compat`.
+Blockly XML output is owned by `../blocklySerialization/`; Pine only depends on its stable `irToBlocklyXml()` facade.
 
 ## Current pipeline
 
@@ -47,4 +48,4 @@ The corpus classifies scripts as exact, approximation, display-only or rejected.
 
 ## Decomposition target
 
-`convert.ts` remains a temporary lowering coordinator, while semantic analysis and expression/statement lowering now live in dedicated modules. Statement lowering is decomposed; continue with Blockly serialization in the order defined by `docs/MODULAR_ARCHITECTURE.md`. Keep `convertPine()` as the stable facade during the migration.
+`convert.ts` remains a temporary lowering coordinator, while semantic analysis, expression/statement lowering and Blockly serialization now live in dedicated modules. Continue with explicit nested scopes and the package boundary defined by `docs/MODULAR_ARCHITECTURE.md`. Keep `convertPine()` as the stable facade during the migration.
