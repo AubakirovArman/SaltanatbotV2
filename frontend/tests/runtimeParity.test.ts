@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { candlesFromCloses } from "@saltanatbotv2/test-fixtures";
 import { evaluateBar, runInit } from "../../backend/src/trading/strategy/evaluator.js";
 import { evaluateBar as evaluateCoreBar } from "@saltanatbotv2/strategy-core";
 import type { StrategyIR as BackendStrategyIR } from "../../backend/src/trading/strategy/ir.js";
@@ -6,20 +7,6 @@ import * as backendTa from "../../backend/src/trading/strategy/ta.js";
 import { previewStrategy } from "../src/strategy/backtest";
 import type { StrategyIR } from "../src/strategy/ir";
 import * as frontendTa from "../src/strategy/ta";
-import type { Candle } from "../src/types";
-
-const MINUTE = 60_000;
-
-function candle(index: number, close: number): Candle {
-  return {
-    time: index * MINUTE,
-    open: close,
-    high: close + 1,
-    low: close - 1,
-    close,
-    volume: 1000
-  };
-}
 
 /**
  * A stateful fixture intentionally exercises init, numeric/boolean variables,
@@ -66,7 +53,7 @@ const parityIR: StrategyIR = {
   ]
 };
 
-const candles = [98, 99, 101, 104, 103, 97, 102, 106].map(candle);
+const candles = candlesFromCloses([98, 99, 101, 104, 103, 97, 102, 106]);
 
 interface SignalCounts {
   buy: number;

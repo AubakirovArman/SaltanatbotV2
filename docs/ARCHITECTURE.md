@@ -13,6 +13,9 @@ The repository is a private npm workspace root that owns two applications and in
 | Frontend | `@saltanatbotv2/frontend` | `frontend/` | React SPA, canvas chart engine, strategy lab |
 | Contracts | `@saltanatbotv2/contracts` | `packages/contracts/` | Canonical market and WebSocket types |
 | Strategy core | `@saltanatbotv2/strategy-core` | `packages/strategy-core/` | Canonical IR types, version and shared runtime primitives |
+| Backtest core | `@saltanatbotv2/backtest-core` | `packages/backtest-core/` | Broker, portfolio, warm-up, metrics, provenance and traces |
+| Pine compiler | `@saltanatbotv2/pine-compiler` | `packages/pine-compiler/` | Lexer, parser, semantic analysis, lowering and diagnostics |
+| Test fixtures | `@saltanatbotv2/test-fixtures` | `packages/test-fixtures/` | Deterministic candles and scripted Fetch responses for all tiers |
 
 The root `package.json` declares the workspaces and the scripts that fan out into them:
 

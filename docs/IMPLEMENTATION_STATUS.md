@@ -50,6 +50,14 @@ Verification:
 - [x] Fail pull-request, push and release CI when a budget regresses.
 - [x] Keep the large Blockly chunk visible as an explicit optimization target.
 
+### Shared deterministic test fixtures — 2026-07-11
+
+- [x] Add a transport-neutral `@saltanatbotv2/test-fixtures` workspace.
+- [x] Provide validated candle-series builders with timing, spread, volume and provenance controls.
+- [x] Provide real Fetch API JSON/text responses and fail-closed scripted routing.
+- [x] Migrate cross-runtime parity and exchange failure-injection tests to the shared fixtures.
+- [x] Type-check the package independently and cover validation/unexpected-network behavior.
+
 ### Foundation — commit `3a98684`
 
 - [x] Fix zero-price synthetic fallback for dynamically discovered crypto pairs.

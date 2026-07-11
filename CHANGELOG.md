@@ -16,6 +16,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
   idempotent legacy upgrades and refusal to open databases from newer application versions.
 - Added exchange-wide signed-request circuit breakers for Binance/Bybit throttling and explicit
   host clock-skew detection; mutating requests are never automatically replayed.
+- Added a canonical test-fixtures workspace for deterministic candle series and fail-closed scripted
+  exchange HTTP responses shared across frontend and backend tests.
 
 ### Documentation and distribution
 

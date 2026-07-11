@@ -30,7 +30,7 @@ packages/
   backtest-core/               fills, portfolio, accounting, metrics
   execution-core/              order state machine and risk primitives
   chart-core/                  viewport, scales, drawings, render model
-  test-fixtures/               candles, strategies, fake exchanges
+  test-fixtures/               candles and scripted exchange responses (initial package delivered)
 docs/
   en/                          canonical user and engineering docs
   ru/                          Russian translations

@@ -92,7 +92,8 @@ Introduce npm workspaces incrementally:
 - `packages/contracts`: Candle, Instrument, MarketKey, API and WebSocket contracts;
 - `packages/strategy-core`: IR, schema, evaluator and TA primitives;
 - `packages/execution-core`: fill assumptions, sizing and order lifecycle primitives;
-- `packages/test-fixtures`: candle series, strategy fixtures and fake exchanges.
+- `packages/test-fixtures`: candle series, strategy fixtures and fake exchanges (initial canonical
+  candle/Fetch builders delivered; broader strategy/fake-adapter migration remains active).
 
 No package may depend on React, Express, browser globals or exchange SDK details unless its name explicitly describes that adapter.
 
