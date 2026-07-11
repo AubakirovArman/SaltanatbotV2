@@ -1,36 +1,28 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { compareColor } from "./chart/compareColors";
-import type { CompareChartType, CompareOverlayConfig } from "./chart/types";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { useChartArtifactOverlay } from "./chart/useChartArtifactOverlay";
 import { AlertToasts } from "./components/AlertToasts";
 import { ChartCanvas } from "./components/ChartCanvas";
-import { CommandPalette, type Command } from "./components/CommandPalette";
+import { CommandPalette } from "./components/CommandPalette";
 import { StatsPanel } from "./components/StatsPanel";
 import { TopBar } from "./components/TopBar";
 import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
-import { loadLocale, storeLocale, type Locale } from "./i18n";
 import { useCompareSeries } from "./hooks/useCompareSeries";
 import { useMarketStream } from "./hooks/useMarketStream";
 import { useLivePositions } from "./hooks/useLivePositions";
 import { usePriceAlerts } from "./hooks/usePriceAlerts";
 import { useSparklines } from "./hooks/useSparklines";
-import type { Workspace } from "./workspace/workspaces";
-import { applyIndicatorSelection, captureWorkspace, loadWorkspaces, saveWorkspaces } from "./workspace/workspaces";
 import { loadStrategyLab, warmStrategyLab } from "./strategy/loadStrategyLab";
-import { loadTradingView, warmTradingView } from "./trading/loadTradingView";
-import { loadInitialWorkspaceState, storeIndicators } from "./strategy/storage";
+import { loadTradingView } from "./trading/loadTradingView";
+import { loadInitialWorkspaceState } from "./strategy/storage";
 import { useArtifactLibrary } from "./strategy/useArtifactLibrary";
-import type { AssetClass, ChartType, DataExchange, Instrument, Timeframe } from "./types";
+import type { AssetClass, ChartType, Instrument, Timeframe } from "./types";
+import { useAppShell, type AppMode } from "./app/useAppShell";
+import { useAppCommands } from "./app/useAppCommands";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
 const initialWorkspaceState = loadInitialWorkspaceState();
-
-/** Max simultaneous compare-overlay symbols. */
-const MAX_COMPARE = 3;
-const DEFAULT_COMPARE_UP = "#23c97a";
-const DEFAULT_COMPARE_DOWN = "#ef5350";
 
 const fallbackInstrument: Instrument = {
   symbol: "BTCUSDT",
@@ -49,11 +41,13 @@ export default function App() {
   const [timeframe, setTimeframe] = useState<Timeframe>("1m");
   const [chartType, setChartType] = useState<ChartType>("candles");
   const [asset, setAsset] = useState<AssetClass | "all">("all");
-  const [cryptoExchange, setCryptoExchange] = useState<DataExchange>(() =>
-    (typeof localStorage !== "undefined" && localStorage.getItem("mf:cryptoExchange") === "bybit") ? "bybit" : "binance"
-  );
-  const [mode, setMode] = useState<"chart" | "strategy" | "trade">("chart");
+  const [mode, setMode] = useState<AppMode>("chart");
   const [indicators, setIndicators] = useState(initialWorkspaceState.indicators);
+  const shell = useAppShell({
+    symbol, setSymbol, timeframe, setTimeframe, chartType, setChartType,
+    setMode, indicators, setIndicators
+  });
+  const { cryptoExchange, theme, locale, leftOpen, rightOpen, workspaces, compareOverlays } = shell;
   const openStrategyWorkspace = useCallback(() => setMode("strategy"), []);
   const artifactLibrary = useArtifactLibrary({
     initialArtifacts: initialWorkspaceState.strategyLibrary,
@@ -62,15 +56,6 @@ export default function App() {
   });
   const strategyLibrary = artifactLibrary.artifacts;
   const activeArtifactId = artifactLibrary.activeArtifactId;
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">(() =>
-    (typeof localStorage !== "undefined" && localStorage.getItem("mf:theme") === "light") ? "light" : "dark"
-  );
-  const [locale, setLocale] = useState<Locale>(() => loadLocale());
-  const [leftOpen, setLeftOpen] = useState(() => readPanel("mf:panel:left", true));
-  const [rightOpen, setRightOpen] = useState(() => readPanel("mf:panel:right", true));
-  const [workspaces, setWorkspaces] = useState<Workspace[]>(() => loadWorkspaces());
-  const [compareOverlays, setCompareOverlays] = useState<CompareOverlayConfig[]>(() => loadCompare(timeframe, chartType));
   const stream = useMarketStream(symbol, timeframe, cryptoExchange);
   const compareState = useCompareSeries(compareOverlays, cryptoExchange);
   const showChart = useCallback((nextSymbol: string, nextTimeframe: Timeframe) => {
@@ -88,54 +73,6 @@ export default function App() {
     exchange: cryptoExchange,
     showChart
   });
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("mf:cryptoExchange", cryptoExchange);
-    } catch {
-      // ignore storage failures
-    }
-  }, [cryptoExchange]);
-
-  useEffect(() => writePanel("mf:panel:left", leftOpen), [leftOpen]);
-  useEffect(() => writePanel("mf:panel:right", rightOpen), [rightOpen]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("sbv2:compare", JSON.stringify(compareOverlays));
-    } catch {
-      // ignore storage failures
-    }
-  }, [compareOverlays]);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    try {
-      localStorage.setItem("mf:theme", theme);
-    } catch {
-      // ignore storage failures
-    }
-  }, [theme]);
-
-  useEffect(() => {
-    document.documentElement.lang = locale;
-    storeLocale(locale);
-  }, [locale]);
-
-  useEffect(() => {
-    const run = () => warmStrategyLab();
-    const id = window.setTimeout(run, 1800);
-    return () => window.clearTimeout(id);
-  }, []);
-
-  useEffect(() => {
-    storeIndicators(indicators);
-  }, [indicators]);
-
 
   const instrument =
     catalog?.instruments.find((item) => item.symbol === symbol) ?? fallbackInstrument;
@@ -157,40 +94,6 @@ export default function App() {
     [catalog, symbol]
   );
 
-  const addCompare = useCallback((sym: string) => {
-    setCompareOverlays((current) =>
-      current.some((item) => item.symbol === sym) || current.length >= MAX_COMPARE
-        ? current
-        : [
-          ...current,
-          {
-            id: sym,
-            symbol: sym,
-            timeframe,
-            chartType: asCompareChartType(chartType),
-            color: compareColor(current.length),
-            upColor: DEFAULT_COMPARE_UP,
-            downColor: DEFAULT_COMPARE_DOWN
-          }
-        ]
-    );
-  }, [chartType, timeframe]);
-  const updateCompare = useCallback((id: string, patch: Partial<CompareOverlayConfig>) => {
-    setCompareOverlays((current) =>
-      current.map((item) => (item.id === id ? { ...item, ...patch, chartType: asCompareChartType(patch.chartType ?? item.chartType) } : item))
-    );
-  }, []);
-  const removeCompare = useCallback((id: string) => {
-    setCompareOverlays((current) => current.filter((item) => item.id !== id));
-  }, []);
-
-  // Never compare the base symbol against itself — drop it if it becomes active.
-  useEffect(() => {
-    setCompareOverlays((current) =>
-      current.some((item) => item.symbol === symbol) ? current.filter((item) => item.symbol !== symbol) : current
-    );
-  }, [symbol]);
-
   // Live price map for alert detection: the active symbol streams tick-by-tick, other
   // symbols fall back to the periodically-refreshed sparkline `last`.
   const latestClose = stream.candles.at(-1)?.close;
@@ -209,95 +112,21 @@ export default function App() {
   );
   const priceAlerts = usePriceAlerts(prices, decimalsFor);
   const livePositions = useLivePositions(instrument.symbol);
+  const appCommands = useAppCommands({
+    catalog,
+    indicators,
+    setIndicators,
+    setSymbol,
+    setTimeframe,
+    setChartType,
+    setMode,
+    toggleTheme: shell.toggleTheme,
+    alerts: priceAlerts.alerts,
+    removeAlert: priceAlerts.removeAlert
+  });
 
   const chartCustomIndicators = artifactLibrary.customIndicators;
   const chartStrategies = artifactLibrary.strategies;
-
-  const commands = useMemo<Command[]>(() => {
-    const list: Command[] = [];
-    (catalog?.instruments ?? []).forEach((item) =>
-      list.push({
-        id: `sym-${item.symbol}`,
-        group: "Symbol",
-        label: `${item.symbol} · ${item.displayName}`,
-        hint: item.exchange,
-        run: () => {
-          setSymbol(item.symbol);
-          setMode("chart");
-        }
-      })
-    );
-    (catalog?.timeframes ?? []).forEach((tf, i) =>
-      list.push({ id: `tf-${tf}`, group: "Timeframe", label: tf, hint: `key ${i + 1}`, run: () => setTimeframe(tf) })
-    );
-    (catalog?.chartTypes ?? []).forEach((ct) =>
-      list.push({ id: `ct-${ct}`, group: "Chart type", label: ct, run: () => { setChartType(ct); setMode("chart"); } })
-    );
-    list.push({ id: "view-chart", group: "View", label: "Open Chart", run: () => setMode("chart") });
-    list.push({ id: "view-strategy", group: "View", label: "Open Strategy Lab", run: () => { warmStrategyLab(); setMode("strategy"); } });
-    list.push({ id: "view-trade", group: "View", label: "Open Trading", run: () => { warmTradingView(); setMode("trade"); } });
-    list.push({ id: "theme", group: "View", label: "Toggle light / dark theme", run: () => setTheme((current) => (current === "dark" ? "light" : "dark")) });
-    indicators.forEach((indicator) =>
-      list.push({
-        id: `ind-${indicator.id}`,
-        group: "Indicator",
-        label: `${indicator.enabled ? "Hide" : "Show"} ${indicator.label}`,
-        run: () => {
-          setIndicators((current) => current.map((item) => (item.id === indicator.id ? { ...item, enabled: !item.enabled } : item)));
-          setMode("chart");
-        }
-      })
-    );
-    if (priceAlerts.alerts.length > 0) {
-      list.push({
-        id: "alerts-clear",
-        group: "Alerts",
-        label: `Clear all price alerts (${priceAlerts.alerts.length})`,
-        run: () => priceAlerts.alerts.forEach((alert) => priceAlerts.removeAlert(alert.id))
-      });
-    }
-    return list;
-  }, [catalog, indicators, priceAlerts.alerts, priceAlerts.removeAlert]);
-
-  // Command palette (⌘K) + timeframe number hotkeys.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing = !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setPaletteOpen((open) => !open);
-        return;
-      }
-      if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
-      const digit = ["1", "2", "3", "4", "5", "6"].indexOf(event.key);
-      if (digit >= 0 && catalog?.timeframes[digit]) setTimeframe(catalog.timeframes[digit]);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [catalog]);
-
-  // --- Saved workspaces (named chart layouts) ---
-  const saveWorkspace = (name: string) => {
-    const workspace = captureWorkspace(name, { symbol, timeframe, chartType, cryptoExchange, indicators, theme });
-    setWorkspaces((current) => [workspace, ...current]);
-  };
-
-  const applyWorkspace = (id: string) => {
-    const workspace = workspaces.find((item) => item.id === id);
-    if (!workspace) return;
-    setSymbol(workspace.symbol);
-    setTimeframe(workspace.timeframe);
-    setChartType(workspace.chartType);
-    setCryptoExchange(workspace.cryptoExchange);
-    setTheme(workspace.theme);
-    setIndicators((current) => applyIndicatorSelection(current, workspace.enabledIndicators));
-    setMode("chart");
-  };
-
-  const deleteWorkspace = (id: string) => {
-    setWorkspaces((current) => current.filter((item) => item.id !== id));
-  };
 
   return (
     <div className="terminal-shell">
@@ -313,18 +142,18 @@ export default function App() {
         leftOpen={leftOpen}
         rightOpen={rightOpen}
         workspaces={workspaces}
-        onSaveWorkspace={saveWorkspace}
-        onApplyWorkspace={applyWorkspace}
-        onDeleteWorkspace={deleteWorkspace}
+        onSaveWorkspace={shell.saveWorkspace}
+        onApplyWorkspace={shell.applyWorkspace}
+        onDeleteWorkspace={shell.deleteWorkspace}
         onTimeframeChange={setTimeframe}
         onChartTypeChange={setChartType}
         onModeChange={setMode}
         onStrategyWarmup={warmStrategyLab}
-        onOpenPalette={() => setPaletteOpen(true)}
-        onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
-        onToggleLocale={() => setLocale((current) => (current === "en" ? "ru" : "en"))}
-        onToggleLeft={() => setLeftOpen((open) => !open)}
-        onToggleRight={() => setRightOpen((open) => !open)}
+        onOpenPalette={appCommands.openPalette}
+        onToggleTheme={shell.toggleTheme}
+        onToggleLocale={shell.toggleLocale}
+        onToggleLeft={shell.toggleLeft}
+        onToggleRight={shell.toggleRight}
       />
 
       <main
@@ -345,7 +174,7 @@ export default function App() {
             cryptoExchange={cryptoExchange}
             onSelectSymbol={setSymbol}
             onSelectAsset={setAsset}
-            onSelectExchange={setCryptoExchange}
+            onSelectExchange={shell.setCryptoExchange}
           />
         )}
         {mode === "chart" && !leftOpen && <span aria-hidden="true" />}
@@ -395,9 +224,9 @@ export default function App() {
               compareCandidates={compareCandidates}
               compareTimeframes={catalog?.timeframes ?? []}
               compareChartTypes={catalog?.chartTypes ?? []}
-              onAddCompare={addCompare}
-              onUpdateCompare={updateCompare}
-              onRemoveCompare={removeCompare}
+              onAddCompare={shell.addCompare}
+              onUpdateCompare={shell.updateCompare}
+              onRemoveCompare={shell.removeCompare}
             />
           )}
           {mode === "trade" && (
@@ -445,77 +274,10 @@ export default function App() {
         {mode === "chart" && !rightOpen && <span aria-hidden="true" />}
       </main>
 
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+      <CommandPalette open={appCommands.paletteOpen} onClose={appCommands.closePalette} commands={appCommands.commands} />
       <AlertToasts toasts={priceAlerts.toasts} decimalsFor={decimalsFor} onDismiss={priceAlerts.dismissToast} />
     </div>
   );
-}
-
-function readPanel(key: string, fallback: boolean) {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw === null ? fallback : raw === "1";
-  } catch {
-    return fallback;
-  }
-}
-
-function writePanel(key: string, open: boolean) {
-  try {
-    window.localStorage.setItem(key, open ? "1" : "0");
-  } catch {
-    // ignore
-  }
-}
-
-/** Load persisted compare overlays, tolerating the old string[] storage shape. */
-function loadCompare(defaultTimeframe: Timeframe, defaultChartType: ChartType): CompareOverlayConfig[] {
-  try {
-    const raw = window.localStorage.getItem("sbv2:compare");
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item, index): CompareOverlayConfig | undefined => {
-        if (typeof item === "string") {
-          return {
-            id: item,
-            symbol: item,
-            timeframe: defaultTimeframe,
-            chartType: asCompareChartType(defaultChartType),
-            color: compareColor(index),
-            upColor: DEFAULT_COMPARE_UP,
-            downColor: DEFAULT_COMPARE_DOWN
-          };
-        }
-        if (!item || typeof item !== "object") return undefined;
-        const candidate = item as Partial<CompareOverlayConfig>;
-        if (typeof candidate.symbol !== "string") return undefined;
-        return {
-          id: typeof candidate.id === "string" ? candidate.id : candidate.symbol,
-          symbol: candidate.symbol,
-          timeframe: asTimeframe(candidate.timeframe, defaultTimeframe),
-          chartType: asCompareChartType(candidate.chartType ?? defaultChartType),
-          color: typeof candidate.color === "string" ? candidate.color : compareColor(index),
-          upColor: typeof candidate.upColor === "string" ? candidate.upColor : DEFAULT_COMPARE_UP,
-          downColor: typeof candidate.downColor === "string" ? candidate.downColor : DEFAULT_COMPARE_DOWN
-        };
-      })
-      .filter((item): item is CompareOverlayConfig => Boolean(item))
-      .slice(0, MAX_COMPARE);
-  } catch {
-    return [];
-  }
-}
-
-function asTimeframe(value: unknown, fallback: Timeframe): Timeframe {
-  const allowed: Timeframe[] = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"];
-  return typeof value === "string" && allowed.includes(value as Timeframe) ? value as Timeframe : fallback;
-}
-
-function asCompareChartType(value: unknown): CompareChartType {
-  const allowed: CompareChartType[] = ["candles", "heikin", "bars", "line", "area", "baseline"];
-  return typeof value === "string" && allowed.includes(value as CompareChartType) ? value as CompareChartType : "line";
 }
 
 function StrategyLoading() {

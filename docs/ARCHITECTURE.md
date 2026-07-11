@@ -92,11 +92,11 @@ backend/src/
 
 The frontend is a React 18 single-page app built with Vite 8. Its notable dependencies are `blockly` (visual strategy builder), `lucide-react` (icons), and `react`/`react-dom`. There is no third-party charting library — charts are drawn by a hand-written engine.
 
-`frontend/src/App.tsx` is the shell. It owns the top-level UI state (selected `symbol`, `timeframe`, `chartType`, asset-class filter, crypto exchange, theme, panel visibility) and switches between three modes: `chart`, `strategy`, and `trade`.
+`frontend/src/App.tsx` is the workspace composition root. It retains selected market/chart routing state and switches between `chart`, `strategy`, and `trade`. `frontend/src/app/useAppShell.ts` owns cross-workspace preferences, panels, exchange, named workspaces and compare overlays; `useAppCommands.ts` owns commands and global shortcuts.
 
 - **Custom canvas chart engine** — `frontend/src/chart/ChartEngine.ts` renders directly to a canvas 2D context, with a theme palette driven from CSS variables so the chart stays in sync with light/dark mode. Supporting modules under `chart/` handle viewport/scales, Heikin-Ashi transforms, indicator math, and drawing objects. The chart supports the chart types declared in the catalog: `candles`, `heikin`, `bars`, `line`, `area`, `baseline`, `renko`.
 - **Blockly strategy builder** — the Strategy Lab (`frontend/src/strategy/`) uses Blockly blocks that compile to the shared strategy IR (`compileArtifact.ts` → `compile.ts` → `ir.ts`) and runs a backtest (`backtest.ts`) against the current candle window.
-- **Lazy-loaded views** — the heavier `StrategyLab` and `TradingView` views are code-split with `React.lazy` and rendered inside `<Suspense>`. `App.tsx` also *warms* them ahead of time (`warmStrategyLab`, `warmTradingView`) so the chunk is already fetched by the time the user switches mode.
+- **Lazy-loaded views** — the heavier `StrategyLab` and `TradingView` views are code-split with `React.lazy` and rendered inside `<Suspense>`. Shell and command controllers warm those chunks ahead of likely navigation.
 - **Runtime exchange selector** — for crypto instruments the user can pick `binance` or `bybit`; the choice is persisted in `localStorage` (`mf:cryptoExchange`) and threaded through candle/sparkline/stream requests.
 - **Command palette + hotkeys** — `⌘/Ctrl-K` toggles a command palette; number keys `1..6` select timeframes.
 - **Local workspace persistence** — indicators, the strategy library, theme, and panel state are stored in `localStorage`; a strategy can be imported from a `#s=…` URL hash as a remixable copy.
@@ -105,7 +105,8 @@ The frontend is a React 18 single-page app built with Vite 8. Its notable depend
 
 ```text
 frontend/src/
-├── App.tsx                   # Shell: state, mode switching, lazy views, hotkeys
+├── App.tsx                   # Workspace composition and market routing state
+├── app/                      # Shell preferences, workspaces, commands and storage migration
 ├── types.ts                  # Instrument, Candle, StreamMessage, DataExchange, ...
 ├── api/
 │   └── marketClient.ts       # REST helpers + createMarketSocket (WebSocket URL)

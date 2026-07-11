@@ -127,7 +127,7 @@ backtest/
     explanations.ts
 ```
 
-The orchestrator now describes the bar loop; pricing, sizing, accounting, warm-up, trace context and metrics are independently tested pure package functions. Remaining work is versioned event traces and final report/provenance extraction.
+The orchestrator now describes the bar loop; pricing, sizing, accounting, warm-up, trace context, metrics, versioned traces and final report/provenance assembly are independently tested package functions.
 
 ## Strategy Lab decomposition
 

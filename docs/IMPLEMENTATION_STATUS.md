@@ -308,13 +308,16 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Extract cancellable backtest/optimizer orchestration into `useStrategyResearch`.
   - [x] Ignore stale progress/results and abort in-flight history/security requests on teardown.
 - [x] Split `TradingView` into auth/bots/orders/portfolio/settings feature modules.
-- [ ] Reduce `App.tsx` to composition and routing state.
+- [x] Reduce `App.tsx` to composition and routing state.
   - [x] Extract strategy artifact persistence, sharing, creation, import, version/hash and linked-indicator synchronization into `useArtifactLibrary` plus a pure model.
   - [x] Reduce `App.tsx` from 782 to under 600 lines without changing workspace flows.
   - [x] Extract artifact compilation, `request.security`, preview/backtest overlay, input overrides and chart focus into `useChartArtifactOverlay`.
   - [x] Reject stale async overlay results after market/timeframe/request changes and cover the race directly.
   - [x] Reduce `App.tsx` further to 529 lines.
-  - [ ] Extract shell/workspace persistence and command controllers.
+  - [x] Extract shell/workspace persistence, compare migration and preferences into `useAppShell` plus `shellStorage`.
+  - [x] Extract command construction, palette state and global shortcuts into `useAppCommands`.
+  - [x] Apply persisted theme before React boot and synchronize native `color-scheme`/theme metadata.
+  - [x] Reduce `App.tsx` to a 291-line workspace composition root.
 - [ ] Split chart orchestration into dirty render layers.
 - [ ] Add an accessible DOM/table alternative for focused OHLC, signals and trades.
 

@@ -29,4 +29,4 @@ Pure domain behavior uses Vitest. React behavior should use component tests, and
 
 ## Planned decomposition
 
-`App.tsx` is being reduced to composition-only. Strategy Lab and Trading View are feature-owned, strategy artifact lifecycle belongs to `strategy/useArtifactLibrary.ts`, and async chart artifact overlays belong to `chart/useChartArtifactOverlay.ts`. Shell/workspace persistence remains the next extraction. See `docs/MODULAR_ARCHITECTURE.md`.
+`App.tsx` is now a small workspace composition root. Strategy artifacts belong to `strategy/useArtifactLibrary.ts`, async chart artifacts to `chart/useChartArtifactOverlay.ts`, and cross-workspace preferences/workspaces/commands to the `app/` controllers. See `docs/MODULAR_ARCHITECTURE.md`.
