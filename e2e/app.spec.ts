@@ -126,3 +126,69 @@ test("keeps trading locked for a bad token and opens an authenticated session", 
   await page.getByRole("button", { name: "Unlock" }).click();
   await expect(page.getByText("Live & paper trading", { exact: true })).toBeVisible({ timeout: 15_000 });
 });
+
+test("configures and persists a built-in indicator", async ({ page }) => {
+  await page.getByRole("button", { name: "ADD", exact: true }).click();
+  await page.getByRole("menuitem", { name: "EMA 50", exact: true }).click();
+
+  const editor = page.getByRole("dialog", { name: "EMA settings" });
+  await expect(editor).toBeVisible();
+  await editor.getByLabel("Period").fill("34");
+  await editor.getByRole("button", { name: "Close indicator editor" }).click();
+
+  await expect(page.locator(".indicator-chip").filter({ hasText: "EMA" })).toContainText("34");
+  await page.reload();
+  await expect(page.locator(".indicator-chip").filter({ hasText: "EMA" })).toContainText("34");
+});
+
+test("adds an imported custom indicator to the chart", async ({ page }) => {
+  const workspaceModes = page.getByLabel("Workspace mode");
+  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Pine", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import Pine Script" });
+  await dialog.locator("textarea").fill([
+    "//@version=6",
+    'indicator("Chart E2E SMA", overlay=true)',
+    'plot(ta.sma(close, 3), "SMA")'
+  ].join("\n"));
+  await dialog.getByRole("button", { name: "Convert", exact: true }).click();
+  await dialog.getByRole("button", { name: "Add 1 artifact", exact: true }).click();
+
+  await workspaceModes.getByRole("button", { name: "Chart", exact: true }).click();
+  await page.getByRole("button", { name: "ADD", exact: true }).click();
+  await page.getByRole("menuitem").filter({ hasText: "Chart E2E SMA" }).click();
+
+  await expect(page.locator(".strategy-chip")).toContainText("Chart E2E SMA", { timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Remove strategy from chart" })).toBeVisible();
+});
+
+test("creates, starts, journals and stops a paper bot", async ({ page }) => {
+  const workspaceModes = page.getByLabel("Workspace mode");
+  await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();
+  await page.getByLabel("Access token").fill("e2e-local-admin-token");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page.getByText("Live & paper trading", { exact: true })).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: /Create paper bot|New bot/ }).first().click();
+  const botName = `Paper E2E ${Date.now()}`;
+  await page.getByLabel("Bot name").fill(botName);
+  await page.getByLabel("Exchange").selectOption("paper");
+  await page.getByRole("button", { name: "Create bot", exact: true }).click();
+
+  const detail = page.locator(".trade-detail");
+  await expect(detail.locator(".trade-detail-head strong")).toHaveText(botName, { timeout: 15_000 });
+  await detail.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "Stop", exact: true })).toBeVisible({ timeout: 15_000 });
+
+  const command = detail.getByPlaceholder("action=openposition;side=buy;openpro=25;lev=5");
+  await command.fill("action=openposition;symbol=BTCUSDT;side=buy;qty=0.001;lev=1");
+  await command.press("Enter");
+  await expect(detail.getByText("Order journal", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(detail.locator(".trade-journal-row").filter({ hasText: /open|accepted/i }).first()).toBeVisible();
+
+  await detail.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "Start", exact: true })).toBeVisible({ timeout: 15_000 });
+  await detail.getByRole("button", { name: "Delete bot" }).click();
+});

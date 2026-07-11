@@ -49,7 +49,7 @@ Verification:
 - 9 Playwright scenarios passed on the production build.
 - Biome, TypeScript and Vitest passed.
 
-### Cycles Analysis compatibility — current compatibility commit
+### Cycles Analysis compatibility — commit `8bda112`
 
 - [x] Render imported Cycles Analysis with phase shading, crest lines and neutral reversal markers.
 - [x] Add marker colors and optional box opacity/borders to the generic chart overlay model.
@@ -66,7 +66,7 @@ Verification:
 
 ### Critical browser E2E expansion
 
-Current: 9 scenarios implemented.
+Current: 12 scenarios implemented.
 
 - [x] Terminal/chart smoke.
 - [x] Keyboard command palette and symbol switch.
@@ -77,9 +77,9 @@ Current: 9 scenarios implemented.
 - [x] Named workspace persistence.
 - [x] Backtest execution/report.
 - [x] Trade authentication gate.
-- [ ] Add/configure/persist a built-in indicator.
-- [ ] Add a saved custom indicator to the chart.
-- [ ] Create/start/stop a paper bot and inspect its order journal.
+- [x] Add/configure/persist a built-in indicator.
+- [x] Add a saved custom indicator to the chart.
+- [x] Create/start/stop a paper bot and inspect its order journal.
 - [ ] WebSocket disconnect/reconnect without duplicated candles.
 - [ ] Visible unavailable/fallback market-data state.
 - [ ] Keyboard/focus behavior for modal dialogs and menus.
