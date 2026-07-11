@@ -152,12 +152,20 @@ Verification:
 - [x] Pass locale explicitly through the trading feature boundary.
 - [x] Extend browser locale coverage into the Russian Trade authentication flow.
 
-### Pine compiler public contracts — current Pine diagnostics commit
+### Pine compiler public contracts — commit `4e8ffea`
 
 - [x] Add a public AST type facade independent of parser implementation imports.
 - [x] Add typed warning/error diagnostics with stable codes and source-span contracts.
 - [x] Preserve legacy warning strings while exposing structured diagnostics to future editors.
 - [x] Attach typed diagnostics to public `PineConvertError` instances.
+
+### Trading activity decomposition — current activity-panels commit
+
+- [x] Split command composition/saved commands into `BotCommandConsole.tsx`.
+- [x] Split orders, order journal, fills and logs into `BotActivity.tsx`.
+- [x] Replace journal layout divs with semantic HTML tables and labeled sections.
+- [x] Isolate below-the-fold journal rendering with `content-visibility` plus intrinsic-size and containment fallback.
+- [x] Reduce `BotDetail.tsx` from 349 to 97 lines.
 
 ## Completed browser baseline
 
@@ -207,7 +215,7 @@ Current: 16 scenarios implemented; the original critical-flow checklist is compl
 ### Frontend decomposition
 
 - [ ] Split `StrategyLab` into build/validate/preview/backtest/optimize/library controllers and panels.
-- [ ] Split `TradingView` into auth/bots/orders/portfolio/settings feature modules.
+- [x] Split `TradingView` into auth/bots/orders/portfolio/settings feature modules.
 - [ ] Reduce `App.tsx` to composition and routing state.
 - [ ] Split chart orchestration into dirty render layers.
 - [ ] Add an accessible DOM/table alternative for focused OHLC, signals and trades.

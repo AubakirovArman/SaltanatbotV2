@@ -191,7 +191,11 @@ test("creates, starts, journals and stops a paper bot", async ({ page }) => {
   await command.fill("action=openposition;symbol=BTCUSDT;side=buy;qty=0.001;lev=1");
   await command.press("Enter");
   await expect(detail.getByText("Order journal", { exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(detail.locator(".trade-journal-row").filter({ hasText: /open|accepted/i }).first()).toBeVisible();
+  const orderTable = detail.locator(".trade-order-journal table");
+  await orderTable.scrollIntoViewIfNeeded();
+  await expect(orderTable).toBeVisible();
+  await expect(orderTable.getByRole("columnheader", { name: "Reason" })).toBeVisible();
+  await expect(orderTable.getByRole("row").filter({ hasText: /open|accepted/i }).first()).toBeVisible();
 
   await detail.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(detail.getByRole("button", { name: "Start", exact: true })).toBeVisible({ timeout: 15_000 });
