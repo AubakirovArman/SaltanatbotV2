@@ -10,6 +10,22 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Accessibility and open-source release baseline — 2026-07-11
+
+- [x] Enforce initial focus, Tab containment, Escape and focus restoration across core modal dialogs.
+- [x] Apply visible focus and global reduced-motion behavior across the application.
+- [x] Correct secondary text colours to meet current WCAG AA automated contrast checks.
+- [x] Audit Chart, Strategy and Trading with axe WCAG 2/2.1 A/AA without application exclusions.
+- [x] Verify keyboard operation, semantic chart tables and a 200% text-size monitoring path in Playwright.
+- [x] Update `<html lang>`, direction metadata and localized document titles at runtime.
+- [x] Publish accessibility evidence, contributor routing, asset provenance and migration policies.
+- [x] Categorize automatic GitHub release notes alongside signed/SBOM/checksum release assets.
+
+Verification:
+
+- Dedicated production browser accessibility scenarios pass on Chromium.
+- TypeScript, Biome, documentation and dependency-audit gates pass.
+
 ### Versioned Strategy and Indicator Studio — 2026-07-11
 
 - [x] Separate Build, Validate, Preview, Backtest, Optimize, Run and Learn workflows.

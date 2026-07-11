@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -9,6 +10,28 @@ test("loads the terminal and exposes the chart semantically", async ({ page }) =
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("status")).toBeVisible();
   await expect(page.getByRole("button", { name: "Toggle markets panel" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("passes automated WCAG A/AA audits on chart, strategy and trading surfaces", async ({ page }) => {
+  await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
+  await expectNoAxeViolations(page);
+  const modes = page.getByLabel("Workspace mode");
+  await modes.getByRole("button", { name: "Strategy", exact: true }).click();
+  await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
+  await expectNoAxeViolations(page);
+  await modes.getByRole("button", { name: "Trade", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Trading is locked" })).toBeVisible();
+  await expectNoAxeViolations(page);
+});
+
+test("honours reduced motion and remains operable at 200 percent text size", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const transition = await page.getByRole("button", { name: "Toggle markets panel" }).evaluate((element) => getComputedStyle(element).transitionDuration);
+  expect(Number.parseFloat(transition)).toBeLessThanOrEqual(0.00001);
+  await page.locator("html").evaluate((element) => { element.style.fontSize = "200%"; });
+  await expect(page.getByLabel("Workspace mode")).toBeVisible();
+  await page.getByRole("button", { name: "Chart data", exact: true }).click();
+  await expect(page.getByRole("table", { name: "Latest candle" })).toBeVisible({ timeout: 20_000 });
 });
 
 test("offers a keyboard-operable tabular alternative to the canvas chart", async ({ page }) => {
@@ -60,6 +83,13 @@ test("creates an ordinary editable strategy with the guided wizard", async ({ pa
 
   await page.getByRole("button", { name: "Wizard", exact: true }).click();
   const wizard = page.getByRole("dialog", { name: "Guided strategy wizard" });
+  await expect(wizard.getByLabel("Strategy name")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(wizard.getByRole("button", { name: "Close strategy wizard" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(wizard).toBeHidden();
+  await expect(page.getByRole("button", { name: "Wizard", exact: true })).toBeFocused();
+  await page.getByRole("button", { name: "Wizard", exact: true }).click();
   await wizard.getByLabel("Strategy name").fill("E2E guided breakout");
   await wizard.getByRole("button", { name: "Next", exact: true }).click();
   await wizard.getByLabel("Entry signal").selectOption("price-breakout");
@@ -111,6 +141,8 @@ test("switches and persists the interface locale", async ({ page }) => {
   await page.getByRole("button", { name: "Switch interface language to Russian" }).click();
 
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+  await expect(page).toHaveTitle("График · SaltanatbotV2");
   const workspaceModes = page.locator(".mode-tabs");
   await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
   await expect(workspaceModes.getByRole("button", { name: "Стратегия", exact: true })).toBeVisible();
@@ -128,6 +160,7 @@ test("switches and persists the interface locale", async ({ page }) => {
   await page.keyboard.press("Escape");
 
   await workspaceModes.getByRole("button", { name: "Стратегия", exact: true }).click();
+  await expect(page).toHaveTitle("Стратегия · SaltanatbotV2");
   await page.getByRole("navigation", { name: "Этапы Студии" }).getByRole("button", { name: "Бэктест", exact: true }).click();
   await expect(page.getByRole("button", { name: "Запустить бэктест", exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("button", { name: "Галерея", exact: true })).toBeVisible();
@@ -432,4 +465,9 @@ async function installMarketSocketMock(
 
     window.WebSocket = MockWebSocket as unknown as typeof WebSocket;
   }, { socketMode: mode, rows: candles });
+}
+
+async function expectNoAxeViolations(page: Page) {
+  const audit = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(audit.violations, audit.violations.map((item) => `${item.id}: ${item.help} (${item.nodes.length})`).join("\n")).toEqual([]);
 }

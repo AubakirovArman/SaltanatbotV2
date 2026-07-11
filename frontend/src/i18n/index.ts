@@ -1,4 +1,10 @@
 export type Locale = "en" | "ru";
+export type TextDirection = "ltr" | "rtl";
+
+/** Central direction metadata keeps future RTL locales out of component logic. */
+export function localeDirection(_locale: Locale): TextDirection {
+  return "ltr";
+}
 
 const en = {
   chart: "Chart",

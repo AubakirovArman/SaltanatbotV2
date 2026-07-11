@@ -32,6 +32,10 @@ their source contracts, and user-facing claims were compared with the current im
 | [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger | 2026-07-11 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |
+| [Accessibility baseline](ACCESSIBILITY.md) | users/contributors | current alpha baseline | 2026-07-11 |
+| [Contributor map](CONTRIBUTOR_MAP.md) | contributors | current | 2026-07-11 |
+| [Asset provenance policy](ASSET_POLICY.md) | contributors | current | 2026-07-11 |
+| [Migration notes](MIGRATIONS.md) | operators/contributors | current | 2026-07-11 |
 
 Planning and audit documents describe research or target architecture rather than shipped behavior.
 They must be read together with `IMPLEMENTATION_STATUS.md` and must not be presented as release notes.

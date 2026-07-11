@@ -1,8 +1,9 @@
 import { AlertTriangle, CheckCircle2, FileCode2, Upload, X, XCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { importPineScript, type PineImport } from "../strategy/pine";
 import type { Locale } from "../i18n";
 import { strategyText } from "../i18n/strategy";
+import { useModalFocus } from "../hooks/useModalFocus";
 
 interface PineImportDialogProps {
   locale: Locale;
@@ -34,15 +35,7 @@ export function PineImportDialog({ locale, onClose, onImportMany }: PineImportDi
   const [results, setResults] = useState<Converted[]>();
   const [readNote, setReadNote] = useState<string>();
   const fileRef = useRef<HTMLInputElement | null>(null);
-
-  // Close on Escape, matching the other Lab modals.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const modal = useModalFocus<HTMLDivElement>(onClose, "textarea");
 
   // Read selected files resiliently: skip oversized picks, respect MAX_FILES, and
   // keep the readable files even if some fail — surfacing what was dropped so the
@@ -84,7 +77,7 @@ export function PineImportDialog({ locale, onClose, onImportMany }: PineImportDi
   const canConvert = source.trim().length > 0 || files.length > 0;
 
   return (
-    <div className="gallery-backdrop" role="dialog" aria-modal="true" aria-label={t("importPine")} onClick={onClose}>
+    <div ref={modal.dialogRef} tabIndex={-1} className="gallery-backdrop" role="dialog" aria-modal="true" aria-label={t("importPine")} onKeyDown={modal.onKeyDown} onClick={onClose}>
       <div className="gallery-modal pine-import" onClick={(event) => event.stopPropagation()}>
         <div className="gallery-head">
           <strong>

@@ -1,5 +1,5 @@
 import { Download, FileCode2, LayoutGrid, Plus, Upload, WandSparkles, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { PineImportDialog } from "../../components/PineImportDialog";
 import type { PineImport } from "../pine";
 import type { StrategyArtifact, StrategyArtifactKind } from "../library";
@@ -8,6 +8,7 @@ import { downloadStrategyFile, parseStrategyFile, type PortableStrategyArtifact 
 import type { Locale } from "../../i18n";
 import { strategyCategory, strategyText } from "../../i18n/strategy";
 import { StrategyWizard } from "./StrategyWizard";
+import { useModalFocus } from "../../hooks/useModalFocus";
 
 export function StrategyLibrary({
   locale,
@@ -178,13 +179,7 @@ function TemplateGallery({
   onClose: () => void;
   onUse: (template: StrategyTemplate) => void;
 }) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const modal = useModalFocus<HTMLDivElement>(onClose, "button");
 
   const categories = TEMPLATE_CATEGORIES.map((category) => ({
     category,
@@ -192,7 +187,7 @@ function TemplateGallery({
   })).filter((group) => group.items.length > 0);
 
   return (
-    <div className="gallery-backdrop" role="dialog" aria-modal="true" aria-label={strategyText(locale, "galleryLabel")} onClick={onClose}>
+    <div ref={modal.dialogRef} tabIndex={-1} className="gallery-backdrop" role="dialog" aria-modal="true" aria-label={strategyText(locale, "galleryLabel")} onKeyDown={modal.onKeyDown} onClick={onClose}>
       <div className="gallery-modal" onClick={(event) => event.stopPropagation()}>
         <div className="gallery-head">
           <strong>

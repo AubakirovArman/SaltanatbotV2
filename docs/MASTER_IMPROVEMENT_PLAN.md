@@ -228,17 +228,21 @@ Minimum product languages:
 
 Accessibility release criteria include keyboard-only operation, visible focus, semantic modal behavior, screen-reader announcements, non-color status indicators, 200% zoom, reduced motion and accessible alternatives to chart-only information.
 
+Status: delivered for the alpha release baseline and enforced by the production browser suite. See
+[ACCESSIBILITY.md](./ACCESSIBILITY.md). A current multi-screen-reader manual matrix remains a stable
+release gate rather than an alpha P2 blocker.
+
 ## Priority 2: open-source readiness
 
-- add `SECURITY.md`, vulnerability disclosure and supported-version policy;
+- [x] add `SECURITY.md`, vulnerability disclosure and supported-version policy;
 - add `CODE_OF_CONDUCT.md`, issue forms and PR templates (delivered);
-- document release channels: nightly, alpha, beta, stable;
-- add signed release artifacts, checksums and SBOM;
-- add changelog automation and migration notes;
-- publish threat model and explicit non-goals (delivered);
-- add contributor maps for chart, Pine, strategy core, providers and execution;
-- define screenshot licensing/provenance rules (Pine corpus policy and enforcement delivered);
-- add a public demo mode that cannot mutate trade state.
+- [x] document release channels: nightly, alpha, beta, stable;
+- [x] add signed release artifacts, checksums and SBOM;
+- [x] add categorized GitHub release-note automation and migration notes;
+- [x] publish threat model and explicit non-goals;
+- [x] add contributor maps for chart, Pine, strategy core, providers and execution;
+- [x] define screenshot, asset and sample licensing/provenance rules;
+- [x] add a public demo mode that cannot mutate live trade or exchange-key state.
 
 ## Priority 3: later product opportunities
 

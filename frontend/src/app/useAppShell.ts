@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { CompareOverlayConfig } from "../chart/types";
-import { loadLocale, storeLocale, type Locale } from "../i18n";
+import { loadLocale, localeDirection, storeLocale, type Locale } from "../i18n";
 import { warmStrategyLab } from "../strategy/loadStrategyLab";
 import { storeIndicators } from "../strategy/storage";
 import type { ChartType, DataExchange, Timeframe } from "../types";
@@ -107,6 +107,7 @@ export function useAppShell(options: UseAppShellOptions) {
 
   useEffect(() => {
     document.documentElement.lang = locale;
+    document.documentElement.dir = localeDirection(locale);
     storeLocale(locale);
   }, [locale]);
 

@@ -1,30 +1,24 @@
 import { RotateCcw, X } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { assignShortcut, DEFAULT_SHORTCUTS, shortcutFromEvent, type ShortcutAction, type ShortcutMap } from "../app/shortcuts";
 import type { Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
+import { useModalFocus } from "../hooks/useModalFocus";
 
 const actions = Object.keys(DEFAULT_SHORTCUTS) as ShortcutAction[];
 
 export function ShortcutSettingsDialog({ locale, open, shortcuts, onChange, onClose }: { locale: Locale; open: boolean; shortcuts: ShortcutMap; onChange: (shortcuts: ShortcutMap) => void; onClose: () => void }) {
   const [capturing, setCapturing] = useState<ShortcutAction>();
   const [status, setStatus] = useState("");
-  const closeRef = useRef<HTMLButtonElement | null>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    if (!open) return;
-    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeRef.current?.focus();
-    return () => { if (returnFocusRef.current?.isConnected) returnFocusRef.current.focus(); };
-  }, [open]);
+  const modal = useModalFocus<HTMLElement>(onClose, "button", open);
   if (!open) return null;
   return createPortal(
     <div className="shortcut-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcut-title" onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
+      <section ref={modal.dialogRef} tabIndex={-1} className="shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcut-title" onKeyDown={modal.onKeyDown}>
         <header>
           <div><strong id="shortcut-title">{shellText(locale, "keyboardShortcuts")}</strong><span>{shellText(locale, "shortcutHint")}</span></div>
-          <button ref={closeRef} type="button" onClick={onClose} aria-label={shellText(locale, "closeShortcutSettings")}><X size={15} aria-hidden="true" /></button>
+          <button type="button" onClick={onClose} aria-label={shellText(locale, "closeShortcutSettings")}><X size={15} aria-hidden="true" /></button>
         </header>
         <div className="shortcut-list">
           {actions.map((action) => (

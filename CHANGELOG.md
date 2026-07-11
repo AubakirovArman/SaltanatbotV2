@@ -5,6 +5,17 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Strategy Studio and accessibility
+
+- Added explicit Build/Validate/Preview/Backtest/Optimize/Run/Learn stages, a guided editable-strategy
+  wizard, block contracts, linked diagnostics and validated parameter schemas.
+- Added immutable artifact history, semantic versions, content/IR fingerprints, dependency-cycle
+  checks, diff/rollback and checksum-verified schema-v2 `.strategy` files.
+- Added automated axe WCAG A/AA audits across Chart, Strategy and Trading, shared modal focus behavior,
+  global reduced-motion handling, 200% text verification and corrected secondary-text contrast.
+- Added contributor, asset-provenance, accessibility and migration policies plus categorized automatic
+  GitHub release notes.
+
 ### Operations and recovery
 
 - Added checksum-manifested online SQLite backups for trading state, candle cache and encryption

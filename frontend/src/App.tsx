@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useChartArtifactOverlay } from "./chart/useChartArtifactOverlay";
 import { AlertToasts } from "./components/AlertToasts";
 import { ChartCanvas } from "./components/ChartCanvas";
@@ -25,6 +25,7 @@ import { useAppShell, type AppMode } from "./app/useAppShell";
 import { useAppCommands } from "./app/useAppCommands";
 import { shellText } from "./i18n/shell";
 import type { Locale } from "./i18n";
+import { translate } from "./i18n";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
@@ -55,6 +56,9 @@ export default function App() {
     setMode, indicators, setIndicators
   });
   const { cryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, workspaces, activeWorkspaceId, compareOverlays } = shell;
+  useEffect(() => {
+    document.title = `${translate(locale, mode)} · SaltanatbotV2`;
+  }, [locale, mode]);
   const openStrategyWorkspace = useCallback(() => setMode("strategy"), []);
   const artifactLibrary = useArtifactLibrary({
     initialArtifacts: initialWorkspaceState.strategyLibrary,

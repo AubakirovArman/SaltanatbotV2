@@ -33,8 +33,9 @@
     "format": "biome format --write ."
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
+    "@axe-core/playwright": "^4.12.1",
     "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "^1.61.1",
     "concurrently": "^9.2.1",
     "vitest": "^4.1.10"
   }

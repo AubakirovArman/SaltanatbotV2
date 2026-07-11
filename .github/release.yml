@@ -1,0 +1,17 @@
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: Security and execution safety
+      labels: [security, execution]
+    - title: Pine, strategies and research
+      labels: [pine, strategy, backtest]
+    - title: Chart and user experience
+      labels: [chart, ux, accessibility]
+    - title: Documentation and localization
+      labels: [documentation, localization]
+    - title: Maintenance
+      labels: [dependencies, maintenance]
+    - title: Other changes
+      labels: ["*"]

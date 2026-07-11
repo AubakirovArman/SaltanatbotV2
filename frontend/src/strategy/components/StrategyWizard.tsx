@@ -5,16 +5,18 @@ import { strategyText } from "../../i18n/strategy";
 import { ARTIFACT_SCHEMA_VERSION } from "../library";
 import type { PortableStrategyArtifact } from "../strategyFile";
 import { buildWizardXml, DEFAULT_WIZARD_SPEC, type StrategyWizardSpec } from "../wizard";
+import { useModalFocus } from "../../hooks/useModalFocus";
 
 export function StrategyWizard({ locale, onClose, onCreate }: { locale: Locale; onClose: () => void; onCreate: (artifact: PortableStrategyArtifact) => void }) {
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const [step, setStep] = useState(0);
   const [spec, setSpec] = useState<StrategyWizardSpec>(DEFAULT_WIZARD_SPEC);
+  const modal = useModalFocus<HTMLDivElement>(onClose, "input");
   const numberField = (key: keyof StrategyWizardSpec, label: string, min: number, stepValue = 1) => (
     <label>{label}<input type="number" min={min} step={stepValue} value={spec[key] as number} onChange={(event) => setSpec((current) => ({ ...current, [key]: Number(event.target.value) }))} /></label>
   );
   return (
-    <div className="gallery-backdrop" role="dialog" aria-modal="true" aria-labelledby="wizard-title" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div ref={modal.dialogRef} tabIndex={-1} className="gallery-backdrop" role="dialog" aria-modal="true" aria-labelledby="wizard-title" onKeyDown={modal.onKeyDown} onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="strategy-wizard">
         <header><div><strong id="wizard-title"><WandSparkles size={15} aria-hidden="true" /> {t("strategyWizard")}</strong><span>{t("wizardStep")} {step + 1}/3</span></div><button type="button" onClick={onClose} aria-label={t("closeWizard")}><X size={15} aria-hidden="true" /></button></header>
         <div className="wizard-progress" aria-hidden="true"><i style={{ inlineSize: `${((step + 1) / 3) * 100}%` }} /></div>
