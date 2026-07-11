@@ -216,7 +216,8 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [ ] Extract statement and strategy-call lowering.
 - [x] Extract drawing lowering.
 - [ ] Extract Blockly serialization.
-- [ ] Add compatibility registry generated from corpus metadata.
+- [x] Add a typed compatibility registry and Markdown matrix generated from both Pine corpora.
+- [x] Fail documentation CI when generated compatibility artifacts are stale.
 - [x] Add deterministic parser fuzz, valid-seed mutation and conversion-determinism property tests.
 - [ ] Move the pure compiler into `packages/pine-compiler`.
 
@@ -270,6 +271,8 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [ ] Move remaining UI strings into typed messages.
 - [ ] Complete Russian user-guide parity.
 - [ ] Generate API/block/Pine compatibility reference from source contracts.
+  - [x] Generate Pine compatibility TypeScript and Markdown references from corpus metadata.
+  - [ ] Generate API and block-catalog references.
 - [x] Add `SECURITY.md`, `CODE_OF_CONDUCT.md`, changelog and support policy.
 - [x] Add documentation link/example checks to CI.
 - [ ] Add release channels, SBOM, checksums and signed artifacts.

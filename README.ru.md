@@ -70,6 +70,7 @@ npm run build
 - [Русский индекс документации](docs/ru/README.md)
 - [Архитектура](docs/ARCHITECTURE.md)
 - [Стратегии и backtest](docs/STRATEGIES.md)
+- [Сгенерированная матрица совместимости Pine](docs/PINE_COMPATIBILITY.generated.md)
 - [Trading](docs/TRADING.md)
 - [Конфигурация и безопасность](docs/CONFIGURATION.md)
 - [Общий план развития](docs/MASTER_IMPROVEMENT_PLAN.md)

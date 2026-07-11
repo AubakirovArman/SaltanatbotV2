@@ -4,6 +4,7 @@ import { convertPine, PineConvertError, type PineResult } from "./convert";
 import { CYCLES_ANALYSIS_WARNINGS, isCyclesAnalysisSource, warningHeader } from "./compatibility";
 export type { PineAst, PineArg, PineExpr, PineFuncDef, PineStmt } from "./ast";
 export type { PineDiagnostic, SourcePosition, SourceSpan } from "./diagnostics";
+export { PINE_COMPATIBILITY_REGISTRY, PINE_COMPATIBILITY_SUMMARY, type PineCompatibilityEntry, type PineCompatibilityLevel } from "./generatedCompatibility";
 import { withCyclesAnalysisInputs } from "./cyclesAnalysisPreview";
 
 /**
