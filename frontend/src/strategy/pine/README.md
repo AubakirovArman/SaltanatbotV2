@@ -15,6 +15,7 @@ Consumers should import from `index.ts`. Lexer, parser and conversion internals 
 `booleanExpressionLowering.ts` owns logical/comparison operators, `na` tests, static string selectors, ternaries and bounded condition history.
 `identifierLowering.ts` centralizes typed built-in, bound, mutable, strategy-context and opaque-object name resolution for numeric and boolean expressions.
 `switchLowering.ts` maps string, numeric, boolean and side-effecting Pine switches to deterministic IR values or `if/elif/else` chains.
+`userFunctionInlining.ts` owns call-by-value argument binding, temporary lexical shadowing, tuple returns, recursion guards and side-effect rejection.
 `generatedCompatibility.ts` is the checked-in machine-readable feature matrix generated from both Pine corpora; regenerate it with `npm run pine:compat`.
 
 ## Current pipeline
@@ -39,4 +40,4 @@ The corpus classifies scripts as exact, approximation, display-only or rejected.
 
 ## Decomposition target
 
-`convert.ts` remains a temporary lowering coordinator, while pure semantic analysis, drawing lowering, switch and identifier resolution, and numeric/boolean call and expression lowering have moved to dedicated modules. Continue extracting user-function/value coordination, statement lowering and Blockly serialization in the order defined by `docs/MODULAR_ARCHITECTURE.md`. Keep `convertPine()` as the stable facade during the migration.
+`convert.ts` remains a temporary lowering coordinator, while pure semantic analysis, drawing lowering, switch and identifier resolution, user-function inlining, and numeric/boolean call and expression lowering have moved to dedicated modules. Continue extracting general value coordination, statement lowering and Blockly serialization in the order defined by `docs/MODULAR_ARCHITECTURE.md`. Keep `convertPine()` as the stable facade during the migration.

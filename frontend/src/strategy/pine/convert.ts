@@ -34,6 +34,13 @@ import { lowerBooleanExpression, type BooleanExpressionLoweringContext } from ".
 import { lowerBooleanIdentifier, lowerNumericIdentifier, type IdentifierLoweringContext } from "./identifierLowering";
 import { lowerSwitchStatement, lowerSwitchValue, type SwitchLoweringContext } from "./switchLowering";
 import {
+  inlineUserFunction,
+  inlineUserFunctionSafely,
+  inlineUserFunctionTuple,
+  type UserFunctionInliningContext,
+  type UserFunctionInliningState
+} from "./userFunctionInlining";
+import {
   boolToNum,
   boolToNumericSeries,
   collectReassigned,
@@ -780,84 +787,33 @@ class Converter {
    * with mutable locals / side effects (:=, if, plot, orders…) are rejected.
    */
   private inlineUserFunc(name: string, callArgs: PineArg[]): Val {
-    return this.withInlinedFunc(name, callArgs, (retExpr) => this.val(retExpr));
+    return inlineUserFunction(this.userFunctionState(), this.userFunctionContext(), name, callArgs);
   }
 
   private inlineUserFuncSafely(name: string, callArgs: PineArg[]): Val {
-    try {
-      return this.inlineUserFunc(name, callArgs);
-    } catch (cause) {
-      if (cause instanceof PineConvertError && /control flow or side effects/i.test(cause.message)) {
-        this.warnOnce("sidefxfn", "Drawing/stateful helper functions are skipped when imported; their conditions return false.");
-        return { t: "bool", e: { k: "bool", v: false } };
-      }
-      throw cause;
-    }
+    return inlineUserFunctionSafely(this.userFunctionState(), this.userFunctionContext(), name, callArgs);
   }
 
   /** Inline a tuple-returning function (`f(...) => … [a, b]`) → one Val per element. */
   private inlineUserFuncTuple(name: string, callArgs: PineArg[]): Val[] {
-    return this.withInlinedFunc(name, callArgs, (retExpr) => {
-      if (retExpr.t !== "tuplelit") throw new PineConvertError(`"${name}()" doesn't return a tuple to destructure.`);
-      return retExpr.items.map((item) => this.val(item));
-    });
+    return inlineUserFunctionTuple(this.userFunctionState(), this.userFunctionContext(), name, callArgs);
   }
 
-  /** Bind arguments + immutable locals in a temporary scope, evaluate the return, restore. */
-  private withInlinedFunc<T>(name: string, callArgs: PineArg[], evalRet: (retExpr: PineExpr) => T): T {
-    const def = this.funcs.get(name);
-    if (!def) throw new PineConvertError(`Unknown function "${name}".`);
-    if (this.inlining.has(name)) throw new PineConvertError(`Recursive function "${name}()" isn't supported.`);
-    const positional = callArgs.filter((a) => !a.name);
-    if (positional.length > def.params.length) throw new PineConvertError(`${name}() called with too many arguments.`);
-    // Resolve each parameter's value in the CALLER's scope (before binding).
-    const bound: { name: string; val: Val }[] = [];
-    def.params.forEach((param, i) => {
-      const supplied = callArgs.find((a) => a.name === param.name)?.value ?? positional[i]?.value ?? param.def;
-      if (!supplied) throw new PineConvertError(`${name}() is missing argument "${param.name}".`);
-      bound.push({ name: param.name, val: this.val(supplied) });
-    });
-
-    this.inlining.add(name);
-    const saved = new Map<string, Val | undefined>();
-    const numSaved = new Set<string>();
-    const boolSaved = new Set<string>();
-    const shadow = (n: string, v: Val) => {
-      if (!saved.has(n)) saved.set(n, this.env.get(n));
-      this.env.set(n, v);
-      if (v.t === "num" && !this.numVars.has(n)) numSaved.add(n);
-      if (v.t === "bool" && !this.boolVars.has(n)) boolSaved.add(n);
+  private userFunctionState(): UserFunctionInliningState {
+    return {
+      booleanVariables: this.boolVars,
+      environment: this.env,
+      functions: this.funcs,
+      inlining: this.inlining,
+      numericVariables: this.numVars
     };
-    try {
-      for (const b of bound) shadow(b.name, b.val);
-      // Multi-line body: bind immutable locals; the last expression is the return value.
-      let retExpr = def.ret;
-      const body = def.body;
-      for (let i = 0; i < body.length; i += 1) {
-        const s = body[i];
-        const last = i === body.length - 1;
-        if (s.t === "assign" && !s.declaredVar) {
-          shadow(s.name, this.val(s.value));
-          if (last) retExpr = { t: "ident", name: s.name };
-        } else if (s.t === "expr" && last) {
-          retExpr = s.value;
-        } else if (s.t === "func") {
-          throw new PineConvertError(`Nested function definitions in "${name}()" aren't supported.`);
-        } else {
-          throw new PineConvertError(`"${name}()" has control flow or side effects in its body — only value-returning functions can be inlined.`);
-        }
-      }
-      if (!retExpr) throw new PineConvertError(`"${name}()" doesn't return a value.`);
-      return evalRet(retExpr);
-    } finally {
-      for (const [n, v] of saved) {
-        if (v === undefined) this.env.delete(n);
-        else this.env.set(n, v);
-      }
-      for (const n of numSaved) this.numVars.delete(n);
-      for (const n of boolSaved) this.boolVars.delete(n);
-      this.inlining.delete(name);
-    }
+  }
+
+  private userFunctionContext(): UserFunctionInliningContext {
+    return {
+      value: (value) => this.val(value),
+      warnOnce: (key, message) => this.warnOnce(key, message)
+    };
   }
 
   // ---------- switch ----------

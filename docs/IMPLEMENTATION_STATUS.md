@@ -181,9 +181,10 @@ Verification:
 - [x] Extract logical/comparison operators, `na` tests, string selectors, ternaries and boolean history.
 - [x] Centralize typed numeric/boolean identifier resolution and opaque-state degradation.
 - [x] Extract value and statement switch lowering with deterministic default behavior.
+- [x] Extract call-by-value user-function inlining, lexical restoration, tuple returns and recursion guards.
 - [x] Add direct tests for indicator, arithmetic, external boolean-series and fail-closed paths.
 - [x] Add direct tests for cross, multi-bar trend, external boolean-series and conservative timeframe paths.
-- [x] Reduce `convert.ts` from 1,916 to 1,401 lines without changing its public facade.
+- [x] Reduce `convert.ts` from 1,916 to 1,357 lines without changing its public facade.
 
 ### Trading activity decomposition — commit `4335465`
 
@@ -231,7 +232,8 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Extract remaining boolean expression lowering.
   - [x] Extract identifier resolution.
   - [x] Extract switch lowering.
-  - [ ] Extract user-function/value coordination.
+  - [x] Extract user-function inlining.
+  - [ ] Extract general value coordination.
 - [ ] Extract statement and strategy-call lowering.
 - [x] Extract drawing lowering.
 - [ ] Extract Blockly serialization.
