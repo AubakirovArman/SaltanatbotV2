@@ -19,8 +19,9 @@ import {
   unrealized,
   type Position
 } from "./backtest/broker";
+import { estimateWarmupBars } from "./backtest/warmup";
 import type { BacktestConfig, BacktestResult, EquityPoint, TestedRange, Trade, TradeMarker } from "./backtestTypes";
-import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "./ir";
+import type { StrategyIR } from "./ir";
 import { atr as atrSeries } from "./ta";
 
 export const DEFAULT_CONFIG: BacktestConfig = {
@@ -90,7 +91,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
   // Warm-up: indicators are NaN until enough history accrues. Metrics/equity are
   // only measured from `warmup` onward so the flat opening bars don't dilute
   // Sharpe / time-in-market / drawdown denominators.
-  const warmup = Math.min(rt.n, computeWarmup(ir));
+  const warmup = Math.min(rt.n, estimateWarmupBars(ir));
 
   const closePosition = (index: number, price: number, reason: Trade["reason"]) => {
     if (!position) return;
@@ -315,171 +316,15 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
   };
 }
 
-/**
- * Estimate the indicator warm-up (max lookback) of a strategy from its IR by
- * walking every expression and taking the largest constant period. Dynamic
- * periods can't be folded, so we fall back to a safe default of 200 bars.
- */
-function computeWarmup(ir: StrategyIR): number {
-  const params = new Map(ir.inputs.map((input) => [input.name, input.value]));
-  const SAFE_DEFAULT = 200;
-  let dynamic = false;
-
-  const foldConst = (expr: NumExpr): number => {
-    switch (expr.k) {
-      case "num": return expr.v;
-      case "input": return params.get(expr.name) ?? NaN;
-      case "arith": {
-        const a = foldConst(expr.a);
-        const b = foldConst(expr.b);
-        switch (expr.op) {
-          case "+": return a + b;
-          case "-": return a - b;
-          case "*": return a * b;
-          case "/": return b === 0 ? NaN : a / b;
-          case "%": return b === 0 ? NaN : a % b;
-        }
-        return NaN;
-      }
-      case "unary": {
-        const a = foldConst(expr.a);
-        switch (expr.op) {
-          case "neg": return -a;
-          case "abs": return Math.abs(a);
-          case "round": return Math.round(a);
-          case "floor": return Math.floor(a);
-          case "ceil": return Math.ceil(a);
-        }
-        return a;
-      }
-      default: return NaN;
-    }
-  };
-
-  const period = (expr: NumExpr): number => {
-    const v = foldConst(expr);
-    if (!Number.isFinite(v)) { dynamic = true; return 0; }
-    return Math.max(1, Math.round(v));
-  };
-
-  let max = 0;
-  const visitNum = (expr: NumExpr) => {
-    switch (expr.k) {
-      case "price":
-        if (expr.offset) max = Math.max(max, expr.offset);
-        break;
-      case "time":
-        break;
-      case "security":
-        dynamic = true;
-        visitNum(expr.source);
-        break;
-      case "ma": case "rsi": case "atr": case "stdev": case "extreme": case "change":
-      case "wpr": case "cci": case "roc":
-        max = Math.max(max, period(expr.period));
-        if ("source" in expr) visitNum(expr.source);
-        break;
-      case "bollinger":
-        max = Math.max(max, period(expr.period));
-        visitNum(expr.source);
-        break;
-      case "macd":
-        max = Math.max(max, period(expr.slow) + period(expr.signal));
-        visitNum(expr.source);
-        break;
-      case "stoch":
-        max = Math.max(max, period(expr.period) + period(expr.smooth));
-        break;
-      case "minmax": case "arith":
-        visitNum(expr.a); visitNum(expr.b);
-        break;
-      case "unary":
-        visitNum(expr.a);
-        break;
-      // wave 3: unbounded-lookback nodes force the safe-default warmup.
-      case "barindex": case "vwap":
-        dynamic = true;
-        break;
-      case "valuewhen":
-        dynamic = true;
-        visitBool(expr.cond); visitNum(expr.src);
-        break;
-      case "sar":
-        dynamic = true;
-        visitNum(expr.start); visitNum(expr.inc); visitNum(expr.max);
-        break;
-      // wave 3: fixed-window nodes contribute their period.
-      case "extremebars": case "linreg": case "cmo": case "alma": case "cog": case "percentrank":
-        max = Math.max(max, period(expr.period));
-        visitNum(expr.source);
-        break;
-      case "mfi":
-        max = Math.max(max, period(expr.period));
-        break;
-      case "supertrend":
-        max = Math.max(max, period(expr.period));
-        visitNum(expr.factor);
-        break;
-      case "dmi":
-        max = Math.max(max, period(expr.period) + period(expr.smoothing));
-        break;
-      case "kc":
-        max = Math.max(max, period(expr.period));
-        visitNum(expr.mult);
-        break;
-      case "tsi":
-        max = Math.max(max, period(expr.short) + period(expr.long));
-        visitNum(expr.source);
-        break;
-      case "correlation":
-        max = Math.max(max, period(expr.period));
-        visitNum(expr.a); visitNum(expr.b);
-        break;
-    }
-  };
-  const visitBool = (expr: BoolExpr) => {
-    switch (expr.k) {
-      case "compare": case "cross":
-        visitNum(expr.a); visitNum(expr.b);
-        break;
-      case "logic":
-        visitBool(expr.a); visitBool(expr.b);
-        break;
-      case "not":
-        visitBool(expr.a);
-        break;
-      case "trend":
-        max = Math.max(max, period(expr.period));
-        visitNum(expr.source);
-        break;
-      case "between":
-        visitNum(expr.value); visitNum(expr.low); visitNum(expr.high);
-        break;
-    }
-  };
-  const walk = (stmts: Stmt[]) => {
-    for (const stmt of stmts) {
-      switch (stmt.k) {
-        case "entry": case "exit": case "marker": case "alert": visitBool(stmt.when); break;
-        case "stop": case "target": case "trail": case "size": case "setvar": visitNum(stmt.value); break;
-        case "plot": visitNum(stmt.value); break;
-        case "box": visitNum(stmt.top); visitNum(stmt.bottom); visitBool(stmt.when); break;
-        case "projection": visitNum(stmt.left); visitNum(stmt.right); visitNum(stmt.top); visitNum(stmt.bottom); visitBool(stmt.when); break;
-        case "metric": visitNum(stmt.value); visitBool(stmt.when); break;
-        case "vline": visitBool(stmt.when); break;
-        case "ray": visitNum(stmt.price); visitBool(stmt.when); break;
-        case "if": visitBool(stmt.cond); walk(stmt.then); break;
-      }
-    }
-  };
-  walk(ir.body);
-
-  if (dynamic) return SAFE_DEFAULT;
-  return Math.max(max, 1);
-}
-
-/** Build the per-bar position/PnL context for `ctx` reads (identical shape to the live engine). */
-function buildCtx(position: Position | null, price: number, i: number, trades: Trade[], equity: number, barTime: number): Record<string, number> {
+/** Build the per-bar position/PnL context for canonical `ctx` reads. */
+function buildCtx(
+  position: Position | null,
+  price: number,
+  i: number,
+  trades: Trade[],
+  equity: number,
+  barTime: number
+): Record<string, number> {
   let consecutiveLosses = 0;
   for (let t = trades.length - 1; t >= 0; t -= 1) {
     if (trades[t].pnl < 0) consecutiveLosses += 1;

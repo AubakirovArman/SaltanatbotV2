@@ -275,6 +275,7 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
     - [x] Extract sizing, leverage/quantity guardrails and unrealized-PnL primitives.
   - [x] Keep analytics in the dedicated `backtestMetrics.ts` module.
   - [ ] Extract trace/report assembly.
+    - [x] Extract exhaustive warm-up/lookback analysis, including nested control flow and dynamic floors.
 - [ ] Add versioned golden event traces across preview/backtest/paper/live.
 - [ ] Add missing/fallback-data provenance to every report.
 
