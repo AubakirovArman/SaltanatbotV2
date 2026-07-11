@@ -159,16 +159,16 @@ Conversion confidence must never be a vague percentage. It should be derived fro
 ## Priority 1: research and backtest credibility
 
 - unify the evaluator and indicator math with live execution;
-- publish all fill assumptions in every report;
-- make timeframe, exchange, market type, price type and data range immutable report metadata;
-- identify missing bars, fallback data and partially loaded history;
+- [x] publish all fill assumptions in every report;
+- [x] make timeframe, exchange, market type, price type and data range immutable report metadata;
+- [x] identify missing bars, fallback data and partially loaded history;
 - add benchmark/reference strategies with expected trades;
 - model limit orders, gaps, partial fills, fees, funding, borrow costs and liquidation consistently;
-- separate strategy performance from execution assumptions;
+- [x] separate strategy performance from execution assumptions through immutable config/assumption metadata;
 - add bar replay with deterministic stepping and an explanation trace;
 - add out-of-sample, anchored/rolling walk-forward and parameter stability views;
-- add exportable, versioned research reports;
-- prevent accidental comparison of runs using different data or settings.
+- [x] add exportable, versioned research reports;
+- [x] prevent accidental comparison of runs using different data or settings.
 
 ## Priority 1: paper and live execution safety
 

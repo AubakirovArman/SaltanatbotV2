@@ -13,6 +13,51 @@ export interface BacktestConfig {
     qtyStep?: number;
     fundingRatePctPer8h?: number;
 }
+export declare const DEFAULT_BACKTEST_CONFIG: Required<BacktestConfig>;
+export interface BacktestRunContext {
+    symbol?: string;
+    timeframe?: string;
+    exchange?: string;
+    marketType?: "spot" | "linear" | "inverse" | "unknown";
+    priceType?: "trade" | "mark" | "index" | "unknown";
+    requestedBars?: number;
+    strategyHash?: string;
+}
+export interface BacktestDataGap {
+    afterTime: number;
+    beforeTime: number;
+    missingBars: number;
+}
+export interface BacktestDataQuality {
+    loadedBars: number;
+    requestedBars?: number;
+    partiallyLoaded: boolean;
+    expectedIntervalMs?: number;
+    missingBars: number;
+    gaps: readonly BacktestDataGap[];
+    gapsTruncated: boolean;
+}
+export interface BacktestReportMetadata {
+    readonly schemaVersion: 1;
+    readonly engine: "saltanat-backtest";
+    readonly engineVersion: 1;
+    readonly symbol: string;
+    readonly timeframe: string;
+    readonly exchange: string;
+    readonly marketType: "spot" | "linear" | "inverse" | "unknown";
+    readonly priceType: "trade" | "mark" | "index" | "unknown";
+    readonly strategyHash: string;
+    readonly provenanceFingerprint: string;
+    readonly dataRange: Readonly<{
+        fromTime: number;
+        toTime: number;
+    }>;
+    readonly config: Readonly<Required<BacktestConfig>>;
+    readonly assumptions: readonly string[];
+    readonly dataQuality: Readonly<BacktestDataQuality>;
+    /** Equal keys are required before performance runs may be compared. */
+    readonly comparisonKey: string;
+}
 export interface Trade {
     direction: "long" | "short";
     entryIndex: number;
@@ -66,6 +111,7 @@ export interface TestedRange {
     warmupBars: number;
 }
 export interface BacktestResult {
+    readonly schemaVersion: 1;
     name: string;
     trades: Trade[];
     equityCurve: EquityPoint[];
@@ -91,4 +137,16 @@ export interface BacktestResult {
     executionTrace: BacktestExecutionTrace;
     /** Complete primary/external candle-source summary for this run. */
     provenance: BacktestDataProvenance;
+    /** Immutable, self-contained execution/data identity for export and comparison. */
+    metadata: BacktestReportMetadata;
+}
+export interface BacktestComparison {
+    comparable: boolean;
+    differences: string[];
+}
+export interface BacktestResearchFile {
+    schemaVersion: 1;
+    kind: "saltanat-backtest-report";
+    exportedAt: number;
+    report: BacktestResult;
 }

@@ -1,9 +1,10 @@
-import { LineChart, Target } from "lucide-react";
+import { Download, LineChart, Target } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { BacktestConfig, BacktestResult, Trade } from "../strategy/backtest";
 import { monteCarlo, type MonteCarloStats } from "../strategy/montecarlo";
 import type { Locale } from "../i18n";
 import { strategyText } from "../i18n/strategy";
+import { serializeBacktestResearchFile } from "@saltanatbotv2/backtest-core";
 
 interface BacktestReportProps {
   locale: Locale;
@@ -19,11 +20,12 @@ export function BacktestReport({ locale, result, decimals, config, onShowOnChart
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const { metrics, tested } = result;
   const positive = metrics.netProfit >= 0;
+  const reportConfig = result.metadata.config ?? config;
 
   // Monte Carlo is cheap enough to derive from the realised trades on render.
   const mc = useMemo(
-    () => monteCarlo(result.trades, { initialCapital: config?.initialCapital ?? 10_000 }, 1000),
-    [result.trades, config?.initialCapital]
+    () => monteCarlo(result.trades, { initialCapital: reportConfig?.initialCapital ?? 10_000 }, 1000),
+    [result.trades, reportConfig?.initialCapital]
   );
 
   return (
@@ -38,6 +40,9 @@ export function BacktestReport({ locale, result, decimals, config, onShowOnChart
             <LineChart size={13} aria-hidden="true" /> {t("showOnChart")}
           </button>
         )}
+        <button type="button" className="link-button" onClick={() => downloadResearchReport(result)}>
+          <Download size={13} aria-hidden="true" /> {t("exportReport")}
+        </button>
       </div>
 
       {metrics.liquidated && (
@@ -63,22 +68,45 @@ export function BacktestReport({ locale, result, decimals, config, onShowOnChart
         <Metric label={t("timeInMarket")} value={`${metrics.timeInMarketPct.toFixed(0)}%`} />
         <Metric label={t("avgMae")} value={`${metrics.avgMaePct.toFixed(2)}%`} tone="down" />
         <Metric label={t("avgMfe")} value={`${metrics.avgMfePct.toFixed(2)}%`} tone="up" />
-        {(config?.fundingRatePctPer8h ?? 0) !== 0 && (
-          <Metric label={t("fundingPaid")} value={`-${metrics.fundingPaid.toFixed(2)}`} tone="down" sub={`${config?.fundingRatePctPer8h}%/8h`} />
+        {(reportConfig?.fundingRatePctPer8h ?? 0) !== 0 && (
+          <Metric label={t("fundingPaid")} value={`-${metrics.fundingPaid.toFixed(2)}`} tone="down" sub={`${reportConfig?.fundingRatePctPer8h}%/8h`} />
         )}
       </div>
 
-      <AssumptionsBar locale={locale} result={result} tested={tested} config={config} />
+      <AssumptionsBar locale={locale} result={result} tested={tested} config={reportConfig} />
+
+      {(result.metadata.dataQuality.partiallyLoaded || result.metadata.dataQuality.missingBars > 0) && (
+        <div className="strategy-warnings" role="alert">
+          <span>
+            {result.metadata.dataQuality.partiallyLoaded
+              ? `${t("partialHistory")}: ${result.metadata.dataQuality.loadedBars}/${result.metadata.dataQuality.requestedBars}. `
+              : ""}
+            {result.metadata.dataQuality.missingBars > 0
+              ? `${t("dataGaps")}: ${result.metadata.dataQuality.missingBars}.`
+              : ""}
+          </span>
+        </div>
+      )}
 
       <EquityCurve locale={locale} result={result} mc={mc} />
       <UnderwaterCurve locale={locale} result={result} />
 
-      {mc && <MonteCarloPanel locale={locale} mc={mc} initial={config?.initialCapital ?? 10_000} />}
+      {mc && <MonteCarloPanel locale={locale} mc={mc} initial={reportConfig?.initialCapital ?? 10_000} />}
 
       <TradeTable locale={locale} trades={result.trades} decimals={decimals} />
       <StatePanel locale={locale} result={result} />
     </div>
   );
+}
+
+function downloadResearchReport(result: BacktestResult): void {
+  const blob = new Blob([serializeBacktestResearchFile(result)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${result.name.replace(/[^a-z0-9._-]+/gi, "-").replace(/^-|-$/g, "") || "backtest"}.saltanat-report.json`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 /** Final values of the strategy's variables (only shown when the strategy uses state). */

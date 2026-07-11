@@ -105,7 +105,7 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
         signal: operation.signal
       });
       if (!isCurrent(operation.id)) return;
-      const backtest = runBacktest(compiled.ir, candles, config, securityData);
+      const backtest = runBacktest(compiled.ir, candles, config, securityData, reportContext());
       const visuals = previewStrategy(compiled.ir, candles, securityData);
       if (!isCurrent(operation.id)) return;
       setResult(backtest);
@@ -183,7 +183,7 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
     if (!ir || candles.length === 0) return;
     const cloned = cloneWithInputs(ir, params);
     const securityData = optSecurityRef.current;
-    const backtest = runBacktest(cloned, candles, config, securityData);
+    const backtest = runBacktest(cloned, candles, config, securityData, reportContext());
     const visuals = previewStrategy(cloned, candles, securityData);
     setResult(backtest);
     setOptimizeResult(undefined);
@@ -205,4 +205,15 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
     optimizeResult, walkForwardOn, setWalkForwardOn, optFolds, setOptFolds,
     walkForwardResult, optimize, applyCombo
   };
+
+  function reportContext() {
+    return {
+      symbol,
+      timeframe,
+      exchange: options.exchange,
+      marketType: "linear" as const,
+      priceType: "trade" as const,
+      requestedBars: bars
+    };
+  }
 }

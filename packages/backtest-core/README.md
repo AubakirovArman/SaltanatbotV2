@@ -14,6 +14,9 @@ Runtime-neutral historical trading primitives shared independently of the React 
 - chart and `request.security` candle-source provenance, including explicit performance-claim validity.
 - canonical final report assembly from execution outputs, including measured range, metrics, traces and provenance.
 - versioned JSON-safe historical execution traces for fills, position/equity transitions, funding, warnings and provenance.
+- schema-v1 immutable report metadata with normalized execution assumptions,
+  strategy/data identity, gap/partial-history audit and a comparison key;
+- deterministic compatibility checks plus exportable versioned research files.
 
 The package may depend on `@saltanatbotv2/contracts` and `@saltanatbotv2/strategy-core`. It must not import React, Blockly, browser globals, storage, network or exchange adapters.
 

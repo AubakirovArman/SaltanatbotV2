@@ -352,6 +352,13 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 
 ### Strategy and backtest core
 
+- [x] Make every backtest result a self-contained schema-v1 research report.
+- [x] Freeze symbol, timeframe, exchange, market/price type, strategy hash, data range and normalized execution config.
+- [x] Publish pessimistic intrabar, gap, stop/target, fee, funding, leverage, liquidation and final-close assumptions.
+- [x] Detect partially loaded history and bounded missing-bar gap details.
+- [x] Fingerprint settings, data range/quality and provenance; reject incompatible report comparisons with field reasons.
+- [x] Export a versioned `.saltanat-report.json` envelope from the report UI.
+
 - [x] Move shared TA implementations into `strategy-core` and retain frontend/backend compatibility facades.
 - [x] Move the canonical evaluator, reusable runtime, execution budgets, security-series alignment and intent types into `strategy-core`.
 - [x] Create `backtest-core` with canonical contracts, broker, portfolio, warm-up, reporting and analytics modules.

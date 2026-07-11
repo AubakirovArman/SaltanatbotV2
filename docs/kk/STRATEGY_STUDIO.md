@@ -36,6 +36,11 @@ Report деректердің шығу тегін және versioned traces кө
 unknown деректер performance claim үшін жарамсыз. Monte Carlo — болжам емес, іске асқан trades
 ретін өзгерту арқылы robustness зерттеуі.
 
+Әр нәтиже immutable symbol/timeframe/exchange, market/price type, data range,
+execution settings, fill assumptions және missing/partially-loaded history
+мәліметтерін сақтайды. Export батырмасы versioned `.saltanat-report.json`
+жасайды. Settings, range, quality немесе provenance әртүрлі runs салыстырылмайды.
+
 Live-ке дейін бірнеше нарық/кезеңді, out-of-sample нәтижені және paper журналын тексеріңіз.
 
 Қосымша: [trading нұсқаулығы](TRADING.md) және [Pine матрицасы](../PINE_COMPATIBILITY.generated.md).

@@ -1,5 +1,11 @@
 import type { Candle } from "../../types";
-import { assembleBacktestReport, type BacktestExecutionEvent } from "@saltanatbotv2/backtest-core";
+import {
+  assembleBacktestReport,
+  createStrategyFingerprint,
+  DEFAULT_BACKTEST_CONFIG,
+  type BacktestExecutionEvent,
+  type BacktestRunContext
+} from "@saltanatbotv2/backtest-core";
 import {
   createStrategyRuntime,
   evaluateStrategyBar,
@@ -26,16 +32,7 @@ import type { BacktestConfig, BacktestResult, EquityPoint, Trade, TradeMarker } 
 import type { StrategyIR } from "../ir";
 import { atr as atrSeries } from "../ta";
 
-export const DEFAULT_CONFIG: BacktestConfig = {
-  initialCapital: 10_000,
-  commissionPct: 0.05,
-  slippagePct: 0.02,
-  allowShort: true,
-  fillTiming: "next_open",
-  maxLeverage: 5,
-  qtyStep: 0,
-  fundingRatePctPer8h: 0
-};
+export const DEFAULT_CONFIG: BacktestConfig = DEFAULT_BACKTEST_CONFIG;
 
 interface Runtime extends StrategyRuntime {
   atr14: number[];
@@ -43,7 +40,13 @@ interface Runtime extends StrategyRuntime {
 
 type Intents = BarIntents;
 
-export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestConfig = DEFAULT_CONFIG, securityData?: SecurityDataContext): BacktestResult {
+export function runBacktest(
+  ir: StrategyIR,
+  candles: Candle[],
+  config: BacktestConfig = DEFAULT_CONFIG,
+  securityData?: SecurityDataContext,
+  context?: BacktestRunContext
+): BacktestResult {
   // Merge caller config over defaults so new optional fields always have a value.
   const cfg: Required<BacktestConfig> = { ...DEFAULT_CONFIG, ...config } as Required<BacktestConfig>;
   const nextOpen = cfg.fillTiming !== "same_close";
@@ -314,7 +317,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
   return assembleBacktestReport({
     name: ir.name,
     candles,
-    config,
+    config: cfg,
     trades,
     equityCurve,
     markers,
@@ -328,6 +331,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     barsInMarket,
     liquidated,
     fundingPaid,
-    securityData
+    securityData,
+    context: { ...context, strategyHash: context?.strategyHash ?? createStrategyFingerprint(ir) }
   });
 }

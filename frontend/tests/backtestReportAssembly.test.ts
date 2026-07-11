@@ -1,4 +1,9 @@
-import { assembleBacktestReport, type BacktestConfig } from "@saltanatbotv2/backtest-core";
+import {
+  assembleBacktestReport,
+  compareBacktestReports,
+  serializeBacktestResearchFile,
+  type BacktestConfig
+} from "@saltanatbotv2/backtest-core";
 import { describe, expect, it } from "vitest";
 import type { Candle } from "../src/types";
 
@@ -71,5 +76,62 @@ describe("canonical backtest report assembly", () => {
     expect(result.tested).toEqual({ fromTime: 0, toTime: 0, bars: 0, warmupBars: 0 });
     expect(result.provenance.status).toBe("unknown");
     expect(result.metrics.finalEquity).toBe(config.initialCapital);
+  });
+
+  it("freezes immutable run identity, assumptions and data-gap evidence", () => {
+    const market = [candles()[0], candles()[1], { ...candles()[2], time: 180_000 }];
+    const result = assembleBacktestReport({
+      name: "metadata",
+      candles: market,
+      config,
+      trades: [],
+      equityCurve: market.map((candle) => ({ time: candle.time, equity: 10_000 })),
+      markers: [], signals: [], alerts: [], warnings: [], eventTrace: [], executionEvents: [],
+      warmupBars: 0, barsInMarket: 0, liquidated: false, fundingPaid: 0,
+      context: {
+        symbol: "BTCUSDT", timeframe: "1m", exchange: "binance", marketType: "linear",
+        priceType: "trade", requestedBars: 4, strategyHash: "strategy-a"
+      }
+    });
+
+    expect(result.schemaVersion).toBe(1);
+    expect(result.metadata).toMatchObject({
+      symbol: "BTCUSDT",
+      timeframe: "1m",
+      exchange: "binance",
+      marketType: "linear",
+      priceType: "trade",
+      strategyHash: "strategy-a",
+      dataRange: { fromTime: 0, toTime: 180_000 },
+      dataQuality: { loadedBars: 3, requestedBars: 4, partiallyLoaded: true, missingBars: 1 }
+    });
+    expect(result.metadata.assumptions).toHaveLength(8);
+    expect(Object.isFrozen(result.metadata)).toBe(true);
+    expect(Object.isFrozen(result.metadata.config)).toBe(true);
+    expect(Object.isFrozen(result.metadata.dataQuality.gaps)).toBe(true);
+    expect(JSON.parse(serializeBacktestResearchFile(result, 123))).toMatchObject({
+      schemaVersion: 1,
+      kind: "saltanat-backtest-report",
+      exportedAt: 123,
+      report: { metadata: { comparisonKey: result.metadata.comparisonKey } }
+    });
+  });
+
+  it("refuses comparison when execution settings or data identity differ", () => {
+    const build = (exchange: string, commissionPct: number) => assembleBacktestReport({
+      name: "compare",
+      candles: candles(),
+      config: { ...config, commissionPct },
+      trades: [], equityCurve: [], markers: [], signals: [], alerts: [], warnings: [],
+      eventTrace: [], executionEvents: [], warmupBars: 0, barsInMarket: 0,
+      liquidated: false, fundingPaid: 0,
+      context: { symbol: "BTCUSDT", timeframe: "1m", exchange, strategyHash: "same" }
+    });
+    const baseline = build("binance", 0);
+    expect(compareBacktestReports(baseline, build("binance", 0))).toEqual({ comparable: true, differences: [] });
+    expect(compareBacktestReports(baseline, build("bybit", 0.1))).toEqual({
+      comparable: false,
+      differences: ["exchange", "config"]
+    });
   });
 });

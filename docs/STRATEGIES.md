@@ -219,6 +219,13 @@ export function atrValue(candles: Candle[], period: number, index: number): numb
 
 `evaluateBar` builds a fresh runtime around the caller's persistent variable map, executes `ir.body` at `index`, and returns `BarIntents` (entry, exit, stop, target, trail, size, alerts, markers and budget status). Backtest/preview use `createStrategyRuntime()` plus `evaluateStrategyBar()` so pure series stay memoized across a fixed history. The live engine imports `evaluateBar` and `atrValue` through its compatibility facade as its candle buffer grows.
 
+Every backtest is a self-contained schema-v1 research report. Immutable metadata
+records strategy hash, symbol, timeframe, exchange, market/price type, complete
+data range, normalized costs/execution settings, provenance fingerprint and all
+fill assumptions. Data quality records requested/loaded bars and bounded gap
+details. The UI exports `.saltanat-report.json`; comparison is permitted only
+when `compareBacktestReports()` confirms matching settings, data and provenance.
+
 Two properties keep frontend and backend in lockstep:
 
 - **One expression/statement evaluator.** Numeric/boolean evaluation, control flow, state mutation, alert rendering, operation budgets and intent collection live in `packages/strategy-core/evaluator.ts`. Indicators come from the adjacent canonical `ta.ts` implementation.
