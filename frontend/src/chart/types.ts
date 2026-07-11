@@ -13,6 +13,12 @@ export interface PlotArea {
 
 export type PriceMode = "linear" | "log" | "percent";
 
+export interface LinkedCrosshair {
+  sourceId: string;
+  time: number;
+  price: number;
+}
+
 export interface PriceScale {
   min: number;
   max: number;

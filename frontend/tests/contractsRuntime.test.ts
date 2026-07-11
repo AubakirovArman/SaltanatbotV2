@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseCandlesResponse,
   parseCatalogResponse,
+  parseQuoteStreamMessage,
   parseSparklinesResponse,
   parseStreamMessage,
 } from "@saltanatbotv2/contracts";
@@ -51,6 +52,14 @@ describe("runtime market contracts", () => {
       message: "Unavailable",
       ts: 4,
     });
+    expect(parseQuoteStreamMessage({
+      type: "quotes_snapshot", timeframe: "1m", provider: "binance", ts: 5,
+      series: { BTCUSDT: { last: 101, changePct: 1, points: [100, 101] } }
+    }).type).toBe("quotes_snapshot");
+    expect(parseQuoteStreamMessage({
+      type: "quote", symbol: "BTCUSDT", timeframe: "1m", provider: "binance", ts: 6,
+      series: { last: 102, changePct: 2, points: [100, 102] }
+    })).toMatchObject({ type: "quote", symbol: "BTCUSDT", series: { last: 102 } });
   });
 
   it("rejects unknown variants, inconsistent OHLC and unsupported enums", () => {

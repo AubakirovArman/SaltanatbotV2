@@ -44,6 +44,22 @@ export interface SparklinesResponse {
     timeframe: Timeframe;
     series: Record<string, SparklineSeries | null>;
 }
+export interface QuotesSnapshotMessage {
+    type: "quotes_snapshot";
+    timeframe: Timeframe;
+    series: Record<string, SparklineSeries | null>;
+    provider: string;
+    ts: number;
+}
+export interface QuoteMessage {
+    type: "quote";
+    symbol: string;
+    timeframe: Timeframe;
+    series: SparklineSeries;
+    provider: string;
+    ts: number;
+}
+export type QuoteStreamMessage = QuotesSnapshotMessage | QuoteMessage | ErrorMessage;
 export type MarketStatus = "connected" | "fallback" | "error";
 export interface StreamStatus {
     type: "status";
@@ -79,4 +95,5 @@ export declare function parseInstrument(value: unknown, label?: string): Instrum
 export declare function parseCatalogResponse(value: unknown): CatalogResponse;
 export declare function parseCandlesResponse(value: unknown): CandlesResponse;
 export declare function parseSparklinesResponse(value: unknown): SparklinesResponse;
+export declare function parseQuoteStreamMessage(value: unknown): QuoteStreamMessage;
 export declare function parseStreamMessage(value: unknown): StreamMessage;

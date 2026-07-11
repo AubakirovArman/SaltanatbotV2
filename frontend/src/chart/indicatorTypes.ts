@@ -1,10 +1,14 @@
 export type IndicatorKind = "sma" | "ema" | "bollinger" | "rsi" | "macd" | "vwap" | "atr" | "stochastic" | "obv";
+export type IndicatorPane = "auto" | "main" | "separate";
+export type IndicatorScalePlacement = "left" | "right" | "hidden";
 
 export interface BaseIndicatorConfig {
   id: string;
   label: string;
   enabled: boolean;
   visible?: boolean;
+  pane?: IndicatorPane;
+  scalePlacement?: IndicatorScalePlacement;
   logicCode?: string;
   logicXml?: string;
   logicVersion?: number;

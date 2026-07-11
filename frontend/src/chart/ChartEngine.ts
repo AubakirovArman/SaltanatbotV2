@@ -97,14 +97,7 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
   } = input;
 
   const priceMode: PriceMode = view.priceMode ?? "linear";
-  const lowerIndicators = indicators.filter((indicator) =>
-    isIndicatorVisible(indicator) &&
-    (indicator.kind === "rsi" ||
-      indicator.kind === "macd" ||
-      indicator.kind === "stochastic" ||
-      indicator.kind === "atr" ||
-      indicator.kind === "obv")
-  );
+  const lowerIndicators = indicators.filter((indicator) => isIndicatorVisible(indicator) && isLowerIndicator(indicator));
   const subPlots = (plots ?? []).filter((series) => series.pane === "sub");
   const pricePlots = (plots ?? []).filter((series) => series.pane !== "sub");
   const subPanelHeight = subPlots.length > 0 ? Math.min(88, Math.max(58, height * 0.14)) : 0;
@@ -366,6 +359,7 @@ function indicatorCalcKey(config: IndicatorConfig): string {
 
 function collectMainValues(computed: ComputedIndicator[], start: number, end: number) {
   return computed.flatMap((indicator) => {
+    if (isLowerIndicator(indicator.config)) return [];
     if (indicator.kind === "bollinger") {
       return indicator.points
         .slice(start, end)
@@ -389,6 +383,7 @@ function drawMainIndicators(
   step: number
 ) {
   computed.forEach((indicator) => {
+    if (isLowerIndicator(indicator.config)) return;
     if (indicator.kind === "sma" || indicator.kind === "ema" || indicator.kind === "vwap") {
       drawSeriesLine(ctx, { points: indicator.points, start, end, plot, scale, step, color: indicator.config.color });
     }
@@ -416,6 +411,21 @@ function drawLowerPanels(
     const panel = makePanel(plot, top, lowerHeight);
     const indicator = computed.find((item) => item.config.id === config.id);
     if (!indicator) return;
+    let panelScale: PriceScale | undefined;
+    if (indicator.kind === "sma" || indicator.kind === "ema" || indicator.kind === "vwap") {
+      const values = indicator.points.slice(start, end).map((point) => point.value).filter(isNumber);
+      if (values.length > 0) {
+        panelScale = independentScale(panel, values);
+        drawSeriesLine(ctx, { points: indicator.points, start, end, plot: panel, scale: panelScale, step: panel.width / Math.max(1, end - start), color: indicator.config.color });
+      }
+    }
+    if (indicator.kind === "bollinger") {
+      const values = indicator.points.slice(start, end).flatMap((point) => [point.middle, point.upper, point.lower]).filter(isNumber);
+      if (values.length > 0) {
+        panelScale = independentScale(panel, values);
+        drawBollinger(ctx, indicator.points, start, end, panel, panelScale, panel.width / Math.max(1, end - start), { middle: indicator.config.color, band: indicator.config.bandColor });
+      }
+    }
     if (indicator.kind === "rsi") {
       drawRsiPanel(ctx, panel, indicator.points, start, end, indicator.config.color, theme);
     }
@@ -439,7 +449,52 @@ function drawLowerPanels(
     if (indicator.kind === "obv") {
       drawOscillatorPanel(ctx, panel, indicator.points, start, end, indicator.config.color, theme, "OBV");
     }
+    const values = indicatorValues(indicator, start, end);
+    if (!panelScale && values.length > 0) panelScale = independentScale(panel, values);
+    if (panelScale) drawPanelScale(ctx, panel, panelScale, indicator.config.scalePlacement ?? "right");
   });
+}
+
+function isLowerIndicator(config: IndicatorConfig) {
+  if (config.pane === "separate") return true;
+  return config.kind === "rsi" || config.kind === "macd" || config.kind === "stochastic" || config.kind === "atr" || config.kind === "obv";
+}
+
+function indicatorValues(indicator: ComputedIndicator, start: number, end: number): number[] {
+  if (indicator.kind === "bollinger") return indicator.points.slice(start, end).flatMap((point) => [point.middle, point.upper, point.lower]).filter(isNumber);
+  if (indicator.kind === "macd") return indicator.points.slice(start, end).flatMap((point) => [point.macd, point.signal, point.histogram]).filter(isNumber);
+  if (indicator.kind === "stochastic") return indicator.points.slice(start, end).flatMap((point) => [point.k, point.d]).filter(isNumber);
+  return indicator.points.slice(start, end).map((point) => point.value).filter(isNumber);
+}
+
+function independentScale(plot: PlotArea, values: number[]): PriceScale {
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const span = Math.max(Math.abs(rawMax - rawMin), Math.abs(rawMax) * 0.01, 1e-9);
+  const min = rawMin - span * 0.08;
+  const max = rawMax + span * 0.08;
+  return {
+    min, max, mode: "linear", base: values[0] ?? 0,
+    y: (value) => plot.top + ((max - value) / (max - min)) * plot.height,
+    priceAt: (y) => max - ((y - plot.top) / plot.height) * (max - min)
+  };
+}
+
+function drawPanelScale(ctx: CanvasRenderingContext2D, panel: PlotArea, scale: PriceScale, placement: NonNullable<IndicatorConfig["scalePlacement"]>) {
+  if (placement === "hidden") return;
+  ctx.save();
+  ctx.fillStyle = theme.muted;
+  ctx.font = "10px ui-monospace, monospace";
+  ctx.textAlign = placement === "left" ? "left" : "right";
+  const x = placement === "left" ? panel.left + 4 : panel.right - 4;
+  ctx.fillText(formatScaleValue(scale.max), x, panel.top + 11);
+  ctx.fillText(formatScaleValue(scale.min), x, panel.bottom - 3);
+  ctx.restore();
+}
+
+function formatScaleValue(value: number) {
+  const absolute = Math.abs(value);
+  return absolute >= 1_000 ? value.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 }) : value.toFixed(absolute >= 10 ? 2 : 4);
 }
 
 function renkoScale(plot: PlotArea, bricks: Array<{ open: number; close: number }>): PriceScale {

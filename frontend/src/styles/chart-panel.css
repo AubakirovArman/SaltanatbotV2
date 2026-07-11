@@ -6,6 +6,224 @@
   overflow: hidden;
 }
 
+.multi-chart-grid {
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.multi-chart-grid.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.multi-chart-grid.split-vertical {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.multi-chart-grid.split-horizontal {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.multi-chart-grid.grid-4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.multi-chart-pane {
+  position: relative;
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: grid;
+  background: var(--chart-bg);
+  overflow: hidden;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 30rem auto 22rem;
+}
+
+.multi-chart-pane.secondary .chart-surface {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.multi-chart-pane.secondary .tool-rail {
+  display: none;
+}
+
+.multi-chart-pane.secondary .chart-legend {
+  inset-block-start: 34px;
+}
+
+.chart-pane-controls {
+  position: absolute;
+  z-index: 22;
+  inset-block-start: 4px;
+  inset-inline: 6px;
+  min-inline-size: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.chart-pane-controls :is(select, button) {
+  min-block-size: 24px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  pointer-events: auto;
+}
+
+.chart-pane-controls select {
+  max-inline-size: 8.5rem;
+  padding-inline: 5px;
+}
+
+.chart-pane-controls button {
+  min-inline-size: 24px;
+  display: inline-grid;
+  place-content: center;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.chart-pane-controls button.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pane-feed {
+  margin-inline-start: auto;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.pane-feed:is(.fallback, .error) {
+  color: var(--warn);
+}
+
+.drawing-objects-panel {
+  position: absolute;
+  z-index: 24;
+  inset-block-start: 44px;
+  inset-inline-end: 8px;
+  inline-size: min(19rem, calc(100% - 16px));
+  max-block-size: calc(100% - 88px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+
+.drawing-objects-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border-block-end: 1px solid var(--line-soft);
+}
+
+.drawing-objects-panel > header > div {
+  display: flex;
+  gap: 2px;
+}
+
+.drawing-objects-panel button {
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.drawing-objects-panel button:is(:hover, :focus-visible):not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.drawing-objects-panel button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.drawing-object-list {
+  min-block-size: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.drawing-object-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.drawing-object-list li.active {
+  background: var(--accent-soft);
+}
+
+.drawing-object-list .drawing-object-name {
+  display: flex;
+  justify-content: space-between;
+  min-inline-size: 0;
+  padding-inline: 6px;
+  text-align: start;
+}
+
+.drawing-objects-empty {
+  padding: 10px;
+  color: var(--dim);
+}
+
+.drawing-template-list {
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border-block-start: 1px solid var(--line-soft);
+  max-block-size: 9rem;
+  overflow-y: auto;
+}
+
+.drawing-template-list > strong {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+}
+
+.drawing-template-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.drawing-template-list > div > button:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+}
+
+@supports not (content-visibility: auto) {
+  .multi-chart-pane {
+    contain: layout style paint;
+  }
+}
+
 .chart-surface {
   min-block-size: 0;
   min-inline-size: 0;

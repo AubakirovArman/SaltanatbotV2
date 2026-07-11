@@ -11,6 +11,9 @@ export function BacktestReplayPanel({ locale, result }: { locale: Locale; result
   const [cursor, setCursor] = useState(0);
   useEffect(() => setCursor((current) => Math.min(current, Math.max(0, timeline.frames.length - 1))), [timeline]);
   const frame = replayFrame(timeline, cursor);
+  const eventFrames = useMemo(() => timeline.frames
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.strategyEvents.length > 0 || item.executionEvents.length > 0), [timeline]);
   if (!frame) return null;
   const events = [
     ...frame.strategyEvents.map((event) => `strategy.${event.kind}`),
@@ -40,6 +43,20 @@ export function BacktestReplayPanel({ locale, result }: { locale: Locale; result
         <button type="button" onClick={() => setCursor((value) => Math.min(timeline.frames.length - 1, value + 1))} disabled={cursor === timeline.frames.length - 1} aria-label={t("nextBar")}>
           <ChevronRight size={14} aria-hidden="true" />
         </button>
+        <label className="replay-event-jump">
+          <span>{t("jumpToEvent")}</span>
+          <select value={eventFrames.some((entry) => entry.index === cursor) ? cursor : ""} onChange={(event) => setCursor(Number(event.target.value))}>
+            <option value="" disabled>{t("eventFrame")}</option>
+            {eventFrames.map(({ item, index }) => (
+              <option key={item.barTime} value={index}>
+                {index + 1} · {new Date(item.barTime).toLocaleString(locale === "ru" ? "ru-RU" : "en-US")} · {[
+                  ...item.strategyEvents.map((event) => `signal:${event.kind}`),
+                  ...item.executionEvents.map((event) => `trade:${event.kind}`)
+                ].join(", ")}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <div className="replay-summary">
         <span>{new Date(frame.barTime).toLocaleString(locale === "ru" ? "ru-RU" : "en-US")}</span>

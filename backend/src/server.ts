@@ -11,7 +11,7 @@ import { timeframes } from "./market/timeframes.js";
 import { ProviderRouter } from "./providers/router.js";
 import { securityHeaders } from "./securityHeaders.js";
 import { createTradingApi } from "./trading/routes.js";
-import type { Candle, StreamMessage, Timeframe } from "./types.js";
+import type { Candle, QuoteStreamMessage, StreamMessage, Timeframe } from "./types.js";
 
 const port = Number(process.env.PORT ?? 4180);
 // Fail safe: bind to loopback unless the operator explicitly opts into a wider bind.
@@ -20,6 +20,7 @@ const provider = new ProviderRouter();
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true });
+const quoteWss = new WebSocketServer({ noServer: true });
 const trading = createTradingApi(provider);
 
 // CORS: same-origin needs nothing (the SPA is served by this app). Allow an
@@ -159,6 +160,9 @@ server.on("upgrade", (request, socket, head) => {
   if (url.pathname === "/stream") {
     // Public market-data stream (read-only candles). No secrets exposed here.
     wss.handleUpgrade(request, socket, head, (client) => wss.emit("connection", client, request));
+  } else if (url.pathname === "/quotes") {
+    // One browser connection multiplexes the watchlist's read-only quote feeds.
+    quoteWss.handleUpgrade(request, socket, head, (client) => quoteWss.emit("connection", client, request));
   } else if (url.pathname === "/trade-stream") {
     // Trade events can reveal positions/PnL — require the access token.
     if (!verifyWsToken(url, request.headers["sec-websocket-protocol"])) {
@@ -170,6 +174,54 @@ server.on("upgrade", (request, socket, head) => {
   } else {
     socket.destroy();
   }
+});
+
+quoteWss.on("connection", async (socket, request) => {
+  const url = new URL(request.url ?? "", `http://${request.headers.host}`);
+  const parsed = sparklineQuery.safeParse(Object.fromEntries(url.searchParams));
+  const send = (message: QuoteStreamMessage) => {
+    if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
+  };
+  if (!parsed.success) {
+    send({ type: "error", message: "Invalid quote stream query", ts: Date.now() });
+    socket.close();
+    return;
+  }
+  const symbols = [...new Set(parsed.data.symbols.split(",").map((symbol) => symbol.trim()).filter(Boolean))].slice(0, 40);
+  const instruments = symbols.map((symbol) => findInstrument(symbol)).filter((item) => item !== undefined);
+  const histories = new Map<string, Candle[]>();
+  const series: Record<string, { last: number | null; changePct: number; points: number[] } | null> = {};
+  await Promise.all(instruments.map(async (instrument) => {
+    try {
+      const candles = await provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data.exchange);
+      histories.set(instrument.symbol, candles);
+      series[instrument.symbol] = sparklineSeries(candles);
+    } catch {
+      series[instrument.symbol] = null;
+    }
+  }));
+  send({ type: "quotes_snapshot", timeframe: parsed.data.timeframe, series, provider: provider.name, ts: Date.now() });
+
+  const subscriptions: Array<{ close(): void }> = [];
+  await Promise.allSettled(instruments.map(async (instrument) => {
+    const subscription = await provider.subscribe(instrument, parsed.data.timeframe, (candle) => {
+      const current = histories.get(instrument.symbol) ?? [];
+      const last = current.at(-1);
+      const next = last?.time === candle.time ? [...current.slice(0, -1), candle] : [...current, candle];
+      const bounded = next.slice(-parsed.data.points);
+      histories.set(instrument.symbol, bounded);
+      send({
+        type: "quote",
+        symbol: instrument.symbol,
+        timeframe: parsed.data.timeframe,
+        series: sparklineSeries(bounded),
+        provider: candle.source ?? provider.name,
+        ts: Date.now()
+      });
+    }, () => undefined, parsed.data.exchange);
+    subscriptions.push(subscription);
+  }));
+  socket.on("close", () => subscriptions.forEach((subscription) => subscription.close()));
 });
 
 wss.on("connection", async (socket, request) => {
@@ -243,6 +295,13 @@ wss.on("connection", async (socket, request) => {
     socket.close();
   }
 });
+
+function sparklineSeries(candles: Candle[]) {
+  const points = candles.map((candle) => candle.close);
+  const first = points[0];
+  const last = points.at(-1);
+  return { last: last ?? null, changePct: first && last ? ((last - first) / first) * 100 : 0, points };
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

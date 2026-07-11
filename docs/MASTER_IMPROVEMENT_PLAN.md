@@ -188,17 +188,17 @@ The detailed blockers are maintained in `CODE_IMPROVEMENT_PLAN.md`. Release gate
 
 ## Priority 2: chart and terminal experience
 
-- layout presets and resizable/dockable panels;
-- multi-chart layouts with linked symbol, interval and crosshair;
-- indicator pane management and per-series scale placement;
-- drawing object tree, visibility lock, templates and undo/redo;
-- replay controls and jump-to-trade/signal;
-- data-status panel exposing provider, market type, latency, gaps and fallback state;
-- watchlist virtualization and quote-stream aggregation;
-- keyboard command discoverability and user-customizable shortcuts;
-- autosaved workspace versions and export/import;
-- accessible tabular alternatives for chart OHLC, indicators, signals and trades (OHLC/signals/trades DOM fallback delivered; indicator statistics already use native tables);
-- responsive monitoring experience; full Blockly editing remains desktop/tablet focused.
+- [x] layout presets and resizable/dockable panels;
+- [x] multi-chart layouts with linked symbol, interval and crosshair;
+- [x] indicator pane management and per-series scale placement;
+- [x] drawing object tree, visibility lock, templates and undo/redo;
+- [x] replay controls and jump-to-trade/signal;
+- [x] data-status panel exposing provider, market type, latency, gaps and fallback state;
+- [x] watchlist virtualization and quote-stream aggregation;
+- [x] keyboard command discoverability and user-customizable shortcuts;
+- [x] autosaved workspace versions and export/import;
+- [x] accessible tabular alternatives for chart OHLC, indicators, signals and trades;
+- [x] responsive monitoring experience; full Blockly editing remains desktop/tablet focused.
 
 Canvas content needs a maintained DOM alternative today. Experimental HTML-in-Canvas APIs may only be used behind feature detection and cannot replace the fallback until browser support is broad.
 

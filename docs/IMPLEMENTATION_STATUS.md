@@ -10,6 +10,24 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Professional chart workspace — 2026-07-11
+
+- [x] Add keyboard/pointer-resizable side docks, dock swapping and 1/2/4 chart presets.
+- [x] Link or unlink symbol, timeframe and crosshair for every secondary chart.
+- [x] Add native indicator pane placement and independent left/right/hidden scales.
+- [x] Add a drawing object tree with visibility, locks, style templates, undo and redo.
+- [x] Add replay jump-to-signal/trade event controls and explicit feed gap/fallback status.
+- [x] Multiplex watchlist quotes over one runtime-validated WebSocket with REST polling fallback.
+- [x] Window watchlists above 80 rows while leaving smaller lists fully exposed to assistive technology.
+- [x] Add conflict-checked, persisted and discoverable custom keyboard shortcuts.
+- [x] Version workspaces with bounded autosave history, rollback and SHA-256 verified export/import.
+- [x] Preserve semantic chart tables and responsive monitoring layouts.
+
+Verification:
+
+- Workspace/checksum, virtual-list, data-quality, shortcut, drawing-template, pane-render and resize tests pass.
+- Production build and the 18-scenario Playwright suite pass (the funded exchange soak remains excluded).
+
 ### Runtime backup and recovery — 2026-07-11
 
 - [x] Create consistent online SQLite snapshots instead of copying active database files directly.

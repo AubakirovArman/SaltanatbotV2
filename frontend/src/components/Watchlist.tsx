@@ -1,11 +1,12 @@
 import { ArrowDownUp, ArrowDownWideNarrow, ArrowUpNarrowWide, Search, Star } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SparklineSeries } from "../api/marketClient";
 import { loadFavorites, storeFavorites } from "../market/favorites";
 import { loadWatchlistSort, storeWatchlistSort, type WatchlistSort } from "../market/watchlistPrefs";
 import type { AssetClass, Candle, DataExchange, Instrument } from "../types";
 import type { Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
+import { calculateVirtualWindow } from "../market/virtualList";
 
 interface WatchlistProps {
   locale: Locale;
@@ -50,6 +51,9 @@ export function Watchlist({
   const [query, setQuery] = useState("");
   const [favorites, setFavorites] = useState<string[]>(() => loadFavorites());
   const [sort, setSort] = useState<WatchlistSort>(() => loadWatchlistSort());
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const sortLabel = sortMeta[sort].labelKey ? t(sortMeta[sort].labelKey) : "A → Z";
   const showExchange = useMemo(
     () => instruments.some((instrument) => instrument.assetClass === "crypto"),
@@ -116,6 +120,23 @@ export function Watchlist({
     return [...matches].sort(compare);
   }, [instruments, query, favoriteSet, sort, changeFor]);
 
+  useLayoutEffect(() => {
+    const element = listRef.current;
+    if (!element) return;
+    const update = () => setViewportHeight(element.clientHeight);
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+    setScrollTop(0);
+  }, [query, selectedAsset, sort]);
+  const virtual = calculateVirtualWindow(filtered.length, scrollTop, viewportHeight);
+  const visible = filtered.slice(virtual.start, virtual.end);
+
   return (
     <aside className="watchlist">
       <div className="panel-header">
@@ -181,8 +202,9 @@ export function Watchlist({
         </div>
       )}
 
-      <div className="symbol-list">
-        {filtered.map((instrument) => {
+      <div className="symbol-list" ref={listRef} onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)} aria-label={`${t("markets")}: ${filtered.length} ${t("symbols")}`}>
+        {virtual.paddingBefore > 0 && <div aria-hidden="true" style={{ blockSize: virtual.paddingBefore }} />}
+        {visible.map((instrument) => {
           const active = instrument.symbol === selectedSymbol;
           const spark = sparklines?.[instrument.symbol];
           const price = active && latest ? latest.close : spark?.last ?? instrument.basePrice;
@@ -226,6 +248,7 @@ export function Watchlist({
             </div>
           );
         })}
+        {virtual.paddingAfter > 0 && <div aria-hidden="true" style={{ blockSize: virtual.paddingAfter }} />}
         {filtered.length === 0 && (
           <div className="empty-state">
             <strong>{t("noMatches")}</strong>

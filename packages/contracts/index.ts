@@ -52,6 +52,25 @@ export interface SparklinesResponse {
   series: Record<string, SparklineSeries | null>;
 }
 
+export interface QuotesSnapshotMessage {
+  type: "quotes_snapshot";
+  timeframe: Timeframe;
+  series: Record<string, SparklineSeries | null>;
+  provider: string;
+  ts: number;
+}
+
+export interface QuoteMessage {
+  type: "quote";
+  symbol: string;
+  timeframe: Timeframe;
+  series: SparklineSeries;
+  provider: string;
+  ts: number;
+}
+
+export type QuoteStreamMessage = QuotesSnapshotMessage | QuoteMessage | ErrorMessage;
+
 export type MarketStatus = "connected" | "fallback" | "error";
 
 export interface StreamStatus {
@@ -208,6 +227,25 @@ export function parseSparklinesResponse(value: unknown): SparklinesResponse {
     };
   }
   return { timeframe: parseTimeframe(input.timeframe, "sparklines response.timeframe"), series };
+}
+
+export function parseQuoteStreamMessage(value: unknown): QuoteStreamMessage {
+  const input = record(value, "quote stream message");
+  const type = string(input.type, "quote stream message.type");
+  const ts = finite(input.ts, "quote stream message.ts");
+  if (type === "error") return { type, message: string(input.message, "quote stream message.message"), ts };
+  const timeframe = parseTimeframe(input.timeframe, "quote stream message.timeframe");
+  const provider = string(input.provider, "quote stream message.provider");
+  if (type === "quotes_snapshot") {
+    return { type, timeframe, provider, ts, series: parseSparklinesResponse({ timeframe, series: input.series }).series };
+  }
+  if (type === "quote") {
+    const symbol = string(input.symbol, "quote stream message.symbol");
+    const parsed = parseSparklinesResponse({ timeframe, series: { [symbol]: input.series } }).series[symbol];
+    if (!parsed) throw new Error("quote stream message.series cannot be null");
+    return { type, symbol, timeframe, provider, ts, series: parsed };
+  }
+  throw new Error(`Unsupported quote stream message type: ${type}`);
 }
 
 export function parseStreamMessage(value: unknown): StreamMessage {

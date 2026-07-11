@@ -5,7 +5,10 @@ This directory currently contains both reusable terminal components and large fe
 ## Current responsibilities
 
 - shell controls: `TopBar`, `CommandPalette`;
-- market/chart UI: `Watchlist`, `ChartCanvas`, indicator and compare controls;
+- market/chart UI: `Watchlist`, `ChartCanvas`, `MultiChartWorkspace`,
+  `DrawingObjectsPanel`, indicator and compare controls;
+- shell accessibility: `PanelResizeHandle`, `ShortcutSettingsDialog` and the
+  semantic `ChartDataPanel` fallback;
 - strategy UI: `StrategyLab`, Pine import and backtest report;
 - trading UI: `TradingView`.
 

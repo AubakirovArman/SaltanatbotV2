@@ -1,5 +1,6 @@
 import {
   Magnet,
+  Layers3,
   MousePointer2,
   Move,
   MoveHorizontal,
@@ -30,7 +31,7 @@ import { useChartRenderer } from "../chart/useChartRenderer";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import { visibleCandles } from "../chart/scales";
-import type { ChartLivePosition, ChartMarker, ChartPlot, ChartShapes, ChartTable, ChartTrade, CompareLegendSnapshot, CompareOverlayConfig, CompareSeries, PriceMode, Viewport } from "../chart/types";
+import type { ChartLivePosition, ChartMarker, ChartPlot, ChartShapes, ChartTable, ChartTrade, CompareLegendSnapshot, CompareOverlayConfig, CompareSeries, LinkedCrosshair, PriceMode, Viewport } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { PriceAlert } from "../market/alerts";
 import type { Locale } from "../i18n";
@@ -39,6 +40,7 @@ import type { Candle, ChartType, Instrument, Timeframe } from "../types";
 import { ChartIndicatorOverlay, type StrategyMenuItem } from "./ChartIndicatorOverlay";
 import { ChartDataPanel } from "./ChartDataPanel";
 import { CompareControl, type CompareCandidate } from "./CompareControl";
+import { DrawingObjectsPanel } from "./DrawingObjectsPanel";
 
 interface ChartCanvasProps {
   candles: Candle[];
@@ -86,6 +88,9 @@ interface ChartCanvasProps {
   onAddCompare?: (symbol: string) => void;
   onUpdateCompare?: (id: string, patch: Partial<CompareOverlayConfig>) => void;
   onRemoveCompare?: (id: string) => void;
+  chartId?: string;
+  linkedCrosshair?: LinkedCrosshair;
+  onLinkedCrosshairChange?: (crosshair?: LinkedCrosshair) => void;
 }
 
 const MAX_COMPARE = 3;
@@ -135,12 +140,16 @@ export function ChartCanvas({
   compareChartTypes,
   onAddCompare,
   onUpdateCompare,
-  onRemoveCompare
+  onRemoveCompare,
+  chartId = "chart-1",
+  linkedCrosshair,
+  onLinkedCrosshairChange
 }: ChartCanvasProps) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const interactionRef = useRef<Interaction>();
   const drawingsRef = useRef<DrawingObject[]>([]);
   const historyRef = useRef<DrawingObject[][]>([]);
+  const redoRef = useRef<DrawingObject[][]>([]);
   const skipHistoryRef = useRef(false);
 
   const [tool, setTool] = useState<DrawingTool>("cursor");
@@ -148,6 +157,8 @@ export function ChartCanvas({
   const [menu, setMenu] = useState<{ x: number; y: number; id?: string; price?: number }>();
   const [showVolume, setShowVolume] = useState(true);
   const [showArtifactSettings, setShowArtifactSettings] = useState(false);
+  const [showDrawingObjects, setShowDrawingObjects] = useState(false);
+  const [, setHistoryVersion] = useState(0);
   const [drawings, setDrawings] = useState<DrawingObject[]>([]);
   const [draft, setDraft] = useState<{ tool: ShapeTool; points: Anchor[] }>();
   const chartAlerts = useMemo(
@@ -190,6 +201,8 @@ export function ChartCanvas({
   // Load / persist drawings per symbol.
   useEffect(() => {
     const loaded = loadDrawings(instrument.symbol);
+    historyRef.current = [];
+    redoRef.current = [];
     setDrawings(loaded);
     setSelectedId(undefined);
     setDraft(undefined);
@@ -209,7 +222,28 @@ export function ChartCanvas({
     }
     historyRef.current.push(drawings);
     if (historyRef.current.length > 60) historyRef.current.shift();
+    redoRef.current = [];
+    setHistoryVersion((value) => value + 1);
   }, [drawings]);
+
+  const undoDrawings = () => {
+    const history = historyRef.current;
+    if (history.length < 2) return;
+    const current = history.pop();
+    if (current) redoRef.current.push(current);
+    skipHistoryRef.current = true;
+    setSelectedId(undefined);
+    setDrawings(history[history.length - 1]);
+  };
+
+  const redoDrawings = () => {
+    const next = redoRef.current.pop();
+    if (!next) return;
+    historyRef.current.push(next);
+    skipHistoryRef.current = true;
+    setSelectedId(undefined);
+    setDrawings(next);
+  };
 
   // Keyboard: Esc cancels/deselects, Delete removes selected, Ctrl/Cmd+Z undoes.
   useEffect(() => {
@@ -218,13 +252,13 @@ export function ChartCanvas({
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       if ((event.key === "z" || event.key === "Z") && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        const history = historyRef.current;
-        if (history.length >= 2) {
-          history.pop();
-          skipHistoryRef.current = true;
-          setSelectedId(undefined);
-          setDrawings(history[history.length - 1]);
-        }
+        if (event.shiftKey) redoDrawings();
+        else undoDrawings();
+        return;
+      }
+      if ((event.key === "y" || event.key === "Y") && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        redoDrawings();
         return;
       }
       if (event.key === "Escape") {
@@ -295,6 +329,20 @@ export function ChartCanvas({
     }));
   }, [focusTime]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!linkedCrosshair || linkedCrosshair.sourceId === chartId) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    let index = candles.findIndex((candle) => candle.time >= linkedCrosshair.time);
+    if (index < 0) index = candles.length - 1;
+    const candle = candles[index];
+    if (!candle) return;
+    setView((current) => ({
+      ...current,
+      crosshair: { x: viewport.indexToX(index), y: viewport.priceToY(linkedCrosshair.price) }
+    }));
+  }, [candles, chartId, linkedCrosshair]);
+
   const devicePoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return {
@@ -358,6 +406,9 @@ export function ChartCanvas({
         <span className="rail-spacer" aria-hidden="true" />
         <ToolButton active={showVolume} label={t("toggleVolume")} onClick={() => setShowVolume((value) => !value)}>
           <Scaling size={15} aria-hidden="true" />
+        </ToolButton>
+        <ToolButton active={showDrawingObjects} label={t("drawingObjects")} onClick={() => setShowDrawingObjects((value) => !value)}>
+          <Layers3 size={15} aria-hidden="true" />
         </ToolButton>
         <button
           type="button"
@@ -498,6 +549,11 @@ export function ChartCanvas({
             const viewport = viewportRef.current;
             const { x, y } = devicePoint(event);
             if (viewport) setHoverIndex(clampIndex(Math.round(viewport.xToIndex(x)), candles.length));
+            if (viewport && onLinkedCrosshairChange) {
+              const index = clampIndex(Math.round(viewport.xToIndex(x)), candles.length);
+              const candle = candles[index];
+              if (candle) onLinkedCrosshairChange({ sourceId: chartId, time: candle.time, price: viewport.yToPrice(y) });
+            }
 
             if (tool !== "cursor" && draft && viewport) {
               setHoverAnchor(snapAnchor(viewport, candles, x, y, magnet));
@@ -535,6 +591,7 @@ export function ChartCanvas({
             setView((current) => ({ ...current, crosshair: undefined }));
             setHoveredId(undefined);
             setHoverIndex(undefined);
+            onLinkedCrosshairChange?.();
           }}
           onPointerUp={(event) => {
             event.currentTarget.releasePointerCapture(event.pointerId);
@@ -581,6 +638,23 @@ export function ChartCanvas({
           locale={locale}
           summaryId={chartDataSummaryId}
         />
+        {showDrawingObjects && (
+          <DrawingObjectsPanel
+            locale={locale}
+            drawings={drawings}
+            selectedId={selectedId}
+            canUndo={historyRef.current.length >= 2}
+            canRedo={redoRef.current.length > 0}
+            onSelect={setSelectedId}
+            onToggleHidden={(id) => setDrawings((current) => current.map((drawing) => drawing.id === id ? { ...drawing, hidden: !drawing.hidden } : drawing))}
+            onToggleLocked={(id) => setDrawings((current) => current.map((drawing) => drawing.id === id ? { ...drawing, locked: !drawing.locked } : drawing))}
+            onDelete={(id) => { setDrawings((current) => current.filter((drawing) => drawing.id !== id)); setSelectedId(undefined); }}
+            onApplyTemplate={(template) => setDrawings((current) => current.map((drawing) => drawing.id === selectedId ? { ...drawing, style: { ...template.style } } : drawing))}
+            onUndo={undoDrawings}
+            onRedo={redoDrawings}
+            onClose={() => setShowDrawingObjects(false)}
+          />
+        )}
         {selectedId && drawings.some((d) => d.id === selectedId) && (
           <DrawingStyleBar
             locale={locale}

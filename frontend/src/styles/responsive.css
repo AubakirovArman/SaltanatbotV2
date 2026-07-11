@@ -1,16 +1,4 @@
 @media (max-width: 1280px) {
-  .workspace {
-    grid-template-columns: 216px minmax(0, 1fr) 232px;
-  }
-
-  .workspace.left-closed {
-    grid-template-columns: 0 minmax(0, 1fr) 232px;
-  }
-
-  .workspace.right-closed {
-    grid-template-columns: 216px minmax(0, 1fr) 0;
-  }
-
   .strategy-grid {
     grid-template-columns: minmax(180px, 208px) minmax(0, 1fr) minmax(256px, 292px);
   }
@@ -53,6 +41,10 @@
     display: none;
   }
 
+  .panel-resize-handle {
+    display: none;
+  }
+
   .stats-panel {
     display: none;
   }
@@ -79,6 +71,16 @@
 
   .chart-surface {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multi-chart-grid:is(.split-vertical, .split-horizontal, .grid-4) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(var(--mobile-chart-count, 2), minmax(22rem, 55dvh));
+    overflow-y: auto;
+  }
+
+  .multi-chart-grid.grid-4 {
+    --mobile-chart-count: 4;
   }
 
   .strategy-grid {

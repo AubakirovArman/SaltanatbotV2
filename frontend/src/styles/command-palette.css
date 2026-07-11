@@ -99,6 +99,103 @@
   font-size: var(--fs-xs);
 }
 
+.shortcut-backdrop {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.shortcut-dialog {
+  inline-size: min(34rem, 100%);
+  max-block-size: min(42rem, 90dvh);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.shortcut-dialog > header,
+.shortcut-dialog > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.shortcut-dialog > header {
+  border-block-end: 1px solid var(--line-soft);
+}
+
+.shortcut-dialog > header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.shortcut-dialog > header span,
+.shortcut-dialog > footer span {
+  color: var(--dim);
+  font-size: var(--fs-sm);
+}
+
+.shortcut-dialog button {
+  min-block-size: 28px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.shortcut-list {
+  min-block-size: 0;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.shortcut-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(7rem, auto);
+  align-items: center;
+  gap: 12px;
+  min-block-size: 38px;
+  padding-inline: 6px;
+  border-radius: var(--radius-sm);
+}
+
+.shortcut-list > div:hover {
+  background: var(--hover);
+}
+
+.shortcut-list button {
+  padding-inline: 8px;
+  font-family: var(--font-mono);
+}
+
+.shortcut-list button.capturing {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.shortcut-dialog > footer {
+  min-block-size: 44px;
+  border-block-start: 1px solid var(--line-soft);
+}
+
+.shortcut-dialog > footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 9px;
+}
+
 .cmdk-footer span {
   display: inline-flex;
   align-items: center;

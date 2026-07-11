@@ -126,6 +126,26 @@ export function parseSparklinesResponse(value) {
     }
     return { timeframe: parseTimeframe(input.timeframe, "sparklines response.timeframe"), series };
 }
+export function parseQuoteStreamMessage(value) {
+    const input = record(value, "quote stream message");
+    const type = string(input.type, "quote stream message.type");
+    const ts = finite(input.ts, "quote stream message.ts");
+    if (type === "error")
+        return { type, message: string(input.message, "quote stream message.message"), ts };
+    const timeframe = parseTimeframe(input.timeframe, "quote stream message.timeframe");
+    const provider = string(input.provider, "quote stream message.provider");
+    if (type === "quotes_snapshot") {
+        return { type, timeframe, provider, ts, series: parseSparklinesResponse({ timeframe, series: input.series }).series };
+    }
+    if (type === "quote") {
+        const symbol = string(input.symbol, "quote stream message.symbol");
+        const parsed = parseSparklinesResponse({ timeframe, series: { [symbol]: input.series } }).series[symbol];
+        if (!parsed)
+            throw new Error("quote stream message.series cannot be null");
+        return { type, symbol, timeframe, provider, ts, series: parsed };
+    }
+    throw new Error(`Unsupported quote stream message type: ${type}`);
+}
 export function parseStreamMessage(value) {
     const input = record(value, "stream message");
     const type = string(input.type, "stream message.type");

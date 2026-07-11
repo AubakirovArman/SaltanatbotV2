@@ -382,13 +382,17 @@
 
 .workspace-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) repeat(3, auto);
   align-items: center;
   border-radius: var(--radius-sm);
 }
 
 .workspace-row:hover {
   background: var(--hover);
+}
+
+.workspace-row.active {
+  background: var(--accent-soft);
 }
 
 .workspace-apply {
@@ -447,19 +451,55 @@
 }
 
 .workspace {
+  position: relative;
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 260px;
+  grid-template-columns: var(--left-panel-size, 240px) minmax(0, 1fr) var(--right-panel-size, 260px);
   block-size: 100%;
   min-block-size: 0;
   overflow: hidden;
 }
 
 .workspace.left-closed {
-  grid-template-columns: 0 minmax(0, 1fr) 260px;
+  grid-template-columns: 0 minmax(0, 1fr) var(--right-panel-size, 260px);
 }
 
 .workspace.right-closed {
-  grid-template-columns: 240px minmax(0, 1fr) 0;
+  grid-template-columns: var(--left-panel-size, 240px) minmax(0, 1fr) 0;
+}
+
+.panel-resize-handle {
+  position: absolute;
+  z-index: 25;
+  inset-block: 0;
+  inline-size: 7px;
+  cursor: col-resize;
+  touch-action: pan-y;
+}
+
+.panel-resize-handle.left {
+  inset-inline-start: calc(var(--left-panel-size, 240px) - 3px);
+}
+
+.panel-resize-handle.right {
+  inset-inline-end: calc(var(--right-panel-size, 260px) - 3px);
+}
+
+.panel-resize-handle::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 3px;
+  inline-size: 1px;
+  background: transparent;
+}
+
+.panel-resize-handle:is(:hover, :focus-visible)::after {
+  background: var(--accent);
+}
+
+.panel-resize-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .workspace.left-closed.right-closed {

@@ -8,6 +8,7 @@ import type { PriceAlert } from "../market/alerts";
 import type { AppMode } from "./useAppShell";
 import type { Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
+import { loadShortcuts, matchesShortcut, saveShortcuts, type ShortcutAction, type ShortcutMap } from "./shortcuts";
 
 interface UseAppCommandsOptions {
   locale?: Locale;
@@ -19,6 +20,8 @@ interface UseAppCommandsOptions {
   setChartType: Dispatch<SetStateAction<ChartType>>;
   setMode: Dispatch<SetStateAction<AppMode>>;
   toggleTheme(): void;
+  toggleLeft(): void;
+  toggleRight(): void;
   alerts: PriceAlert[];
   removeAlert(id: string): void;
 }
@@ -26,6 +29,9 @@ interface UseAppCommandsOptions {
 export function useAppCommands(options: UseAppCommandsOptions) {
   const locale = options.locale ?? "en";
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutSettingsOpen, setShortcutSettingsOpen] = useState(false);
+  const [shortcuts, setShortcuts] = useState<ShortcutMap>(loadShortcuts);
+  useEffect(() => saveShortcuts(shortcuts), [shortcuts]);
   const commands = useMemo<Command[]>(() => {
     const list: Command[] = [];
     for (const item of options.catalog?.instruments ?? []) list.push({
@@ -45,6 +51,7 @@ export function useAppCommands(options: UseAppCommandsOptions) {
     list.push({ id: "view-strategy", group: shellText(locale, "view"), label: shellText(locale, "openStrategy"), run: () => { warmStrategyLab(); options.setMode("strategy"); } });
     list.push({ id: "view-trade", group: shellText(locale, "view"), label: shellText(locale, "openTrading"), run: () => { warmTradingView(); options.setMode("trade"); } });
     list.push({ id: "theme", group: shellText(locale, "view"), label: shellText(locale, "toggleTheme"), run: options.toggleTheme });
+    list.push({ id: "keyboard-shortcuts", group: shellText(locale, "view"), label: shellText(locale, "keyboardShortcuts"), hint: shortcuts.shortcutSettings, run: () => setShortcutSettingsOpen(true) });
     for (const indicator of options.indicators) list.push({
       id: `ind-${indicator.id}`,
       group: shellText(locale, "indicator"),
@@ -61,25 +68,46 @@ export function useAppCommands(options: UseAppCommandsOptions) {
       run: () => options.alerts.forEach((alert) => options.removeAlert(alert.id))
     });
     return list;
-  }, [options]);
+  }, [options, shortcuts.shortcutSettings]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const typing = !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (matchesShortcut(event, shortcuts.commandPalette)) {
         event.preventDefault();
         setPaletteOpen((open) => !open);
         return;
       }
-      if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
-      const index = ["1", "2", "3", "4", "5", "6"].indexOf(event.key);
+      if (matchesShortcut(event, shortcuts.shortcutSettings)) {
+        event.preventDefault();
+        setShortcutSettingsOpen(true);
+        return;
+      }
+      if (typing) return;
+      const timeframeActions: ShortcutAction[] = ["timeframe1", "timeframe2", "timeframe3", "timeframe4", "timeframe5", "timeframe6"];
+      const index = timeframeActions.findIndex((action) => matchesShortcut(event, shortcuts[action]));
       const timeframe = index >= 0 ? options.catalog?.timeframes[index] : undefined;
-      if (timeframe) options.setTimeframe(timeframe);
+      if (timeframe) { event.preventDefault(); options.setTimeframe(timeframe); return; }
+      const action = (shortcut: ShortcutAction, run: () => void) => {
+        if (!matchesShortcut(event, shortcuts[shortcut])) return false;
+        event.preventDefault();
+        run();
+        return true;
+      };
+      if (action("openChart", () => options.setMode("chart"))) return;
+      if (action("openStrategy", () => { warmStrategyLab(); options.setMode("strategy"); })) return;
+      if (action("openTrading", () => { warmTradingView(); options.setMode("trade"); })) return;
+      if (action("toggleMarkets", options.toggleLeft)) return;
+      action("toggleInstrument", options.toggleRight);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [options.catalog, options.setTimeframe]);
+  }, [options.catalog, options.setMode, options.setTimeframe, options.toggleLeft, options.toggleRight, shortcuts]);
 
-  return { paletteOpen, commands, openPalette: () => setPaletteOpen(true), closePalette: () => setPaletteOpen(false) };
+  return {
+    paletteOpen, commands, openPalette: () => setPaletteOpen(true), closePalette: () => setPaletteOpen(false),
+    shortcutSettingsOpen, openShortcutSettings: () => setShortcutSettingsOpen(true), closeShortcutSettings: () => setShortcutSettingsOpen(false),
+    shortcuts, setShortcuts
+  };
 }

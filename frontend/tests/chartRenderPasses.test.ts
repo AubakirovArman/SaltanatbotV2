@@ -101,4 +101,16 @@ describe("chart render passes", () => {
       expect(rebound.computed).toBe(plan.computed);
     }
   });
+
+  it("moves price indicators into independently scaled panes when configured", () => {
+    const plan = prepareChartRender({
+      ...input,
+      indicators: [{ ...input.indicators[0], pane: "separate", scalePlacement: "left" }]
+    });
+    const basePlan = prepareChartRender(input);
+    expect(plan.empty).toBe(false);
+    if (plan.empty || basePlan.empty) return;
+    expect(plan.lowerIndicators).toMatchObject([{ id: "sma", pane: "separate", scalePlacement: "left" }]);
+    expect(plan.plot.height).toBeLessThan(basePlan.plot.height);
+  });
 });

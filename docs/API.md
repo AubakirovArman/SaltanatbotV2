@@ -1,6 +1,6 @@
 # HTTP & WebSocket API reference
 
-SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), a live market stream, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and two WebSocket endpoints are exposed at `/stream` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
+SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and three WebSocket endpoints are exposed at `/stream`, `/quotes` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
 
 Public market catalog, candle, sparkline and WebSocket payloads have canonical TypeScript contracts
 plus fail-closed runtime parsers in `packages/contracts`. The frontend validates untrusted JSON at
@@ -11,7 +11,7 @@ The generated [API endpoint index](./API_ENDPOINTS.generated.md) is the route-pr
 
 - Base URL (default): `http://localhost:4180`
 - Content type: `application/json`
-- Validation: query parameters on `/api/candles`, `/api/sparklines`, and `/stream` are validated with [zod](https://zod.dev); invalid input returns HTTP `400` with a flattened zod error.
+- Validation: query parameters on `/api/candles`, `/api/sparklines`, `/stream` and `/quotes` are validated with [zod](https://zod.dev); invalid HTTP input returns `400`, while invalid WebSocket input receives a typed error and closes.
 
 ## Trading auth
 
@@ -348,6 +348,39 @@ Connection/health status. `status` is `fallback` when the underlying message con
 ```
 
 > Note: the `MarketStatus` type also defines `"error"` as a possible status value, but the `/stream` endpoint only emits `connected` or `fallback` in `status` messages.
+
+---
+
+## Aggregated quote WebSocket: `/quotes`
+
+The watchlist uses one browser connection instead of opening one connection per symbol. Query parameters match `GET /api/sparklines`: `symbols` (comma-separated, deduplicated and capped at 40), `timeframe`, `points` and `exchange`.
+
+```
+ws://localhost:4180/quotes?symbols=BTCUSDT,ETHUSDT&timeframe=1m&points=32&exchange=binance
+```
+
+The first `quotes_snapshot` message contains a nullable series map. Each subsequent `quote` replaces one symbol's series. `SparklineSeries` contains `last`, `changePct` and bounded `points`. All variants are validated by `parseQuoteStreamMessage` from `@saltanatbotv2/contracts`; malformed input is rejected by the frontend and activates its batched REST polling fallback.
+
+```json
+{
+  "type": "quotes_snapshot",
+  "timeframe": "1m",
+  "series": { "BTCUSDT": { "last": 64050.2, "changePct": 0.8, "points": [63540.1, 64050.2] } },
+  "provider": "binance",
+  "ts": 1751932800000
+}
+```
+
+```json
+{
+  "type": "quote",
+  "symbol": "BTCUSDT",
+  "timeframe": "1m",
+  "series": { "last": 64068.9, "changePct": 0.83, "points": [63540.1, 64068.9] },
+  "provider": "binance",
+  "ts": 1751932803000
+}
+```
 
 ---
 

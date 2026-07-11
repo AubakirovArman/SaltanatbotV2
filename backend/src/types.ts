@@ -8,6 +8,7 @@ export type {
   ErrorMessage,
   Instrument,
   MarketStatus,
+  QuoteStreamMessage,
   SnapshotMessage,
   StreamMessage,
   StreamStatus,

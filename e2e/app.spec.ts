@@ -350,6 +350,20 @@ async function installMarketSocketMock(
 
       constructor(url: string | URL) {
         this.url = String(url);
+        if (this.url.includes("/quotes?")) {
+          window.setTimeout(() => {
+            this.readyState = MockWebSocket.OPEN;
+            this.onopen?.(new Event("open"));
+            this.emit({
+              type: "quotes_snapshot",
+              timeframe: "1m",
+              provider: "mock",
+              series: { BTCUSDT: { last: 101, changePct: 1, points: [100, 101] } },
+              ts: Date.now()
+            });
+          }, 0);
+          return;
+        }
         const attempt = (target.__marketSocketAttempts ?? 0) + 1;
         target.__marketSocketAttempts = attempt;
         window.setTimeout(() => {

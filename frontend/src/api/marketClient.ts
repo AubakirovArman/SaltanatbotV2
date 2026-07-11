@@ -1,6 +1,7 @@
 import {
   parseCandlesResponse,
   parseCatalogResponse,
+  parseQuoteStreamMessage as parseContractQuoteStreamMessage,
   parseSparklinesResponse,
   parseStreamMessage as parseContractStreamMessage,
   type SparklineSeries,
@@ -45,6 +46,16 @@ export function createMarketSocket(symbol: string, timeframe: Timeframe, exchang
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const params = new URLSearchParams({ symbol, timeframe, limit: "1000", exchange });
   return new WebSocket(`${protocol}://${window.location.host}/stream?${params}`);
+}
+
+export function createQuoteSocket(symbols: string[], timeframe: Timeframe, points = 32, exchange: DataExchange = "binance") {
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const params = new URLSearchParams({ symbols: symbols.join(","), timeframe, points: String(points), exchange });
+  return new WebSocket(`${protocol}://${window.location.host}/quotes?${params}`);
+}
+
+export function parseQuoteStreamMessage(data: string) {
+  return parseContractQuoteStreamMessage(JSON.parse(data) as unknown);
 }
 
 export function parseStreamMessage(data: string) {

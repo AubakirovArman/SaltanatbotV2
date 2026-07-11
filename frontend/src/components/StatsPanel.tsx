@@ -15,6 +15,9 @@ interface StatsPanelProps {
   connection: ConnectionState;
   message: string;
   latencyMs?: number;
+  gapCount?: number;
+  missingBars?: number;
+  fallbackActive?: boolean;
   alerts: PriceAlert[];
   onAddAlert: (input: NewAlertInput) => void;
   onRemoveAlert: (id: string) => void;
@@ -29,6 +32,9 @@ export function StatsPanel({
   connection,
   message,
   latencyMs,
+  gapCount = 0,
+  missingBars = 0,
+  fallbackActive = false,
   alerts,
   onAddAlert,
   onRemoveAlert,
@@ -82,8 +88,11 @@ export function StatsPanel({
         </div>
         <div className="feed-list">
           <FeedRow label={t("provider")} value={provider} />
+          <FeedRow label={t("marketType")} value={instrument.assetClass === "crypto" ? t("spotMarket") : instrument.assetClass} />
           <FeedRow label={t("latency")} value={latencyMs !== undefined ? `${latencyMs} ms` : "…"} num />
           <FeedRow label={t("candles")} value={String(candles.length)} num />
+          <FeedRow label={t("dataGaps")} value={gapCount ? `${gapCount} (${missingBars} ${t("missingBars")})` : t("noDataGaps")} num />
+          <FeedRow label={t("dataMode")} value={t(fallbackActive ? "fallbackData" : "liveData")} />
           <FeedRow label={t("status")} value={message} />
         </div>
       </section>

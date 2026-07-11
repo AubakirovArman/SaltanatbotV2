@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createMarketSocket, getCandles, parseStreamMessage } from "../api/marketClient";
 import type { Candle, DataExchange, StreamMessage, Timeframe } from "../types";
+import { analyzeCandleGaps } from "../market/dataQuality";
 
 export type ConnectionState = "connecting" | "connected" | "fallback" | "error";
 
@@ -16,6 +17,9 @@ interface MarketStreamState {
   hasMore: boolean;
   loadingMore: boolean;
   loadOlder: () => void;
+  gapCount: number;
+  missingBars: number;
+  fallbackActive: boolean;
 }
 
 export function useMarketStream(
@@ -38,6 +42,7 @@ export function useMarketStream(
   const generationRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
   const activeCandles = dataKey === marketKey ? candles : EMPTY_CANDLES;
+  const gapSummary = useMemo(() => analyzeCandleGaps(activeCandles, timeframe), [activeCandles, timeframe]);
   candlesRef.current = activeCandles;
 
   useEffect(() => {
@@ -191,7 +196,7 @@ export function useMarketStream(
   }, [symbol, timeframe, hasMore, exchange]);
 
   return useMemo(
-    () => ({ candles: activeCandles, connection, provider, message, latencyMs, hasMore, loadingMore, loadOlder }),
-    [activeCandles, connection, latencyMs, message, provider, hasMore, loadingMore, loadOlder]
+    () => ({ candles: activeCandles, connection, provider, message, latencyMs, hasMore, loadingMore, loadOlder, gapCount: gapSummary.gapCount, missingBars: gapSummary.missingBars, fallbackActive: connection === "fallback" || provider.toLowerCase().includes("synthetic") }),
+    [activeCandles, connection, latencyMs, message, provider, hasMore, loadingMore, loadOlder, gapSummary]
   );
 }

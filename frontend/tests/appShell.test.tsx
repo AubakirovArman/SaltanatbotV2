@@ -58,6 +58,11 @@ describe("useAppShell", () => {
     expect(document.querySelector('meta[name="color-scheme"]')?.getAttribute("content")).toBe("light");
     expect(document.querySelector('meta[name="theme-color"]')?.getAttribute("content")).toBe("#f2f4f7");
     expect(localStorage.getItem("mf:theme")).toBe("light");
+    await act(async () => shell?.setLayoutPreset("grid-4"));
+    expect(shell?.charts).toHaveLength(4);
+    expect(shell?.charts.every((chart) => chart.linkCrosshair)).toBe(true);
+    await act(async () => shell?.setLayoutPreset("split-horizontal"));
+    expect(shell?.charts).toHaveLength(2);
     await act(async () => root.unmount());
   });
 });
@@ -79,7 +84,7 @@ describe("useAppCommands", () => {
       selectedTimeframe = timeframe;
       commands = useAppCommands({
         catalog, indicators, setIndicators, setSymbol, setTimeframe, setChartType, setMode,
-        toggleTheme: () => {}, alerts: [], removeAlert: () => {}
+        toggleTheme: () => {}, toggleLeft: () => {}, toggleRight: () => {}, alerts: [], removeAlert: () => {}
       });
       return null;
     }

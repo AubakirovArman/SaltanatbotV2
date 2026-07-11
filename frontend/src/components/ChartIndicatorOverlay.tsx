@@ -222,6 +222,22 @@ function IndicatorEditor({
         )}
         {indicator.kind === "macd" && <MacdFields locale={locale} indicator={indicator} onUpdate={onUpdate} />}
         <ColorField label={shellText(locale, "line")} value={indicator.color} onChange={(color) => onUpdate({ color })} />
+        <label className="indicator-select-field">
+          <span>{shellText(locale, "indicatorPane")}</span>
+          <select value={indicator.pane ?? "auto"} onChange={(event) => onUpdate({ pane: event.target.value as IndicatorConfig["pane"] })}>
+            <option value="auto">{shellText(locale, "paneAuto")}</option>
+            {!isOscillator(indicator) && <option value="main">{shellText(locale, "paneMain")}</option>}
+            <option value="separate">{shellText(locale, "paneSeparate")}</option>
+          </select>
+        </label>
+        <label className="indicator-select-field">
+          <span>{shellText(locale, "scalePlacement")}</span>
+          <select value={indicator.scalePlacement ?? "right"} onChange={(event) => onUpdate({ scalePlacement: event.target.value as IndicatorConfig["scalePlacement"] })}>
+            <option value="right">{shellText(locale, "scaleRight")}</option>
+            <option value="left">{shellText(locale, "scaleLeft")}</option>
+            <option value="hidden">{shellText(locale, "scaleHidden")}</option>
+          </select>
+        </label>
         {indicator.kind === "bollinger" && (
           <ColorField label={shellText(locale, "band")} value={indicator.bandColor} onChange={(bandColor) => onUpdate({ bandColor })} />
         )}
@@ -251,6 +267,10 @@ function IndicatorEditor({
       </div>
     </div>
   );
+}
+
+function isOscillator(indicator: IndicatorConfig) {
+  return indicator.kind === "rsi" || indicator.kind === "macd" || indicator.kind === "stochastic" || indicator.kind === "atr" || indicator.kind === "obv";
 }
 
 function MacdFields({

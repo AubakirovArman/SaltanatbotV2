@@ -1,10 +1,14 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState, type CSSProperties } from "react";
 import { useChartArtifactOverlay } from "./chart/useChartArtifactOverlay";
 import { AlertToasts } from "./components/AlertToasts";
 import { ChartCanvas } from "./components/ChartCanvas";
 import { CommandPalette } from "./components/CommandPalette";
 import { StatsPanel } from "./components/StatsPanel";
 import { TopBar } from "./components/TopBar";
+import { PanelResizeHandle } from "./components/PanelResizeHandle";
+import { MultiChartWorkspace } from "./components/MultiChartWorkspace";
+import { ShortcutSettingsDialog } from "./components/ShortcutSettingsDialog";
+import type { LinkedCrosshair } from "./chart/types";
 import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
 import { useCompareSeries } from "./hooks/useCompareSeries";
@@ -45,11 +49,12 @@ export default function App() {
   const [asset, setAsset] = useState<AssetClass | "all">("all");
   const [mode, setMode] = useState<AppMode>("chart");
   const [indicators, setIndicators] = useState(initialWorkspaceState.indicators);
+  const [linkedCrosshair, setLinkedCrosshair] = useState<LinkedCrosshair>();
   const shell = useAppShell({
     symbol, setSymbol, timeframe, setTimeframe, chartType, setChartType,
     setMode, indicators, setIndicators
   });
-  const { cryptoExchange, theme, locale, leftOpen, rightOpen, workspaces, compareOverlays } = shell;
+  const { cryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, workspaces, activeWorkspaceId, compareOverlays } = shell;
   const openStrategyWorkspace = useCallback(() => setMode("strategy"), []);
   const artifactLibrary = useArtifactLibrary({
     initialArtifacts: initialWorkspaceState.strategyLibrary,
@@ -124,12 +129,48 @@ export default function App() {
     setChartType,
     setMode,
     toggleTheme: shell.toggleTheme,
+    toggleLeft: shell.toggleLeft,
+    toggleRight: shell.toggleRight,
     alerts: priceAlerts.alerts,
     removeAlert: priceAlerts.removeAlert
   });
 
   const chartCustomIndicators = artifactLibrary.customIndicators;
   const chartStrategies = artifactLibrary.strategies;
+  const watchlistPanel = (
+    <Watchlist
+      locale={locale}
+      instruments={instruments}
+      selectedSymbol={symbol}
+      selectedAsset={asset}
+      latest={stream.candles.at(-1)}
+      sparklines={sparklines}
+      cryptoExchange={cryptoExchange}
+      onSelectSymbol={setSymbol}
+      onSelectAsset={setAsset}
+      onSelectExchange={shell.setCryptoExchange}
+    />
+  );
+  const statsPanel = (
+    <StatsPanel
+      locale={locale}
+      instrument={instrument}
+      candles={stream.candles}
+      provider={stream.provider}
+      connection={stream.connection}
+      message={stream.message}
+      latencyMs={stream.latencyMs}
+      gapCount={stream.gapCount}
+      missingBars={stream.missingBars}
+      fallbackActive={stream.fallbackActive}
+      alerts={priceAlerts.alerts}
+      onAddAlert={priceAlerts.addAlert}
+      onRemoveAlert={priceAlerts.removeAlert}
+      onResetAlert={priceAlerts.resetAlert}
+    />
+  );
+  const actualLeftOpen = shell.panelsSwapped ? rightOpen : leftOpen;
+  const actualRightOpen = shell.panelsSwapped ? leftOpen : rightOpen;
 
   return (
     <div className="terminal-shell">
@@ -144,50 +185,59 @@ export default function App() {
         locale={locale}
         leftOpen={leftOpen}
         rightOpen={rightOpen}
+        panelsSwapped={shell.panelsSwapped}
         workspaces={workspaces}
+        activeWorkspaceId={activeWorkspaceId}
+        layoutPreset={shell.layoutPreset}
         onSaveWorkspace={shell.saveWorkspace}
         onApplyWorkspace={shell.applyWorkspace}
         onDeleteWorkspace={shell.deleteWorkspace}
+        onExportWorkspace={shell.exportWorkspace}
+        onImportWorkspace={shell.importWorkspace}
+        onRollbackWorkspace={shell.rollbackWorkspaceVersion}
+        onLayoutPresetChange={shell.setLayoutPreset}
         onTimeframeChange={setTimeframe}
         onChartTypeChange={setChartType}
         onModeChange={setMode}
         onStrategyWarmup={warmStrategyLab}
         onOpenPalette={appCommands.openPalette}
+        onOpenShortcutSettings={appCommands.openShortcutSettings}
         onToggleTheme={shell.toggleTheme}
         onToggleLocale={shell.toggleLocale}
         onToggleLeft={shell.toggleLeft}
         onToggleRight={shell.toggleRight}
+        onSwapPanels={shell.swapPanels}
       />
 
       <main
         className={[
           "workspace",
           mode !== "chart" ? "strategy-workspace" : "",
-          !leftOpen && mode === "chart" ? "left-closed" : "",
-          !rightOpen && mode === "chart" ? "right-closed" : ""
+          !actualLeftOpen && mode === "chart" ? "left-closed" : "",
+          !actualRightOpen && mode === "chart" ? "right-closed" : ""
         ].filter(Boolean).join(" ")}
+        style={{ "--left-panel-size": `${leftSize}px`, "--right-panel-size": `${rightSize}px` } as CSSProperties}
       >
-        {mode === "chart" && leftOpen && (
-          <Watchlist
-            locale={locale}
-            instruments={instruments}
-            selectedSymbol={symbol}
-            selectedAsset={asset}
-            latest={stream.candles.at(-1)}
-            sparklines={sparklines}
-            cryptoExchange={cryptoExchange}
-            onSelectSymbol={setSymbol}
-            onSelectAsset={setAsset}
-            onSelectExchange={shell.setCryptoExchange}
-          />
-        )}
-        {mode === "chart" && !leftOpen && <span aria-hidden="true" />}
+        {mode === "chart" && (actualLeftOpen ? (shell.panelsSwapped ? statsPanel : watchlistPanel) : <span aria-hidden="true" />)}
 
         <section className="chart-panel">
           {error && <div className="error-banner">{error}</div>}
           {loading && <div className="loading-banner">{shellText(locale, "loadingCatalog")}</div>}
           {mode === "chart" && (
-            <ChartCanvas
+            <MultiChartWorkspace
+              preset={shell.layoutPreset}
+              charts={shell.charts}
+              catalog={catalog}
+              exchange={cryptoExchange}
+              locale={locale}
+              indicators={indicators}
+              onIndicatorsChange={setIndicators}
+              onEditIndicatorLogic={artifactLibrary.selectIndicatorLogic}
+              theme={theme}
+              linkedCrosshair={linkedCrosshair}
+              onLinkedCrosshairChange={setLinkedCrosshair}
+              onUpdateChart={shell.updateChart}
+              primary={<ChartCanvas
               candles={stream.candles}
               chartType={chartType}
               instrument={instrument}
@@ -232,6 +282,10 @@ export default function App() {
               onAddCompare={shell.addCompare}
               onUpdateCompare={shell.updateCompare}
               onRemoveCompare={shell.removeCompare}
+              chartId={shell.charts[0]?.id}
+              linkedCrosshair={linkedCrosshair}
+              onLinkedCrosshairChange={setLinkedCrosshair}
+            />}
             />
           )}
           {mode === "trade" && (
@@ -263,25 +317,17 @@ export default function App() {
           )}
         </section>
 
-        {mode === "chart" && rightOpen && (
-          <StatsPanel
-            locale={locale}
-            instrument={instrument}
-            candles={stream.candles}
-            provider={stream.provider}
-            connection={stream.connection}
-            message={stream.message}
-            latencyMs={stream.latencyMs}
-            alerts={priceAlerts.alerts}
-            onAddAlert={priceAlerts.addAlert}
-            onRemoveAlert={priceAlerts.removeAlert}
-            onResetAlert={priceAlerts.resetAlert}
-          />
+        {mode === "chart" && (actualRightOpen ? (shell.panelsSwapped ? watchlistPanel : statsPanel) : <span aria-hidden="true" />)}
+        {mode === "chart" && actualLeftOpen && (
+          <PanelResizeHandle side="left" value={leftSize} min={180} max={520} label={shellText(locale, "resizeMarketsPanel")} onResize={shell.setLeftSize} />
         )}
-        {mode === "chart" && !rightOpen && <span aria-hidden="true" />}
+        {mode === "chart" && actualRightOpen && (
+          <PanelResizeHandle side="right" value={rightSize} min={220} max={520} label={shellText(locale, "resizeInstrumentPanel")} onResize={shell.setRightSize} />
+        )}
       </main>
 
       <CommandPalette locale={locale} open={appCommands.paletteOpen} onClose={appCommands.closePalette} commands={appCommands.commands} />
+      <ShortcutSettingsDialog locale={locale} open={appCommands.shortcutSettingsOpen} shortcuts={appCommands.shortcuts} onChange={appCommands.setShortcuts} onClose={appCommands.closeShortcutSettings} />
       <AlertToasts locale={locale} toasts={priceAlerts.toasts} decimalsFor={decimalsFor} onDismiss={priceAlerts.dismissToast} />
     </div>
   );
