@@ -55,9 +55,9 @@ export function BotActivity({ symbol, orders, orderJournal, fills, logs, onComma
         <div className="trade-table-scroll">
           <table className="trade-data-table">
             <caption className="sr-only">{tradingText(locale, "journal")}</caption>
-            <thead><tr><th scope="col">{tradingText(locale, "time")}</th><th scope="col">{tradingText(locale, "side")}</th><th scope="col">{tradingText(locale, "quantity")}</th><th scope="col">{tradingText(locale, "price")}</th><th scope="col">{tradingText(locale, "pnl")}</th><th scope="col">{tradingText(locale, "reason")}</th></tr></thead>
+            <thead><tr><th scope="col">{tradingText(locale, "time")}</th><th scope="col">{tradingText(locale, "side")}</th><th scope="col">{tradingText(locale, "quantity")}</th><th scope="col">{tradingText(locale, "price")}</th><th scope="col">{tradingText(locale, "fee")}</th><th scope="col">{tradingText(locale, "pnl")}</th><th scope="col">{tradingText(locale, "reason")}</th></tr></thead>
             <tbody>{fills.slice(0, 60).map((fill) => (
-              <tr key={fill.id}><td>{formatTime(fill.ts, locale)}</td><td className={fill.side === "buy" ? "up" : "down"}>{tradingTerm(locale, fill.side)}</td><td>{fill.qty}</td><td>{fill.price}</td><td className={fill.realizedPnl >= 0 ? "up" : "down"}>{fill.kind === "open" ? "—" : fill.realizedPnl.toFixed(2)}</td><td>{fill.reason.replace("signal:", "")}</td></tr>
+              <tr key={fill.id}><td>{formatTime(fill.ts, locale)}</td><td className={fill.side === "buy" ? "up" : "down"}>{tradingTerm(locale, fill.side)}</td><td>{fill.qty}</td><td>{fill.price}</td><td>{fill.fee} {fill.feeAsset ?? ""}</td><td className={fill.realizedPnl >= 0 ? "up" : "down"}>{fill.kind === "open" ? "—" : fill.realizedPnl.toFixed(2)}</td><td>{fill.reason.replace("signal:", "")}</td></tr>
             ))}</tbody>
           </table>
           {fills.length === 0 && <p className="empty-note">{tradingText(locale, "noFills")}</p>}

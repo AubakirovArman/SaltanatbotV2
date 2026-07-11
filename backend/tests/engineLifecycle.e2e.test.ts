@@ -27,6 +27,7 @@ vi.mock("../src/trading/store.js", () => {
     },
     deleteSetting: (k: string) => settings.delete(k),
     insertFill: () => {},
+    withStoreTransaction: <T>(operation: () => T) => operation(),
     listFills: () => [],
     upsertOrderJournal: (order: { id: string }) => orders.set(order.id, clone(order)),
     insertOrderEvent: (event: unknown) => orderEvents.push(clone(event)),

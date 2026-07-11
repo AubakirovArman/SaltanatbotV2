@@ -54,8 +54,21 @@ export function deleteSetting(key: string) {
 // ---------- fills (trade journal) ----------
 
 export function insertFill(fill: FillRecord) {
-  db.prepare("INSERT INTO fills (id, botId, data, ts) VALUES (?, ?, ?, ?)")
-    .run(fill.id, fill.botId, JSON.stringify(fill), fill.ts);
+  return db.prepare("INSERT OR IGNORE INTO fills (id, botId, data, ts) VALUES (?, ?, ?, ?)")
+    .run(fill.id, fill.botId, JSON.stringify(fill), fill.ts).changes > 0;
+}
+
+/** Keep a fill and its durable order event all-or-nothing across process crashes. */
+export function withStoreTransaction<T>(operation: () => T): T {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = operation();
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function listFills(botId: string, limit = 200): FillRecord[] {

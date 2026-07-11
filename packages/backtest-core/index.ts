@@ -9,3 +9,4 @@ export * from "./report.js";
 export * from "./executionTrace.js";
 export * from "./replay.js";
 export * from "./benchmarks.js";
+export * from "./historicalOrders.js";

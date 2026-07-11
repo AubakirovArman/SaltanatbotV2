@@ -365,6 +365,8 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 - [x] Add expanding anchored and independent rolling walk-forward modes.
 - [x] Keep OOS windows disjoint, compound stitched equity and expose deterministic fold boundaries.
 - [x] Calculate winning-parameter min/max/mean/deviation/normalized range and label unstable neighbours in the UI.
+- [x] Add a canonical OHLCV market/limit/stop order simulator with gap-aware prices, volume participation, partial fills and quote-fee accounting.
+- [x] Keep current Strategy IR market-intent semantics explicit while exposing the simulator for future order-type blocks.
 
 - [x] Move shared TA implementations into `strategy-core` and retain frontend/backend compatibility facades.
 - [x] Move the canonical evaluator, reusable runtime, execution budgets, security-series alignment and intent types into `strategy-core`.
@@ -434,6 +436,13 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Cover table semantics, empty data and keyboard opening in component and browser tests.
 
 ### Trading engine hardening
+
+- [x] Preserve Binance/Bybit private execution IDs, incremental quantities/prices, actual fee assets and venue realized PnL.
+- [x] Deduplicate replayed private executions before durable fill/accounting writes.
+- [x] Display fee amount and asset in the localized fill journal.
+- [x] Reserve proactive exchange request weight with safety headroom and reconcile usage from venue headers.
+- [x] Reject stale live candles before they mutate price/runtime state and log missing-interval gaps.
+- [x] Publish EN/RU/KK capability matrices and operator checklist; label live controls Experimental.
 
 - [x] Complete durable exchange order state machine.
   - [x] Persist intent before exchange I/O in a dedicated lifecycle module.

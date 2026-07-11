@@ -23,6 +23,13 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - Every order attempt has an idempotent client identifier and durable lifecycle events.
 - An adapter transport failure is persisted as `unknown`, never silently left as `intent`.
 - Known outcomes distinguish accepted, partial, filled, cancelled, replaced, expired and rejected states.
+- Private executions retain venue execution IDs, incremental fill price/quantity,
+  actual commission asset and realized PnL; reconnect replays are deduplicated
+  before fill/accounting persistence.
+- Signed requests reserve proactive weight headroom and reconcile local budgets
+  from Binance/Bybit headers before reactive 429/418 circuits are needed.
+- Stale candles are rejected before mutating runtime price; missing intervals are
+  logged as explicit market-data gaps.
 - Resting paper orders retain venue/client identity so later tick fills advance the original journal row.
 - Live entry is not considered protected until exchange-side protection is confirmed.
 - A rejected SL or TP triggers a best-effort emergency close and a failed execution result.

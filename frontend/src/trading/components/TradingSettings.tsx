@@ -51,7 +51,7 @@ export function TradingSettings({ locale }: { locale: Locale }) {
 
   return (
     <div className="trade-settings">
-      <div className="panel-header"><strong><AlertTriangle size={14} aria-hidden="true" /> {tradingText(locale, "liveTrading")}</strong></div>
+      <div className="panel-header"><strong><AlertTriangle size={14} aria-hidden="true" /> {tradingText(locale, "liveTrading")} · {tradingText(locale, "experimental")}</strong></div>
       {settings?.demo ? (
         <p className="settings-note">{tradingText(locale, "demoOnly")}</p>
       ) : (

@@ -9,6 +9,7 @@
 - [График и доступные табличные данные](CHART.md)
 - [Студия стратегий, импорт Pine Script, бэктест и оптимизация](STRATEGY_STUDIO.md)
 - [Paper/live trading, ключи, безопасность и журналы](TRADING.md)
+- [Возможности бирж и operator checklist](EXCHANGE_CAPABILITIES.md)
 - [Краткая политика безопасности](SECURITY.md)
 - [Резервное копирование и восстановление](BACKUP_RESTORE.md)
 - [Обновление за 90 коммитов](RELEASE_2026-07-11.md)

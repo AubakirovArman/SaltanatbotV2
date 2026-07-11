@@ -9,6 +9,7 @@
 - [График және қолжетімді кестелік деректер](CHART.md)
 - [Strategy Studio, Pine Script, backtest және optimizer](STRATEGY_STUDIO.md)
 - [Paper/live trading, кілттер және журналдар](TRADING.md)
+- [Exchange мүмкіндіктері және operator checklist](EXCHANGE_CAPABILITIES.md)
 - [Оқиғалар мен орындалу трассалары](EVENT_TRACES.md)
 - [Қауіпсіздік бойынша қысқаша нұсқаулық](SECURITY.md)
 - [Backup және қалпына келтіру](BACKUP_RESTORE.md)

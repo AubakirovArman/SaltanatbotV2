@@ -28,7 +28,7 @@ describe("trading localization", () => {
           symbol="BTCUSDT"
           orders={[{ id: "venue-1", symbol: "BTCUSDT", side: "buy", type: "stop_market", qty: 1, trgPrice: 95, reduceOnly: true, tif: "GTC", createdAt: 1 }]}
           orderJournal={[{ id: "journal-1", botId: "bot", exchange: "bybit", market: "futures", symbol: "BTCUSDT", action: "open", side: "buy", type: "market", qty: 1, reason: "signal:test", status: "partially_filled", filledQty: 0.5, ts: 1, updatedAt: 2 }]}
-          fills={[{ id: "fill-1", botId: "bot", symbol: "BTCUSDT", side: "sell", qty: 0.5, price: 101, fee: 0.1, realizedPnl: 2, kind: "close", reason: "target", ts: 3 }]}
+          fills={[{ id: "fill-1", botId: "bot", symbol: "BTCUSDT", side: "sell", qty: 0.5, price: 101, fee: 0.1, feeAsset: "BNB", realizedPnl: 2, kind: "close", reason: "target", ts: 3 }]}
           logs={[]}
           onCommand={onCommand}
         />
@@ -39,6 +39,7 @@ describe("trading localization", () => {
     expect(container.textContent).toContain("стоп-маркет");
     expect(container.textContent).toContain("частично исполнен");
     expect(container.textContent).toContain("Журнал сделок");
+    expect(container.textContent).toContain("0.1 BNB");
     expect([...container.querySelectorAll('th[scope="col"]')].map((cell) => cell.textContent)).toContain("Причина");
     const cancel = container.querySelector<HTMLButtonElement>(".order-cancel");
     expect(cancel?.getAttribute("aria-label")).toContain("Отменить ордер");

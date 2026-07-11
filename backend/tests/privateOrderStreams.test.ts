@@ -68,6 +68,38 @@ describe("private order stream payload normalization", () => {
       updatedAt: 200
     }]);
   });
+
+  it("preserves deduplicatable execution fees, fee assets and realized PnL", () => {
+    expect(parseBinanceOrderUpdate({
+      e: "ORDER_TRADE_UPDATE",
+      T: 500,
+      o: {
+        i: 42, c: "client-42", X: "PARTIALLY_FILLED", x: "TRADE", q: "2", z: "0.75", ap: "101.5",
+        t: 9001, l: "0.25", L: "102", n: "0.0102", N: "USDT", rp: "1.5", S: "SELL", T: 499
+      }
+    })).toMatchObject({
+      execution: {
+        id: "binance:9001", qty: 0.25, price: 102, fee: 0.0102, feeAsset: "USDT",
+        realizedPnl: 1.5, side: "sell", ts: 499
+      }
+    });
+
+    expect(parseBybitExecutionUpdates({
+      topic: "execution.linear",
+      creationTime: 600,
+      data: [{
+        orderId: "venue-1", orderLinkId: "client-1", orderQty: "1", leavesQty: "0.4",
+        execId: "exec-1", execQty: "0.2", execPrice: "99", execFee: "0.0198",
+        feeCurrency: "USDT", closedPnl: "-2.5", side: "Sell", execTime: "590"
+      }]
+    })[0]).toMatchObject({
+      status: "partially_filled",
+      execution: {
+        id: "bybit:exec-1", qty: 0.2, price: 99, fee: 0.0198, feeAsset: "USDT",
+        realizedPnl: -2.5, side: "sell", ts: 590
+      }
+    });
+  });
 });
 
 describe("Binance authenticated order stream", () => {

@@ -42,6 +42,30 @@ describe("exchange signed-request guard", () => {
     expect(() => guard.assertAvailable()).not.toThrow();
   });
 
+  it("opens the shared circuit before exceeding the reserved local budget", () => {
+    let now = 1_000;
+    const guard = new ExchangeRequestGuard("Test", () => now, { capacity: 4, windowMs: 1_000, reserveRatio: 0.75 });
+    guard.assertAvailable();
+    guard.assertAvailable();
+    guard.assertAvailable();
+    expect(guard.getBudgetState()).toMatchObject({ capacity: 4, usedWeight: 3, availableWeight: 0 });
+    expect(() => guard.assertAvailable()).toThrow(ExchangeRateLimitError);
+    expect(guard.getState()).toEqual({ blockedUntil: 2_000 });
+    now = 2_000;
+    expect(() => guard.assertAvailable()).not.toThrow();
+    expect(guard.getBudgetState().usedWeight).toBe(1);
+  });
+
+  it("adapts proactive usage from Binance and Bybit response headers", () => {
+    const binance = new ExchangeRequestGuard("Binance", () => 1_000, { capacity: 100, reserveRatio: 0.9 });
+    binance.observeHttpResponse(response(200, { "x-mbx-used-weight-1m": "80" }));
+    expect(binance.getBudgetState()).toMatchObject({ capacity: 100, usedWeight: 80, availableWeight: 10 });
+
+    const bybit = new ExchangeRequestGuard("Bybit", () => 1_000, { capacity: 100 });
+    bybit.observeHttpResponse(response(200, { "x-bapi-limit": "50", "x-bapi-limit-status": "12" }));
+    expect(bybit.getBudgetState()).toMatchObject({ capacity: 50, usedWeight: 38, availableWeight: 7 });
+  });
+
   it("detects Binance timestamp rejection and reports estimated clock offset", () => {
     const now = Date.parse("2026-07-11T12:00:05Z");
     const guard = new ExchangeRequestGuard("Binance", () => now);

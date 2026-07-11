@@ -21,6 +21,8 @@ Runtime-neutral historical trading primitives shared independently of the React 
   variable changes, broker events, equity, signals and trade boundaries.
 - public reviewed benchmark strategies/candles/expected trades for signal timing,
   gap-aware stop/target fills and ambiguous intrabar priority.
+- canonical historical market/limit/stop stepping with gap-aware fills,
+  volume-participation partials, maker/taker distinction and quote-fee records.
 
 The package may depend on `@saltanatbotv2/contracts` and `@saltanatbotv2/strategy-core`. It must not import React, Blockly, browser globals, storage, network or exchange adapters.
 

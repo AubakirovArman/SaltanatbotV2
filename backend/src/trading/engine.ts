@@ -14,9 +14,11 @@ import { notify } from "./notifications.js";
 import { orderLifecycle } from "./orderLifecycle.js";
 import { pollOrderUpdates } from "./orderPolling.js";
 import { ingestExchangeOrderEvent } from "./orderEventIngest.js";
+import { fillFromExchangeExecution, hasRecordedExecution } from "./executionAccounting.js";
+import { classifyCandleSequence } from "./candleSequence.js";
 import { reconcileLiveRuntime } from "./reconciliation.js";
 import { reconcileStartupOrders } from "./startupOrderReconciliation.js";
-import { getSetting, insertFill, insertLog, listBots, listFills, listOrderJournal, setSetting, upsertBot } from "./store.js";
+import { getSetting, insertFill, insertLog, listBots, listFills, listOrderEvents, listOrderJournal, setSetting, upsertBot, withStoreTransaction } from "./store.js";
 import type {
   AccountState,
   BotConfig,
@@ -466,6 +468,15 @@ export class TradingEngine {
   }
 
   private async handleCandle(bot: RunningBot, candle: Candle) {
+    const last = bot.buffer.at(-1);
+    const sequence = classifyCandleSequence(last?.time, candle.time, timeframeMs[bot.config.timeframe] ?? 60_000);
+    if (sequence.kind === "stale") {
+      this.log(bot.config.id, "warn", `Ignored stale candle ${candle.time}; latest is ${last?.time} (${sequence.lagMs}ms behind).`);
+      return;
+    }
+    if (sequence.kind === "gap") {
+      this.log(bot.config.id, "warn", `Market-data gap before ${candle.time}: ${sequence.missingBars} interval(s) missing.`);
+    }
     bot.price = candle.close;
 
     // Fill any resting limit / stop / take-profit orders crossed by this tick.
@@ -486,8 +497,6 @@ export class TradingEngine {
       }
       if (fills.length && bot.paper) this.persistPaper(bot);
     }
-
-    const last = bot.buffer.at(-1);
 
     if (!last || candle.time === last.time) {
       if (last && candle.time === last.time) bot.buffer[bot.buffer.length - 1] = candle;
@@ -768,6 +777,20 @@ export class TradingEngine {
       this.log(bot.config.id, "warn", `Ignored unmatched exchange order event ${snapshot.id}.`);
     } else if (result.kind === "ignored" && result.reason === "identity_conflict") {
       this.log(bot.config.id, "warn", `Ignored exchange order event ${snapshot.id} with conflicting client identity.`);
+    }
+    if (result.kind !== "unmatched" && snapshot.execution && !(result.kind === "ignored" && result.reason === "identity_conflict")) {
+      const fill = fillFromExchangeExecution(result.record, snapshot);
+      if (!fill) return result;
+      const recorded = withStoreTransaction(() => {
+        if (hasRecordedExecution(listOrderEvents(result.record.id, 1_000), snapshot.execution?.id ?? "")) return false;
+        insertFill(fill);
+        orderLifecycle.recordFill(result.record, fill);
+        return true;
+      });
+      if (recorded) {
+        this.broadcast({ type: "fill", botId: bot.config.id, fill });
+        this.log(bot.config.id, "info", `Venue execution ${fill.qty} @ ${fill.price} · fee ${fill.fee} ${fill.feeAsset ?? "unknown"} · PnL ${fill.realizedPnl}`);
+      }
     }
     return result;
   }

@@ -31,6 +31,7 @@ export interface Fill {
   qty: number;
   price: number;
   fee: number;
+  feeAsset?: string;
   realizedPnl: number;
   kind: "open" | "close";
   reason: string;

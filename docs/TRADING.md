@@ -194,6 +194,11 @@ Live spot is fail-closed by default while complete inventory/fee-asset accountin
 
 Every mutating live request is journaled before network I/O. A definitive HTTP/API rejection becomes `rejected`; a network failure or HTTP 5xx during POST/DELETE is ambiguous and becomes `unknown`, because the venue may have accepted the request. The engine never blindly resubmits that order. Authenticated Binance USDⓈ-M and Bybit private streams are the primary order-state source; bounded signed REST polling runs every 30 seconds only while the stream is unavailable. Disconnect and reconnect edges force an immediate REST gap reconciliation. Poll and stream snapshots enter through one identity-aware ingest boundary: reconnect replays are idempotent, conflicting venue IDs are rejected, cumulative filled quantity cannot decrease, and accepted/partial/terminal state cannot regress.
 
+Trade executions additionally persist the venue execution ID, incremental
+quantity/price, actual commission amount and asset, and venue realized PnL.
+Duplicate execution IDs after reconnect do not create a second fill. The fill
+journal displays both fee amount and asset.
+
 Binance renews its 60-minute listenKey every 50 minutes and rotates it after expiry. Bybit authenticates with HMAC-SHA256, subscribes to both `order` and `execution`, and sends a heartbeat every 20 seconds. Both transports use capped reconnect backoff and are closed during bot stop or server shutdown. Binance live spot remains outside this stream implementation because live spot inventory is still fail-closed by default.
 
 Before a live bot resumes after process restart, the engine sequentially queries signed order status for every `intent`, `unknown`, `accepted`, and `partially_filled` journal row. A matching open order is only a fallback proof for ordinary order placement; it cannot prove that an interrupted cancel or replace command completed. Missing, conflicting, regressing, or action-ambiguous evidence leaves the existing durable state intact, records crash-left intent as `unknown`, and pauses trading for operator review. Terminal journal rows are never queried or rewritten.
@@ -313,6 +318,11 @@ Signed Binance and Bybit calls share one in-process circuit per exchange. HTTP `
 `418` open the circuit for `Retry-After` (with bounded safe defaults), so other bots cannot continue
 hammering the same venue. Signed mutating requests are not automatically replayed.
 
+Before sending, the same guard reserves request weight in a bounded local window
+and retains headroom for protection/reconciliation. Binance
+`X-MBX-USED-WEIGHT-1M` and Bybit `X-Bapi-Limit*` headers reconcile local usage;
+exhaustion opens the circuit until reset instead of waiting for HTTP 429.
+
 Binance error `-1021` and Bybit error `10002` are treated as explicit host clock-skew failures. Stop
 live execution and synchronize the operating-system clock (for example with NTP/chrony) before
 resuming. Increasing `recvWindow` is not a substitute for a reliable host clock.
@@ -324,3 +334,4 @@ resuming. Increasing `recvWindow` is not a substitute for a reliable host clock.
 - [HTTP & WebSocket API](./API.md)
 - [Strategies](./STRATEGIES.md)
 - [Configuration](./CONFIGURATION.md)
+- [Exchange capability matrix and operator checklist](./EXCHANGE_CAPABILITIES.md)

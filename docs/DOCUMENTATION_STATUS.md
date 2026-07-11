@@ -21,6 +21,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Configuration](CONFIGURATION.md) | operators | current | 2026-07-11 |
 | [Backup and restore](BACKUP_RESTORE.md) | operators | current; tested | 2026-07-11 |
 | [Pine coverage](PINE_COVERAGE.md) | users/contributors | current | 2026-07-11 |
+| [Exchange capabilities](EXCHANGE_CAPABILITIES.md) | operators/users | current | 2026-07-11 |
 | [Generated Pine matrix](PINE_COMPATIBILITY.generated.md) | users/contributors | generated/current | 2026-07-11 |
 | [Generated block catalog](BLOCK_CATALOG.generated.md) | users/contributors | generated/current | 2026-07-11 |
 | [Event traces](EVENT_TRACES.md) | contributors/auditors | current | 2026-07-11 |

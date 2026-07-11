@@ -158,12 +158,12 @@ Conversion confidence must never be a vague percentage. It should be derived fro
 
 ## Priority 1: research and backtest credibility
 
-- unify the evaluator and indicator math with live execution;
+- [x] unify the evaluator and indicator math with live execution;
 - [x] publish all fill assumptions in every report;
 - [x] make timeframe, exchange, market type, price type and data range immutable report metadata;
 - [x] identify missing bars, fallback data and partially loaded history;
 - [x] add benchmark/reference strategies with expected trades;
-- model limit orders, gaps, partial fills, fees, funding, borrow costs and liquidation consistently;
+- [x] model market/limit/stop gaps, volume-participation partial fills, fees/assets, funding/borrow and liquidation consistently;
 - [x] separate strategy performance from execution assumptions through immutable config/assumption metadata;
 - [x] add bar replay with deterministic stepping and an explanation trace;
 - [x] add out-of-sample, anchored/rolling walk-forward and parameter stability views;
@@ -174,19 +174,17 @@ Conversion confidence must never be a vague percentage. It should be derived fro
 
 The detailed blockers are maintained in `CODE_IMPROVEMENT_PLAN.md`. Release gates additionally require:
 
-- explicit `experimental` labels in the UI and docs;
-- testnet support and an operator checklist before mainnet;
-- exchange capability matrices for spot/linear/inverse, order types and protection behavior;
-- private order/fill streams with polling fallback;
-- a durable order state machine and idempotent client order IDs;
-- reconciliation before a bot can enter `running`;
-- clock-skew detection (delivered for Binance/Bybit signed APIs);
-- rate-limit budgets and circuit breakers (exchange-wide signed-request breaker delivered; proactive
-  weight budgeting remains active);
-- real fee asset, partial-fill and realized-PnL accounting;
-- backup/restore and migration tests for SQLite (verified backup/atomic restore and transactional
-  forward schema migrations delivered);
-- disaster scenarios: process death, network partition, duplicate event, stale candle, exchange timeout and rejected protection.
+- [x] explicit `experimental` labels in the UI and docs;
+- [x] testnet support and an operator checklist before mainnet (continuous funded soak remains explicitly excluded);
+- [x] exchange capability matrices for spot/linear/inverse, order types and protection behavior;
+- [x] private order/fill streams with polling fallback;
+- [x] a durable order state machine and idempotent client order IDs;
+- [x] reconciliation before a bot can enter `running`;
+- [x] clock-skew detection for Binance/Bybit signed APIs;
+- [x] proactive request-weight budgets and reactive exchange-wide rate-limit circuits;
+- [x] real fee asset, partial-fill and realized-PnL accounting;
+- [x] verified SQLite backup/atomic restore and transactional forward-migration tests;
+- [x] disaster scenarios: process death, network partition, duplicate event, stale candle, exchange timeout and rejected protection.
 
 ## Priority 2: chart and terminal experience
 

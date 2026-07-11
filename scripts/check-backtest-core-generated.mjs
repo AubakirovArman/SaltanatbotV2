@@ -9,7 +9,7 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const packageDir = join(root, "packages", "backtest-core");
 const outputDir = mkdtempSync(join(tmpdir(), "saltanat-backtest-core-"));
 const tsc = join(root, "node_modules", ".bin", "tsc");
-const sources = ["index", "types", "broker", "portfolio", "warmup", "reporting", "metrics", "provenance", "report", "executionTrace", "replay", "benchmarks"];
+const sources = ["index", "types", "broker", "portfolio", "warmup", "reporting", "metrics", "provenance", "report", "executionTrace", "replay", "benchmarks", "historicalOrders"];
 
 try {
   execFileSync(tsc, [

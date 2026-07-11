@@ -427,7 +427,7 @@ export class PaperAdapter implements ExchangeAdapter {
   }
 
   private record(symbol: string, side: Side, qty: number, price: number, fee: number, pnl: number, kind: "open" | "close", reason: string): FillRecord {
-    return { id: randomUUID(), botId: this.opts.botId, symbol, side, qty: round(qty), price: round(price), fee: round(fee), realizedPnl: round(pnl), kind, reason, ts: Date.now() };
+    return { id: randomUUID(), botId: this.opts.botId, symbol, side, qty: round(qty), price: round(price), fee: round(fee), feeAsset: "USDT", realizedPnl: round(pnl), kind, reason, ts: Date.now() };
   }
 
   private ok(message: string, fills: FillRecord[]): ExecResult {

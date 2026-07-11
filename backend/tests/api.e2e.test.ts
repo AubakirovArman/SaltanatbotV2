@@ -39,6 +39,7 @@ vi.mock("../src/trading/store.js", () => {
     },
     deleteSetting: (k: string) => settings.delete(k),
     insertFill: () => {},
+    withStoreTransaction: <T>(operation: () => T) => operation(),
     listFills: () => [],
     upsertOrderJournal: () => {},
     insertOrderEvent: () => {},

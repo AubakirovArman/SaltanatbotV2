@@ -167,12 +167,25 @@ export interface FillRecord {
   qty: number;
   price: number;
   fee: number;
+  /** Actual venue commission asset when reported (paper uses account currency). */
+  feeAsset?: string;
   realizedPnl: number;
   kind: "open" | "close";
   reason: string;
   /** Venue order identity when the fill came from a resting/asynchronous order. */
   orderId?: string;
   clientId?: string;
+  ts: number;
+}
+
+export interface ExchangeExecutionFill {
+  id: string;
+  qty: number;
+  price: number;
+  fee: number;
+  feeAsset?: string;
+  realizedPnl: number;
+  side?: Side;
   ts: number;
 }
 
@@ -249,6 +262,8 @@ export interface ExchangeOrderSnapshot {
   filledQty: number;
   avgFillPrice?: number;
   updatedAt: number;
+  /** One deduplicatable private-stream execution attached to this aggregate update. */
+  execution?: ExchangeExecutionFill;
 }
 
 export interface PrivateOrderSubscription {

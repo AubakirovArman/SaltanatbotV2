@@ -199,6 +199,7 @@ export function parseBinanceOrderUpdate(payload: unknown): ExchangeOrderSnapshot
   const filledQty = numberValue(order.z);
   const updatedAt = numberValue(order.T ?? payload.T ?? payload.E);
   if (!id || qty === undefined || filledQty === undefined || updatedAt === undefined) return undefined;
+  const execution = binanceExecution(order, updatedAt);
   return {
     id,
     clientId: stringValue(order.c),
@@ -206,7 +207,8 @@ export function parseBinanceOrderUpdate(payload: unknown): ExchangeOrderSnapshot
     qty,
     filledQty,
     avgFillPrice: positiveNumber(order.ap),
-    updatedAt
+    updatedAt,
+    ...(execution ? { execution } : {})
   };
 }
 
@@ -220,6 +222,7 @@ export function parseBybitOrderUpdates(payload: unknown): ExchangeOrderSnapshot[
     const filledQty = numberValue(value.cumExecQty);
     const updatedAt = numberValue(value.updatedTime ?? payload.creationTime);
     if (!id || qty === undefined || filledQty === undefined || updatedAt === undefined) continue;
+    const execution = bybitExecution(value, updatedAt);
     snapshots.push({
       id,
       clientId: stringValue(value.orderLinkId) || undefined,
@@ -227,7 +230,8 @@ export function parseBybitOrderUpdates(payload: unknown): ExchangeOrderSnapshot[
       qty,
       filledQty,
       avgFillPrice: positiveNumber(value.avgPrice),
-      updatedAt
+      updatedAt,
+      ...(execution ? { execution } : {})
     });
   }
   return snapshots;
@@ -244,13 +248,15 @@ export function parseBybitExecutionUpdates(payload: unknown): ExchangeOrderSnaps
     const updatedAt = numberValue(value.execTime ?? payload.creationTime);
     if (!id || qty === undefined || leavesQty === undefined || updatedAt === undefined) continue;
     const filledQty = Math.max(0, qty - leavesQty);
+    const execution = bybitExecution(value, updatedAt);
     snapshots.push({
       id,
       clientId: stringValue(value.orderLinkId) || undefined,
       status: filledQty + Number.EPSILON >= qty ? "filled" : "partially_filled",
       qty,
       filledQty,
-      updatedAt
+      updatedAt,
+      ...(execution ? { execution } : {})
     });
   }
   return snapshots;
@@ -314,4 +320,44 @@ function positiveNumber(value: unknown) {
 
 function messageOf(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function binanceExecution(order: Record<string, unknown>, fallbackTime: number) {
+  if (stringValue(order.x)?.toUpperCase() !== "TRADE") return undefined;
+  const id = stringValue(order.t);
+  const qty = positiveNumber(order.l);
+  const price = positiveNumber(order.L);
+  if (!id || qty === undefined || price === undefined) return undefined;
+  return {
+    id: `binance:${id}`,
+    qty,
+    price,
+    fee: Math.abs(numberValue(order.n) ?? 0),
+    feeAsset: stringValue(order.N) || undefined,
+    realizedPnl: numberValue(order.rp) ?? 0,
+    side: normalizeSide(order.S),
+    ts: numberValue(order.T) ?? fallbackTime
+  };
+}
+
+function bybitExecution(value: Record<string, unknown>, fallbackTime: number) {
+  const id = stringValue(value.execId);
+  const qty = positiveNumber(value.execQty);
+  const price = positiveNumber(value.execPrice);
+  if (!id || qty === undefined || price === undefined) return undefined;
+  return {
+    id: `bybit:${id}`,
+    qty,
+    price,
+    fee: Math.abs(numberValue(value.execFee) ?? 0),
+    feeAsset: stringValue(value.feeCurrency) || stringValue(value.feeAsset) || undefined,
+    realizedPnl: numberValue(value.closedPnl) ?? numberValue(value.execPnl) ?? 0,
+    side: normalizeSide(value.side),
+    ts: numberValue(value.execTime) ?? fallbackTime
+  };
+}
+
+function normalizeSide(value: unknown): "buy" | "sell" | undefined {
+  const normalized = stringValue(value)?.toLowerCase();
+  return normalized === "buy" || normalized === "sell" ? normalized : undefined;
 }
