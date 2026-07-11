@@ -141,6 +141,8 @@ Verification:
 - [x] Extract backtest configuration, execution toolbar, diagnostics and result/preview rendering into `StrategyExecutionPanel.tsx`.
 - [x] Reduce `StrategyLab.tsx` to a Blockly lifecycle and execution controller.
 - [x] Reduce `StrategyLab.tsx` further to 332 lines by extracting research orchestration.
+- [x] Extract Blockly injection, theme, resize, preview debounce, artifact loading, autosave and teardown into `useStrategyWorkspace`.
+- [x] Reduce `StrategyLab.tsx` to a 149-line feature composition facade.
 
 ### Trading engine decomposition — commit `9e048b6`
 
@@ -217,9 +219,9 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 
 ### Frontend decomposition
 
-- [ ] Split `StrategyLab` into build/validate/preview/backtest/optimize/library controllers and panels.
+- [x] Split `StrategyLab` into build/validate/preview/backtest/optimize/library controllers and panels.
   - [x] Extract library, optimizer and execution/result panels.
-  - [ ] Extract Blockly workspace lifecycle/autosave controller.
+  - [x] Extract Blockly workspace lifecycle/autosave controller.
   - [x] Extract shared paginated history loading for backtest, optimizer and security-data windows.
   - [x] Extract cancellable backtest/optimizer orchestration into `useStrategyResearch`.
   - [x] Ignore stale progress/results and abort in-flight history/security requests on teardown.

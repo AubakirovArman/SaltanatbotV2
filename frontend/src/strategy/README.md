@@ -27,6 +27,8 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - `backtestTypes.ts` is the stable public contract; `backtestMetrics.ts` owns analytics derived from trades and equity.
 - `candleHistory.ts` owns bounded, de-duplicated backward pagination shared by backtests, optimization and `request.security` loading.
 - `useStrategyResearch.ts` owns cancellable backtest/optimizer orchestration and rejects stale async results.
+- `useStrategyWorkspace.ts` owns Blockly injection, artifact loading, preview debounce, autosave and teardown.
+- `blocklyTheme.ts` owns the dark/light Blockly theme definitions.
 - Storage and sharing are adapters around versioned artifacts.
 - `components/StrategyLibrary.tsx` owns artifact browsing/import/export and template/Pine entry flows.
 - `components/OptimizePanel.tsx` owns optimizer controls/results; `optimization/model.ts` owns sweep-state construction.
@@ -40,4 +42,4 @@ IR v4 adds explicit future projection zones and accessible metric tables. Both r
 
 ## Planned decomposition
 
-Move IR/evaluator/TA to `packages/strategy-core`, Pine to `packages/pine-compiler`, and fills/accounting/metrics to `packages/backtest-core`.
+Move IR/evaluator/TA to `packages/strategy-core`, Pine to `packages/pine-compiler`, and fills/accounting/metrics to `packages/backtest-core`. The former monolithic `StrategyLab` is now a small composition facade over feature hooks and panels.
