@@ -227,7 +227,8 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Persist accepted, rejected and fill outcomes in deterministic order.
   - [x] Classify thrown/ambiguous adapter outcomes as `unknown` and rethrow them.
   - [x] Prevent exchange submission when durable intent persistence fails.
-  - [ ] Reconcile `intent` and `unknown` records against exchange state after restart.
+  - [x] Reconcile `intent` and `unknown` records against visible exchange orders after restart.
+  - [x] Pause resumed trading when an unresolved result cannot be proven from exchange state.
   - [ ] Model partial fill, cancel, expire and replace transitions explicitly.
 - [ ] Add private fill/order stream with polling fallback.
 - [ ] Confirm exchange-side protection before protected state.

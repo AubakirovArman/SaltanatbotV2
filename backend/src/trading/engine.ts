@@ -12,8 +12,8 @@ import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
 import { BybitAdapter } from "./exchange/bybit.js";
 import { notify } from "./notifications.js";
 import { orderLifecycle } from "./orderLifecycle.js";
-import { reconcileLiveRuntime } from "./reconciliation.js";
-import { getSetting, insertFill, insertLog, listBots, listFills, setSetting, upsertBot } from "./store.js";
+import { reconcileLiveRuntime, reconcileUnresolvedOrders } from "./reconciliation.js";
+import { getSetting, insertFill, insertLog, listBots, listFills, listOrderJournal, setSetting, upsertBot } from "./store.js";
 import type {
   AccountState,
   BotConfig,
@@ -689,6 +689,10 @@ export class TradingEngine {
     try {
       const exchangePosition = await bot.adapter.position(bot.config.symbol);
       const openOrders = bot.adapter.orders ? await bot.adapter.orders(bot.config.symbol).catch(() => []) : [];
+      const orderDecisions = reconcileUnresolvedOrders(listOrderJournal(bot.config.id, 500), openOrders);
+      for (const decision of orderDecisions) {
+        orderLifecycle.reconcile(decision.record, decision.status, decision.message, decision.exchangeOrderId);
+      }
       const result = reconcileLiveRuntime({
         config: bot.config,
         savedManaged,
@@ -697,6 +701,11 @@ export class TradingEngine {
         now: Date.now()
       });
       bot.managed = result.managed;
+      const unresolved = orderDecisions.filter((decision) => decision.status === "unknown");
+      if (unresolved.length > 0) {
+        result.pause = true;
+        result.messages.push(`${unresolved.length} exchange order result(s) remain unknown after restart; trading is paused for operator review.`);
+      }
       if (result.pause) this.pauseBot(bot, result.messages.join(" "));
       for (const message of result.messages) this.log(bot.config.id, result.pause ? "warn" : "info", `Reconcile: ${message}`);
       return true;

@@ -134,6 +134,27 @@ export class OrderLifecycle {
     return next;
   }
 
+  reconcile(record: OrderJournalRecord, status: "accepted" | "unknown", message: string, exchangeOrderId?: string): OrderJournalRecord {
+    const now = this.now();
+    const next: OrderJournalRecord = {
+      ...record,
+      exchangeOrderId: exchangeOrderId ?? record.exchangeOrderId,
+      status,
+      message,
+      updatedAt: now
+    };
+    this.writer.upsertOrder(next);
+    this.writer.insertEvent({
+      id: this.createId(),
+      orderId: next.id,
+      botId: next.botId,
+      type: "reconcile",
+      data: { status, message, exchangeOrderId: next.exchangeOrderId },
+      ts: now
+    });
+    return next;
+  }
+
   async execute(context: OrderLifecycleContext, order: ExecOrder, send: () => Promise<ExecResult>): Promise<ExecResult> {
     const record = this.begin(context, order);
     try {

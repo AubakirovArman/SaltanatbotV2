@@ -105,4 +105,17 @@ describe("durable order lifecycle", () => {
     await expect(lifecycle.execute(context, order, send)).rejects.toThrow("database unavailable");
     expect(send).not.toHaveBeenCalled();
   });
+
+  it("persists a restart reconciliation decision as an auditable event", () => {
+    const h = harness();
+    const record = h.lifecycle.begin(context, order);
+
+    const next = h.lifecycle.reconcile(record, "accepted", "matched on exchange", "exchange-1");
+
+    expect(next).toMatchObject({ status: "accepted", exchangeOrderId: "exchange-1" });
+    expect(h.events.at(-1)).toMatchObject({
+      type: "reconcile",
+      data: { status: "accepted", message: "matched on exchange", exchangeOrderId: "exchange-1" }
+    });
+  });
 });

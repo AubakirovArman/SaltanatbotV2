@@ -20,6 +20,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - An adapter transport failure is persisted as `unknown`, never silently left as `intent`.
 - Live entry is not considered protected until exchange-side protection is confirmed.
 - Reconciliation completes before a resumed live bot can become running.
+- Unresolved journal rows are matched by venue/client id; ambiguous absences pause trading for operator review.
 - Paper is the default; live requires explicit global and per-bot authorization.
 - Incomplete spot inventory behavior remains feature-gated.
 - Risk guards use confirmed fills and positions where available.
