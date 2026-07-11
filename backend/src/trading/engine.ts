@@ -13,12 +13,14 @@ import { BybitAdapter } from "./exchange/bybit.js";
 import { notify } from "./notifications.js";
 import { orderLifecycle } from "./orderLifecycle.js";
 import { pollOrderUpdates } from "./orderPolling.js";
+import { ingestExchangeOrderEvent } from "./orderEventIngest.js";
 import { reconcileLiveRuntime, reconcileUnresolvedOrders } from "./reconciliation.js";
 import { getSetting, insertFill, insertLog, listBots, listFills, listOrderJournal, setSetting, upsertBot } from "./store.js";
 import type {
   AccountState,
   BotConfig,
   ExchangeAdapter,
+  ExchangeOrderSnapshot,
   ExecOrder,
   ExecResult,
   FillRecord,
@@ -723,7 +725,7 @@ export class TradingEngine {
     const result = await pollOrderUpdates(
       listOrderJournal(bot.config.id, 500),
       bot.adapter,
-      (record, snapshot) => orderLifecycle.applySnapshot(record, snapshot),
+      (_record, snapshot) => this.ingestOrderEvent(bot, snapshot),
       10,
       bot.orderPollOffset ?? 0
     );
@@ -731,6 +733,17 @@ export class TradingEngine {
     for (const failure of result.failures) {
       this.log(bot.config.id, "warn", `Order ${failure.record.id} status poll failed: ${failure.error instanceof Error ? failure.error.message : failure.error}`);
     }
+  }
+
+  /** Shared transport boundary for signed polling and authenticated streams. */
+  private ingestOrderEvent(bot: RunningBot, snapshot: ExchangeOrderSnapshot) {
+    const result = ingestExchangeOrderEvent(listOrderJournal(bot.config.id, 500), snapshot, orderLifecycle);
+    if (result.kind === "unmatched") {
+      this.log(bot.config.id, "warn", `Ignored unmatched exchange order event ${snapshot.id}.`);
+    } else if (result.kind === "ignored" && result.reason === "identity_conflict") {
+      this.log(bot.config.id, "warn", `Ignored exchange order event ${snapshot.id} with conflicting client identity.`);
+    }
+    return result;
   }
 
   private async reconcileOnResume(bot: RunningBot, savedManaged?: Managed): Promise<boolean> {

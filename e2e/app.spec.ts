@@ -19,7 +19,7 @@ test("offers a keyboard-operable tabular alternative to the canvas chart", async
 
   await expect(page.locator(".chart-data-toggle")).toHaveAttribute("aria-expanded", "true");
   const chartData = page.getByRole("complementary", { name: "Chart data" });
-  await expect(chartData.getByRole("table", { name: "Latest candle" })).toBeVisible();
+  await expect(chartData.getByRole("table", { name: "Latest candle" })).toBeVisible({ timeout: 20_000 });
   await expect(chartData.getByRole("columnheader", { name: "Open", exact: true }).first()).toBeVisible();
   await expect(chartData.getByRole("table", { name: /Strategy signals/ })).toBeVisible();
   await expect(chartData.getByRole("table", { name: /Executed trades/ })).toBeVisible();

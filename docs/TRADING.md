@@ -192,7 +192,7 @@ Setting a bot's `exchange` to `binance` or `bybit` builds a live adapter with th
 
 Live spot is fail-closed by default while complete inventory/fee-asset accounting remains experimental. Enabling the explicit `ENABLE_LIVE_SPOT` override transfers responsibility to the operator; paper and futures testnet validation should be completed first.
 
-Every mutating live request is journaled before network I/O. A definitive HTTP/API rejection becomes `rejected`; a network failure or HTTP 5xx during POST/DELETE is ambiguous and becomes `unknown`, because the venue may have accepted the request. The engine never blindly resubmits that order. Non-terminal Binance/Bybit orders are checked through bounded signed REST polling every 30 seconds until authenticated private streams are available.
+Every mutating live request is journaled before network I/O. A definitive HTTP/API rejection becomes `rejected`; a network failure or HTTP 5xx during POST/DELETE is ambiguous and becomes `unknown`, because the venue may have accepted the request. The engine never blindly resubmits that order. Non-terminal Binance/Bybit orders are checked through bounded signed REST polling every 30 seconds until authenticated private streams are available. Poll and future stream snapshots enter through one identity-aware ingest boundary: reconnect replays are idempotent, conflicting venue IDs are rejected, cumulative filled quantity cannot decrease, and accepted/partial/terminal state cannot regress.
 
 ### 4.1 Binance (`exchange/binance.ts`)
 

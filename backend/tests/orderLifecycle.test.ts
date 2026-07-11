@@ -187,4 +187,15 @@ describe("durable order lifecycle", () => {
     expect(unchanged).toBe(next);
     expect(h.events.filter((event) => event.type === "update")).toHaveLength(1);
   });
+
+  it("does not regress partial or terminal state on out-of-order exchange snapshots", () => {
+    const h = harness();
+    const partial = { ...h.lifecycle.complete(h.lifecycle.begin(context, order), { ok: true, message: "partial", fills: [{ ...accepted.fills[0], qty: 0.5 }] }), exchangeOrderId: "exchange-1" };
+    const acceptedReplay = { id: "exchange-1", clientId: order.clientId, status: "accepted", qty: 1, filledQty: 0, updatedAt: 200 } as const;
+    expect(h.lifecycle.applySnapshot(partial, acceptedReplay)).toBe(partial);
+
+    const filled = h.lifecycle.applySnapshot(partial, { ...acceptedReplay, status: "filled", filledQty: 1, updatedAt: 201 });
+    expect(filled.status).toBe("filled");
+    expect(h.lifecycle.applySnapshot(filled, { ...acceptedReplay, status: "partially_filled", filledQty: 0.8, updatedAt: 202 })).toBe(filled);
+  });
 });

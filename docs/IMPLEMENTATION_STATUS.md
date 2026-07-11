@@ -344,6 +344,10 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Model accepted, partial-fill, filled, cancel, expire and replace states explicitly.
   - [x] Correlate asynchronous paper fills to their original resting-order journal entries.
   - [ ] Ingest asynchronous exchange events that advance accepted/partial states to terminal states.
+    - [x] Resolve aggregate snapshots to one durable intent by venue or client identity.
+    - [x] Share one ingest boundary between signed polling and future private streams.
+    - [x] Ignore duplicate/replayed updates and reject identity conflicts or state/quantity regressions.
+    - [ ] Connect authenticated Binance/Bybit stream events to the ingest boundary.
 - [ ] Add private fill/order stream with polling fallback.
   - [x] Add bounded signed REST order-status polling for Binance and Bybit.
   - [x] Normalize partial, filled, cancelled, expired and rejected venue states.
