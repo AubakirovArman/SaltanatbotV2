@@ -309,6 +309,9 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Ignore stale progress/results and abort in-flight history/security requests on teardown.
 - [x] Split `TradingView` into auth/bots/orders/portfolio/settings feature modules.
 - [ ] Reduce `App.tsx` to composition and routing state.
+  - [x] Extract strategy artifact persistence, sharing, creation, import, version/hash and linked-indicator synchronization into `useArtifactLibrary` plus a pure model.
+  - [x] Reduce `App.tsx` from 782 to under 600 lines without changing workspace flows.
+  - [ ] Extract chart overlay and shell/workspace controllers.
 - [ ] Split chart orchestration into dirty render layers.
 - [ ] Add an accessible DOM/table alternative for focused OHLC, signals and trades.
 

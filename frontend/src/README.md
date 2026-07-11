@@ -29,4 +29,4 @@ Pure domain behavior uses Vitest. React behavior should use component tests, and
 
 ## Planned decomposition
 
-`App.tsx` should become composition-only. Strategy Lab and Trading View will move into feature directories with controller hooks and smaller panels. See `docs/MODULAR_ARCHITECTURE.md`.
+`App.tsx` is being reduced to composition-only. Strategy Lab and Trading View are feature-owned, and strategy artifact lifecycle/persistence now belongs to `strategy/useArtifactLibrary.ts`. Chart overlay and shell controllers remain the next extraction. See `docs/MODULAR_ARCHITECTURE.md`.

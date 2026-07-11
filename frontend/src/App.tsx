@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { compareColor } from "./chart/compareColors";
-import type { IndicatorConfig } from "./chart/indicatorTypes";
 import type { ChartMarker, ChartPlot, ChartShapes, ChartTable, ChartTrade, CompareChartType, CompareOverlayConfig } from "./chart/types";
 import { AlertToasts } from "./components/AlertToasts";
 import { ChartCanvas } from "./components/ChartCanvas";
@@ -15,15 +14,12 @@ import { useMarketStream } from "./hooks/useMarketStream";
 import { useLivePositions } from "./hooks/useLivePositions";
 import { usePriceAlerts } from "./hooks/usePriceAlerts";
 import { useSparklines } from "./hooks/useSparklines";
-import type { StrategyArtifact, StrategyArtifactKind } from "./strategy/library";
-import { createNewArtifact, indicatorArtifactId, indicatorToArtifact } from "./strategy/library";
-import type { StrategyTemplate } from "./strategy/templates";
 import type { Workspace } from "./workspace/workspaces";
 import { applyIndicatorSelection, captureWorkspace, loadWorkspaces, saveWorkspaces } from "./workspace/workspaces";
 import { loadStrategyLab, warmStrategyLab } from "./strategy/loadStrategyLab";
 import { loadTradingView, warmTradingView } from "./trading/loadTradingView";
-import { clearShareHash, readSharedFromHash } from "./strategy/share";
-import { loadInitialWorkspaceState, storeIndicators, storeStrategyLibrary } from "./strategy/storage";
+import { loadInitialWorkspaceState, storeIndicators } from "./strategy/storage";
+import { useArtifactLibrary } from "./strategy/useArtifactLibrary";
 import type { AssetClass, ChartType, DataExchange, Instrument, Timeframe } from "./types";
 
 const StrategyLab = lazy(loadStrategyLab);
@@ -34,7 +30,6 @@ const initialWorkspaceState = loadInitialWorkspaceState();
 const MAX_COMPARE = 3;
 const DEFAULT_COMPARE_UP = "#23c97a";
 const DEFAULT_COMPARE_DOWN = "#ef5350";
-const ARTIFACT_INPUTS_KEY = "marketforge.artifactInputs.v1";
 
 const fallbackInstrument: Instrument = {
   symbol: "BTCUSDT",
@@ -58,8 +53,15 @@ export default function App() {
   );
   const [mode, setMode] = useState<"chart" | "strategy" | "trade">("chart");
   const [indicators, setIndicators] = useState(initialWorkspaceState.indicators);
-  const [strategyLibrary, setStrategyLibrary] = useState(initialWorkspaceState.strategyLibrary);
-  const [activeArtifactId, setActiveArtifactId] = useState("strategy:price-cross-ema");
+  const openStrategyWorkspace = useCallback(() => setMode("strategy"), []);
+  const artifactLibrary = useArtifactLibrary({
+    initialArtifacts: initialWorkspaceState.strategyLibrary,
+    setIndicators,
+    openStrategyWorkspace
+  });
+  const strategyLibrary = artifactLibrary.artifacts;
+  const activeArtifactId = artifactLibrary.activeArtifactId;
+  const artifactInputOverrides = artifactLibrary.inputOverrides;
   const [overlay, setOverlay] = useState<{
     id?: string;
     name: string;
@@ -74,7 +76,6 @@ export default function App() {
     timeframe: Timeframe;
   }>();
   const [chartFocus, setChartFocus] = useState<number>();
-  const [artifactInputOverrides, setArtifactInputOverrides] = useState<Record<string, Record<string, number>>>(() => readArtifactInputOverrides());
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     (typeof localStorage !== "undefined" && localStorage.getItem("mf:theme") === "light") ? "light" : "dark"
@@ -134,38 +135,10 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, []);
 
-  // Import a strategy shared via URL hash (#s=...) as a remixable copy.
-  useEffect(() => {
-    const shared = readSharedFromHash();
-    if (!shared) return;
-    const now = Date.now();
-    const artifact: StrategyArtifact = {
-      id: `strategy:remix-${now}`,
-      kind: "strategy",
-      name: `${shared.name} (remix)`,
-      description: "Imported from a shared link.",
-      xml: shared.xml,
-      createdAt: now,
-      updatedAt: now
-    };
-    setStrategyLibrary((current) => [artifact, ...current]);
-    setActiveArtifactId(artifact.id);
-    setMode("strategy");
-    warmStrategyLab();
-    clearShareHash();
-  }, []);
-
   useEffect(() => {
     storeIndicators(indicators);
   }, [indicators]);
 
-  useEffect(() => {
-    storeStrategyLibrary(strategyLibrary);
-  }, [strategyLibrary]);
-
-  useEffect(() => {
-    try { localStorage.setItem(ARTIFACT_INPUTS_KEY, JSON.stringify(artifactInputOverrides)); } catch { /* runtime state still works */ }
-  }, [artifactInputOverrides]);
 
   const instrument =
     catalog?.instruments.find((item) => item.symbol === symbol) ?? fallbackInstrument;
@@ -240,17 +213,8 @@ export default function App() {
   const priceAlerts = usePriceAlerts(prices, decimalsFor);
   const livePositions = useLivePositions(instrument.symbol);
 
-  const chartCustomIndicators = useMemo(
-    () => strategyLibrary
-      .filter((item) => item.kind === "indicator" && !item.linkedIndicatorId)
-      .map((item) => ({ id: item.id, name: item.name, description: item.description })),
-    [strategyLibrary]
-  );
-
-  const chartStrategies = useMemo(
-    () => strategyLibrary.filter((item) => item.kind === "strategy").map((item) => ({ id: item.id, name: item.name, description: item.description })),
-    [strategyLibrary]
-  );
+  const chartCustomIndicators = artifactLibrary.customIndicators;
+  const chartStrategies = artifactLibrary.strategies;
 
   // Compile any saved custom indicator or strategy and overlay its chart visuals.
   const addArtifactToChart = async (id: string, explicitOverrides?: Record<string, number>) => {
@@ -289,7 +253,7 @@ export default function App() {
     const id = activeOverlay?.id;
     if (!id) return;
     const next = { ...(artifactInputOverrides[id] ?? {}), [name]: value };
-    setArtifactInputOverrides((current) => ({ ...current, [id]: next }));
+    artifactLibrary.setInputOverrides((current) => ({ ...current, [id]: next }));
     void addArtifactToChart(id, next);
   };
 
@@ -356,110 +320,6 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [catalog]);
-
-  const openIndicatorLogic = (indicator: IndicatorConfig) => {
-    const artifact = indicatorToArtifact(indicator);
-    setStrategyLibrary((current) => upsertArtifact(current, artifact));
-    setActiveArtifactId(artifact.id);
-    warmStrategyLab();
-    setMode("strategy");
-  };
-
-  const saveStrategyArtifact = (artifact: StrategyArtifact) => {
-    let saved: StrategyArtifact = artifact;
-    setStrategyLibrary((current) => {
-      const next = upsertArtifact(current, artifact);
-      saved = next.find((item) => item.id === artifact.id) ?? artifact;
-      return next;
-    });
-    if (!artifact.linkedIndicatorId) return;
-    setIndicators((current) => current.map((indicator) => (
-      indicator.id === artifact.linkedIndicatorId
-        ? { ...indicator, logicCode: saved.code, logicXml: saved.xml, logicVersion: saved.version, logicHash: saved.hash }
-        : indicator
-    )));
-  };
-
-  const createArtifact = (kind: StrategyArtifactKind) => {
-    const count = strategyLibrary.filter((item) => item.kind === kind).length + 1;
-    const artifact = createNewArtifact(kind, count);
-    setStrategyLibrary((current) => [artifact, ...current]);
-    setActiveArtifactId(artifact.id);
-    warmStrategyLab();
-  };
-
-  // Instantiate a gallery template as a fresh, editable copy (never mutating the
-  // read-only template) and select it.
-  const useTemplate = (template: StrategyTemplate) => {
-    const now = Date.now();
-    const artifact: StrategyArtifact = {
-      id: `strategy:tpl-copy-${now}`,
-      kind: "strategy",
-      name: dedupeName(template.name, strategyLibrary),
-      description: template.description,
-      xml: template.xml,
-      code: "",
-      createdAt: now,
-      updatedAt: now
-    };
-    setStrategyLibrary((current) => [artifact, ...current]);
-    setActiveArtifactId(artifact.id);
-    warmStrategyLab();
-  };
-
-  // Add one or more converted Pine scripts as new editable artifacts in a single
-  // pass — Pine indicator() → indicator artifact, strategy() → strategy artifact —
-  // deduping names against the library AND within the batch, then selecting the first.
-  const importPineMany = (
-    inputs: { kind: "indicator" | "strategy"; name: string; xml: string; code: string; warnings: string[] }[]
-  ) => {
-    if (!inputs.length) return;
-    const now = Date.now();
-    const firstId = `${inputs[0].kind}:pine-${now}-0`;
-    setStrategyLibrary((current) => {
-      const taken = new Set(current.map((item) => item.name));
-      const dedupe = (name: string) => {
-        if (!taken.has(name)) return name;
-        let n = 2;
-        while (taken.has(`${name} (${n})`)) n += 1;
-        return `${name} (${n})`;
-      };
-      const created: StrategyArtifact[] = inputs.map((input, i) => {
-        const name = dedupe(input.name);
-        taken.add(name);
-        return {
-          id: `${input.kind}:pine-${now}-${i}`,
-          kind: input.kind,
-          name,
-          description: `Imported from Pine Script${input.warnings.length ? ` (${input.warnings.length} fidelity warning${input.warnings.length === 1 ? "" : "s"})` : ""}.`,
-          xml: input.xml,
-          code: input.code,
-          createdAt: now,
-          updatedAt: now
-        };
-      });
-      return [...created, ...current];
-    });
-    setActiveArtifactId(firstId);
-    warmStrategyLab();
-  };
-
-  const importStrategy = (input: { name: string; description: string; xml: string }) => {
-    const now = Date.now();
-    const artifact: StrategyArtifact = {
-      id: `strategy:import-${now}`,
-      kind: "strategy",
-      name: dedupeName(input.name, strategyLibrary),
-      description: input.description || "Imported strategy.",
-      xml: input.xml,
-      code: "",
-      createdAt: now,
-      updatedAt: now
-    };
-    setStrategyLibrary((current) => [artifact, ...current]);
-    setActiveArtifactId(artifact.id);
-    warmStrategyLab();
-  };
 
   // --- Saved workspaces (named chart layouts) ---
   const saveWorkspace = (name: string) => {
@@ -545,7 +405,7 @@ export default function App() {
               timeframe={timeframe}
               indicators={indicators}
               onIndicatorsChange={setIndicators}
-              onEditIndicatorLogic={openIndicatorLogic}
+              onEditIndicatorLogic={artifactLibrary.selectIndicatorLogic}
               signals={activeOverlay?.signals}
               trades={activeOverlay?.trades}
               plots={activeOverlay?.plots}
@@ -594,12 +454,12 @@ export default function App() {
               <StrategyLab
                 artifacts={strategyLibrary}
                 activeArtifactId={activeArtifactId}
-                onSelectArtifact={setActiveArtifactId}
-                onCreateArtifact={createArtifact}
-                onSaveArtifact={saveStrategyArtifact}
-                onUseTemplate={useTemplate}
-                onImportStrategy={importStrategy}
-                onImportPineMany={importPineMany}
+                onSelectArtifact={artifactLibrary.setActiveArtifactId}
+                onCreateArtifact={artifactLibrary.createArtifact}
+                onSaveArtifact={artifactLibrary.saveArtifact}
+                onUseTemplate={artifactLibrary.useTemplate}
+                onImportStrategy={artifactLibrary.importStrategy}
+                onImportPineMany={artifactLibrary.importPineMany}
                 catalog={catalog}
                 initialSymbol={symbol}
                 initialTimeframe={timeframe}
@@ -720,55 +580,6 @@ function asTimeframe(value: unknown, fallback: Timeframe): Timeframe {
 function asCompareChartType(value: unknown): CompareChartType {
   const allowed: CompareChartType[] = ["candles", "heikin", "bars", "line", "area", "baseline"];
   return typeof value === "string" && allowed.includes(value as CompareChartType) ? value as CompareChartType : "line";
-}
-
-/** Append " (n)" until the name is unique within the library. */
-function dedupeName(name: string, items: StrategyArtifact[]): string {
-  const taken = new Set(items.map((item) => item.name));
-  if (!taken.has(name)) return name;
-  let n = 2;
-  while (taken.has(`${name} (${n})`)) n += 1;
-  return `${name} (${n})`;
-}
-
-function readArtifactInputOverrides(): Record<string, Record<string, number>> {
-  try {
-    const raw = localStorage.getItem(ARTIFACT_INPUTS_KEY);
-    return raw ? JSON.parse(raw) as Record<string, Record<string, number>> : {};
-  } catch {
-    return {};
-  }
-}
-
-function upsertArtifact(items: StrategyArtifact[], artifact: StrategyArtifact) {
-  const existing = items.find((item) => item.id === artifact.id);
-  const stamped = stampArtifact(artifact, existing);
-  if (!existing) return [stamped, ...items];
-  return items.map((item) => (
-    item.id === artifact.id
-      ? { ...stamped, createdAt: item.createdAt, updatedAt: Date.now() }
-      : item
-  ));
-}
-
-function stampArtifact(artifact: StrategyArtifact, existing?: StrategyArtifact): StrategyArtifact {
-  const hash = artifactHash(artifact);
-  const unchanged = existing?.hash === hash;
-  return {
-    ...artifact,
-    hash,
-    version: unchanged ? existing?.version ?? artifact.version ?? 1 : (existing?.version ?? 0) + 1
-  };
-}
-
-function artifactHash(artifact: Pick<StrategyArtifact, "kind" | "name" | "xml" | "code">): string {
-  const text = `${artifact.kind}\n${artifact.name}\n${artifact.xml}\n${artifact.code ?? ""}`;
-  let hash = 2166136261;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function StrategyLoading() {

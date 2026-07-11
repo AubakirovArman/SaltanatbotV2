@@ -28,6 +28,7 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - `candleHistory.ts` owns bounded, de-duplicated backward pagination shared by backtests, optimization and `request.security` loading.
 - `useStrategyResearch.ts` owns cancellable backtest/optimizer orchestration and rejects stale async results.
 - `useStrategyWorkspace.ts` owns Blockly injection, artifact loading, preview debounce, autosave and teardown.
+- `useArtifactLibrary.ts` owns artifact selection, persistence, shared-link remixing, template/Pine imports and linked-indicator synchronization; `artifactLibraryModel.ts` owns deterministic naming, hashes and versions.
 - `blocklyTheme.ts` owns the dark/light Blockly theme definitions.
 - Storage and sharing are adapters around versioned artifacts.
 - `components/StrategyLibrary.tsx` owns artifact browsing/import/export and template/Pine entry flows.
