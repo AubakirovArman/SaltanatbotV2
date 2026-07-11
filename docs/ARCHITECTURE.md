@@ -194,7 +194,7 @@ export interface StrategyIR {
 | `BoolExpr` | `bool`, `compare`, `logic`, `not`, `cross`, `trend`, `between`, `session`, `dayofweek` |
 | `Stmt` | `entry`, `exit`, `stop`, `target`, `trail`, `size`, `setvar`, `alert`, `plot`, `marker`, `if` |
 
-The frontend backtest facade delegates trading bars to the reusable `strategy-core` runtime. Its execution adapter composes the pure `backtest-core` broker, portfolio, reporting, provenance and metric functions. Every report records sources for chart and `request.security` candles. The backend live engine uses the same evaluator through its compatibility facade. `strategy/backtest/preview.ts` executes display-only statements itself but evaluates all numeric and boolean expressions through the core runtime. Stateful cross-runtime parity fixtures protect these adapters.
+The frontend backtest facade delegates trading bars to the reusable `strategy-core` runtime. Its execution adapter composes the pure `backtest-core` broker and portfolio functions, then delegates measured-range, metrics, trace and provenance assembly to `backtest-core/report.ts`. Every report records sources for chart and `request.security` candles. The backend live engine uses the same evaluator through its compatibility facade. `strategy/backtest/preview.ts` executes display-only statements itself but evaluates all numeric and boolean expressions through the core runtime. Stateful cross-runtime parity fixtures protect these adapters.
 
 ## Request and data flow
 

@@ -271,7 +271,7 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Keep frontend import compatibility through one-line facades.
   - [x] Independently compile runtime/declaration artifacts and fail checks when they are stale.
   - [x] Enforce the UI/browser-free package boundary with an architecture test.
-- [ ] Split backtest into execution, portfolio/accounting, analytics, preview and trace modules.
+- [x] Split backtest into execution, portfolio/accounting, analytics, preview and trace/report modules.
   - [x] Extract chart preview, display-statement execution and preview result types.
   - [x] Extract execution/fill simulation.
     - [x] Extract slippage, protective-price and stop/target hit primitives.
@@ -280,9 +280,10 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
     - [x] Extract sizing, leverage/quantity guardrails and unrealized-PnL primitives.
     - [x] Extract pure position open/close accounting, commissions, excursions and trade records.
   - [x] Move deterministic analytics into `backtest-core/metrics.ts`.
-  - [ ] Extract trace/report assembly.
+  - [x] Extract trace/report assembly.
     - [x] Extract exhaustive warm-up/lookback analysis, including nested control flow and dynamic floors.
     - [x] Extract position/daily-stat evaluator context and bounded variable-trace collection.
+    - [x] Move measured-range, metrics, trace and provenance assembly into `backtest-core/report.ts`.
 - [ ] Add versioned golden event traces across preview/backtest/paper/live.
   - [x] Add JSON-safe StrategyBarTrace v1 intents with fixed semantic ordering.
   - [x] Check one golden fixture through preview, backtest and the evaluator used by paper/live.

@@ -2,14 +2,14 @@
 
 This folder contains browser-side adapters around the runtime-neutral `@saltanatbotv2/strategy-core` evaluator.
 
-- `execution.ts` orchestrates historical signal timing, fills, position lifecycle, funding and report assembly.
+- `execution.ts` orchestrates historical signal timing, fills, position lifecycle and funding, then delegates canonical report assembly to `backtest-core/report.ts`.
 - `preview.ts` executes display statements and collects chart plots, markers, boxes, projections and metric tables.
 - `broker.ts` owns slippage direction, protective-price resolution, sizing/margin guardrails and position hit/PnL primitives.
 - `warmup.ts` performs exhaustive IR lookback analysis for the measured report window.
 - `reporting.ts` builds evaluator context and bounded deterministic variable traces.
 - `portfolio.ts` owns pure position opening/closing accounting and emitted trade records.
 - Trading expression evaluation, mutable state, loops, operation budgets and intents belong to `strategy-core`.
-- Historical fills, portfolio accounting and report assembly currently remain behind the stable `../backtest.ts` facade and are extracted incrementally.
+- Historical execution remains behind the stable `../backtest.ts` facade while framework-independent report assembly belongs to `backtest-core`.
 - Every assembled report includes chart and `request.security` data provenance from `backtest-core`; synthetic, fallback, mixed or unknown inputs invalidate performance claims in the UI.
 
 Modules here must remain independent of React and Blockly. User-facing code imports the stable exports from `../backtest.ts`; direct module imports are reserved for focused tests and internal composition.

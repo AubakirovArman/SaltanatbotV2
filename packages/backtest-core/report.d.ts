@@ -1,0 +1,30 @@
+import type { Candle } from "@saltanatbotv2/contracts";
+import type { SecurityDataContext, StrategyBarTrace } from "@saltanatbotv2/strategy-core";
+import type { VariableTracePoint } from "./reporting.js";
+import type { BacktestConfig, BacktestResult, EquityPoint, Trade, TradeMarker } from "./types.js";
+export interface BacktestReportAssembly {
+    name: string;
+    candles: Candle[];
+    config: BacktestConfig;
+    trades: Trade[];
+    equityCurve: EquityPoint[];
+    markers: TradeMarker[];
+    signals: TradeMarker[];
+    alerts: {
+        time: number;
+        message: string;
+    }[];
+    warnings: {
+        time: number;
+        message: string;
+    }[];
+    eventTrace: StrategyBarTrace[];
+    varTrace?: VariableTracePoint[];
+    warmupBars: number;
+    barsInMarket: number;
+    liquidated: boolean;
+    fundingPaid: number;
+    securityData?: SecurityDataContext;
+}
+/** Assemble the canonical immutable report after the execution loop completes. */
+export declare function assembleBacktestReport(input: BacktestReportAssembly): BacktestResult;

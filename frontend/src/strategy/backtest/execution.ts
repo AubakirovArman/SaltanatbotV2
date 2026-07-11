@@ -1,5 +1,5 @@
 import type { Candle } from "../../types";
-import { buildBacktestDataProvenance } from "@saltanatbotv2/backtest-core";
+import { assembleBacktestReport } from "@saltanatbotv2/backtest-core";
 import {
   createStrategyRuntime,
   evaluateStrategyBar,
@@ -11,7 +11,7 @@ import {
   type StrategyBarTrace,
   type StrategyRuntime
 } from "@saltanatbotv2/strategy-core";
-import { computeBacktestMetrics, medianDelta } from "../backtestMetrics";
+import { medianDelta } from "../backtestMetrics";
 import {
   applySlippage,
   stopHit,
@@ -22,7 +22,7 @@ import {
 import { closeBacktestPosition, openBacktestPosition } from "./portfolio";
 import { estimateWarmupBars } from "./warmup";
 import { buildEvaluationContext, createVariableTraceCollector } from "./reporting";
-import type { BacktestConfig, BacktestResult, EquityPoint, TestedRange, Trade, TradeMarker } from "../backtestTypes";
+import type { BacktestConfig, BacktestResult, EquityPoint, Trade, TradeMarker } from "../backtestTypes";
 import type { StrategyIR } from "../ir";
 import { atr as atrSeries } from "../ta";
 
@@ -264,28 +264,22 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     equityCurve[equityCurve.length - 1] = { time: candles[rt.n - 1].time, equity };
   }
 
-  // Restrict the measured equity curve to the post-warm-up window. Trades are
-  // already gated by warm-up (indicators are NaN, so no entries fire earlier).
-  const measured = equityCurve.slice(warmup);
-  const tested: TestedRange = {
-    fromTime: measured[0]?.time ?? candles[0]?.time ?? 0,
-    toTime: measured.at(-1)?.time ?? candles.at(-1)?.time ?? 0,
-    bars: measured.length,
-    warmupBars: warmup
-  };
-
-  return {
+  return assembleBacktestReport({
     name: ir.name,
+    candles,
+    config,
     trades,
     equityCurve,
     markers,
     signals,
     alerts,
     warnings,
-    metrics: computeBacktestMetrics(trades, measured, config, barsInMarket, measured.length, candles, liquidated, fundingPaid),
-    tested,
     varTrace: variableTrace.result(),
     eventTrace,
-    provenance: buildBacktestDataProvenance(candles, securityData)
-  };
+    warmupBars: warmup,
+    barsInMarket,
+    liquidated,
+    fundingPaid,
+    securityData
+  });
 }
