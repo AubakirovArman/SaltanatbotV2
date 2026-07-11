@@ -14,6 +14,7 @@ import { bybitFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilte
 import { ExchangeTransportError, isAmbiguousExchangeError } from "./errors.js";
 import { normalizeBybitOrderStatus } from "./orderStatus.js";
 import { subscribeBybitOrders } from "./privateOrderStreams.js";
+import { getExchangeRequestGuard } from "./requestGuard.js";
 
 /**
  * Bybit adapter (v5 unified API). `linear` category for USDT futures, `spot`
@@ -24,6 +25,7 @@ export class BybitAdapter implements ExchangeAdapter {
   readonly market: MarketType;
   private readonly base = "https://api.bybit.com";
   private readonly recvWindow = "5000";
+  private readonly requestGuard = getExchangeRequestGuard("bybit");
 
   constructor(
     private readonly botId: string,
@@ -284,6 +286,7 @@ export class BybitAdapter implements ExchangeAdapter {
 
   private async signed(method: "GET" | "POST", path: string, params: Record<string, unknown>): Promise<any> {
     if (!this.keys.apiKey || !this.keys.apiSecret) throw new Error("Bybit API keys are not set");
+    this.requestGuard.assertAvailable();
     const timestamp = String(Date.now());
     let url = `${this.base}${path}`;
     let body = "";
@@ -315,12 +318,14 @@ export class BybitAdapter implements ExchangeAdapter {
     } catch (error) {
       throw new ExchangeTransportError(`Bybit transport failed: ${error instanceof Error ? error.message : error}`, method !== "GET", { cause: error });
     }
+    this.requestGuard.observeHttpResponse(res);
     if (!res.ok) {
       const message = `Bybit HTTP ${res.status}: ${await res.text()}`;
       if (method !== "GET" && res.status >= 500) throw new ExchangeTransportError(message, true);
       throw new Error(message);
     }
     const json = (await res.json()) as { retCode: number; retMsg: string };
+    this.requestGuard.detectClockSkew(json.retCode, json.retMsg, res.headers?.get?.("date") ?? null);
     if (json.retCode !== 0) throw new Error(`Bybit: ${json.retMsg}`);
     return json;
   }

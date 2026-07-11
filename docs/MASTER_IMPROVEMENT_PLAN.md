@@ -168,8 +168,9 @@ The detailed blockers are maintained in `CODE_IMPROVEMENT_PLAN.md`. Release gate
 - private order/fill streams with polling fallback;
 - a durable order state machine and idempotent client order IDs;
 - reconciliation before a bot can enter `running`;
-- clock-skew detection;
-- rate-limit budgets and circuit breakers;
+- clock-skew detection (delivered for Binance/Bybit signed APIs);
+- rate-limit budgets and circuit breakers (exchange-wide signed-request breaker delivered; proactive
+  weight budgeting remains active);
 - real fee asset, partial-fill and realized-PnL accounting;
 - backup/restore and migration tests for SQLite (verified backup/atomic restore and transactional
   forward schema migrations delivered);

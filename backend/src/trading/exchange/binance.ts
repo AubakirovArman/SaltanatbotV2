@@ -14,6 +14,7 @@ import { binanceFilters, checkMinimums, roundToStep, roundToTick, type SymbolFil
 import { ExchangeTransportError, isAmbiguousExchangeError } from "./errors.js";
 import { normalizeBinanceOrderStatus } from "./orderStatus.js";
 import { subscribeBinanceOrders } from "./privateOrderStreams.js";
+import { getExchangeRequestGuard } from "./requestGuard.js";
 
 export interface ExchangeKeys {
   apiKey: string;
@@ -28,6 +29,7 @@ export interface ExchangeKeys {
 export class BinanceAdapter implements ExchangeAdapter {
   readonly id = "binance" as const;
   readonly market: MarketType;
+  private readonly requestGuard = getExchangeRequestGuard("binance");
 
   constructor(
     private readonly botId: string,
@@ -304,6 +306,7 @@ export class BinanceAdapter implements ExchangeAdapter {
 
   private async signed(method: "GET" | "POST" | "DELETE", path: string, params: Record<string, string> = {}): Promise<any> {
     if (!this.keys.apiKey || !this.keys.apiSecret) throw new Error("Binance API keys are not set");
+    this.requestGuard.assertAvailable();
     const query = new URLSearchParams({ ...params, timestamp: String(Date.now()), recvWindow: "5000" });
     const signature = createHmac("sha256", this.keys.apiSecret).update(query.toString()).digest("hex");
     query.append("signature", signature);
@@ -314,8 +317,20 @@ export class BinanceAdapter implements ExchangeAdapter {
     } catch (error) {
       throw new ExchangeTransportError(`Binance transport failed: ${error instanceof Error ? error.message : error}`, method !== "GET", { cause: error });
     }
+    this.requestGuard.observeHttpResponse(res);
     if (!res.ok) {
-      const message = `Binance HTTP ${res.status}: ${await res.text()}`;
+      const raw = await res.text();
+      let code: number | undefined;
+      let detail = raw;
+      try {
+        const parsed = JSON.parse(raw) as { code?: number; msg?: string };
+        code = parsed.code;
+        detail = parsed.msg ?? raw;
+      } catch {
+        // Preserve non-JSON exchange/proxy errors verbatim.
+      }
+      this.requestGuard.detectClockSkew(code, detail, res.headers?.get?.("date") ?? null);
+      const message = `Binance HTTP ${res.status}: ${raw}`;
       if (method !== "GET" && res.status >= 500) throw new ExchangeTransportError(message, true);
       throw new Error(message);
     }

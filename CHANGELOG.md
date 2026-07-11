@@ -14,6 +14,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 - Added automated backup, tamper-detection and restore recovery tests plus EN/RU/KK operator guides.
 - Added transactional forward-only SQLite schema migrations with explicit version tracking,
   idempotent legacy upgrades and refusal to open databases from newer application versions.
+- Added exchange-wide signed-request circuit breakers for Binance/Bybit throttling and explicit
+  host clock-skew detection; mutating requests are never automatically replayed.
 
 ### Documentation and distribution
 

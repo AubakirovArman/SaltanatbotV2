@@ -27,6 +27,14 @@ Verification:
 - Dedicated runtime backup/restore and schema-migration tests pass without reading or modifying real `backend/data`.
 - Biome and documentation link/command checks pass.
 
+### Exchange request safety — 2026-07-11
+
+- [x] Share a signed-request rate-limit circuit across bots targeting the same exchange.
+- [x] Honour bounded `Retry-After` periods for HTTP 429 and Binance 418 responses.
+- [x] Detect Binance `-1021` and Bybit `10002` clock-skew failures with operator remediation.
+- [x] Keep mutating calls non-retrying and preserve existing ambiguous transport classification.
+- [x] Add deterministic guard, throttle, cap, expiry and clock-offset tests.
+
 ### Foundation — commit `3a98684`
 
 - [x] Fix zero-price synthetic fallback for dynamically discovered crypto pairs.

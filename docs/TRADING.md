@@ -307,6 +307,16 @@ set=LEVERAGE;symbol=BTCUSDT;lev=10;mktype=futures::action=cancelall;symbol=BTCUS
 
 ---
 
+## 8. Rate limits and host clock
+
+Signed Binance and Bybit calls share one in-process circuit per exchange. HTTP `429` and Binance
+`418` open the circuit for `Retry-After` (with bounded safe defaults), so other bots cannot continue
+hammering the same venue. Signed mutating requests are not automatically replayed.
+
+Binance error `-1021` and Bybit error `10002` are treated as explicit host clock-skew failures. Stop
+live execution and synchronize the operating-system clock (for example with NTP/chrony) before
+resuming. Increasing `recvWindow` is not a substitute for a reliable host clock.
+
 ## See also
 
 - [Project README](../README.md)

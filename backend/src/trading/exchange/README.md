@@ -1,5 +1,10 @@
 # Exchange adapters
 
+`requestGuard.ts` is the shared signed-request safety boundary. HTTP 429/418 opens a bounded circuit
+using `Retry-After`, preventing a bot from continuing to hammer an exchange. Binance `-1021` and
+Bybit `10002` timestamp failures become explicit clock-skew errors instructing the operator to
+synchronize the host before trading. Mutating calls are not automatically replayed.
+
 This folder implements the `ExchangeAdapter` boundary for paper, Binance and Bybit execution.
 
 ## Modules
