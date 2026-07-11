@@ -171,8 +171,8 @@ The detailed blockers are maintained in `CODE_IMPROVEMENT_PLAN.md`. Release gate
 - clock-skew detection;
 - rate-limit budgets and circuit breakers;
 - real fee asset, partial-fill and realized-PnL accounting;
-- backup/restore and migration tests for SQLite (verified backup/atomic restore delivered;
-  forward schema-migration coverage remains active);
+- backup/restore and migration tests for SQLite (verified backup/atomic restore and transactional
+  forward schema migrations delivered);
 - disaster scenarios: process death, network partition, duplicate event, stale candle, exchange timeout and rejected protection.
 
 ## Priority 2: chart and terminal experience

@@ -15,6 +15,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - `exchange/`: paper, Binance and Bybit adapters.
 - `strategy/`: temporary backend copy of IR/evaluator/TA.
 - `store.ts`: SQLite persistence and encrypted settings.
+- `storeSchema.ts`: ordered forward-only SQLite migrations and supported schema version.
 
 ## Safety invariants
 
@@ -35,6 +36,8 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - Paper is the default; live requires explicit global and per-bot authorization.
 - Incomplete spot inventory behavior remains feature-gated.
 - Risk guards use confirmed fills and positions where available.
+- Store startup migrates legacy schemas transactionally and refuses databases from a newer,
+  unsupported application version.
 
 ## Testing
 

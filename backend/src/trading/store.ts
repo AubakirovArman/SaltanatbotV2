@@ -3,6 +3,7 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { migrateTradingStore } from "./storeSchema.js";
 import type { AuditLogRecord, BotConfig, FillRecord, OrderEventRecord, OrderJournalRecord } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,63 +18,7 @@ export function initStore() {
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   encKey = loadOrCreateSecret();
   db = new DatabaseSync(dbPath);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS bots (
-      id TEXT PRIMARY KEY,
-      config TEXT NOT NULL,
-      updatedAt INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS fills (
-      id TEXT PRIMARY KEY,
-      botId TEXT NOT NULL,
-      data TEXT NOT NULL,
-      ts INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS orders (
-      id TEXT PRIMARY KEY,
-      botId TEXT NOT NULL,
-      status TEXT NOT NULL,
-      data TEXT NOT NULL,
-      ts INTEGER NOT NULL,
-      updatedAt INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS order_events (
-      id TEXT PRIMARY KEY,
-      orderId TEXT NOT NULL,
-      botId TEXT NOT NULL,
-      type TEXT NOT NULL,
-      data TEXT NOT NULL,
-      ts INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      botId TEXT NOT NULL,
-      level TEXT NOT NULL,
-      message TEXT NOT NULL,
-      ts INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS audit_log (
-      id TEXT PRIMARY KEY,
-      actor TEXT NOT NULL,
-      role TEXT NOT NULL,
-      action TEXT NOT NULL,
-      target TEXT,
-      statusCode INTEGER NOT NULL,
-      ip TEXT,
-      data TEXT,
-      ts INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      encrypted INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE INDEX IF NOT EXISTS idx_fills_bot ON fills(botId, ts);
-    CREATE INDEX IF NOT EXISTS idx_orders_bot ON orders(botId, updatedAt);
-    CREATE INDEX IF NOT EXISTS idx_order_events_order ON order_events(orderId, ts);
-    CREATE INDEX IF NOT EXISTS idx_logs_bot ON logs(botId, ts);
-    CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts);
-  `);
+  migrateTradingStore(db);
   return db;
 }
 

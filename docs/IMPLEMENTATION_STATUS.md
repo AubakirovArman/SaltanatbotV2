@@ -19,10 +19,12 @@ This is the execution ledger. It records what is proven complete, what is active
 - [x] Refuse accidental overwrite and use a verified staging directory plus rollback-safe atomic swap.
 - [x] Add isolated tests for backup, verification, tamper detection, overwrite refusal and restore.
 - [x] Document backup/recovery in English, Russian and Kazakh.
+- [x] Replace implicit table creation with ordered transactional schema migrations.
+- [x] Preserve legacy rows, record applied migration metadata and reject newer unsupported schemas.
 
 Verification:
 
-- Dedicated runtime backup/restore tests pass without reading or modifying real `backend/data`.
+- Dedicated runtime backup/restore and schema-migration tests pass without reading or modifying real `backend/data`.
 - Biome and documentation link/command checks pass.
 
 ### Foundation — commit `3a98684`

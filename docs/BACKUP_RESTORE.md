@@ -27,6 +27,9 @@ The output directory must not already exist and must be outside `backend/data/`.
 - `.secret` and `.authtoken` (when present);
 - `backup-manifest.json` with format version, sizes and SHA-256 checksums.
 
+Database entries also record SQLite `user_version`, allowing verification to detect unexpected
+schema-version drift in addition to byte-level changes.
+
 All copied files and the manifest are written with owner-only `0600` permissions; the backup
 directory is created as `0700`.
 

@@ -52,6 +52,8 @@ function assertSqliteIntegrity(path) {
     if (messages.length !== 1 || messages[0] !== "ok") {
       fail(`${path} failed SQLite quick_check: ${messages.join("; ") || "no result"}`);
     }
+    const versionRow = handle.prepare("PRAGMA user_version").get();
+    return Number(versionRow?.user_version ?? 0);
   } finally {
     handle.close();
   }
@@ -85,7 +87,12 @@ export function verifyRuntimeBackup(backupDirectory) {
     const stat = assertRegularFile(file, `Backup file ${entry.name}`);
     if (stat.size !== entry.size) fail(`Backup file size mismatch: ${entry.name}`);
     if (sha256(file) !== entry.sha256) fail(`Backup checksum mismatch: ${entry.name}`);
-    if (databaseNames.includes(entry.name)) assertSqliteIntegrity(file);
+    if (databaseNames.includes(entry.name)) {
+      const userVersion = assertSqliteIntegrity(file);
+      if (entry.sqliteUserVersion !== undefined && entry.sqliteUserVersion !== userVersion) {
+        fail(`Backup SQLite schema version mismatch: ${entry.name}`);
+      }
+    }
   }
 
   const actualFiles = readdirSync(backupDir).filter((name) => name !== manifestName);
@@ -124,9 +131,9 @@ export async function createRuntimeBackup({ dataDirectory = defaultDataDir, outp
         handle.close();
       }
       chmodSync(destination, 0o600);
-      assertSqliteIntegrity(destination);
+      const sqliteUserVersion = assertSqliteIntegrity(destination);
       const stat = statSync(destination);
-      files.push({ name, size: stat.size, sha256: sha256(destination), mode: "0600" });
+      files.push({ name, size: stat.size, sha256: sha256(destination), mode: "0600", sqliteUserVersion });
     }
 
     for (const name of sensitiveNames) {

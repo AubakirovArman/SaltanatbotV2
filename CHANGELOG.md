@@ -12,6 +12,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 - Added fail-safe atomic restore that refuses to replace non-empty runtime state without an explicit
   flag and rolls the previous directory back if the swap fails.
 - Added automated backup, tamper-detection and restore recovery tests plus EN/RU/KK operator guides.
+- Added transactional forward-only SQLite schema migrations with explicit version tracking,
+  idempotent legacy upgrades and refusal to open databases from newer application versions.
 
 ### Documentation and distribution
 

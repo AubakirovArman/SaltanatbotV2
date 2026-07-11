@@ -49,6 +49,9 @@ describe("runtime data backup and restore", () => {
 
     const manifest = JSON.parse(readFileSync(path.resolve(backupDir, "backup-manifest.json"), "utf8"));
     expect(manifest.format).toBe("saltanatbotv2-runtime-backup");
+    expect(manifest.files.find((entry: { name: string }) => entry.name === "trading.db")).toMatchObject({
+      sqliteUserVersion: 0,
+    });
     expect(manifest.files.map((entry: { name: string }) => entry.name)).toEqual([
       ".authtoken",
       ".secret",

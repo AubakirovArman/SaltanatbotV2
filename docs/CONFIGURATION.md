@@ -112,6 +112,12 @@ changes. A backup must keep `trading.db` and `.secret` together and must be trea
 | `order_events` | Per-order lifecycle events, including intent, result, fill, and reconciliation records. |
 | `audit_log` | Mutating trade API calls with role, status, target, and redacted request data. |
 | `settings` | Key/value store with an `encrypted` flag — exchange keys and notification config live here. |
+| `schema_migrations` | Applied forward migration versions, names and timestamps. |
+
+The trading database uses SQLite `PRAGMA user_version`. Startup upgrades an older/unversioned schema
+inside one transaction and preserves existing records. If the database was created by a newer
+application schema, startup fails closed instead of attempting to run against unknown columns or
+semantics. Create and verify a backup before upgrading.
 
 ## Configuring exchange API keys
 
