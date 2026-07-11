@@ -80,3 +80,49 @@ test("switches and persists the interface locale", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
   await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
 });
+
+test("saves and restores a named chart workspace", async ({ page }) => {
+  await page.keyboard.press("Control+k");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const search = palette.getByPlaceholder("Search symbols, timeframes, chart types, actions...");
+  await search.fill("EURUSD");
+  await search.press("Enter");
+  await expect(page.getByRole("button", { name: /Current instrument EURUSD/i })).toBeVisible();
+
+  page.once("dialog", async (dialog) => dialog.accept("EUR research"));
+  await page.getByRole("button", { name: "Saved workspaces" }).click();
+  await page.getByRole("button", { name: "Save current as…" }).click();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Saved workspaces" }).click();
+  await expect(page.locator(".workspace-apply").filter({ hasText: "EUR research" })).toContainText("EURUSD");
+});
+
+test("runs a backtest and exposes assumptions and metrics", async ({ page }) => {
+  const workspaceModes = page.getByLabel("Workspace mode");
+  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
+  await page.locator(".config-row label").filter({ hasText: /^Market/ }).locator("select").selectOption("EURUSD");
+  await page.getByRole("button", { name: "Run backtest" }).click();
+
+  const report = page.locator(".backtest-report");
+  await expect(report).toBeVisible({ timeout: 30_000 });
+  await expect(report).toContainText("Net profit");
+  await expect(report).toContainText(/next-open fills/i);
+  await expect(report).toContainText("Trades");
+});
+
+test("keeps trading locked for a bad token and opens an authenticated session", async ({ page }) => {
+  const workspaceModes = page.getByLabel("Workspace mode");
+  await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Trading is locked" })).toBeVisible();
+
+  const token = page.getByLabel("Access token");
+  await token.fill("invalid-token");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page.getByRole("alert")).toContainText("Invalid access token");
+
+  await token.fill("e2e-local-admin-token");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page.getByText("Live & paper trading", { exact: true })).toBeVisible({ timeout: 15_000 });
+});

@@ -276,19 +276,36 @@ function TokenGate({ onAuthed }: { onAuthed: (state: AuthState) => void }) {
   };
 
   return (
-    <div className="trade-gate">
+    <form
+      className="trade-gate"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
       <KeyRound size={26} aria-hidden="true" />
       <h2>Trading is locked</h2>
       <p>Enter the admin access token to manage paper and live bots. Public charts stay open; trading controls remain locked until this token is verified.</p>
       <label className="trade-token-label" htmlFor="trade-access-token">
         Access token
       </label>
-      <input id="trade-access-token" type="password" value={token} placeholder="Access token" autoFocus onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && submit()} />
-      {error && <span className="trade-gate-error">{error}</span>}
-      <button type="button" className="run-button" onClick={submit} disabled={busy || !token.trim()}>
+      <input
+        id="trade-access-token"
+        name="access-token"
+        type="password"
+        value={token}
+        autoComplete="current-password"
+        enterKeyHint="done"
+        required
+        autoFocus
+        onChange={(event) => setInput(event.target.value)}
+        aria-describedby={error ? "trade-access-error" : undefined}
+      />
+      {error && <span id="trade-access-error" className="trade-gate-error" role="alert">{error}</span>}
+      <button type="submit" className="run-button" disabled={busy}>
         {busy ? "Checking…" : "Unlock"}
       </button>
-    </div>
+    </form>
   );
 }
 
