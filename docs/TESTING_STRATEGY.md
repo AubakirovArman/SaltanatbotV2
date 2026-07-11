@@ -215,6 +215,7 @@ Line percentage is not the primary target. Required coverage is risk-based:
 
 - 100% node-kind/command/action handling matrix;
 - every critical state-machine transition;
+- table-driven startup reconciliation across every in-flight order status, cancel/replace ambiguity, signed-query failure and sequential rate-limit behavior;
 - every documented Pine compatibility row;
 - every public API success and authorization failure class;
 - every critical browser journey;

@@ -205,7 +205,7 @@ export class OrderLifecycle {
     return next;
   }
 
-  reconcile(record: OrderJournalRecord, status: "accepted" | "unknown", message: string, exchangeOrderId?: string): OrderJournalRecord {
+  reconcile(record: OrderJournalRecord, status: "accepted" | "partially_filled" | "unknown", message: string, exchangeOrderId?: string): OrderJournalRecord {
     const now = this.now();
     const next: OrderJournalRecord = {
       ...record,

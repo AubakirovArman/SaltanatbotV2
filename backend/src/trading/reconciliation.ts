@@ -1,4 +1,4 @@
-import type { BotConfig, OrderJournalRecord, PendingOrder, PositionState } from "./types.js";
+import type { BotConfig, PendingOrder, PositionState } from "./types.js";
 
 export interface ManagedSnapshot {
   side: "long" | "short";
@@ -22,42 +22,6 @@ export interface ReconcileResult {
   managed?: ManagedSnapshot;
   pause: boolean;
   messages: string[];
-}
-
-export interface OrderReconcileDecision {
-  record: OrderJournalRecord;
-  status: "accepted" | "unknown";
-  message: string;
-  exchangeOrderId?: string;
-}
-
-/**
- * Resolves crash-left `intent`/`unknown` rows only when the venue exposes a
- * matching open order. Absence is not treated as rejection: a market order may
- * already have filled, so the safe result remains unknown and requires review.
- */
-export function reconcileUnresolvedOrders(records: OrderJournalRecord[], openOrders: PendingOrder[]): OrderReconcileDecision[] {
-  return records
-    .filter((record) => record.status === "intent" || record.status === "unknown")
-    .map((record) => {
-      const match = openOrders.find((order) =>
-        (record.exchangeOrderId !== undefined && order.id === record.exchangeOrderId) ||
-        (record.clientId !== undefined && order.clientId === record.clientId)
-      );
-      if (match) {
-        return {
-          record,
-          status: "accepted" as const,
-          message: "Recovered matching open exchange order after restart.",
-          exchangeOrderId: match.id
-        };
-      }
-      return {
-        record,
-        status: "unknown" as const,
-        message: "No matching open exchange order was visible after restart; operator review is required."
-      };
-    });
 }
 
 export function reconcileLiveRuntime(input: ReconcileInput): ReconcileResult {

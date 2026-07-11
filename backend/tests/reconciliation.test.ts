@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { reconcileLiveRuntime, reconcileUnresolvedOrders } from "../src/trading/reconciliation.js";
-import type { BotConfig, OrderJournalRecord, PendingOrder, PositionState } from "../src/trading/types.js";
+import { reconcileLiveRuntime } from "../src/trading/reconciliation.js";
+import type { BotConfig, PendingOrder, PositionState } from "../src/trading/types.js";
 
 const baseBot: BotConfig = {
   id: "bot",
@@ -71,29 +71,6 @@ describe("live runtime reconciliation", () => {
   });
 });
 
-describe("unresolved order reconciliation", () => {
-  it("accepts an unresolved record only when an open order matches its client id", () => {
-    const record = unresolvedOrder();
-    const open = { ...protectiveStop(), id: "exchange-1", clientId: record.clientId };
-
-    expect(reconcileUnresolvedOrders([record], [open])).toEqual([
-      expect.objectContaining({ record, status: "accepted", exchangeOrderId: "exchange-1" })
-    ]);
-  });
-
-  it("keeps an absent market order unknown instead of assuming rejection", () => {
-    const record = unresolvedOrder();
-
-    expect(reconcileUnresolvedOrders([record], [])).toEqual([
-      expect.objectContaining({ record, status: "unknown", message: expect.stringMatching(/operator review/i) })
-    ]);
-  });
-
-  it("ignores journal records that already have a terminal result", () => {
-    expect(reconcileUnresolvedOrders([{ ...unresolvedOrder(), status: "rejected" }], [])).toEqual([]);
-  });
-});
-
 function protectiveStop(): PendingOrder {
   return {
     id: "sl",
@@ -105,24 +82,5 @@ function protectiveStop(): PendingOrder {
     reduceOnly: true,
     tif: "GTC",
     createdAt: 1
-  };
-}
-
-function unresolvedOrder(): OrderJournalRecord {
-  return {
-    id: "journal-1",
-    botId: "bot",
-    exchange: "bybit",
-    market: "futures",
-    symbol: "BTCUSDT",
-    action: "open",
-    side: "buy",
-    type: "market",
-    qty: 1,
-    reason: "test",
-    clientId: "client-1",
-    status: "unknown",
-    ts: 1,
-    updatedAt: 2
   };
 }

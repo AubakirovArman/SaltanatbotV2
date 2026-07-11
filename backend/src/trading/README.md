@@ -9,6 +9,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - `engineRisk.ts`: pure position-sizing and stop/target resolution.
 - `orderLifecycle.ts`: durable intent/result/fill transitions around exchange I/O.
 - `orderEventIngest.ts`: venue/client identity resolution and idempotent snapshot ingest shared by polling and private streams.
+- `startupOrderReconciliation.ts`: sequential signed-status proof for every crash-left in-flight journal row.
 - `exchange/privateOrderStreams.ts`: authenticated Binance/Bybit order and execution sockets, normalization, heartbeat, listenKey rotation and reconnect backoff.
 - `types.ts`: trading models.
 - `exchange/`: paper, Binance and Bybit adapters.
@@ -26,6 +27,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - A rejected SL or TP triggers a best-effort emergency close and a failed execution result.
 - Network/5xx failures during mutating exchange calls are classified as ambiguous and journaled `unknown`; definitive 4xx/API rejects remain `rejected`.
 - Reconciliation completes before a resumed live bot can become running.
+- `intent`, `unknown`, `accepted` and `partially_filled` rows must be proven by signed status or a matching open order; unproven and action-ambiguous outcomes pause the bot.
 - Unresolved journal rows are matched by venue/client id; ambiguous absences pause trading for operator review.
 - Live Binance/Bybit non-terminal orders use bounded, sequential signed-REST polling as a private-stream fallback.
 - Connected private streams suppress periodic polling; disconnect and reconnect edges trigger an immediate signed-REST gap reconciliation.

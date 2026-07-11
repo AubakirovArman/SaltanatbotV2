@@ -355,7 +355,11 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Add authenticated Binance USDⓈ-M and Bybit private order/execution streams with heartbeat, reconnect and REST gap reconciliation.
 - [x] Require explicit Binance/Bybit SL/TP acknowledgement before protected runtime state.
 - [x] Fail the entry result and issue a best-effort emergency close when requested SL or TP is rejected.
-- [ ] Complete startup reconciliation for every in-flight state.
+- [x] Complete startup reconciliation for every in-flight state.
+  - [x] Query signed venue status sequentially for `intent`, `unknown`, `accepted` and `partially_filled` rows before resume.
+  - [x] Fall back to matching open orders only when that evidence proves the original command outcome.
+  - [x] Require terminal evidence for interrupted cancel commands and manual review for ambiguous replace commands.
+  - [x] Mark crash-left intent `unknown` and pause the bot whenever an outcome remains unproven.
 - [x] Keep live spot fail-closed by default behind an explicit experimental inventory override.
 - [x] Add fake-exchange transport, protection, status-polling and failure-injection suites.
 - [ ] Add opt-in Binance/Bybit testnet release checks.

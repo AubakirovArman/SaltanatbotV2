@@ -196,6 +196,8 @@ Every mutating live request is journaled before network I/O. A definitive HTTP/A
 
 Binance renews its 60-minute listenKey every 50 minutes and rotates it after expiry. Bybit authenticates with HMAC-SHA256, subscribes to both `order` and `execution`, and sends a heartbeat every 20 seconds. Both transports use capped reconnect backoff and are closed during bot stop or server shutdown. Binance live spot remains outside this stream implementation because live spot inventory is still fail-closed by default.
 
+Before a live bot resumes after process restart, the engine sequentially queries signed order status for every `intent`, `unknown`, `accepted`, and `partially_filled` journal row. A matching open order is only a fallback proof for ordinary order placement; it cannot prove that an interrupted cancel or replace command completed. Missing, conflicting, regressing, or action-ambiguous evidence leaves the existing durable state intact, records crash-left intent as `unknown`, and pauses trading for operator review. Terminal journal rows are never queried or rewritten.
+
 ### 4.1 Binance (`exchange/binance.ts`)
 
 - **Markets:** Spot (`api.binance.com`) and USDT-M Futures (`fapi.binance.com`).
