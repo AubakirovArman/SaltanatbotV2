@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { Candle, Instrument, Timeframe } from "../types.js";
 import { findInstrument } from "../market/catalog.js";
 import { timeframeMs } from "../market/timeframes.js";
@@ -12,8 +11,9 @@ import { PaperAdapter, type PaperState } from "./exchange/paper.js";
 import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
 import { BybitAdapter } from "./exchange/bybit.js";
 import { notify } from "./notifications.js";
+import { orderLifecycle } from "./orderLifecycle.js";
 import { reconcileLiveRuntime } from "./reconciliation.js";
-import { getSetting, insertFill, insertLog, insertOrderEvent, listBots, listFills, setSetting, upsertBot, upsertOrderJournal } from "./store.js";
+import { getSetting, insertFill, insertLog, listBots, listFills, setSetting, upsertBot } from "./store.js";
 import type {
   AccountState,
   BotConfig,
@@ -21,7 +21,6 @@ import type {
   ExecOrder,
   ExecResult,
   FillRecord,
-  OrderJournalRecord,
   PortfolioExchange,
   PortfolioSummary,
   PositionState
@@ -429,9 +428,7 @@ export class TradingEngine {
             messages.push(`would ${formatExec(exec)}`);
             continue;
           }
-          const journal = this.beginOrder(bot, exec);
-          const result = await bot.adapter.execute(exec);
-          this.finishOrder(journal, result);
+          const result = await this.executeOrder(bot, exec);
           this.applyResult(bot, result, exec.reason);
           messages.push(result.message);
         }
@@ -609,9 +606,7 @@ export class TradingEngine {
         if (target !== undefined) order.takeProfits = [{ priceBasis: "price", price: target, qtyBasis: "percent", qty: 100 }];
       }
 
-      const journal = this.beginOrder(bot, order, bot.buffer.at(-1)?.time);
-      const result = await bot.adapter.execute(order);
-      this.finishOrder(journal, result);
+      const result = await this.executeOrder(bot, order, bot.buffer.at(-1)?.time);
       if (result.ok) {
         // When the exchange holds the SL/TP, don't also manage them locally (avoids double-close).
         const entryTime = bot.buffer[index]?.time ?? bot.buffer.at(-1)?.time ?? 0;
@@ -650,9 +645,7 @@ export class TradingEngine {
         clientId: `${bot.config.id.slice(0, 8)}-c-${bot.buffer.at(-1)?.time ?? Date.now()}`,
         reason: `signal:${reason}`
       };
-      const journal = this.beginOrder(bot, order, bot.buffer.at(-1)?.time);
-      const result = await bot.adapter.execute(order);
-      this.finishOrder(journal, result);
+      const result = await this.executeOrder(bot, order, bot.buffer.at(-1)?.time);
       this.applyResult(bot, result, `signal:${reason}`);
       if (result.ok) {
         const pnl = result.fills.reduce((sum, f) => sum + f.realizedPnl, 0);
@@ -679,74 +672,17 @@ export class TradingEngine {
     }
   }
 
-  private beginOrder(bot: RunningBot, order: ExecOrder, barTime?: number): OrderJournalRecord {
-    const now = Date.now();
-    const record: OrderJournalRecord = {
-      id: order.clientId || order.orderId || randomUUID(),
-      botId: bot.config.id,
-      exchange: bot.config.exchange,
-      market: bot.config.market,
-      symbol: order.symbol,
-      action: order.action,
-      side: order.side,
-      type: order.type,
-      qty: order.qty,
-      reduceOnly: order.reduceOnly,
-      reason: order.reason,
-      clientId: order.clientId,
-      exchangeOrderId: order.orderId,
-      status: "intent",
-      barTime,
-      ts: now,
-      updatedAt: now
-    };
-    upsertOrderJournal(record);
-    insertOrderEvent({
-      id: randomUUID(),
-      orderId: record.id,
-      botId: bot.config.id,
-      type: "intent",
-      data: order,
-      ts: now
-    });
-    return record;
-  }
-
-  private finishOrder(record: OrderJournalRecord, result: ExecResult) {
-    const now = Date.now();
-    const next: OrderJournalRecord = {
-      ...record,
-      exchangeOrderId: result.order?.id ?? record.exchangeOrderId,
-      status: result.ok ? "accepted" : "rejected",
-      message: result.message,
-      updatedAt: now
-    };
-    upsertOrderJournal(next);
-    insertOrderEvent({
-      id: randomUUID(),
-      orderId: next.id,
-      botId: next.botId,
-      type: "result",
-      data: {
-        ok: result.ok,
-        message: result.message,
-        order: result.order,
-        position: result.position,
-        account: result.account,
-        fills: result.fills
+  private executeOrder(bot: RunningBot, order: ExecOrder, barTime?: number): Promise<ExecResult> {
+    return orderLifecycle.execute(
+      {
+        botId: bot.config.id,
+        exchange: bot.config.exchange,
+        market: bot.config.market,
+        barTime
       },
-      ts: now
-    });
-    for (const fill of result.fills) {
-      insertOrderEvent({
-        id: randomUUID(),
-        orderId: next.id,
-        botId: next.botId,
-        type: "fill",
-        data: fill,
-        ts: fill.ts
-      });
-    }
+      order,
+      () => bot.adapter.execute(order)
+    );
   }
 
   private async reconcileOnResume(bot: RunningBot, savedManaged?: Managed): Promise<boolean> {

@@ -76,6 +76,9 @@ backend/src/
 └── trading/
     ├── routes.ts             # /api/trade router + /trade-stream WebSocketServer
     ├── engine.ts             # TradingEngine — live bar evaluation & order management
+    ├── engineRisk.ts         # Pure sizing and stop/target resolution
+    ├── orderLifecycle.ts     # Durable intent/result/fill state transitions
+    ├── reconciliation.ts     # Resume-time exchange/runtime comparison
     ├── commands.ts           # Notification/command parsing helpers
     ├── notifications.ts      # Outbound notifications
     ├── store.ts              # node:sqlite persistence + AES-256-GCM key storage

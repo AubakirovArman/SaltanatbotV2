@@ -7,6 +7,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - `routes.ts`: authenticated HTTP/WS adapter.
 - `engine.ts`: trading orchestration facade.
 - `engineRisk.ts`: pure position-sizing and stop/target resolution.
+- `orderLifecycle.ts`: durable intent/result/fill transitions around exchange I/O.
 - `types.ts`: trading models.
 - `exchange/`: paper, Binance and Bybit adapters.
 - `strategy/`: temporary backend copy of IR/evaluator/TA.
@@ -16,6 +17,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 
 - A bot processes market events serially and evaluates a closed bar at most once.
 - Every order attempt has an idempotent client identifier and durable lifecycle events.
+- An adapter transport failure is persisted as `unknown`, never silently left as `intent`.
 - Live entry is not considered protected until exchange-side protection is confirmed.
 - Reconciliation completes before a resumed live bot can become running.
 - Paper is the default; live requires explicit global and per-bot authorization.

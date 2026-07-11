@@ -159,7 +159,7 @@ Verification:
 - [x] Preserve legacy warning strings while exposing structured diagnostics to future editors.
 - [x] Attach typed diagnostics to public `PineConvertError` instances.
 
-### Trading activity decomposition — current activity-panels commit
+### Trading activity decomposition — commit `4335465`
 
 - [x] Split command composition/saved commands into `BotCommandConsole.tsx`.
 - [x] Split orders, order journal, fills and logs into `BotActivity.tsx`.
@@ -171,7 +171,7 @@ Verification:
 
 ### Critical browser E2E expansion
 
-Current: 16 scenarios implemented; the original critical-flow checklist is complete.
+Current: 17 scenarios implemented; the original critical-flow checklist is complete.
 
 - [x] Terminal/chart smoke.
 - [x] Keyboard command palette and symbol switch.
@@ -223,6 +223,12 @@ Current: 16 scenarios implemented; the original critical-flow checklist is compl
 ### Trading engine hardening
 
 - [ ] Complete durable exchange order state machine.
+  - [x] Persist intent before exchange I/O in a dedicated lifecycle module.
+  - [x] Persist accepted, rejected and fill outcomes in deterministic order.
+  - [x] Classify thrown/ambiguous adapter outcomes as `unknown` and rethrow them.
+  - [x] Prevent exchange submission when durable intent persistence fails.
+  - [ ] Reconcile `intent` and `unknown` records against exchange state after restart.
+  - [ ] Model partial fill, cancel, expire and replace transitions explicitly.
 - [ ] Add private fill/order stream with polling fallback.
 - [ ] Confirm exchange-side protection before protected state.
 - [ ] Complete startup reconciliation for every in-flight state.
