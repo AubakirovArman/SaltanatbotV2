@@ -1,8 +1,10 @@
 import { Bot, KeyRound, Plus } from "lucide-react";
 import { useState } from "react";
+import type { Locale } from "../../i18n";
+import { tradingText } from "../../i18n/trading";
 import { checkAuth, setToken, type AuthState } from "../tradeClient";
 
-export function TradeTokenGate({ onAuthed }: { onAuthed: (state: AuthState) => void }) {
+export function TradeTokenGate({ locale, onAuthed }: { locale: Locale; onAuthed: (state: AuthState) => void }) {
   const [token, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -16,7 +18,7 @@ export function TradeTokenGate({ onAuthed }: { onAuthed: (state: AuthState) => v
       setToken(token.trim());
       onAuthed(state);
     } catch {
-      setError("Invalid access token.");
+      setError(tradingText(locale, "invalidToken"));
     } finally {
       setBusy(false);
     }
@@ -25,9 +27,9 @@ export function TradeTokenGate({ onAuthed }: { onAuthed: (state: AuthState) => v
   return (
     <form className="trade-gate" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <KeyRound size={26} aria-hidden="true" />
-      <h2>Trading is locked</h2>
-      <p>Enter the admin access token to manage paper and live bots. Public charts stay open; trading controls remain locked until this token is verified.</p>
-      <label className="trade-token-label" htmlFor="trade-access-token">Access token</label>
+      <h2>{tradingText(locale, "tradingLocked")}</h2>
+      <p>{tradingText(locale, "accessPrompt")}</p>
+      <label className="trade-token-label" htmlFor="trade-access-token">{tradingText(locale, "accessToken")}</label>
       <input
         id="trade-access-token"
         name="access-token"
@@ -41,24 +43,24 @@ export function TradeTokenGate({ onAuthed }: { onAuthed: (state: AuthState) => v
         aria-describedby={error ? "trade-access-error" : undefined}
       />
       {error && <span id="trade-access-error" className="trade-gate-error" role="alert">{error}</span>}
-      <button type="submit" className="run-button" disabled={busy}>{busy ? "Checking…" : "Unlock"}</button>
+      <button type="submit" className="run-button" disabled={busy}>{tradingText(locale, busy ? "checking" : "unlock")}</button>
     </form>
   );
 }
 
-export function EmptyTradingState({ onNew }: { onNew: () => void }) {
+export function EmptyTradingState({ locale, onNew }: { locale: Locale; onNew: () => void }) {
   return (
     <div className="trade-empty">
       <Bot size={22} aria-hidden="true" />
-      <strong>Live &amp; paper trading</strong>
-      <p>Start with a saved strategy in paper mode, verify signals, then arm live execution only when keys and risk settings are ready.</p>
+      <strong>{tradingText(locale, "livePaperTitle")}</strong>
+      <p>{tradingText(locale, "livePaperDescription")}</p>
       <ol className="trade-empty-steps">
-        <li>Choose a saved strategy</li>
-        <li>Run it on paper</li>
-        <li>Review logs, fills and risk</li>
+        <li>{tradingText(locale, "chooseStrategy")}</li>
+        <li>{tradingText(locale, "runPaper")}</li>
+        <li>{tradingText(locale, "reviewRisk")}</li>
       </ol>
       <button type="button" className="run-button" onClick={onNew}>
-        <Plus size={14} aria-hidden="true" /> Create paper bot
+        <Plus size={14} aria-hidden="true" /> {tradingText(locale, "createPaperBot")}
       </button>
     </div>
   );

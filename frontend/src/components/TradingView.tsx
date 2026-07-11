@@ -1,5 +1,7 @@
 import { Plus, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Locale } from "../i18n";
+import { tradingText } from "../i18n/trading";
 import type { StrategyArtifact } from "../strategy/library";
 import type { CatalogResponse } from "../types";
 import {
@@ -28,11 +30,12 @@ import { TradingSettings } from "../trading/components/TradingSettings";
 interface TradingViewProps {
   strategies: StrategyArtifact[];
   catalog?: CatalogResponse;
+  locale: Locale;
 }
 
 type CenterView = { kind: "empty" } | { kind: "bot"; id: string } | { kind: "new" } | { kind: "settings" };
 
-export function TradingView({ strategies, catalog }: TradingViewProps) {
+export function TradingView({ strategies, catalog, locale }: TradingViewProps) {
   const [bots, setBots] = useState<TradingBot[]>([]);
   const [view, setView] = useState<CenterView>({ kind: "empty" });
   const [live, setLive] = useState<Record<string, LiveState>>({});
@@ -143,7 +146,7 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
   if (!authChecked) {
     return (
       <section className="trading trade-gate-wrap">
-        <p className="empty-note">Checking access…</p>
+        <p className="empty-note">{tradingText(locale, "checkingAccess")}</p>
       </section>
     );
   }
@@ -151,6 +154,7 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
     return (
       <section className="trading trade-gate-wrap">
         <TradeTokenGate
+          locale={locale}
           onAuthed={(state) => {
             setAuth(state);
             setAuthChecked(true);
@@ -166,15 +170,15 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
         <div className="trade-sidebar-actions">
           {!(bots.length === 0 && view.kind === "empty") && (
             <button type="button" className="run-button" onClick={() => setView({ kind: "new" })}>
-              <Plus size={14} aria-hidden="true" /> New bot
+              <Plus size={14} aria-hidden="true" /> {tradingText(locale, "newBot")}
             </button>
           )}
-          <button type="button" className={`icon-button ${view.kind === "settings" ? "active" : ""}`} title="Settings" onClick={() => setView({ kind: "settings" })}>
+          <button type="button" className={`icon-button ${view.kind === "settings" ? "active" : ""}`} title={tradingText(locale, "settings")} aria-label={tradingText(locale, "settings")} onClick={() => setView({ kind: "settings" })}>
             <Settings2 size={15} aria-hidden="true" />
           </button>
         </div>
         <div className="trade-bot-list">
-          {bots.length === 0 && <p className="empty-note">No bots yet. Create one from a saved strategy.</p>}
+          {bots.length === 0 && <p className="empty-note">{tradingText(locale, "noBots")}</p>}
           {bots.map((bot) => {
             const pos = live[bot.id]?.position;
             return (
@@ -208,11 +212,12 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
       </aside>
 
       <div className="trade-content">
-        {view.kind === "empty" && <EmptyTradingState onNew={() => setView({ kind: "new" })} />}
+        {view.kind === "empty" && <EmptyTradingState locale={locale} onNew={() => setView({ kind: "new" })} />}
         {view.kind === "new" && (
           <CreateBotForm
             strategies={strategies}
             catalog={catalog}
+            locale={locale}
             onCreated={(bot) => {
               refreshBots();
               openBot(bot.id);

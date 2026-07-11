@@ -145,6 +145,13 @@ Verification:
 - [x] Add focused quote/equity/risk sizing and long/short stop/target tests.
 - [x] Keep exchange orchestration and order lifecycle unchanged behind the `TradingEngine` facade.
 
+### Trading localization — current trading-i18n commit
+
+- [x] Add a typed EN/RU trading message catalog.
+- [x] Localize trading access, empty state, bot creation labels and primary actions.
+- [x] Pass locale explicitly through the trading feature boundary.
+- [x] Extend browser locale coverage into the Russian Trade authentication flow.
+
 ## Completed browser baseline
 
 ### Critical browser E2E expansion

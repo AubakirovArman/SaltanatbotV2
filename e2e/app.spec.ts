@@ -80,6 +80,9 @@ test("switches and persists the interface locale", async ({ page }) => {
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
   await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
+  await workspaceModes.getByRole("button", { name: "Торговля", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Торговля заблокирована" })).toBeVisible();
+  await expect(page.getByLabel("Токен доступа")).toBeVisible();
 });
 
 test("saves and restores a named chart workspace", async ({ page }) => {

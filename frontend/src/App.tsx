@@ -586,7 +586,7 @@ export default function App() {
           )}
           {mode === "trade" && (
             <Suspense fallback={<StrategyLoading />}>
-              <TradingView strategies={strategyLibrary} catalog={catalog} />
+              <TradingView strategies={strategyLibrary} catalog={catalog} locale={locale} />
             </Suspense>
           )}
           {mode === "strategy" && (
