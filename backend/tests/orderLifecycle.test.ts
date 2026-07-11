@@ -28,6 +28,9 @@ function harness() {
     insertEvent(event) {
       calls.push(`event:${event.type}`);
       events.push(structuredClone(event));
+    },
+    listEvents(orderId) {
+      return events.filter((event) => event.orderId === orderId).map((event) => structuredClone(event));
     }
   };
   const lifecycle = new OrderLifecycle(writer, {
@@ -67,9 +70,9 @@ describe("durable order lifecycle", () => {
 
     await expect(h.lifecycle.execute(context, order, send)).resolves.toBe(accepted);
 
-    expect(h.calls).toEqual(["order:intent", "event:intent", "exchange", "order:accepted", "event:result", "event:fill"]);
-    expect(h.records.map((record) => record.status)).toEqual(["intent", "accepted"]);
-    expect(h.events.at(-2)?.data).toMatchObject({ status: "accepted", ok: true });
+    expect(h.calls).toEqual(["order:intent", "event:intent", "exchange", "order:filled", "event:result", "event:fill"]);
+    expect(h.records.map((record) => record.status)).toEqual(["intent", "filled"]);
+    expect(h.events.at(-2)?.data).toMatchObject({ status: "filled", ok: true });
   });
 
   it("persists a known exchange rejection as rejected", async () => {
@@ -80,6 +83,18 @@ describe("durable order lifecycle", () => {
 
     expect(h.records.at(-1)).toMatchObject({ status: "rejected", message: "insufficient balance" });
     expect(h.events.at(-1)?.data).toMatchObject({ status: "rejected", ok: false });
+  });
+
+  it("distinguishes partial fills and successful command outcomes", () => {
+    const partial = harness();
+    const partialResult: ExecResult = { ...accepted, fills: [{ ...accepted.fills[0], qty: 0.4 }] };
+    expect(partial.lifecycle.complete(partial.lifecycle.begin(context, order), partialResult).status).toBe("partially_filled");
+
+    for (const [action, expected] of [["cancel", "cancelled"], ["replace", "replaced"]] as const) {
+      const h = harness();
+      const command = { ...order, action };
+      expect(h.lifecycle.complete(h.lifecycle.begin(context, command), { ok: true, message: "done", fills: [] }).status).toBe(expected);
+    }
   });
 
   it("persists a thrown transport result as unknown and rethrows it", async () => {
@@ -117,5 +132,31 @@ describe("durable order lifecycle", () => {
       type: "reconcile",
       data: { status: "accepted", message: "matched on exchange", exchangeOrderId: "exchange-1" }
     });
+  });
+
+  it("advances a resting order when its asynchronous fill arrives", () => {
+    const h = harness();
+    const record = h.lifecycle.complete(h.lifecycle.begin(context, order), {
+      ok: true,
+      message: "resting",
+      fills: [],
+      pendingOrder: { id: "exchange-resting-1", clientId: order.clientId, symbol: order.symbol, side: "buy", type: "limit", qty: 1, price: 99, reduceOnly: false, tif: "GTC", createdAt: 1 }
+    });
+
+    const next = h.lifecycle.recordFill(record, { ...accepted.fills[0], orderId: "exchange-resting-1" });
+
+    expect(record).toMatchObject({ status: "accepted", exchangeOrderId: "exchange-resting-1" });
+    expect(next.status).toBe("filled");
+    expect(h.events.at(-1)).toMatchObject({ type: "fill", data: { orderId: "exchange-resting-1" } });
+  });
+
+  it("uses cumulative asynchronous fills to reach the terminal filled state", () => {
+    const h = harness();
+    const record = h.lifecycle.complete(h.lifecycle.begin(context, order), { ok: true, message: "resting", fills: [] });
+    const first = h.lifecycle.recordFill(record, { ...accepted.fills[0], qty: 0.4, orderId: "exchange-1" });
+    const second = h.lifecycle.recordFill(first, { ...accepted.fills[0], id: "fill-2", qty: 0.6, orderId: "exchange-1" });
+
+    expect(first.status).toBe("partially_filled");
+    expect(second.status).toBe("filled");
   });
 });

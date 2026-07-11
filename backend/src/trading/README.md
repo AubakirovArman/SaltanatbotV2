@@ -18,6 +18,8 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - A bot processes market events serially and evaluates a closed bar at most once.
 - Every order attempt has an idempotent client identifier and durable lifecycle events.
 - An adapter transport failure is persisted as `unknown`, never silently left as `intent`.
+- Known outcomes distinguish accepted, partial, filled, cancelled, replaced, expired and rejected states.
+- Resting paper orders retain venue/client identity so later tick fills advance the original journal row.
 - Live entry is not considered protected until exchange-side protection is confirmed.
 - A rejected SL or TP triggers a best-effort emergency close and a failed execution result.
 - Reconciliation completes before a resumed live bot can become running.

@@ -34,6 +34,8 @@ export interface Fill {
   realizedPnl: number;
   kind: "open" | "close";
   reason: string;
+  orderId?: string;
+  clientId?: string;
   ts: number;
 }
 
@@ -89,7 +91,7 @@ export interface OrderJournal {
   reason: string;
   clientId?: string;
   exchangeOrderId?: string;
-  status: "intent" | "accepted" | "rejected" | "unknown";
+  status: "intent" | "accepted" | "partially_filled" | "filled" | "cancelled" | "replaced" | "expired" | "rejected" | "unknown";
   message?: string;
   barTime?: number;
   ts: number;

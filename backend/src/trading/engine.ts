@@ -458,6 +458,13 @@ export class TradingEngine {
       const fills = bot.adapter.onPrice(bot.config.symbol, candle.close);
       for (const fill of fills) {
         insertFill(fill);
+        if (fill.orderId || fill.clientId) {
+          const record = listOrderJournal(bot.config.id, 500).find((candidate) =>
+            (fill.orderId !== undefined && candidate.exchangeOrderId === fill.orderId) ||
+            (fill.clientId !== undefined && candidate.clientId === fill.clientId)
+          );
+          if (record) orderLifecycle.recordFill(record, fill);
+        }
         this.log(bot.config.id, "info", `Order ${fill.kind} ${fill.qty} @ ${fill.price}${fill.kind === "close" ? ` · PnL ${round(fill.realizedPnl)}` : ""}`);
         this.broadcast({ type: "fill", botId: bot.config.id, fill });
         if (fill.kind === "close") void notify({ event: "close", bot: bot.config.name, symbol: bot.config.symbol, text: `Order fill · PnL ${round(fill.realizedPnl)}` });

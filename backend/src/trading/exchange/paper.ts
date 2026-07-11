@@ -97,7 +97,7 @@ export class PaperAdapter implements ExchangeAdapter {
         ? order.price ?? price
         : price;
       const fill = this.applyFill(order.symbol, order.side, order.qty, fillPrice, order.reduceOnly, `trigger:${order.type}`);
-      if (fill) fills.push(fill);
+      if (fill) fills.push({ ...fill, orderId: order.id, clientId: order.clientId });
       // Reduce-only protection that fully closed the position cancels siblings.
     }
     this.book = this.pos ? remaining : remaining.filter((order) => !order.reduceOnly);
@@ -141,7 +141,7 @@ export class PaperAdapter implements ExchangeAdapter {
     }
     // Resting order.
     const pending = this.place(order, mark);
-    return pending ? this.ok(`Placed ${order.type} ${pending.side} ${round(pending.qty)} ${order.symbol}`, []) : this.fail("Invalid order parameters");
+    return pending ? { ...this.ok(`Placed ${order.type} ${pending.side} ${round(pending.qty)} ${order.symbol}`, []), pendingOrder: pending } : this.fail("Invalid order parameters");
   }
 
   private openPosition(order: ExecOrder, mark: number): ExecResult {

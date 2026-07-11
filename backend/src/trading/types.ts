@@ -104,7 +104,16 @@ export interface OrderRecord {
   ts: number;
 }
 
-export type OrderJournalStatus = "intent" | "accepted" | "rejected" | "unknown";
+export type OrderJournalStatus =
+  | "intent"
+  | "accepted"
+  | "partially_filled"
+  | "filled"
+  | "cancelled"
+  | "replaced"
+  | "expired"
+  | "rejected"
+  | "unknown";
 
 export interface OrderJournalRecord {
   id: string;
@@ -159,6 +168,9 @@ export interface FillRecord {
   realizedPnl: number;
   kind: "open" | "close";
   reason: string;
+  /** Venue order identity when the fill came from a resting/asynchronous order. */
+  orderId?: string;
+  clientId?: string;
   ts: number;
 }
 
@@ -217,6 +229,8 @@ export interface ExecResult {
   fills: FillRecord[];
   /** Exchange-side SL/TP acknowledgement for an entry that requested protection. */
   protection?: { requested: boolean; confirmed: boolean; message?: string };
+  /** Resting order accepted by an adapter; used to correlate later fills. */
+  pendingOrder?: PendingOrder;
   order?: OrderRecord;
   orders?: PendingOrder[];
   position?: PositionState | null;

@@ -137,7 +137,7 @@ describe("engine lifecycle E2E", () => {
     const orders = (store as unknown as { __orders: () => Array<{ status: string; clientId?: string }> }).__orders();
     const events = (store as unknown as { __orderEvents: () => Array<{ type: string; orderId: string }> }).__orderEvents();
     expect(orders).toHaveLength(1);
-    expect(orders[0].status).toBe("accepted");
+    expect(orders[0].status).toBe("filled");
     expect(orders[0].clientId).toMatch(/e2e-jour-o-/);
     expect(events.map((event) => event.type)).toEqual(["intent", "result", "fill"]);
     expect(new Set(events.map((event) => event.orderId)).size).toBe(1);

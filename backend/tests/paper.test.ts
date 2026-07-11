@@ -93,6 +93,18 @@ describe("PaperAdapter — opening a position", () => {
   });
 });
 
+describe("PaperAdapter — asynchronous order identity", () => {
+  it("correlates a resting order with its later fill", async () => {
+    const adapter = makeAdapter();
+    const result = await adapter.execute(order({ side: "buy", type: "limit", qty: 1, price: 99, clientId: "client-resting" }));
+
+    expect(result.pendingOrder).toMatchObject({ clientId: "client-resting", price: 99 });
+    price = 99;
+    const fill = adapter.onPrice("BTCUSDT", price)[0];
+    expect(fill).toMatchObject({ orderId: result.pendingOrder?.id, clientId: "client-resting", qty: 1 });
+  });
+});
+
 describe("PaperAdapter — realized PnL on close", () => {
   it("realizes a POSITIVE PnL when a long is closed higher", async () => {
     const adapter = makeAdapter();

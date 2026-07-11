@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { insertOrderEvent, upsertOrderJournal } from "./store.js";
-import type { BotConfig, ExecOrder, ExecResult, OrderEventRecord, OrderJournalRecord } from "./types.js";
+import { insertOrderEvent, listOrderEvents, upsertOrderJournal } from "./store.js";
+import type { BotConfig, ExecOrder, ExecResult, FillRecord, OrderEventRecord, OrderJournalRecord, OrderJournalStatus } from "./types.js";
 
 export interface OrderLifecycleContext {
   botId: string;
@@ -12,6 +12,7 @@ export interface OrderLifecycleContext {
 export interface OrderLifecycleWriter {
   upsertOrder(record: OrderJournalRecord): void;
   insertEvent(event: OrderEventRecord): void;
+  listEvents?(orderId: string): OrderEventRecord[];
 }
 
 export interface OrderLifecycleOptions {
@@ -21,7 +22,8 @@ export interface OrderLifecycleOptions {
 
 const durableWriter: OrderLifecycleWriter = {
   upsertOrder: upsertOrderJournal,
-  insertEvent: insertOrderEvent
+  insertEvent: insertOrderEvent,
+  listEvents: (orderId) => listOrderEvents(orderId, 1_000)
 };
 
 /**
@@ -76,10 +78,11 @@ export class OrderLifecycle {
 
   complete(record: OrderJournalRecord, result: ExecResult): OrderJournalRecord {
     const now = this.now();
+    const status = deriveOrderJournalStatus(record, result);
     const next: OrderJournalRecord = {
       ...record,
-      exchangeOrderId: result.order?.id ?? record.exchangeOrderId,
-      status: result.ok ? "accepted" : "rejected",
+      exchangeOrderId: result.order?.id ?? result.pendingOrder?.id ?? record.exchangeOrderId,
+      status,
       message: result.message,
       updatedAt: now
     };
@@ -94,6 +97,7 @@ export class OrderLifecycle {
         ok: result.ok,
         message: result.message,
         protection: result.protection,
+        pendingOrder: result.pendingOrder,
         order: result.order,
         position: result.position,
         account: result.account,
@@ -135,6 +139,35 @@ export class OrderLifecycle {
     return next;
   }
 
+  recordFill(record: OrderJournalRecord, fill: FillRecord): OrderJournalRecord {
+    const now = this.now();
+    const priorFilledQty = (this.writer.listEvents?.(record.id) ?? []).reduce(
+      (sum, event) => event.type === "fill" && isFillData(event.data) ? sum + Math.abs(event.data.qty) : sum,
+      0
+    );
+    const cumulativeFilledQty = priorFilledQty + Math.abs(fill.qty);
+    const status: OrderJournalStatus = record.qty !== undefined && cumulativeFilledQty + Number.EPSILON < Math.abs(record.qty)
+      ? "partially_filled"
+      : "filled";
+    const next: OrderJournalRecord = {
+      ...record,
+      exchangeOrderId: fill.orderId ?? record.exchangeOrderId,
+      status,
+      message: `Asynchronous fill ${fill.qty} @ ${fill.price}`,
+      updatedAt: now
+    };
+    this.writer.upsertOrder(next);
+    this.writer.insertEvent({
+      id: this.createId(),
+      orderId: next.id,
+      botId: next.botId,
+      type: "fill",
+      data: fill,
+      ts: fill.ts
+    });
+    return next;
+  }
+
   reconcile(record: OrderJournalRecord, status: "accepted" | "unknown", message: string, exchangeOrderId?: string): OrderJournalRecord {
     const now = this.now();
     const next: OrderJournalRecord = {
@@ -170,3 +203,21 @@ export class OrderLifecycle {
 }
 
 export const orderLifecycle = new OrderLifecycle(durableWriter);
+
+export function deriveOrderJournalStatus(record: OrderJournalRecord, result: ExecResult): OrderJournalStatus {
+  if (!result.ok) return "rejected";
+  if (record.action === "cancel" || record.action === "cancelall" || record.action === "cancelorphans") return "cancelled";
+  if (record.action === "replace") return "replaced";
+  if (result.order?.status === "filled") return "filled";
+
+  const filledQty = result.fills.reduce((sum, fill) => sum + Math.abs(fill.qty), 0);
+  if (filledQty > 0) {
+    if (record.qty !== undefined && filledQty + Number.EPSILON < Math.abs(record.qty)) return "partially_filled";
+    return "filled";
+  }
+  return "accepted";
+}
+
+function isFillData(value: unknown): value is Pick<FillRecord, "qty"> {
+  return typeof value === "object" && value !== null && typeof (value as { qty?: unknown }).qty === "number";
+}

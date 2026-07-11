@@ -195,7 +195,7 @@ test("creates, starts, journals and stops a paper bot", async ({ page }) => {
   await orderTable.scrollIntoViewIfNeeded();
   await expect(orderTable).toBeVisible();
   await expect(orderTable.getByRole("columnheader", { name: "Reason" })).toBeVisible();
-  await expect(orderTable.getByRole("row").filter({ hasText: /open|accepted/i }).first()).toBeVisible();
+  await expect(orderTable.getByRole("row").filter({ hasText: /open|filled/i }).first()).toBeVisible();
 
   await detail.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(detail.getByRole("button", { name: "Start", exact: true })).toBeVisible({ timeout: 15_000 });

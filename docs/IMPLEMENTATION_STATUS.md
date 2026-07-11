@@ -229,7 +229,9 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Prevent exchange submission when durable intent persistence fails.
   - [x] Reconcile `intent` and `unknown` records against visible exchange orders after restart.
   - [x] Pause resumed trading when an unresolved result cannot be proven from exchange state.
-  - [ ] Model partial fill, cancel, expire and replace transitions explicitly.
+  - [x] Model accepted, partial-fill, filled, cancel, expire and replace states explicitly.
+  - [x] Correlate asynchronous paper fills to their original resting-order journal entries.
+  - [ ] Ingest asynchronous exchange events that advance accepted/partial states to terminal states.
 - [ ] Add private fill/order stream with polling fallback.
 - [x] Require explicit Binance/Bybit SL/TP acknowledgement before protected runtime state.
 - [x] Fail the entry result and issue a best-effort emergency close when requested SL or TP is rejected.

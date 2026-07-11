@@ -36,7 +36,7 @@ export function BotActivity({ symbol, orders, orderJournal, fills, logs, onComma
               <thead><tr><th>Time</th><th>Status</th><th>Action</th><th>Side</th><th>Qty</th><th>Reason</th></tr></thead>
               <tbody>{orderJournal.slice(0, 40).map((order) => (
                 <tr key={order.id}>
-                  <td>{formatTime(order.updatedAt)}</td><td className={order.status === "accepted" ? "up" : order.status === "rejected" ? "down" : ""}>{order.status}</td>
+                  <td>{formatTime(order.updatedAt)}</td><td><span className={orderStatusTone(order.status)} data-order-status={order.status}>{order.status.replace("_", " ")}</span></td>
                   <td>{order.action}</td><td className={order.side === "buy" ? "up" : order.side === "sell" ? "down" : ""}>{order.side ?? "flat"}</td>
                   <td>{order.qty ?? "-"}</td><td>{order.reason.replace("signal:", "")}</td>
                 </tr>
@@ -67,4 +67,10 @@ export function BotActivity({ symbol, orders, orderJournal, fills, logs, onComma
 
 function formatTime(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function orderStatusTone(status: OrderJournal["status"]): string {
+  if (status === "accepted" || status === "filled" || status === "replaced" || status === "cancelled") return "up";
+  if (status === "rejected" || status === "unknown" || status === "expired") return "down";
+  return "";
 }
