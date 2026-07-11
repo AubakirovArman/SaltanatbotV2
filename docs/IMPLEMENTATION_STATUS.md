@@ -362,7 +362,11 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Mark crash-left intent `unknown` and pause the bot whenever an outcome remains unproven.
 - [x] Keep live spot fail-closed by default behind an explicit experimental inventory override.
 - [x] Add fake-exchange transport, protection, status-polling and failure-injection suites.
-- [ ] Add opt-in Binance/Bybit testnet release checks.
+- [x] Add opt-in Binance/Bybit testnet release checks.
+  - [x] Refuse network access without an explicit runtime arm flag and reject every production/non-HTTPS base URL.
+  - [x] Verify Binance signed balance plus listenKey lifecycle and Bybit signed wallet/open-order reads without placing orders.
+  - [x] Add signing, endpoint-guard and request-contract tests with fake transports.
+  - [x] Add a manually dispatched workflow behind the protected `exchange-testnet` GitHub environment.
 
 ### Documentation, localization and open source
 

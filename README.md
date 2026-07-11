@@ -131,7 +131,7 @@ docker compose up --build          # open → http://localhost:4180
 
 The access token is printed in the container logs (`docker compose logs`), or set `AUTH_TOKEN` in your environment first. Pass `DEMO_MODE=1` for a paper-only public demo.
 
-**Tests & CI:** `npm test` (Vitest — command parser, paper engine, backtest honesty, evaluator parity) and `npm run lint` / `npm run check` run in [CI](.github/workflows/ci.yml) on every push.
+**Tests & CI:** `npm test` (Vitest — command parser, paper engine, backtest honesty, evaluator parity) and `npm run lint` / `npm run check` run in [CI](.github/workflows/ci.yml) on every push. Authenticated exchange release checks are isolated in the manually dispatched, protected [testnet smoke workflow](.github/workflows/exchange-testnet-smoke.yml).
 
 ---
 

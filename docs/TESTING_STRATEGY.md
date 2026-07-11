@@ -204,7 +204,7 @@ Initial budgets should be measured, recorded and then tightened:
 
 ### Release candidate
 
-- official testnet smoke with explicit approval;
+- manually dispatched Binance Futures Demo and Bybit Testnet authenticated smoke through the protected `exchange-testnet` environment;
 - recovery rehearsal;
 - accessibility manual checklist;
 - SBOM, dependency audit, signed artifacts and clean-install verification.

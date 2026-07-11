@@ -42,6 +42,21 @@ If you bind to a non-loopback address, the server prints a warning to put it beh
 
 > **`.env` is git-ignored** (with a committed `.env.example` allowed). Secrets belong in the encrypted store or `AUTH_TOKEN`, not committed files.
 
+### Exchange testnet release smoke
+
+The release-only `npm run test:testnet` command is deliberately separate from normal CI and refuses all network access unless `RUN_EXCHANGE_TESTNET_SMOKE=1`. It performs read-only authenticated checks against Binance Futures Demo and Bybit Testnet; it never creates a trading order. The Binance listenKey check creates and immediately invalidates a temporary user-data token.
+
+| Variable | Required when selected | Purpose |
+| --- | --- | --- |
+| `RUN_EXCHANGE_TESTNET_SMOKE` | Always | Must equal `1`, otherwise the runner exits before network access. |
+| `TESTNET_EXCHANGES` | No | `binance`, `bybit`, or `binance,bybit` (default). |
+| `BINANCE_TESTNET_API_KEY` / `BINANCE_TESTNET_API_SECRET` | Binance | Futures Demo credentials. |
+| `BYBIT_TESTNET_API_KEY` / `BYBIT_TESTNET_API_SECRET` | Bybit | Bybit Testnet credentials. |
+| `BINANCE_TESTNET_BASE` | No | Override only for an HTTPS hostname containing `demo` or `testnet`. |
+| `BYBIT_TESTNET_BASE` | No | Override only for an HTTPS hostname containing `demo` or `testnet`. |
+
+Repository maintainers configure these four credentials as secrets in the protected GitHub `exchange-testnet` environment and add required reviewers there. The `Exchange testnet smoke` workflow is `workflow_dispatch` only, has read-only repository permissions, and never runs on pull requests or pushes.
+
 ### Live-trading arming
 
 Live trading (Binance/Bybit) is **disarmed by default**. Even with valid API keys, a live bot will not start until you:

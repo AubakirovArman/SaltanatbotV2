@@ -1,0 +1,59 @@
+name: Exchange testnet smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      exchanges:
+        description: Testnet targets
+        required: true
+        type: choice
+        default: both
+        options:
+          - both
+          - binance
+          - bybit
+
+concurrency:
+  group: exchange-testnet-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: authenticated read-only smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: exchange-testnet
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Select exchanges
+        id: targets
+        shell: bash
+        run: |
+          case "${{ inputs.exchanges }}" in
+            both) echo "value=binance,bybit" >> "$GITHUB_OUTPUT" ;;
+            binance|bybit) echo "value=${{ inputs.exchanges }}" >> "$GITHUB_OUTPUT" ;;
+            *) exit 2 ;;
+          esac
+
+      - name: Run authenticated testnet checks
+        run: npm run test:testnet
+        env:
+          RUN_EXCHANGE_TESTNET_SMOKE: "1"
+          TESTNET_EXCHANGES: ${{ steps.targets.outputs.value }}
+          BINANCE_TESTNET_API_KEY: ${{ secrets.BINANCE_TESTNET_API_KEY }}
+          BINANCE_TESTNET_API_SECRET: ${{ secrets.BINANCE_TESTNET_API_SECRET }}
+          BYBIT_TESTNET_API_KEY: ${{ secrets.BYBIT_TESTNET_API_KEY }}
+          BYBIT_TESTNET_API_SECRET: ${{ secrets.BYBIT_TESTNET_API_SECRET }}
