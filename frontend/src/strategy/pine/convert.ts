@@ -579,6 +579,8 @@ class Converter {
         return this.displayMapped(callee, () => this.mapLineNew(args));
       case "box.new":
         return this.displayMapped(callee, () => this.mapBoxNew(args));
+      case "table.cell":
+        return this.displayMapped(callee, () => this.mapTableCell(args));
       default: {
         if (DRAWING_MUTATE_RE.test(callee)) {
           this.warnOnce("drawmut", `Drawing updates/removals (${callee} and similar) are ignored — drawings are approximated statically.`);
@@ -718,7 +720,9 @@ class Converter {
   /** box.new(left, top, right, bottom, …) → a box over the bars where this statement
    *  runs; the drawn top/bottom come from the price arguments, x-args are ignored. */
   private mapBoxNew(args: PineArg[]): Stmt[] {
+    const left = arg(args, 0, "left");
     const top = arg(args, 1, "top");
+    const right = arg(args, 2, "right");
     const bottom = arg(args, 3, "bottom");
     if (!top || !bottom) {
       this.warn("Skipped box.new() without top/bottom prices.");
@@ -727,7 +731,33 @@ class Converter {
     this.warnOnce("boxspan", "box.new() imported as a zone over the bars where it fires (left/right x-coordinates are approximated).");
     const color =
       this.colorOf(arg(args, undefined, "bgcolor")?.value) ?? this.colorOf(arg(args, undefined, "border_color")?.value) ?? "#26a69a";
+    const xloc = identName(arg(args, undefined, "xloc")?.value);
+    if (left && right && xloc === "xloc.bar_time") {
+      this.warnOnce("boxprojection", "Time-based box.new() imported as an explicit projection zone.");
+      return [{ k: "projection", left: this.num(left.value), right: this.num(right.value), top: this.num(top.value), bottom: this.num(bottom.value), when: { k: "bool", v: true }, label: "", color }];
+    }
     return [{ k: "box", top: this.num(top.value), bottom: this.num(bottom.value), when: { k: "bool", v: true }, label: "", color }];
+  }
+
+  /** Numeric table.cell(..., str.tostring(value)) → an accessible chart metric.
+   * Complex string/object tables remain a compatibility warning. */
+  private mapTableCell(args: PineArg[]): Stmt[] {
+    const tableExpr = arg(args, 0, "table_id")?.value;
+    const columnExpr = arg(args, 1, "column")?.value;
+    const rowExpr = arg(args, 2, "row")?.value;
+    const textExpr = arg(args, 3, "text")?.value;
+    const valueExpr = textExpr?.t === "call" && textExpr.callee === "str.tostring"
+      ? textExpr.args[0]?.value
+      : textExpr;
+    if (!valueExpr || valueExpr.t === "str" || valueExpr.t === "field" || valueExpr.t === "method") {
+      this.warnOnce("tabletext", "Text/object table cells are not numeric metrics and remain display-only.");
+      return [];
+    }
+    const table = tableExpr?.t === "ident" ? sanitizeText(tableExpr.name) : "Pine table";
+    const column = columnExpr?.t === "num" ? `Column ${columnExpr.v + 1}` : "Value";
+    const label = rowExpr?.t === "num" ? `Row ${rowExpr.v + 1}` : "Metric";
+    this.warnOnce("tablemetric", "Numeric table.cell() imported as an accessible chart metric table.");
+    return [{ k: "metric", table, column, label, value: this.num(valueExpr), when: { k: "bool", v: true } }];
   }
 
   /** indicator()/strategy() declaration: name, overlay, and sizing defaults. */

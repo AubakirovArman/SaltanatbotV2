@@ -163,7 +163,7 @@ test("adds an imported custom indicator to the chart", async ({ page }) => {
   await page.getByRole("menuitem").filter({ hasText: "Chart E2E SMA" }).click();
 
   await expect(page.locator(".strategy-chip")).toContainText("Chart E2E SMA", { timeout: 20_000 });
-  await expect(page.getByRole("button", { name: "Remove strategy from chart" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove artifact from chart" })).toBeVisible();
 });
 
 test("creates, starts, journals and stops a paper bot", async ({ page }) => {

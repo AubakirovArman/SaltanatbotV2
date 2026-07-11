@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { compareColor } from "./chart/compareColors";
 import type { IndicatorConfig } from "./chart/indicatorTypes";
-import type { ChartMarker, ChartPlot, ChartShapes, ChartTrade, CompareChartType, CompareOverlayConfig } from "./chart/types";
+import type { ChartMarker, ChartPlot, ChartShapes, ChartTable, ChartTrade, CompareChartType, CompareOverlayConfig } from "./chart/types";
 import { AlertToasts } from "./components/AlertToasts";
 import { ChartCanvas } from "./components/ChartCanvas";
 import { CommandPalette, type Command } from "./components/CommandPalette";
@@ -34,6 +34,7 @@ const initialWorkspaceState = loadInitialWorkspaceState();
 const MAX_COMPARE = 3;
 const DEFAULT_COMPARE_UP = "#23c97a";
 const DEFAULT_COMPARE_DOWN = "#ef5350";
+const ARTIFACT_INPUTS_KEY = "marketforge.artifactInputs.v1";
 
 const fallbackInstrument: Instrument = {
   symbol: "BTCUSDT",
@@ -66,11 +67,14 @@ export default function App() {
     trades: ChartTrade[];
     plots?: ChartPlot[];
     shapes?: ChartShapes;
+    tables?: ChartTable[];
+    inputs?: { name: string; value: number }[];
     summary?: string;
     symbol: string;
     timeframe: Timeframe;
   }>();
   const [chartFocus, setChartFocus] = useState<number>();
+  const [artifactInputOverrides, setArtifactInputOverrides] = useState<Record<string, Record<string, number>>>(() => readArtifactInputOverrides());
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     (typeof localStorage !== "undefined" && localStorage.getItem("mf:theme") === "light") ? "light" : "dark"
@@ -159,6 +163,10 @@ export default function App() {
     storeStrategyLibrary(strategyLibrary);
   }, [strategyLibrary]);
 
+  useEffect(() => {
+    try { localStorage.setItem(ARTIFACT_INPUTS_KEY, JSON.stringify(artifactInputOverrides)); } catch { /* runtime state still works */ }
+  }, [artifactInputOverrides]);
+
   const instrument =
     catalog?.instruments.find((item) => item.symbol === symbol) ?? fallbackInstrument;
 
@@ -245,7 +253,7 @@ export default function App() {
   );
 
   // Compile any saved custom indicator or strategy and overlay its chart visuals.
-  const addArtifactToChart = async (id: string) => {
+  const addArtifactToChart = async (id: string, explicitOverrides?: Record<string, number>) => {
     const artifact = strategyLibrary.find((item) => item.id === id);
     if (!artifact) return;
     const [{ compileXmlToIr }, backtest, { loadSecurityDataForIr }] = await Promise.all([
@@ -255,7 +263,12 @@ export default function App() {
     ]);
     const compiled = compileXmlToIr(artifact.xml);
     if (!compiled.ir) return;
-    const securityData = await loadSecurityDataForIr(compiled.ir, {
+    const overrides = explicitOverrides ?? artifactInputOverrides[id] ?? {};
+    const ir = {
+      ...compiled.ir,
+      inputs: compiled.ir.inputs.map((input) => ({ ...input, value: overrides[input.name] ?? input.value }))
+    };
+    const securityData = await loadSecurityDataForIr(ir, {
       symbol,
       timeframe,
       chartCandles: stream.candles,
@@ -263,12 +276,20 @@ export default function App() {
     });
     // Show the strategy's plotted lines + every signal point, plus the trades it took.
     const { previewCyclesAnalysis } = await import("./strategy/pine/cyclesAnalysisPreview");
-    const preview = previewCyclesAnalysis(compiled.ir, stream.candles) ??
-      backtest.previewStrategy(compiled.ir, stream.candles, securityData);
-    const result = backtest.runBacktest(compiled.ir, stream.candles, backtest.DEFAULT_CONFIG, securityData);
-    setOverlay({ id, name: artifact.name, plots: preview.plots, shapes: preview.shapes, signals: preview.signals, trades: result.trades, summary: "summary" in preview ? preview.summary : undefined, symbol, timeframe });
+    const preview = previewCyclesAnalysis(ir, stream.candles) ??
+      backtest.previewStrategy(ir, stream.candles, securityData);
+    const result = backtest.runBacktest(ir, stream.candles, backtest.DEFAULT_CONFIG, securityData);
+    setOverlay({ id, name: artifact.name, plots: preview.plots, shapes: preview.shapes, tables: preview.tables, inputs: ir.inputs, signals: preview.signals, trades: result.trades, summary: "summary" in preview ? preview.summary : undefined, symbol, timeframe });
     const times = [...preview.signals.map((s) => s.time), ...result.trades.map((t) => t.exitTime)];
     setChartFocus(times.length ? Math.max(...times) : Date.now());
+  };
+
+  const updateActiveArtifactInput = (name: string, value: number) => {
+    const id = activeOverlay?.id;
+    if (!id) return;
+    const next = { ...(artifactInputOverrides[id] ?? {}), [name]: value };
+    setArtifactInputOverrides((current) => ({ ...current, [id]: next }));
+    void addArtifactToChart(id, next);
   };
 
   const commands = useMemo<Command[]>(() => {
@@ -528,6 +549,7 @@ export default function App() {
               trades={activeOverlay?.trades}
               plots={activeOverlay?.plots}
               shapes={activeOverlay?.shapes}
+              tables={activeOverlay?.tables}
               alerts={priceAlerts.alerts}
               onAddAlert={(price) =>
                 priceAlerts.addAlert({
@@ -539,6 +561,8 @@ export default function App() {
               livePositions={livePositions}
               strategyName={activeOverlay?.name}
               strategySummary={activeOverlay?.summary}
+              strategyInputs={activeOverlay?.inputs}
+              onStrategyInputChange={updateActiveArtifactInput}
               onClearStrategy={() => setOverlay(undefined)}
               customIndicators={chartCustomIndicators}
               strategies={chartStrategies}
@@ -704,6 +728,15 @@ function dedupeName(name: string, items: StrategyArtifact[]): string {
   let n = 2;
   while (taken.has(`${name} (${n})`)) n += 1;
   return `${name} (${n})`;
+}
+
+function readArtifactInputOverrides(): Record<string, Record<string, number>> {
+  try {
+    const raw = localStorage.getItem(ARTIFACT_INPUTS_KEY);
+    return raw ? JSON.parse(raw) as Record<string, Record<string, number>> : {};
+  } catch {
+    return {};
+  }
 }
 
 function upsertArtifact(items: StrategyArtifact[], artifact: StrategyArtifact) {

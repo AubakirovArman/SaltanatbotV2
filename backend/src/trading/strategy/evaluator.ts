@@ -184,6 +184,8 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: BarIntents) 
       break;
     case "plot":
     case "box":
+    case "projection":
+    case "metric":
     case "vline":
     case "ray":
       // Display-only chart drawings — nothing to do in the live engine.

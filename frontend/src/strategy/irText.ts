@@ -30,6 +30,8 @@ function stmtText(stmt: Stmt, depth: number): string[] {
     case "setvarb": return [`${pad}set flag ${stmt.name} = ${boolText(stmt.value)}`];
     case "alert": return [`${pad}alert "${stmt.message}"${stmt.args ? ` {${Object.entries(stmt.args).map(([k, v]) => `${k}=${numText(v)}`).join(", ")}}` : ""} when ${boolText(stmt.when)}`];
     case "box": return [`${pad}box ${numText(stmt.top)}..${numText(stmt.bottom)}${stmt.label ? ` "${stmt.label}"` : ""} while ${boolText(stmt.when)}`];
+    case "projection": return [`${pad}projection ${numText(stmt.left)}..${numText(stmt.right)} × ${numText(stmt.bottom)}..${numText(stmt.top)}${stmt.label ? ` "${stmt.label}"` : ""} while ${boolText(stmt.when)}`];
+    case "metric": return [`${pad}table "${stmt.table}" ${stmt.label}/${stmt.column} = ${numText(stmt.value)} when ${boolText(stmt.when)}`];
     case "vline": return [`${pad}vline${stmt.label ? ` "${stmt.label}"` : ""} when ${boolText(stmt.when)}`];
     case "ray": return [`${pad}level ${numText(stmt.price)}${stmt.label ? ` "${stmt.label}"` : ""} when ${boolText(stmt.when)}`];
     case "plot": return [`${pad}plot ${numText(stmt.value)} as "${stmt.label}"${stmt.pane === "sub" ? " [sub]" : ""}`];

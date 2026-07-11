@@ -9,6 +9,7 @@ import {
   RectangleHorizontal,
   Ruler,
   Scaling,
+  SlidersHorizontal,
   TrendingDown,
   TrendingUp,
   Trash2,
@@ -29,7 +30,7 @@ import { drawChart, setChartTheme } from "../chart/ChartEngine";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import { visibleCandles } from "../chart/scales";
-import type { ChartLivePosition, ChartMarker, ChartPlot, ChartShapes, ChartTrade, CompareLegendSnapshot, CompareOverlayConfig, CompareSeries, PriceMode, Viewport } from "../chart/types";
+import type { ChartLivePosition, ChartMarker, ChartPlot, ChartShapes, ChartTable, ChartTrade, CompareLegendSnapshot, CompareOverlayConfig, CompareSeries, PriceMode, Viewport } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { PriceAlert } from "../market/alerts";
 import type { Candle, ChartType, Instrument, Timeframe } from "../types";
@@ -48,6 +49,8 @@ interface ChartCanvasProps {
   trades?: ChartTrade[];
   strategyName?: string;
   strategySummary?: string;
+  strategyInputs?: { name: string; value: number }[];
+  onStrategyInputChange?: (name: string, value: number) => void;
   onClearStrategy?: () => void;
   customIndicators?: StrategyMenuItem[];
   strategies?: StrategyMenuItem[];
@@ -55,6 +58,7 @@ interface ChartCanvasProps {
   onAddArtifact?: (id: string) => void;
   plots?: ChartPlot[];
   shapes?: ChartShapes;
+  tables?: ChartTable[];
   /** Active price alerts (all symbols); the chart draws ones for its symbol. */
   alerts?: PriceAlert[];
   /** Create a price alert at a chart price (from the right-click menu). */
@@ -101,6 +105,8 @@ export function ChartCanvas({
   trades,
   strategyName,
   strategySummary,
+  strategyInputs,
+  onStrategyInputChange,
   onClearStrategy,
   customIndicators,
   strategies,
@@ -108,6 +114,7 @@ export function ChartCanvas({
   onAddArtifact,
   plots,
   shapes,
+  tables,
   alerts,
   onAddAlert,
   livePositions,
@@ -137,6 +144,7 @@ export function ChartCanvas({
   const [magnet, setMagnet] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; id?: string; price?: number }>();
   const [showVolume, setShowVolume] = useState(true);
+  const [showArtifactSettings, setShowArtifactSettings] = useState(false);
   const [drawings, setDrawings] = useState<DrawingObject[]>([]);
   const [draft, setDraft] = useState<{ tool: ShapeTool; points: Anchor[] }>();
   const chartAlerts = useMemo(
@@ -157,6 +165,8 @@ export function ChartCanvas({
 
   const latest = candles.at(-1);
   drawingsRef.current = drawings;
+
+  useEffect(() => setShowArtifactSettings(false), [activeArtifactId]);
 
   // Assemble the compare overlay from configured layers and the fetched data.
   const compare = useMemo<CompareSeries[]>(() => {
@@ -417,10 +427,18 @@ export function ChartCanvas({
             {strategySummary && <b>{strategySummary}</b>}
             {trades && trades.length > 0 && <b>{trades.length} trades</b>}
             {!strategySummary && signals && signals.length > 0 && <b>{signals.length} signals</b>}
-            <button type="button" onClick={onClearStrategy} title="Remove from chart" aria-label="Remove strategy from chart">
+            {strategyInputs && strategyInputs.length > 0 && onStrategyInputChange && (
+              <button type="button" onClick={() => setShowArtifactSettings((open) => !open)} title="Indicator inputs" aria-label="Edit indicator inputs">
+                <SlidersHorizontal size={12} aria-hidden="true" />
+              </button>
+            )}
+            <button type="button" onClick={() => { setShowArtifactSettings(false); onClearStrategy?.(); }} title="Remove from chart" aria-label="Remove artifact from chart">
               <X size={12} aria-hidden="true" />
             </button>
           </div>
+        )}
+        {showArtifactSettings && strategyInputs && onStrategyInputChange && (
+          <ArtifactInputPanel inputs={strategyInputs} onChange={onStrategyInputChange} onClose={() => setShowArtifactSettings(false)} />
         )}
         <ChartIndicatorOverlay
           indicators={indicators}
@@ -566,6 +584,7 @@ export function ChartCanvas({
             setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id, price: viewport?.yToPrice(y) });
           }}
         />
+        {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay tables={tables} />}
         {selectedId && drawings.some((d) => d.id === selectedId) && (
           <DrawingStyleBar
             drawing={drawings.find((d) => d.id === selectedId) as DrawingObject}
@@ -783,6 +802,76 @@ function formatVolume(volume: number) {
   if (volume >= 1_000_000) return `${(volume / 1_000_000).toFixed(2)}M`;
   if (volume >= 1_000) return `${(volume / 1_000).toFixed(1)}K`;
   return volume.toFixed(0);
+}
+
+function ChartTablesOverlay({ tables }: { tables: ChartTable[] }) {
+  return (
+    <aside className="chart-tables" aria-label="Indicator statistics">
+      {tables.map((table) => (
+        <table key={table.id} className="chart-data-table">
+          <caption>{table.id}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Metric</th>
+              {table.columns.map((column) => <th key={column} scope="col">{column}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row) => (
+              <tr key={row.label}>
+                <th scope="row">{row.label}</th>
+                {row.values.map((value, index) => <td key={`${row.label}-${table.columns[index]}`}>{formatTableValue(value)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ))}
+    </aside>
+  );
+}
+
+function ArtifactInputPanel({ inputs, onChange, onClose }: { inputs: { name: string; value: number }[]; onChange: (name: string, value: number) => void; onClose: () => void }) {
+  return (
+    <aside className="artifact-input-panel" aria-label="Indicator inputs">
+      <header>
+        <strong>Inputs</strong>
+        <button type="button" onClick={onClose} aria-label="Close inputs"><X size={13} aria-hidden="true" /></button>
+      </header>
+      <div className="artifact-input-list">
+        {inputs.map((input) => {
+          const boolean = isBooleanInput(input);
+          const id = `artifact-input-${input.name.replace(/[^a-z0-9_-]/gi, "-")}`;
+          return (
+            <label key={input.name} htmlFor={id}>
+              <span>{inputLabel(input.name)}</span>
+              {boolean ? (
+                <input id={id} type="checkbox" checked={input.value !== 0} onChange={(event) => onChange(input.name, event.target.checked ? 1 : 0)} />
+              ) : (
+                <input id={id} type="number" value={input.value} step="any" onChange={(event) => {
+                  const value = event.target.valueAsNumber;
+                  if (Number.isFinite(value)) onChange(input.name, value);
+                }} />
+              )}
+            </label>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
+
+function isBooleanInput(input: { name: string; value: number }) {
+  return (input.value === 0 || input.value === 1) && /^(show|use|calculate|enforce|enable|allow)/i.test(input.name);
+}
+
+function inputLabel(name: string) {
+  return name.replace(/Input$/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (char) => char.toUpperCase());
+}
+
+function formatTableValue(value: string | number | null) {
+  if (value === null) return "—";
+  if (typeof value === "string") return value;
+  return Number.isInteger(value) ? String(value) : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 /** Sync the canvas palette to the active CSS theme variables. */

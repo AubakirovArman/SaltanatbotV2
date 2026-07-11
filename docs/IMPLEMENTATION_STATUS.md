@@ -84,6 +84,21 @@ Verification:
 - 14 Playwright scenarios passed together on the production build.
 - Biome, TypeScript and all 267 Vitest tests passed.
 
+### Pine display primitives and richer Cycles Analysis — current display-primitives commit
+
+- [x] Upgrade the shared strategy IR to version 4 with projection-zone and table-metric statements.
+- [x] Round-trip both display primitives through Blockly, schema validation and text preview.
+- [x] Map time-based Pine `box.new` calls to future projection zones.
+- [x] Map numeric Pine `table.cell` calls to accessible HTML metric tables.
+- [x] Add chart-side editors with persisted overrides for numeric and boolean Pine inputs.
+- [x] Expand Cycles Analysis with crest labels, aggregate/percentile statistics and prediction zones.
+- [x] Keep display-only nodes inert in live execution while rendering them in chart preview.
+
+Verification:
+
+- 27 Vitest files / 271 tests pass, including IR round-trip, schema, preview and Pine-conversion coverage.
+- Biome and backend/frontend TypeScript checks pass.
+
 ## Completed browser baseline
 
 ### Critical browser E2E expansion

@@ -629,6 +629,8 @@ function computeWarmup(ir: StrategyIR): number {
         case "stop": case "target": case "trail": case "size": case "setvar": visitNum(stmt.value); break;
         case "plot": visitNum(stmt.value); break;
         case "box": visitNum(stmt.top); visitNum(stmt.bottom); visitBool(stmt.when); break;
+        case "projection": visitNum(stmt.left); visitNum(stmt.right); visitNum(stmt.top); visitNum(stmt.bottom); visitBool(stmt.when); break;
+        case "metric": visitNum(stmt.value); visitBool(stmt.when); break;
         case "vline": visitBool(stmt.when); break;
         case "ray": visitNum(stmt.price); visitBool(stmt.when); break;
         case "if": visitBool(stmt.cond); walk(stmt.then); break;
@@ -677,6 +679,12 @@ export interface ShapeOverlays {
   rays: ShapeRay[];
 }
 
+export interface PreviewTable {
+  id: string;
+  columns: string[];
+  rows: { label: string; values: (number | null)[] }[];
+}
+
 /** Render-safety caps for drawing overlays (a hostile/buggy strategy can fire every bar). */
 const MAX_BOXES = 500;
 const MAX_VLINES = 500;
@@ -688,7 +696,7 @@ const MAX_RAYS = 200;
  * This is what "add strategy to chart" shows — the lines it uses and all the
  * signal points, so you can see how it would have triggered.
  */
-export function previewStrategy(ir: StrategyIR, candles: Candle[], securityData?: SecurityDataContext): { plots: PlotSeries[]; signals: TradeMarker[]; shapes: ShapeOverlays } {
+export function previewStrategy(ir: StrategyIR, candles: Candle[], securityData?: SecurityDataContext): { plots: PlotSeries[]; signals: TradeMarker[]; shapes: ShapeOverlays; tables: PreviewTable[] } {
   const rt: Runtime = {
     candles,
     n: candles.length,
@@ -716,6 +724,8 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[], securityData?
   };
   // One vline/ray per statement per bar — loop bodies re-execute statements.
   const drawnAtBar = new Map<Stmt, number>();
+  const projections = new Map<Stmt, ShapeBox>();
+  const metricValues = new Map<Stmt, number>();
 
   // Pre-register plots in AST order so their series keep a stable order even when
   // a plot lives inside an `if` that first fires on a late bar.
@@ -779,6 +789,23 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[], securityData?
             if (run) flushBox(stmt as Extract<Stmt, { k: "box" }>, run);
             boxRuns.set(stmt, { t1: candles[i].time, t2: candles[i].time, top, bottom, lastBar: i });
           }
+          break;
+        }
+        case "projection": {
+          if (!evalBool(stmt.when, i, rt)) break;
+          const left = evalNum(stmt.left, i, rt);
+          const right = evalNum(stmt.right, i, rt);
+          const top = evalNum(stmt.top, i, rt);
+          const bottom = evalNum(stmt.bottom, i, rt);
+          if ([left, right, top, bottom].every(Number.isFinite)) {
+            projections.set(stmt, { t1: left, t2: right, top, bottom, color: stmt.color, label: stmt.label || undefined });
+          }
+          break;
+        }
+        case "metric": {
+          if (!evalBool(stmt.when, i, rt)) break;
+          const value = evalNum(stmt.value, i, rt);
+          if (Number.isFinite(value)) metricValues.set(stmt, value);
           break;
         }
         case "vline":
@@ -873,9 +900,51 @@ export function previewStrategy(ir: StrategyIR, candles: Candle[], securityData?
   }
 
   for (const [stmt, run] of boxRuns) flushBox(stmt as Extract<Stmt, { k: "box" }>, run);
+  for (const box of projections.values()) {
+    shapes.boxes.push(box);
+    if (shapes.boxes.length > MAX_BOXES) shapes.boxes.shift();
+  }
 
   const plots = [...plotMap.values()].filter((plot) => plot.points.length > 0);
-  return { plots, signals, shapes };
+  return { plots, signals, shapes, tables: buildPreviewTables(ir.body, metricValues) };
+}
+
+function buildPreviewTables(stmts: Stmt[], values: Map<Stmt, number>): PreviewTable[] {
+  const metrics: Extract<Stmt, { k: "metric" }>[] = [];
+  const collect = (items: Stmt[]) => {
+    for (const stmt of items) {
+      if (stmt.k === "metric") metrics.push(stmt);
+      else if (stmt.k === "if") {
+        collect(stmt.then);
+        for (const clause of stmt.elifs ?? []) collect(clause.then);
+        if (stmt.else) collect(stmt.else);
+      } else if (stmt.k === "repeat" || stmt.k === "while" || stmt.k === "for") collect(stmt.body);
+    }
+  };
+  collect(stmts);
+
+  const groups = new Map<string, { columns: string[]; rows: Map<string, Map<string, number>> }>();
+  for (const metric of metrics) {
+    const value = values.get(metric);
+    if (value === undefined) continue;
+    const group = groups.get(metric.table) ?? {
+      columns: [] as string[],
+      rows: new Map<string, Map<string, number>>()
+    };
+    if (!group.columns.includes(metric.column)) group.columns.push(metric.column);
+    const row = group.rows.get(metric.label) ?? new Map<string, number>();
+    row.set(metric.column, value);
+    group.rows.set(metric.label, row);
+    groups.set(metric.table, group);
+  }
+  return [...groups].map(([id, group]) => ({
+    id,
+    columns: group.columns,
+    rows: [...group.rows].map(([label, row]) => ({
+      label,
+      values: group.columns.map((column) => row.get(column) ?? null)
+    }))
+  }));
 }
 
 // ---------- statement execution ----------
@@ -966,6 +1035,8 @@ function execStatement(stmt: Stmt, i: number, rt: Runtime, intents: Intents) {
       break;
     case "plot":
     case "box":
+    case "projection":
+    case "metric":
     case "vline":
     case "ray":
       // Display-only chart drawings — realized only in previewStrategy.

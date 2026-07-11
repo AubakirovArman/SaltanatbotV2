@@ -30,10 +30,14 @@ describe("Cycles Analysis native preview", () => {
     expect(preview).toBeDefined();
     expect(preview?.shapes.vlines.length).toBeGreaterThanOrEqual(2);
     expect(preview?.shapes.boxes.length).toBeGreaterThanOrEqual(3);
-    expect(preview?.signals.every((signal) => signal.kind === "marker" && signal.color === "#d946ef")).toBe(true);
+    expect(preview?.signals.some((signal) => signal.kind === "marker" && signal.color === "#d946ef")).toBe(true);
+    expect(preview?.signals.some((signal) => signal.label?.includes("%"))).toBe(true);
     expect(preview?.summary).toMatch(/cycles · 20%/);
-    expect(preview?.shapes.boxes.at(-1)?.t2).toBe(candles.at(-1)?.time);
-    expect(preview?.shapes.boxes.every((box) => box.border === false && box.opacity === 0.1)).toBe(true);
+    expect(preview?.shapes.boxes.some((box) => box.t2 === candles.at(-1)?.time && box.border === false)).toBe(true);
+    expect(preview?.tables[0]?.id).toBe("Cycles Statistics");
+    expect(preview?.tables[0]?.columns).toEqual(["Bull", "Bear"]);
+    expect(preview?.tables[0]?.rows.some((row) => row.label === "Periods")).toBe(true);
+    expect(preview?.shapes.boxes.some((box) => box.label === "Prediction")).toBe(true);
   });
 
   it("does not intercept unrelated imported indicators", () => {

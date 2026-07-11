@@ -249,6 +249,26 @@ function compileStatement(block: Blockly.Block, ctx: Ctx): Stmt | undefined {
         label: (block.getFieldValue("LABEL") as string) ?? "",
         color: (block.getFieldValue("COLOR") as string) || "#8f9bb3"
       };
+    case "draw_projection":
+      return {
+        k: "projection",
+        left: numInput(block, "LEFT", ctx),
+        right: numInput(block, "RIGHT", ctx),
+        top: numInput(block, "TOP", ctx),
+        bottom: numInput(block, "BOTTOM", ctx),
+        when: boolInput(block, "WHEN", ctx),
+        label: (block.getFieldValue("LABEL") as string) ?? "",
+        color: (block.getFieldValue("COLOR") as string) || "#4db6ff"
+      };
+    case "table_metric":
+      return {
+        k: "metric",
+        table: (block.getFieldValue("TABLE") as string) || "Statistics",
+        column: (block.getFieldValue("COLUMN") as string) || "Value",
+        label: (block.getFieldValue("LABEL") as string) || "Metric",
+        value: numInput(block, "VALUE", ctx, false),
+        when: boolInput(block, "WHEN", ctx)
+      };
     case "draw_ray":
       return {
         k: "ray",

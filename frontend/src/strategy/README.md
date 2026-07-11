@@ -15,6 +15,7 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - Unknown IR nodes fail closed.
 - Backtest assumptions are explicit and reproducible.
 - Frontend and backend interpretation must stay identical until they are replaced by canonical `strategy-core`.
+- Display-only IR nodes (`plot`, drawings, projections and metrics) never create trading intents.
 - Artifact schema/version/hash changes require migration handling.
 
 ## Boundaries
@@ -27,6 +28,8 @@ Pine source -> pine converter -> Blockly XML -> same flow
 ## Testing
 
 Every block needs compile and round-trip coverage. Every IR node needs frontend/backend parity fixtures. Backtest rules need boundary and invariant tests. See `docs/TESTING_STRATEGY.md`.
+
+IR v4 adds explicit future projection zones and accessible metric tables. Both round-trip through Blockly and validate on the backend, while only the browser preview renders them.
 
 ## Planned decomposition
 

@@ -1,5 +1,5 @@
 /** Current IR schema version stamped on newly compiled strategies. */
-export const IR_VERSION = 3;
+export const IR_VERSION = 4;
 
 const NUM_KINDS = new Set([
   "num", "input", "var", "price", "ma", "rsi", "bollinger", "macd", "atr", "stdev", "extreme", "change",

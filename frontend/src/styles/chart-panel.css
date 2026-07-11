@@ -206,6 +206,132 @@
   background: var(--hover);
 }
 
+.chart-tables {
+  position: absolute;
+  inset-block-start: 42px;
+  inset-inline-end: 84px;
+  z-index: 3;
+  display: grid;
+  gap: 8px;
+  max-block-size: min(62%, 520px);
+  max-inline-size: min(420px, 42%);
+  overflow: auto;
+  pointer-events: auto;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px auto 280px;
+}
+
+.artifact-input-panel {
+  position: absolute;
+  inset-block-start: 42px;
+  inset-inline-end: 84px;
+  z-index: 4;
+  inline-size: min(360px, 44%);
+  max-block-size: min(70%, 600px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--chart-bg) 94%, transparent);
+  backdrop-filter: blur(10px);
+  color: var(--text);
+}
+
+.artifact-input-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px;
+  border-block-end: 1px solid var(--line);
+}
+
+.artifact-input-panel button {
+  display: inline-grid;
+  place-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.artifact-input-list {
+  display: grid;
+  gap: 1px;
+  max-block-size: 520px;
+  overflow: auto;
+  padding: 5px;
+}
+
+.artifact-input-list label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  align-items: center;
+  gap: 10px;
+  min-block-size: 30px;
+  padding: 3px 5px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+}
+
+.artifact-input-list label:hover { background: var(--hover); }
+.artifact-input-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-input-list input[type="number"] {
+  min-inline-size: 0;
+  inline-size: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.artifact-input-list input[type="checkbox"] { justify-self: end; }
+
+.chart-data-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-inline-size: 280px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--chart-bg) 90%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-data-table caption {
+  padding: 6px 8px;
+  border-block-end: 1px solid var(--line);
+  background: var(--panel-soft);
+  text-align: start;
+  font-family: var(--font-ui);
+  font-weight: 600;
+}
+
+.chart-data-table th,
+.chart-data-table td {
+  padding: 4px 8px;
+  border-block-end: 1px solid var(--line-soft);
+  text-align: end;
+  white-space: nowrap;
+}
+
+.chart-data-table th:first-child {
+  text-align: start;
+  color: var(--muted);
+}
+
+.chart-data-table tbody tr:last-child > * {
+  border-block-end: 0;
+}
+
+@supports not (content-visibility: auto) {
+  .chart-tables { contain: layout style paint; }
+}
+
 .loading-banner,
 .error-banner {
   position: absolute;

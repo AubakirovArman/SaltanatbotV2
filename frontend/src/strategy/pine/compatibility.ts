@@ -1,8 +1,7 @@
 export const CYCLES_ANALYSIS_WARNINGS = [
-  "Core percentage-based cycle detection, crest boundaries, phase shading, and reversal markers use the native chart preview.",
+  "Core percentage-based cycle detection, crest labels, phase shading, aggregate/percentile statistics, prediction zone, and reversal markers use the native chart preview.",
   "Duration/Both direction modes, minimum-duration enforcement, and stagnation visuals are not yet available in the native preview.",
-  "Detailed crest labels, the aggregate/percentile table, and the prediction zone are not yet rendered.",
-  "Text selectors stay at their Pine defaults; a chart-side editor for custom Pine inputs is not yet available."
+  "Numeric and boolean Pine inputs are editable from the chart; text selectors currently stay at their imported defaults."
 ];
 
 export function isCyclesAnalysisSource(source: string, name: string) {

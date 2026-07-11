@@ -692,6 +692,20 @@ if close > open
     expect(warnings.some((w) => /slanted/i.test(w))).toBe(false);
   });
 
+  it("time-based boxes and numeric table cells map to projection/table primitives", () => {
+    const { ir } = convertPine(`//@version=6
+indicator("Display", overlay=true)
+var table stats = table.new(position.top_right, 2, 2)
+if barstate.isconfirmed
+    box.new(time, high, time + 86400000, low, xloc=xloc.bar_time, bgcolor=color.new(color.blue, 80))
+    table.cell(stats, 1, 0, str.tostring(close))
+plot(close)`);
+    const kinds = new Set<string>();
+    walkStmts(ir.body, (stmt) => kinds.add(stmt.k));
+    expect(kinds.has("projection")).toBe(true);
+    expect(kinds.has("metric")).toBe(true);
+  });
+
   // Wave 3: native ta.* nodes — the "practically any indicator" expansion.
   it("wave-3 ta.* functions convert, round-trip, and preview finite values", () => {
     const ir = roundTrips(`//@version=6

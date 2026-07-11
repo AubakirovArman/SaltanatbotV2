@@ -88,6 +88,8 @@ export type Stmt =
   | { k: "plot"; value: NumExpr; label: string; color: string; pane?: "price" | "sub" }
   | { k: "marker"; dir: "up" | "down"; label: string; when: BoolExpr }
   | { k: "box"; top: NumExpr; bottom: NumExpr; when: BoolExpr; label: string; color: string }
+  | { k: "projection"; left: NumExpr; right: NumExpr; top: NumExpr; bottom: NumExpr; when: BoolExpr; label: string; color: string }
+  | { k: "metric"; table: string; column: string; label: string; value: NumExpr; when: BoolExpr }
   | { k: "vline"; when: BoolExpr; label: string; color: string }
   | { k: "ray"; price: NumExpr; when: BoolExpr; label: string; color: string }
   | { k: "if"; cond: BoolExpr; then: Stmt[]; elifs?: { cond: BoolExpr; then: Stmt[] }[]; else?: Stmt[] }
@@ -108,6 +110,6 @@ export interface StrategyIR {
   v?: number;
 }
 
-export const IR_VERSION: 3;
+export const IR_VERSION: 4;
 
 export function isNumExpr(expr: NumExpr | BoolExpr): expr is NumExpr;

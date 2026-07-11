@@ -147,6 +147,12 @@ export interface ChartShapes {
   rays: { time: number; price: number; color: string; label?: string }[];
 }
 
+export interface ChartTable {
+  id: string;
+  columns: string[];
+  rows: { label: string; values: (string | number | null)[] }[];
+}
+
 /** A price alert drawn on the chart as a horizontal line. */
 export interface ChartAlert {
   price: number;

@@ -466,6 +466,38 @@ export function registerStrategyBlocks() {
       tooltip: "Draw a vertical line on each bar where the condition fires."
     },
     {
+      type: "draw_projection",
+      message0: "projection time %1 to %2 price %3 to %4 while %5 label %6 color %7",
+      args0: [
+        { type: "input_value", name: "LEFT", check: "Number" },
+        { type: "input_value", name: "RIGHT", check: "Number" },
+        { type: "input_value", name: "TOP", check: "Number" },
+        { type: "input_value", name: "BOTTOM", check: "Number" },
+        { type: "input_value", name: "WHEN", check: "Boolean" },
+        { type: "field_input", name: "LABEL", text: "projection" },
+        { type: "field_input", name: "COLOR", text: "#4db6ff" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: "#2f9e77",
+      tooltip: "Draw an explicit time/price zone, including future projections."
+    },
+    {
+      type: "table_metric",
+      message0: "table %1 row %2 column %3 value %4 while %5",
+      args0: [
+        { type: "field_input", name: "TABLE", text: "Statistics" },
+        { type: "field_input", name: "LABEL", text: "Average" },
+        { type: "field_input", name: "COLUMN", text: "Value" },
+        { type: "input_value", name: "VALUE", check: "Number" },
+        { type: "input_value", name: "WHEN", check: "Boolean" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: "#2f9e77",
+      tooltip: "Expose the latest numeric value in an accessible chart table."
+    },
+    {
       type: "draw_ray",
       message0: "level %1 when %2 label %3 color %4",
       args0: [
@@ -946,6 +978,8 @@ export const strategyToolbox = {
         { kind: "block", type: "series_barssince" },
         { kind: "block", type: "plot_series" },
         { kind: "block", type: "draw_box" },
+        { kind: "block", type: "draw_projection" },
+        { kind: "block", type: "table_metric" },
         { kind: "block", type: "draw_vline" },
         { kind: "block", type: "draw_ray" }
       ]

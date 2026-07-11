@@ -148,6 +148,50 @@ describe("previewStrategy runs bar-major (setvar state accumulates)", () => {
     expect(plots).toHaveLength(1);
     expect(plots[0].points.map((p) => p.value)).toEqual([1, 2, 3, 4]);
   });
+
+  it("renders explicit projection zones and groups latest table metrics", () => {
+    const ir: StrategyIR = {
+      name: "projection-table",
+      inputs: [],
+      body: [
+        {
+          k: "projection",
+          left: { k: "num", v: 1_710_000_000_000 },
+          right: { k: "num", v: 1_710_000_120_000 },
+          top: { k: "num", v: 110 },
+          bottom: { k: "num", v: 90 },
+          when: { k: "bool", v: true },
+          label: "Forecast",
+          color: "#4db6ff"
+        },
+        {
+          k: "metric",
+          table: "Cycles",
+          column: "Value",
+          label: "Latest close",
+          value: { k: "price", field: "close" },
+          when: { k: "bool", v: true }
+        }
+      ]
+    };
+    const candles = [100, 101.5].map((close, index) => candle(index * MIN, close, close + 1, close - 1, close));
+
+    const preview = previewStrategy(ir, candles);
+
+    expect(preview.shapes.boxes).toEqual([{
+      t1: 1_710_000_000_000,
+      t2: 1_710_000_120_000,
+      top: 110,
+      bottom: 90,
+      color: "#4db6ff",
+      label: "Forecast"
+    }]);
+    expect(preview.tables).toEqual([{
+      id: "Cycles",
+      columns: ["Value"],
+      rows: [{ label: "Latest close", values: [101.5] }]
+    }]);
+  });
 });
 
 describe("request.security external data context", () => {

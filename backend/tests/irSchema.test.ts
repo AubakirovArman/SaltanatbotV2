@@ -96,6 +96,35 @@ describe("parseStrategyIR", () => {
     expect(parseStrategyIR({ name: "b", inputs: [], body: [{ k: "setvarb", name: "f", value: { k: "bool", v: true } }, { k: "exit", when: { k: "varb", name: "f" } }] }).ok).toBe(true);
   });
 
+  it("accepts projection and accessible table-metric display nodes", () => {
+    const result = parseStrategyIR({
+      name: "display",
+      inputs: [],
+      body: [
+        {
+          k: "projection",
+          left: { k: "num", v: 1 },
+          right: { k: "num", v: 2 },
+          top: { k: "num", v: 110 },
+          bottom: { k: "num", v: 90 },
+          when: { k: "bool", v: true },
+          label: "Forecast",
+          color: "#4db6ff"
+        },
+        {
+          k: "metric",
+          table: "Statistics",
+          column: "Value",
+          label: "Average",
+          value: { k: "price", field: "close" },
+          when: { k: "bool", v: true }
+        }
+      ]
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it("accepts a legacy IR with no version field", () => {
     const { v, ...legacy } = validIR as typeof validIR & { v?: number };
     expect(parseStrategyIR(legacy).ok).toBe(true);

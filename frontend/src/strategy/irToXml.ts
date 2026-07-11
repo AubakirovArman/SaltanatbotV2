@@ -87,6 +87,18 @@ function stmtXml(stmt: Stmt, next: string, d: Defaults): string {
         field("LABEL", stmt.label) + field("COLOR", stmt.color) + value("TOP", numXml(stmt.top, d)) + value("BOTTOM", numXml(stmt.bottom, d)) + value("WHEN", boolXml(stmt.when, d)),
         next
       );
+    case "projection":
+      return block(
+        "draw_projection",
+        field("LABEL", stmt.label) + field("COLOR", stmt.color) + value("LEFT", numXml(stmt.left, d)) + value("RIGHT", numXml(stmt.right, d)) + value("TOP", numXml(stmt.top, d)) + value("BOTTOM", numXml(stmt.bottom, d)) + value("WHEN", boolXml(stmt.when, d)),
+        next
+      );
+    case "metric":
+      return block(
+        "table_metric",
+        field("TABLE", stmt.table) + field("LABEL", stmt.label) + field("COLUMN", stmt.column) + value("VALUE", numXml(stmt.value, d)) + value("WHEN", boolXml(stmt.when, d)),
+        next
+      );
     case "vline":
       return block("draw_vline", field("LABEL", stmt.label) + field("COLOR", stmt.color) + value("WHEN", boolXml(stmt.when, d)), next);
     case "ray":
