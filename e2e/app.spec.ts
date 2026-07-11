@@ -90,6 +90,7 @@ test("switches and persists the interface locale", async ({ page }) => {
   await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
   await expect(workspaceModes.getByRole("button", { name: "Стратегия", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Переключить язык интерфейса на английский" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Данные графика", exact: true })).toBeVisible();
 
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");

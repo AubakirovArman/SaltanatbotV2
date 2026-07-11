@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { ChartMarker, ChartTrade } from "../chart/types";
 import type { Candle, Timeframe } from "../types";
+import type { Locale } from "../i18n";
+import { chartSummary, chartTerm, chartText, executedTradesCaption, intlLocale, recentCandlesCaption, strategySignalsCaption } from "../i18n/chart";
 
 const MAX_ROWS = 20;
 
@@ -13,10 +15,11 @@ interface ChartDataPanelProps {
   symbol: string;
   timeframe: Timeframe;
   summaryId: string;
+  locale: Locale;
 }
 
 /** Semantic, keyboard-operable alternative to the pixels rendered by Canvas. */
-export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], trades = [], symbol, timeframe, summaryId }: ChartDataPanelProps) {
+export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], trades = [], symbol, timeframe, summaryId, locale }: ChartDataPanelProps) {
   const [open, setOpen] = useState(false);
   const panelId = `${summaryId}-panel`;
   const focused = focusedIndex === undefined ? candles.at(-1) : candles[focusedIndex];
@@ -25,12 +28,12 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
   const recentTrades = trades.slice(-MAX_ROWS).reverse();
 
   return (
-    <aside className={`chart-data-panel ${open ? "open" : ""}`} aria-label="Chart data">
+    <aside className={`chart-data-panel ${open ? "open" : ""}`} aria-label={chartText(locale, "chartData")}>
       <p id={summaryId} className="sr-only">
-        {focused ? `${symbol} ${timeframe}. Focused candle close ${formatPrice(focused.close, decimals)}. ${signals.length} signals and ${trades.length} trades.` : `${symbol} ${timeframe}. Chart data is loading.`}
+        {chartSummary(locale, { symbol, timeframe, close: focused ? formatPrice(focused.close, decimals) : undefined, signals: signals.length, trades: trades.length })}
       </p>
       <button type="button" className="chart-data-toggle" aria-controls={panelId} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        {open ? "Hide chart data" : "Chart data"}
+        {chartText(locale, open ? "hideChartData" : "chartData")}
       </button>
 
       {open && (
@@ -39,61 +42,49 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
             <strong>
               {symbol} · {timeframe}
             </strong>
-            <span>Semantic alternative to the visual chart</span>
+            <span>{chartText(locale, "semanticAlternative")}</span>
           </header>
 
           {focused ? (
             <table className="chart-data-table chart-data-focused">
-              <caption>{focusedIndex === undefined ? "Latest candle" : "Focused candle"}</caption>
+              <caption>{chartText(locale, focusedIndex === undefined ? "latestCandle" : "focusedCandle")}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Time</th>
-                  <th scope="col">Open</th>
-                  <th scope="col">High</th>
-                  <th scope="col">Low</th>
-                  <th scope="col">Close</th>
-                  <th scope="col">Volume</th>
+                  <CandleHeaders locale={locale} />
                 </tr>
               </thead>
               <tbody>
-                <CandleRow candle={focused} decimals={decimals} />
+                <CandleRow candle={focused} decimals={decimals} locale={locale} />
               </tbody>
             </table>
           ) : (
-            <p className="chart-data-empty">Market data is loading.</p>
+            <p className="chart-data-empty">{chartText(locale, "marketDataLoading")}</p>
           )}
 
           {recentCandles.length > 0 && (
             <table className="chart-data-table">
-              <caption>Recent candles (newest first, up to {MAX_ROWS})</caption>
+              <caption>{recentCandlesCaption(locale, MAX_ROWS)}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Time</th>
-                  <th scope="col">Open</th>
-                  <th scope="col">High</th>
-                  <th scope="col">Low</th>
-                  <th scope="col">Close</th>
-                  <th scope="col">Volume</th>
+                  <CandleHeaders locale={locale} />
                 </tr>
               </thead>
               <tbody>
                 {recentCandles.map((candle) => (
-                  <CandleRow key={candle.time} candle={candle} decimals={decimals} />
+                  <CandleRow key={candle.time} candle={candle} decimals={decimals} locale={locale} />
                 ))}
               </tbody>
             </table>
           )}
 
           <table className="chart-data-table">
-            <caption>
-              Strategy signals ({signals.length} total; newest {MAX_ROWS} shown)
-            </caption>
+            <caption>{strategySignalsCaption(locale, signals.length, MAX_ROWS)}</caption>
             <thead>
               <tr>
-                <th scope="col">Time</th>
-                <th scope="col">Type</th>
-                <th scope="col">Price</th>
-                <th scope="col">Label</th>
+                <th scope="col">{chartText(locale, "time")}</th>
+                <th scope="col">{chartText(locale, "type")}</th>
+                <th scope="col">{chartText(locale, "price")}</th>
+                <th scope="col">{chartText(locale, "label")}</th>
               </tr>
             </thead>
             <tbody>
@@ -101,32 +92,30 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
                 recentSignals.map((signal, index) => (
                   <tr key={`${signal.time}-${signal.kind}-${index}`}>
                     <td>
-                      <ChartTime value={signal.time} />
+                      <ChartTime value={signal.time} locale={locale} />
                     </td>
-                    <td>{signal.kind}</td>
+                    <td>{chartTerm(locale, signal.kind)}</td>
                     <td>{formatPrice(signal.price, decimals)}</td>
                     <td>{signal.label ?? "—"}</td>
                   </tr>
                 ))
               ) : (
-                <EmptyRow columns={4}>No strategy signals.</EmptyRow>
+                <EmptyRow columns={4}>{chartText(locale, "noSignals")}</EmptyRow>
               )}
             </tbody>
           </table>
 
           <table className="chart-data-table">
-            <caption>
-              Executed trades ({trades.length} total; newest {MAX_ROWS} shown)
-            </caption>
+            <caption>{executedTradesCaption(locale, trades.length, MAX_ROWS)}</caption>
             <thead>
               <tr>
-                <th scope="col">Entry</th>
-                <th scope="col">Exit</th>
-                <th scope="col">Side</th>
-                <th scope="col">Entry price</th>
-                <th scope="col">Exit price</th>
-                <th scope="col">P&amp;L</th>
-                <th scope="col">Reason</th>
+                <th scope="col">{chartText(locale, "entry")}</th>
+                <th scope="col">{chartText(locale, "exit")}</th>
+                <th scope="col">{chartText(locale, "side")}</th>
+                <th scope="col">{chartText(locale, "entryPrice")}</th>
+                <th scope="col">{chartText(locale, "exitPrice")}</th>
+                <th scope="col">{chartText(locale, "pnl")}</th>
+                <th scope="col">{chartText(locale, "reason")}</th>
               </tr>
             </thead>
             <tbody>
@@ -134,20 +123,20 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
                 recentTrades.map((trade, index) => (
                   <tr key={`${trade.entryTime}-${trade.exitTime}-${index}`}>
                     <td>
-                      <ChartTime value={trade.entryTime} />
+                      <ChartTime value={trade.entryTime} locale={locale} />
                     </td>
                     <td>
-                      <ChartTime value={trade.exitTime} />
+                      <ChartTime value={trade.exitTime} locale={locale} />
                     </td>
-                    <td>{trade.direction}</td>
+                    <td>{chartTerm(locale, trade.direction)}</td>
                     <td>{formatPrice(trade.entryPrice, decimals)}</td>
                     <td>{formatPrice(trade.exitPrice, decimals)}</td>
                     <td className={trade.pnl >= 0 ? "up" : "down"}>{formatPrice(trade.pnl, decimals)}</td>
-                    <td>{trade.reason}</td>
+                    <td>{chartTerm(locale, trade.reason)}</td>
                   </tr>
                 ))
               ) : (
-                <EmptyRow columns={7}>No executed trades.</EmptyRow>
+                <EmptyRow columns={7}>{chartText(locale, "noTrades")}</EmptyRow>
               )}
             </tbody>
           </table>
@@ -157,24 +146,36 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
   );
 }
 
-function CandleRow({ candle, decimals }: { candle: Candle; decimals: number }) {
+function CandleHeaders({ locale }: { locale: Locale }) {
+  return (
+    <>
+      {(["time", "open", "high", "low", "close", "volume"] as const).map((key) => (
+        <th key={key} scope="col">
+          {chartText(locale, key)}
+        </th>
+      ))}
+    </>
+  );
+}
+
+function CandleRow({ candle, decimals, locale }: { candle: Candle; decimals: number; locale: Locale }) {
   return (
     <tr>
       <td>
-        <ChartTime value={candle.time} />
+        <ChartTime value={candle.time} locale={locale} />
       </td>
       <td>{formatPrice(candle.open, decimals)}</td>
       <td>{formatPrice(candle.high, decimals)}</td>
       <td>{formatPrice(candle.low, decimals)}</td>
       <td>{formatPrice(candle.close, decimals)}</td>
-      <td>{formatVolume(candle.volume)}</td>
+      <td>{formatVolume(candle.volume, locale)}</td>
     </tr>
   );
 }
 
-function ChartTime({ value }: { value: number }) {
+function ChartTime({ value, locale }: { value: number; locale: Locale }) {
   const date = new Date(value);
-  return <time dateTime={date.toISOString()}>{date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time>;
+  return <time dateTime={date.toISOString()}>{date.toLocaleString(intlLocale(locale), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time>;
 }
 
 function EmptyRow({ columns, children }: { columns: number; children: string }) {
@@ -191,6 +192,6 @@ function formatPrice(value: number, decimals: number) {
   return Number.isFinite(value) ? value.toFixed(decimals) : "—";
 }
 
-function formatVolume(value: number) {
-  return Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—";
+function formatVolume(value: number, locale: Locale) {
+  return Number.isFinite(value) ? value.toLocaleString(intlLocale(locale), { maximumFractionDigits: 2 }) : "—";
 }

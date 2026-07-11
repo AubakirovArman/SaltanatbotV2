@@ -14,6 +14,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `useChartRenderer.ts`: five-canvas ownership, ResizeObserver synchronization, render-plan reuse and dirty-pass invalidation.
 - `renderers/chartChrome.ts`: axes, grid, last-price and crosshair chrome.
 - `../components/ChartDataPanel.tsx`: bounded semantic tables for the focused OHLC candle, recent candles, strategy signals and executed trades.
+- `../i18n/chart.ts`: typed English/Russian chart-table messages, dynamic captions and domain terms.
 
 ## Invariants
 

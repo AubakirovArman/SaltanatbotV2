@@ -188,6 +188,7 @@ export default function App() {
               chartType={chartType}
               instrument={instrument}
               timeframe={timeframe}
+              locale={locale}
               indicators={indicators}
               onIndicatorsChange={setIndicators}
               onEditIndicatorLogic={artifactLibrary.selectIndicatorLogic}

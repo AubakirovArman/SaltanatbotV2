@@ -33,6 +33,7 @@ import { visibleCandles } from "../chart/scales";
 import type { ChartLivePosition, ChartMarker, ChartPlot, ChartShapes, ChartTable, ChartTrade, CompareLegendSnapshot, CompareOverlayConfig, CompareSeries, PriceMode, Viewport } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { PriceAlert } from "../market/alerts";
+import type { Locale } from "../i18n";
 import type { Candle, ChartType, Instrument, Timeframe } from "../types";
 import { ChartIndicatorOverlay, type StrategyMenuItem } from "./ChartIndicatorOverlay";
 import { ChartDataPanel } from "./ChartDataPanel";
@@ -43,6 +44,7 @@ interface ChartCanvasProps {
   chartType: ChartType;
   instrument: Instrument;
   timeframe: Timeframe;
+  locale: Locale;
   indicators: IndicatorConfig[];
   onIndicatorsChange: (indicators: IndicatorConfig[]) => void;
   onEditIndicatorLogic: (indicator: IndicatorConfig) => void;
@@ -99,6 +101,7 @@ export function ChartCanvas({
   chartType,
   instrument,
   timeframe,
+  locale,
   indicators,
   onIndicatorsChange,
   onEditIndicatorLogic,
@@ -571,6 +574,7 @@ export function ChartCanvas({
           trades={trades}
           symbol={instrument.symbol}
           timeframe={timeframe}
+          locale={locale}
           summaryId={chartDataSummaryId}
         />
         {selectedId && drawings.some((d) => d.id === selectedId) && (

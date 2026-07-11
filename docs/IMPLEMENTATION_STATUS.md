@@ -371,7 +371,9 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 ### Documentation, localization and open source
 
 - [ ] Move remaining UI strings into typed messages.
+  - [x] Localize the accessible chart-data panel, captions, headers, empty states and signal/trade terminology through typed EN/RU messages.
 - [ ] Complete Russian user-guide parity.
+  - [x] Add the Russian chart navigation and accessible table-data guide.
 - [ ] Generate API/block/Pine compatibility reference from source contracts.
   - [x] Generate Pine compatibility TypeScript and Markdown references from corpus metadata.
   - [ ] Generate API and block-catalog references.
