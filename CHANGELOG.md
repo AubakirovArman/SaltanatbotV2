@@ -17,6 +17,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
   GitHub release notes.
 - Split Blockly definitions into domain-owned category modules with invariant tests while retaining the
   existing registration/toolbox facade and saved XML compatibility.
+- Split Blockly compilation into focused statement, numeric, boolean and context modules while
+  preserving the public compiler contract and complete regression suite.
 
 ### Operations and recovery
 

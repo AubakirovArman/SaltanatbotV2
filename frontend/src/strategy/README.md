@@ -23,6 +23,7 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - `pine/` parses and lowers Pine; it should not own React UI.
 - Blockly definitions describe editing; compiler modules lower blocks to IR.
 - `blockDefinitions/` groups declarative block schemas by toolbox domain; `blocks.ts` remains the stable idempotent registration/toolbox facade.
+- `compiler/` separates shared context, numeric and boolean lowering; `compile.ts` remains the public statement/orchestration facade.
 - Backtest accounting does not depend on Blockly.
 - `previewTables.ts` owns display-metric collection and table shaping; the broker loop must not depend on presentation models.
 - `backtestTypes.ts` is the stable public contract; `backtestMetrics.ts` owns analytics derived from trades and equity.

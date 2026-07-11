@@ -458,6 +458,9 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
   - [x] Preserve every saved XML type and generated catalog entry.
   - [x] Enforce globally unique block types and per-row field/input names.
   - [x] Make registration idempotent across HMR/module re-evaluation without overwrite warnings.
+- [x] Split the 671-line Blockly compiler into statement orchestration, numeric lowering, boolean lowering and shared diagnostic context modules.
+  - [x] Preserve the public `compileWorkspace` facade and block-linked diagnostic contracts.
+  - [x] Keep numeric/boolean mutual composition as bounded static module calls without executable code generation.
 - [x] Split `StrategyLab` into build/validate/preview/backtest/optimize/library controllers and panels.
   - [x] Extract library, optimizer and execution/result panels.
   - [x] Extract Blockly workspace lifecycle/autosave controller.
