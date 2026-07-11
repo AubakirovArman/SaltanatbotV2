@@ -118,12 +118,15 @@ Verification:
 - 28 Vitest files / 275 tests pass, including duration-mode and projection-viewport coverage.
 - Biome and backend/frontend TypeScript checks pass.
 
-### Trading frontend decomposition — current trading-UI commit
+### Trading frontend decomposition — commit `94d68d1` and current settings commit
 
 - [x] Move the authentication gate and empty trading state into feature-owned components.
 - [x] Move bot creation and validation into a feature-owned semantic form.
 - [x] Add stable names to bot controls and retain native validation/submission behavior.
 - [x] Reduce `TradingView.tsx` from 982 to 741 lines while preserving its controller role.
+- [x] Move live arming, kill switch, API-key and notification settings into `TradingSettings.tsx`.
+- [x] Give secret/notification controls visible labels, stable names and semantic submit behavior.
+- [x] Reduce `TradingView.tsx` further to 578 lines.
 
 ## Completed browser baseline
 

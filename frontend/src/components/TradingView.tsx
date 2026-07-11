@@ -1,4 +1,4 @@
-import { AlertTriangle, BookOpen, Bookmark, KeyRound, Pencil, Play, Plus, Save, Send, Settings2, Square, Terminal, Trash2, XOctagon } from "lucide-react";
+import { BookOpen, Bookmark, Pencil, Play, Plus, Save, Send, Settings2, Square, Terminal, Trash2, XOctagon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { StrategyArtifact } from "../strategy/library";
 import type { CatalogResponse } from "../types";
@@ -7,28 +7,18 @@ import {
   createTradeSocket,
   deleteBot,
   getFills,
-  getKeys,
   getLive,
   getLogs,
-  getNotify,
   getOrders,
   getOrderJournal,
-  getSettings,
-  killAll,
   listBots,
-  saveKeys,
-  saveNotify,
   sendCommand,
-  setLiveTrading,
   startBot,
   stopBot,
-  testNotify,
   type AuthState,
-  type ExchangeId,
   type Fill,
   type LiveState,
   type LogRow,
-  type NotifyStatus,
   type OrderJournal,
   type PendingOrder,
   type TradeEvent,
@@ -37,6 +27,7 @@ import {
 import { COMMAND_REFERENCE } from "../trading/commandReference";
 import { CreateBotForm } from "../trading/components/CreateBotForm";
 import { EmptyTradingState, TradeTokenGate } from "../trading/components/TradeAccess";
+import { TradingSettings } from "../trading/components/TradingSettings";
 import { loadSavedCommands, newCommandId, persistSavedCommands, type SavedCommand } from "../trading/savedCommands";
 
 interface TradingViewProps {
@@ -233,7 +224,7 @@ export function TradingView({ strategies, catalog }: TradingViewProps) {
             }}
           />
         )}
-        {view.kind === "settings" && <SettingsPanel />}
+        {view.kind === "settings" && <TradingSettings />}
         {view.kind === "bot" && selectedBot && (
           <BotDetail
             bot={selectedBot}
@@ -582,160 +573,6 @@ function Card({ label, value, sub, tone }: { label: string; value: string; sub?:
       <span className="metric-label">{label}</span>
       <strong className={`num ${tone ?? ""}`}>{value}</strong>
       {sub && <span className="metric-sub">{sub}</span>}
-    </div>
-  );
-}
-
-function SettingsPanel() {
-  const [keys, setKeys] = useState<{ binance: boolean; bybit: boolean }>({ binance: false, bybit: false });
-  const [notifyStatus, setNotifyStatus] = useState<NotifyStatus>();
-  const [settings, setSettings] = useState<AuthState>();
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    getKeys()
-      .then(setKeys)
-      .catch(() => undefined);
-    getNotify()
-      .then(setNotifyStatus)
-      .catch(() => undefined);
-    getSettings()
-      .then(setSettings)
-      .catch(() => undefined);
-  }, []);
-
-  const toggleLive = async (next: boolean) => {
-    setBusy(true);
-    try {
-      await setLiveTrading(next);
-      setSettings((s) => (s ? { ...s, liveTradingEnabled: next } : s));
-    } catch {
-      // ignore
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const kill = async () => {
-    if (!window.confirm("Stop ALL bots and disarm live trading now?")) return;
-    setBusy(true);
-    try {
-      await killAll();
-      setSettings((s) => (s ? { ...s, liveTradingEnabled: false } : s));
-    } catch {
-      // ignore
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="trade-settings">
-      <div className="panel-header">
-        <strong>
-          <AlertTriangle size={14} aria-hidden="true" /> Live trading
-        </strong>
-      </div>
-      {settings?.demo ? (
-        <p className="settings-note">Running in demo mode — only paper trading is available.</p>
-      ) : (
-        <>
-          <p className="settings-note">Live trading places real orders with your exchange keys. It is disarmed by default; arm it only when you intend to trade for real. The kill switch stops every bot and disarms instantly.</p>
-          <label className="live-arm-row">
-            <input type="checkbox" checked={settings?.liveTradingEnabled ?? false} disabled={busy} onChange={(event) => toggleLive(event.target.checked)} />
-            <span>Arm live trading{settings?.liveTradingEnabled ? " — ARMED" : ""}</span>
-          </label>
-          <button type="button" className="kill-switch" onClick={kill} disabled={busy}>
-            <XOctagon size={14} aria-hidden="true" /> Kill switch — stop all bots
-          </button>
-        </>
-      )}
-
-      <div className="panel-header">
-        <strong>
-          <KeyRound size={14} aria-hidden="true" /> Exchange API keys
-        </strong>
-      </div>
-      <p className="settings-note">Keys are stored encrypted on the server (never sent back to the browser). Use read+trade permissions, no withdrawals. IP-whitelist recommended.</p>
-      <KeyForm exchange="binance" configured={keys.binance} onSaved={() => getKeys().then(setKeys)} />
-      <KeyForm exchange="bybit" configured={keys.bybit} onSaved={() => getKeys().then(setKeys)} />
-
-      <div className="panel-header">
-        <strong>Notifications</strong>
-      </div>
-      <NotifyForm status={notifyStatus} onSaved={() => getNotify().then(setNotifyStatus)} />
-    </div>
-  );
-}
-
-function KeyForm({ exchange, configured, onSaved }: { exchange: ExchangeId; configured: boolean; onSaved: () => void }) {
-  const [apiKey, setApiKey] = useState("");
-  const [apiSecret, setApiSecret] = useState("");
-  const [saved, setSaved] = useState(false);
-  const save = async () => {
-    await saveKeys(exchange, apiKey, apiSecret);
-    setApiKey("");
-    setApiSecret("");
-    setSaved(true);
-    onSaved();
-    window.setTimeout(() => setSaved(false), 1800);
-  };
-  return (
-    <div className="key-form">
-      <div className="key-form-head">
-        <strong>{exchange}</strong>
-        {configured && <span className="badge-ok">configured</span>}
-        {saved && <span className="badge-ok">saved</span>}
-      </div>
-      <input placeholder="API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-      <input placeholder="API secret" type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} />
-      <button type="button" onClick={save} disabled={!apiKey || !apiSecret}>
-        Save keys
-      </button>
-    </div>
-  );
-}
-
-function NotifyForm({ status, onSaved }: { status?: NotifyStatus; onSaved: () => void }) {
-  const [tgEnabled, setTgEnabled] = useState(false);
-  const [tgToken, setTgToken] = useState("");
-  const [tgChat, setTgChat] = useState("");
-  const [testMsg, setTestMsg] = useState<string>();
-
-  useEffect(() => {
-    if (status) {
-      setTgEnabled(status.telegram.enabled);
-      setTgChat(status.telegram.chatId);
-    }
-  }, [status]);
-
-  const save = async () => {
-    await saveNotify({ telegram: { enabled: tgEnabled, token: tgToken || undefined, chatId: tgChat } });
-    setTgToken("");
-    onSaved();
-  };
-  const test = async () => {
-    const res = await testNotify();
-    setTestMsg(res.ok ? "Sent ✓" : res.message);
-  };
-
-  return (
-    <div className="key-form">
-      <label className="check-row">
-        <input type="checkbox" checked={tgEnabled} onChange={(e) => setTgEnabled(e.target.checked)} /> Telegram {status?.telegram.hasToken && <span className="badge-ok">token set</span>}
-      </label>
-      <input placeholder="Bot token (from @BotFather)" value={tgToken} onChange={(e) => setTgToken(e.target.value)} />
-      <input placeholder="Chat ID" value={tgChat} onChange={(e) => setTgChat(e.target.value)} />
-      <div className="key-form-actions">
-        <button type="button" onClick={save}>
-          Save
-        </button>
-        <button type="button" onClick={test}>
-          Send test
-        </button>
-      </div>
-      {testMsg && <div className="trade-console-out">{testMsg}</div>}
-      <p className="settings-note">VK and other channels can be added the same way. Notifications fire on start/stop, position open/close, errors and signal markers.</p>
     </div>
   );
 }

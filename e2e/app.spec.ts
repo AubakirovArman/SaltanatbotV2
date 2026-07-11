@@ -195,6 +195,20 @@ test("creates, starts, journals and stops a paper bot", async ({ page }) => {
   await detail.getByRole("button", { name: "Delete bot" }).click();
 });
 
+test("exposes safe demo trading settings and labeled secret forms", async ({ page }) => {
+  const workspaceModes = page.getByLabel("Workspace mode");
+  await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();
+  await page.getByLabel("Access token").fill("e2e-local-admin-token");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+
+  await expect(page.getByText("Running in demo mode — only paper trading is available.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save binance keys" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save bybit keys" })).toBeVisible();
+  await expect(page.getByLabel("Bot token")).toHaveAttribute("autocomplete", "new-password");
+  await expect(page.getByLabel("Chat ID")).toHaveAttribute("inputmode", "numeric");
+});
+
 test("traps command-palette focus and restores it on Escape", async ({ page }) => {
   const trigger = page.getByRole("button", { name: "Open command palette" });
   await trigger.click();
