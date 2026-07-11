@@ -3,11 +3,10 @@ import type { PineArg, PineExpr, PineFuncDef } from "./parser";
 import type { PineValue } from "./semanticHelpers";
 
 export interface UserFunctionInliningState {
-  booleanVariables: Set<string>;
   environment: Map<string, PineValue>;
   functions: ReadonlyMap<string, PineFuncDef>;
   inlining: Set<string>;
-  numericVariables: Set<string>;
+  scope<T>(work: () => T): T;
 }
 
 export interface UserFunctionInliningContext {
@@ -73,42 +72,28 @@ function withInlinedFunction<T>(
   });
 
   state.inlining.add(name);
-  const saved = new Map<string, PineValue | undefined>();
-  const temporaryNumeric = new Set<string>();
-  const temporaryBoolean = new Set<string>();
-  const shadow = (bindingName: string, value: PineValue) => {
-    if (!saved.has(bindingName)) saved.set(bindingName, state.environment.get(bindingName));
-    state.environment.set(bindingName, value);
-    if (value.t === "num" && !state.numericVariables.has(bindingName)) temporaryNumeric.add(bindingName);
-    if (value.t === "bool" && !state.booleanVariables.has(bindingName)) temporaryBoolean.add(bindingName);
-  };
-
   try {
-    for (const binding of bindings) shadow(binding.name, binding.value);
-    let returnExpression = definition.ret;
-    for (let index = 0; index < definition.body.length; index += 1) {
-      const statement = definition.body[index];
-      const last = index === definition.body.length - 1;
-      if (statement.t === "assign" && !statement.declaredVar) {
-        shadow(statement.name, ctx.value(statement.value));
-        if (last) returnExpression = { t: "ident", name: statement.name };
-      } else if (statement.t === "expr" && last) {
-        returnExpression = statement.value;
-      } else if (statement.t === "func") {
-        throw new PineConvertError(`Nested function definitions in "${name}()" aren't supported.`);
-      } else {
-        throw new PineConvertError(`"${name}()" has control flow or side effects in its body — only value-returning functions can be inlined.`);
+    return state.scope(() => {
+      for (const binding of bindings) state.environment.set(binding.name, binding.value);
+      let returnExpression = definition.ret;
+      for (let index = 0; index < definition.body.length; index += 1) {
+        const statement = definition.body[index];
+        const last = index === definition.body.length - 1;
+        if (statement.t === "assign" && !statement.declaredVar) {
+          state.environment.set(statement.name, ctx.value(statement.value));
+          if (last) returnExpression = { t: "ident", name: statement.name };
+        } else if (statement.t === "expr" && last) {
+          returnExpression = statement.value;
+        } else if (statement.t === "func") {
+          throw new PineConvertError(`Nested function definitions in "${name}()" aren't supported.`);
+        } else {
+          throw new PineConvertError(`"${name}()" has control flow or side effects in its body — only value-returning functions can be inlined.`);
+        }
       }
-    }
-    if (!returnExpression) throw new PineConvertError(`"${name}()" doesn't return a value.`);
-    return evaluateReturn(returnExpression);
+      if (!returnExpression) throw new PineConvertError(`"${name}()" doesn't return a value.`);
+      return evaluateReturn(returnExpression);
+    });
   } finally {
-    for (const [bindingName, previous] of saved) {
-      if (previous === undefined) state.environment.delete(bindingName);
-      else state.environment.set(bindingName, previous);
-    }
-    for (const nameToDelete of temporaryNumeric) state.numericVariables.delete(nameToDelete);
-    for (const nameToDelete of temporaryBoolean) state.booleanVariables.delete(nameToDelete);
     state.inlining.delete(name);
   }
 }

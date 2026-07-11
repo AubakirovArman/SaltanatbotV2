@@ -17,6 +17,7 @@ function context(overrides: Partial<StatementLoweringContext> = {}): StatementLo
     num: (expr) => expr.t === "num" ? { k: "num", v: expr.v } : { k: "price", field: "close" },
     registerFunction: vi.fn(),
     registerLoopVariable: vi.fn(),
+    scope: (work) => work(),
     setMutable: (_name, value) => [{ k: "setvar", name: "counter", value: value.t === "binary" ? { k: "num", v: 2 } : { k: "num", v: 1 } }],
     tuple: () => [],
     warn: vi.fn(),

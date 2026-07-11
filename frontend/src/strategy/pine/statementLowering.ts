@@ -11,6 +11,7 @@ export interface StatementLoweringContext {
   num(expr: PineExpr): NumExpr;
   registerFunction(definition: PineFuncDef): void;
   registerLoopVariable(name: string): void;
+  scope<T>(work: () => T): T;
   setMutable(name: string, value: PineExpr): Stmt[];
   tuple(names: string[], value: PineExpr): Stmt[];
   warn(message: string): void;
@@ -34,7 +35,7 @@ export function lowerStatement(ctx: StatementLoweringContext, statement: PineStm
     case "for":
       return [lowerForStatement(ctx, statement)];
     case "while":
-      return [{ k: "while", cond: ctx.bool(statement.cond), body: statement.body.flatMap((nested) => ctx.lower(nested)), cap: 1000 }];
+      return [{ k: "while", cond: ctx.bool(statement.cond), body: ctx.scope(() => statement.body.flatMap((nested) => ctx.lower(nested))), cap: 1000 }];
     case "func":
       ctx.checkName(statement.def.name);
       ctx.registerFunction(statement.def);
@@ -48,14 +49,20 @@ export function lowerStatement(ctx: StatementLoweringContext, statement: PineStm
 
 function lowerForStatement(ctx: StatementLoweringContext, statement: Extract<PineStmt, { t: "for" }>): Stmt {
   ctx.checkName(statement.var);
-  ctx.registerLoopVariable(statement.var);
+  const from = ctx.num(statement.from);
+  const to = ctx.num(statement.to);
+  const step = statement.step ? ctx.num(statement.step) : { k: "num" as const, v: 1 };
+  const body = ctx.scope(() => {
+    ctx.registerLoopVariable(statement.var);
+    return statement.body.flatMap((nested) => ctx.lower(nested));
+  });
   return {
     k: "for",
     var: statement.var,
-    from: ctx.num(statement.from),
-    to: ctx.num(statement.to),
-    step: statement.step ? ctx.num(statement.step) : { k: "num", v: 1 },
-    body: statement.body.flatMap((nested) => ctx.lower(nested)),
+    from,
+    to,
+    step,
+    body,
     cap: 10_000
   };
 }
@@ -64,7 +71,7 @@ function lowerIfStatement(ctx: StatementLoweringContext, statement: Extract<Pine
   let node: Extract<Stmt, { k: "if" }> | undefined;
   for (const clause of statement.clauses) {
     if (!clause.cond) {
-      const body = clause.body.flatMap((nested) => ctx.lower(nested));
+      const body = ctx.scope(() => clause.body.flatMap((nested) => ctx.lower(nested)));
       if (!node) return body;
       node.else = body;
       return [node];
@@ -72,7 +79,7 @@ function lowerIfStatement(ctx: StatementLoweringContext, statement: Extract<Pine
     const condition = ctx.bool(clause.cond);
     const folded = constBool(condition);
     if (folded === false) continue;
-    const body = clause.body.flatMap((nested) => ctx.lower(nested));
+    const body = ctx.scope(() => clause.body.flatMap((nested) => ctx.lower(nested)));
     if (folded === true) {
       if (!node) return body;
       node.else = body;

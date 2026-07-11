@@ -11,11 +11,18 @@ import {
 
 function state(functions: Record<string, PineFuncDef>, environment = new Map<string, PineValue>()): UserFunctionInliningState {
   return {
-    booleanVariables: new Set(),
     environment,
     functions: new Map(Object.entries(functions)),
     inlining: new Set(),
-    numericVariables: new Set()
+    scope: (work) => {
+      const saved = new Map(environment);
+      try {
+        return work();
+      } finally {
+        environment.clear();
+        for (const [name, value] of saved) environment.set(name, value);
+      }
+    }
   };
 }
 

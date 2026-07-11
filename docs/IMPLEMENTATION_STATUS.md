@@ -191,6 +191,8 @@ Verification:
 - [x] Extract drawing, mutation, collection and unsupported-call statement coordination.
 - [x] Split Blockly XML serialization into XML primitives, statement, numeric and boolean modules.
 - [x] Preserve `irToXml.ts` as a backward-compatible facade and add direct serializer round-trip tests.
+- [x] Introduce exception-safe nested value/type scopes and a typed global function symbol table.
+- [x] Apply lexical scopes to `if`/`for`/`while` bodies and user-function inlining.
 - [x] Add direct tests for indicator, arithmetic, external boolean-series and fail-closed paths.
 - [x] Add direct tests for cross, multi-bar trend, external boolean-series and conservative timeframe paths.
 - [x] Reduce `convert.ts` from 1,916 to 977 lines after completing statement lowering decomposition.
@@ -234,7 +236,7 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [ ] Extract AST and public diagnostic types with source spans.
 - [ ] Extract semantic scope/symbol/function analysis.
   - [x] Extract current pure semantic classification helpers from lowering.
-  - [ ] Introduce explicit nested scopes and typed symbol/function tables.
+  - [x] Introduce explicit nested scopes and typed symbol/function tables.
 - [x] Extract expression lowering.
   - [x] Extract numeric built-in function-call dispatch.
   - [x] Extract boolean built-in function-call dispatch.

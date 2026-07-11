@@ -14,6 +14,7 @@ Consumers should import from `index.ts`. Lexer, parser and conversion internals 
 `numericExpressionLowering.ts` owns numeric literals, arithmetic, ternaries and bounded static/dynamic history access while delegating stateful name and call resolution.
 `booleanExpressionLowering.ts` owns logical/comparison operators, `na` tests, static string selectors, ternaries and bounded condition history.
 `identifierLowering.ts` centralizes typed built-in, bound, mutable, strategy-context and opaque-object name resolution for numeric and boolean expressions.
+`symbolTable.ts` owns typed global function symbols plus exception-safe nested value and mutable-type scopes used by blocks and function inlining.
 `switchLowering.ts` maps string, numeric, boolean and side-effecting Pine switches to deterministic IR values or `if/elif/else` chains.
 `userFunctionInlining.ts` owns call-by-value argument binding, temporary lexical shadowing, tuple returns, recursion guards and side-effect rejection.
 `valueLowering.ts` is the typed value classifier that orders user calls, switches, static strings, conditions and numeric expressions without guessing.
@@ -48,4 +49,4 @@ The corpus classifies scripts as exact, approximation, display-only or rejected.
 
 ## Decomposition target
 
-`convert.ts` remains a temporary lowering coordinator, while semantic analysis, expression/statement lowering and Blockly serialization now live in dedicated modules. Continue with explicit nested scopes and the package boundary defined by `docs/MODULAR_ARCHITECTURE.md`. Keep `convertPine()` as the stable facade during the migration.
+`convert.ts` remains a temporary lowering coordinator, while semantic analysis, scoped symbols, expression/statement lowering and Blockly serialization now live in dedicated modules. Continue with the package boundary defined by `docs/MODULAR_ARCHITECTURE.md`. Keep `convertPine()` as the stable facade during the migration.

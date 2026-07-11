@@ -10,7 +10,7 @@ import {
   PRICE_FIELDS
 } from "./language";
 import { PineLexError } from "./lexer";
-import { type PineFuncDef, PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
+import { PineParseError, parsePine, type PineArg, type PineExpr, type PineStmt } from "./parser";
 import { type PlotHandleValue } from "./drawingLowering";
 import { lowerNumericCall, type NumericCallLoweringContext } from "./numericCallLowering";
 import { lowerBooleanCall, type BooleanCallLoweringContext } from "./booleanCallLowering";
@@ -34,6 +34,7 @@ import { lowerDeclaration, type DeclarationLoweringContext } from "./declaration
 import { lowerPlotStatement, type PlotStatementLoweringContext } from "./plotStatementLowering";
 import { lowerAlertStatement, type AlertStatementLoweringContext } from "./alertStatementLowering";
 import { lowerDrawingStatement, type DrawingStatementLoweringContext } from "./drawingStatementLowering";
+import { PineSymbolTable } from "./symbolTable";
 import {
   boolToNumericSeries,
   collectReassigned,
@@ -95,13 +96,14 @@ class Converter {
   private kind: "indicator" | "strategy" = "indicator";
   private name = "Imported Pine";
   private overlay = false; // Pine default for indicator() AND strategy()
-  private readonly env = new Map<string, Val>();
+  private readonly symbols = new PineSymbolTable();
+  private readonly env = this.symbols.values;
   private readonly plotHandles = new Set<string>();
   private readonly plotHandleValues = new Map<string, PlotHandle>();
-  private readonly numVars = new Set<string>();
-  private readonly boolVars = new Set<string>();
+  private readonly numVars = this.symbols.numericVariables;
+  private readonly boolVars = this.symbols.booleanVariables;
   private readonly boolInputs = new Set<string>();
-  private readonly funcs = new Map<string, PineFuncDef>();
+  private readonly funcs = this.symbols.functions;
   private readonly inlining = new Set<string>();
   private readonly loopVars = new Set<string>();
   private readonly colorVars = new Map<string, string | undefined>();
@@ -170,6 +172,7 @@ class Converter {
         this.loopVars.add(name);
         this.numVars.add(name);
       },
+      scope: (work) => this.symbols.withScope(work),
       setMutable: (name, value) => this.setMutable(name, value),
       tuple: (names, value) => this.tuple(names, value),
       warn: (message) => this.warn(message),
@@ -421,11 +424,10 @@ class Converter {
 
   private userFunctionState(): UserFunctionInliningState {
     return {
-      booleanVariables: this.boolVars,
       environment: this.env,
       functions: this.funcs,
       inlining: this.inlining,
-      numericVariables: this.numVars
+      scope: (work) => this.symbols.withScope(work)
     };
   }
 
