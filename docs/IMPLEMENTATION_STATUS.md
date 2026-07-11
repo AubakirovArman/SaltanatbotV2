@@ -216,6 +216,7 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [x] Add/configure/persist a built-in indicator.
 - [x] Add a saved custom indicator to the chart.
 - [x] Create/start/stop a paper bot and inspect its order journal.
+- [x] Keep paper lifecycle E2E independent from public exchange latency via the deterministic local feed.
 - [x] WebSocket disconnect/reconnect without duplicated candles.
 - [x] Visible unavailable/fallback market-data state.
 - [x] Keyboard/focus behavior for modal dialogs and menus.

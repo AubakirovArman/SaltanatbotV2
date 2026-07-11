@@ -179,6 +179,9 @@ test("creates, starts, journals and stops a paper bot", async ({ page }) => {
   await page.getByRole("button", { name: /Create paper bot|New bot/ }).first().click();
   const botName = `Paper E2E ${Date.now()}`;
   await page.getByLabel("Bot name").fill(botName);
+  // Keep lifecycle E2E deterministic: EURUSD is backed by the local synthetic
+  // provider, while BTCUSDT startup depends on public exchange latency.
+  await page.locator('.trade-form select[name="symbol"]').selectOption("EURUSD");
   await page.getByLabel("Exchange").selectOption("paper");
   await page.getByRole("button", { name: "Create bot", exact: true }).click();
 
@@ -188,7 +191,7 @@ test("creates, starts, journals and stops a paper bot", async ({ page }) => {
   await expect(detail.getByRole("button", { name: "Stop", exact: true })).toBeVisible({ timeout: 15_000 });
 
   const command = detail.getByPlaceholder("action=openposition;side=buy;openpro=25;lev=5");
-  await command.fill("action=openposition;symbol=BTCUSDT;side=buy;qty=0.001;lev=1");
+  await command.fill("action=openposition;symbol=EURUSD;side=buy;qty=0.001;lev=1");
   await command.press("Enter");
   await expect(detail.getByText("Order journal", { exact: true })).toBeVisible({ timeout: 15_000 });
   const orderTable = detail.locator(".trade-order-journal table");
