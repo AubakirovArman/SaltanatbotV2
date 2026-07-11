@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "policy": "Only corpusEligible entries with an OSI-approved SPDX license may run as external compiler corpus tests.",
+  "files": [
+    {
+      "path": "2-developing-market-profile.pine",
+      "title": "Developing Market Profile",
+      "author": "Honestcowboy",
+      "source": "https://github.com/pAulseperformance/awesome-pinescript#interesting",
+      "license": "LicenseRef-Unknown",
+      "corpusEligible": false,
+      "reason": "No redistribution license was preserved in the collected source header.",
+      "acquired": "2026-07-10",
+      "sha256": "b83509bf2340e3d8693e2f332e3307681a3cb9a9b82782982cc829dcf60e11a1"
+    },
+    {
+      "path": "3-flag-finder.pine",
+      "title": "Flag Finder",
+      "author": "Amphibiantrading",
+      "source": "https://www.tradingview.com/script/DU228Vjm-Flag-Finder/",
+      "license": "MPL-2.0",
+      "corpusEligible": true,
+      "acquired": "2026-07-10",
+      "sha256": "9dffd198a6fe00eb2249ab981c114460683d56057c79c7177e3295d6c0df10ce"
+    },
+    {
+      "path": "4-fundamentals-graphing.pine",
+      "title": "Fundamentals Graphing [Kioseff Trading]",
+      "author": "KioseffTrading",
+      "source": "https://www.tradingview.com/script/7qjXp2op-Fundamentals-Graphing-Kioseff-Trading/",
+      "license": "MPL-2.0",
+      "corpusEligible": true,
+      "acquired": "2026-07-10",
+      "sha256": "1b08b13a469bc4ee10b2089b17c0d8a0a4f5b12f492a65302138d9fc6144b062"
+    },
+    {
+      "path": "5-ict-killzones-pivots.pine",
+      "title": "ICT Killzones + Pivots [TFO]",
+      "author": "tradeforopp",
+      "source": "https://www.tradingview.com/script/nW5oGfdO-ICT-Killzones-Pivots-TFO/",
+      "license": "MPL-2.0",
+      "corpusEligible": true,
+      "acquired": "2026-07-10",
+      "sha256": "e0df14f4f0e42d2743c2eba53276bf77940c28a22f0a66830a3df040cec0cbe7"
+    },
+    {
+      "path": "6-trend-correlation-heatmap.pine",
+      "title": "Trend Correlation Heatmap",
+      "author": "Steversteves",
+      "source": "https://github.com/pAulseperformance/awesome-pinescript#interesting",
+      "license": "LicenseRef-Unknown",
+      "corpusEligible": false,
+      "reason": "Copyright attribution is present but no redistribution license was preserved.",
+      "acquired": "2026-07-10",
+      "sha256": "3c044735ed8fe291a54de4f75eb4b7ad18ccfcd90cda516036cdc181e0943975"
+    },
+    {
+      "path": "7-ttp-vix-spy.pine",
+      "title": "TTP VIX Spy",
+      "author": "Unknown",
+      "source": "https://github.com/pAulseperformance/awesome-pinescript#interesting",
+      "license": "LicenseRef-Unknown",
+      "corpusEligible": false,
+      "reason": "No author or redistribution license was preserved in the collected source.",
+      "acquired": "2026-07-10",
+      "sha256": "c451e81ca412387ada1cd6f940fdd0b9c59038169b5988f3af62e2316c11972b"
+    }
+  ]
+}

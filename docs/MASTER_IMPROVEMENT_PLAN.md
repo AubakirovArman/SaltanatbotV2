@@ -149,10 +149,10 @@ Required improvements:
 - [x] explicit unsupported-feature registry instead of scattered function conditions;
 - [x] conversion report showing exact, approximated, display-only and rejected constructs;
 - side-by-side source, generated blocks and preview comparison;
-- deterministic output snapshots;
-- a public compatibility matrix generated from tests;
-- fuzzing and property tests for lexer/parser safety;
-- a corpus of real permissively licensed scripts, stored with provenance.
+- [x] deterministic output snapshots;
+- [x] a public compatibility matrix generated from tests;
+- [x] fuzzing and property tests for lexer/parser safety;
+- [x] a corpus of real permissively licensed scripts, stored with provenance.
 
 Conversion confidence must never be a vague percentage. It should be derived from explicit diagnostics and semantic categories.
 
@@ -239,7 +239,7 @@ Accessibility release criteria include keyboard-only operation, visible focus, s
 - add changelog automation and migration notes;
 - publish threat model and explicit non-goals (delivered);
 - add contributor maps for chart, Pine, strategy core, providers and execution;
-- define licensing/provenance rules for Pine corpus and screenshots;
+- define screenshot licensing/provenance rules (Pine corpus policy and enforcement delivered);
 - add a public demo mode that cannot mutate trade state.
 
 ## Priority 3: later product opportunities

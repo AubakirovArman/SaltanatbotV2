@@ -40,4 +40,8 @@ Every successful result includes a versioned `report` with explicit `exact`,
 is the worst observed semantic category, never an unexplained confidence
 percentage. `rejectedPineConversionReport()` provides the same schema for errors.
 
+Real-world compiler coverage is governed by [`../../pine/provenance.json`](../../pine/provenance.json).
+Only allow-listed, hash-verified entries are test corpus inputs; deterministic
+v4/v6 public-result hashes provide a small reviewable golden compatibility gate.
+
 Internal module responsibilities and invariants are documented in [`src/README.md`](./src/README.md).

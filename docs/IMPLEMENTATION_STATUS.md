@@ -311,6 +311,10 @@ Current: 18 scenarios implemented; the original critical-flow checklist is compl
 - [x] Replace the scattered unsupported-function decision tree with a public ordered registry.
 - [x] Emit a versioned exact/approximation/display-only/rejected evidence report without confidence percentages.
 - [x] Preserve reports through import and render localized summary labels, source lines and remediation.
+- [x] Check byte-stable v4/v6 conversion-result golden hashes.
+- [x] Record source, author, SPDX decision, acquisition date and SHA-256 for every external Pine file.
+- [x] Restrict real-world compiler corpus tests to hash-verified MPL-2.0 samples; keep unknown-license files audit-only.
+- [x] Fail docs CI when Pine provenance, file coverage, license headers or hashes drift.
 
 - [x] Extract AST and public diagnostic types with source-span contracts.
 - [x] Extract semantic scope/symbol/function analysis.

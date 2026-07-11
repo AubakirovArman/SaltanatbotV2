@@ -1,0 +1,12 @@
+[
+  {
+    "name": "v4 legacy RSI indicator",
+    "source": "//@version=4\nstudy(\"Golden RSI\")\nr = rsi(close, 14)\nplot(r)",
+    "sha256": "5e85198e9128117df9d168b4ed52f55cee6335946ac71559647f70bd8b177519"
+  },
+  {
+    "name": "v6 EMA cross strategy",
+    "source": "//@version=6\nstrategy(\"Golden Cross\")\nfast = ta.ema(close, 9)\nslow = ta.ema(close, 21)\nstrategy.entry(\"L\", strategy.long, when=ta.crossover(fast, slow))",
+    "sha256": "3f13d5ae8b0c50bedd957177d62c92d0b1f87b8d35aae00d410d208158f71bb4"
+  }
+]

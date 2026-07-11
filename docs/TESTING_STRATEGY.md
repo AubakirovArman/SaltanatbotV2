@@ -196,6 +196,12 @@ measured baseline; the longer-term targets remain:
 - golden files reviewed like code;
 - large corpora stored separately if they materially slow default CI.
 
+External Pine provenance is enforced by `npm run pine:provenance:check`. The
+manifest must cover every `pine/*.pine` file and match its SHA-256. Only
+allow-listed SPDX entries with preserved headers run in
+`pineGoldenAndExternalCorpus.test.ts`; unknown-license files are audit-only.
+The same suite verifies reviewed byte-level v4/v6 conversion golden hashes.
+
 ## CI tiers
 
 ### Pull request

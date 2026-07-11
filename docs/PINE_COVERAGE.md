@@ -40,6 +40,21 @@ Unsupported function families are defined in the ordered public
 primitives, collections, strings, drawings-as-values, metadata and unknown
 functions each have stable diagnostic codes and remediation.
 
+## External corpus provenance
+
+Real-world samples under [`pine/`](../pine/) have a machine-checked
+`provenance.json` containing the primary publication, author, acquisition date,
+SPDX decision, eligibility and SHA-256. Only the three currently verified
+MPL-2.0 samples participate in external corpus tests. Files without a preserved
+redistribution license are explicitly `LicenseRef-Unknown` and audit-only. CI
+runs `npm run pine:provenance:check` and rejects missing entries, stale hashes,
+unapproved eligible licenses or missing license headers.
+
+Two compact v4/v6 conversion outputs also have checked-in SHA-256 golden records.
+Their complete public result—including language profile, IR, diagnostics, source
+map and fidelity report—must remain byte-stable unless the golden change is
+reviewed as an intentional compatibility change.
+
 **Design guarantee.** The target IR is a per-bar, vectorized, `eval`-free dataflow
 that must run **identically in the browser backtest and the live engine**. Every
 construct that would break that guarantee (look-ahead, other-timeframe data,
