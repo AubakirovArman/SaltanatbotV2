@@ -1,9 +1,17 @@
 import { irToText } from "../irText";
 import { irToBlocklyXml } from "../irToXml";
-import { convertPine, PineConvertError, type PineResult } from "./convert";
+import { convertPine, PineConvertError, type PineResult } from "@saltanatbotv2/pine-compiler";
 import { CYCLES_ANALYSIS_WARNINGS, isCyclesAnalysisSource, warningHeader } from "./compatibility";
-export type { PineAst, PineArg, PineExpr, PineFuncDef, PineStmt } from "./ast";
-export type { PineDiagnostic, SourcePosition, SourceSpan } from "./diagnostics";
+export type {
+  PineArg,
+  PineAst,
+  PineDiagnostic,
+  PineExpr,
+  PineFuncDef,
+  PineStmt,
+  SourcePosition,
+  SourceSpan
+} from "@saltanatbotv2/pine-compiler";
 export { PINE_COMPATIBILITY_REGISTRY, PINE_COMPATIBILITY_SUMMARY, type PineCompatibilityEntry, type PineCompatibilityLevel } from "./generatedCompatibility";
 import { withCyclesAnalysisInputs } from "./cyclesAnalysisPreview";
 

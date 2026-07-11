@@ -53,53 +53,30 @@ Budgets are review signals, not automatic design laws:
 
 ## Pine compiler decomposition
 
-Current facade: `frontend/src/strategy/pine/index.ts`.
+Compiler package: `packages/pine-compiler`.
 
-Target:
+Application import facade: `frontend/src/strategy/pine/index.ts`. It adds Blockly serialization, readable artifact text, compatibility presentation and preview-specific adaptations around the pure package result.
+
+Package structure after the first extraction pass:
 
 ```text
-pine/
-  README.md
-  index.ts                     stable public facade
-  language/
-    versions.ts
-    builtins.ts
-    compatibility.ts
-  lexer/
-    token.ts
-    scanner.ts
-    literals.ts
-  parser/
-    ast.ts
-    expressions.ts
-    statements.ts
-    declarations.ts
-    parser.ts
-  analysis/
-    scope.ts
-    symbols.ts
-    types.ts
-    functions.ts
-    diagnostics.ts
-    resourceBudget.ts
-  normalize/
-    controlFlow.ts
-    state.ts
-    series.ts
-  lowering/
-    context.ts
-    expressions.ts
-    statements.ts
-    indicators.ts
-    drawings.ts
-    strategies.ts
-  blockly/
-    serialize.ts
-    xml.ts
-  tests/
-    fixtures/
-    golden/
+packages/pine-compiler/
+  README.md                    package boundary and verification
+  src/
+    index.ts                   single package entry point
+    lexer.ts                   bounded tokenizer
+    parser.ts                  parser and internal AST
+    ast.ts                     public AST facade
+    diagnostics.ts             stable diagnostic contracts
+    symbolTable.ts             nested semantic scopes
+    convert.ts                 lowering coordinator
+    *Lowering.ts               focused expression/statement modules
+frontend/src/strategy/
+  blocklySerialization/       StrategyIR -> editable Blockly XML
+  pine/                       application facade, compatibility data and temporary re-exports
 ```
+
+The package is physically independent now. A later internal pass may group lexer, parser, analysis and lowering files into subdirectories once that reduces navigation cost without destabilizing imports.
 
 Safe extraction order:
 
@@ -110,7 +87,7 @@ Safe extraction order:
 5. extract statements and strategy calls;
 6. extract drawing conversion;
 7. introduce semantic-analysis and normalization passes;
-8. move the resulting pure compiler into `packages/pine-compiler`.
+8. move the resulting pure compiler into `packages/pine-compiler`. Done; old frontend implementation paths remain compatibility re-exports during caller migration.
 
 `convertPine()` remains the facade throughout. Golden tests must prove identical output after every extraction.
 

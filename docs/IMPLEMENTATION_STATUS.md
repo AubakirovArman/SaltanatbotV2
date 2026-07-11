@@ -233,7 +233,7 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 
 ### Pine compiler
 
-- [ ] Extract AST and public diagnostic types with source spans.
+- [x] Extract AST and public diagnostic types with source-span contracts.
 - [ ] Extract semantic scope/symbol/function analysis.
   - [x] Extract current pure semantic classification helpers from lowering.
   - [x] Introduce explicit nested scopes and typed symbol/function tables.
@@ -258,7 +258,10 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
 - [x] Add a typed compatibility registry and Markdown matrix generated from both Pine corpora.
 - [x] Fail documentation CI when generated compatibility artifacts are stale.
 - [x] Add deterministic parser fuzz, valid-seed mutation and conversion-determinism property tests.
-- [ ] Move the pure compiler into `packages/pine-compiler`.
+- [x] Move the pure compiler into `packages/pine-compiler`.
+  - [x] Give the package one deliberate public entry point and an independent TypeScript check.
+  - [x] Preserve old frontend implementation imports through one-line compatibility facades.
+  - [x] Enforce the browser/UI-free dependency boundary with an architecture test.
 
 ### Strategy and backtest core
 
