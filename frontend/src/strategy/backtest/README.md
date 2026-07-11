@@ -10,6 +10,7 @@ This folder contains browser-side adapters around the runtime-neutral `@saltanat
 - `portfolio.ts` owns pure position opening/closing accounting and emitted trade records.
 - Trading expression evaluation, mutable state, loops, operation budgets and intents belong to `strategy-core`.
 - Historical fills, portfolio accounting and report assembly currently remain behind the stable `../backtest.ts` facade and are extracted incrementally.
+- Every assembled report includes chart and `request.security` data provenance from `backtest-core`; synthetic, fallback, mixed or unknown inputs invalidate performance claims in the UI.
 
 Modules here must remain independent of React and Blockly. User-facing code imports the stable exports from `../backtest.ts`; direct module imports are reserved for focused tests and internal composition.
 

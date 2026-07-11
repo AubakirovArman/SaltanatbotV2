@@ -4,3 +4,4 @@ export * from "./portfolio.js";
 export * from "./warmup.js";
 export * from "./reporting.js";
 export * from "./metrics.js";
+export * from "./provenance.js";

@@ -99,6 +99,8 @@ Avoid pixel snapshots for every candle. Use semantic renderer assertions for log
 
 ## Backtest invariants
 
+Every result records chart and `request.security` candle provenance. Only fully labelled real-provider data validates performance claims; synthetic, fallback, mixed and unknown inputs must remain visibly labelled in the report.
+
 - no fill before a signal is actionable;
 - `next_open` never uses the signalling close as its fill;
 - stops are pessimistic when stop and target touch in one unknown-path bar;

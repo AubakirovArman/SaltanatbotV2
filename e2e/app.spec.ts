@@ -114,6 +114,8 @@ test("runs a backtest and exposes assumptions and metrics", async ({ page }) => 
   await expect(report).toBeVisible({ timeout: 30_000 });
   await expect(report).toContainText("Net profit");
   await expect(report).toContainText(/next-open fills/i);
+  await expect(report).toContainText(/Data fallback/i);
+  await expect(report.getByRole("alert")).toContainText(/Performance claims are not valid/i);
   await expect(report).toContainText("Trades");
 });
 

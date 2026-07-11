@@ -1,4 +1,5 @@
 import type { Candle } from "../../types";
+import { buildBacktestDataProvenance } from "@saltanatbotv2/backtest-core";
 import {
   createStrategyRuntime,
   evaluateStrategyBar,
@@ -284,6 +285,7 @@ export function runBacktest(ir: StrategyIR, candles: Candle[], config: BacktestC
     metrics: computeBacktestMetrics(trades, measured, config, barsInMarket, measured.length, candles, liquidated, fundingPaid),
     tested,
     varTrace: variableTrace.result(),
-    eventTrace
+    eventTrace,
+    provenance: buildBacktestDataProvenance(candles, securityData)
   };
 }

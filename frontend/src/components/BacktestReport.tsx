@@ -42,6 +42,12 @@ export function BacktestReport({ result, decimals, config, onShowOnChart }: Back
         </div>
       )}
 
+      {!result.provenance.performanceClaimsValid && (
+        <div className="strategy-warnings provenance-warning" role="alert">
+          <span>{provenanceWarning(result.provenance.status)}</span>
+        </div>
+      )}
+
       <div className="metric-grid">
         <Metric label="Net profit" value={`${positive ? "+" : ""}${metrics.netProfit.toFixed(2)}`} tone={positive ? "up" : "down"} sub={`${metrics.netProfitPct.toFixed(2)}%`} />
         <Metric label="Win rate" value={`${metrics.winRate.toFixed(1)}%`} sub={`${metrics.wins}/${metrics.totalTrades}`} />
@@ -102,6 +108,9 @@ function AssumptionsBar({ result, tested, config }: { result: BacktestResult; te
       </span>
       <span>{fmtRange(tested.fromTime, tested.toTime)}</span>
       <span>Fee {fee}% · slip {slip}% · {lev}x max · {timing === "next_open" ? "next-open fills" : "close fills"}{funding !== 0 ? ` · funding ${funding}%/8h` : ""}</span>
+      <span title={provenanceDetails(result)}>
+        Data {result.provenance.status} · {fmt0(result.provenance.chartBars)} chart{result.provenance.securityBars > 0 ? ` · ${fmt0(result.provenance.securityBars)} security` : ""}
+      </span>
       {result.warnings.length > 0 && (
         <span className="warn-count" title={result.warnings.slice(-6).map((w) => w.message).join("\n")}>
           {result.warnings.length} warning{result.warnings.length === 1 ? "" : "s"}
@@ -109,6 +118,23 @@ function AssumptionsBar({ result, tested, config }: { result: BacktestResult; te
       )}
     </div>
   );
+}
+
+function provenanceWarning(status: BacktestResult["provenance"]["status"]): string {
+  if (status === "fallback") {
+    return "Synthetic or fallback market data was used. Performance claims are not valid for this run.";
+  }
+  if (status === "mixed") {
+    return "Mixed or partially unverified market data was used. Performance claims are not valid for this run.";
+  }
+  return "Market-data provenance is unknown. Performance claims are not valid for this run.";
+}
+
+function provenanceDetails(result: BacktestResult): string {
+  if (result.provenance.sources.length === 0) return "No candle sources were recorded";
+  return result.provenance.sources
+    .map((source) => `${source.scope}: ${source.source} (${fmt0(source.bars)} bars, ${source.kind})`)
+    .join("\n");
 }
 
 function MonteCarloPanel({ mc, initial }: { mc: MonteCarloStats; initial: number }) {

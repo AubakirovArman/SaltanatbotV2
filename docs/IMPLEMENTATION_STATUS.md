@@ -287,7 +287,11 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Add JSON-safe StrategyBarTrace v1 intents with fixed semantic ordering.
   - [x] Check one golden fixture through preview, backtest and the evaluator used by paper/live.
   - [ ] Extend traces with expression/variable explanations, fill decisions, position/equity transitions, warnings and provenance.
-- [ ] Add missing/fallback-data provenance to every report.
+- [x] Add missing/fallback-data provenance to every report.
+  - [x] Aggregate source labels across chart and `request.security` candles in `backtest-core`.
+  - [x] Treat synthetic, routed fallback, mixed and unlabelled inputs as invalid for performance claims.
+  - [x] Surface status, bar counts, source details and an accessible warning in every backtest report.
+  - [x] Cover real, fallback, mixed, external-series and browser-report paths.
 
 ### Frontend decomposition
 

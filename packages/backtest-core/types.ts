@@ -1,4 +1,5 @@
 import type { StrategyBarTrace } from "@saltanatbotv2/strategy-core";
+import type { BacktestDataProvenance } from "./provenance.js";
 
 /** Runtime-neutral backtest result and configuration contracts. */
 export interface BacktestConfig {
@@ -83,4 +84,6 @@ export interface BacktestResult {
   varTrace?: { time: number; vars: Record<string, number> }[];
   /** Versioned evaluator intents for parity/debugging across runtime layers. */
   eventTrace: StrategyBarTrace[];
+  /** Complete primary/external candle-source summary for this run. */
+  provenance: BacktestDataProvenance;
 }
