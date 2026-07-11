@@ -231,7 +231,8 @@ Current: 17 scenarios implemented; the original critical-flow checklist is compl
   - [x] Pause resumed trading when an unresolved result cannot be proven from exchange state.
   - [ ] Model partial fill, cancel, expire and replace transitions explicitly.
 - [ ] Add private fill/order stream with polling fallback.
-- [ ] Confirm exchange-side protection before protected state.
+- [x] Require explicit Binance/Bybit SL/TP acknowledgement before protected runtime state.
+- [x] Fail the entry result and issue a best-effort emergency close when requested SL or TP is rejected.
 - [ ] Complete startup reconciliation for every in-flight state.
 - [ ] Complete spot inventory accounting or keep live spot disabled.
 - [ ] Add fake-exchange conformance and failure-injection suites.

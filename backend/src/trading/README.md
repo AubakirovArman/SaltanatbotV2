@@ -19,6 +19,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - Every order attempt has an idempotent client identifier and durable lifecycle events.
 - An adapter transport failure is persisted as `unknown`, never silently left as `intent`.
 - Live entry is not considered protected until exchange-side protection is confirmed.
+- A rejected SL or TP triggers a best-effort emergency close and a failed execution result.
 - Reconciliation completes before a resumed live bot can become running.
 - Unresolved journal rows are matched by venue/client id; ambiguous absences pause trading for operator review.
 - Paper is the default; live requires explicit global and per-bot authorization.

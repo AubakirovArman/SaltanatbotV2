@@ -215,6 +215,8 @@ export interface ExecResult {
   ok: boolean;
   message: string;
   fills: FillRecord[];
+  /** Exchange-side SL/TP acknowledgement for an entry that requested protection. */
+  protection?: { requested: boolean; confirmed: boolean; message?: string };
   order?: OrderRecord;
   orders?: PendingOrder[];
   position?: PositionState | null;

@@ -93,6 +93,7 @@ export class OrderLifecycle {
         status: next.status,
         ok: result.ok,
         message: result.message,
+        protection: result.protection,
         order: result.order,
         position: result.position,
         account: result.account,

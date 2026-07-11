@@ -607,19 +607,26 @@ export class TradingEngine {
       }
 
       const result = await this.executeOrder(bot, order, bot.buffer.at(-1)?.time);
+      const protectionConfirmed = !exchangeManaged || result.protection?.confirmed === true;
       if (result.ok) {
         // When the exchange holds the SL/TP, don't also manage them locally (avoids double-close).
         const entryTime = bot.buffer[index]?.time ?? bot.buffer.at(-1)?.time ?? 0;
-        bot.managed = exchangeManaged
+        bot.managed = exchangeManaged && protectionConfirmed
           ? { side: dir, entry: bot.price, qty, entryTime }
           : { side: dir, entry: bot.price, qty, entryTime, stop, target, trail: intents.trail };
+        if (!protectionConfirmed) {
+          this.pauseBot(bot, "Exchange accepted the entry without confirming requested protection; trading is paused for operator review.");
+          this.log(bot.config.id, "error", bot.pauseReason ?? "Exchange protection was not confirmed.");
+        }
         this.persistState(bot);
       } else {
         this.log(bot.config.id, "error", `Open failed: ${result.message}`);
       }
       this.applyResult(bot, result, "signal:entry");
-      if (result.ok) {
+      if (result.ok && protectionConfirmed) {
         await notify({ event: "open", bot: bot.config.name, symbol: bot.config.symbol, text: `Opened ${dir.toUpperCase()} ${round(qty)} @ ${round(price)}${stop ? ` · SL ${round(stop)}` : ""}${target ? ` · TP ${round(target)}` : ""}` });
+      } else if (result.ok) {
+        await notify({ event: "error", bot: bot.config.name, symbol: bot.config.symbol, text: "Entry protection was not confirmed; trading paused." });
       }
     } finally {
       bot.orderInFlight = false;

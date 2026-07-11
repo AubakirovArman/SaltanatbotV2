@@ -142,10 +142,12 @@ export class BybitAdapter implements ExchangeAdapter {
           ok: false,
           message: `Protection rejected (${message}) — entry closed for safety`,
           fills: [],
+          protection: { requested: true, confirmed: false, message },
           position: await this.position(order.symbol).catch(() => null),
           account: await this.account().catch(() => undefined)
         };
       }
+      return { ok: true, message: `Placed ${order.type} ${order.side} ${qty} ${order.symbol}`, fills: [], protection: { requested: true, confirmed: true }, position: await this.position(order.symbol), account: await this.account() };
     }
     return { ok: true, message: `Placed ${order.type} ${order.side} ${qty} ${order.symbol}`, fills: [], position: await this.position(order.symbol), account: await this.account() };
   }
