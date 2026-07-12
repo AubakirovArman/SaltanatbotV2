@@ -10,6 +10,7 @@ interface SharedSocketResource {
   url: string;
   socket: WebSocket;
   clients: Set<SharedSocketClient>;
+  lastMessage?: MessageEvent;
 }
 
 type WebSocketFactory = (url: string) => WebSocket;
@@ -42,7 +43,9 @@ export class SharedWebSocketPool {
 
     if (resource.socket.readyState === OPEN) {
       queueMicrotask(() => {
-        if (resource.socket.readyState === OPEN && resource.clients.has(client)) client.onopen?.(new Event("open"));
+        if (resource.socket.readyState !== OPEN || !resource.clients.has(client)) return;
+        client.onopen?.(new Event("open"));
+        if (resource.lastMessage) client.onmessage?.(resource.lastMessage);
       });
     }
     return client;
@@ -65,7 +68,10 @@ export class SharedWebSocketPool {
     const socket = this.createSocket(url);
     const resource: SharedSocketResource = { url, socket, clients: new Set() };
     socket.onopen = (event) => this.broadcast(resource, "onopen", event);
-    socket.onmessage = (event) => this.broadcast(resource, "onmessage", event);
+    socket.onmessage = (event) => {
+      resource.lastMessage = event;
+      this.broadcast(resource, "onmessage", event);
+    };
     socket.onerror = (event) => this.broadcast(resource, "onerror", event);
     socket.onclose = (event) => {
       if (this.resources.get(url) === resource) this.resources.delete(url);

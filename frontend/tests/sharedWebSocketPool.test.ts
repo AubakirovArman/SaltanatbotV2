@@ -59,8 +59,9 @@ describe("SharedWebSocketPool", () => {
 
     const late = pool.connect("ws://local/stream?symbol=BTCUSDT");
     late.onopen = () => events.push("late-open");
+    late.onmessage = (event) => events.push(`late:${event.data}`);
     await Promise.resolve();
-    expect(events.at(-1)).toBe("late-open");
+    expect(events.slice(-2)).toEqual(["late-open", "late:tick"]);
 
     first.close();
     second.close();

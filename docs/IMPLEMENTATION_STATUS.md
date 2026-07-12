@@ -22,7 +22,7 @@ This is the execution ledger. It records what is proven complete, what is active
 
 Verification:
 
-- Complete TypeScript, Biome, documentation, architecture, Vitest, production build, bundle-budget and 21-scenario Playwright gates pass.
+- Complete TypeScript, Biome, documentation, architecture, Vitest, production build, bundle-budget and 44-scenario Playwright gates pass.
 - The funded 7–14-day Binance/Bybit soak and mainnet-readiness claim remain explicitly excluded.
 
 ### Accessibility and open-source release baseline — 2026-07-11
@@ -76,7 +76,7 @@ Verification:
 Verification:
 
 - Workspace/checksum, virtual-list, data-quality, shortcut, drawing-template, pane-render and resize tests pass.
-- Production build and the 21-scenario Playwright suite pass (the funded exchange soak remains excluded).
+- Production build and the 44-scenario Playwright suite pass (the funded exchange soak remains excluded).
 
 ### Runtime backup and recovery — 2026-07-11
 
@@ -346,7 +346,7 @@ Verification:
 
 ### Critical browser E2E expansion
 
-Current: 21 scenarios implemented; the critical-flow and accessibility checklists are complete.
+Current: 44 scenarios implemented; the critical-flow and accessibility checklists are complete.
 
 - [x] Terminal/chart smoke.
 - [x] Keyboard command palette and symbol switch.

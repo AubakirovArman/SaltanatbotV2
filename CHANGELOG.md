@@ -5,6 +5,12 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Continuous verification
+
+- Made the complete production-build Playwright Chromium suite a required GitHub Actions job on every push and pull request, closing the gap where browser journeys were verified locally but did not block a remote regression.
+- Added seven-day failure-only workflow artifacts containing the HTML report, traces, screenshots and videos, while keeping exchange credentials and all mainnet/testnet access outside generic CI.
+- Fixed late chart panes on a shared market WebSocket by replaying the latest bounded stream message after their synthetic open event, preventing an added same-market pane from remaining in a loading state after the initial snapshot.
+
 ### Precision chart experience
 
 - Made every Canvas layer Retina/HiDPI-correct: backing stores now follow CSS size × device-pixel ratio while renderers, pointers, wheel gestures, overlays and the price HUD share one CSS-pixel coordinate space.

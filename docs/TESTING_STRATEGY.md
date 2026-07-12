@@ -223,10 +223,16 @@ The same suite verifies reviewed byte-level v4/v6 conversion golden hashes.
 ### Pull request
 
 - check, lint, unit, component, contract;
-- Chromium critical E2E;
+- the complete production-build Chromium E2E suite in the required `end-to-end (Chromium)` CI job;
+- a seven-day Playwright report/trace/screenshot/video artifact when that browser job fails;
 - changed visual snapshots;
 - dependency and secret scan;
 - documentation link check.
+
+The generic browser gate runs with the deterministic local demo feed and a disposable test-only
+authentication token. It never receives exchange credentials and must not contact mainnet or an
+exchange testnet. Authenticated exchange checks remain isolated in the manually dispatched,
+protected workflow described below.
 
 ### Nightly
 
