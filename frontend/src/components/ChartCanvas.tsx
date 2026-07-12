@@ -13,6 +13,7 @@ import { CompareControl } from "./CompareControl";
 import { DrawingObjectsPanel } from "./DrawingObjectsPanel";
 import { ChartDrawingToolbar } from "./chartCanvas/ChartDrawingToolbar";
 import { OrderBookHeatmapLayer } from "./chartCanvas/OrderBookHeatmapLayer";
+import { TradeFootprintLayer } from "./chartCanvas/TradeFootprintLayer";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
 import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
@@ -82,6 +83,7 @@ export function ChartCanvas({
   const [showVolume, setShowVolume] = useState(true);
   const [showVolumeProfile, setShowVolumeProfile] = useState(true);
   const [showOrderBookHeatmap, setShowOrderBookHeatmap] = useState(false);
+  const [showTradeFootprint, setShowTradeFootprint] = useState(false);
   const [showArtifactSettings, setShowArtifactSettings] = useState(false);
   const [showDrawingObjects, setShowDrawingObjects] = useState(false);
   const [, setHistoryVersion] = useState(0);
@@ -288,6 +290,7 @@ export function ChartCanvas({
         showVolume={showVolume}
         showVolumeProfile={showVolumeProfile}
         showOrderBookHeatmap={showOrderBookHeatmap && orderBookAvailable}
+        showTradeFootprint={showTradeFootprint && orderBookAvailable}
         orderBookAvailable={orderBookAvailable}
         showObjects={showDrawingObjects}
         hasDrawings={drawings.length > 0}
@@ -296,6 +299,7 @@ export function ChartCanvas({
         onToggleVolume={() => setShowVolume((value) => !value)}
         onToggleVolumeProfile={() => setShowVolumeProfile((value) => !value)}
         onToggleOrderBookHeatmap={() => setShowOrderBookHeatmap((value) => !value)}
+        onToggleTradeFootprint={() => setShowTradeFootprint((value) => !value)}
         onToggleObjects={() => setShowDrawingObjects((value) => !value)}
         onDeleteAll={() => {
           if (drawings.length > 0 && !window.confirm(t("deleteDrawingsConfirm"))) return;
@@ -399,6 +403,7 @@ export function ChartCanvas({
           renderKey={heatmapRenderKey}
         />
         <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
+        <TradeFootprintLayer enabled={showTradeFootprint && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} viewportRef={viewportRef} renderKey={heatmapRenderKey} />
         <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />
         <canvas ref={overlaysCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-overlays" aria-hidden="true" />
         <canvas

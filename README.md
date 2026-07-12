@@ -43,6 +43,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - Chart types: **candles, hollow candles, Heikin-Ashi, bars, line, step line, area, baseline and renko**. Ten timeframes from **1m to 1M**.
 - OHLCV-estimated visible-range Volume Profile (VPVR) with directional volume, Point of Control and a contiguous 70% value area.
 - Real Binance/Bybit public top-20 order-book heatmap with a shared backend upstream, 60-second liquidity history and explicit reconnect/stale states.
+- Real-time Binance/Bybit trade footprint with candle/price-level aggressor cells, quote-notional delta bars and a cumulative-delta line; no synthetic prints or reconstructed history.
 - Indicators: **SMA, EMA, Bollinger, RSI, MACD, VWAP, ATR, Stochastic, OBV** and arrow **signal** overlays (e.g. EMA crossovers).
 - **Price alerts** (browser notification + sound), **symbol compare** overlay, crosshair with OHLC legend, volume histogram, drawing tools, and **lazy-loaded history** on scroll-back.
 - Watchlist with **favorites** and **%-change sorting**; **saved workspaces** (named chart layouts); overlay a saved strategy directly on the chart with its **plotted indicator lines**, **buy/sell signal points** and simulated trades.

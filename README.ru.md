@@ -18,7 +18,7 @@ SaltanatbotV2 — ранняя alpha-версия самостоятельной
 
 Основные возможности:
 
-- собственный Canvas-график со свечами, Heikin-Ashi, барами, линиями, area, baseline и renko;
+- собственный Canvas-график со свечами, Heikin-Ashi, барами, линиями, area, baseline и renko, а также VPVR, тепловой картой стакана и живым trade footprint/CVD;
 - Binance и Bybit market data с REST-историей и WebSocket-обновлениями;
 - визуальный Blockly-конструктор индикаторов и стратегий;
 - импорт поддерживаемого подмножества Pine Script v4–v6 в редактируемые блоки;

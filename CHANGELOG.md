@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added a real Binance/Bybit public-trade footprint that groups exchange-reported aggressor prints by candle and visible price row, plus quote-notional delta bars and a cumulative-delta line.
+- Added a shared bounded `/trade-flow` backend stream, strict runtime contracts, explicit lifecycle states and off-screen/background suspension without fabricated historical prints.
 - Added a real public Binance/Bybit top-20 order-book heatmap with one shared upstream per market, bounded four-Hz browser snapshots and a 60-second liquidity trail aligned to the chart price scale.
 - Added explicit connecting/reconnecting/stale/error states, background-tab stream pausing, sequence-aware Bybit snapshot/delta handling and no synthetic depth fallback.
 - Added an explicitly labelled OHLCV-estimated visible-range Volume Profile with range-weighted volume distribution, up/down composition, Point of Control and a contiguous 70% value area.

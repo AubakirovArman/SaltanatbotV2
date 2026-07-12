@@ -17,5 +17,11 @@ export type {
   SnapshotMessage,
   StreamMessage,
   StreamStatus,
-  Timeframe
+  Timeframe,
+  TradeFlowBatchMessage,
+  TradeFlowSide,
+  TradeFlowStatus,
+  TradeFlowStatusMessage,
+  TradeFlowStreamMessage,
+  TradeFlowTrade
 } from "@saltanatbotv2/contracts";

@@ -22,6 +22,7 @@ const sockets = [
   { path: "/stream", access: "Public", purpose: "Market candle snapshot and updates" },
   { path: "/quotes", access: "Public", purpose: "Multiplexed watchlist quote snapshots and updates" },
   { path: "/orderbook", access: "Public", purpose: "Shared Binance/Bybit order-book snapshots and status" },
+  { path: "/trade-flow", access: "Public", purpose: "Shared Binance/Bybit aggressor-trade batches and status" },
   { path: "/trade-stream", access: "One-time authenticated WebSocket ticket", purpose: "Bot, order, fill and runtime updates" }
 ];
 const blocks = extractBlocks(blocksSource);

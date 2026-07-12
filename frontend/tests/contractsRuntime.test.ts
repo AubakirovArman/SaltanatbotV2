@@ -6,6 +6,7 @@ import {
   parseQuoteStreamMessage,
   parseSparklinesResponse,
   parseStreamMessage,
+  parseTradeFlowStreamMessage,
 } from "@saltanatbotv2/contracts";
 
 const instrument = {
@@ -69,6 +70,14 @@ describe("runtime market contracts", () => {
       type: "orderbook_status", symbol: "BTCUSDT", exchange: "bybit",
       status: "stale", message: "waiting", ts: 7
     })).toMatchObject({ type: "orderbook_status", status: "stale" });
+    expect(parseTradeFlowStreamMessage({
+      type: "trade_flow", symbol: "BTCUSDT", exchange: "binance", ts: 8,
+      trades: [{ id: "42", price: 100, size: 2, side: "buy", exchangeTs: 7 }]
+    })).toMatchObject({ type: "trade_flow", trades: [{ id: "42", side: "buy" }] });
+    expect(parseTradeFlowStreamMessage({
+      type: "trade_flow_status", symbol: "BTCUSDT", exchange: "bybit",
+      status: "connected", message: "ready", ts: 9
+    })).toMatchObject({ type: "trade_flow_status", status: "connected" });
   });
 
   it("rejects unknown variants, inconsistent OHLC and unsupported enums", () => {
@@ -90,5 +99,9 @@ describe("runtime market contracts", () => {
       type: "orderbook", symbol: "BTCUSDT", exchange: "binance",
       bids: [[100, 0]], asks: [], sequence: 1, exchangeTs: 1, ts: 1
     })).toThrow(/values must be positive/);
+    expect(() => parseTradeFlowStreamMessage({
+      type: "trade_flow", symbol: "BTCUSDT", exchange: "binance", ts: 1,
+      trades: [{ id: "1", price: 100, size: 1, side: "maker", exchangeTs: 1 }]
+    })).toThrow(/side is unsupported/);
   });
 });

@@ -124,6 +124,36 @@ export interface OrderBookStatusMessage {
 
 export type OrderBookStreamMessage = OrderBookSnapshotMessage | OrderBookStatusMessage | ErrorMessage;
 
+export type TradeFlowSide = "buy" | "sell";
+export type TradeFlowStatus = "connecting" | "connected" | "reconnecting" | "stale" | "error";
+
+export interface TradeFlowTrade {
+  id: string;
+  price: number;
+  size: number;
+  side: TradeFlowSide;
+  exchangeTs: number;
+}
+
+export interface TradeFlowBatchMessage {
+  type: "trade_flow";
+  symbol: string;
+  exchange: DataExchange;
+  trades: TradeFlowTrade[];
+  ts: number;
+}
+
+export interface TradeFlowStatusMessage {
+  type: "trade_flow_status";
+  symbol: string;
+  exchange: DataExchange;
+  status: TradeFlowStatus;
+  message: string;
+  ts: number;
+}
+
+export type TradeFlowStreamMessage = TradeFlowBatchMessage | TradeFlowStatusMessage | ErrorMessage;
+
 export interface ErrorMessage {
   type: "error";
   message: string;
@@ -352,6 +382,47 @@ export function parseOrderBookStreamMessage(value: unknown): OrderBookStreamMess
     };
   }
   throw new Error(`Unsupported order book stream message type: ${type}`);
+}
+
+export function parseTradeFlowStreamMessage(value: unknown): TradeFlowStreamMessage {
+  const input = record(value, "trade flow stream message");
+  const type = string(input.type, "trade flow stream message.type");
+  const ts = finite(input.ts, "trade flow stream message.ts");
+  if (ts < 0) throw new Error("trade flow stream message.ts must be non-negative");
+  if (type === "error") return { type, message: string(input.message, "trade flow stream message.message"), ts };
+  const symbol = string(input.symbol, "trade flow stream message.symbol");
+  const exchange = parseExchange(input.exchange, "trade flow stream message.exchange");
+  if (type === "trade_flow_status") {
+    const status = string(input.status, "trade flow stream message.status");
+    if (status !== "connecting" && status !== "connected" && status !== "reconnecting" && status !== "stale" && status !== "error") {
+      throw new Error("trade flow stream message.status is unsupported");
+    }
+    return { type, symbol, exchange, status, message: string(input.message, "trade flow stream message.message"), ts };
+  }
+  if (type === "trade_flow") {
+    if (!Array.isArray(input.trades)) throw new Error("trade flow message.trades must be an array");
+    if (input.trades.length > 500) throw new Error("trade flow message exceeds the 500-trade batch limit");
+    return {
+      type,
+      symbol,
+      exchange,
+      trades: input.trades.map((value, index) => parseTradeFlowTrade(value, `trades[${index}]`)),
+      ts
+    };
+  }
+  throw new Error(`Unsupported trade flow stream message type: ${type}`);
+}
+
+function parseTradeFlowTrade(value: unknown, label: string): TradeFlowTrade {
+  const input = record(value, label);
+  const price = finite(input.price, `${label}.price`);
+  const size = finite(input.size, `${label}.size`);
+  const exchangeTs = finite(input.exchangeTs, `${label}.exchangeTs`);
+  const side = string(input.side, `${label}.side`);
+  if (price <= 0 || size <= 0) throw new Error(`${label} price and size must be positive`);
+  if (exchangeTs < 0) throw new Error(`${label}.exchangeTs must be non-negative`);
+  if (side !== "buy" && side !== "sell") throw new Error(`${label}.side is unsupported`);
+  return { id: string(input.id, `${label}.id`), price, size, side, exchangeTs };
 }
 
 function parseOrderBookLevel(value: unknown, label: string): OrderBookLevel {

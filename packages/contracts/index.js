@@ -234,6 +234,52 @@ export function parseOrderBookStreamMessage(value) {
     }
     throw new Error(`Unsupported order book stream message type: ${type}`);
 }
+export function parseTradeFlowStreamMessage(value) {
+    const input = record(value, "trade flow stream message");
+    const type = string(input.type, "trade flow stream message.type");
+    const ts = finite(input.ts, "trade flow stream message.ts");
+    if (ts < 0)
+        throw new Error("trade flow stream message.ts must be non-negative");
+    if (type === "error")
+        return { type, message: string(input.message, "trade flow stream message.message"), ts };
+    const symbol = string(input.symbol, "trade flow stream message.symbol");
+    const exchange = parseExchange(input.exchange, "trade flow stream message.exchange");
+    if (type === "trade_flow_status") {
+        const status = string(input.status, "trade flow stream message.status");
+        if (status !== "connecting" && status !== "connected" && status !== "reconnecting" && status !== "stale" && status !== "error") {
+            throw new Error("trade flow stream message.status is unsupported");
+        }
+        return { type, symbol, exchange, status, message: string(input.message, "trade flow stream message.message"), ts };
+    }
+    if (type === "trade_flow") {
+        if (!Array.isArray(input.trades))
+            throw new Error("trade flow message.trades must be an array");
+        if (input.trades.length > 500)
+            throw new Error("trade flow message exceeds the 500-trade batch limit");
+        return {
+            type,
+            symbol,
+            exchange,
+            trades: input.trades.map((value, index) => parseTradeFlowTrade(value, `trades[${index}]`)),
+            ts
+        };
+    }
+    throw new Error(`Unsupported trade flow stream message type: ${type}`);
+}
+function parseTradeFlowTrade(value, label) {
+    const input = record(value, label);
+    const price = finite(input.price, `${label}.price`);
+    const size = finite(input.size, `${label}.size`);
+    const exchangeTs = finite(input.exchangeTs, `${label}.exchangeTs`);
+    const side = string(input.side, `${label}.side`);
+    if (price <= 0 || size <= 0)
+        throw new Error(`${label} price and size must be positive`);
+    if (exchangeTs < 0)
+        throw new Error(`${label}.exchangeTs must be non-negative`);
+    if (side !== "buy" && side !== "sell")
+        throw new Error(`${label}.side is unsupported`);
+    return { id: string(input.id, `${label}.id`), price, size, side, exchangeTs };
+}
 function parseOrderBookLevel(value, label) {
     if (!Array.isArray(value) || value.length !== 2)
         throw new Error(`${label} must be a [price, size] tuple`);

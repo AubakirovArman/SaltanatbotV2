@@ -25,6 +25,14 @@ VPVR `EST` деп белгіленеді: OHLCV candle тек жалпы volume 
 Frontend тек same-origin `/orderbook` арнасына қосылады. Backend бір market үшін бір upstream-ды барлық клиентке ортақ пайдаланады, browser snapshot жиілігін секундына төртпен және әртүрлі белсенді кітаптарды 32-мен шектейді; баяу client send buffer шексіз өспей тұрып ажыратылады. Соңғы клиент кеткенде upstream жабылады. Жасырылған tab-та stream pause болады; reconnect, stale және error күйлері ашық көрсетіледі. Synthetic стакан жасалмайды.
 
 Дереккөздер: [Binance WebSocket Streams](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams), [Bybit Orderbook](https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook).
+
+## Footprint және мәміле дельтасы
+
+**Live trade footprint** батырмасы Binance немесе Bybit-тің нақты public print-терін қосады. Әр candle көрінетін price row-ларға бөлінеді: қызыл жартысы aggressive sell номиналын, жасыл жартысы aggressive buy номиналын көрсетеді. Zoom жеткілікті болса, жолдың ішінде `sell × buy` мәндері жазылады. Төменгі жолақта candle delta бағандары мен көк cumulative-delta сызығы бар. Badge-тегі `Δ %` формуласы: `(buy − sell) / (buy + sell)`.
+
+Frontend тек батырма қосылғаннан кейінгі жаңа мәмілелерді same-origin `/trade-flow` арқылы алады. Backend бір market үшін бір upstream пайдаланады, print-терді 100 мс batch-ке біріктіреді, бір хабарды 500 trade-пен және жалпы stream санын 32-мен шектейді. Reconnect жаңа observation window бастайды: жоқ history ойдан жасалмайды және OHLCV estimate-пен алмастырылмайды. Tab жасырылса немесе browser component render-ін өткізіп жіберсе, WebSocket пен Canvas pause болады.
+
+Side баға қозғалысынан болжанбайды: Binance-та `m=true` aggressive sell дегенді білдіреді, Bybit-та `S` taker side-ты тікелей береді. Дереккөздер: [Binance Aggregate Trade Streams](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#aggregate-trade-streams), [Bybit Public Trade](https://bybit-exchange.github.io/docs/v5/websocket/public/trade).
 - **Қосу** мәзірі кірістірілген және пайдаланушы индикаторларын басқарады.
 - **Салыстыру** үш символға дейін қосады.
 - `Ctrl+K` (`⌘K`) command palette ашады; `Enter` орындайды, `Esc` жабады.

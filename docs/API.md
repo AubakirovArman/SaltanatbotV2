@@ -1,6 +1,6 @@
 # HTTP & WebSocket API reference
 
-SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote/order-book streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and four WebSocket endpoints are exposed at `/stream`, `/quotes`, `/orderbook` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
+SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote/order-book/trade-flow streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and five WebSocket endpoints are exposed at `/stream`, `/quotes`, `/orderbook`, `/trade-flow` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
 
 Public market catalog, candle, sparkline and WebSocket payloads have canonical TypeScript contracts
 plus fail-closed runtime parsers in `packages/contracts`. The frontend validates untrusted JSON at
@@ -11,7 +11,7 @@ The generated [API endpoint index](./API_ENDPOINTS.generated.md) is the route-pr
 
 - Base URL (default): `http://localhost:4180`
 - Content type: `application/json`
-- Validation: query parameters on `/api/candles`, `/api/sparklines`, `/stream`, `/quotes` and `/orderbook` are validated with [zod](https://zod.dev); invalid HTTP input returns `400`, while invalid WebSocket input receives a typed error and closes.
+- Validation: query parameters on `/api/candles`, `/api/sparklines`, `/stream`, `/quotes`, `/orderbook` and `/trade-flow` are validated with [zod](https://zod.dev); invalid HTTP input returns `400`, while invalid WebSocket input receives a typed error and closes.
 
 ## Trading auth
 
@@ -423,6 +423,34 @@ An `orderbook` message is a complete browser-facing snapshot, not a delta. `bids
 ```
 
 All variants are bounded and validated by `parseOrderBookStreamMessage`. Status values are `connecting`, `connected`, `reconnecting`, `stale` and `error`. A generic typed `error` closes invalid or unsupported requests.
+
+---
+
+## Public trade-flow WebSocket: `/trade-flow`
+
+Streams real public exchange prints for a crypto symbol. Query parameters are `symbol` and `exchange=binance|bybit`.
+
+```text
+ws://localhost:4180/trade-flow?symbol=BTCUSDT&exchange=binance
+```
+
+One exchange upstream is shared per `exchange:symbol`. Prints are microbatched for 100 ms and each browser message is capped at 500 trades; at most 32 distinct flows can be active. A client whose send buffer exceeds 512 KiB is closed with code `1013`. No API key, authenticated fill, synthetic print or reconstructed historical footprint enters this stream.
+
+`trade_flow_status` exposes `connecting`, `connected`, `reconnecting`, `stale` and `error`. A `trade_flow` message carries the exchange-reported aggressor side:
+
+```json
+{
+  "type": "trade_flow",
+  "symbol": "BTCUSDT",
+  "exchange": "binance",
+  "trades": [
+    { "id": "31245001", "price": 64008.84, "size": 0.125, "side": "buy", "exchangeTs": 1751932800100 }
+  ],
+  "ts": 1751932800120
+}
+```
+
+For Binance, `m=true` means the buyer was the maker and is normalized to an aggressive `sell`. Bybit's `S` is already the taker side and maps directly. All variants are validated by `parseTradeFlowStreamMessage`; prices and sizes must be positive and a batch cannot exceed 500 trades. See the official [Binance aggregate trade stream](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#aggregate-trade-streams) and [Bybit public trade stream](https://bybit-exchange.github.io/docs/v5/websocket/public/trade).
 
 ---
 

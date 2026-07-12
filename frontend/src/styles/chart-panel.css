@@ -471,6 +471,52 @@
 .orderbook-heatmap-badge.error span { color: var(--down); }
 .orderbook-heatmap-badge small { color: var(--dim); }
 
+.trade-footprint-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
+}
+
+.trade-footprint-canvas {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.trade-footprint-badge {
+  position: absolute;
+  inset-block-start: 78px;
+  inset-inline-start: 58px;
+  z-index: 5;
+  min-inline-size: 124px;
+  display: grid;
+  gap: 1px;
+  padding: 4px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 91%, transparent);
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-footprint-badge strong {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+}
+
+.trade-footprint-badge.connected > span { color: var(--up); }
+.trade-footprint-badge:is(.reconnecting, .stale) > span { color: var(--warn); }
+.trade-footprint-badge.error > span { color: var(--down); }
+.trade-footprint-badge .up { color: var(--up); }
+.trade-footprint-badge .down { color: var(--down); }
+.trade-footprint-badge small { color: var(--dim); }
+
 .chart-canvas-interaction {
   position: absolute;
   inset: 0;

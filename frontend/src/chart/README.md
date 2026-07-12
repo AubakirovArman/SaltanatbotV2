@@ -18,6 +18,8 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `volumeProfile.ts` and `renderers/volumeProfile.ts`: visible-range volume-at-price calculation, POC/value-area selection and Canvas rendering.
 - `orderBookHeatmap.ts`: screen-row aggregation, notional intensity and spread math for real depth frames.
 - `../components/chartCanvas/OrderBookHeatmapLayer.tsx`: independently scheduled Canvas/WebSocket layer with 60-second history, stale detection and background-tab pausing.
+- `tradeFootprint.ts`: pure candle/price-row aggregation and quote-notional delta math for real public prints.
+- `../components/chartCanvas/TradeFootprintLayer.tsx`: isolated Canvas/WebSocket footprint and cumulative-delta layer with bounded retention and off-screen suspension.
 - `../components/chartCanvas/ChartPriceHud.tsx`: DOM current-price/countdown pill and crosshair OHLC HUD.
 - `../components/ChartDataPanel.tsx`: bounded semantic tables for the focused OHLC candle, recent candles, strategy signals and executed trades.
 - `drawingTemplates.ts`: validated local drawing-style templates consumed by
@@ -35,6 +37,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - The one-second candle countdown updates only its DOM overlay and never invalidates Canvas render passes.
 - Volume Profile geometry is prepared with the viewport and remains unchanged during crosshair-only interaction paints.
 - High-frequency depth updates paint only the heatmap Canvas; they do not enter `ChartCanvas` React state or invalidate candle/indicator passes.
+- High-frequency public trades paint only the footprint Canvas; reconnects begin a new observation window instead of drawing invented history across a data gap.
 - Crosshair/drawing redraws must not recompute unchanged indicators.
 - Crosshair-only movement paints the transparent interaction canvas without clearing or repainting the base canvas.
 - Primary-series, indicator and drawing/strategy passes use separate transparent canvases and reuse one prepared viewport/indicator plan.

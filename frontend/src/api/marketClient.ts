@@ -54,6 +54,12 @@ export function createOrderBookSocket(symbol: string, exchange: DataExchange = "
   return new WebSocket(`${protocol}://${window.location.host}/orderbook?${params}`);
 }
 
+export function createTradeFlowSocket(symbol: string, exchange: DataExchange = "binance") {
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const params = new URLSearchParams({ symbol, exchange });
+  return new WebSocket(`${protocol}://${window.location.host}/trade-flow?${params}`);
+}
+
 export function createQuoteSocket(symbols: string[], timeframe: Timeframe, points = 32, exchange: DataExchange = "binance") {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const params = new URLSearchParams({ symbols: symbols.join(","), timeframe, points: String(points), exchange });

@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, TrendingDown, TrendingUp, Trash2 } from "lucide-react";
+import { Activity, BarChart3, BookOpen, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, TrendingDown, TrendingUp, Trash2 } from "lucide-react";
 import type { DrawingTool } from "../../chart/drawings";
 import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
@@ -10,6 +10,7 @@ export function ChartDrawingToolbar({
   showVolume,
   showVolumeProfile,
   showOrderBookHeatmap,
+  showTradeFootprint,
   orderBookAvailable,
   showObjects,
   hasDrawings,
@@ -18,6 +19,7 @@ export function ChartDrawingToolbar({
   onToggleVolume,
   onToggleVolumeProfile,
   onToggleOrderBookHeatmap,
+  onToggleTradeFootprint,
   onToggleObjects,
   onDeleteAll
 }: {
@@ -27,6 +29,7 @@ export function ChartDrawingToolbar({
   showVolume: boolean;
   showVolumeProfile: boolean;
   showOrderBookHeatmap: boolean;
+  showTradeFootprint: boolean;
   orderBookAvailable: boolean;
   showObjects: boolean;
   hasDrawings: boolean;
@@ -35,6 +38,7 @@ export function ChartDrawingToolbar({
   onToggleVolume: () => void;
   onToggleVolumeProfile: () => void;
   onToggleOrderBookHeatmap: () => void;
+  onToggleTradeFootprint: () => void;
   onToggleObjects: () => void;
   onDeleteAll: () => void;
 }) {
@@ -90,6 +94,9 @@ export function ChartDrawingToolbar({
       </Tool>
       <Tool active={showOrderBookHeatmap} disabled={!orderBookAvailable} label={orderBookAvailable ? t("toggleOrderBookHeatmap") : t("depthUnavailable")} onClick={onToggleOrderBookHeatmap}>
         <BookOpen size={15} aria-hidden="true" />
+      </Tool>
+      <Tool active={showTradeFootprint} disabled={!orderBookAvailable} label={orderBookAvailable ? t("toggleTradeFootprint") : t("tradeFlowUnavailable")} onClick={onToggleTradeFootprint}>
+        <Activity size={15} aria-hidden="true" />
       </Tool>
       <Tool active={showObjects} label={t("drawingObjects")} onClick={onToggleObjects}>
         <Layers3 size={15} aria-hidden="true" />

@@ -12,7 +12,8 @@ import { OrderBookHub } from "./orderbook/hub.js";
 import { ProviderRouter } from "./providers/router.js";
 import { securityHeaders } from "./securityHeaders.js";
 import { createTradingApi } from "./trading/routes.js";
-import type { Candle, OrderBookStreamMessage, QuoteStreamMessage, StreamMessage, Timeframe } from "./types.js";
+import { TradeFlowHub } from "./tradeflow/hub.js";
+import type { Candle, OrderBookStreamMessage, QuoteStreamMessage, StreamMessage, Timeframe, TradeFlowStreamMessage } from "./types.js";
 
 const port = Number(process.env.PORT ?? 4180);
 // Fail safe: bind to loopback unless the operator explicitly opts into a wider bind.
@@ -23,7 +24,9 @@ const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 const quoteWss = new WebSocketServer({ noServer: true });
 const orderBookWss = new WebSocketServer({ noServer: true });
+const tradeFlowWss = new WebSocketServer({ noServer: true });
 const orderBookHub = new OrderBookHub();
+const tradeFlowHub = new TradeFlowHub();
 const trading = createTradingApi(provider);
 
 // CORS: same-origin needs nothing (the SPA is served by this app). Allow an
@@ -174,6 +177,9 @@ server.on("upgrade", (request, socket, head) => {
   } else if (url.pathname === "/orderbook") {
     // Public read-only depth snapshots; one shared upstream serves all viewers.
     orderBookWss.handleUpgrade(request, socket, head, (client) => orderBookWss.emit("connection", client, request));
+  } else if (url.pathname === "/trade-flow") {
+    // Public read-only exchange prints; one shared upstream serves all viewers.
+    tradeFlowWss.handleUpgrade(request, socket, head, (client) => tradeFlowWss.emit("connection", client, request));
   } else if (url.pathname === "/trade-stream") {
     // Trade events can reveal positions/PnL — require the access token.
     if (!verifyWsToken(url, request.headers["sec-websocket-protocol"])) {
@@ -184,6 +190,37 @@ server.on("upgrade", (request, socket, head) => {
     trading.wss.handleUpgrade(request, socket, head, (client) => trading.wss.emit("connection", client, request));
   } else {
     socket.destroy();
+  }
+});
+
+tradeFlowWss.on("connection", (socket, request) => {
+  const url = new URL(request.url ?? "", `http://${request.headers.host}`);
+  const parsed = orderBookQuery.safeParse(Object.fromEntries(url.searchParams));
+  const send = (message: TradeFlowStreamMessage) => {
+    if (socket.readyState !== socket.OPEN) return;
+    if (socket.bufferedAmount > 512 * 1024) {
+      socket.close(1013, "Trade flow client is too slow");
+      return;
+    }
+    socket.send(JSON.stringify(message));
+  };
+  if (!parsed.success) {
+    send({ type: "error", message: "Invalid trade flow stream query", ts: Date.now() });
+    socket.close();
+    return;
+  }
+  const instrument = findInstrument(parsed.data.symbol);
+  if (!instrument || instrument.assetClass !== "crypto" || instrument.provider !== "binance") {
+    send({ type: "error", message: `Public trade flow is unavailable for ${parsed.data.symbol}`, ts: Date.now() });
+    socket.close();
+    return;
+  }
+  try {
+    const subscription = tradeFlowHub.subscribe(parsed.data.exchange, instrument.symbol, send);
+    socket.on("close", () => subscription.close());
+  } catch (error) {
+    send({ type: "error", message: error instanceof Error ? error.message : "Trade flow stream unavailable", ts: Date.now() });
+    socket.close(1013, "Trade flow stream unavailable");
   }
 });
 

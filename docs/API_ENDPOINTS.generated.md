@@ -49,6 +49,7 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `/stream` | Public | Market candle snapshot and updates |
 | `/quotes` | Public | Multiplexed watchlist quote snapshots and updates |
 | `/orderbook` | Public | Shared Binance/Bybit order-book snapshots and status |
+| `/trade-flow` | Public | Shared Binance/Bybit aggressor-trade batches and status |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **33 HTTP endpoints** and **4 WebSocket endpoints**.
+Generated totals: **33 HTTP endpoints** and **5 WebSocket endpoints**.

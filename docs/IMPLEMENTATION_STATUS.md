@@ -69,6 +69,7 @@ Verification:
 - [x] Add conflict-checked, persisted and discoverable custom keyboard shortcuts.
 - [x] Version workspaces with bounded autosave history, rollback and SHA-256 verified export/import.
 - [x] Preserve semantic chart tables and responsive monitoring layouts.
+- [x] Render real Binance/Bybit aggressor prints as a live footprint with per-candle delta and cumulative delta, backed by a bounded shared public stream.
 
 Verification:
 

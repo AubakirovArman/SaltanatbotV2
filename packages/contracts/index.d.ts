@@ -105,6 +105,31 @@ export interface OrderBookStatusMessage {
     ts: number;
 }
 export type OrderBookStreamMessage = OrderBookSnapshotMessage | OrderBookStatusMessage | ErrorMessage;
+export type TradeFlowSide = "buy" | "sell";
+export type TradeFlowStatus = "connecting" | "connected" | "reconnecting" | "stale" | "error";
+export interface TradeFlowTrade {
+    id: string;
+    price: number;
+    size: number;
+    side: TradeFlowSide;
+    exchangeTs: number;
+}
+export interface TradeFlowBatchMessage {
+    type: "trade_flow";
+    symbol: string;
+    exchange: DataExchange;
+    trades: TradeFlowTrade[];
+    ts: number;
+}
+export interface TradeFlowStatusMessage {
+    type: "trade_flow_status";
+    symbol: string;
+    exchange: DataExchange;
+    status: TradeFlowStatus;
+    message: string;
+    ts: number;
+}
+export type TradeFlowStreamMessage = TradeFlowBatchMessage | TradeFlowStatusMessage | ErrorMessage;
 export interface ErrorMessage {
     type: "error";
     message: string;
@@ -119,3 +144,4 @@ export declare function parseSparklinesResponse(value: unknown): SparklinesRespo
 export declare function parseQuoteStreamMessage(value: unknown): QuoteStreamMessage;
 export declare function parseStreamMessage(value: unknown): StreamMessage;
 export declare function parseOrderBookStreamMessage(value: unknown): OrderBookStreamMessage;
+export declare function parseTradeFlowStreamMessage(value: unknown): TradeFlowStreamMessage;

@@ -35,6 +35,20 @@ test("renders and pauses a mocked live order book heatmap", async ({ page }) => 
   await expect(page.locator(".orderbook-heatmap-badge")).toBeHidden();
 });
 
+test("renders a mocked live footprint and trade delta accessibly", async ({ page }) => {
+  await installTradeFlowSocketMock(page);
+  const toggle = page.getByRole("button", { name: "Toggle live trade footprint and delta" });
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  const badge = page.locator(".trade-footprint-badge");
+  await expect(badge).toContainText(/live.*Δ \+33\.3%/i);
+  await expect(badge).toContainText("2 prints");
+  await expect(badge).toHaveAttribute("role", "status");
+  await toggle.click();
+  await expect(badge).toBeHidden();
+});
+
 test("passes automated WCAG A/AA audits on chart, strategy and trading surfaces", async ({ page }) => {
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
   await expectNoAxeViolations(page);
@@ -527,6 +541,50 @@ async function installOrderBookSocketMock(page: Page) {
       construct(Target, args) {
         const url = String(args[0]);
         return url.includes("/orderbook?") ? new MockOrderBookSocket(url) : Reflect.construct(Target, args);
+      }
+    });
+  });
+}
+
+async function installTradeFlowSocketMock(page: Page) {
+  await page.evaluate(() => {
+    const NativeWebSocket = window.WebSocket;
+    class MockTradeFlowSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      readonly url: string;
+      readyState = MockTradeFlowSocket.CONNECTING;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent<string>) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+
+      constructor(url: string) {
+        this.url = url;
+        window.setTimeout(() => {
+          this.readyState = MockTradeFlowSocket.OPEN;
+          this.onopen?.(new Event("open"));
+          this.emit({ type: "trade_flow_status", symbol: "BTCUSDT", exchange: "binance", status: "connected", message: "mock trades connected", ts: Date.now() });
+          this.emit({
+            type: "trade_flow", symbol: "BTCUSDT", exchange: "binance", ts: Date.now(),
+            trades: [
+              { id: "buy-1", price: 100, size: 2, side: "buy", exchangeTs: Date.now() },
+              { id: "sell-1", price: 100, size: 1, side: "sell", exchangeTs: Date.now() }
+            ]
+          });
+        }, 0);
+      }
+
+      close() { this.readyState = MockTradeFlowSocket.CLOSED; }
+      send() {}
+      private emit(message: unknown) { this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(message) })); }
+    }
+    window.WebSocket = new Proxy(NativeWebSocket, {
+      construct(Target, args) {
+        const url = String(args[0]);
+        return url.includes("/trade-flow?") ? new MockTradeFlowSocket(url) : Reflect.construct(Target, args);
       }
     });
   });
