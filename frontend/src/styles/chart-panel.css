@@ -32,6 +32,13 @@
   grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 
+.multi-chart-grid.has-maximized {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.multi-chart-grid.has-maximized > .multi-chart-pane:not(.maximized) { display: none; }
+
 .multi-chart-pane {
   position: relative;
   min-inline-size: 0;
@@ -44,6 +51,35 @@
   container-type: inline-size;
 }
 
+.multi-chart-pane.active { box-shadow: inset 0 0 0 1px var(--accent); }
+
+.pane-maximize.floating {
+  position: absolute;
+  z-index: 31;
+  inset-block-start: 4px;
+  inset-inline-end: 6px;
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  display: inline-grid;
+  place-content: center;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.pane-maximize:is(:hover, :focus-visible),
+.pane-maximize[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pane-maximize:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pane-maximize-glyph { font-size: 15px; line-height: 1; transition: scale 120ms ease, rotate 120ms ease; }
+.pane-maximize[aria-pressed="true"] .pane-maximize-glyph { scale: 0.78; rotate: 180deg; }
+
 .multi-chart-pane.secondary .chart-surface {
   position: relative;
   z-index: 0;
@@ -53,6 +89,9 @@
 .multi-chart-pane.secondary .tool-rail {
   display: none;
 }
+
+.multi-chart-pane.secondary.maximized .chart-surface { grid-template-columns: 42px minmax(0, 1fr); }
+.multi-chart-pane.secondary.maximized .tool-rail { display: flex; }
 
 .multi-chart-pane.secondary .chart-legend {
   inset-block-start: 34px;
@@ -126,7 +165,10 @@
 
 @container (max-width: 40rem) {
   .chart-pane-controls .pane-feed { display: none; }
-  .chart-pane-controls select { max-inline-size: 5.5rem; }
+  .chart-pane-controls { gap: 2px; }
+  .chart-pane-controls select { max-inline-size: 4.9rem; }
+  .chart-pane-controls button { min-inline-size: 22px; }
+  .chart-pane-controls .pane-number { min-inline-size: 18px; }
 }
 
 .drawing-objects-panel {

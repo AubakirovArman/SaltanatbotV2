@@ -367,6 +367,60 @@ test("keeps embedded chart analysis compact and keyboard-expandable", async ({ p
   await expectNoAxeViolations(page);
 });
 
+test("focuses and maximizes any chart pane without resetting its view", async ({ page }) => {
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await page.reload();
+  await page.getByRole("button", { name: "Chart layout" }).click();
+  await page.getByRole("menuitemradio", { name: "Four-chart grid" }).click();
+
+  const grid = page.locator(".multi-chart-grid");
+  const panes = page.locator(".multi-chart-pane");
+  const primary = panes.filter({ has: page.locator(".with-indicator-controls") });
+  const second = page.locator(".multi-chart-pane.secondary").first();
+  const secondSymbol = second.getByRole("combobox", { name: "Symbol · 2" });
+  await secondSymbol.focus();
+  await secondSymbol.selectOption("ETHUSDT");
+  await expect(primary).toHaveAttribute("data-active", "false");
+  await expect(second).toHaveAttribute("data-active", "true");
+  await expect(second).toHaveAttribute("aria-label", /Active chart/);
+
+  await second.locator(".chart-canvas-interaction").hover();
+  await page.mouse.wheel(0, -90);
+  const zoom = second.locator(".zoom-reset");
+  await expect(zoom).not.toHaveText("100%");
+  const zoomBefore = await zoom.innerText();
+
+  const maximize = second.locator(".pane-maximize");
+  await expect(maximize).toHaveAttribute("aria-pressed", "false");
+  await maximize.click();
+  await expect(maximize).toHaveAttribute("aria-pressed", "true");
+  await expect(grid).toHaveClass(/has-maximized/);
+  await expect(page.locator(".multi-chart-pane:visible")).toHaveCount(1);
+  await expect(second.locator(".tool-rail")).toBeVisible();
+  await expect(second.locator(".chart-indicator-overlay")).toBeVisible();
+  await expect(secondSymbol).toHaveValue("ETHUSDT");
+  await expect(zoom).toHaveText(zoomBefore);
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".multi-chart-pane:visible")).toHaveCount(4);
+  await expect(second.locator(".tool-rail")).toBeHidden();
+  await expect(second.locator(".chart-indicator-overlay")).toHaveCount(0);
+  await expect(secondSymbol).toHaveValue("ETHUSDT");
+  await expect(zoom).toHaveText(zoomBefore);
+
+  const third = page.locator(".multi-chart-pane.secondary").nth(1);
+  await third.getByRole("combobox", { name: "Symbol · 3" }).focus();
+  await expect(third).toHaveAttribute("data-active", "true");
+  await page.keyboard.press("Alt+Enter");
+  await expect(page.locator(".multi-chart-pane:visible")).toHaveCount(1);
+  await expect(third).toHaveClass(/maximized/);
+  await page.keyboard.press("Alt+Enter");
+  await expect(page.locator(".multi-chart-pane:visible")).toHaveCount(4);
+  await expectNoAxeViolations(page);
+});
+
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });

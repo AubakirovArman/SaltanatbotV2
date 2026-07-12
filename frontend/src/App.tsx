@@ -244,6 +244,7 @@ export default function App() {
               linkedTimeRange={linkedTimeRange}
               onLinkedTimeRangeChange={setLinkedTimeRange}
               onUpdateChart={shell.updateChart}
+              maximizeShortcut={appCommands.shortcuts.maximizeChart}
               primary={<ChartCanvas
               compactChrome={shell.layoutPreset !== "single"}
               candles={stream.candles}
