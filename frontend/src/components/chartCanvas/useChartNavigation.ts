@@ -21,7 +21,6 @@ interface WheelFrame {
   cursorX: number;
   ctrlKey: boolean;
   shiftKey: boolean;
-  dpr: number;
 }
 
 interface NavigationInput extends WheelFrame {
@@ -37,7 +36,7 @@ export function applyChartWheelNavigation(input: NavigationInput): ChartNavigati
   const horizontalDelta = input.shiftKey && Math.abs(input.deltaX) < Math.abs(input.deltaY) ? input.deltaY : input.deltaX;
   const horizontal = Math.abs(horizontalDelta) > Math.abs(input.deltaY) * 1.15 || input.shiftKey;
   if (horizontal && Math.abs(horizontalDelta) >= WHEEL_DEAD_ZONE) {
-    const bars = clamp(horizontalDelta, -120, 120) * input.dpr / viewport.barSpacing;
+    const bars = clamp(horizontalDelta, -120, 120) / viewport.barSpacing;
     const currentVisible = visibleCandles(candles, viewport.plot, view.zoom, view.offset);
     return { ...view, offset: clamp(Math.round(view.offset - bars), 0, currentVisible.maxOffset) };
   }
@@ -78,15 +77,13 @@ export function useChartWheelNavigation(
       event.preventDefault();
       event.stopPropagation();
       const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
       const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? rect.height : 1;
       const next = {
         deltaX: event.deltaX * unit,
         deltaY: event.deltaY * unit,
-        cursorX: (event.clientX - rect.left) * dpr,
+        cursorX: event.clientX - rect.left,
         ctrlKey: event.ctrlKey,
         shiftKey: event.shiftKey,
-        dpr
       };
       pending = pending
         ? { ...next, deltaX: pending.deltaX + next.deltaX, deltaY: pending.deltaY + next.deltaY }

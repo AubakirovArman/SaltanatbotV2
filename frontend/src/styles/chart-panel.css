@@ -70,6 +70,18 @@
   pointer-events: none;
 }
 
+.pane-number {
+  min-inline-size: 20px;
+  block-size: 20px;
+  display: inline-grid;
+  place-content: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
 .chart-pane-controls :is(select, button) {
   min-block-size: 24px;
   border: 1px solid var(--line-soft);
@@ -356,6 +368,7 @@
   z-index: 8;
   inset-block: 0 30px;
   inset-inline-end: 0;
+  inline-size: 74px;
   border-inline-start: 1px solid transparent;
   background: transparent;
   cursor: ns-resize;

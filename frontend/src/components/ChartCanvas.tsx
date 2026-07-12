@@ -289,8 +289,8 @@ export function ChartCanvas({
   const devicePoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return {
-      x: (event.clientX - rect.left) * devicePixelRatio,
-      y: (event.clientY - rect.top) * devicePixelRatio
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
     };
   };
 
@@ -469,8 +469,8 @@ export function ChartCanvas({
             }
 
             if (interaction?.mode === "pan") {
-              const cssBar = (viewport ? viewport.barSpacing : 8) / devicePixelRatio;
-              const delta = Math.round((interaction.startClientX - event.clientX) / Math.max(1, cssBar));
+              const bar = viewport ? viewport.barSpacing : 8;
+              const delta = Math.round((interaction.startClientX - event.clientX) / Math.max(1, bar));
               const visibleCount = Math.max(1, (viewport?.end ?? 0) - (viewport?.start ?? 0));
               const limit = Math.max(0, displayCandles.length - Math.min(24, visibleCount));
               setView((current) => ({ ...current, offset: Math.min(limit, Math.max(0, interaction.startOffset + delta)), crosshair: { x, y } }));
@@ -501,8 +501,8 @@ export function ChartCanvas({
             event.preventDefault();
             const viewport = viewportRef.current;
             const rect = event.currentTarget.getBoundingClientRect();
-            const x = (event.clientX - rect.left) * devicePixelRatio;
-            const y = (event.clientY - rect.top) * devicePixelRatio;
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
             const hit = viewport ? hitTest(viewport, drawingsRef.current, x, y, selectedId) : undefined;
             if (hit) setSelectedId(hit.id);
             setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id, price: viewport?.yToPrice(y) });

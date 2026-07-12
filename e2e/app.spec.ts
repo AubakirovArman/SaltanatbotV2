@@ -173,6 +173,50 @@ test("keeps mouse and trackpad chart zoom controlled and resettable", async ({ p
   await expect(reset).toBeVisible();
 });
 
+test("keeps Retina canvas, pointer HUD and price axis in CSS-pixel alignment", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({
+    baseURL,
+    viewport: { width: 1280, height: 720 },
+    deviceScaleFactor: 2
+  });
+  const page = await context.newPage();
+  try {
+    const candles = mockChartCandles();
+    await mockCandleHistory(page, candles);
+    await installMarketSocketMock(page, "stable", candles);
+    await page.goto("/");
+    await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+
+    const canvas = page.locator(".chart-canvas-interaction");
+    const density = await canvas.evaluate((element: HTMLCanvasElement) => ({
+      width: element.width,
+      height: element.height,
+      cssWidth: element.clientWidth,
+      cssHeight: element.clientHeight,
+      dpr: window.devicePixelRatio
+    }));
+    expect(density.dpr).toBe(2);
+    expect(Math.abs(density.width - density.cssWidth * density.dpr)).toBeLessThanOrEqual(1);
+    expect(Math.abs(density.height - density.cssHeight * density.dpr)).toBeLessThanOrEqual(1);
+
+    const canvasBox = await canvas.boundingBox();
+    expect(canvasBox).not.toBeNull();
+    await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.42, canvasBox!.y + canvasBox!.height * 0.45);
+    const hud = page.locator(".crosshair-hud");
+    await expect(hud).toBeVisible();
+    const hudBox = await hud.boundingBox();
+    expect(hudBox).not.toBeNull();
+    expect(hudBox!.x).toBeGreaterThanOrEqual(canvasBox!.x);
+    expect(hudBox!.x + hudBox!.width).toBeLessThanOrEqual(canvasBox!.x + canvasBox!.width);
+
+    const axisBox = await page.getByRole("slider", { name: "Price axis scale" }).boundingBox();
+    expect(axisBox).not.toBeNull();
+    expect(axisBox!.width).toBeCloseTo(74, 0);
+  } finally {
+    await context.close();
+  }
+});
+
 test("scales the price axis independently with wheel, drag and keyboard", async ({ page }) => {
   const candles = mockChartCandles();
   await mockCandleHistory(page, candles);
@@ -242,7 +286,7 @@ test("links and unlinks the visible time range across chart panes", async ({ pag
   const secondary = page.locator(".multi-chart-pane.secondary");
   await expect(primary.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   await expect(secondary.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
-  const rangeLink = secondary.getByRole("button", { name: "Link visible time range between charts" });
+  const rangeLink = secondary.locator('[data-link-field="linkTimeRange"]');
   await expect(rangeLink).toHaveAttribute("aria-pressed", "true");
 
   await primary.locator(".chart-canvas-interaction").hover();
@@ -261,6 +305,26 @@ test("links and unlinks the visible time range across chart panes", async ({ pag
   await rangeLink.click();
   await expect(secondaryZoom).not.toHaveText(linkedSecondaryZoom);
   await expectNoAxeViolations(page);
+});
+
+test("chooses an independent symbol directly in every secondary chart", async ({ page }) => {
+  await page.getByRole("button", { name: "Chart layout" }).click();
+  await page.getByRole("menuitemradio", { name: "Four-chart grid" }).click();
+  const panes = page.locator(".multi-chart-pane");
+  await expect(panes).toHaveCount(4);
+
+  const secondSymbol = page.getByRole("combobox", { name: "Symbol · 2" });
+  const thirdSymbol = page.getByRole("combobox", { name: "Symbol · 3" });
+  await expect(secondSymbol).toHaveValue("BTCUSDT");
+  await expect(thirdSymbol).toHaveValue("BTCUSDT");
+  await secondSymbol.selectOption("ETHUSDT");
+
+  await expect(secondSymbol).toHaveValue("ETHUSDT");
+  await expect(thirdSymbol).toHaveValue("BTCUSDT");
+  await expect(page.getByRole("button", { name: /Current instrument BTCUSDT/i })).toBeVisible();
+  const secondPane = page.locator(".multi-chart-pane.secondary").first();
+  await expect(secondPane).toHaveAttribute("aria-label", /ETHUSDT/);
+  await expect(secondPane.getByRole("button", { name: "Link symbol to primary chart" })).toHaveAttribute("aria-pressed", "false");
 });
 
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {

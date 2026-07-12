@@ -25,18 +25,17 @@ export function ChartPriceHud({ candle, latest, timeframe, decimals, locale, vie
 
   const priceStyle = useMemo<CSSProperties | undefined>(() => {
     if (!latest || !viewport) return undefined;
-    const y = viewport.priceToY(latest.close) / deviceRatio();
-    return y >= viewport.plot.top / deviceRatio() && y <= viewport.plot.bottom / deviceRatio()
+    const y = viewport.priceToY(latest.close);
+    return y >= viewport.plot.top && y <= viewport.plot.bottom
       ? { top: y }
       : undefined;
   }, [latest, viewport]);
 
   const cardStyle = useMemo<CSSProperties | undefined>(() => {
     if (!crosshair || !viewport) return undefined;
-    const ratio = deviceRatio();
-    const x = crosshair.x / ratio;
-    const y = Math.max(42, crosshair.y / ratio - 46);
-    const midpoint = (viewport.plot.left + viewport.plot.right) / 2 / ratio;
+    const x = crosshair.x;
+    const y = Math.max(42, crosshair.y - 46);
+    const midpoint = (viewport.plot.left + viewport.plot.right) / 2;
     return x > midpoint ? { right: 78, top: y } : { left: Math.max(12, x + 18), top: y };
   }, [crosshair, viewport]);
 
@@ -118,8 +117,4 @@ function timeframeMs(timeframe: Exclude<Timeframe, "1M">) {
     "1d": 86_400_000, "1w": 604_800_000
   };
   return units[timeframe];
-}
-
-function deviceRatio() {
-  return typeof window !== "undefined" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
 }

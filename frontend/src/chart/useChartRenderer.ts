@@ -32,6 +32,7 @@ import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
 import { calculateDrawingAvwaps, type AnchoredVwapSeries } from "./anchoredVwap";
 import type { MarketSessionRange } from "./marketSessions";
 import type { MarketStructureSnapshot } from "./marketStructure";
+import { prepareCanvasContext, resizeCanvasToEntry } from "./canvasDensity";
 
 interface UseChartRendererOptions {
   candles: Candle[];
@@ -95,13 +96,13 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     if (!backgroundCanvas || !primaryCanvas || !indicatorsCanvas || !overlaysCanvas || !interactionCanvas) return;
 
     schedulerRef.current?.schedule("background", () => {
-      const ctx = backgroundCanvas.getContext("2d");
-      if (!ctx) return;
+      const surface = prepareCanvasContext(backgroundCanvas);
+      if (!surface) return;
       applyCanvasTheme(backgroundCanvas);
       viewportRef.current = undefined;
       const plan = prepareChartRender({
-        width: backgroundCanvas.width,
-        height: backgroundCanvas.height,
+        width: surface.width,
+        height: surface.height,
         candles: options.candles,
         displayCandles: options.displayCandles,
         chartType: options.chartType,
@@ -129,13 +130,13 @@ export function useChartRenderer(options: UseChartRendererOptions) {
         onVolumeProfile: (profile) => volumeProfileCallbackRef.current(profile)
       });
       renderPlanRef.current = plan;
-      drawChartBackground(ctx, plan);
+      drawChartBackground(surface.ctx, plan);
     });
     schedulerRef.current?.schedule("primary", () => drawPrimary(primaryCanvas, renderPlanRef.current, options.compare, options.symbol, legendCallbackRef));
     schedulerRef.current?.schedule("indicators", () => {
       const plan = renderPlanRef.current;
-      const ctx = indicatorsCanvas.getContext("2d");
-      if (plan && ctx) drawChartIndicators(ctx, plan);
+      const surface = prepareCanvasContext(indicatorsCanvas);
+      if (plan && surface) drawChartIndicators(surface.ctx, plan);
     });
     schedulerRef.current?.schedule("overlays", () => drawOverlays(overlaysCanvas, renderPlanRef.current, options, anchoredVwaps));
     schedulerRef.current?.schedule("interaction", () => drawInteraction(interactionCanvas, viewportRef.current, options));
@@ -161,16 +162,12 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     const backgroundCanvas = canvases[0];
     if (!backgroundCanvas || canvases.some((canvas) => !canvas)) return;
     const observer = new ResizeObserver(([entry]) => {
-      const dpc = entry.devicePixelContentBoxSize?.[0];
-      const width = dpc?.inlineSize ?? Math.round(entry.contentRect.width * devicePixelRatio);
-      const height = dpc?.blockSize ?? Math.round(entry.contentRect.height * devicePixelRatio);
-      if (backgroundCanvas.width === width && backgroundCanvas.height === height) return;
+      let changed = false;
       for (const canvas of canvases) {
         if (!canvas) continue;
-        canvas.width = width;
-        canvas.height = height;
+        changed = resizeCanvasToEntry(canvas, entry) || changed;
       }
-      setRenderRevision((current) => current + 1);
+      if (changed) setRenderRevision((current) => current + 1);
     });
     observer.observe(backgroundCanvas);
     return () => observer.disconnect();
@@ -186,8 +183,8 @@ function drawPrimary(
   symbol: string,
   callbackRef: { current(entries: CompareLegendSnapshot[]): void }
 ) {
-  const ctx = canvas.getContext("2d");
-  if (plan && ctx) drawChartPrimary(ctx, withChartRenderInput(plan, {
+  const surface = prepareCanvasContext(canvas);
+  if (plan && surface) drawChartPrimary(surface.ctx, withChartRenderInput(plan, {
     compare,
     baseSymbol: symbol,
     onCompareLegend: (entries) => callbackRef.current(entries)
@@ -195,8 +192,8 @@ function drawPrimary(
 }
 
 function drawOverlays(canvas: HTMLCanvasElement, plan: ChartRenderPlan | undefined, options: UseChartRendererOptions, anchoredVwapSeries: AnchoredVwapSeries) {
-  const ctx = canvas.getContext("2d");
-  if (plan && ctx) drawChartOverlays(ctx, withChartRenderInput(plan, {
+  const surface = prepareCanvasContext(canvas);
+  if (plan && surface) drawChartOverlays(surface.ctx, withChartRenderInput(plan, {
     drawings: options.drawings,
     draftDrawing: options.draftDrawing,
     selectedDrawingId: options.selectedDrawingId,
@@ -214,11 +211,11 @@ function drawOverlays(canvas: HTMLCanvasElement, plan: ChartRenderPlan | undefin
 }
 
 function drawInteraction(canvas: HTMLCanvasElement, viewport: Viewport | undefined, options: UseChartRendererOptions) {
-  const ctx = canvas.getContext("2d");
-  if (ctx) drawChartInteraction({
-    ctx,
-    width: canvas.width,
-    height: canvas.height,
+  const surface = prepareCanvasContext(canvas);
+  if (surface) drawChartInteraction({
+    ctx: surface.ctx,
+    width: surface.width,
+    height: surface.height,
     viewport,
     crosshair: options.view.crosshair,
     decimals: options.decimals

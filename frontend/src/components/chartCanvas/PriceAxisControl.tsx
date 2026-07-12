@@ -42,7 +42,6 @@ export function PriceAxisControl({ locale, onZoomChange, zoom }: {
       aria-valuenow={percent}
       aria-valuetext={zoom === 1 ? (locale === "ru" ? "Автоматически" : "Automatic") : `${percent}%`}
       title={label}
-      style={{ inlineSize: `${74 / deviceRatio()}px` }}
       onDoubleClick={() => onZoomChange(1)}
       onKeyDown={(event) => {
         const next = priceZoomFromKey(zoom, event.key);
@@ -94,8 +93,4 @@ function normalizePriceZoom(value: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
-}
-
-function deviceRatio() {
-  return typeof window === "undefined" ? 1 : Math.max(1, window.devicePixelRatio || 1);
 }

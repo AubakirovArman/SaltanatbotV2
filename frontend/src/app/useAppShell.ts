@@ -229,7 +229,7 @@ export function useAppShell(options: UseAppShellOptions) {
       timeframe: options.timeframe,
       chartType: options.chartType,
       linkGroup: "primary",
-      linkSymbol: true,
+      linkSymbol: index === 0,
       linkTimeframe: true,
       linkCrosshair: true,
       linkTimeRange: true
@@ -237,13 +237,19 @@ export function useAppShell(options: UseAppShellOptions) {
   }, [options.chartType, options.symbol, options.timeframe]);
 
   const updateChart = useCallback((id: string, patch: Partial<WorkspaceChart>) => {
-    setCharts((current) => current.map((chart) => chart.id === id ? { ...chart, ...patch, id: chart.id } : chart));
+    setCharts((current) => current.map((chart) => {
+      if (chart.id !== id) return chart;
+      const next = { ...chart, ...patch, id: chart.id };
+      if (patch.linkSymbol === true) next.symbol = options.symbol;
+      if (patch.linkTimeframe === true) next.timeframe = options.timeframe;
+      return next;
+    }));
     const chart = charts.find((item) => item.id === id);
     if (!chart) return;
-    if (patch.symbol !== undefined && chart.linkSymbol) options.setSymbol(patch.symbol);
-    if (patch.timeframe !== undefined && chart.linkTimeframe) options.setTimeframe(patch.timeframe);
+    if (patch.symbol !== undefined && (patch.linkSymbol ?? chart.linkSymbol)) options.setSymbol(patch.symbol);
+    if (patch.timeframe !== undefined && (patch.linkTimeframe ?? chart.linkTimeframe)) options.setTimeframe(patch.timeframe);
     if (patch.chartType !== undefined && id === charts[0]?.id) options.setChartType(patch.chartType);
-  }, [charts, options.setChartType, options.setSymbol, options.setTimeframe]);
+  }, [charts, options.symbol, options.timeframe, options.setChartType, options.setSymbol, options.setTimeframe]);
 
   return {
     cryptoExchange, setCryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, setLeftSize, setRightSize, panelsSwapped, workspaces, activeWorkspaceId, layoutPreset, setLayoutPreset, charts, updateChart,

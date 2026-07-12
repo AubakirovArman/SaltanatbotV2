@@ -32,10 +32,11 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
   return (
     <div className={`multi-chart-grid ${preset}`} aria-label={shellText(locale, "multiChartWorkspace")}>
       <section className="multi-chart-pane primary" aria-label={shellText(locale, "primaryChart")}>{primary}</section>
-      {charts.slice(1).map((chart) => (
+      {charts.slice(1).map((chart, index) => (
         <SecondaryChartPane
           key={chart.id}
           chart={chart}
+          paneNumber={index + 2}
           catalog={catalog}
           exchange={exchange}
           locale={locale}
@@ -54,14 +55,15 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
   );
 }
 
-function SecondaryChartPane({ chart, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart"> & { chart: WorkspaceChart; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
+function SecondaryChartPane({ chart, paneNumber, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart"> & { chart: WorkspaceChart; paneNumber: number; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
   const stream = useMarketStream(chart.symbol, chart.timeframe, exchange);
   const instrument = catalog?.instruments.find((item) => item.symbol === chart.symbol) ?? fallbackInstrument(chart.symbol);
-  const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair" | "linkTimeRange", label: string, ActiveIcon = Link2) => {
+  const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair" | "linkTimeRange", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {
     const linked = chart[field];
     const Icon = linked ? ActiveIcon : Link2Off;
+    const label = linked ? unlinkLabel : linkLabel;
     return (
-      <button type="button" className={linked ? "active" : ""} aria-pressed={linked} aria-label={label} title={label} onClick={() => onUpdate(chart.id, { [field]: !linked })}>
+      <button type="button" data-link-field={field} className={linked ? "active" : ""} aria-pressed={linked} aria-label={label} title={label} onClick={() => onUpdate(chart.id, { [field]: !linked })}>
         <Icon size={12} aria-hidden="true" />
       </button>
     );
@@ -69,28 +71,29 @@ function SecondaryChartPane({ chart, catalog, exchange, locale, indicators, onIn
   return (
     <section className="multi-chart-pane secondary" aria-label={`${chart.symbol} ${chart.timeframe}`}>
       <div className="chart-pane-controls">
+        <span className="pane-number" aria-hidden="true">{paneNumber}</span>
         <label>
           <span className="sr-only">{shellText(locale, "symbol")}</span>
-          <select value={chart.symbol} onChange={(event) => onUpdate(chart.id, { symbol: event.target.value })}>
+          <select aria-label={`${shellText(locale, "symbol")} · ${paneNumber}`} value={chart.symbol} onChange={(event) => onUpdate(chart.id, { symbol: event.target.value, linkSymbol: false })}>
             {(catalog?.instruments ?? [instrument]).map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol}</option>)}
           </select>
         </label>
-        {linkButton("linkSymbol", shellText(locale, "linkSymbol"))}
+        {linkButton("linkSymbol", shellText(locale, "linkSymbol"), shellText(locale, "unlinkSymbol"))}
         <label>
           <span className="sr-only">{shellText(locale, "timeframe")}</span>
-          <select value={chart.timeframe} onChange={(event) => onUpdate(chart.id, { timeframe: event.target.value as WorkspaceChart["timeframe"] })}>
+          <select aria-label={`${shellText(locale, "timeframe")} · ${paneNumber}`} value={chart.timeframe} onChange={(event) => onUpdate(chart.id, { timeframe: event.target.value as WorkspaceChart["timeframe"], linkTimeframe: false })}>
             {(catalog?.timeframes ?? [chart.timeframe]).map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
-        {linkButton("linkTimeframe", shellText(locale, "linkTimeframe"))}
+        {linkButton("linkTimeframe", shellText(locale, "linkTimeframe"), shellText(locale, "unlinkTimeframe"))}
         <label>
           <span className="sr-only">{shellText(locale, "chartType")}</span>
-          <select value={chart.chartType} onChange={(event) => onUpdate(chart.id, { chartType: event.target.value as WorkspaceChart["chartType"] })}>
+          <select aria-label={`${shellText(locale, "chartType")} · ${paneNumber}`} value={chart.chartType} onChange={(event) => onUpdate(chart.id, { chartType: event.target.value as WorkspaceChart["chartType"] })}>
             {(catalog?.chartTypes ?? [chart.chartType]).map((item) => <option key={item} value={item}>{chartTypeLabel(locale, item)}</option>)}
           </select>
         </label>
-        {linkButton("linkCrosshair", shellText(locale, "linkCrosshair"), Crosshair)}
-        {linkButton("linkTimeRange", shellText(locale, "linkTimeRange"), MoveHorizontal)}
+        {linkButton("linkCrosshair", shellText(locale, "linkCrosshair"), shellText(locale, "unlinkCrosshair"), Crosshair)}
+        {linkButton("linkTimeRange", shellText(locale, "linkTimeRange"), shellText(locale, "unlinkTimeRange"), MoveHorizontal)}
         <span className={`pane-feed ${stream.connection}`} role="status">{stream.provider} · {stream.latencyMs ?? "—"} ms</span>
       </div>
       <ChartCanvas

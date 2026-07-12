@@ -53,7 +53,6 @@ function apply(patch: Partial<Parameters<typeof applyChartWheelNavigation>[0]>) 
     cursorX: 400,
     ctrlKey: false,
     shiftKey: false,
-    dpr: 1,
     ...patch
   });
 }

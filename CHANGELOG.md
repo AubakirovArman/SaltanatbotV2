@@ -7,6 +7,9 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Made every Canvas layer Retina/HiDPI-correct: backing stores now follow CSS size × device-pixel ratio while renderers, pointers, wheel gestures, overlays and the price HUD share one CSS-pixel coordinate space.
+- Made 2×2 chart layouts independently usable by default: panes 2–4 expose numbered symbol/timeframe/type selectors, choosing a symbol or interval automatically unlinks that field, and the chain controls can explicitly restore primary-chart synchronization.
+- Added DPR 1/2 unit and browser coverage for physical backing resolution, pointer-HUD alignment, the fixed CSS-width price-axis target and independent four-symbol selection.
 - Added independent manual price-axis scaling from 25% to 400%: wheel/trackpad and vertical drag on the right axis no longer alter candle zoom, while Arrow/Page keys, `Home` and double-click provide keyboard/reset parity.
 - Applied manual bounds consistently in linear, logarithmic and percentage modes, invalidated depth/footprint geometry with the price scale, exposed `AUTO/NN%` beside the mode and added a focus-visible semantic slider over the axis.
 - Raised the aggregate JavaScript gzip allowance from 452 KiB to 453 KiB and CSS from 16 KiB to 17 KiB for the measured price-axis model/control; per-chunk and HTML limits remain unchanged.

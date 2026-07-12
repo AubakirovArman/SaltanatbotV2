@@ -9,6 +9,7 @@ import { loadMicrostructureAlertSettings, storeMicrostructureAlertSettings } fro
 import type { Viewport } from "../../chart/types";
 import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
+import { prepareCanvasContext, resizeCanvasToEntry } from "../../chart/canvasDensity";
 import { playAlertBeep, showSystemNotification } from "../../market/alerts";
 import type { Candle, DataExchange, TradeFlowStatus, TradeFlowStreamMessage, TradeFlowTrade } from "../../types";
 import { TradeFlowAlertCenter } from "./TradeFlowAlertCenter";
@@ -70,9 +71,10 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
     const canvas = canvasRef.current;
     const viewport = viewportRef.current;
     if (!canvas || !viewport || !enabled) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const surface = prepareCanvasContext(canvas);
+    if (!surface) return;
+    const { ctx } = surface;
+    ctx.clearRect(0, 0, surface.width, surface.height);
     const footprint = aggregateTradeFootprint(tradesRef.current, viewport);
     const insights = detectFootprintInsights(footprint, candles);
     const styles = getComputedStyle(canvas);
@@ -146,12 +148,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
     const canvas = canvasRef.current;
     if (!canvas || !enabled) return;
     const observer = new ResizeObserver(([entry]) => {
-      const dpc = entry.devicePixelContentBoxSize?.[0];
-      const width = dpc?.inlineSize ?? Math.round(entry.contentRect.width * window.devicePixelRatio);
-      const height = dpc?.blockSize ?? Math.round(entry.contentRect.height * window.devicePixelRatio);
-      if (canvas.width === width && canvas.height === height) return;
-      canvas.width = width;
-      canvas.height = height;
+      if (!resizeCanvasToEntry(canvas, entry)) return;
       scheduleDraw();
     });
     observer.observe(canvas);
