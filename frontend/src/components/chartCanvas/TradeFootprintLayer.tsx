@@ -4,10 +4,14 @@ import { createTradeFlowSocket } from "../../api/marketClient";
 import { aggregateTradeFootprint, tradeFlowDeltaPercent } from "../../chart/tradeFootprint";
 import { detectFootprintInsights } from "../../chart/footprintInsights";
 import { drawFootprintInsights } from "../../chart/renderers/footprintInsights";
+import { evaluateMicrostructureAlerts, type MicrostructureAlertEvent } from "../../chart/microstructureAlerts";
+import { loadMicrostructureAlertSettings, storeMicrostructureAlertSettings } from "../../chart/microstructureAlertStore";
 import type { Viewport } from "../../chart/types";
 import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
+import { playAlertBeep, showSystemNotification } from "../../market/alerts";
 import type { Candle, DataExchange, TradeFlowStatus, TradeFlowStreamMessage, TradeFlowTrade } from "../../types";
+import { TradeFlowAlertCenter } from "./TradeFlowAlertCenter";
 
 const RETENTION_MS = 30 * 60_000;
 const MAX_TRADES = 20_000;
@@ -47,6 +51,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const tradesRef = useRef<TradeFlowTrade[]>([]);
   const seenRef = useRef(new Set<string>());
+  const alertSeenRef = useRef(new Set<string>());
   const statusRef = useRef<FlowMeta["status"]>("connecting");
   const rafRef = useRef<number>();
   const insightMetaRef = useRef<InsightMeta>({ imbalances: 0, stacks: 0, absorptions: 0 });
@@ -55,7 +60,11 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   const lastInsightMetaAtRef = useRef(0);
   const [meta, setMeta] = useState<FlowMeta>({ status: "connecting", message: "", prints: 0, buyNotional: 0, sellNotional: 0 });
   const [insightMeta, setInsightMeta] = useState<InsightMeta>(insightMetaRef.current);
+  const [alertSettings, setAlertSettings] = useState(loadMicrostructureAlertSettings);
+  const [alertEvents, setAlertEvents] = useState<MicrostructureAlertEvent[]>([]);
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
+
+  useEffect(() => storeMicrostructureAlertSettings(alertSettings), [alertSettings]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -84,6 +93,22 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
     drawDeltaRibbon(ctx, footprint, viewport, up, down, accent, panel, grid, dimmed);
     drawFootprintInsights(ctx, insights, viewport, cellWidth, up, down, accent, panel, dimmed);
     ctx.restore();
+    const candidates = evaluateMicrostructureAlerts({ symbol, trades: tradesRef.current, footprint, insights, settings: alertSettings });
+    const fresh = candidates.filter((event) => {
+      if (alertSeenRef.current.has(event.id)) return false;
+      alertSeenRef.current.add(event.id);
+      return true;
+    });
+    if (fresh.length > 0) {
+      const newest = [...fresh].sort((left, right) => right.time - left.time);
+      setAlertEvents((current) => [...newest, ...current].slice(0, 8));
+      if (alertSettings.sound) playAlertBeep();
+      if (alertSettings.desktopNotifications) {
+        for (const event of newest.slice(0, 3)) {
+          showSystemNotification(`${symbol} · ${t("microstructureAlert")}`, microstructureNotificationBody(event, t), event.id);
+        }
+      }
+    }
     const nextMeta = { imbalances: insights.imbalances.length, stacks: insights.stacks.length, absorptions: insights.absorptions.length };
     const previous = insightMetaRef.current;
     const now = Date.now();
@@ -105,7 +130,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
         }, remaining);
       }
     }
-  }, [candles, enabled, viewportRef]);
+  }, [alertSettings, candles, enabled, locale, symbol, viewportRef]);
 
   const scheduleDraw = useCallback(() => {
     if (rafRef.current !== undefined) return;
@@ -155,6 +180,8 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
     const resetObservation = () => {
       tradesRef.current = [];
       seenRef.current.clear();
+      alertSeenRef.current.clear();
+      setAlertEvents([]);
       lastTradeAt = 0;
       setMeta((current) => ({ ...current, prints: 0, buyNotional: 0, sellNotional: 0 }));
       insightMetaRef.current = { imbalances: 0, stacks: 0, absorptions: 0 };
@@ -264,15 +291,25 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
           : meta.status === "paused" ? t("flowPaused") : t("flowError");
   const deltaPct = tradeFlowDeltaPercent(meta.buyNotional, meta.sellNotional);
   return (
-    <div ref={rootRef} className="trade-footprint-layer">
-      <canvas ref={canvasRef} className="chart-canvas chart-canvas-layer trade-footprint-canvas" aria-hidden="true" />
-      <div className={`trade-footprint-badge ${meta.status}`} role="status" title={meta.message} aria-label={`${t("tradeFootprint")}: ${statusLabel}; ${t("tradeDelta")} ${deltaPct.toFixed(1)}%; ${insightMeta.imbalances} ${t("imbalances")}; ${insightMeta.stacks} ${t("stacks")}; ${insightMeta.absorptions} ${t("potentialAbsorptions")}`}>
-        <strong>FOOTPRINT · {exchange.toUpperCase()} · LIVE</strong>
-        <span>{statusLabel} · Δ <b className={deltaPct >= 0 ? "up" : "down"}>{deltaPct >= 0 ? "+" : ""}{deltaPct.toFixed(1)}%</b></span>
-        {meta.prints > 0 && <small>{meta.prints} {t("prints")} · {formatCompact(meta.buyNotional + meta.sellNotional)}</small>}
-        {meta.prints > 0 && <small className="trade-footprint-insights">{insightMeta.imbalances} {t("imbalances")} · {insightMeta.stacks} {t("stacks")} · {insightMeta.absorptions} ABS?</small>}
+    <>
+      <div ref={rootRef} className="trade-footprint-layer">
+        <canvas ref={canvasRef} className="chart-canvas chart-canvas-layer trade-footprint-canvas" aria-hidden="true" />
+        <div className={`trade-footprint-badge ${meta.status}`} role="status" title={meta.message} aria-label={`${t("tradeFootprint")}: ${statusLabel}; ${t("tradeDelta")} ${deltaPct.toFixed(1)}%; ${insightMeta.imbalances} ${t("imbalances")}; ${insightMeta.stacks} ${t("stacks")}; ${insightMeta.absorptions} ${t("potentialAbsorptions")}`}>
+          <strong>FOOTPRINT · {exchange.toUpperCase()} · LIVE</strong>
+          <span>{statusLabel} · Δ <b className={deltaPct >= 0 ? "up" : "down"}>{deltaPct >= 0 ? "+" : ""}{deltaPct.toFixed(1)}%</b></span>
+          {meta.prints > 0 && <small>{meta.prints} {t("prints")} · {formatCompact(meta.buyNotional + meta.sellNotional)}</small>}
+          {meta.prints > 0 && <small className="trade-footprint-insights">{insightMeta.imbalances} {t("imbalances")} · {insightMeta.stacks} {t("stacks")} · {insightMeta.absorptions} ABS?</small>}
+        </div>
       </div>
-    </div>
+      <TradeFlowAlertCenter
+        locale={locale}
+        settings={alertSettings}
+        events={alertEvents}
+        onSettingsChange={(patch) => setAlertSettings((current) => ({ ...current, ...patch }))}
+        onDismiss={(id) => setAlertEvents((current) => current.filter((event) => event.id !== id))}
+        onClear={() => setAlertEvents([])}
+      />
+    </>
   );
 });
 
@@ -333,6 +370,14 @@ function publishInsightMeta(
   current.current = value;
   lastPublishedAt.current = Date.now();
   publish(value);
+}
+
+function microstructureNotificationBody(event: MicrostructureAlertEvent, t: (key: Parameters<typeof shellText>[1]) => string) {
+  const side = event.side === "buy" ? t("buyAggression") : event.side === "sell" ? t("sellAggression") : "";
+  if (event.kind === "stacked_imbalance") return `${side} · ${t("stackedImbalance")} ${event.value}×`;
+  if (event.kind === "potential_absorption") return `${side} · ${t("potentialAbsorptionShort")} Δ ${event.value.toFixed(0)}%`;
+  if (event.kind === "cvd_spike") return `${side} · ${t("cvdSpike")} ${event.value.toFixed(0)}%`;
+  return `${side} · ${t("largePrint")} ${event.value.toFixed(0)}`;
 }
 
 function drawDeltaRibbon(

@@ -46,6 +46,15 @@ test("renders a mocked live footprint and trade delta accessibly", async ({ page
   await expect(badge).toContainText("2 prints");
   await expect(badge).toContainText(/0 imbalances.*0 stacks.*0 ABS\?/i);
   await expect(badge).toHaveAttribute("role", "status");
+  const alertCenter = page.getByRole("region", { name: "Microstructure alerts" });
+  await expect(alertCenter).toContainText("FLOW ALERTS");
+  await alertCenter.getByText("Alert settings", { exact: true }).click();
+  await expect(alertCenter.getByLabel("Enable in-chart alerts")).toBeChecked();
+  await alertCenter.getByLabel("Large-print threshold").fill("100");
+  await expect(alertCenter).toContainText("Large print", { timeout: 5_000 });
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:microstructure-alerts:v1") ?? "null")?.largePrintNotional)).toBe(100);
+  await alertCenter.getByRole("button", { name: "Dismiss microstructure alert" }).first().click();
+  await expectNoAxeViolations(page);
   await toggle.click();
   await expect(badge).toBeHidden();
 });

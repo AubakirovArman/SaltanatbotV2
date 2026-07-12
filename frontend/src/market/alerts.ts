@@ -63,13 +63,18 @@ export async function ensureNotificationPermission(): Promise<NotificationPermis
 }
 
 export function showAlertNotification(alert: PriceAlert, price: number, decimals: number) {
+  const arrow = alert.direction === "above" ? "▲" : "▼";
+  showSystemNotification(
+    `${alert.symbol} ${arrow} ${alert.price.toFixed(decimals)}`,
+    `Price ${alert.direction === "above" ? "rose above" : "fell below"} ${alert.price.toFixed(decimals)} (now ${price.toFixed(decimals)})`,
+    alert.id
+  );
+}
+
+export function showSystemNotification(title: string, body: string, tag: string) {
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   try {
-    const arrow = alert.direction === "above" ? "▲" : "▼";
-    new Notification(`${alert.symbol} ${arrow} ${alert.price.toFixed(decimals)}`, {
-      body: `Price ${alert.direction === "above" ? "rose above" : "fell below"} ${alert.price.toFixed(decimals)} (now ${price.toFixed(decimals)})`,
-      tag: alert.id
-    });
+    new Notification(title, { body, tag });
   } catch {
     // Notification construction can throw in some browsers; ignore.
   }

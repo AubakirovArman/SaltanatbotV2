@@ -11,6 +11,8 @@
 - Live trade-flow focused zoom: `/home/arman/.codex/design-qa/saltanatbotv2/trade-footprint-zoom-current.png`
 - Live cluster-analysis state: `/home/arman/.codex/design-qa/saltanatbotv2/footprint-clusters-final.png`
 - Deterministic cluster stress fixture: `/home/arman/.codex/design-qa/saltanatbotv2/footprint-clusters-fixture-final.png`
+- Microstructure event feed: `/home/arman/.codex/design-qa/saltanatbotv2/microstructure-alerts.png`
+- Microstructure settings: `/home/arman/.codex/design-qa/saltanatbotv2/microstructure-alert-settings-repaint.png`
 - Viewport: 1616 × 965 CSS pixels, Chromium, DPR 1
 - State: dark chart workspace, BTCUSDT 1m, SMA/Bollinger/RSI visible, volume and visible-range Volume Profile enabled, crosshair hover active
 
@@ -27,6 +29,7 @@ No actionable P0, P1 or P2 mismatch remains.
 - The optional real-depth heatmap uses the same right-side analysis zone and true chart price scale. Its compact band on a wide BTC range is expected data fidelity rather than a layout defect; zooming reveals individual price rows. Source, spread, level count and live/stale lifecycle remain legible in the badge.
 - The optional real-trade footprint preserves the candle price/time coordinates, separates taker sells/buys within each row, and reserves a bounded lower ribbon for per-candle delta plus CVD. It starts at activation and therefore leaves earlier candles empty instead of implying unavailable historical tick data.
 - Cluster annotations reuse the footprint coordinates: side-coloured cell outlines identify diagonal imbalance, one bracket groups consecutive rows, and `ABS?` is offset from the dense column with a connector. The DOM badge mirrors every count, so interpretation does not depend on Canvas colour.
+- The microstructure alert center stays below the Footprint badge, uses semantic side accents and keeps chart controls/price scale unobstructed. Its native disclosure remains keyboard-operable and scroll-bounds the optional settings instead of expanding the chart layout.
 
 ## Comparison evidence
 
@@ -41,6 +44,7 @@ The full-view comparison confirms matching information hierarchy, terminal densi
 5. The optional public-depth state was captured with live Binance top-20 data after ten seconds of history. Initial intensity was too faint and bid/ask rows overpainted at subpixel BTC spacing; rows were aggregated by screen price, bid/ask were offset, intensity was increased without changing price coordinates, and final combined evidence found no remaining P0/P1/P2 issue.
 6. The live public-trade state was captured after more than 500 Binance prints with zero browser errors. The first capture intentionally panned away from the live bar and confirmed that no fake footprint is drawn over old history. Current-bar and focused captures exposed weak explanation of the live-only delta pane, an impractical numeric-cell threshold, a half-candle X offset and a right-edge label collision; a `LIVE Δ / CVD` label/current value, compact plot-clamped high-zoom labels and candle-open anchoring resolved those P1/P2 issues.
 7. Live cluster QA initially suggested absorption from only nine aggregate prints, so the heuristic was tightened to require 20. A deterministic 242-print stress fixture then exercised 14 imbalances and one stack without browser errors. Dense-column QA led to an offset, tagged absorption marker and boundary-aware stack-bracket direction; no P0/P1/P2 issue remains.
+8. Alert-center E2E first exposed the interaction Canvas intercepting visible controls. Moving the center outside the content-visibility/render wrapper fixed pointer ownership without raising the Footprint Canvas over drawings. A three-event stress capture and open-settings repaint confirmed readable stacking, persistence controls and zero browser errors; the immediate first settings screenshot was discarded as a capture-before-paint race.
 
 ## Primary interactions tested
 
@@ -53,6 +57,7 @@ The full-view comparison confirms matching information hierarchy, terminal densi
 - The live-depth control opens a same-origin stream, exposes source/spread/level state, closes the layer when disabled and reconnects when the page becomes visible again.
 - The live-footprint control opens a same-origin stream, exposes exchange/print/delta state, renders only observed ticks, and suspends both WebSocket and Canvas work when the page or component is skipped.
 - Footprint cluster counts update at most once per second in semantic DOM while the high-frequency outlines stay on the isolated Canvas; zoom recomputes the documented screen-row analysis.
+- Alert settings are keyboard-editable, persisted locally, and event rows can be dismissed individually or cleared as a bounded group.
 - Browser console and uncaught page errors: none after the CSP fix.
 
 ## Follow-up polish

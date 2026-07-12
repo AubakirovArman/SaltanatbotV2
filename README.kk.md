@@ -21,6 +21,7 @@ SaltanatbotV2 — сауда идеяларын зерттеуге және ав
 Негізгі мүмкіндіктер:
 
 - candlestick, Heikin-Ashi, bars, line, area, baseline және renko түрлері, VPVR, order-book heatmap, live trade footprint/CVD және imbalance/potential absorption белгілеуі бар жеке Canvas-график;
+- stacked imbalance, potential absorption, CVD spike және large print үшін жергілікті сақталатын in-chart alert-тер, optional sound және desktop notification;
 - Binance және Bybit үшін REST тарихы мен WebSocket жаңартулары;
 - индикаторлар мен стратегияларға арналған Blockly визуалды құрастырушысы;
 - Pine Script v4–v6 қолдау көрсетілетін бөлігін өңделетін блоктарға импорттау;

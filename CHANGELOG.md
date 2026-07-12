@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added a persisted in-chart microstructure alert center for stacked imbalance, provisional absorption, CVD spikes and configurable large prints, with bounded deduplication, dismiss/clear controls, optional sound and opt-in desktop notifications.
+- Added keyboard-operable native disclosure settings, an `aria-live` event feed and field-by-field validation/clamping for locally stored thresholds; heuristic alerts remain separate from durable price alerts and Telegram delivery.
 - Added transparent live footprint analytics: 3:1 diagonal imbalance outlines, three-row stacked-imbalance brackets and explicitly provisional absorption markers when strong observed delta fails to close in the aggressor's half of the candle.
 - Added a synchronized accessible cluster summary and documented volume, visibility, zoom and live-observation thresholds so these heuristics are never presented as historical exchange signals.
 - Added a real Binance/Bybit public-trade footprint that groups exchange-reported aggressor prints by candle and visible price row, plus quote-notional delta bars and a cumulative-delta line.

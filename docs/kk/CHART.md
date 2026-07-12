@@ -41,6 +41,14 @@ Side баға қозғалысынан болжанбайды: Binance-та `m=t
 `ABS?` ромбы тек candle-дің бақыланған бөлігіндегі **ықтимал absorption** дегенді білдіреді: кемінде 20 normalized print, абсолют delta кемінде 35%, candle көлемі көрінетін candle-дардағы ең үлкен бақыланған көлемнің кемінде 15%-ы болуы және close aggressor бағытына қарсы High–Low жартысында қалуы керек. Төменгі жартыда жабылған buy aggression — buy absorption ықтималдығы; жоғарғы жартыда жабылған sell aggression — sell absorption ықтималдығы.
 
 Бұл live-only heuristic, trading signal немесе historical exchange data емес. Нәтиже қосылған уақытқа және zoom-ға тәуелді: price row-лар screen pixel бойынша агрегатталады, сондықтан scale өзгергенде cluster саны да өзгеруі мүмкін. Reconnect analysis window-ды тазалайды. Сауда шешімі үшін context, liquidity және ұзақ history-ді бөлек тексеріңіз.
+
+### Flow alert-тер
+
+Footprint badge астында keyboard арқылы басқарылатын **FLOW ALERTS** лентасы бар. Ол stacked imbalance, `ABS?`, CVD spike және жеке large print үшін event жасай алады. Event exchange trade немесе candle/side бойынша deduplicate жасалады және сол observation window ішінде dismiss не clear-дан кейін қайта шықпайды. Memory-де ең көбі сегіз event қалады, соңғы төртеуі көрінеді.
+
+Параметрлер native **Alert settings** disclosure ішінде ашылады және тек local browser-де сақталады. Әдепкі CVD шарты: absolute delta 70%, notional 50 000 және кемінде 20 print; large print threshold — 100 000. Threshold-тарды өзгертуге болады, бірақ олар қауіпсіз диапазонмен clamp жасалады. Sound әдепкіде off. Desktop notification тек explicit browser permission-нан кейін қосылады; бір update ең көбі үш notification жібереді.
+
+Flow alert trading journal-ға жазылмайды, Telegram-ға жіберілмейді және order ашпайды. Symbol ауысса, layer өшсе немесе stream reconnect болса, observation window мен feed тазаланады. Бұл automatic trading decision емес, live-only көмекші analytics.
 - **Қосу** мәзірі кірістірілген және пайдаланушы индикаторларын басқарады.
 - **Салыстыру** үш символға дейін қосады.
 - `Ctrl+K` (`⌘K`) command palette ашады; `Enter` орындайды, `Esc` жабады.

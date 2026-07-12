@@ -20,6 +20,8 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `../components/chartCanvas/OrderBookHeatmapLayer.tsx`: independently scheduled Canvas/WebSocket layer with 60-second history, stale detection and background-tab pausing.
 - `tradeFootprint.ts`: pure candle/price-row aggregation and quote-notional delta math for real public prints.
 - `footprintInsights.ts`: pure diagonal-imbalance, stacked-cluster and explicitly provisional absorption heuristics with documented thresholds.
+- `microstructureAlerts.ts`: pure candidate rules and strict persisted-setting validation for stack, absorption, CVD and large-print alerts.
+- `microstructureAlertStore.ts`: fail-soft browser-only persistence for validated alert preferences.
 - `renderers/footprintInsights.ts`: Canvas outlines, stack brackets and `ABS?` markers; the synchronized semantic counts stay in DOM.
 - `../components/chartCanvas/TradeFootprintLayer.tsx`: isolated Canvas/WebSocket footprint and cumulative-delta layer with bounded retention and off-screen suspension.
 - `../components/chartCanvas/ChartPriceHud.tsx`: DOM current-price/countdown pill and crosshair OHLC HUD.
@@ -41,6 +43,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - High-frequency depth updates paint only the heatmap Canvas; they do not enter `ChartCanvas` React state or invalidate candle/indicator passes.
 - High-frequency public trades paint only the footprint Canvas; reconnects begin a new observation window instead of drawing invented history across a data gap.
 - Footprint insight rows are screen-price buckets and may change with zoom. They use only the post-activation observation window and must remain labelled as heuristics rather than exchange-authored signals.
+- Microstructure candidates deduplicate within one observation window, remain bounded in memory and never enter the durable price-alert, Telegram or order-execution paths.
 - Crosshair/drawing redraws must not recompute unchanged indicators.
 - Crosshair-only movement paints the transparent interaction canvas without clearing or repainting the base canvas.
 - Primary-series, indicator and drawing/strategy passes use separate transparent canvases and reuse one prepared viewport/indicator plan.
