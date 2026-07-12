@@ -28,6 +28,7 @@ import type {
   Viewport,
   VolumeProfileSnapshot
 } from "./types";
+import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
 
 interface UseChartRendererOptions {
   candles: Candle[];
@@ -48,6 +49,7 @@ interface UseChartRendererOptions {
   livePositions?: ChartLivePosition[];
   showVolume: boolean;
   showVolumeProfile: boolean;
+  sessionLiquidity?: SessionLiquiditySnapshot;
   compare: CompareSeries[];
   theme?: string;
   onCompareLegend(entries: CompareLegendSnapshot[]): void;
@@ -137,7 +139,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
   useEffect(() => {
     const canvas = overlaysCanvasRef.current;
     if (canvas) schedulerRef.current?.schedule("overlays", () => drawOverlays(canvas, renderPlanRef.current, options));
-  }, [options.draftDrawing, options.drawings, options.hoveredDrawingId, options.selectedDrawingId, options.signals, options.trades, options.plots, options.shapes, options.alerts, options.livePositions]);
+  }, [options.draftDrawing, options.drawings, options.hoveredDrawingId, options.selectedDrawingId, options.signals, options.trades, options.plots, options.shapes, options.alerts, options.livePositions, options.sessionLiquidity]);
 
   useEffect(() => {
     const canvas = interactionCanvasRef.current;
@@ -194,7 +196,8 @@ function drawOverlays(canvas: HTMLCanvasElement, plan: ChartRenderPlan | undefin
     plots: options.plots,
     shapes: options.shapes,
     alerts: options.alerts,
-    livePositions: options.livePositions
+    livePositions: options.livePositions,
+    sessionLiquidity: options.sessionLiquidity
   }));
 }
 

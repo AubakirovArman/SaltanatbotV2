@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added an opt-out UTC session-liquidity map with bar-based session VWAP and volume-weighted ±1σ bands, session open/high/low, authoritative previous-day high/low from daily exchange candles and confirmed wick-and-reclaim sweep markers.
+- Integrated the analysis into the existing dirty overlay pass and paired it with a keyboard-operable toggle plus a synchronized semantic DOM summary; live-tail candles cannot emit confirmed sweeps.
 - Added a persisted in-chart microstructure alert center for stacked imbalance, provisional absorption, CVD spikes and configurable large prints, with bounded deduplication, dismiss/clear controls, optional sound and opt-in desktop notifications.
 - Added keyboard-operable native disclosure settings, an `aria-live` event feed and field-by-field validation/clamping for locally stored thresholds; heuristic alerts remain separate from durable price alerts and Telegram delivery.
 - Added transparent live footprint analytics: 3:1 diagonal imbalance outlines, three-row stacked-imbalance brackets and explicitly provisional absorption markers when strong observed delta fails to close in the aggressor's half of the candle.

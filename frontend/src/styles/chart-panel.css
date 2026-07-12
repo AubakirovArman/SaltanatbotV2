@@ -471,6 +471,45 @@
 .orderbook-heatmap-badge.error span { color: var(--down); }
 .orderbook-heatmap-badge small { color: var(--dim); }
 
+.session-liquidity-badge {
+  position: absolute;
+  inset-block-start: 42px;
+  inset-inline-end: 230px;
+  z-index: 7;
+  min-inline-size: 196px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 93%, transparent);
+  box-shadow: 0 4px 18px color-mix(in srgb, #000 20%, transparent);
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+}
+
+.session-liquidity-badge.disabled { min-inline-size: 0; }
+.session-liquidity-badge button {
+  inline-size: 100%;
+  min-block-size: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  cursor: pointer;
+}
+.session-liquidity-badge button:hover { background: var(--hover); color: var(--text); }
+.session-liquidity-badge button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.session-liquidity-badge strong { color: var(--accent); font-size: var(--fs-xs); font-weight: 650; }
+.session-liquidity-values { display: grid; gap: 2px; padding: 4px 6px 6px; border-block-start: 1px solid var(--line-soft); }
+.session-liquidity-values b { color: var(--text); font-weight: 600; }
+.session-liquidity-values small { color: var(--muted); }
+
 .trade-footprint-layer {
   position: absolute;
   inset: 0;

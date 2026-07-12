@@ -24,6 +24,17 @@ test("toggles the visible-range volume profile accessibly", async ({ page }) => 
   await expect(page.locator(".volume-profile-badge")).toBeVisible();
 });
 
+test("shows and toggles the semantic UTC session liquidity map", async ({ page }) => {
+  await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
+  const toggle = page.getByRole("button", { name: "Toggle UTC map" });
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".session-liquidity-values")).toContainText("VWAP", { timeout: 20_000 });
+  await expect(page.locator(".session-liquidity-badge")).toHaveAttribute("aria-label", /UTC session map: VWAP/);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".session-liquidity-values")).toBeHidden();
+});
+
 test("renders and pauses a mocked live order book heatmap", async ({ page }) => {
   await installOrderBookSocketMock(page);
   const toggle = page.getByRole("button", { name: "Toggle live order book heatmap" });

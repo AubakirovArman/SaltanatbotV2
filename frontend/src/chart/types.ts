@@ -1,6 +1,7 @@
 import type { Candle, ChartType, Timeframe } from "../types";
 import type { Anchor, DrawingObject } from "./drawings";
 import type { IndicatorConfig } from "./indicatorTypes";
+import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
 
 export interface PlotArea {
   left: number;
@@ -104,6 +105,8 @@ export interface DrawChartOptions {
   showVolume?: boolean;
   /** Visible-range volume-at-price overlay. */
   showVolumeProfile?: boolean;
+  /** UTC session VWAP, previous-day levels and confirmed sweep context. */
+  sessionLiquidity?: SessionLiquiditySnapshot;
   /** Symbols overlaid on the price pane, normalized to % change (Compare). */
   compare?: CompareSeries[];
   /** The base chart's symbol — labels the base line in the compare legend. */

@@ -31,6 +31,7 @@ import { drawShapes } from "./renderers/shapes";
 import { drawStrategyPlots, drawSubPlots } from "./renderers/strategyPlots";
 import { drawCompareSeries } from "./renderers/compareSeries";
 import { drawVolumeProfile } from "./renderers/volumeProfile";
+import { drawSessionLiquidity } from "./renderers/sessionLiquidity";
 import { drawCrosshair, drawEmpty, drawGrid, drawLastPrice, drawTimeAxis } from "./renderers/chartChrome";
 import { toHeikinAshi } from "./heikinAshi";
 import { computePlot, priceScale, visibleCandles } from "./scales";
@@ -240,10 +241,11 @@ export function drawChartIndicators(ctx: CanvasRenderingContext2D, plan: ChartRe
 export function drawChartOverlays(ctx: CanvasRenderingContext2D, plan: ChartRenderPlan, clear = true) {
   const {
     width, height, decimals, candles, drawings, draftDrawing, signals, trades, shapes, alerts, livePositions,
-    selectedDrawingId, hoveredDrawingId
+    selectedDrawingId, hoveredDrawingId, sessionLiquidity
   } = plan.input;
   if (clear) ctx.clearRect(0, 0, width, height);
   if (plan.empty) return;
+  if (sessionLiquidity) drawSessionLiquidity(ctx, sessionLiquidity, plan.viewport, theme);
   // Strategy shading sits UNDER the user's own drawings so it never obscures them.
   if (shapes && (shapes.boxes.length > 0 || shapes.vlines.length > 0 || shapes.rays.length > 0)) drawShapes(ctx, plan.viewport, shapes);
   drawDrawings(ctx, plan.viewport, drawings, {

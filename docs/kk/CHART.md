@@ -49,6 +49,14 @@ Footprint badge астында keyboard арқылы басқарылатын **
 Параметрлер native **Alert settings** disclosure ішінде ашылады және тек local browser-де сақталады. Әдепкі CVD шарты: absolute delta 70%, notional 50 000 және кемінде 20 print; large print threshold — 100 000. Threshold-тарды өзгертуге болады, бірақ олар қауіпсіз диапазонмен clamp жасалады. Sound әдепкіде off. Desktop notification тек explicit browser permission-нан кейін қосылады; бір update ең көбі үш notification жібереді.
 
 Flow alert trading journal-ға жазылмайды, Telegram-ға жіберілмейді және order ашпайды. Symbol ауысса, layer өшсе немесе stream reconnect болса, observation window мен feed тазаланады. Бұл automatic trading decision емес, live-only көмекші analytics.
+
+## Session liquidity map
+
+`1m`–`4h` intraday interval-дарында **SESSION MAP · UTC** әдепкіде қосулы. Ол ағымдағы UTC күнінің open/high/low мәндерін, VWAP және ±1σ жолақтарын, сондай-ақ PDH/PDL деңгейлерін көрсетеді. Алдыңғы күн деңгейлері таңдалған Binance/Bybit-тің бөлек daily candle-дарынан алынады, сондықтан толық емес көрінетін intraday history толық күн деп есептелмейді.
+
+VWAP әр OHLCV candle-дың жалпы volume-ымен өлшенген `(high + low + close) / 3` typical price арқылы есептеледі. Бұл deterministic **bar-based estimate**, tick-VWAP емес: candle ішіндегі volume таралуы ойдан жасалмайды. Volume нөл болса, VWAP және band көрсетілмейді.
+
+`PDH SWEEP` жабылған candle previous-day high-тан wick жасап, төменде жабылғанда; `PDL SWEEP` previous-day low-дан төмен түсіп, қайта жоғарыда жабылғанда пайда болады. Ағымдағы жабылмаған candle confirmed marker жасамайды. Sweep — context, жеке entry signal емес.
 - **Қосу** мәзірі кірістірілген және пайдаланушы индикаторларын басқарады.
 - **Салыстыру** үш символға дейін қосады.
 - `Ctrl+K` (`⌘K`) command palette ашады; `Enter` орындайды, `Esc` жабады.

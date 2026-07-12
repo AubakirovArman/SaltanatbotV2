@@ -13,6 +13,7 @@ import { CompareControl } from "./CompareControl";
 import { DrawingObjectsPanel } from "./DrawingObjectsPanel";
 import { ChartDrawingToolbar } from "./chartCanvas/ChartDrawingToolbar";
 import { OrderBookHeatmapLayer } from "./chartCanvas/OrderBookHeatmapLayer";
+import { SessionLiquidityBadge, useSessionLiquidity } from "./chartCanvas/SessionLiquidityLayer";
 import { TradeFootprintLayer } from "./chartCanvas/TradeFootprintLayer";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
@@ -107,6 +108,7 @@ export function ChartCanvas({
   const latest = candles.at(-1);
   const orderBookAvailable = instrument.assetClass === "crypto" && instrument.provider === "binance";
   const heatmapRenderKey = `${latest?.time ?? 0}:${candles.length}:${view.zoom}:${view.offset}:${view.priceMode}`;
+  const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange);
   drawingsRef.current = drawings;
 
   useEffect(() => setShowArtifactSettings(false), [activeArtifactId]);
@@ -227,6 +229,7 @@ export function ChartCanvas({
     livePositions,
     showVolume,
     showVolumeProfile,
+    sessionLiquidity: sessionLiquidity.enabled ? sessionLiquidity.snapshot : undefined,
     compare,
     theme,
     onCompareLegend: (entries) => setCompareLegend((current) => (sameLegend(current, entries) ? current : entries)),
@@ -403,6 +406,7 @@ export function ChartCanvas({
           renderKey={heatmapRenderKey}
         />
         <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
+        <SessionLiquidityBadge state={sessionLiquidity} decimals={instrument.decimals} locale={locale} />
         <TradeFootprintLayer enabled={showTradeFootprint && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} candles={candles} viewportRef={viewportRef} renderKey={heatmapRenderKey} />
         <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />
         <canvas ref={overlaysCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-overlays" aria-hidden="true" />

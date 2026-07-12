@@ -1,6 +1,6 @@
 # Documentation status
 
-Last full repository documentation audit: **2026-07-11**
+Last full repository documentation audit: **2026-07-12**
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -11,7 +11,7 @@ their source contracts, and user-facing claims were compared with the current im
 
 | Document | Audience | Status | Last verified |
 | --- | --- | --- | --- |
-| [README](../README.md) | users/contributors | current | 2026-07-11 |
+| [README](../README.md) | users/contributors | current | 2026-07-12 |
 | [Architecture](ARCHITECTURE.md) | contributors | current | 2026-07-11 |
 | [Modular architecture](MODULAR_ARCHITECTURE.md) | contributors | current | 2026-07-11 |
 | [API reference](API.md) | integrators | current, hand-maintained | 2026-07-11 |
