@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { Candle, Timeframe } from "../../types";
-import type { Viewport } from "../../chart/types";
+import type { Viewport, VolumeProfileSnapshot } from "../../chart/types";
 import type { Locale } from "../../i18n";
+import { shellText } from "../../i18n/shell";
 import { formatVolume } from "./drawingInteraction";
 
 interface ChartPriceHudProps {
@@ -69,6 +70,17 @@ export function ChartPriceHud({ candle, latest, timeframe, decimals, locale, vie
         </div>
       )}
     </>
+  );
+}
+
+export function VolumeProfileBadge({ visible, profile, decimals, locale }: { visible: boolean; profile?: VolumeProfileSnapshot; decimals: number; locale: Locale }) {
+  if (!visible || !profile) return null;
+  const valueArea = shellText(locale, "valueArea");
+  return (
+    <div className="volume-profile-badge" title={`${shellText(locale, "volumeProfileEstimate")}. ${valueArea}: ${profile.valueAreaLow.toFixed(decimals)} — ${profile.valueAreaHigh.toFixed(decimals)}`}>
+      <strong>VPVR · EST · {profile.bins}</strong>
+      <span>{shellText(locale, "pointOfControl")} <b>{profile.pocPrice.toFixed(decimals)}</b></span>
+    </div>
   );
 }
 

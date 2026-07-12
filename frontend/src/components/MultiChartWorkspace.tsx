@@ -93,6 +93,7 @@ function SecondaryChartPane({ chart, catalog, exchange, locale, indicators, onIn
         instrument={instrument}
         timeframe={chart.timeframe}
         locale={locale}
+        dataExchange={exchange}
         indicators={indicators}
         onIndicatorsChange={onIndicatorsChange}
         onEditIndicatorLogic={onEditIndicatorLogic}

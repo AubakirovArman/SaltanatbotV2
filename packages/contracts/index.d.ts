@@ -84,6 +84,27 @@ export interface CandleMessage {
     provider: string;
     ts: number;
 }
+export type OrderBookLevel = [price: number, size: number];
+export type OrderBookStatus = "connecting" | "connected" | "reconnecting" | "stale" | "error";
+export interface OrderBookSnapshotMessage {
+    type: "orderbook";
+    symbol: string;
+    exchange: DataExchange;
+    bids: OrderBookLevel[];
+    asks: OrderBookLevel[];
+    sequence: number;
+    exchangeTs: number;
+    ts: number;
+}
+export interface OrderBookStatusMessage {
+    type: "orderbook_status";
+    symbol: string;
+    exchange: DataExchange;
+    status: OrderBookStatus;
+    message: string;
+    ts: number;
+}
+export type OrderBookStreamMessage = OrderBookSnapshotMessage | OrderBookStatusMessage | ErrorMessage;
 export interface ErrorMessage {
     type: "error";
     message: string;
@@ -97,3 +118,4 @@ export declare function parseCandlesResponse(value: unknown): CandlesResponse;
 export declare function parseSparklinesResponse(value: unknown): SparklinesResponse;
 export declare function parseQuoteStreamMessage(value: unknown): QuoteStreamMessage;
 export declare function parseStreamMessage(value: unknown): StreamMessage;
+export declare function parseOrderBookStreamMessage(value: unknown): OrderBookStreamMessage;

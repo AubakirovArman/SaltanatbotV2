@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added a real public Binance/Bybit top-20 order-book heatmap with one shared upstream per market, bounded four-Hz browser snapshots and a 60-second liquidity trail aligned to the chart price scale.
+- Added explicit connecting/reconnecting/stale/error states, background-tab stream pausing, sequence-aware Bybit snapshot/delta handling and no synthetic depth fallback.
 - Added an explicitly labelled OHLCV-estimated visible-range Volume Profile with range-weighted volume distribution, up/down composition, Point of Control and a contiguous 70% value area.
 - Added an accessible localized toolbar toggle and synchronized DOM summary while keeping profile calculations out of crosshair-only render passes.
 - Added hollow-candle and step-line price renderers to the shared market contract, catalog, chart picker, compare overlays and saved-workspace migration.

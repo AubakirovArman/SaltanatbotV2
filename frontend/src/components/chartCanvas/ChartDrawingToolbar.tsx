@@ -1,4 +1,4 @@
-import { BarChart3, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, TrendingDown, TrendingUp, Trash2 } from "lucide-react";
+import { BarChart3, BookOpen, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, TrendingDown, TrendingUp, Trash2 } from "lucide-react";
 import type { DrawingTool } from "../../chart/drawings";
 import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
@@ -9,12 +9,15 @@ export function ChartDrawingToolbar({
   magnet,
   showVolume,
   showVolumeProfile,
+  showOrderBookHeatmap,
+  orderBookAvailable,
   showObjects,
   hasDrawings,
   onTool,
   onToggleMagnet,
   onToggleVolume,
   onToggleVolumeProfile,
+  onToggleOrderBookHeatmap,
   onToggleObjects,
   onDeleteAll
 }: {
@@ -23,12 +26,15 @@ export function ChartDrawingToolbar({
   magnet: boolean;
   showVolume: boolean;
   showVolumeProfile: boolean;
+  showOrderBookHeatmap: boolean;
+  orderBookAvailable: boolean;
   showObjects: boolean;
   hasDrawings: boolean;
   onTool: (tool: DrawingTool) => void;
   onToggleMagnet: () => void;
   onToggleVolume: () => void;
   onToggleVolumeProfile: () => void;
+  onToggleOrderBookHeatmap: () => void;
   onToggleObjects: () => void;
   onDeleteAll: () => void;
 }) {
@@ -82,6 +88,9 @@ export function ChartDrawingToolbar({
       <Tool active={showVolumeProfile} label={t("toggleVolumeProfile")} onClick={onToggleVolumeProfile}>
         <BarChart3 size={15} aria-hidden="true" />
       </Tool>
+      <Tool active={showOrderBookHeatmap} disabled={!orderBookAvailable} label={orderBookAvailable ? t("toggleOrderBookHeatmap") : t("depthUnavailable")} onClick={onToggleOrderBookHeatmap}>
+        <BookOpen size={15} aria-hidden="true" />
+      </Tool>
       <Tool active={showObjects} label={t("drawingObjects")} onClick={onToggleObjects}>
         <Layers3 size={15} aria-hidden="true" />
       </Tool>
@@ -92,9 +101,9 @@ export function ChartDrawingToolbar({
   );
 }
 
-function Tool({ active, label, onClick, children }: { active: boolean; label: string; onClick: () => void; children: React.ReactNode }) {
+function Tool({ active, disabled = false, label, onClick, children }: { active: boolean; disabled?: boolean; label: string; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" className={active ? "active" : ""} aria-pressed={active} aria-label={label} title={label} onClick={onClick}>
+    <button type="button" className={active ? "active" : ""} disabled={disabled} aria-pressed={active} aria-label={label} title={label} onClick={onClick}>
       {children}
     </button>
   );

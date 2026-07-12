@@ -247,6 +247,7 @@ export default function App() {
               instrument={instrument}
               timeframe={timeframe}
               locale={locale}
+              dataExchange={cryptoExchange}
               indicators={indicators}
               onIndicatorsChange={setIndicators}
               onEditIndicatorLogic={artifactLibrary.selectIndicatorLogic}

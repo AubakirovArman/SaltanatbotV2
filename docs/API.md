@@ -1,6 +1,6 @@
 # HTTP & WebSocket API reference
 
-SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and three WebSocket endpoints are exposed at `/stream`, `/quotes` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
+SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote/order-book streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and four WebSocket endpoints are exposed at `/stream`, `/quotes`, `/orderbook` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
 
 Public market catalog, candle, sparkline and WebSocket payloads have canonical TypeScript contracts
 plus fail-closed runtime parsers in `packages/contracts`. The frontend validates untrusted JSON at
@@ -11,7 +11,7 @@ The generated [API endpoint index](./API_ENDPOINTS.generated.md) is the route-pr
 
 - Base URL (default): `http://localhost:4180`
 - Content type: `application/json`
-- Validation: query parameters on `/api/candles`, `/api/sparklines`, `/stream` and `/quotes` are validated with [zod](https://zod.dev); invalid HTTP input returns `400`, while invalid WebSocket input receives a typed error and closes.
+- Validation: query parameters on `/api/candles`, `/api/sparklines`, `/stream`, `/quotes` and `/orderbook` are validated with [zod](https://zod.dev); invalid HTTP input returns `400`, while invalid WebSocket input receives a typed error and closes.
 
 ## Trading auth
 
@@ -381,6 +381,48 @@ The first `quotes_snapshot` message contains a nullable series map. Each subsequ
   "ts": 1751932803000
 }
 ```
+
+---
+
+## Public order-book WebSocket: `/orderbook`
+
+Streams bounded real depth snapshots for a crypto symbol. Query parameters are `symbol` and `exchange=binance|bybit`.
+
+```text
+ws://localhost:4180/orderbook?symbol=BTCUSDT&exchange=binance
+```
+
+The backend shares one exchange upstream per `exchange:symbol` across all browser clients and publishes at most four snapshots per second. Binance uses its official top-20 partial depth feed. Bybit applies level-50 snapshot/delta messages to a local book and emits the nearest 20 rows per side. No synthetic depth is generated. At most 32 distinct upstream books may be active; a slow client is closed with code `1013` before its send buffer exceeds 256 KiB.
+
+`orderbook_status` makes lifecycle state explicit:
+
+```json
+{
+  "type": "orderbook_status",
+  "symbol": "BTCUSDT",
+  "exchange": "binance",
+  "status": "connected",
+  "message": "Binance top-20 depth connected",
+  "ts": 1751932800000
+}
+```
+
+An `orderbook` message is a complete browser-facing snapshot, not a delta. `bids` are best-first descending; `asks` are best-first ascending. Every tuple is `[price, size]` and both values are positive.
+
+```json
+{
+  "type": "orderbook",
+  "symbol": "BTCUSDT",
+  "exchange": "binance",
+  "bids": [[64008.83, 1.2058], [64008.82, 0.42]],
+  "asks": [[64008.84, 2.06016], [64008.85, 0.19]],
+  "sequence": 97300425191,
+  "exchangeTs": 1751932800100,
+  "ts": 1751932800120
+}
+```
+
+All variants are bounded and validated by `parseOrderBookStreamMessage`. Status values are `connecting`, `connected`, `reconnecting`, `stale` and `error`. A generic typed `error` closes invalid or unsupported requests.
 
 ---
 

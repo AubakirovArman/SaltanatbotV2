@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseCandlesResponse,
   parseCatalogResponse,
+  parseOrderBookStreamMessage,
   parseQuoteStreamMessage,
   parseSparklinesResponse,
   parseStreamMessage,
@@ -60,6 +61,14 @@ describe("runtime market contracts", () => {
       type: "quote", symbol: "BTCUSDT", timeframe: "1m", provider: "binance", ts: 6,
       series: { last: 102, changePct: 2, points: [100, 102] }
     })).toMatchObject({ type: "quote", symbol: "BTCUSDT", series: { last: 102 } });
+    expect(parseOrderBookStreamMessage({
+      type: "orderbook", symbol: "BTCUSDT", exchange: "binance",
+      bids: [[100, 2]], asks: [[101, 3]], sequence: 10, exchangeTs: 5, ts: 6
+    })).toMatchObject({ type: "orderbook", bids: [[100, 2]], asks: [[101, 3]] });
+    expect(parseOrderBookStreamMessage({
+      type: "orderbook_status", symbol: "BTCUSDT", exchange: "bybit",
+      status: "stale", message: "waiting", ts: 7
+    })).toMatchObject({ type: "orderbook_status", status: "stale" });
   });
 
   it("rejects unknown variants, inconsistent OHLC and unsupported enums", () => {
@@ -77,5 +86,9 @@ describe("runtime market contracts", () => {
       candles: [{ ...candle, high: 90 }],
       provider: "binance",
     })).toThrow(/OHLC range is inconsistent/);
+    expect(() => parseOrderBookStreamMessage({
+      type: "orderbook", symbol: "BTCUSDT", exchange: "binance",
+      bids: [[100, 0]], asks: [], sequence: 1, exchangeTs: 1, ts: 1
+    })).toThrow(/values must be positive/);
   });
 });

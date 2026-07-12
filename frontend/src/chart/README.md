@@ -16,6 +16,8 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `renderers/candles.ts`: solid and hollow candle bodies with DPR-safe pixel alignment.
 - `renderers/lineArea.ts`: line, step-line and filled area primitives.
 - `volumeProfile.ts` and `renderers/volumeProfile.ts`: visible-range volume-at-price calculation, POC/value-area selection and Canvas rendering.
+- `orderBookHeatmap.ts`: screen-row aggregation, notional intensity and spread math for real depth frames.
+- `../components/chartCanvas/OrderBookHeatmapLayer.tsx`: independently scheduled Canvas/WebSocket layer with 60-second history, stale detection and background-tab pausing.
 - `../components/chartCanvas/ChartPriceHud.tsx`: DOM current-price/countdown pill and crosshair OHLC HUD.
 - `../components/ChartDataPanel.tsx`: bounded semantic tables for the focused OHLC candle, recent candles, strategy signals and executed trades.
 - `drawingTemplates.ts`: validated local drawing-style templates consumed by
@@ -32,6 +34,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Canvas information remains available through real DOM; the canvas description points to the synchronized chart-data summary.
 - The one-second candle countdown updates only its DOM overlay and never invalidates Canvas render passes.
 - Volume Profile geometry is prepared with the viewport and remains unchanged during crosshair-only interaction paints.
+- High-frequency depth updates paint only the heatmap Canvas; they do not enter `ChartCanvas` React state or invalidate candle/indicator passes.
 - Crosshair/drawing redraws must not recompute unchanged indicators.
 - Crosshair-only movement paints the transparent interaction canvas without clearing or repainting the base canvas.
 - Primary-series, indicator and drawing/strategy passes use separate transparent canvases and reuse one prepared viewport/indicator plan.

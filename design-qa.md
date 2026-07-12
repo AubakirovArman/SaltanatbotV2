@@ -4,6 +4,9 @@
 - Browser-rendered implementation: `/home/arman/.codex/design-qa/saltanatbotv2/precision-terminal-final.png`
 - Full-view comparison: `/home/arman/.codex/design-qa/saltanatbotv2/full-comparison.png`
 - Focused chart/HUD comparison: `/home/arman/.codex/design-qa/saltanatbotv2/chart-focus-comparison-final.png`
+- Live-depth implementation: `/home/arman/.codex/design-qa/saltanatbotv2/orderbook-heatmap.png`
+- Live-depth full comparison: `/home/arman/.codex/design-qa/saltanatbotv2/orderbook-full-comparison.png`
+- Live-depth focused comparison: `/home/arman/.codex/design-qa/saltanatbotv2/orderbook-focus-comparison.png`
 - Viewport: 1616 × 965 CSS pixels, Chromium, DPR 1
 - State: dark chart workspace, BTCUSDT 1m, SMA/Bollinger/RSI visible, volume and visible-range Volume Profile enabled, crosshair hover active
 
@@ -17,6 +20,7 @@ No actionable P0, P1 or P2 mismatch remains.
 - The only visible raster brand asset is the existing project logo; standard controls continue to use the installed Lucide icon system. No target asset is replaced by a placeholder or handcrafted icon.
 - Copy reflects live application data and the existing product vocabulary. The concept's 52-week/performance blocks are intentionally omitted because the current feed does not provide trustworthy values for them.
 - The explicitly labelled `EST` VPVR bars and POC badge are an intentional functional extension beyond the selected concept. They remain inside the chart's right-side analysis zone, preserve candle legibility and can be hidden from the accessible tool rail.
+- The optional real-depth heatmap uses the same right-side analysis zone and true chart price scale. Its compact band on a wide BTC range is expected data fidelity rather than a layout defect; zooming reveals individual price rows. Source, spread, level count and live/stale lifecycle remain legible in the badge.
 
 ## Comparison evidence
 
@@ -28,6 +32,7 @@ The full-view comparison confirms matching information hierarchy, terminal densi
 2. The implementation was rebuilt and recaptured at the same viewport/state. Chromium reported zero console or page errors; both the crosshair HUD and price/countdown pill were visible.
 3. Final full-view and focused combined comparisons found no remaining P0/P1/P2 issue.
 4. A later chart iteration added visible-range Volume Profile. Its first capture exposed a duplicated Canvas/DOM label; the Canvas label was removed, the implementation was recaptured, and the final combined comparison found no new P0/P1/P2 issue.
+5. The optional public-depth state was captured with live Binance top-20 data after ten seconds of history. Initial intensity was too faint and bid/ask rows overpainted at subpixel BTC spacing; rows were aggregated by screen price, bid/ask were offset, intensity was increased without changing price coordinates, and final combined evidence found no remaining P0/P1/P2 issue.
 
 ## Primary interactions tested
 
@@ -37,6 +42,7 @@ The full-view comparison confirms matching information hierarchy, terminal densi
 - Step Line renders after selection.
 - Price scale cycles from LIN to LOG.
 - The localized Volume Profile control reports its pressed state, hides both profile and summary, and restores them on the next activation.
+- The live-depth control opens a same-origin stream, exposes source/spread/level state, closes the layer when disabled and reconnects when the page becomes visible again.
 - Browser console and uncaught page errors: none after the CSP fix.
 
 ## Follow-up polish

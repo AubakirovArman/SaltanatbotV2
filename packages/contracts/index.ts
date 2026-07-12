@@ -99,6 +99,31 @@ export interface CandleMessage {
   ts: number;
 }
 
+export type OrderBookLevel = [price: number, size: number];
+export type OrderBookStatus = "connecting" | "connected" | "reconnecting" | "stale" | "error";
+
+export interface OrderBookSnapshotMessage {
+  type: "orderbook";
+  symbol: string;
+  exchange: DataExchange;
+  bids: OrderBookLevel[];
+  asks: OrderBookLevel[];
+  sequence: number;
+  exchangeTs: number;
+  ts: number;
+}
+
+export interface OrderBookStatusMessage {
+  type: "orderbook_status";
+  symbol: string;
+  exchange: DataExchange;
+  status: OrderBookStatus;
+  message: string;
+  ts: number;
+}
+
+export type OrderBookStreamMessage = OrderBookSnapshotMessage | OrderBookStatusMessage | ErrorMessage;
+
 export interface ErrorMessage {
   type: "error";
   message: string;
@@ -180,6 +205,11 @@ export function parseInstrument(value: unknown, label = "instrument"): Instrumen
 function parseTimeframe(value: unknown, label: string): Timeframe {
   if (typeof value !== "string" || !timeframes.has(value as Timeframe)) throw new Error(`${label} is unsupported`);
   return value as Timeframe;
+}
+
+function parseExchange(value: unknown, label: string): DataExchange {
+  if (value !== "binance" && value !== "bybit") throw new Error(`${label} is unsupported`);
+  return value;
 }
 
 export function parseCatalogResponse(value: unknown): CatalogResponse {
@@ -286,4 +316,48 @@ export function parseStreamMessage(value: unknown): StreamMessage {
     };
   }
   throw new Error(`Unsupported stream message type: ${type}`);
+}
+
+export function parseOrderBookStreamMessage(value: unknown): OrderBookStreamMessage {
+  const input = record(value, "order book stream message");
+  const type = string(input.type, "order book stream message.type");
+  const ts = finite(input.ts, "order book stream message.ts");
+  if (ts < 0) throw new Error("order book stream message.ts must be non-negative");
+  if (type === "error") return { type, message: string(input.message, "order book stream message.message"), ts };
+  const symbol = string(input.symbol, "order book stream message.symbol");
+  const exchange = parseExchange(input.exchange, "order book stream message.exchange");
+  if (type === "orderbook_status") {
+    const status = string(input.status, "order book stream message.status");
+    if (status !== "connecting" && status !== "connected" && status !== "reconnecting" && status !== "stale" && status !== "error") {
+      throw new Error("order book stream message.status is unsupported");
+    }
+    return { type, symbol, exchange, status, message: string(input.message, "order book stream message.message"), ts };
+  }
+  if (type === "orderbook") {
+    if (!Array.isArray(input.bids) || !Array.isArray(input.asks)) throw new Error("order book levels must be arrays");
+    if (input.bids.length > 100 || input.asks.length > 100) throw new Error("order book levels exceed the 100-row limit");
+    const sequence = finite(input.sequence, "order book stream message.sequence");
+    const exchangeTs = finite(input.exchangeTs, "order book stream message.exchangeTs");
+    if (!Number.isSafeInteger(sequence) || sequence < 0) throw new Error("order book stream message.sequence must be a non-negative safe integer");
+    if (exchangeTs < 0) throw new Error("order book stream message.exchangeTs must be non-negative");
+    return {
+      type,
+      symbol,
+      exchange,
+      bids: input.bids.map((level, index) => parseOrderBookLevel(level, `bids[${index}]`)),
+      asks: input.asks.map((level, index) => parseOrderBookLevel(level, `asks[${index}]`)),
+      sequence,
+      exchangeTs,
+      ts
+    };
+  }
+  throw new Error(`Unsupported order book stream message type: ${type}`);
+}
+
+function parseOrderBookLevel(value: unknown, label: string): OrderBookLevel {
+  if (!Array.isArray(value) || value.length !== 2) throw new Error(`${label} must be a [price, size] tuple`);
+  const price = finite(value[0], `${label}.price`);
+  const size = finite(value[1], `${label}.size`);
+  if (price <= 0 || size <= 0) throw new Error(`${label} values must be positive`);
+  return [price, size];
 }

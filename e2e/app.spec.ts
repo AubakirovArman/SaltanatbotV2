@@ -24,6 +24,17 @@ test("toggles the visible-range volume profile accessibly", async ({ page }) => 
   await expect(page.locator(".volume-profile-badge")).toBeVisible();
 });
 
+test("renders and pauses a mocked live order book heatmap", async ({ page }) => {
+  await installOrderBookSocketMock(page);
+  const toggle = page.getByRole("button", { name: "Toggle live order book heatmap" });
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".orderbook-heatmap-badge")).toContainText(/live.*4 levels/i);
+  await toggle.click();
+  await expect(page.locator(".orderbook-heatmap-badge")).toBeHidden();
+});
+
 test("passes automated WCAG A/AA audits on chart, strategy and trading surfaces", async ({ page }) => {
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
   await expectNoAxeViolations(page);
@@ -477,6 +488,48 @@ async function installMarketSocketMock(
 
     window.WebSocket = MockWebSocket as unknown as typeof WebSocket;
   }, { socketMode: mode, rows: candles });
+}
+
+async function installOrderBookSocketMock(page: Page) {
+  await page.evaluate(() => {
+    const NativeWebSocket = window.WebSocket;
+    class MockOrderBookSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      readonly url: string;
+      readyState = MockOrderBookSocket.CONNECTING;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent<string>) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+
+      constructor(url: string) {
+        this.url = url;
+        window.setTimeout(() => {
+          this.readyState = MockOrderBookSocket.OPEN;
+          this.onopen?.(new Event("open"));
+          this.emit({ type: "orderbook_status", symbol: "BTCUSDT", exchange: "binance", status: "connected", message: "mock depth connected", ts: Date.now() });
+          this.emit({
+            type: "orderbook", symbol: "BTCUSDT", exchange: "binance",
+            bids: [[100, 2], [99.9, 4]], asks: [[100.1, 3], [100.2, 5]],
+            sequence: 1, exchangeTs: Date.now(), ts: Date.now()
+          });
+        }, 0);
+      }
+
+      close() { this.readyState = MockOrderBookSocket.CLOSED; }
+      send() {}
+      private emit(message: unknown) { this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(message) })); }
+    }
+    window.WebSocket = new Proxy(NativeWebSocket, {
+      construct(Target, args) {
+        const url = String(args[0]);
+        return url.includes("/orderbook?") ? new MockOrderBookSocket(url) : Reflect.construct(Target, args);
+      }
+    });
+  });
 }
 
 async function expectNoAxeViolations(page: Page) {

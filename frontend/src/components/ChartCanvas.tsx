@@ -12,9 +12,10 @@ import { ChartDataPanel } from "./ChartDataPanel";
 import { CompareControl } from "./CompareControl";
 import { DrawingObjectsPanel } from "./DrawingObjectsPanel";
 import { ChartDrawingToolbar } from "./chartCanvas/ChartDrawingToolbar";
+import { OrderBookHeatmapLayer } from "./chartCanvas/OrderBookHeatmapLayer";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
-import { ChartPriceHud } from "./chartCanvas/ChartPriceHud";
+import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
 import { clampIndex, formatVolume, moveDrawing, sameLegend, sameVolumeProfile, snapAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
 
@@ -30,6 +31,7 @@ export function ChartCanvas({
   instrument,
   timeframe,
   locale,
+  dataExchange,
   indicators,
   onIndicatorsChange,
   onEditIndicatorLogic,
@@ -79,6 +81,7 @@ export function ChartCanvas({
   const [menu, setMenu] = useState<{ x: number; y: number; id?: string; price?: number }>();
   const [showVolume, setShowVolume] = useState(true);
   const [showVolumeProfile, setShowVolumeProfile] = useState(true);
+  const [showOrderBookHeatmap, setShowOrderBookHeatmap] = useState(false);
   const [showArtifactSettings, setShowArtifactSettings] = useState(false);
   const [showDrawingObjects, setShowDrawingObjects] = useState(false);
   const [, setHistoryVersion] = useState(0);
@@ -100,6 +103,8 @@ export function ChartCanvas({
   const chartDataSummaryId = useId();
 
   const latest = candles.at(-1);
+  const orderBookAvailable = instrument.assetClass === "crypto" && instrument.provider === "binance";
+  const heatmapRenderKey = `${latest?.time ?? 0}:${candles.length}:${view.zoom}:${view.offset}:${view.priceMode}`;
   drawingsRef.current = drawings;
 
   useEffect(() => setShowArtifactSettings(false), [activeArtifactId]);
@@ -282,12 +287,15 @@ export function ChartCanvas({
         magnet={magnet}
         showVolume={showVolume}
         showVolumeProfile={showVolumeProfile}
+        showOrderBookHeatmap={showOrderBookHeatmap && orderBookAvailable}
+        orderBookAvailable={orderBookAvailable}
         showObjects={showDrawingObjects}
         hasDrawings={drawings.length > 0}
         onTool={setTool}
         onToggleMagnet={() => setMagnet((value) => !value)}
         onToggleVolume={() => setShowVolume((value) => !value)}
         onToggleVolumeProfile={() => setShowVolumeProfile((value) => !value)}
+        onToggleOrderBookHeatmap={() => setShowOrderBookHeatmap((value) => !value)}
         onToggleObjects={() => setShowDrawingObjects((value) => !value)}
         onDeleteAll={() => {
           if (drawings.length > 0 && !window.confirm(t("deleteDrawingsConfirm"))) return;
@@ -380,13 +388,16 @@ export function ChartCanvas({
         <button type="button" className="scale-toggle" aria-label={t("cyclePriceScale")} title={t("priceScale")} onClick={cyclePriceMode}>
           {view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}
         </button>
-        {showVolumeProfile && volumeProfile && (
-          <div className="volume-profile-badge" title={`${t("volumeProfileEstimate")}. ${t("valueArea")}: ${volumeProfile.valueAreaLow.toFixed(instrument.decimals)} — ${volumeProfile.valueAreaHigh.toFixed(instrument.decimals)}`}>
-            <strong>VPVR · EST · {volumeProfile.bins}</strong>
-            <span>{t("pointOfControl")} <b>{volumeProfile.pocPrice.toFixed(instrument.decimals)}</b></span>
-          </div>
-        )}
+        <VolumeProfileBadge visible={showVolumeProfile} profile={volumeProfile} decimals={instrument.decimals} locale={locale} />
         <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={`${instrument.symbol} ${chartType} chart on ${timeframe}`} aria-describedby={chartDataSummaryId} />
+        <OrderBookHeatmapLayer
+          enabled={showOrderBookHeatmap && orderBookAvailable}
+          symbol={instrument.symbol}
+          exchange={dataExchange}
+          locale={locale}
+          viewportRef={viewportRef}
+          renderKey={heatmapRenderKey}
+        />
         <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
         <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />
         <canvas ref={overlaysCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-overlays" aria-hidden="true" />
