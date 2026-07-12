@@ -27,24 +27,24 @@ interface MultiChartWorkspaceProps {
   linkedTimeRange?: LinkedTimeRange;
   onLinkedTimeRangeChange: (range?: LinkedTimeRange) => void;
   onUpdateChart: (id: string, patch: Partial<WorkspaceChart>) => void;
+  activeChartId?: string;
+  onActiveChartChange: (id: string) => void;
   maximizeShortcut: string;
 }
 
-export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdateChart, maximizeShortcut }: MultiChartWorkspaceProps) {
+export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdateChart, activeChartId, onActiveChartChange, maximizeShortcut }: MultiChartWorkspaceProps) {
   const primaryChart = charts[0];
-  const [activeChartId, setActiveChartId] = useState(primaryChart?.id);
   const [maximizedChartId, setMaximizedChartId] = useState<string>();
   const canMaximize = charts.length > 1;
   const toggleMaximize = (id: string) => {
-    setActiveChartId(id);
+    onActiveChartChange(id);
     setMaximizedChartId((current) => current === id ? undefined : id);
   };
 
   useEffect(() => {
     const ids = new Set(charts.map((chart) => chart.id));
-    if (!activeChartId || !ids.has(activeChartId)) setActiveChartId(primaryChart?.id);
     if (maximizedChartId && !ids.has(maximizedChartId)) setMaximizedChartId(undefined);
-  }, [activeChartId, charts, maximizedChartId, primaryChart?.id]);
+  }, [charts, maximizedChartId]);
 
   useEffect(() => {
     if (!canMaximize && maximizedChartId) setMaximizedChartId(undefined);
@@ -67,8 +67,8 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
   const paneProps = (id: string) => ({
     className: `multi-chart-pane ${id === primaryChart?.id ? "primary" : "secondary"} ${activeChartId === id && canMaximize ? "active" : ""} ${maximizedChartId === id ? "maximized" : ""}`,
     "data-active": activeChartId === id ? "true" : "false",
-    onFocusCapture: () => setActiveChartId(id),
-    onPointerDownCapture: () => setActiveChartId(id)
+    onFocusCapture: () => onActiveChartChange(id),
+    onPointerDownCapture: () => onActiveChartChange(id)
   });
 
   return (
@@ -106,7 +106,7 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
   );
 }
 
-function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize, maximized, maximizeShortcut, onToggleMaximize, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart"> & { chart: WorkspaceChart; paneNumber: number; paneProps: React.HTMLAttributes<HTMLElement>; active: boolean; canMaximize: boolean; maximized: boolean; onToggleMaximize: () => void; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
+function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize, maximized, maximizeShortcut, onToggleMaximize, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart" | "activeChartId" | "onActiveChartChange"> & { chart: WorkspaceChart; paneNumber: number; paneProps: React.HTMLAttributes<HTMLElement>; active: boolean; canMaximize: boolean; maximized: boolean; onToggleMaximize: () => void; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
   const stream = useMarketStream(chart.symbol, chart.timeframe, exchange);
   const instrument = catalog?.instruments.find((item) => item.symbol === chart.symbol) ?? fallbackInstrument(chart.symbol);
   const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair" | "linkTimeRange", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {

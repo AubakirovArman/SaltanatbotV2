@@ -58,6 +58,7 @@ export function useAppShell(options: UseAppShellOptions) {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>();
   const [layoutPreset, setLayoutPresetState] = useState<ChartLayoutPreset>(initialChartSession.preset);
   const [charts, setCharts] = useState<WorkspaceChart[]>(initialChartSession.charts);
+  const [activeChartId, setActiveChartId] = useState(initialChartSession.charts[0]?.id);
   const [leftSize, setLeftSize] = useState(260);
   const [rightSize, setRightSize] = useState(280);
   const [panelsSwapped, setPanelsSwapped] = useState(false);
@@ -70,6 +71,10 @@ export function useAppShell(options: UseAppShellOptions) {
   useEffect(() => { try { localStorage.setItem("sbv2:compare", JSON.stringify(compareOverlays)); } catch { /* noop */ } }, [compareOverlays]);
   useEffect(() => storeIndicators(options.indicators), [options.indicators]);
   useEffect(() => saveLastChartSession(layoutPreset, charts), [charts, layoutPreset]);
+
+  useEffect(() => {
+    if (!charts.some((chart) => chart.id === activeChartId)) setActiveChartId(charts[0]?.id);
+  }, [activeChartId, charts]);
 
   useEffect(() => {
     setCharts((current) => current.map((chart, index) => ({
@@ -252,8 +257,21 @@ export function useAppShell(options: UseAppShellOptions) {
     if (patch.chartType !== undefined && id === charts[0]?.id) options.setChartType(patch.chartType);
   }, [charts, options.symbol, options.timeframe, options.setChartType, options.setSymbol, options.setTimeframe]);
 
+  const updateActiveChart = useCallback((patch: Partial<WorkspaceChart>) => {
+    const chart = charts.find((item) => item.id === activeChartId) ?? charts[0];
+    if (!chart) return;
+    const independentPatch = chart.id === charts[0]?.id ? patch : {
+      ...patch,
+      ...(patch.symbol === undefined ? {} : { linkSymbol: false }),
+      ...(patch.timeframe === undefined ? {} : { linkTimeframe: false })
+    };
+    updateChart(chart.id, independentPatch);
+  }, [activeChartId, charts, updateChart]);
+
+  const activeChart = charts.find((chart) => chart.id === activeChartId) ?? charts[0];
+
   return {
-    cryptoExchange, setCryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, setLeftSize, setRightSize, panelsSwapped, workspaces, activeWorkspaceId, layoutPreset, setLayoutPreset, charts, updateChart,
+    cryptoExchange, setCryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, setLeftSize, setRightSize, panelsSwapped, workspaces, activeWorkspaceId, layoutPreset, setLayoutPreset, charts, activeChart, activeChartId, setActiveChartId, updateChart, updateActiveChart,
     compareOverlays, addCompare, updateCompare, removeCompare,
     saveWorkspace, applyWorkspace, deleteWorkspace, exportWorkspace, importWorkspace, rollbackWorkspaceVersion,
     toggleTheme: () => setTheme((current) => current === "dark" ? "light" : "dark"),

@@ -72,6 +72,15 @@ export default function App() {
   const strategyLibrary = artifactLibrary.artifacts;
   const activeArtifactId = artifactLibrary.activeArtifactId;
   const stream = useMarketStream(symbol, timeframe, cryptoExchange);
+  const activeChart = shell.activeChart ?? shell.charts[0];
+  const activeInstrument = catalog?.instruments.find((item) => item.symbol === activeChart?.symbol) ?? {
+    ...fallbackInstrument,
+    symbol: activeChart?.symbol ?? fallbackInstrument.symbol,
+    displayName: activeChart?.symbol ?? fallbackInstrument.displayName
+  };
+  const setActiveSymbol = useCallback((nextSymbol: string) => shell.updateActiveChart({ symbol: nextSymbol }), [shell.updateActiveChart]);
+  const setActiveTimeframe = useCallback((nextTimeframe: Timeframe) => shell.updateActiveChart({ timeframe: nextTimeframe }), [shell.updateActiveChart]);
+  const setActiveChartType = useCallback((nextChartType: ChartType) => shell.updateActiveChart({ chartType: nextChartType }), [shell.updateActiveChart]);
   const compareState = useCompareSeries(compareOverlays, cryptoExchange);
   const showChart = useCallback((nextSymbol: string, nextTimeframe: Timeframe) => {
     setSymbol(nextSymbol);
@@ -132,9 +141,9 @@ export default function App() {
     catalog,
     indicators,
     setIndicators,
-    setSymbol,
-    setTimeframe,
-    setChartType,
+    setSymbol: setActiveSymbol,
+    setTimeframe: setActiveTimeframe,
+    setChartType: setActiveChartType,
     setMode,
     toggleTheme: shell.toggleTheme,
     toggleLeft: shell.toggleLeft,
@@ -184,9 +193,9 @@ export default function App() {
     <div className="terminal-shell">
       <TopBar
         catalog={catalog}
-        instrument={instrument}
-        timeframe={timeframe}
-        chartType={chartType}
+        instrument={activeInstrument}
+        timeframe={activeChart?.timeframe ?? timeframe}
+        chartType={activeChart?.chartType ?? chartType}
         mode={mode}
         connection={stream.connection}
         theme={theme}
@@ -204,8 +213,8 @@ export default function App() {
         onImportWorkspace={shell.importWorkspace}
         onRollbackWorkspace={shell.rollbackWorkspaceVersion}
         onLayoutPresetChange={shell.setLayoutPreset}
-        onTimeframeChange={setTimeframe}
-        onChartTypeChange={setChartType}
+        onTimeframeChange={setActiveTimeframe}
+        onChartTypeChange={setActiveChartType}
         onModeChange={setMode}
         onStrategyWarmup={warmStrategyLab}
         onOpenPalette={appCommands.openPalette}
@@ -247,6 +256,8 @@ export default function App() {
               linkedTimeRange={linkedTimeRange}
               onLinkedTimeRangeChange={setLinkedTimeRange}
               onUpdateChart={shell.updateChart}
+              activeChartId={shell.activeChartId}
+              onActiveChartChange={shell.setActiveChartId}
               maximizeShortcut={appCommands.shortcuts.maximizeChart}
               primary={<ChartCanvas
               compactChrome={shell.layoutPreset !== "single"}

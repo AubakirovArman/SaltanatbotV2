@@ -20,7 +20,7 @@ excluding application regions.
 | Reduced motion | Global `prefers-reduced-motion: reduce` disables meaningful animation/transition timing | Computed-style Playwright assertion |
 | Canvas alternative | Focused/latest OHLC, recent candles, signals and trades are native captioned tables; transformed chart types expose their displayed OHLC; the Shift-drag ruler mirrors its final price/%/bars/time result in localized DOM output | Component tests and keyboard/price-representation/measurement Playwright journeys |
 | Compact chart analysis | Native `details`/`summary` exposes UTC session and market-structure controls without permanently covering small chart panes | Keyboard expansion and axe multi-chart Playwright journey |
-| Multi-chart focus mode | Named native toggle buttons expose pressed state; active pane is included in its accessible name; customizable shortcut and `Escape` preserve focusable chart state | Focus/maximize/restore/axe Playwright journey |
+| Multi-chart focus mode | Named native controls expose pressed state; active pane is included in its accessible name and becomes the top-bar/palette/shortcut command target; customizable maximize shortcut and `Escape` preserve focusable chart state | Focus/command-routing/maximize/restore/axe Playwright journey |
 | Colour contrast | Dark/light semantic tokens meet text contrast targets on current core surfaces | axe WCAG AA audit; low-contrast secondary token regression fixed |
 
 ## Known scope boundary

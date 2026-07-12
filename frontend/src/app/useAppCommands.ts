@@ -16,9 +16,9 @@ interface UseAppCommandsOptions {
   catalog?: CatalogResponse;
   indicators: IndicatorConfig[];
   setIndicators: Dispatch<SetStateAction<IndicatorConfig[]>>;
-  setSymbol: Dispatch<SetStateAction<string>>;
-  setTimeframe: Dispatch<SetStateAction<Timeframe>>;
-  setChartType: Dispatch<SetStateAction<ChartType>>;
+  setSymbol: (symbol: string) => void;
+  setTimeframe: (timeframe: Timeframe) => void;
+  setChartType: (chartType: ChartType) => void;
   setMode: Dispatch<SetStateAction<AppMode>>;
   toggleTheme(): void;
   toggleLeft(): void;

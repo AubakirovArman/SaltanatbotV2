@@ -13,7 +13,7 @@ This directory currently contains both reusable terminal components and large fe
 - trading UI: `TradingView`.
 - `chartCanvas/` owns focused drawing controls, overlays, pure interaction helpers and the stable facade prop contract.
 - Embedded `ChartCanvas` instances use `compactChrome`; only the primary pane exposes global indicator editing, while local analysis remains available through the native `UTC · STRUCT` disclosure.
-- `MultiChartWorkspace` owns transient active/maximized pane state. Hidden siblings stay mounted, preserving streams and view state; maximized secondary charts switch back to full drawing and indicator chrome.
+- `useAppShell` owns the transient active pane so top-bar controls, command-palette actions and timeframe shortcuts target the focused chart. `MultiChartWorkspace` owns only transient maximize state. Hidden siblings stay mounted, preserving streams and view state; maximized secondary charts switch back to full drawing and indicator chrome.
 
 ## Dependency rules
 

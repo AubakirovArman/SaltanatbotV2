@@ -57,7 +57,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - **Price alerts** (browser notification + sound), **symbol compare** overlay, crosshair with OHLC legend, persistent drawing tools, a zero-persistence **Shift-drag ruler** for price/%/bars/time, and **lazy-loaded history** on scroll-back.
 - Independent right-axis price scaling supports wheel/trackpad, vertical drag, keyboard arrows, `Home` and double-click reset without changing the visible candle range.
 - Retina/HiDPI Canvas backing keeps candles, axes, footprint and depth crisp without changing mouse, trackpad or HUD geometry.
-- One-, two- and four-chart layouts have direct numbered pane selectors, adaptive compact chrome and a state-preserving active-pane maximize mode. Secondary symbols/timeframes are independent by default and can explicitly link symbol, timeframe, crosshair and the absolute visible **time range**.
+- One-, two- and four-chart layouts have direct numbered pane selectors, adaptive compact chrome and a state-preserving active-pane maximize mode. The top bar, command palette and timeframe shortcuts target the focused pane; secondary symbols/timeframes become independent when edited and can explicitly relink symbol, timeframe, crosshair and the absolute visible **time range**.
 - Watchlist with **favorites** and **%-change sorting**; automatic last-session recovery plus **saved workspaces** for named/versioned layouts; overlay a saved strategy directly on the chart with its **plotted indicator lines**, **buy/sell signal points** and simulated trades.
 
 ### 🧱 Visual strategy builder + backtester

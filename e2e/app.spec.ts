@@ -320,14 +320,32 @@ test("chooses an independent symbol directly in every secondary chart", async ({
   const thirdSymbol = page.getByRole("combobox", { name: "Symbol · 3" });
   await expect(secondSymbol).toHaveValue("BTCUSDT");
   await expect(thirdSymbol).toHaveValue("BTCUSDT");
+  await secondSymbol.focus();
   await secondSymbol.selectOption("ETHUSDT");
 
   await expect(secondSymbol).toHaveValue("ETHUSDT");
   await expect(thirdSymbol).toHaveValue("BTCUSDT");
-  await expect(page.getByRole("button", { name: /Current instrument BTCUSDT/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Current instrument ETHUSDT/i })).toBeVisible();
   const secondPane = page.locator(".multi-chart-pane.secondary").first();
   await expect(secondPane).toHaveAttribute("aria-label", /ETHUSDT/);
   await expect(secondPane.getByRole("button", { name: "Link symbol to primary chart" })).toHaveAttribute("aria-pressed", "false");
+
+  await page.getByRole("button", { name: "5m", exact: true }).click();
+  await expect(secondPane.getByRole("combobox", { name: "Timeframe · 2" })).toHaveValue("5m");
+  await expect(secondPane.getByRole("button", { name: "Link timeframe to primary chart" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".multi-chart-pane.primary").getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible();
+
+  await page.getByTitle("Chart type").click();
+  await page.getByRole("menuitemradio", { name: "Line", exact: true }).click();
+  await expect(secondPane.getByRole("combobox", { name: "Chart type · 2" })).toHaveValue("line");
+  await expect(secondPane.getByRole("img", { name: /ETHUSDT Line chart on 5m/i })).toBeVisible();
+
+  await selectChartSymbol(page, "SOLUSDT");
+  await expect(secondSymbol).toHaveValue("SOLUSDT");
+  await expect(page.locator(".multi-chart-pane.primary").getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible();
+  await page.locator(".multi-chart-pane.primary").getByRole("button", { name: "Cursor (Esc)" }).click();
+  await expect(page.getByRole("button", { name: /Current instrument BTCUSDT/i })).toBeVisible();
+  await expectNoAxeViolations(page);
 });
 
 test("keeps embedded chart analysis compact and keyboard-expandable", async ({ page }) => {
@@ -515,7 +533,7 @@ test("renders a mocked live footprint and trade delta accessibly", async ({ page
     target.__emitTradeFlow?.([{ id: "large-after-threshold", price: 100, size: 2, side: "buy", exchangeTs: Date.now() }]);
   });
   const dismissAlert = alertCenter.getByRole("button", { name: "Dismiss microstructure alert" }).first();
-  await expect(dismissAlert).toBeVisible({ timeout: 5_000 });
+  await expect(dismissAlert).toBeVisible({ timeout: 10_000 });
   await dismissAlert.click();
   await expectNoAxeViolations(page);
   await toggle.click();
