@@ -10,6 +10,7 @@ This directory owns focused presentation and interaction helpers behind the stab
 - `useLinkedTimeRange.ts` maps external UTC boundaries into local zoom/offset and suppresses republishing externally applied views, preventing multi-pane feedback loops.
 - `usePersistentDrawings.ts` atomically changes pane/symbol drawing scopes and flushes the departing snapshot so rapid symbol changes cannot cross-contaminate storage.
 - `PriceAxisControl.tsx` is the focusable semantic slider over the right axis; it contains wheel events and normalizes pointer/keyboard gestures to the bounded `priceZoom` model.
+- `PriceRepresentationControl.tsx` owns labelled construction inputs and an atomic pane+symbol settings hook; scoped custom/storage events cannot mutate a sibling chart instance.
 - `DrawingMenus.tsx` owns selected-object style and context controls.
 - `ChartOverlays.tsx` owns accessible metric tables and artifact inputs.
 - `drawingInteraction.ts` contains pure anchor, movement, legend and formatting helpers.

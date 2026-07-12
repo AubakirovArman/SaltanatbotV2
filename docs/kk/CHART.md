@@ -38,7 +38,7 @@ Point & Figure alternating column құрады: `X` өсу, `O` төмендеу
 
 P&F column synthetic: equal spacing equal time емес, column OHLC execution price дәлелі емес. Chart indicator/structure transformed column қолданады; Strategy Lab/backtest source time candle-дарда қалады.
 
-Ағымдағы мәні бар (`RENKO …%`, `KAGI …%`, `NLB` немесе `P&F …% ×N`) button explicitly labelled numeric field пен help ашады. Өзгеріс бүкіл loaded display history-ді қайта құрып, legend, accessible description, indicator, structure және OHLC table-ды бірге жаңартады. Мән тек current browser-де сақталады; reset active chart type defaults-ын қайтарады. Strategy Lab/backtest source candle-дары өзгермейді.
+Ағымдағы мәні бар (`RENKO …%`, `KAGI …%`, `NLB` немесе `P&F …% ×N`) button explicitly labelled numeric field пен help ашады. Өзгеріс бүкіл loaded display history-ді қайта құрып, legend, accessible description, indicator, structure және OHLC table-ды бірге жаңартады. Setting **pane + symbol** бойынша бөлек сақталып, сол комбинацияның барлық timeframe-іне қолданылады: бір pair ашылған екі pane әртүрлі brick/reversal assumption-ды бір-біріне әсер етпей салыстырады. Reset тек active chart type defaults-ын қайтарады. Ескі global value primary pane-ге бір рет көшіріледі, secondary documented default-пен бастайды. Strategy Lab/backtest source candle-дары өзгермейді.
 
 Heikin Ashi де visible window кесілгенге дейін бүкіл loaded history бойынша есептеледі: zoom немесе pan бір candle-дың seed/OHLC мәнін енді өзгертпейді.
 

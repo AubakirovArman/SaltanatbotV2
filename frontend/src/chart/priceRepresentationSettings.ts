@@ -19,8 +19,19 @@ export const DEFAULT_PRICE_REPRESENTATION_SETTINGS: PriceRepresentationSettings 
   pnfReversalBoxes: DEFAULT_PNF_REVERSAL_BOXES
 };
 
-export const PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY = "mf:price-representation-settings:v1";
+export const LEGACY_PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY = "mf:price-representation-settings:v1";
 export const PRICE_REPRESENTATION_SETTINGS_EVENT = "mf:price-representation-settings-change";
+const STORAGE_PREFIX = "sbv2:price-representation-settings:v2:";
+const MAX_STORAGE_BYTES = 4096;
+
+export interface PriceRepresentationSettingsEventDetail {
+  key: string;
+  settings: PriceRepresentationSettings;
+}
+
+export function priceRepresentationSettingsStorageKey(symbol: string, chartId = "chart-1"): string {
+  return `${STORAGE_PREFIX}${encodeURIComponent(validSegment(chartId, "chart-1"))}:${encodeURIComponent(validSegment(symbol, "unknown"))}`;
+}
 
 export function sanitizePriceRepresentationSettings(value: unknown): PriceRepresentationSettings {
   const candidate = value && typeof value === "object" ? value as Partial<PriceRepresentationSettings> : {};
@@ -33,20 +44,32 @@ export function sanitizePriceRepresentationSettings(value: unknown): PriceRepres
   };
 }
 
-export function loadPriceRepresentationSettings(): PriceRepresentationSettings {
+export function loadPriceRepresentationSettings(symbol = "global", chartId = "chart-1"): PriceRepresentationSettings {
   try {
-    return sanitizePriceRepresentationSettings(JSON.parse(localStorage.getItem(PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY) ?? "null"));
+    const key = priceRepresentationSettingsStorageKey(symbol, chartId);
+    const current = localStorage.getItem(key);
+    if (current) return parseSettings(current);
+    if (chartId !== "chart-1") return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS };
+    const legacy = localStorage.getItem(LEGACY_PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY);
+    if (!legacy) return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS };
+    const migrated = parseSettings(legacy);
+    try {
+      localStorage.setItem(key, JSON.stringify(migrated));
+      localStorage.removeItem(LEGACY_PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY);
+    } catch { /* keep the validated runtime snapshot */ }
+    return migrated;
   } catch {
     return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS };
   }
 }
 
-export function storePriceRepresentationSettings(settings: PriceRepresentationSettings) {
+export function storePriceRepresentationSettings(settings: PriceRepresentationSettings, symbol = "global", chartId = "chart-1") {
   const safe = sanitizePriceRepresentationSettings(settings);
+  const key = priceRepresentationSettingsStorageKey(symbol, chartId);
   try {
-    localStorage.setItem(PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY, JSON.stringify(safe));
+    localStorage.setItem(key, JSON.stringify(safe));
   } catch { /* storage can be unavailable */ }
-  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(PRICE_REPRESENTATION_SETTINGS_EVENT, { detail: safe }));
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent<PriceRepresentationSettingsEventDetail>(PRICE_REPRESENTATION_SETTINGS_EVENT, { detail: { key, settings: safe } }));
 }
 
 export function priceRepresentationBadge(chartType: ChartType, settings = DEFAULT_PRICE_REPRESENTATION_SETTINGS) {
@@ -64,4 +87,14 @@ export function isConfigurablePriceRepresentation(chartType: ChartType) {
 function clampNumber(value: unknown, min: number, max: number, fallback: number, decimals: number) {
   const number = typeof value === "number" && Number.isFinite(value) ? value : fallback;
   return Number(Math.max(min, Math.min(max, number)).toFixed(decimals));
+}
+
+function parseSettings(raw: string): PriceRepresentationSettings {
+  if (raw.length > MAX_STORAGE_BYTES) return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS };
+  try { return sanitizePriceRepresentationSettings(JSON.parse(raw)); } catch { return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS }; }
+}
+
+function validSegment(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= 64 && !Array.from(trimmed).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) ? trimmed : fallback;
 }

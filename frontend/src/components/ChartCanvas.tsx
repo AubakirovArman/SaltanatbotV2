@@ -117,7 +117,7 @@ export function ChartCanvas({
   const [compareLegend, setCompareLegend] = useState<CompareLegendSnapshot[]>([]);
   const [volumeProfile, setVolumeProfile] = useState<VolumeProfileSnapshot>();
   const chartDataSummaryId = useId();
-  const priceRepresentation = usePriceRepresentationSettings();
+  const priceRepresentation = usePriceRepresentationSettings(instrument.symbol, chartId);
 
   const latest = candles.at(-1);
   const displayCandles = useMemo(() => preparePriceCandles(candles, chartType, instrument.decimals, priceRepresentation.settings), [candles, chartType, instrument.decimals, priceRepresentation.settings]);

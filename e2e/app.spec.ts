@@ -145,7 +145,7 @@ test("configures and persists confirmed price-chart construction", async ({ page
   await page.getByLabel("Reversal boxes").fill("4");
   await expect(page.getByRole("img", { name: /Point & Figure.*0.50% boxes and a 4-box reversal/ })).toBeVisible();
   await expect(page.locator(".legend-symbol")).toContainText("P&F 0.50% ×4");
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("mf:price-representation-settings:v1") ?? "null"))).toMatchObject({
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:price-representation-settings:v2:chart-1:EURUSD") ?? "null"))).toMatchObject({
     renkoBrickPercent: 0.2,
     lineBreakDepth: 5,
     kagiReversalPercent: 0.25,
@@ -156,6 +156,40 @@ test("configures and persists confirmed price-chart construction", async ({ page
   await page.keyboard.press("Escape");
   await expect(page.locator(".price-representation-control")).not.toHaveAttribute("open", "");
   await expect(pointAndFigureSettings).toBeFocused();
+});
+
+test("isolates price-chart construction settings by pane and symbol", async ({ page }) => {
+  await page.getByRole("button", { name: "Chart layout" }).click();
+  await page.getByRole("menuitemradio", { name: "Vertical split" }).click();
+  await page.getByRole("button", { name: "Chart type", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Renko" }).click();
+
+  const primary = page.locator(".multi-chart-pane.primary");
+  const secondary = page.locator(".multi-chart-pane.secondary");
+  await expect(primary.getByRole("img", { name: /BTCUSDT Renko chart/ })).toBeVisible({ timeout: 20_000 });
+  await expect(secondary.getByRole("img", { name: /BTCUSDT Renko chart/ })).toBeVisible({ timeout: 20_000 });
+  await expect(secondary.locator('[data-link-field="linkChartType"]')).toHaveAttribute("aria-pressed", "true");
+
+  await primary.locator('summary[aria-label="RENKO 0.05% settings"]').click();
+  await primary.getByLabel("Brick percentage").fill("0.20");
+  await expect(primary.locator('summary[aria-label="RENKO 0.20% settings"]')).toBeVisible();
+  await expect(secondary.locator('summary[aria-label="RENKO 0.05% settings"]')).toBeVisible();
+
+  await secondary.locator('summary[aria-label="RENKO 0.05% settings"]').click();
+  await secondary.getByLabel("Brick percentage").fill("0.30");
+  await expect(secondary.locator('summary[aria-label="RENKO 0.30% settings"]')).toBeVisible();
+  await expect(primary.locator('summary[aria-label="RENKO 0.20% settings"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ({
+    primary: JSON.parse(localStorage.getItem("sbv2:price-representation-settings:v2:chart-1:BTCUSDT") ?? "null")?.renkoBrickPercent,
+    secondary: JSON.parse(localStorage.getItem("sbv2:price-representation-settings:v2:chart-2:BTCUSDT") ?? "null")?.renkoBrickPercent
+  }))).toEqual({ primary: 0.2, secondary: 0.3 });
+
+  await page.reload();
+  const restoredPrimary = page.locator(".multi-chart-pane.primary");
+  const restoredSecondary = page.locator(".multi-chart-pane.secondary");
+  await expect(restoredPrimary.locator('summary[aria-label="RENKO 0.20% settings"]')).toBeVisible({ timeout: 20_000 });
+  await expect(restoredSecondary.locator('summary[aria-label="RENKO 0.30% settings"]')).toBeVisible({ timeout: 20_000 });
+  await expectNoAxeViolations(page);
 });
 
 test("keeps mouse and trackpad chart zoom controlled and resettable", async ({ page }) => {

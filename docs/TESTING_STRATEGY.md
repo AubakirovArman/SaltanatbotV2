@@ -31,17 +31,18 @@ The initial Playwright suite must cover:
 6. keyboard-only pane cycling moves focus and continues through maximized charts without resetting state;
 7. the keyboard layout menu creates four distinct symbols and restores them after reload;
 8. secondary chart types unlink on manual selection, relink to primary and survive migration/reload;
-9. Pine strategy imports, reports diagnostics, opens as blocks and runs a backtest;
-10. Pine indicator imports and appears on the current chart;
-11. strategy is created from a template, edited, compiled and saved;
-12. backtest shows assumptions, trades, metrics and chart markers;
-13. optimizer runs in a worker and can be cancelled;
-14. named workspace and bounded last-chart-session state save and restore after reload, while malformed/future storage fails closed;
-15. paper bot is created, started, receives a signal, records an order and stops;
-16. authentication, CSRF expiry and logout behave correctly;
-17. kill switch requires the right role and visibly updates state;
-18. WebSocket disconnect reconnects without duplicating candles or orders;
-19. invalid/fallback market data is visibly distinguished from real data.
+9. identical-symbol panes keep different validated Renko/Kagi/Line Break/P&F construction settings through reload;
+10. Pine strategy imports, reports diagnostics, opens as blocks and runs a backtest;
+11. Pine indicator imports and appears on the current chart;
+12. strategy is created from a template, edited, compiled and saved;
+13. backtest shows assumptions, trades, metrics and chart markers;
+14. optimizer runs in a worker and can be cancelled;
+15. named workspace and bounded last-chart-session state save and restore after reload, while malformed/future storage fails closed;
+16. paper bot is created, started, receives a signal, records an order and stops;
+17. authentication, CSRF expiry and logout behave correctly;
+18. kill switch requires the right role and visibly updates state;
+19. WebSocket disconnect reconnects without duplicating candles or orders;
+20. invalid/fallback market data is visibly distinguished from real data.
 
 Live-mainnet orders must never run in generic E2E. Exchange testnets require an explicit opt-in environment and isolated credentials.
 

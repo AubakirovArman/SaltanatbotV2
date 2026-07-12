@@ -5,10 +5,11 @@ import {
   isConfigurablePriceRepresentation,
   loadPriceRepresentationSettings,
   PRICE_REPRESENTATION_SETTINGS_EVENT,
-  PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY,
+  priceRepresentationSettingsStorageKey,
   priceRepresentationBadge,
   sanitizePriceRepresentationSettings,
   storePriceRepresentationSettings,
+  type PriceRepresentationSettingsEventDetail,
   type PriceRepresentationSettings
 } from "../../chart/priceRepresentationSettings";
 import type { Locale } from "../../i18n";
@@ -24,12 +25,20 @@ export interface PriceRepresentationState {
   reset(keys: SettingKey | SettingKey[]): void;
 }
 
-export function usePriceRepresentationSettings(): PriceRepresentationState {
-  const [settings, setSettings] = useState(loadPriceRepresentationSettings);
+export function usePriceRepresentationSettings(symbol: string, chartId: string): PriceRepresentationState {
+  const key = priceRepresentationSettingsStorageKey(symbol, chartId);
+  const [state, setState] = useState(() => ({ key, settings: loadPriceRepresentationSettings(symbol, chartId) }));
+  if (state.key !== key) setState({ key, settings: loadPriceRepresentationSettings(symbol, chartId) });
   useEffect(() => {
     const sync = (event: Event) => {
-      if (event instanceof StorageEvent && event.key !== PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY) return;
-      setSettings(event instanceof CustomEvent ? sanitizePriceRepresentationSettings(event.detail) : loadPriceRepresentationSettings());
+      if (event instanceof StorageEvent) {
+        if (event.key !== key) return;
+        setState({ key, settings: loadPriceRepresentationSettings(symbol, chartId) });
+        return;
+      }
+      const detail = (event as CustomEvent<PriceRepresentationSettingsEventDetail>).detail;
+      if (detail?.key !== key) return;
+      setState({ key, settings: sanitizePriceRepresentationSettings(detail.settings) });
     };
     window.addEventListener(PRICE_REPRESENTATION_SETTINGS_EVENT, sync);
     window.addEventListener("storage", sync);
@@ -37,12 +46,13 @@ export function usePriceRepresentationSettings(): PriceRepresentationState {
       window.removeEventListener(PRICE_REPRESENTATION_SETTINGS_EVENT, sync);
       window.removeEventListener("storage", sync);
     };
-  }, []);
+  }, [chartId, key, symbol]);
   const commit = useCallback((next: PriceRepresentationSettings) => {
     const safe = sanitizePriceRepresentationSettings(next);
-    storePriceRepresentationSettings(safe);
-    setSettings(safe);
-  }, []);
+    storePriceRepresentationSettings(safe, symbol, chartId);
+    setState({ key, settings: safe });
+  }, [chartId, key, symbol]);
+  const settings = state.settings;
   return {
     settings,
     update: (key, value) => commit({ ...settings, [key]: value }),
