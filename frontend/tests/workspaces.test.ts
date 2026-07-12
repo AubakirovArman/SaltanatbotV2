@@ -18,6 +18,7 @@ const context = {
   chartType: "candles" as const,
   cryptoExchange: "binance" as const,
   indicators: [{ id: "ema", label: "EMA", enabled: true, kind: "ema" as const, period: 20, color: "#fff" }],
+  compareOverlays: [{ id: "ETHUSDT", symbol: "ETHUSDT", timeframe: "1h" as const, chartType: "line" as const, color: "#abcdef", upColor: "#23c97a", downColor: "#ef5350" }],
   theme: "dark" as const
 };
 
@@ -31,8 +32,9 @@ describe("versioned chart workspaces", () => {
       schemaVersion: WORKSPACE_SCHEMA_VERSION,
       revision: 1,
       cryptoExchange: "binance",
+      compareOverlays: [],
       layout: { preset: "single", leftOpen: true, rightOpen: true },
-      charts: [{ symbol: "ETHUSDT", linkCrosshair: true, linkTimeRange: true, linkIndicators: true }]
+      charts: [{ symbol: "ETHUSDT", linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true }]
     });
   });
 
@@ -64,16 +66,16 @@ describe("versioned chart workspaces", () => {
 
   it("versions, exports and restores independent pane indicator settings", async () => {
     const charts: WorkspaceChart[] = [
-      { id: "chart-1", symbol: "BTCUSDT", timeframe: "1h", chartType: "candles", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true },
-      { id: "chart-2", symbol: "ETHUSDT", timeframe: "4h", chartType: "line", linkSymbol: false, linkTimeframe: false, linkCrosshair: true, linkTimeRange: true, linkIndicators: false, indicatorOverrides: [{ id: "ema", enabled: true, period: 55 }] }
+      { id: "chart-1", symbol: "BTCUSDT", timeframe: "1h", chartType: "candles", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true },
+      { id: "chart-2", symbol: "ETHUSDT", timeframe: "4h", chartType: "line", linkSymbol: false, linkTimeframe: false, linkCrosshair: true, linkTimeRange: true, linkIndicators: false, indicatorOverrides: [{ id: "ema", enabled: true, period: 55 }], linkCompare: false, compareOverlays: [{ id: "SOLUSDT", symbol: "SOLUSDT", timeframe: "1h", chartType: "line", color: "#abcdef", upColor: "#23c97a", downColor: "#ef5350" }] }
     ];
     const initial = captureWorkspace("Independent indicators", { ...context, charts, layout: { preset: "split-vertical" } }, 100);
     const changedCharts = charts.map((chart) => chart.id === "chart-2" ? { ...chart, indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }] } : chart) as WorkspaceChart[];
     const revised = reviseWorkspace(initial, { ...context, charts: changedCharts, layout: { preset: "split-vertical" } }, 200);
-    expect(revised).toMatchObject({ revision: 2, charts: [{ linkIndicators: true }, { linkIndicators: false, indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }] }] });
+    expect(revised).toMatchObject({ revision: 2, compareOverlays: [{ symbol: "ETHUSDT" }], charts: [{ linkIndicators: true, linkCompare: true }, { linkIndicators: false, indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }], linkCompare: false, compareOverlays: [{ symbol: "SOLUSDT" }] }] });
     saveWorkspaces([revised]);
-    expect(loadWorkspaces()[0]).toMatchObject({ schemaVersion: 4, charts: [{ linkIndicators: true }, { indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }] }] });
-    await expect(parseWorkspaceFile(await encodeWorkspaceFile(revised, 250))).resolves.toMatchObject({ charts: [{ linkIndicators: true }, { indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }] }] });
+    expect(loadWorkspaces()[0]).toMatchObject({ schemaVersion: 5, charts: [{ linkIndicators: true, linkCompare: true }, { indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }], compareOverlays: [{ symbol: "SOLUSDT" }] }] });
+    await expect(parseWorkspaceFile(await encodeWorkspaceFile(revised, 250))).resolves.toMatchObject({ charts: [{ linkIndicators: true, linkCompare: true }, { indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }], compareOverlays: [{ symbol: "SOLUSDT" }] }] });
     expect(rollbackWorkspace(revised, 1, 300)).toMatchObject({ charts: [{ linkIndicators: true }, { indicatorOverrides: [{ id: "ema", enabled: true, period: 55 }] }] });
   });
 });

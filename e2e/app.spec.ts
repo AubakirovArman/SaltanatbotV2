@@ -467,9 +467,14 @@ test("restores the last four-chart session after reload without a named workspac
   await second.locator(".pane-maximize").click();
   await expect(second.locator(".chart-indicator-overlay")).toBeVisible();
   await second.getByRole("button", { name: "Remove SMA" }).click();
+  await second.locator(".compare-add").click();
+  const compareMenu = second.locator(".compare-menu");
+  await compareMenu.getByRole("textbox").fill("SOLUSDT");
+  await compareMenu.getByRole("option", { name: /SOLUSDT/ }).click();
+  await expect(second.locator(".compare-chip").filter({ hasText: "SOLUSDT" })).toBeVisible();
 
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null"))).toMatchObject({
-    version: 2,
+    version: 3,
     preset: "grid-4",
     charts: [
       { id: "chart-1", symbol: "BTCUSDT" },
@@ -482,6 +487,10 @@ test("restores the last four-chart session after reload without a named workspac
     const session = JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null");
     return session?.charts?.[1]?.indicatorOverrides?.find((item: { id?: string }) => item.id === "sma-20")?.enabled;
   })).toBe(false);
+  await expect.poll(() => page.evaluate(() => {
+    const session = JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null");
+    return session?.charts?.[1]?.compareOverlays?.map((item: { symbol?: string }) => item.symbol);
+  })).toEqual(["SOLUSDT"]);
 
   await page.reload();
   const restoredPanes = page.locator(".multi-chart-pane");
@@ -495,15 +504,22 @@ test("restores the last four-chart session after reload without a named workspac
   const restoredSecond = page.locator(".multi-chart-pane.secondary").first();
   await expect(restoredSecond.locator('[data-link-field="linkCrosshair"]')).toHaveAttribute("aria-pressed", "false");
   const indicatorLink = restoredSecond.locator('[data-link-field="linkIndicators"]');
+  const compareLink = restoredSecond.locator('[data-link-field="linkCompare"]');
   await expect(indicatorLink).toHaveAttribute("aria-pressed", "false");
+  await expect(compareLink).toHaveAttribute("aria-pressed", "false");
   await restoredSecond.locator(".pane-maximize").click();
   await expect(restoredSecond.locator(".indicator-chip").filter({ hasText: "SMA" })).toHaveCount(0);
+  await expect(restoredSecond.locator(".compare-chip").filter({ hasText: "SOLUSDT" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".multi-chart-pane.primary .indicator-chip").filter({ hasText: "SMA" })).toBeVisible();
+  await expect(page.locator(".multi-chart-pane.primary .compare-chip")).toHaveCount(0);
   await indicatorLink.click();
+  await compareLink.click();
   await expect(indicatorLink).toHaveAttribute("aria-pressed", "true");
+  await expect(compareLink).toHaveAttribute("aria-pressed", "true");
   await restoredSecond.locator(".pane-maximize").click();
   await expect(restoredSecond.locator(".indicator-chip").filter({ hasText: "SMA" })).toBeVisible();
+  await expect(restoredSecond.locator(".compare-chip")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: /Current instrument ETHUSDT/i })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem("sbv2:workspaces"))).toBe("[]");

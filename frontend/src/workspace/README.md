@@ -2,12 +2,12 @@
 
 This folder owns portable chart-workspace state. It does not render React UI.
 
-`workspaces.ts` defines schema v4 for:
+`workspaces.ts` defines schema v5 for:
 
 - one, vertical-split, horizontal-split and four-chart layouts;
-- independently linked symbol, timeframe, indicators, crosshair and absolute visible-time-range settings;
+- independently linked symbol, timeframe, indicators, comparisons, crosshair and absolute visible-time-range settings;
 - side-panel visibility, size and dock order;
-- canonical enabled indicators, bounded per-pane indicator overrides, exchange and theme;
+- canonical enabled indicators/comparisons, bounded per-pane overrides, exchange and theme;
 - bounded immutable autosave revisions and rollback;
 - SHA-256 verified `.saltanat-workspace.json` export/import.
 

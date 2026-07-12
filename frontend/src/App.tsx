@@ -279,6 +279,8 @@ export default function App() {
               activeChartId={shell.activeChartId}
               onActiveChartChange={shell.setActiveChartId}
               onMarketStreamChange={updatePaneStream}
+              compareOverlays={compareOverlays}
+              compareState={compareState}
               maximizeShortcut={appCommands.shortcuts.maximizeChart}
               primary={<ChartCanvas
               compactChrome={shell.layoutPreset !== "single"}

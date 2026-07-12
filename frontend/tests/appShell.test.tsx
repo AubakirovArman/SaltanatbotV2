@@ -64,6 +64,7 @@ describe("useAppShell", () => {
     expect(shell?.charts.every((chart) => chart.linkCrosshair)).toBe(true);
     expect(shell?.charts.every((chart) => chart.linkTimeRange)).toBe(true);
     expect(shell?.charts.every((chart) => chart.linkIndicators)).toBe(true);
+    expect(shell?.charts.every((chart) => chart.linkCompare)).toBe(true);
     expect(JSON.parse(localStorage.getItem(LAST_CHART_SESSION_KEY) ?? "null")).toMatchObject({ preset: "grid-4", charts: [{ id: "chart-1" }, { id: "chart-2" }, { id: "chart-3" }, { id: "chart-4" }] });
     await act(async () => shell?.setActiveChartId("chart-2"));
     await act(async () => shell?.updateActiveChart({ symbol: "ETHUSDT", timeframe: "5m", chartType: "line" }));
@@ -71,6 +72,14 @@ describe("useAppShell", () => {
     expect(shell?.charts[0]).toMatchObject({ symbol: "BTCUSDT", timeframe: "1m", chartType: "candles" });
     await act(async () => shell?.setLayoutPreset("split-horizontal"));
     expect(shell?.charts).toHaveLength(2);
+    await act(async () => shell?.addCompare("ETHUSDT"));
+    expect(shell?.compareOverlays).toMatchObject([{ symbol: "ETHUSDT" }]);
+    await act(async () => shell?.saveWorkspace("Compare context"));
+    const workspaceId = shell?.workspaces[0]?.id;
+    await act(async () => shell?.removeCompare("ETHUSDT"));
+    expect(shell?.compareOverlays).toEqual([]);
+    await act(async () => { if (workspaceId) shell?.applyWorkspace(workspaceId); });
+    expect(shell?.compareOverlays).toMatchObject([{ symbol: "ETHUSDT" }]);
     await act(async () => root.unmount());
   });
 });

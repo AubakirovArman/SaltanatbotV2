@@ -1,6 +1,6 @@
-import { Activity, Crosshair, Link2, Link2Off, MoveHorizontal } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
-import type { LinkedCrosshair, LinkedTimeRange } from "../chart/types";
+import { Activity, Crosshair, GitCompareArrows, Link2, Link2Off, MoveHorizontal } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { CompareOverlayConfig, LinkedCrosshair, LinkedTimeRange } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import { useMarketStream, type MarketStreamState } from "../hooks/useMarketStream";
 import type { Locale } from "../i18n";
@@ -11,6 +11,8 @@ import { matchesShortcut } from "../app/shortcuts";
 import { ChartCanvas } from "./ChartCanvas";
 import { chartTypeLabel } from "./chartTypePresentation";
 import { applyPaneIndicatorOverrides, capturePaneIndicatorOverrides } from "../chart/paneIndicators";
+import { createCompareOverlay, MAX_COMPARE, normalizeCompareOverlays } from "../chart/compareConfig";
+import { useCompareSeries, type CompareSeriesState } from "../hooks/useCompareSeries";
 
 interface MultiChartWorkspaceProps {
   preset: ChartLayoutPreset;
@@ -31,6 +33,8 @@ interface MultiChartWorkspaceProps {
   activeChartId?: string;
   onActiveChartChange: (id: string) => void;
   onMarketStreamChange: (id: string, stream?: PaneMarketStream) => void;
+  compareOverlays: CompareOverlayConfig[];
+  compareState: CompareSeriesState;
   maximizeShortcut: string;
 }
 
@@ -39,7 +43,9 @@ export interface PaneMarketStream extends MarketStreamState {
   timeframe: WorkspaceChart["timeframe"];
 }
 
-export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdateChart, activeChartId, onActiveChartChange, onMarketStreamChange, maximizeShortcut }: MultiChartWorkspaceProps) {
+const EMPTY_COMPARE_OVERLAYS: CompareOverlayConfig[] = [];
+
+export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdateChart, activeChartId, onActiveChartChange, onMarketStreamChange, compareOverlays, compareState, maximizeShortcut }: MultiChartWorkspaceProps) {
   const primaryChart = charts[0];
   const [maximizedChartId, setMaximizedChartId] = useState<string>();
   const canMaximize = charts.length > 1;
@@ -108,28 +114,42 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
           onLinkedTimeRangeChange={onLinkedTimeRangeChange}
           onUpdate={onUpdateChart}
           onMarketStreamChange={onMarketStreamChange}
+          compareOverlays={compareOverlays}
+          compareState={compareState}
         />
       ))}
     </div>
   );
 }
 
-function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize, maximized, maximizeShortcut, onToggleMaximize, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate, onMarketStreamChange }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart" | "activeChartId" | "onActiveChartChange"> & { chart: WorkspaceChart; paneNumber: number; paneProps: React.HTMLAttributes<HTMLElement>; active: boolean; canMaximize: boolean; maximized: boolean; onToggleMaximize: () => void; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
+function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize, maximized, maximizeShortcut, onToggleMaximize, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate, onMarketStreamChange, compareOverlays, compareState }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart" | "activeChartId" | "onActiveChartChange"> & { chart: WorkspaceChart; paneNumber: number; paneProps: React.HTMLAttributes<HTMLElement>; active: boolean; canMaximize: boolean; maximized: boolean; onToggleMaximize: () => void; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
   const stream = useMarketStream(chart.symbol, chart.timeframe, exchange);
   const instrument = catalog?.instruments.find((item) => item.symbol === chart.symbol) ?? fallbackInstrument(chart.symbol);
   const paneIndicators = chart.linkIndicators ? indicators : applyPaneIndicatorOverrides(indicators, chart.indicatorOverrides);
+  const paneCompareOverlays = useMemo(() => (chart.linkCompare ? compareOverlays : chart.compareOverlays ?? []).filter((overlay) => overlay.symbol !== chart.symbol), [chart.compareOverlays, chart.linkCompare, chart.symbol, compareOverlays]);
+  const localCompareState = useCompareSeries(chart.linkCompare ? EMPTY_COMPARE_OVERLAYS : paneCompareOverlays, exchange);
+  const paneCompareState = chart.linkCompare ? compareState : localCompareState;
+  const compareCandidates = useMemo(() => (catalog?.instruments ?? []).filter((item) => item.symbol !== chart.symbol).map((item) => ({ symbol: item.symbol, displayName: item.displayName })), [catalog, chart.symbol]);
+  const commitCompare = (next: CompareOverlayConfig[]) => onUpdate(chart.id, { linkCompare: false, compareOverlays: normalizeCompareOverlays(next, chart.timeframe, chart.chartType) });
+  const addCompare = (symbol: string) => {
+    if (paneCompareOverlays.length >= MAX_COMPARE || paneCompareOverlays.some((overlay) => overlay.symbol === symbol)) return;
+    commitCompare([...paneCompareOverlays, createCompareOverlay(symbol, paneCompareOverlays.length, chart.timeframe, chart.chartType)]);
+  };
+  const updateCompare = (id: string, patch: Partial<CompareOverlayConfig>) => commitCompare(paneCompareOverlays.map((overlay) => overlay.id === id ? { ...overlay, ...patch } : overlay));
+  const removeCompare = (id: string) => commitCompare(paneCompareOverlays.filter((overlay) => overlay.id !== id));
   useEffect(() => {
     onMarketStreamChange(chart.id, active ? { ...stream, symbol: chart.symbol, timeframe: chart.timeframe } : undefined);
   }, [active, chart.id, chart.symbol, chart.timeframe, onMarketStreamChange, stream]);
   useEffect(() => () => onMarketStreamChange(chart.id), [chart.id, onMarketStreamChange]);
-  const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair" | "linkTimeRange" | "linkIndicators", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {
+  const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair" | "linkTimeRange" | "linkIndicators" | "linkCompare", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {
     const linked = chart[field];
     const Icon = linked ? ActiveIcon : Link2Off;
     const label = linked ? unlinkLabel : linkLabel;
     return (
-      <button type="button" data-link-field={field} className={linked ? "active" : ""} aria-pressed={linked} aria-label={label} title={label} onClick={() => onUpdate(chart.id, field === "linkIndicators" && linked
-        ? { linkIndicators: false, indicatorOverrides: capturePaneIndicatorOverrides(paneIndicators) }
-        : { [field]: !linked })}>
+      <button type="button" data-link-field={field} className={linked ? "active" : ""} aria-pressed={linked} aria-label={label} title={label} onClick={() => onUpdate(chart.id,
+        field === "linkIndicators" && linked ? { linkIndicators: false, indicatorOverrides: capturePaneIndicatorOverrides(paneIndicators) }
+          : field === "linkCompare" && linked ? { linkCompare: false, compareOverlays: paneCompareOverlays.map((overlay) => ({ ...overlay })) }
+            : { [field]: !linked })}>
         <Icon size={12} aria-hidden="true" />
       </button>
     );
@@ -159,6 +179,7 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
           </select>
         </label>
         {linkButton("linkIndicators", shellText(locale, "linkIndicators"), shellText(locale, "unlinkIndicators"), Activity)}
+        {linkButton("linkCompare", shellText(locale, "linkCompare"), shellText(locale, "unlinkCompare"), GitCompareArrows)}
         {linkButton("linkCrosshair", shellText(locale, "linkCrosshair"), shellText(locale, "unlinkCrosshair"), Crosshair)}
         {linkButton("linkTimeRange", shellText(locale, "linkTimeRange"), shellText(locale, "unlinkTimeRange"), MoveHorizontal)}
         {canMaximize && <PaneMaximizeButton locale={locale} symbol={chart.symbol} shortcut={maximizeShortcut} maximized={maximized} onToggle={onToggleMaximize} />}
@@ -183,6 +204,16 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
         onLinkedCrosshairChange={chart.linkCrosshair ? onLinkedCrosshairChange : undefined}
         linkedTimeRange={chart.linkTimeRange ? linkedTimeRange : undefined}
         onLinkedTimeRangeChange={chart.linkTimeRange ? onLinkedTimeRangeChange : undefined}
+        compareSeries={paneCompareState.series}
+        compareLoading={paneCompareState.loading}
+        compareErrors={paneCompareState.errors}
+        compareOverlays={paneCompareOverlays}
+        compareCandidates={compareCandidates}
+        compareTimeframes={catalog?.timeframes ?? []}
+        compareChartTypes={catalog?.chartTypes ?? []}
+        onAddCompare={maximized ? addCompare : undefined}
+        onUpdateCompare={maximized ? updateCompare : undefined}
+        onRemoveCompare={maximized ? removeCompare : undefined}
       />
     </section>
   );

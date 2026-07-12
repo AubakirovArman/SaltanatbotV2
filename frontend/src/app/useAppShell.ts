@@ -95,6 +95,7 @@ export function useAppShell(options: UseAppShellOptions) {
           chartType: options.chartType,
           cryptoExchange,
           indicators: options.indicators,
+          compareOverlays,
           theme,
           layout: { preset: layoutPreset, leftOpen, rightOpen, leftSize, rightSize, panelsSwapped },
           charts
@@ -102,7 +103,7 @@ export function useAppShell(options: UseAppShellOptions) {
         : workspace));
     }, 750);
     return () => window.clearTimeout(id);
-  }, [activeWorkspaceId, charts, cryptoExchange, layoutPreset, leftOpen, leftSize, options.chartType, options.indicators, options.symbol, options.timeframe, panelsSwapped, rightOpen, rightSize, theme]);
+  }, [activeWorkspaceId, charts, compareOverlays, cryptoExchange, layoutPreset, leftOpen, leftSize, options.chartType, options.indicators, options.symbol, options.timeframe, panelsSwapped, rightOpen, rightSize, theme]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -156,13 +157,14 @@ export function useAppShell(options: UseAppShellOptions) {
       chartType: options.chartType,
       cryptoExchange,
       indicators: options.indicators,
+      compareOverlays,
       theme,
       layout: { preset: layoutPreset, leftOpen, rightOpen, leftSize, rightSize, panelsSwapped },
       charts
     });
     setWorkspaces((current) => [workspace, ...current]);
     setActiveWorkspaceId(workspace.id);
-  }, [charts, cryptoExchange, layoutPreset, leftOpen, leftSize, options.chartType, options.indicators, options.symbol, options.timeframe, panelsSwapped, rightOpen, rightSize, theme]);
+  }, [charts, compareOverlays, cryptoExchange, layoutPreset, leftOpen, leftSize, options.chartType, options.indicators, options.symbol, options.timeframe, panelsSwapped, rightOpen, rightSize, theme]);
 
   const applyWorkspace = useCallback((id: string) => {
     const workspace = workspaces.find((item) => item.id === id);
@@ -176,6 +178,7 @@ export function useAppShell(options: UseAppShellOptions) {
     setRightOpen(workspace.layout.rightOpen);
     setLayoutPresetState(workspace.layout.preset);
     setCharts(workspace.charts);
+    setCompareOverlays(workspace.compareOverlays);
     setLeftSize(workspace.layout.leftSize);
     setRightSize(workspace.layout.rightSize);
     setPanelsSwapped(workspace.layout.panelsSwapped);
@@ -220,6 +223,7 @@ export function useAppShell(options: UseAppShellOptions) {
     setPanelsSwapped(next.layout.panelsSwapped);
     setLayoutPresetState(next.layout.preset);
     setCharts(next.charts);
+    setCompareOverlays(next.compareOverlays);
     options.setIndicators((current) => applyIndicatorSelection(current, next.enabledIndicators));
     options.setMode("chart");
     setActiveWorkspaceId(next.id);
@@ -239,7 +243,8 @@ export function useAppShell(options: UseAppShellOptions) {
       linkTimeframe: true,
       linkCrosshair: true,
       linkTimeRange: true,
-      linkIndicators: true
+      linkIndicators: true,
+      linkCompare: true
     }));
   }, [options.chartType, options.symbol, options.timeframe]);
 
@@ -250,6 +255,8 @@ export function useAppShell(options: UseAppShellOptions) {
       if (patch.linkSymbol === true) next.symbol = options.symbol;
       if (patch.linkTimeframe === true) next.timeframe = options.timeframe;
       if (patch.linkIndicators === true) next.indicatorOverrides = undefined;
+      if (patch.linkCompare === true) next.compareOverlays = undefined;
+      if (patch.symbol !== undefined && next.compareOverlays) next.compareOverlays = next.compareOverlays.filter((overlay) => overlay.symbol !== patch.symbol);
       return next;
     }));
     const chart = charts.find((item) => item.id === id);

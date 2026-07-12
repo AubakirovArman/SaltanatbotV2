@@ -1,9 +1,11 @@
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import { normalizePaneIndicatorOverrides, type PaneIndicatorOverride } from "../chart/paneIndicators";
+import { normalizeCompareOverlays } from "../chart/compareConfig";
+import type { CompareOverlayConfig } from "../chart/types";
 import type { ChartType, DataExchange, Timeframe } from "../types";
 
 const WORKSPACES_KEY = "sbv2:workspaces";
-export const WORKSPACE_SCHEMA_VERSION = 4;
+export const WORKSPACE_SCHEMA_VERSION = 5;
 export const WORKSPACE_FILE_FORMAT = "saltanatbotv2.workspace";
 export const WORKSPACE_FILE_VERSION = 1;
 export const MAX_WORKSPACE_REVISIONS = 20;
@@ -22,6 +24,8 @@ export interface WorkspaceChart {
   linkTimeRange: boolean;
   linkIndicators: boolean;
   indicatorOverrides?: PaneIndicatorOverride[];
+  linkCompare: boolean;
+  compareOverlays?: CompareOverlayConfig[];
 }
 
 export interface WorkspaceLayout {
@@ -41,6 +45,7 @@ export interface WorkspaceRevision {
   chartType: ChartType;
   cryptoExchange: DataExchange;
   enabledIndicators: string[];
+  compareOverlays: CompareOverlayConfig[];
   theme: "dark" | "light";
   layout: WorkspaceLayout;
   charts: WorkspaceChart[];
@@ -61,6 +66,7 @@ export interface WorkspaceContext {
   chartType: ChartType;
   cryptoExchange: DataExchange;
   indicators: IndicatorConfig[];
+  compareOverlays?: CompareOverlayConfig[];
   theme: "dark" | "light";
   layout?: Partial<WorkspaceLayout>;
   charts?: WorkspaceChart[];
@@ -202,6 +208,7 @@ function snapshotFromContext(context: WorkspaceContext, revision: number, savedA
     chartType: context.chartType,
     cryptoExchange: context.cryptoExchange,
     enabledIndicators: context.indicators.filter((indicator) => indicator.enabled).map((indicator) => indicator.id),
+    compareOverlays: normalizeCompareOverlays(context.compareOverlays, context.timeframe, context.chartType),
     theme: context.theme,
     layout,
     charts
@@ -229,6 +236,7 @@ function normalizeWorkspace(value: unknown): Workspace | undefined {
     chartType: item.chartType,
     cryptoExchange: item.cryptoExchange === "bybit" ? "bybit" : "binance",
     enabledIndicators: item.enabledIndicators.filter((id): id is string => typeof id === "string"),
+    compareOverlays: normalizeCompareOverlays(item.compareOverlays, item.timeframe, item.chartType),
     theme: item.theme === "light" ? "light" : "dark",
     revision,
     savedAt,
@@ -257,6 +265,7 @@ function normalizeRevision(value: unknown, fallback: Workspace): WorkspaceRevisi
     chartType: item.chartType,
     cryptoExchange: item.cryptoExchange === "bybit" ? "bybit" : "binance",
     enabledIndicators: Array.isArray(item.enabledIndicators) ? item.enabledIndicators.filter((id): id is string => typeof id === "string") : [],
+    compareOverlays: normalizeCompareOverlays(item.compareOverlays, item.timeframe, item.chartType),
     theme: item.theme === "light" ? "light" : "dark",
     layout: normalizeLayout(item.layout),
     charts: charts.length ? charts : [defaultChart(item.symbol, item.timeframe, item.chartType)]
@@ -279,6 +288,7 @@ function normalizeChart(value: unknown): WorkspaceChart | undefined {
   const item = value as Partial<WorkspaceChart>;
   if (typeof item.id !== "string" || typeof item.symbol !== "string" || typeof item.timeframe !== "string" || typeof item.chartType !== "string") return undefined;
   const linkIndicators = item.linkIndicators !== false;
+  const linkCompare = item.linkCompare !== false;
   return {
     id: item.id,
     symbol: item.symbol,
@@ -290,12 +300,14 @@ function normalizeChart(value: unknown): WorkspaceChart | undefined {
     linkCrosshair: item.linkCrosshair !== false,
     linkTimeRange: item.linkTimeRange !== false,
     linkIndicators,
-    indicatorOverrides: linkIndicators ? undefined : normalizePaneIndicatorOverrides(item.indicatorOverrides)
+    indicatorOverrides: linkIndicators ? undefined : normalizePaneIndicatorOverrides(item.indicatorOverrides),
+    linkCompare,
+    compareOverlays: linkCompare ? undefined : normalizeCompareOverlays(item.compareOverlays, item.timeframe, item.chartType)
   };
 }
 
 function defaultChart(symbol: string, timeframe: Timeframe, chartType: ChartType): WorkspaceChart {
-  return { id: "chart-1", symbol, timeframe, chartType, linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true };
+  return { id: "chart-1", symbol, timeframe, chartType, linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true };
 }
 
 function toRevision(workspace: Workspace): WorkspaceRevision {
@@ -311,6 +323,7 @@ function cloneRevision(revision: WorkspaceRevision): WorkspaceRevision {
     chartType: revision.chartType,
     cryptoExchange: revision.cryptoExchange,
     enabledIndicators: [...revision.enabledIndicators],
+    compareOverlays: revision.compareOverlays.map((overlay) => ({ ...overlay })),
     theme: revision.theme,
     layout: { ...revision.layout },
     charts: revision.charts.map(cloneChart)
@@ -318,7 +331,7 @@ function cloneRevision(revision: WorkspaceRevision): WorkspaceRevision {
 }
 
 function cloneChart(chart: WorkspaceChart): WorkspaceChart {
-  return { ...chart, indicatorOverrides: chart.indicatorOverrides?.map((override) => ({ ...override })) };
+  return { ...chart, indicatorOverrides: chart.indicatorOverrides?.map((override) => ({ ...override })), compareOverlays: chart.compareOverlays?.map((overlay) => ({ ...overlay })) };
 }
 
 function revisionFingerprint(revision: WorkspaceRevision): string {
