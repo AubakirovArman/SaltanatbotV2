@@ -27,17 +27,18 @@ The initial Playwright suite must cover:
 2. symbol, exchange, timeframe and chart type can be changed;
 3. indicator is added, configured, persisted and restored;
 4. drawing can be created, selected, edited and deleted;
-5. Pine strategy imports, reports diagnostics, opens as blocks and runs a backtest;
-6. Pine indicator imports and appears on the current chart;
-7. strategy is created from a template, edited, compiled and saved;
-8. backtest shows assumptions, trades, metrics and chart markers;
-9. optimizer runs in a worker and can be cancelled;
-10. named workspace and bounded last-chart-session state save and restore after reload, while malformed/future storage fails closed;
-11. paper bot is created, started, receives a signal, records an order and stops;
-12. authentication, CSRF expiry and logout behave correctly;
-13. kill switch requires the right role and visibly updates state;
-14. WebSocket disconnect reconnects without duplicating candles or orders;
-15. invalid/fallback market data is visibly distinguished from real data.
+5. identical symbols in separate panes retain isolated drawing sets through reload;
+6. Pine strategy imports, reports diagnostics, opens as blocks and runs a backtest;
+7. Pine indicator imports and appears on the current chart;
+8. strategy is created from a template, edited, compiled and saved;
+9. backtest shows assumptions, trades, metrics and chart markers;
+10. optimizer runs in a worker and can be cancelled;
+11. named workspace and bounded last-chart-session state save and restore after reload, while malformed/future storage fails closed;
+12. paper bot is created, started, receives a signal, records an order and stops;
+13. authentication, CSRF expiry and logout behave correctly;
+14. kill switch requires the right role and visibly updates state;
+15. WebSocket disconnect reconnects without duplicating candles or orders;
+16. invalid/fallback market data is visibly distinguished from real data.
 
 Live-mainnet orders must never run in generic E2E. Exchange testnets require an explicit opt-in environment and isolated credentials.
 

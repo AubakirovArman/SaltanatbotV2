@@ -272,7 +272,7 @@ test("measures price, percent, bars and time with Shift-drag", async ({ page }) 
   await expect(summary).toContainText("Measurement result");
   await expect(summary).toContainText(/[-+]\d+\.\d+%/);
   await expect(summary).toContainText(/\d+ bars · \d+[smhd]/);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("mf:drawings:BTCUSDT") ?? "[]").some((drawing: { tool?: string }) => drawing.tool === "measure"))).toBe(false);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:drawings:v2:chart-1:BTCUSDT") ?? "[]").some((drawing: { tool?: string }) => drawing.tool === "measure"))).toBe(false);
   await expectNoAxeViolations(page);
   await page.keyboard.press("Escape");
   await expect(summary).toBeHidden();
@@ -526,6 +526,35 @@ test("restores the last four-chart session after reload without a named workspac
   await expectNoAxeViolations(page);
 });
 
+test("isolates and restores drawings for identical symbols in separate panes", async ({ page }) => {
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Chart layout" }).click();
+  await page.getByRole("menuitemradio", { name: "Vertical split" }).click();
+  const primary = page.locator(".multi-chart-pane.primary");
+  const secondary = page.locator(".multi-chart-pane.secondary");
+  await secondary.locator(".pane-maximize").click();
+  await secondary.getByRole("button", { name: "Horizontal line" }).click();
+  await secondary.locator(".chart-canvas-interaction").click({ position: { x: 430, y: 260 } });
+  await secondary.getByRole("button", { name: "Drawing object tree" }).click();
+  await expect(secondary.locator(".drawing-object-list")).toContainText("hline");
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:drawings:v2:chart-2:BTCUSDT") ?? "[]").map((drawing: { tool?: string }) => drawing.tool))).toEqual(["hline"]);
+  expect(await page.evaluate(() => localStorage.getItem("sbv2:drawings:v2:chart-1:BTCUSDT"))).toBeNull();
+
+  await page.reload();
+  const restoredPrimary = page.locator(".multi-chart-pane.primary");
+  const restoredSecondary = page.locator(".multi-chart-pane.secondary");
+  await expect(restoredSecondary).toBeVisible({ timeout: 20_000 });
+  await restoredPrimary.locator(".pane-maximize").click();
+  await restoredPrimary.getByRole("button", { name: "Drawing object tree" }).click();
+  await expect(restoredPrimary.locator(".drawing-object-list li")).toHaveCount(1);
+  await expect(restoredPrimary.locator(".drawing-objects-empty")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await restoredSecondary.locator(".pane-maximize").click();
+  await restoredSecondary.getByRole("button", { name: "Drawing object tree" }).click();
+  await expect(restoredSecondary.locator(".drawing-object-list")).toContainText("hline");
+  await expectNoAxeViolations(page);
+});
+
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
@@ -538,7 +567,7 @@ test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) 
   await page.getByRole("button", { name: "Drawing object tree" }).click();
   await expect(page.locator(".drawing-object-list")).toContainText("Anchored VWAP");
   await expectNoAxeViolations(page);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("mf:drawings:EURUSD") ?? "[]").some((drawing: { tool?: string }) => drawing.tool === "anchored-vwap"))).toBe(true);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:drawings:v2:chart-1:EURUSD") ?? "[]").some((drawing: { tool?: string }) => drawing.tool === "anchored-vwap"))).toBe(true);
   await page.reload();
   await selectChartSymbol(page, "EURUSD");
   await expect(page.getByRole("complementary", { name: "Anchored VWAP" })).toBeVisible({ timeout: 20_000 });

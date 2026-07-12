@@ -41,6 +41,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `../components/ChartDataPanel.tsx`: bounded semantic tables for the focused OHLC candle, recent candles, strategy signals and executed trades.
 - `drawingTemplates.ts`: validated local drawing-style templates consumed by
   the object tree; visibility, locking, undo and redo stay owned by `ChartCanvas`.
+- `drawingStore.ts`: bounded/validated pane + symbol persistence and one-way migration of legacy symbol-only drawings into the primary pane.
 - Native indicators can use the price pane or an independent pane with
   left/right/hidden scale labels.
 - `../i18n/chart.ts`: typed English/Russian chart-table messages, dynamic captions and domain terms.
@@ -74,6 +75,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `ChartView.priceZoom` is orthogonal to candle zoom/offset. `scales.ts` applies its bounded factor around the auto-range center in linear value space or logarithmic space, and every price-aligned render layer consumes the resulting shared viewport.
 - Multi-chart panes use role-aware compact chrome: global indicator/compare editing remains on the primary pane, siblings omit duplicate editors, and each pane retains its local session/structure controls behind a native keyboard-operable disclosure.
 - Pane maximization changes only CSS layout and chrome density; sibling components remain mounted, `Escape` restores the grid and the customizable shortcut targets whichever pane most recently received pointer or keyboard focus.
+- Persistent drawings are keyed by stable chart id plus symbol, remain shared across that pane's timeframes, and never inherit into a sibling showing the same market. A scope switch flushes the previous snapshot before loading the next one.
 - Heikin Ashi is seeded once from full loaded history before viewport slicing, so zoom and pan never change the same bar's transformed OHLC.
 - Viewport time/index conversion maps every loaded timestamp exactly, interpolates inside irregular gaps and uses median duration only beyond loaded edges.
 - Crosshair/drawing redraws must not recompute unchanged indicators.

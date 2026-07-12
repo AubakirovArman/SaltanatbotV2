@@ -1,7 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createDrawing, TOOL_POINT_COUNT, type Anchor, type DrawingObject, type DrawingTool, type ShapeTool } from "../chart/drawings";
 import { useChartRenderer } from "../chart/useChartRenderer";
-import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import { preparePriceCandles } from "../chart/priceRepresentation";
 import type { CompareLegendSnapshot, CompareSeries, DraftDrawing, PriceMode, VolumeProfileSnapshot } from "../chart/types";
@@ -28,6 +27,7 @@ import { PriceRepresentationControl, usePriceRepresentationSettings } from "./ch
 import { PriceAxisControl } from "./chartCanvas/PriceAxisControl";
 import { QuickMeasureSummary } from "./chartCanvas/QuickMeasureSummary";
 import { StrategyChip } from "./chartCanvas/StrategyChip";
+import { usePersistentDrawings } from "./chartCanvas/usePersistentDrawings";
 
 const MAX_COMPARE = 3;
 
@@ -98,7 +98,7 @@ export function ChartCanvas({
   const [showArtifactSettings, setShowArtifactSettings] = useState(false);
   const [showDrawingObjects, setShowDrawingObjects] = useState(false);
   const [, setHistoryVersion] = useState(0);
-  const [drawings, setDrawings] = useState<DrawingObject[]>([]);
+  const [drawings, setDrawings, drawingScopeKey] = usePersistentDrawings(instrument.symbol, chartId);
   const [draft, setDraft] = useState<{ tool: ShapeTool; points: Anchor[] }>();
   const [quickMeasure, setQuickMeasure] = useState<DraftDrawing>();
   const [quickMeasureActive, setQuickMeasureActive] = useState(false);
@@ -143,21 +143,14 @@ export function ChartCanvas({
     }));
   }, [compareOverlays, compareSeries]);
 
-  // Load / persist drawings per symbol.
+  // Reset transient editing state whenever the pane/symbol drawing scope changes.
   useEffect(() => {
-    const loaded = loadDrawings(instrument.symbol);
     historyRef.current = [];
     redoRef.current = [];
-    setDrawings(loaded);
     setSelectedId(undefined);
     setDraft(undefined);
     setTool("cursor");
-  }, [instrument.symbol]);
-
-  useEffect(() => {
-    const id = window.setTimeout(() => saveDrawings(instrument.symbol, drawings), 250);
-    return () => window.clearTimeout(id);
-  }, [drawings, instrument.symbol]);
+  }, [drawingScopeKey]);
 
   // Record drawing snapshots for undo (bounded), skipping the ones an undo restores.
   useEffect(() => {
