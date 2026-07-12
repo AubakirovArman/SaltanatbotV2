@@ -231,6 +231,7 @@ export function ChartCanvas({
     showVolume,
     showVolumeProfile,
     sessionLiquidity: sessionLiquidity.enabled ? sessionLiquidity.snapshot : undefined,
+    marketSessions: sessionLiquidity.marketSessions,
     compare,
     theme,
     onCompareLegend: (entries) => setCompareLegend((current) => (sameLegend(current, entries) ? current : entries)),

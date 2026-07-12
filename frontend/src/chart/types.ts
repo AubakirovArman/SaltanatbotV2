@@ -3,6 +3,7 @@ import type { Anchor, DrawingObject } from "./drawings";
 import type { IndicatorConfig } from "./indicatorTypes";
 import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
 import type { AnchoredVwapSeries } from "./anchoredVwap";
+import type { MarketSessionRange } from "./marketSessions";
 
 export interface PlotArea {
   left: number;
@@ -110,6 +111,8 @@ export interface DrawChartOptions {
   sessionLiquidity?: SessionLiquiditySnapshot;
   /** Prepared drawing-study points, kept out of Canvas renderers. */
   anchoredVwapSeries?: AnchoredVwapSeries;
+  /** Prepared DST-aware regional market-session ranges. */
+  marketSessions?: MarketSessionRange[];
   /** Symbols overlaid on the price pane, normalized to % change (Compare). */
   compare?: CompareSeries[];
   /** The base chart's symbol — labels the base line in the compare legend. */

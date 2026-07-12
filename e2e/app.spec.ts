@@ -25,7 +25,7 @@ test("toggles the visible-range volume profile accessibly", async ({ page }) => 
 });
 
 test("shows and toggles the semantic UTC session liquidity map", async ({ page }) => {
-  await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
+  await selectChartSymbol(page, "EURUSD");
   const toggle = page.getByRole("button", { name: "Toggle UTC map" });
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".session-liquidity-values")).toContainText("VWAP", { timeout: 20_000 });
@@ -35,8 +35,25 @@ test("shows and toggles the semantic UTC session liquidity map", async ({ page }
   await expect(page.locator(".session-liquidity-values")).toBeHidden();
 });
 
+test("toggles DST-aware regional session boxes accessibly", async ({ page }) => {
+  await selectChartSymbol(page, "EURUSD");
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+  const asia = page.getByRole("button", { name: "Asia session" });
+  const london = page.getByRole("button", { name: "London session" });
+  const newYork = page.getByRole("button", { name: "New York session" });
+  await expect(asia).toHaveAttribute("aria-pressed", "true");
+  await expect(london).toHaveAttribute("aria-pressed", "true");
+  await expect(newYork).toHaveAttribute("aria-pressed", "true");
+  await asia.click();
+  await expect(asia).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".session-liquidity-badge .sr-only li").filter({ hasText: "Asia session" })).toHaveCount(0);
+  await expectNoAxeViolations(page);
+  await page.getByRole("button", { name: "4h", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Asia session.*Available on 1-minute through 1-hour charts/ })).toBeDisabled();
+});
+
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
-  await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
+  await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   const tool = page.getByRole("button", { name: "Anchored VWAP", exact: true });
   await tool.click();
@@ -47,8 +64,9 @@ test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) 
   await page.getByRole("button", { name: "Drawing object tree" }).click();
   await expect(page.locator(".drawing-object-list")).toContainText("Anchored VWAP");
   await expectNoAxeViolations(page);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("mf:drawings:BTCUSDT") ?? "[]").some((drawing: { tool?: string }) => drawing.tool === "anchored-vwap"))).toBe(true);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("mf:drawings:EURUSD") ?? "[]").some((drawing: { tool?: string }) => drawing.tool === "anchored-vwap"))).toBe(true);
   await page.reload();
+  await selectChartSymbol(page, "EURUSD");
   await expect(page.getByRole("complementary", { name: "Anchored VWAP" })).toBeVisible({ timeout: 20_000 });
 });
 
@@ -79,9 +97,10 @@ test("renders a mocked live footprint and trade delta accessibly", async ({ page
   await alertCenter.getByText("Alert settings", { exact: true }).click();
   await expect(alertCenter.getByLabel("Enable in-chart alerts")).toBeChecked();
   await alertCenter.getByLabel("Large-print threshold").fill("100");
-  await expect(alertCenter).toContainText("Large print", { timeout: 5_000 });
+  const dismissAlert = alertCenter.getByRole("button", { name: "Dismiss microstructure alert" }).first();
+  await expect(dismissAlert).toBeVisible({ timeout: 5_000 });
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:microstructure-alerts:v1") ?? "null")?.largePrintNotional)).toBe(100);
-  await alertCenter.getByRole("button", { name: "Dismiss microstructure alert" }).first().click();
+  await dismissAlert.click();
   await expectNoAxeViolations(page);
   await toggle.click();
   await expect(badge).toBeHidden();
@@ -631,4 +650,14 @@ async function installTradeFlowSocketMock(page: Page) {
 async function expectNoAxeViolations(page: Page) {
   const audit = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(audit.violations, audit.violations.map((item) => `${item.id}: ${item.help} (${item.nodes.length})`).join("\n")).toEqual([]);
+}
+
+async function selectChartSymbol(page: Page, symbol: string) {
+  await page.keyboard.press("Control+k");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const search = palette.getByPlaceholder("Search symbols, timeframes, chart types, actions...");
+  await search.fill(symbol);
+  await expect(palette.getByRole("button").filter({ hasText: symbol }).first()).toBeVisible({ timeout: 20_000 });
+  await search.press("Enter");
+  await expect(page.getByRole("button", { name: new RegExp(`Current instrument ${symbol}`, "i") })).toBeVisible();
 }

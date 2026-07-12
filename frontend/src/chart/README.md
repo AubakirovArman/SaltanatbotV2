@@ -26,6 +26,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `../components/chartCanvas/TradeFootprintLayer.tsx`: isolated Canvas/WebSocket footprint and cumulative-delta layer with bounded retention and off-screen suspension.
 - `sessionLiquidity.ts` and `renderers/sessionLiquidity.ts`: pure UTC-session OHLCV/VWAP/deviation/sweep analysis and its Canvas primitives.
 - `anchoredVwap.ts` and `renderers/anchoredVwap.ts`: fail-closed cumulative AVWAP study preparation and render-only band/line geometry.
+- `marketSessions.ts` and `renderers/marketSessions.ts`: cached IANA-time-zone membership/range preparation and behind-price session-box rendering.
 - `../components/chartCanvas/SessionLiquidityLayer.tsx`: independently scheduled session overlay, persisted semantic toggle and authoritative PDH/PDL daily-candle request.
 - `../components/chartCanvas/ChartPriceHud.tsx`: DOM current-price/countdown pill and crosshair OHLC HUD.
 - `../components/ChartDataPanel.tsx`: bounded semantic tables for the focused OHLC candle, recent candles, strategy signals and executed trades.
@@ -49,6 +50,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Microstructure candidates deduplicate within one observation window, remain bounded in memory and never enter the durable price-alert, Telegram or order-execution paths.
 - Session VWAP is a volume-weighted typical-price estimate from bars, not tick VWAP. A live tail cannot produce a confirmed previous-day liquidity sweep.
 - Anchored VWAP never substitutes the earliest loaded candle for a missing saved anchor; it remains unavailable until history reaches that anchor.
+- Regional session windows use candle-open membership and are limited to 1m–1h; they do not claim exchange-calendar or holiday awareness.
 - Crosshair/drawing redraws must not recompute unchanged indicators.
 - Crosshair-only movement paints the transparent interaction canvas without clearing or repainting the base canvas.
 - Primary-series, indicator and drawing/strategy passes use separate transparent canvases and reuse one prepared viewport/indicator plan.

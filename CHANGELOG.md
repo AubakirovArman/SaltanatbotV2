@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added independently toggleable Asia, London and New York high/low session boxes on 1m–1h charts, using IANA time zones for daylight-saving-aware boundaries and a cached timestamp conversion path for live updates.
+- Kept regional-session shading behind candles, exposed the latest ranges as semantic DOM text and documented that these are time windows rather than exchange-holiday calendars or trading signals.
 - Added a one-click Anchored VWAP drawing with cumulative bar-based typical-price weighting, a translucent ±1σ value area, ±1σ/±2σ lines, editable anchors and symbol-scoped persistence through the existing drawing system.
 - Added a synchronized semantic AVWAP legend and fail-closed history handling: a saved anchor never silently restarts from incomplete loaded candles.
 - Added an opt-out UTC session-liquidity map with bar-based session VWAP and volume-weighted ±1σ bands, session open/high/low, authoritative previous-day high/low from daily exchange candles and confirmed wick-and-reclaim sweep markers.

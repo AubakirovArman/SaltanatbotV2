@@ -12,6 +12,7 @@ This directory owns focused presentation and interaction helpers behind the stab
 - `TradeFootprintLayer.tsx` owns the isolated public-print footprint/CVD/cluster Canvas, throttled semantic insight summary and visibility-aware stream suspension.
 - `TradeFlowAlertCenter.tsx` owns the keyboard-operable bounded event feed and native disclosure settings; it is a sibling above the interaction Canvas so controls remain clickable without raising the render layer.
 - `AnchoredVwapLegend.tsx` exposes every visible AVWAP's anchor, current value and deviation as ordinary localized DOM text.
+- `SessionLiquidityLayer.tsx` also owns accessible Asia/London/New York visibility controls and a bounded semantic summary; prepared boxes remain in the primary Canvas pass.
 
 Rendering and viewport state remain in `chart/`; these components must not recalculate indicators or
 own market transport. Preserve Canvas DOM alternatives, localized labels and render-layer isolation.

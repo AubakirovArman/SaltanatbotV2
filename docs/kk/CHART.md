@@ -63,6 +63,18 @@ VWAP әр OHLCV candle-дың жалпы volume-ымен өлшенген `(high
 Сол жақ rail-дегі **Anchored VWAP** құралы candle үстінен бір click арқылы жасалады. Таңдалған уақыттан соңғы loaded candle-ға дейін cumulative VWAP, translucent ±1σ value area және ±1σ/±2σ сызықтары салынады. Anchor кәдімгі drawing object болғандықтан оны move, hide, lock, duplicate, style, undo жасауға және ағымдағы symbol drawings-імен бірге сақтауға болады.
 
 Есептеу OHLCV volume-мен өлшенген `(high + low + close) / 3` typical price қолданады. Бұл tick-VWAP емес, bar-based AVWAP; timeframe ауысқанда жаңа interval candle-дары бойынша қайта есептеледі. Reload-тан кейін сақталған anchor loaded history-ден ескі болса, есеп бірінші қолжетімді candle-дан жалған басталмайды: бастапқы range жүктелгенше DOM legend `—` көрсетеді. Legend anchor уақытын, ағымдағы AVWAP және σ мәнін Canvas-тан бөлек береді.
+
+## Asia, London және New York сессиялары
+
+**SESSION UTC** карточкасының төменгі қатарындағы `ASIA`, `LON` және `NY` батырмалары бір-бірінен тәуелсіз. `1m`–`1h` chart-та олар regional window-дың translucent high/low box-ын көрсетеді. Ағымдағы range solid әрі айқынырақ border, жабылған range әлсіз dashed border қолданады. Соңғы high/low және active/closed күйі Canvas-тан бөлек semantic DOM мәтінінде де бар.
+
+- Asia: `Asia/Tokyo` уақытымен `09:00–18:00`.
+- London: `Europe/London` уақытымен `08:00–17:00`.
+- New York: `America/New_York` уақытымен `09:30–16:00`.
+
+IANA time zone London/New York DST ауысуын автоматты есептейді; candle session-ға open time бойынша кіреді. `2h` және одан үлкен timeframe-де `09:30` шекарасы дәл болмайтындықтан батырмалар disabled.
+
+Бұл official exchange holiday calendar емес: мереке және shortened trading day есептелмейді. 24/7 crypto үшін box Binance/Bybit open/close-ын емес, regional activity window-ды көрсетеді және жеке trading signal болып саналмайды.
 - **Қосу** мәзірі кірістірілген және пайдаланушы индикаторларын басқарады.
 - **Салыстыру** үш символға дейін қосады.
 - `Ctrl+K` (`⌘K`) command palette ашады; `Enter` орындайды, `Esc` жабады.

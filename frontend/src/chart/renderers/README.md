@@ -6,6 +6,8 @@ Renderers translate prepared chart models into Canvas 2D drawing commands.
 
 `anchoredVwap.ts` receives already prepared cumulative points from `../anchoredVwap.ts`; it only paints the anchor guide, value area, deviation lines and latest label.
 
+`marketSessions.ts` paints already grouped regional high/low ranges before the primary price series. Time-zone conversion and DST rules remain in `../marketSessions.ts`.
+
 ## Rules
 
 - Renderers are deterministic for the same model, viewport and palette.

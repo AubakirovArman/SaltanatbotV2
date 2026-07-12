@@ -9,6 +9,8 @@
   pointer-events: none;
 }
 
+.chart-indicator-overlay:has(.indicator-editor, .indicator-menu) { z-index: 12; }
+
 .indicator-strip,
 .indicator-chip,
 .indicator-editor-head,

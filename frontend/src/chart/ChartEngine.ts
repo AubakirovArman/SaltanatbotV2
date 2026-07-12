@@ -32,6 +32,7 @@ import { drawStrategyPlots, drawSubPlots } from "./renderers/strategyPlots";
 import { drawCompareSeries } from "./renderers/compareSeries";
 import { drawVolumeProfile } from "./renderers/volumeProfile";
 import { drawSessionLiquidity } from "./renderers/sessionLiquidity";
+import { drawMarketSessions } from "./renderers/marketSessions";
 import { drawCrosshair, drawEmpty, drawGrid, drawLastPrice, drawTimeAxis } from "./renderers/chartChrome";
 import { toHeikinAshi } from "./heikinAshi";
 import { computePlot, priceScale, visibleCandles } from "./scales";
@@ -165,7 +166,7 @@ export function drawChartBackground(ctx: CanvasRenderingContext2D, plan: ChartRe
 }
 
 export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRenderPlan, clear = true) {
-  const { width, height, chartType, decimals, showVolume, compare, onCompareLegend, onVolumeProfile } = plan.input;
+  const { width, height, chartType, decimals, showVolume, compare, onCompareLegend, onVolumeProfile, marketSessions } = plan.input;
   if (clear) ctx.clearRect(0, 0, width, height);
   if (plan.empty) {
     onCompareLegend?.([]);
@@ -184,6 +185,7 @@ export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRende
     theme
   };
 
+  if (marketSessions?.length) drawMarketSessions(ctx, plan.viewport, marketSessions);
   if (plan.volumeProfile) drawVolumeProfile(ctx, plan.plot, scale, plan.volumeProfile, theme);
   onVolumeProfile?.(plan.volumeProfile ? {
     bins: plan.volumeProfile.bins.length,

@@ -47,6 +47,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - Configurable in-chart microstructure alerts for stacked imbalance, potential absorption, CVD spikes and large prints, with local persistence, bounded history and optional sound/desktop delivery.
 - UTC session-liquidity map with OHLCV bar-based VWAP ±1σ, session O/H/L, exchange daily PDH/PDL and confirmed wick-and-reclaim sweep markers.
 - One-click Anchored VWAP drawings with editable/persisted anchors, a ±1σ value area, ±1σ/±2σ bands and a semantic current-value legend.
+- DST-aware Asia, London and New York session high/low boxes with independent accessible toggles on precise intraday charts.
 - Indicators: **SMA, EMA, Bollinger, RSI, MACD, VWAP, ATR, Stochastic, OBV** and arrow **signal** overlays (e.g. EMA crossovers).
 - **Price alerts** (browser notification + sound), **symbol compare** overlay, crosshair with OHLC legend, volume histogram, drawing tools, and **lazy-loaded history** on scroll-back.
 - Watchlist with **favorites** and **%-change sorting**; **saved workspaces** (named chart layouts); overlay a saved strategy directly on the chart with its **plotted indicator lines**, **buy/sell signal points** and simulated trades.
