@@ -25,6 +25,7 @@ import type { ChartCanvasProps } from "./chartCanvas/types";
 import { useChartWheelNavigation } from "./chartCanvas/useChartNavigation";
 import { useLinkedTimeRange } from "./chartCanvas/useLinkedTimeRange";
 import { PriceRepresentationControl, usePriceRepresentationSettings } from "./chartCanvas/PriceRepresentationControl";
+import { PriceAxisControl } from "./chartCanvas/PriceAxisControl";
 import { QuickMeasureSummary } from "./chartCanvas/QuickMeasureSummary";
 import { StrategyChip } from "./chartCanvas/StrategyChip";
 
@@ -109,7 +110,8 @@ export function ChartCanvas({
     offset: number;
     crosshair?: { x: number; y: number };
     priceMode: PriceMode;
-  }>({ zoom: 1, offset: 0, priceMode: "linear" });
+    priceZoom: number;
+  }>({ zoom: 1, offset: 0, priceMode: "linear", priceZoom: 1 });
   const [compareLegend, setCompareLegend] = useState<CompareLegendSnapshot[]>([]);
   const [volumeProfile, setVolumeProfile] = useState<VolumeProfileSnapshot>();
   const chartDataSummaryId = useId();
@@ -118,7 +120,7 @@ export function ChartCanvas({
   const latest = candles.at(-1);
   const displayCandles = useMemo(() => preparePriceCandles(candles, chartType, instrument.decimals, priceRepresentation.settings), [candles, chartType, instrument.decimals, priceRepresentation.settings]);
   const orderBookAvailable = instrument.assetClass === "crypto" && instrument.provider === "binance";
-  const heatmapRenderKey = `${latest?.time ?? 0}:${candles.length}:${view.zoom}:${view.offset}:${view.priceMode}`;
+  const heatmapRenderKey = `${latest?.time ?? 0}:${candles.length}:${view.zoom}:${view.offset}:${view.priceMode}:${view.priceZoom}`;
   const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange, displayCandles);
   drawingsRef.current = drawings;
 
@@ -355,8 +357,10 @@ export function ChartCanvas({
         )}
         <PriceRepresentationControl key={chartType} chartType={chartType} locale={locale} state={priceRepresentation} />
         <button type="button" className="scale-toggle" aria-label={t("cyclePriceScale")} title={t("priceScale")} onClick={cyclePriceMode}>
-          {view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}
+          <span>{view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}</span>
+          <small>{view.priceZoom === 1 ? "AUTO" : `${Math.round(view.priceZoom * 100)}%`}</small>
         </button>
+        <PriceAxisControl locale={locale} zoom={view.priceZoom} onZoomChange={(priceZoom) => setView((current) => ({ ...current, priceZoom }))} />
         <button
           type="button"
           className="zoom-reset"

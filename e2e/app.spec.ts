@@ -173,6 +173,41 @@ test("keeps mouse and trackpad chart zoom controlled and resettable", async ({ p
   await expect(reset).toBeVisible();
 });
 
+test("scales the price axis independently with wheel, drag and keyboard", async ({ page }) => {
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await page.reload();
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+  const axis = page.getByRole("slider", { name: "Price axis scale" });
+  const timeZoom = page.getByRole("button", { name: "Reset chart zoom (100%)" });
+  await expect(axis).toHaveAttribute("aria-valuenow", "100");
+  const cancelled = await axis.evaluate((element) => {
+    const event = new WheelEvent("wheel", { deltaY: -90, bubbles: true, cancelable: true });
+    return !element.dispatchEvent(event);
+  });
+  expect(cancelled).toBe(true);
+  await expect.poll(async () => Number(await axis.getAttribute("aria-valuenow"))).toBeGreaterThan(100);
+  await expect(timeZoom).toBeVisible();
+  const wheelZoom = Number(await axis.getAttribute("aria-valuenow"));
+
+  const box = await axis.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 - 50, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => Number(await axis.getAttribute("aria-valuenow"))).toBeGreaterThan(wheelZoom);
+  await axis.focus();
+  await page.keyboard.press("Home");
+  await expect(axis).toHaveAttribute("aria-valuenow", "100");
+  await page.keyboard.press("ArrowUp");
+  await expect(axis).toHaveAttribute("aria-valuenow", "110");
+  await axis.dblclick();
+  await expect(axis).toHaveAttribute("aria-valuenow", "100");
+  await expectNoAxeViolations(page);
+});
+
 test("measures price, percent, bars and time with Shift-drag", async ({ page }) => {
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   const canvas = page.locator(".chart-canvas-interaction");

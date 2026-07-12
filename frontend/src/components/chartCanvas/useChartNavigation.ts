@@ -12,6 +12,7 @@ export interface ChartNavigationView {
   offset: number;
   crosshair?: { x: number; y: number };
   priceMode: PriceMode;
+  priceZoom: number;
 }
 
 interface WheelFrame {

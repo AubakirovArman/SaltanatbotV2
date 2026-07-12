@@ -106,7 +106,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
         displayCandles: options.displayCandles,
         chartType: options.chartType,
         decimals: options.decimals,
-        view: { zoom: options.view.zoom, offset: options.view.offset, priceMode: options.view.priceMode },
+        view: { zoom: options.view.zoom, offset: options.view.offset, priceMode: options.view.priceMode, priceZoom: options.view.priceZoom },
         indicators: options.indicators,
         drawings: options.drawings,
         draftDrawing: options.draftDrawing,
@@ -139,7 +139,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     });
     schedulerRef.current?.schedule("overlays", () => drawOverlays(overlaysCanvas, renderPlanRef.current, options, anchoredVwaps));
     schedulerRef.current?.schedule("interaction", () => drawInteraction(interactionCanvas, viewportRef.current, options));
-  }, [options.candles, options.displayCandles, options.chartType, options.indicators, options.decimals, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, renderRevision]);
+  }, [options.candles, options.displayCandles, options.chartType, options.indicators, options.decimals, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, options.view.priceZoom, renderRevision]);
 
   useEffect(() => {
     const canvas = primaryCanvasRef.current;

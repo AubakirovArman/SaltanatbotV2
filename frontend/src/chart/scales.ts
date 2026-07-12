@@ -39,7 +39,8 @@ export function priceScale(
   candles: Candle[],
   extras: number[] = [],
   mode: PriceMode = "linear",
-  base = candles[0]?.close ?? 1
+  base = candles[0]?.close ?? 1,
+  priceZoom = 1
 ): PriceScale {
   const highs = candles.map((candle) => candle.high);
   const lows = candles.map((candle) => candle.low);
@@ -51,12 +52,11 @@ export function priceScale(
   const paddedMin = rawMin - padding;
 
   if (mode === "log" && paddedMin > 0) {
-    const maxLog = Math.log(paddedMax);
-    const minLog = Math.log(paddedMin);
+    const [minLog, maxLog] = zoomPriceBounds(Math.log(paddedMin), Math.log(paddedMax), priceZoom);
     const span = maxLog - minLog || 1;
     return {
-      min: paddedMin,
-      max: paddedMax,
+      min: Math.exp(minLog),
+      max: Math.exp(maxLog),
       mode,
       base,
       y: (price: number) => plot.top + ((maxLog - Math.log(Math.max(price, 1e-9))) / span) * plot.height,
@@ -64,15 +64,23 @@ export function priceScale(
     };
   }
 
-  const span = paddedMax - paddedMin || 1;
+  const [scaledMin, scaledMax] = zoomPriceBounds(paddedMin, paddedMax, priceZoom);
+  const span = scaledMax - scaledMin || 1;
   return {
-    min: paddedMin,
-    max: paddedMax,
+    min: scaledMin,
+    max: scaledMax,
     mode,
     base,
-    y: (price: number) => plot.top + ((paddedMax - price) / span) * plot.height,
-    priceAt: (y: number) => paddedMax - ((y - plot.top) / plot.height) * span
+    y: (price: number) => plot.top + ((scaledMax - price) / span) * plot.height,
+    priceAt: (y: number) => scaledMax - ((y - plot.top) / plot.height) * span
   };
+}
+
+export function zoomPriceBounds(min: number, max: number, zoom: number): [number, number] {
+  const safeZoom = Math.max(0.25, Math.min(4, Number.isFinite(zoom) ? zoom : 1));
+  const center = (min + max) / 2;
+  const halfSpan = (max - min || 1) / 2 / safeZoom;
+  return [center - halfSpan, center + halfSpan];
 }
 
 /**

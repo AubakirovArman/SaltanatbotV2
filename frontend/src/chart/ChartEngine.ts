@@ -106,6 +106,7 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
   } = input;
 
   const priceMode: PriceMode = view.priceMode ?? "linear";
+  const priceZoom = view.priceZoom ?? 1;
   const lowerIndicators = indicators.filter((indicator) => isIndicatorVisible(indicator) && isLowerIndicator(indicator));
   const subPlots = (plots ?? []).filter((series) => series.pane === "sub");
   const pricePlots = (plots ?? []).filter((series) => series.pane !== "sub");
@@ -128,7 +129,7 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
   const extraValues = collectMainValues(computed, start, end);
 
   const viewport = buildViewport({
-    candles: chartCandles, plot, zoom: view.zoom, offset: view.offset, priceMode, extraValues, rightPaddingBars
+    candles: chartCandles, plot, zoom: view.zoom, offset: view.offset, priceMode, priceZoom, extraValues, rightPaddingBars
   });
   onViewport?.(viewport);
 

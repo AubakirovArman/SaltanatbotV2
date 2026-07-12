@@ -12,7 +12,7 @@ const candles: Candle[] = Array.from({ length: 200 }, (_, index) => ({
   volume: 10,
   final: true
 }));
-const view: ChartNavigationView = { zoom: 1, offset: 20, priceMode: "linear" };
+const view: ChartNavigationView = { zoom: 1, offset: 20, priceMode: "linear", priceZoom: 1 };
 const viewport = {
   plot: { left: 0, top: 0, width: 800, height: 400, right: 800, bottom: 400 },
   barSpacing: 8,

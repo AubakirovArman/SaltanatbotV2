@@ -83,6 +83,7 @@ export interface ChartView {
   offset: number;
   crosshair?: { x: number; y: number };
   priceMode?: PriceMode;
+  priceZoom?: number;
 }
 
 export interface DrawChartOptions {

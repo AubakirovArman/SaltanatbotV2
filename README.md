@@ -55,6 +55,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - DST-aware Asia, London and New York session high/low boxes with independent accessible toggles on precise intraday charts.
 - Indicators: **SMA, EMA, Bollinger, RSI, MACD, VWAP, ATR, Stochastic, OBV** and arrow **signal** overlays (e.g. EMA crossovers).
 - **Price alerts** (browser notification + sound), **symbol compare** overlay, crosshair with OHLC legend, persistent drawing tools, a zero-persistence **Shift-drag ruler** for price/%/bars/time, and **lazy-loaded history** on scroll-back.
+- Independent right-axis price scaling supports wheel/trackpad, vertical drag, keyboard arrows, `Home` and double-click reset without changing the visible candle range.
 - One-, two- and four-chart layouts can independently link symbol, timeframe, crosshair and the absolute visible **time range**, so zoom/pan comparisons stay aligned across markets.
 - Watchlist with **favorites** and **%-change sorting**; **saved workspaces** (named chart layouts); overlay a saved strategy directly on the chart with its **plotted indicator lines**, **buy/sell signal points** and simulated trades.
 

@@ -1,7 +1,7 @@
 {
   "maxHtmlBytes": 4096,
-  "maxCssGzipBytes": 16384,
+  "maxCssGzipBytes": 17408,
   "maxSingleJsBytes": 819200,
   "maxSingleJsGzipBytes": 225280,
-  "maxTotalJsGzipBytes": 462848
+  "maxTotalJsGzipBytes": 463872
 }

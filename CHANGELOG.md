@@ -7,6 +7,9 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added independent manual price-axis scaling from 25% to 400%: wheel/trackpad and vertical drag on the right axis no longer alter candle zoom, while Arrow/Page keys, `Home` and double-click provide keyboard/reset parity.
+- Applied manual bounds consistently in linear, logarithmic and percentage modes, invalidated depth/footprint geometry with the price scale, exposed `AUTO/NN%` beside the mode and added a focus-visible semantic slider over the axis.
+- Raised the aggregate JavaScript gzip allowance from 452 KiB to 453 KiB and CSS from 16 KiB to 17 KiB for the measured price-axis model/control; per-chunk and HTML limits remain unchanged.
 - Added opt-in visible-time-range linking across 2/4-chart layouts: zoom and pan publish absolute UTC boundaries, and every linked pane maps them to its own symbol/timeframe without index drift or feedback loops.
 - Persisted the new range-link preference in workspace schema v3, default-migrated older workspaces, added a keyboard-addressable per-pane toggle and compact container-responsive controls.
 - Raised only the aggregate JavaScript gzip allowance from 451 KiB to 452 KiB for the measured linked-viewport protocol/UI; per-chunk, CSS and HTML limits remain unchanged.

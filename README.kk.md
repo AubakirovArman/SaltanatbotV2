@@ -23,6 +23,7 @@ SaltanatbotV2 — сауда идеяларын зерттеуге және ав
 - candlestick, Heikin-Ashi, bars, line, area, baseline, тұрақты Renko, Three Line Break, Kagi және Point & Figure түрлері, VPVR, order-book heatmap, live trade footprint/CVD және imbalance/potential absorption белгілеуі бар жеке Canvas-график;
 - local сақталатын Renko/P&F box percentage, Kagi reversal percentage, Line Break depth және P&F reversal-box count Canvas, indicator және accessible OHLC table үшін бір transformed series-ті толық қайта есептейді;
 - `Shift + drag` жылдам сызғышы баға/пайыз өзгерісін, candle санын және уақытты көрсетеді, бірақ уақытша нәтижені сақталған drawing-терге қоспайды;
+- оң жақ price axis wheel/trackpad, vertical drag және keyboard арқылы time range-ке тәуелсіз масштабталады; `Home` не double-click AUTO диапазонды қайтарады;
 - бір, екі және төрт chart layout symbol, timeframe, crosshair және көрінетін UTC time range-ті бөлек байланыстырып, әртүрлі market zoom/pan салыстыруын синхронды ұстайды;
 - stacked imbalance, potential absorption, CVD spike және large print үшін жергілікті сақталатын in-chart alert-тер, optional sound және desktop notification;
 - Binance және Bybit үшін REST тарихы мен WebSocket жаңартулары;

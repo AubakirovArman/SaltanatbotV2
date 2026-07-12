@@ -8,6 +8,7 @@ export interface ViewportInput {
   zoom: number;
   offset: number;
   priceMode: PriceMode;
+  priceZoom?: number;
   /** Extra price values (indicator lines) that must stay in view. */
   extraValues?: number[];
   /** Empty bars reserved to the right for future projection shapes. */
@@ -22,7 +23,7 @@ export interface ViewportInput {
  * through the returned {@link Viewport} so it all stays aligned under zoom/pan.
  */
 export function buildViewport(input: ViewportInput): Viewport {
-  const { candles, plot, zoom, offset, priceMode, extraValues = [], rightPaddingBars = 0 } = input;
+  const { candles, plot, zoom, offset, priceMode, priceZoom = 1, extraValues = [], rightPaddingBars = 0 } = input;
   const visible = visibleCandles(candles, plot, zoom, offset, rightPaddingBars);
   const data = visible.data;
   const barSpacing = visible.step;
@@ -30,7 +31,7 @@ export function buildViewport(input: ViewportInput): Viewport {
 
   const scale =
     input.scaleOverride ??
-    priceScale(plot, data, extraValues, priceMode, data[0]?.close ?? candles[0]?.close ?? 1);
+    priceScale(plot, data, extraValues, priceMode, data[0]?.close ?? candles[0]?.close ?? 1, priceZoom);
 
   const barTimeMs = medianBarTime(candles);
   const lastIndex = candles.length - 1;
