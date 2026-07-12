@@ -86,6 +86,17 @@ test("renders a localized non-repainting Three Line Break chart", async ({ page 
   await expect(page.getByRole("menuitemradio", { name: "Трёхлинейный прорыв" })).toHaveAttribute("aria-checked", "true");
 });
 
+test("renders stable confirmed Renko with a semantic candle table", async ({ page }) => {
+  await selectChartSymbol(page, "EURUSD");
+  await page.getByTitle("Chart type").click();
+  await page.getByRole("menuitemradio", { name: "Renko" }).click();
+  await expect(page.getByRole("img", { name: /EURUSD Renko chart on 1m.*confirmed close-only fixed 0.05% bricks with a two-brick reversal/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".legend-symbol")).toContainText("RENKO 0.05%");
+  await page.getByRole("button", { name: "Chart data", exact: true }).click();
+  await expect(page.getByRole("table", { name: "Latest candle" })).toBeVisible();
+  await expectNoAxeViolations(page);
+});
+
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });

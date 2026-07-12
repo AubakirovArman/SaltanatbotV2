@@ -41,6 +41,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 ### 📈 Charting
 - Custom **canvas chart engine** (no heavy chart library) with its own viewport / time-scale coordinate system.
 - Chart types: **candles, hollow candles, Heikin-Ashi, bars, line, step line, area, baseline, renko and Three Line Break**. Ten timeframes from **1m to 1M**.
+- Stable close-only Renko uses fixed 0.05%-seeded bricks, a true two-brick reversal, aggregated source volume and actual discarded-close wicks; live tails never rewrite confirmed bricks.
 - OHLCV-estimated visible-range Volume Profile (VPVR) with directional volume, Point of Control and a contiguous 70% value area.
 - Real Binance/Bybit public top-20 order-book heatmap with a shared backend upstream, 60-second liquidity history and explicit reconnect/stale states.
 - Real-time Binance/Bybit trade footprint with aggressor cells, delta/CVD, diagonal and stacked imbalance highlighting, and explicitly provisional absorption heuristics; no synthetic prints or reconstructed history.

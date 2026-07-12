@@ -14,6 +14,16 @@
 
 Әр line бастапқы candle timestamp-ын сақтайды, ал арада өткізіліп кеткен volume қосылады. Сондықтан crosshair, drawing және time-stamped signal нақты дерекке байланып қалады, бірақ chart column-дары бірдей аралықпен орналасады. Built-in indicator-лар transformed line-break OHLC/volume бойынша есептеледі; Strategy Lab пен backtest бастапқы time candle-дарды қолданады. Бұл екі түрлі data representation, сондықтан нәтижені transformation-ды ескермей тікелей салыстыруға болмайды. Ережелер [TradingView](https://www.tradingview.com/support/solutions/43000502273-introduction-to-line-break-charts/) және [Sierra Chart](https://www.sierrachart.com/index.php?ID=131&page=doc%2FStudiesReference.php) құжаттарымен тексерілді.
 
+### Тұрақты Renko
+
+Renko тек confirmed source candle close мәндерін қолданады. Brick size бірінші loaded confirmed price-тың 0,05%-ы ретінде бір рет алынып, instrument-тің minimum tick-іне дөңгелектенеді. Continuation бір brick қозғалысын, direction reversal екі brick қозғалысын талап етеді: price соңғы brick open-ына қайтып, тағы бір толық size өтуі керек. Бір source candle бірнеше бірдей honest timestamp-ы бар brick жасай алады; оның volume-ы duplicate болмай, brick-терге бөлінеді.
+
+Wick жаңа не reversal brick жасауға жетпеген нақты аралық close-extreme-ды ғана көрсетеді; close-only mode бастапқы High/Low-ды алмастырмайды. Жабылмаған candle және projection brick есепке кірмейді. Жаңа live candle ескі brick size-ын өзгертпейді. Егер user бұрынғы history-ді әдейі жүктесе, бірінші source price өзгереді де full Renko жаңа history boundary-ден дұрыс reseed жасай алады.
+
+Renko price синтетикалық және нақты бір уақытта орындалатын market price емес. Chart-тағы built-in indicator Renko OHLC/volume қолданады, ал Strategy Lab пен backtest бастапқы time candle бойынша орындалады. Renko көрінісін execution price дәлелі деп қабылдамаңыз. Ресми [TradingView calculation](https://www.tradingview.com/support/solutions/43000502284-understanding-renko-charts/) және [two-brick reversal/wick](https://www.tradingview.com/support/solutions/43000481040-what-do-renko-wicks-mean/) түсіндірмелері.
+
+Heikin Ashi де visible window кесілгенге дейін бүкіл loaded history бойынша есептеледі: zoom немесе pan бір candle-дың seed/OHLC мәнін енді өзгертпейді.
+
 ## Басқару
 
 - Тінтуір дөңгелегі курсор тұрған candle маңында масштабтайды.
@@ -72,7 +82,7 @@ Chart үстіндегі карточкадағы `STRUCT` батырмасы р
 
 `FVG` батырмасы үш жабық candle бойынша optional fair value gap zone-дарын көрсетеді. Bullish zone үшін үшінші candle low-ы бірінші candle high-ынан жоғары; bearish zone үшін үшінші candle high-ы бірінші candle low-ынан төмен болуы керек. Кейінгі wick zone-ды толық толтырғанда ғана ол mitigated деп есептеледі. Ағымдағы жабылмаған candle structure жасамайды және FVG жаппайды.
 
-Бұл белгілер loaded OHLC candle-дардың механикалық контексті, кепілденген trading signal емес. Нәтиже timeframe, swing strength және қолжетімді history-ге тәуелді; trade алдында risk, liquidity және басқа деректермен бірге тексеріңіз.
+Бұл белгілер displayed OHLC bar-лардың механикалық контексті, кепілденген trading signal емес. Қарапайым candle үшін source bars, ал Heikin Ashi, Renko және Three Line Break үшін таңдалған transformed representation қолданылады. Нәтиже chart type, timeframe, swing strength және қолжетімді history-ге тәуелді; trade алдында risk, liquidity және басқа деректермен бірге тексеріңіз.
 
 ## Anchored VWAP
 

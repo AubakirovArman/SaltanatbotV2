@@ -21,7 +21,7 @@ import { drawDrawings } from "./renderers/drawingRenderers";
 import { drawBars } from "./renderers/bars";
 import { drawCandles } from "./renderers/candles";
 import { drawLineArea } from "./renderers/lineArea";
-import { buildRenko, drawRenko } from "./renderers/renko";
+import { drawRenko } from "./renderers/renko";
 import { drawLineBreak } from "./renderers/lineBreak";
 import { drawVolume } from "./renderers/volume";
 import { drawMarkers } from "./renderers/markers";
@@ -36,12 +36,11 @@ import { drawSessionLiquidity } from "./renderers/sessionLiquidity";
 import { drawMarketSessions } from "./renderers/marketSessions";
 import { drawMarketStructureBackground, drawMarketStructureOverlay } from "./renderers/marketStructure";
 import { drawCrosshair, drawEmpty, drawGrid, drawLastPrice, drawTimeAxis } from "./renderers/chartChrome";
-import { toHeikinAshi } from "./heikinAshi";
-import { computePlot, priceScale, visibleCandles } from "./scales";
+import { computePlot, visibleCandles } from "./scales";
 import { buildViewport, medianBarTime } from "./viewport";
 import { buildVolumeProfile } from "./volumeProfile";
 import { calculateDrawingAvwaps } from "./anchoredVwap";
-import { buildLineBreak } from "./lineBreak";
+import { preparePriceCandles } from "./priceRepresentation";
 import type { ChartShapes, DrawChartOptions, PlotArea, PriceMode, PriceScale, Viewport } from "./types";
 
 let theme = {
@@ -78,7 +77,6 @@ interface PopulatedChartRenderPlan {
   start: number;
   end: number;
   computed: ComputedIndicator[];
-  bricks: ReturnType<typeof buildRenko>;
   lowerIndicators: IndicatorConfig[];
   subPlots: NonNullable<DrawChartOptions["plots"]>;
   pricePlots: NonNullable<DrawChartOptions["plots"]>;
@@ -118,21 +116,18 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
   const plot = computePlot(width, mainHeight);
   if (candles.length === 0) return { empty: true, input };
 
-  const lineBreak = chartType === "linebreak" && !input.displayCandles ? buildLineBreak(candles) : [];
-  const chartCandles = input.displayCandles ?? (chartType === "linebreak" ? lineBreak : candles);
+  const chartCandles = input.displayCandles ?? preparePriceCandles(candles, chartType, input.decimals);
   if (chartCandles.length === 0) return { empty: true, input };
   const rightPaddingBars = projectionPaddingBars(chartCandles, shapes);
   const visible = visibleCandles(chartCandles, plot, view.zoom, view.offset, rightPaddingBars);
-  const data = chartType === "heikin" ? toHeikinAshi(visible.data) : visible.data;
+  const data = visible.data;
   const start = Math.max(0, chartCandles.length - clampOffset(chartCandles, view.offset) - visible.data.length);
   const end = start + visible.data.length;
   const computed = computeIndicators(chartCandles, indicators);
-  const bricks = chartType === "renko" ? buildRenko(visible.data) : [];
   const extraValues = collectMainValues(computed, start, end);
-  const scaleOverride = chartType === "renko" && bricks.length > 0 ? renkoScale(plot, bricks) : undefined;
 
   const viewport = buildViewport({
-    candles: chartCandles, plot, zoom: view.zoom, offset: view.offset, priceMode, extraValues, scaleOverride, rightPaddingBars
+    candles: chartCandles, plot, zoom: view.zoom, offset: view.offset, priceMode, extraValues, rightPaddingBars
   });
   onViewport?.(viewport);
 
@@ -146,7 +141,6 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
     start,
     end,
     computed,
-    bricks,
     lowerIndicators,
     subPlots,
     pricePlots,
@@ -207,7 +201,7 @@ export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRende
   if (chartType === "line") drawLineArea(renderContext, false);
   if (chartType === "step") drawLineArea(renderContext, false, true);
   if (chartType === "area" || chartType === "baseline") drawLineArea(renderContext, true);
-  if (chartType === "renko") drawRenko(renderContext, plan.bricks);
+  if (chartType === "renko") drawRenko(renderContext);
   if (chartType === "linebreak") drawLineBreak(renderContext);
 
   // Compare overlay: normalized %-change lines for other symbols on the price
@@ -524,16 +518,6 @@ function drawPanelScale(ctx: CanvasRenderingContext2D, panel: PlotArea, scale: P
 function formatScaleValue(value: number) {
   const absolute = Math.abs(value);
   return absolute >= 1_000 ? value.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 }) : value.toFixed(absolute >= 10 ? 2 : 4);
-}
-
-function renkoScale(plot: PlotArea, bricks: Array<{ open: number; close: number }>): PriceScale {
-  const prices = bricks.flatMap((brick) => [brick.open, brick.close]);
-  return priceScale(
-    plot,
-    prices.map((price) => ({ time: 0, open: price, high: price, low: price, close: price, volume: 0 })),
-    [],
-    "linear"
-  );
 }
 
 function isNumber(value: number | undefined): value is number {

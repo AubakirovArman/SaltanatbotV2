@@ -48,5 +48,8 @@ export function chartTypeAriaLabel(locale: Locale, type: ChartType, symbol: stri
   if (type === "linebreak") return locale === "ru"
     ? `${symbol}: график «${title}» на ${timeframe}. Подтверждённые линии только по цене закрытия, разворот после трёх линий.`
     : `${symbol} ${title} chart on ${timeframe}. Confirmed close-only lines with a three-line reversal.`;
+  if (type === "renko") return locale === "ru"
+    ? `${symbol}: график «${title}» на ${timeframe}. Подтверждённые close-only кирпичи фиксированного размера 0,05% с двухкирпичным разворотом.`
+    : `${symbol} ${title} chart on ${timeframe}. Confirmed close-only fixed 0.05% bricks with a two-brick reversal.`;
   return locale === "ru" ? `${symbol}: ${title}, интервал ${timeframe}` : `${symbol} ${title} chart on ${timeframe}`;
 }

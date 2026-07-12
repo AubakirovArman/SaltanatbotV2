@@ -7,6 +7,9 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Replaced the viewport-dependent Renko approximation with a full-history confirmed close-only model: fixed 0.05%-seeded boxes, true two-box reversals, multi-brick source bars, aggregated volume and actual discarded-close wicks.
+- Unified Heikin Ashi, Renko and Three Line Break behind one prepared display-candle pipeline so zoom/pan no longer reseeds Heikin Ashi and Canvas, crosshair, drawings, native indicators, market structure and semantic tables consume the same representation.
+- Made the open chart-data region keyboard-focusable and uniquely keyed same-time synthetic rows, closing a Safari scroll-region WCAG 2.1.1 regression found by the expanded Renko axe journey.
 - Added a close-only, non-repainting Three Line Break price representation with strict three-line reversal confirmation, compressed time columns and aggregated source volume.
 - Reworked viewport timestamp interpolation so drawings, crosshairs, strategy markers and semantic OHLC data remain aligned across market gaps and price-compressed charts; extracted chart-type icons/labels from the top-bar coordinator.
 - Added non-repainting confirmed market structure on every timeframe: delayed fractal swing labels (HH/LH/HL/LL) and close-confirmed BOS/CHOCH overlays, with adjustable strength.

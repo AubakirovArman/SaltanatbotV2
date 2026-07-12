@@ -5,6 +5,7 @@ import { useChartRenderer } from "../chart/useChartRenderer";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import { visibleCandles } from "../chart/scales";
+import { preparePriceCandles } from "../chart/priceRepresentation";
 import type { CompareLegendSnapshot, CompareSeries, PriceMode, VolumeProfileSnapshot } from "../chart/types";
 import { shellText } from "../i18n/shell";
 import { ChartIndicatorOverlay } from "./ChartIndicatorOverlay";
@@ -106,9 +107,10 @@ export function ChartCanvas({
   const chartDataSummaryId = useId();
 
   const latest = candles.at(-1);
+  const displayCandles = useMemo(() => preparePriceCandles(candles, chartType, instrument.decimals), [candles, chartType, instrument.decimals]);
   const orderBookAvailable = instrument.assetClass === "crypto" && instrument.provider === "binance";
   const heatmapRenderKey = `${latest?.time ?? 0}:${candles.length}:${view.zoom}:${view.offset}:${view.priceMode}`;
-  const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange);
+  const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange, displayCandles);
   drawingsRef.current = drawings;
 
   useEffect(() => setShowArtifactSettings(false), [activeArtifactId]);
@@ -210,8 +212,9 @@ export function ChartCanvas({
     return { tool: draft.tool, points };
   }, [draft, hoverAnchor]);
 
-  const { backgroundCanvasRef, primaryCanvasRef, indicatorsCanvasRef, overlaysCanvasRef, interactionCanvasRef, viewportRef, displayCandles } = useChartRenderer({
+  const { backgroundCanvasRef, primaryCanvasRef, indicatorsCanvasRef, overlaysCanvasRef, interactionCanvasRef, viewportRef } = useChartRenderer({
     candles,
+    displayCandles,
     chartType,
     decimals: instrument.decimals,
     symbol: instrument.symbol,
@@ -313,7 +316,7 @@ export function ChartCanvas({
           <span className="legend-symbol">
             <b>{instrument.symbol}</b>
             <i>
-              {chartType === "linebreak" ? "3LB · " : ""}{timeframe} · {instrument.exchange}
+              {chartType === "linebreak" ? "3LB · " : chartType === "renko" ? "RENKO 0.05% · " : ""}{timeframe} · {instrument.exchange}
             </i>
           </span>
           {legendCandle && (

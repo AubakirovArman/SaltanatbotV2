@@ -32,10 +32,10 @@ import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
 import { calculateDrawingAvwaps, type AnchoredVwapSeries } from "./anchoredVwap";
 import type { MarketSessionRange } from "./marketSessions";
 import type { MarketStructureSnapshot } from "./marketStructure";
-import { buildLineBreak } from "./lineBreak";
 
 interface UseChartRendererOptions {
   candles: Candle[];
+  displayCandles: Candle[];
   chartType: ChartType;
   decimals: number;
   symbol: string;
@@ -63,8 +63,6 @@ interface UseChartRendererOptions {
 }
 
 export function useChartRenderer(options: UseChartRendererOptions) {
-  const lineBreakCandles = useMemo(() => options.chartType === "linebreak" ? buildLineBreak(options.candles) : [], [options.candles, options.chartType]);
-  const displayCandles = options.chartType === "linebreak" ? lineBreakCandles : options.candles;
   const anchoredVwaps = useMemo(() => calculateDrawingAvwaps(options.candles, options.drawings), [options.candles, options.drawings]);
   const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const primaryCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -105,7 +103,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
         width: backgroundCanvas.width,
         height: backgroundCanvas.height,
         candles: options.candles,
-        displayCandles,
+        displayCandles: options.displayCandles,
         chartType: options.chartType,
         decimals: options.decimals,
         view: { zoom: options.view.zoom, offset: options.view.offset, priceMode: options.view.priceMode },
@@ -141,7 +139,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     });
     schedulerRef.current?.schedule("overlays", () => drawOverlays(overlaysCanvas, renderPlanRef.current, options, anchoredVwaps));
     schedulerRef.current?.schedule("interaction", () => drawInteraction(interactionCanvas, viewportRef.current, options));
-  }, [options.candles, displayCandles, options.chartType, options.indicators, options.decimals, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, renderRevision]);
+  }, [options.candles, options.displayCandles, options.chartType, options.indicators, options.decimals, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, renderRevision]);
 
   useEffect(() => {
     const canvas = primaryCanvasRef.current;
@@ -178,7 +176,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     return () => observer.disconnect();
   }, []);
 
-  return { backgroundCanvasRef, primaryCanvasRef, indicatorsCanvasRef, overlaysCanvasRef, interactionCanvasRef, viewportRef, displayCandles };
+  return { backgroundCanvasRef, primaryCanvasRef, indicatorsCanvasRef, overlaysCanvasRef, interactionCanvasRef, viewportRef };
 }
 
 function drawPrimary(

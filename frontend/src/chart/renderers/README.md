@@ -12,6 +12,8 @@ Renderers translate prepared chart models into Canvas 2D drawing commands.
 
 `lineBreak.ts` paints prepared close-to-close bodies only. Reversal rules, live-tail exclusion and source-volume aggregation remain in `../lineBreak.ts`.
 
+`renko.ts` paints prepared synthetic brick bodies plus actual-close wicks. Box sizing, two-box reversal, volume allocation and confirmation rules remain in `../renko.ts`.
+
 ## Rules
 
 - Renderers are deterministic for the same model, viewport and palette.

@@ -1,4 +1,7 @@
 import type { Candle } from "../types";
+import { confirmedCandleCount } from "./confirmedCandles";
+
+export { confirmedCandleCount } from "./confirmedCandles";
 
 export type LineBreakDirection = "up" | "down";
 
@@ -60,11 +63,6 @@ export function buildLineBreak(candles: readonly Candle[], reversalLines = 3): L
   }
 
   return lines;
-}
-
-export function confirmedCandleCount(candles: readonly Candle[]) {
-  if (candles.length === 0) return 0;
-  return candles.at(-1)?.final === true ? candles.length : candles.length - 1;
 }
 
 function reversalLow(lines: readonly LineBreakCandle[], depth: number) {

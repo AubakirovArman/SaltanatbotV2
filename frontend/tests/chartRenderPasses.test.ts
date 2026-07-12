@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const calls = vi.hoisted(() => ({
   candles: vi.fn(),
   lineBreak: vi.fn(),
+  renko: vi.fn(),
   lineArea: vi.fn(),
   volumeProfile: vi.fn(),
   indicator: vi.fn(),
@@ -11,6 +12,7 @@ const calls = vi.hoisted(() => ({
 
 vi.mock("../src/chart/renderers/candles", () => ({ drawCandles: calls.candles }));
 vi.mock("../src/chart/renderers/lineBreak", () => ({ drawLineBreak: calls.lineBreak }));
+vi.mock("../src/chart/renderers/renko", () => ({ drawRenko: calls.renko }));
 vi.mock("../src/chart/renderers/lineArea", () => ({ drawLineArea: calls.lineArea }));
 vi.mock("../src/chart/renderers/volumeProfile", () => ({ drawVolumeProfile: calls.volumeProfile }));
 vi.mock("../src/chart/renderers/drawingRenderers", () => ({ drawDrawings: calls.drawings }));
@@ -136,6 +138,15 @@ describe("chart render passes", () => {
 
     expect(calls.lineBreak).toHaveBeenCalledTimes(1);
     if (!plan.empty) expect(plan.data.length).toBeLessThan(candles.length);
+  });
+
+  it("prepares full-history Renko bricks before the visible render pass", () => {
+    const ctx = context();
+    const plan = prepareChartRender({ ...input, chartType: "renko" });
+    drawChartPrimary(ctx, plan);
+
+    expect(calls.renko).toHaveBeenCalledTimes(1);
+    if (!plan.empty) expect(plan.data.every((brick) => brick.high >= brick.open && brick.low <= brick.close)).toBe(true);
   });
 
   it("renders the visible-range profile only when requested", () => {

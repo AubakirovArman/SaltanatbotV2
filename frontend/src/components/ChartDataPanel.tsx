@@ -37,12 +37,13 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
       </button>
 
       {open && (
-        <div id={panelId} className="chart-data-content">
+        <div id={panelId} className="chart-data-content" role="region" aria-label={chartText(locale, "chartData")}>
           <header>
-            <strong>
-              {symbol} · {timeframe}
-            </strong>
-            <span>{chartText(locale, "semanticAlternative")}</span>
+            <div>
+              <strong>{symbol} · {timeframe}</strong>
+              <span>{chartText(locale, "semanticAlternative")}</span>
+            </div>
+            <button type="button" className="chart-data-close" aria-label={chartText(locale, "hideChartData")} onClick={() => setOpen(false)}>×</button>
           </header>
 
           {focused ? (
@@ -70,8 +71,8 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
                 </tr>
               </thead>
               <tbody>
-                {recentCandles.map((candle) => (
-                  <CandleRow key={candle.time} candle={candle} decimals={decimals} locale={locale} />
+                {recentCandles.map((candle, index) => (
+                  <CandleRow key={`${candle.time}-${index}`} candle={candle} decimals={decimals} locale={locale} />
                 ))}
               </tbody>
             </table>

@@ -1,4 +1,7 @@
 import type { Candle } from "../types";
+import { confirmedCandleCount } from "./confirmedCandles";
+
+export { confirmedCandleCount } from "./confirmedCandles";
 
 export type StructureDirection = "bullish" | "bearish";
 export type SwingLabel = "H" | "L" | "HH" | "LH" | "HL" | "LL";
@@ -62,11 +65,6 @@ export function analyzeMarketStructure(candles: Candle[], settings: MarketStruct
     lastConfirmedTime: closed.at(-1)?.time,
     settings: normalized
   };
-}
-
-export function confirmedCandleCount(candles: Candle[]) {
-  if (candles.length === 0) return 0;
-  return candles.at(-1)?.final === true ? candles.length : candles.length - 1;
 }
 
 function detectConfirmedSwings(candles: Candle[], strength: number) {

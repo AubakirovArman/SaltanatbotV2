@@ -8,7 +8,7 @@ import { marketStructureText } from "../../i18n/marketStructure";
 import { shellText } from "../../i18n/shell";
 import type { Candle, DataExchange, Timeframe } from "../../types";
 
-export function useSessionLiquidity(candles: Candle[], symbol: string, timeframe: Timeframe, exchange: DataExchange) {
+export function useSessionLiquidity(candles: Candle[], symbol: string, timeframe: Timeframe, exchange: DataExchange, structureCandles = candles) {
   const [enabled, setEnabled] = useState(true);
   const [dailyCandles, setDailyCandles] = useState<Candle[]>([]);
   const [marketSessionVisibility, setMarketSessionVisibility] = useState(DEFAULT_MARKET_SESSION_VISIBILITY);
@@ -17,7 +17,7 @@ export function useSessionLiquidity(candles: Candle[], symbol: string, timeframe
   const marketSessionsSupported = supportsMarketSessions(timeframe);
   const snapshot = useMemo(() => supported ? analyzeSessionLiquidity(candles, dailyCandles) : undefined, [candles, dailyCandles, supported]);
   const marketSessions = useMemo(() => marketSessionsSupported ? buildMarketSessionRanges(candles, marketSessionVisibility) : [], [candles, marketSessionVisibility, marketSessionsSupported]);
-  const marketStructure = useMemo(() => analyzeMarketStructure(candles, marketStructureSettings), [candles, marketStructureSettings]);
+  const marketStructure = useMemo(() => analyzeMarketStructure(structureCandles, marketStructureSettings), [structureCandles, marketStructureSettings]);
 
   useEffect(() => {
     setDailyCandles([]);

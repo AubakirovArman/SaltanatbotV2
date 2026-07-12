@@ -28,7 +28,10 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `anchoredVwap.ts` and `renderers/anchoredVwap.ts`: fail-closed cumulative AVWAP study preparation and render-only band/line geometry.
 - `marketSessions.ts` and `renderers/marketSessions.ts`: cached IANA-time-zone membership/range preparation and behind-price session-box rendering.
 - `marketStructure.ts` and `renderers/marketStructure.ts`: closed-candle swing/BOS/CHOCH/FVG analysis with separately composed background and overlay passes.
+- `confirmedCandles.ts`: canonical provisional-tail exclusion shared by confirmed price transforms and market-structure analysis.
+- `priceRepresentation.ts`: one full-history preparation boundary for Heikin Ashi, Renko and Three Line Break, shared by Canvas and semantic/pointer consumers.
 - `lineBreak.ts` and `renderers/lineBreak.ts`: confirmed close-only Three Line Break transformation, source-volume aggregation and body-only rendering.
+- `renko.ts` and `renderers/renko.ts`: fixed seeded box construction, two-box reversals, actual close-wicks, source-volume allocation and render-only brick geometry.
 - `../components/chartCanvas/SessionLiquidityLayer.tsx`: independently scheduled session overlay, persisted semantic toggle and authoritative PDH/PDL daily-candle request.
 - `../components/chartCanvas/ChartPriceHud.tsx`: DOM current-price/countdown pill and crosshair OHLC HUD.
 - `../components/ChartDataPanel.tsx`: bounded semantic tables for the focused OHLC candle, recent candles, strategy signals and executed trades.
@@ -55,6 +58,9 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Regional session windows use candle-open membership and are limited to 1m–1h; they do not claim exchange-calendar or holiday awareness.
 - Market structure never consumes the provisional tail: a swing waits for its full right-hand window, BOS/CHOCH requires a close through the confirmed level and an FVG requires three closed candles.
 - Three Line Break ignores source High/Low, omits the provisional tail and requires a strict break of the latest three confirmed line ranges to reverse; native indicators use the transformed series while timestamped strategy overlays remain aligned to their source bars.
+- Renko uses a close-only box fixed at 0.05% of the first loaded confirmed close and rounded to the instrument tick. New live bars cannot resize history; intentionally loading older history changes the source boundary and can reseed the representation.
+- Renko reversal requires two boxes, projection bricks are omitted, multiple bricks may share one honest source timestamp and their allocated volumes sum to the contributing source volume. Its wicks use only discarded source closes.
+- Heikin Ashi is seeded once from full loaded history before viewport slicing, so zoom and pan never change the same bar's transformed OHLC.
 - Viewport time/index conversion maps every loaded timestamp exactly, interpolates inside irregular gaps and uses median duration only beyond loaded edges.
 - Crosshair/drawing redraws must not recompute unchanged indicators.
 - Crosshair-only movement paints the transparent interaction canvas without clearing or repainting the base canvas.

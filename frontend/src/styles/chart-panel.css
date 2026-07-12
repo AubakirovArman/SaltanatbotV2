@@ -852,15 +852,29 @@
 
 .chart-data-content header {
   display: flex;
-  align-items: baseline;
+  align-items: start;
   justify-content: space-between;
   gap: 12px;
 }
+
+.chart-data-content header > div { display: grid; gap: 2px; }
 
 .chart-data-content header span {
   color: var(--muted);
   font-size: var(--fs-xs);
 }
+
+.chart-data-close {
+  min-inline-size: 28px;
+  min-block-size: 28px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: 600 16px/1 var(--font-ui);
+}
+.chart-data-close:is(:hover, :focus-visible) { border-color: var(--accent-line); color: var(--text); }
 
 .chart-data-content .chart-data-table {
   inline-size: 100%;
