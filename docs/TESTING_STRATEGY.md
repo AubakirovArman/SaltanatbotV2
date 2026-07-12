@@ -126,10 +126,14 @@ The required `visual regression (Chromium)` CI job compares three reviewed Linux
 - Strategy Studio with its library, Blockly workspace and artifact inspector.
 
 The suite fixes UTC time, browser locale, reduced motion, catalog, sparklines, candle history and
-WebSocket messages. Only latency/feed/countdown text is masked; layout and chart geometry remain
-fully compared. Baselines live in `e2e/__screenshots__/visual/`. Run `npm run test:visual` to compare
-them. After intentionally reviewing the rendered change on Linux/Chromium, regenerate with
-`npm run test:visual:update` and commit the PNG diff together with the implementation that requires it.
+WebSocket messages. It also waits for a verified non-empty Canvas readback before capture. Only
+latency/feed/countdown text is masked; layout and chart geometry remain fully compared. The required
+job and authoritative local commands use the pinned official Playwright v1.61.1 Noble container, so
+browser, libraries and font metrics do not drift with the host. Baselines live in
+`e2e/__screenshots__/visual/`. Run `npm run test:visual:container` to compare them. After intentionally
+reviewing the rendered change, regenerate with `npm run test:visual:update:container` and commit the
+PNG diff together with the implementation that requires it. The uncontainerized `npm run test:visual`
+commands are intended for the pinned CI container or quick same-host iteration only.
 
 ## Backtest invariants
 

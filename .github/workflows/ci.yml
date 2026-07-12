@@ -120,6 +120,9 @@ jobs:
     name: visual regression (Chromium)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --ipc=host
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -132,9 +135,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
 
       - name: Compare stable interface snapshots
         run: npm run test:visual

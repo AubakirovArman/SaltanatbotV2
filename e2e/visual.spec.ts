@@ -41,6 +41,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("desktop trading terminal", async ({ page }) => {
+  await waitForCanvasPaint(page, 1);
   await capture(page, "terminal-desktop-dark.png");
 });
 
@@ -52,6 +53,7 @@ test("four independent markets layout", async ({ page }) => {
   await expect(page.getByRole("combobox", { name: "Symbol · 3" })).toHaveValue("SOLUSDT");
   await expect(page.getByRole("combobox", { name: "Symbol · 4" })).toHaveValue("BNBUSDT");
   await expect(page.locator(".chart-legend .vol")).toHaveCount(4);
+  await waitForCanvasPaint(page, 4);
   await page.evaluate(async () => { await document.fonts.ready; });
   await expect(page.locator(".multi-chart-grid")).toHaveScreenshot("terminal-four-markets-dark.png", {
     animations: "disabled",
@@ -82,9 +84,26 @@ async function capture(page: Page, name: string) {
     mask: [
       page.locator(".status-pill"),
       page.locator(".pane-feed"),
-      page.locator(".current-price-pill span")
+      page.locator(".current-price-pill span"),
+      page.locator(".artifact-version-panel > summary"),
+      page.locator(".ir-note")
     ]
   });
+}
+
+async function waitForCanvasPaint(page: Page, expectedCount: number) {
+  const canvases = page.locator(".chart-canvas-primary");
+  await expect(canvases).toHaveCount(expectedCount);
+  await expect.poll(() => canvases.evaluateAll((items: HTMLCanvasElement[]) => items.every((canvas) => {
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context || canvas.width === 0 || canvas.height === 0) return false;
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let painted = 0;
+    for (let alpha = 3; alpha < pixels.length; alpha += 64) {
+      if (pixels[alpha] > 0 && ++painted >= 32) return true;
+    }
+    return false;
+  })), { timeout: 20_000 }).toBe(true);
 }
 
 function instrument(symbol: string, displayName: string, basePrice: number, decimals: number, assetClass = "crypto") {

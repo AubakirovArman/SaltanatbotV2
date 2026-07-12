@@ -7,7 +7,7 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Continuous verification
 
-- Added reviewed deterministic Chromium visual baselines for the desktop terminal, isolated four-market grid and Strategy Studio, with fixed time/data, narrow volatile masks and a required failure-artifact CI gate.
+- Added reviewed deterministic Chromium visual baselines for the desktop terminal, isolated four-market grid and Strategy Studio, with fixed time/data, verified Canvas readback, narrow volatile masks and a required failure-artifact CI gate pinned to the official Playwright Noble image.
 - Extracted reusable production-browser market mocks from the monolithic E2E specification so functional and visual suites share the same bounded offline feed.
 - Added a required eight-journey Firefox smoke gate for chart input, independent markets, accessibility, Pine import, backtest, authentication and paper execution on every push and pull request.
 - Added a daily, manually dispatchable and release-tag-triggered full 44-scenario Chromium/Firefox/WebKit matrix with 14-day failure evidence, without exchange credentials or testnet/mainnet access.
