@@ -22,7 +22,7 @@ This is the execution ledger. It records what is proven complete, what is active
 
 Verification:
 
-- Complete TypeScript, Biome, documentation, architecture, Vitest, production build, bundle-budget and 44-scenario Playwright gates pass.
+- Complete TypeScript, Biome, documentation, architecture, Vitest, production build, bundle-budget, 44-scenario Playwright and three-baseline visual gates pass.
 - The funded 7–14-day Binance/Bybit soak and mainnet-readiness claim remain explicitly excluded.
 
 ### Accessibility and open-source release baseline — 2026-07-11

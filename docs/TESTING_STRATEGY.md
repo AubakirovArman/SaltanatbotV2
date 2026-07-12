@@ -117,6 +117,20 @@ stop-before-target rule when both prices occur in one candle.
 
 Avoid pixel snapshots for every candle. Use semantic renderer assertions for logic and a small stable visual suite for integration.
 
+### Visual regression baselines
+
+The required `visual regression (Chromium)` CI job compares three reviewed Linux/Chromium baselines:
+
+- the complete dark desktop terminal with side panels and a deterministic chart;
+- the isolated four-market chart grid, including compact pane controls and active-pane treatment;
+- Strategy Studio with its library, Blockly workspace and artifact inspector.
+
+The suite fixes UTC time, browser locale, reduced motion, catalog, sparklines, candle history and
+WebSocket messages. Only latency/feed/countdown text is masked; layout and chart geometry remain
+fully compared. Baselines live in `e2e/__screenshots__/visual/`. Run `npm run test:visual` to compare
+them. After intentionally reviewing the rendered change on Linux/Chromium, regenerate with
+`npm run test:visual:update` and commit the PNG diff together with the implementation that requires it.
+
 ## Backtest invariants
 
 Every result records chart and `request.security` candle provenance. Only fully labelled real-provider data validates performance claims; synthetic, fallback, mixed and unknown inputs must remain visibly labelled in the report.
@@ -227,8 +241,9 @@ The same suite verifies reviewed byte-level v4/v6 conversion golden hashes.
 - check, lint, unit, component, contract;
 - the complete production-build Chromium E2E suite in the required `end-to-end (Chromium)` CI job;
 - eight tagged production journeys in the required `critical journeys (Firefox)` CI job;
+- three deterministic interface baselines in the required `visual regression (Chromium)` CI job;
 - a seven-day Playwright report/trace/screenshot/video artifact when that browser job fails;
-- changed visual snapshots;
+- reviewed visual snapshot changes;
 - dependency and secret scan;
 - documentation link check.
 

@@ -16,11 +16,24 @@ export default defineConfig({
     video: "retain-on-failure"
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "firefox-smoke", grep: /@smoke/, use: { ...devices["Desktop Firefox"] } },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } }
+    { name: "chromium", testIgnore: /visual\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox-smoke", testIgnore: /visual\.spec\.ts/, grep: /@smoke/, use: { ...devices["Desktop Firefox"] } },
+    { name: "firefox", testIgnore: /visual\.spec\.ts/, use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", testIgnore: /visual\.spec\.ts/, use: { ...devices["Desktop Safari"] } },
+    {
+      name: "visual",
+      testMatch: /visual\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1440, height: 900 },
+        colorScheme: "dark",
+        locale: "en-US",
+        timezoneId: "UTC",
+        reducedMotion: "reduce"
+      }
+    }
   ],
+  snapshotPathTemplate: "{testDir}/__screenshots__/{projectName}/{arg}{ext}",
   webServer: {
     command: `npm run build && PORT=${port} HOST=127.0.0.1 DEMO_MODE=1 AUTH_TOKEN=e2e-local-admin-token npm start`,
     url: `http://127.0.0.1:${port}/api/health`,
