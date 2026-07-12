@@ -18,6 +18,8 @@ This is the execution ledger. It records what is proven complete, what is active
 - [x] Report accepted/rejected entries, funding, exposure, contribution and synchronized return correlation.
 - [x] Measure historical VaR/expected shortfall, Ulcer Index, recovery duration and allocation concentration.
 - [x] Run a deterministic, CPU-bounded moving-block bootstrap over shared-equity returns.
+- [x] Reprice accepted trades under execution-cost, adverse-exit, doubled-funding and combined stress scenarios.
+- [x] Report stressed drawdown and the break-even additional per-fill cost buffer without claiming a new market path.
 - [x] Export a versioned research file and disclose the market-local signal-equity limitation of v1.
 - [x] Provide typed EN/RU/KK controls and semantic report tables.
 

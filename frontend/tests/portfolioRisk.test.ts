@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   analyzePortfolioRisk,
   blockBootstrapRisk,
+  stressPortfolio,
   type PortfolioEquityPoint,
   type PortfolioTrade
 } from "@saltanatbotv2/backtest-core";
@@ -69,6 +70,38 @@ describe("portfolio risk analysis", () => {
 
   it("reports ruin when a sampled shared-equity period loses all capital", () => {
     expect(blockBootstrapRisk([-1, 0.1], 10_000, { runs: 100, blockSize: 2 })?.riskOfRuinPct).toBe(100);
+  });
+
+  it("replays transparent execution, exit and funding shocks over baseline equity", () => {
+    const stressedTrade = { ...trade("BTCUSDT", 1_000), qty: 10, entryPrice: 100, exitPrice: 110, fundingPaid: 10 };
+    const analysis = stressPortfolio(curve([10_000, 11_000, 10_500]), [stressedTrade], 10_000, [{
+      id: "custom",
+      extraFillCostBps: 10,
+      adverseExitBps: 20,
+      fundingMultiplier: 2
+    }]);
+
+    expect(analysis.turnover).toBe(2_100);
+    expect(analysis.breakEvenExtraFillCostBps).toBeCloseTo(2_380.95238, 5);
+    expect(analysis.scenarios[0]).toMatchObject({ profitable: true });
+    expect(analysis.scenarios[0].extraCost).toBeCloseTo(14.3, 8);
+    expect(analysis.scenarios[0].netProfit).toBeCloseTo(485.7, 8);
+    expect(analysis.scenarios[0].finalEquity).toBeCloseTo(10_485.7, 8);
+    expect(analysis.scenarios[0].deltaFromBaseline).toBeCloseTo(-14.3, 8);
+    expect(analysis.scenarios[0].maxDrawdown).toBeCloseTo(500, 8);
+  });
+
+  it("publishes four bounded default scenarios and clamps unsafe custom inputs", () => {
+    const base = stressPortfolio(curve([10_000, 10_100]), [trade("BTCUSDT", 1_000)], 10_000);
+    expect(base.scenarios.map((scenario) => scenario.id)).toEqual(["execution_cost", "adverse_exit", "funding_double", "combined"]);
+
+    const custom = stressPortfolio(curve([10_000, 10_100]), [trade("BTCUSDT", 1_000)], 10_000, [{
+      id: "custom",
+      extraFillCostBps: -10,
+      adverseExitBps: Number.POSITIVE_INFINITY,
+      fundingMultiplier: 1_000
+    }]).scenarios[0];
+    expect(custom).toMatchObject({ extraFillCostBps: 0, adverseExitBps: 0, fundingMultiplier: 100 });
   });
 });
 

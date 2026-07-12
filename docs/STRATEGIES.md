@@ -188,6 +188,13 @@ adjacent buckets before simulation. The report exposes P5/P50/P95 profit and dra
 of loss, 50% capital loss and ruin. These are robustness estimates, not forecasts or guaranteed loss
 limits.
 
+The execution stress matrix adds four explicit counterfactual cost overlays to accepted trades:
+5 bps on both entry and exit fills, 25 bps on every exit, doubled observed funding and a combined
+scenario. Each extra cost is charged to the shared equity curve at the trade's exit time, producing
+stressed net profit and maximum drawdown. The report also shows the additional per-fill basis-point
+cost that would consume a positive baseline net profit. This is an execution-cost sensitivity test;
+it does not simulate order-book capacity, changed signals or a different future market path.
+
 This first version deliberately replays fills produced by canonical single-market backtests and
 re-sizes their quantities without changing fill prices or exit reasons. A signal that reads strategy
 equity therefore reads its market-local backtest equity, not the shared portfolio equity. The UI and

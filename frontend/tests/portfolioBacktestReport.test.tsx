@@ -22,21 +22,23 @@ const result = {
   risk: {
     historical: { observations: 1, lossProbabilityPct: 0, valueAtRisk95Pct: 0, expectedShortfall95Pct: 0, valueAtRisk99Pct: 0, expectedShortfall99Pct: 0, worstPeriodPct: 0, ulcerIndex: 0, longestRecoveryPeriods: 0 },
     concentration: { largestSymbol: "BTCUSDT", largestAllocationPct: 100, effectiveSymbols: 1, herfindahlIndex: 1, allocations: [{ symbol: "BTCUSDT", allocatedNotional: 100, sharePct: 100 }] },
-    monteCarlo: null
+    monteCarlo: null,
+    stress: { baselineNetProfit: 100, turnover: 200, breakEvenExtraFillCostBps: 5_000, scenarios: [{ id: "execution_cost", extraFillCostBps: 5, adverseExitBps: 0, fundingMultiplier: 1, extraCost: 1, netProfit: 99, netProfitPct: 0.99, finalEquity: 10_099, maxDrawdown: 1, maxDrawdownPct: 0.01, deltaFromBaseline: -1, profitable: true }] }
   },
   assumptions: []
 } satisfies PortfolioBacktestResult;
 
 describe("PortfolioBacktestReport", () => {
   it.each([
-    ["en", "Portfolio backtest", "Contribution by market", "Portfolio risk lab"],
-    ["ru", "Портфельный бэктест", "Вклад по рынкам", "Лаборатория риска портфеля"],
-    ["kk", "Портфель бэктесті", "Нарықтар бойынша үлес", "Портфель тәуекел зертханасы"]
-  ] as const)("renders semantic tables, risk and the v1 caveat in %s", (locale, title, caption, riskTitle) => {
+    ["en", "Portfolio backtest", "Contribution by market", "Portfolio risk lab", "Portfolio stress scenarios"],
+    ["ru", "Портфельный бэктест", "Вклад по рынкам", "Лаборатория риска портфеля", "Стресс-сценарии портфеля"],
+    ["kk", "Портфель бэктесті", "Нарықтар бойынша үлес", "Портфель тәуекел зертханасы", "Портфель стресс-сценарийлері"]
+  ] as const)("renders semantic tables, risk and the v1 caveat in %s", (locale, title, caption, riskTitle, stressCaption) => {
     const html = renderToStaticMarkup(<PortfolioBacktestReport locale={locale} result={result} />);
     expect(html).toContain(`<h3 id="portfolio-report-title">${title}</h3>`);
     expect(html).toContain(`<caption>${caption}</caption>`);
     expect(html).toContain(riskTitle);
+    expect(html).toContain(`<caption>${stressCaption}</caption>`);
     expect(html).toContain("role=\"note\"");
     expect(html).toContain("<svg");
     expect(html).toContain("BTCUSDT");

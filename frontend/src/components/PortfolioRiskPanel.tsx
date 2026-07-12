@@ -45,6 +45,17 @@ export function PortfolioRiskPanel({ locale, risk }: { locale: Locale; risk: Por
           ) : <p>{t("insufficientRiskHistory")}</p>}
         </div>
       </div>
+      <h5>{t("stressTesting")}</h5>
+      <p>{t("breakEvenCostBuffer")}: <strong>{risk.stress.breakEvenExtraFillCostBps === null ? t("unavailable") : `${number(risk.stress.breakEvenExtraFillCostBps)} bps`}</strong></p>
+      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Safari requires overflow regions to be explicitly keyboard-focusable. */}
+      <div className="portfolio-stress-table" role="region" aria-label={t("stressScenarios")} tabIndex={0}>
+        <table>
+          <caption>{t("stressScenarios")}</caption>
+          <thead><tr><th scope="col">{t("stressScenario")}</th><th scope="col">{t("stressAssumptions")}</th><th scope="col">{t("extraCost")}</th><th scope="col">{t("stressedNetProfit")}</th><th scope="col">{t("stressedDrawdown")}</th><th scope="col">{t("status")}</th></tr></thead>
+          <tbody>{risk.stress.scenarios.map((scenario) => <tr key={scenario.id}><th scope="row">{t(stressScenarioKey(scenario.id))}</th><td>{stressAssumptions(locale, scenario)}</td><td>{number(scenario.extraCost)}</td><td>{number(scenario.netProfit)}</td><td>{number(scenario.maxDrawdownPct)}%</td><td><span className={scenario.profitable ? "stress-survives" : "stress-edge-lost"}>{scenario.profitable ? t("resilient") : t("edgeLost")}</span></td></tr>)}</tbody>
+        </table>
+      </div>
+      <p>{t("stressHelp")}</p>
       <details><summary>{t("riskMethodology")}</summary><p>{t("riskMethodHelp")}</p></details>
     </section>
   );
@@ -52,4 +63,18 @@ export function PortfolioRiskPanel({ locale, risk }: { locale: Locale; risk: Por
 
 function RiskMetric({ label, value }: { label: string; value: string }) {
   return <div className="metric"><dt>{label}</dt><dd>{value}</dd></div>;
+}
+
+function stressScenarioKey(id: PortfolioRiskAnalysis["stress"]["scenarios"][number]["id"]) {
+  const keys = { execution_cost: "executionCostShock", adverse_exit: "adverseExitShock", funding_double: "fundingDoubleShock", combined: "combinedShock", custom: "customShock" } as const;
+  return keys[id];
+}
+
+function stressAssumptions(locale: Locale, scenario: PortfolioRiskAnalysis["stress"]["scenarios"][number]) {
+  const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
+  const parts: string[] = [];
+  if (scenario.extraFillCostBps > 0) parts.push(`+${scenario.extraFillCostBps} bps ${t("perFill")}`);
+  if (scenario.adverseExitBps > 0) parts.push(`+${scenario.adverseExitBps} bps ${t("onExit")}`);
+  if (scenario.fundingMultiplier !== 1) parts.push(`${t("funding")} ×${scenario.fundingMultiplier}`);
+  return parts.join(" · ") || "—";
 }

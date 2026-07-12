@@ -1142,6 +1142,26 @@
 
 .portfolio-risk-lab details p { padding-block-start: 6px; max-inline-size: 80ch; }
 
+.portfolio-stress-table {
+  max-inline-size: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  overflow-x: auto;
+}
+
+.stress-survives,
+.stress-edge-lost {
+  display: inline-block;
+  padding: 2px 5px;
+  border-radius: 999px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+}
+
+.stress-survives { background: var(--up-soft); color: var(--up); }
+.stress-edge-lost { background: var(--down-soft); color: var(--down); }
+
 
 .metric-grid {
   display: grid;

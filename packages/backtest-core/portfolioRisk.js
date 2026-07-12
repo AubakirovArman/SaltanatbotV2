@@ -1,11 +1,82 @@
+export const DEFAULT_PORTFOLIO_STRESS_SCENARIOS = Object.freeze([
+    Object.freeze({ id: "execution_cost", extraFillCostBps: 5, adverseExitBps: 0, fundingMultiplier: 1 }),
+    Object.freeze({ id: "adverse_exit", extraFillCostBps: 0, adverseExitBps: 25, fundingMultiplier: 1 }),
+    Object.freeze({ id: "funding_double", extraFillCostBps: 0, adverseExitBps: 0, fundingMultiplier: 2 }),
+    Object.freeze({ id: "combined", extraFillCostBps: 5, adverseExitBps: 25, fundingMultiplier: 2 })
+]);
 /** Analyze one shared-equity portfolio without relying on browser or transport state. */
 export function analyzePortfolioRisk(equityCurve, trades, initialCapital, options = {}) {
     const returns = equityReturns(equityCurve);
     return {
         historical: historicalRisk(equityCurve, returns),
         concentration: concentrationRisk(trades),
-        monteCarlo: blockBootstrapRisk(returns, initialCapital, options)
+        monteCarlo: blockBootstrapRisk(returns, initialCapital, options),
+        stress: stressPortfolio(equityCurve, trades, initialCapital)
     };
+}
+export function stressPortfolio(equityCurve, trades, initialCapital, scenarios = DEFAULT_PORTFOLIO_STRESS_SCENARIOS) {
+    const baselineFinal = equityCurve.at(-1)?.equity ?? initialCapital;
+    const baselineNetProfit = baselineFinal - initialCapital;
+    const turnover = trades.reduce((sum, trade) => sum + Math.abs(trade.qty) * (trade.entryPrice + trade.exitPrice), 0);
+    return {
+        baselineNetProfit,
+        turnover,
+        breakEvenExtraFillCostBps: baselineNetProfit > 0 && turnover > 0 ? baselineNetProfit / turnover * 10_000 : null,
+        scenarios: scenarios.map((input) => stressScenario(equityCurve, trades, initialCapital, sanitizeStressConfig(input)))
+    };
+}
+function stressScenario(equityCurve, trades, initialCapital, config) {
+    const costs = trades.map((trade) => ({
+        time: trade.exitTime,
+        amount: Math.abs(trade.qty) * (trade.entryPrice + trade.exitPrice) * config.extraFillCostBps / 10_000
+            + Math.abs(trade.qty * trade.exitPrice) * config.adverseExitBps / 10_000
+            + Math.max(0, trade.fundingPaid) * Math.max(0, config.fundingMultiplier - 1)
+    })).sort((left, right) => left.time - right.time);
+    const extraCost = costs.reduce((sum, item) => sum + item.amount, 0);
+    let costIndex = 0;
+    let cumulativeCost = 0;
+    const stressed = equityCurve.map((point) => {
+        while (costs[costIndex]?.time <= point.time)
+            cumulativeCost += costs[costIndex++].amount;
+        return { time: point.time, equity: point.equity - cumulativeCost };
+    });
+    const baselineFinal = equityCurve.at(-1)?.equity ?? initialCapital;
+    const finalEquity = baselineFinal - extraCost;
+    const netProfit = finalEquity - initialCapital;
+    const drawdown = maxDrawdown([...stressed, { time: equityCurve.at(-1)?.time ?? 0, equity: finalEquity }], initialCapital);
+    return {
+        ...config,
+        extraCost,
+        netProfit,
+        netProfitPct: initialCapital > 0 ? netProfit / initialCapital * 100 : 0,
+        finalEquity,
+        maxDrawdown: drawdown.amount,
+        maxDrawdownPct: drawdown.pct,
+        deltaFromBaseline: -extraCost,
+        profitable: netProfit > 0
+    };
+}
+function sanitizeStressConfig(input) {
+    return {
+        id: input.id,
+        extraFillCostBps: clampNumber(input.extraFillCostBps, 0, 10_000, 0),
+        adverseExitBps: clampNumber(input.adverseExitBps, 0, 10_000, 0),
+        fundingMultiplier: clampNumber(input.fundingMultiplier, 1, 100, 1)
+    };
+}
+function maxDrawdown(curve, initialCapital) {
+    let peak = initialCapital;
+    let amount = 0;
+    let pct = 0;
+    for (const point of curve) {
+        peak = Math.max(peak, point.equity);
+        const current = peak - point.equity;
+        if (current <= amount)
+            continue;
+        amount = current;
+        pct = peak > 0 ? current / peak * 100 : 0;
+    }
+    return { amount, pct };
 }
 export function blockBootstrapRisk(sourceReturns, initialCapital, options = {}) {
     const clean = sourceReturns.filter((value) => Number.isFinite(value) && value >= -1);
@@ -149,3 +220,4 @@ function tailMean(sorted, threshold) { return mean(sorted.filter((value) => valu
 function mean(values) { return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0; }
 function ascending(left, right) { return left - right; }
 function integer(value, min, max, fallback) { const number = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : fallback; return Math.min(max, Math.max(min, number)); }
+function clampNumber(value, min, max, fallback) { const number = typeof value === "number" && Number.isFinite(value) ? value : fallback; return Math.min(max, Math.max(min, number)); }
