@@ -7,12 +7,14 @@ import { StatsPanel } from "./components/StatsPanel";
 import { TopBar } from "./components/TopBar";
 import { PanelResizeHandle } from "./components/PanelResizeHandle";
 import { MultiChartWorkspace, type PaneMarketStream } from "./components/MultiChartWorkspace";
+import { MobilePanelDialog } from "./components/MobilePanelDialog";
 import { ShortcutSettingsDialog } from "./components/ShortcutSettingsDialog";
 import type { LinkedCrosshair, LinkedTimeRange } from "./chart/types";
 import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
 import { useCompareSeries } from "./hooks/useCompareSeries";
 import { useMarketStream } from "./hooks/useMarketStream";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useLivePositions } from "./hooks/useLivePositions";
 import { usePriceAlerts } from "./hooks/usePriceAlerts";
 import { useSparklines } from "./hooks/useSparklines";
@@ -57,14 +59,19 @@ export default function App() {
   const [linkedCrosshair, setLinkedCrosshair] = useState<LinkedCrosshair>();
   const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
   const [paneStreams, setPaneStreams] = useState<Record<string, PaneMarketStream>>({});
+  const [mobilePanel, setMobilePanel] = useState<"markets" | "instrument">();
   const shell = useAppShell({
     symbol, setSymbol, timeframe, setTimeframe, chartType, setChartType,
     setMode, indicators, setIndicators, initialChartSession
   });
   const { cryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, workspaces, activeWorkspaceId, compareOverlays } = shell;
+  const isMobile = useMediaQuery("(max-width: 760px)");
   useEffect(() => {
     document.title = `${translate(locale, mode)} · SaltanatbotV2`;
   }, [locale, mode]);
+  useEffect(() => {
+    if (!isMobile || mode !== "chart") setMobilePanel(undefined);
+  }, [isMobile, mode]);
   const openStrategyWorkspace = useCallback(() => setMode("strategy"), []);
   const artifactLibrary = useArtifactLibrary({
     initialArtifacts: initialWorkspaceState.strategyLibrary,
@@ -185,7 +192,10 @@ export default function App() {
       latest={activeCandles.at(-1)}
       sparklines={sparklines}
       cryptoExchange={cryptoExchange}
-      onSelectSymbol={setActiveSymbol}
+      onSelectSymbol={(nextSymbol) => {
+        setActiveSymbol(nextSymbol);
+        if (isMobile) setMobilePanel(undefined);
+      }}
       onSelectAsset={setAsset}
       onSelectExchange={shell.setCryptoExchange}
     />
@@ -222,8 +232,9 @@ export default function App() {
         connection={activeStream?.connection ?? "connecting"}
         theme={theme}
         locale={locale}
-        leftOpen={leftOpen}
-        rightOpen={rightOpen}
+        leftOpen={isMobile ? mobilePanel === "markets" : leftOpen}
+        rightOpen={isMobile ? mobilePanel === "instrument" : rightOpen}
+        mobilePanels={isMobile}
         panelsSwapped={shell.panelsSwapped}
         workspaces={workspaces}
         activeWorkspaceId={activeWorkspaceId}
@@ -245,8 +256,8 @@ export default function App() {
         onOpenShortcutSettings={appCommands.openShortcutSettings}
         onToggleTheme={shell.toggleTheme}
         onToggleLocale={shell.toggleLocale}
-        onToggleLeft={shell.toggleLeft}
-        onToggleRight={shell.toggleRight}
+        onToggleLeft={isMobile ? () => setMobilePanel((current) => current === "markets" ? undefined : "markets") : shell.toggleLeft}
+        onToggleRight={isMobile ? () => setMobilePanel((current) => current === "instrument" ? undefined : "instrument") : shell.toggleRight}
         onSwapPanels={shell.swapPanels}
       />
 
@@ -259,7 +270,31 @@ export default function App() {
         ].filter(Boolean).join(" ")}
         style={{ "--left-panel-size": `${leftSize}px`, "--right-panel-size": `${rightSize}px` } as CSSProperties}
       >
-        {mode === "chart" && (actualLeftOpen ? (shell.panelsSwapped ? statsPanel : watchlistPanel) : <span aria-hidden="true" />)}
+        {mode === "chart" && !isMobile && (actualLeftOpen ? (shell.panelsSwapped ? statsPanel : watchlistPanel) : <span aria-hidden="true" />)}
+
+        {mode === "chart" && isMobile && (
+          <>
+            <MobilePanelDialog
+              id="markets-panel"
+              open={mobilePanel === "markets"}
+              label={shellText(locale, "markets")}
+              closeLabel={locale === "ru" ? "Закрыть рынки" : "Close markets"}
+              initialFocus=".market-search input"
+              onClose={() => setMobilePanel(undefined)}
+            >
+              {watchlistPanel}
+            </MobilePanelDialog>
+            <MobilePanelDialog
+              id="instrument-panel"
+              open={mobilePanel === "instrument"}
+              label={shellText(locale, "currentInstrument")}
+              closeLabel={locale === "ru" ? "Закрыть данные инструмента" : "Close instrument details"}
+              onClose={() => setMobilePanel(undefined)}
+            >
+              {statsPanel}
+            </MobilePanelDialog>
+          </>
+        )}
 
         <section className="chart-panel">
           {error && <div className="error-banner">{error}</div>}
@@ -375,11 +410,11 @@ export default function App() {
           )}
         </section>
 
-        {mode === "chart" && (actualRightOpen ? (shell.panelsSwapped ? watchlistPanel : statsPanel) : <span aria-hidden="true" />)}
-        {mode === "chart" && actualLeftOpen && (
+        {mode === "chart" && !isMobile && (actualRightOpen ? (shell.panelsSwapped ? watchlistPanel : statsPanel) : <span aria-hidden="true" />)}
+        {mode === "chart" && !isMobile && actualLeftOpen && (
           <PanelResizeHandle side="left" value={leftSize} min={180} max={520} label={shellText(locale, "resizeMarketsPanel")} onResize={shell.setLeftSize} />
         )}
-        {mode === "chart" && actualRightOpen && (
+        {mode === "chart" && !isMobile && actualRightOpen && (
           <PanelResizeHandle side="right" value={rightSize} min={220} max={520} label={shellText(locale, "resizeInstrumentPanel")} onResize={shell.setRightSize} />
         )}
       </main>

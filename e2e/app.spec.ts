@@ -1056,11 +1056,18 @@ test("traps command-palette focus and restores it on Escape", async ({ page }) =
   await expect(trigger).toBeFocused();
 });
 
-test("keeps the chart usable at a narrow mobile viewport", async ({ page }) => {
+test("uses exclusive mobile market and instrument sheets without covering the chart", { tag: "@smoke" }, async ({ page }) => {
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("button", { name: "Toggle markets panel" })).toBeVisible();
-  await expect(page.locator(".stats-panel")).toBeHidden();
+  const marketsTrigger = page.getByRole("button", { name: "Toggle markets panel" });
+  const instrumentTrigger = page.getByRole("button", { name: "Toggle instrument panel" });
+  await expect(marketsTrigger).toHaveAttribute("aria-haspopup", "dialog");
+  await expect(marketsTrigger).toHaveAttribute("aria-pressed", "false");
+  await expect(instrumentTrigger).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("dialog", { name: "Markets" })).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Current instrument" })).toBeHidden();
   const stageBox = await page.locator(".chart-stage").boundingBox();
   const analysisBox = await page.locator(".session-liquidity-badge").boundingBox();
   expect(stageBox).not.toBeNull();
@@ -1068,9 +1075,34 @@ test("keeps the chart usable at a narrow mobile viewport", async ({ page }) => {
   expect(analysisBox!.x).toBeGreaterThanOrEqual(stageBox!.x);
   expect(analysisBox!.x + analysisBox!.width).toBeLessThanOrEqual(stageBox!.x + stageBox!.width);
 
-  await page.getByRole("button", { name: "Toggle markets panel" }).click();
-  await expect(page.locator(".watchlist")).toBeHidden();
-  await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible();
+  await marketsTrigger.click();
+  const markets = page.getByRole("dialog", { name: "Markets" });
+  await expect(markets).toBeVisible();
+  await expect(marketsTrigger).toHaveAttribute("aria-pressed", "true");
+  await expect(markets.getByPlaceholder("Search BTC, NASDAQ, EUR…")).toBeFocused();
+  await page.mouse.click(8, 90);
+  await expect(markets).toBeHidden();
+  await expect(marketsTrigger).toBeFocused();
+  await marketsTrigger.click();
+  await expect(markets).toBeVisible();
+  await markets.getByPlaceholder("Search BTC, NASDAQ, EUR…").fill("ETHUSDT");
+  await markets.getByRole("button", { name: /^ETHUSDT/ }).click();
+  await expect(markets).toBeHidden();
+  await expect(page.getByRole("img", { name: /ETHUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
+
+  await instrumentTrigger.click();
+  const instrument = page.getByRole("dialog", { name: "Current instrument" });
+  await expect(instrument).toBeVisible();
+  await expect(instrument.locator(".quote-meta")).toContainText("ETHUSDT");
+  await expect(markets).toBeHidden();
+  await expectNoAxeViolations(page);
+  const sheetBox = await instrument.boundingBox();
+  expect(sheetBox).not.toBeNull();
+  expect(sheetBox!.y + sheetBox!.height).toBeLessThanOrEqual(844);
+  await page.keyboard.press("Escape");
+  await expect(instrument).toBeHidden();
+  await expect(instrumentTrigger).toBeFocused();
+  await expect(page.getByRole("img", { name: /ETHUSDT candles chart on 1m/i })).toBeVisible();
 });
 
 test("reconnects the market stream without duplicating candles", async ({ page }) => {

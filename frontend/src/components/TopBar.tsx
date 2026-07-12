@@ -37,6 +37,7 @@ interface TopBarProps {
   locale: Locale;
   leftOpen: boolean;
   rightOpen: boolean;
+  mobilePanels?: boolean;
   panelsSwapped: boolean;
   workspaces: Workspace[];
   activeWorkspaceId?: string;
@@ -78,6 +79,7 @@ export function TopBar({
   locale,
   leftOpen,
   rightOpen,
+  mobilePanels = false,
   panelsSwapped,
   workspaces,
   activeWorkspaceId,
@@ -172,6 +174,8 @@ export function TopBar({
               title={translate(locale, "toggleMarkets")}
               aria-label={translate(locale, "toggleMarkets")}
               aria-pressed={leftOpen}
+              aria-controls={mobilePanels ? "markets-panel" : undefined}
+              aria-haspopup={mobilePanels ? "dialog" : undefined}
             >
               <PanelLeft size={15} strokeWidth={1.75} aria-hidden="true" />
             </button>
@@ -182,13 +186,17 @@ export function TopBar({
               title={translate(locale, "toggleInstrument")}
               aria-label={translate(locale, "toggleInstrument")}
               aria-pressed={rightOpen}
+              aria-controls={mobilePanels ? "instrument-panel" : undefined}
+              aria-haspopup={mobilePanels ? "dialog" : undefined}
             >
               <PanelRight size={15} strokeWidth={1.75} aria-hidden="true" />
             </button>
             <LayoutMenu locale={locale} preset={layoutPreset} canUseDistinctMarkets={canUseDistinctMarkets} onChange={onLayoutPresetChange} onDistinctMarkets={onDistinctMarkets} />
-            <button type="button" className={`icon-button ${panelsSwapped ? "active" : ""}`} onClick={onSwapPanels} aria-pressed={panelsSwapped} title={shellText(locale, "swapDockedPanels")} aria-label={shellText(locale, "swapDockedPanels")}>
-              <ArrowLeftRight size={15} aria-hidden="true" />
-            </button>
+            {!mobilePanels && (
+              <button type="button" className={`icon-button ${panelsSwapped ? "active" : ""}`} onClick={onSwapPanels} aria-pressed={panelsSwapped} title={shellText(locale, "swapDockedPanels")} aria-label={shellText(locale, "swapDockedPanels")}>
+                <ArrowLeftRight size={15} aria-hidden="true" />
+              </button>
+            )}
           </>
         )}
         <WorkspacesMenu

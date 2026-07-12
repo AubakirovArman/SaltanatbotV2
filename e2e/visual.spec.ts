@@ -45,6 +45,15 @@ test("desktop trading terminal", async ({ page }) => {
   await capture(page, "terminal-desktop-dark.png");
 });
 
+test("mobile market bottom sheet", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "Toggle markets panel" })).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "Toggle markets panel" }).click();
+  await expect(page.getByRole("dialog", { name: "Markets" })).toBeVisible();
+  await waitForCanvasPaint(page, 1);
+  await capture(page, "terminal-mobile-markets-dark.png");
+});
+
 test("four independent markets layout", async ({ page }) => {
   await page.getByRole("button", { name: "Chart layout" }).click();
   await page.getByRole("menuitem", { name: "Four different markets" }).click();

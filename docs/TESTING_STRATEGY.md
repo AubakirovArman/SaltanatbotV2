@@ -120,9 +120,10 @@ Avoid pixel snapshots for every candle. Use semantic renderer assertions for log
 
 ### Visual regression baselines
 
-The required `visual regression (Chromium)` CI job compares three reviewed Linux/Chromium baselines:
+The required `visual regression (Chromium)` CI job compares four reviewed Linux/Chromium baselines:
 
 - the complete dark desktop terminal with side panels and a deterministic chart;
+- the narrow mobile terminal with its focus-managed market bottom sheet and unobscured chart context;
 - the isolated four-market chart grid, including compact pane controls and active-pane treatment;
 - Strategy Studio with its library, Blockly workspace and artifact inspector.
 

@@ -7,12 +7,13 @@ This directory currently contains both reusable terminal components and large fe
 - shell controls: `TopBar`, `CommandPalette`;
 - market/chart UI: `Watchlist`, `ChartCanvas`, `MultiChartWorkspace`,
   `DrawingObjectsPanel`, indicator and compare controls;
-- shell accessibility: `PanelResizeHandle`, `ShortcutSettingsDialog` and the
+- shell accessibility: `PanelResizeHandle`, `ShortcutSettingsDialog`, `MobilePanelDialog` and the
   semantic `ChartDataPanel` fallback;
 - strategy UI: `StrategyLab`, Pine import and backtest report;
 - trading UI: `TradingView`.
 - `chartCanvas/` owns focused drawing controls, overlays, pure interaction helpers and the stable facade prop contract.
 - `topbar/` owns extracted top-bar controls with self-contained keyboard contracts; layout actions remain callback-driven and do not reach into shell persistence.
+- `MobilePanelDialog` is the native modal bottom-sheet boundary for narrow chart panels. It owns `showModal()`, initial focus, backdrop/`Escape` dismissal and browser focus restoration; market/instrument content remains ordinary reusable panel markup.
 - Embedded `ChartCanvas` instances use `compactChrome`; the primary exposes canonical indicator editing, while a maximized secondary exposes its linked or independent bounded override set. Local analysis remains available through the native `UTC · STRUCT` disclosure.
 - Linked secondary compare overlays reuse the primary `CompareSeriesState`; only an independently edited pane owns a local refresh hook. Compare controls appear in maximized secondary panes and persist bounded configuration through `WorkspaceChart`.
 - Secondary chart types use the same explicit link contract as symbols/timeframes: native select changes auto-unlink, the adjacent pressed chain control relinks immediately, and the shell owns canonical propagation.

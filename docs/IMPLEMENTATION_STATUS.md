@@ -10,6 +10,15 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Mobile chart panels — 2026-07-12
+
+- [x] Keep the mobile chart unobstructed by default instead of restoring two open desktop docks.
+- [x] Expose markets and instrument statistics as mutually exclusive native modal bottom sheets.
+- [x] Support initial focus, focus restoration, `Escape`, backdrop and explicit close dismissal.
+- [x] Close the market sheet after symbol selection and preserve desktop panel persistence independently.
+- [x] Use dynamic/small viewport units, safe-area insets and coarse-pointer targets.
+- [x] Verify Chromium, Firefox, axe and a deterministic mobile visual baseline.
+
 ### Touch-first chart navigation — 2026-07-12
 
 - [x] Add data-anchored two-finger pinch and simultaneous horizontal pan on the interaction Canvas.

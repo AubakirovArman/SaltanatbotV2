@@ -22,11 +22,13 @@
   .topbar {
     flex-wrap: wrap;
     gap: 6px;
-    padding: 6px 8px;
+    padding-block: 6px;
+    padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right));
   }
 
   .terminal-shell {
     grid-template-rows: auto minmax(0, 1fr);
+    block-size: 100dvb;
   }
 
   .workspace,
@@ -45,25 +47,86 @@
     display: none;
   }
 
-  .stats-panel {
-    display: none;
-  }
-
-  .watchlist {
-    position: absolute;
-    z-index: 20;
-    inset-inline: 8px;
-    inset-block-end: 8px;
-    max-block-size: min(42dvh, 360px);
+  .mobile-panel-dialog {
+    position: fixed;
+    inset-block: auto 0;
+    inset-inline: 0;
+    inline-size: min(100%, 32rem);
+    block-size: min(78svh, 42rem);
+    max-inline-size: none;
+    max-block-size: none;
+    margin: auto;
+    padding: 0 0 env(safe-area-inset-bottom);
     border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-    border-inline-end: 0;
+    border-block-end: 0;
+    border-radius: 16px 16px 0 0;
+    background: var(--panel);
+    color: var(--text);
     box-shadow: var(--shadow-modal);
+    overflow: hidden;
   }
 
-  .symbol-list {
-    min-block-size: 0;
+  .mobile-panel-dialog[open] {
+    display: grid;
+    grid-template-rows: 44px minmax(0, 1fr);
   }
+
+  .mobile-panel-dialog::backdrop {
+    background: color-mix(in srgb, #02070c 68%, transparent);
+  }
+
+  .mobile-panel-grab {
+    position: absolute;
+    inset-block-start: 9px;
+    inset-inline-start: 50%;
+    inline-size: 42px;
+    block-size: 4px;
+    border-radius: 999px;
+    background: var(--line);
+    translate: -50% 0;
+  }
+
+  .mobile-panel-close {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: 2px;
+    inset-inline-end: max(4px, env(safe-area-inset-right));
+    display: grid;
+    place-content: center;
+    min-inline-size: 44px;
+    min-block-size: 44px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .mobile-panel-close:hover { color: var(--text); background: var(--hover); }
+
+  .mobile-panel-content {
+    grid-row: 2;
+    min-block-size: 0;
+    overflow: hidden;
+  }
+
+  .mobile-panel-content > :is(.watchlist, .stats-panel) {
+    block-size: 100%;
+    border: 0;
+  }
+
+  .mobile-panel-content > .stats-panel {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .mobile-panel-dialog :is(button, input, select),
+  .mobile-panel-dialog .market-search {
+    min-block-size: 44px;
+  }
+
+  .mobile-panel-dialog .symbol-star { min-inline-size: 44px; }
+  .mobile-panel-dialog .symbol-row { min-block-size: 48px; }
 
   .tool-rail {
     display: none;
@@ -162,4 +225,9 @@
   .compare-control {
     inset-block-start: 64px;
   }
+}
+
+@media (max-width: 760px) and (pointer: coarse) {
+  .topbar :is(button, select) { min-block-size: 44px; }
+  .topbar .icon-button { min-inline-size: 44px; }
 }

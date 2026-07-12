@@ -23,6 +23,9 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Replaced the mobile chart's always-open market overlay and hidden instrument panel with mutually exclusive native modal bottom sheets. The chart now opens unobstructed; market selection closes the sheet, instrument statistics are reachable, `Escape`/backdrop/close controls restore focus, and desktop dock persistence remains independent.
+- Added dynamic viewport and safe-area sizing, coarse-pointer 44px controls, explicit initial focus, localized dialog names, a Chromium/Firefox mobile journey with axe coverage and a reviewed mobile visual baseline.
+- Raised only the aggregate JavaScript gzip allowance from 460 KiB to 461 KiB for the measured responsive shell controller and native dialog lifecycle; per-file JavaScript, CSS and HTML limits remain unchanged.
 - Added native two-finger touchscreen navigation: pinch and horizontal midpoint movement update zoom/pan in one data-anchored gesture, releasing one finger hands control back to single-finger pan, and chart-scoped pointer containment prevents the surrounding page from moving or zooming.
 - Added a coarse-pointer-only gesture hint, 48px scale/reset targets, pure zoom-boundary tests and a real Chromium multi-touch browser journey while preserving mouse, Mac trackpad, keyboard and drawing behavior.
 - Raised only the aggregate JavaScript gzip allowance from 459 KiB to 460 KiB for the measured touch-pointer lifecycle and visible localized guidance; per-file JavaScript, CSS and HTML limits remain unchanged.
