@@ -178,7 +178,7 @@ export function CompareControl({
 }
 
 function isCompareChartType(value: ChartType): value is CompareChartType {
-  return value !== "renko" && value !== "linebreak";
+  return value !== "renko" && value !== "linebreak" && value !== "kagi";
 }
 
 function isCandleLike(type: CompareChartType) {

@@ -17,13 +17,21 @@ export function computePlot(width: number, height: number): PlotArea {
 }
 
 export function visibleCandles(candles: Candle[], plot: PlotArea, zoom: number, offset: number, rightPaddingBars = 0) {
-  const step = Math.max(4, Math.min(26, 8 * zoom));
-  const count = Math.max(24, Math.floor(plot.width / step));
-  const padding = Math.max(0, Math.min(Math.ceil(rightPaddingBars), Math.floor(count * 0.32), Math.max(0, count - 24)));
-  const safeOffset = Math.max(0, Math.min(offset, Math.max(0, candles.length - 24)));
+  let step = Math.max(4, Math.min(26, 8 * zoom));
+  let count = Math.max(24, Math.floor(plot.width / step));
+  let padding = Math.max(0, Math.min(Math.ceil(rightPaddingBars), Math.floor(count * 0.32), Math.max(0, count - 24)));
+  if (candles.length > 0 && candles.length + padding < count) {
+    step = Math.max(4, Math.min(160, plot.width / Math.max(1, candles.length + padding) * zoom));
+    count = Math.max(1, Math.floor(plot.width / step));
+    padding = Math.max(0, Math.min(Math.ceil(rightPaddingBars), Math.floor(count * 0.32), Math.max(0, count - 1)));
+  }
+  const windowCount = Math.max(1, count - padding);
+  const minimumVisible = Math.min(candles.length, 24, windowCount);
+  const maxOffset = Math.max(0, candles.length - minimumVisible);
+  const safeOffset = Math.max(0, Math.min(offset, maxOffset));
   const end = Math.max(0, candles.length - safeOffset);
-  const start = Math.max(0, end - (count - padding));
-  return { data: candles.slice(start, end), step };
+  const start = Math.max(0, end - windowCount);
+  return { data: candles.slice(start, end), step, start, end, maxOffset };
 }
 
 export function priceScale(

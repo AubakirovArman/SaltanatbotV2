@@ -22,5 +22,6 @@ describe("price representation preparation", () => {
   it("routes price-compressed types through confirmed transformations", () => {
     expect(preparePriceCandles(candles, "renko", 2).length).toBeGreaterThan(0);
     expect(preparePriceCandles(candles, "linebreak", 2).length).toBeGreaterThan(0);
+    expect(preparePriceCandles(candles, "kagi", 2).length).toBeGreaterThan(0);
   });
 });

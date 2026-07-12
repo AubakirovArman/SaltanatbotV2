@@ -26,12 +26,12 @@ export function drawTimeAxis(ctx: CanvasRenderingContext2D, viewport: Viewport, 
   ctx.font = '10px "SF Mono", SFMono-Regular, ui-monospace, Menlo, Consolas, monospace';
   ctx.strokeStyle = theme.grid;
   const { plot, start, end, barTimeMs } = viewport;
-  const every = Math.max(1, Math.round(Math.max(1, end - start) / 7));
+  const every = Math.max(1, Math.ceil(90 / viewport.barSpacing), Math.round(Math.max(1, end - start) / 7));
   let previous: Date | undefined;
   for (let index = start; index < end; index += 1) {
     if ((index - start) % every !== 0) continue;
     const x = viewport.indexToX(index);
-    const date = new Date(viewport.lastTime + (index - viewport.lastIndex) * barTimeMs);
+    const date = new Date(viewport.xToTime(x));
     ctx.beginPath();
     ctx.moveTo(x, plot.top);
     ctx.lineTo(x, plot.bottom);

@@ -22,6 +22,7 @@ import { drawBars } from "./renderers/bars";
 import { drawCandles } from "./renderers/candles";
 import { drawLineArea } from "./renderers/lineArea";
 import { drawRenko } from "./renderers/renko";
+import { drawKagi } from "./renderers/kagi";
 import { drawLineBreak } from "./renderers/lineBreak";
 import { drawVolume } from "./renderers/volume";
 import { drawMarkers } from "./renderers/markers";
@@ -121,8 +122,7 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
   const rightPaddingBars = projectionPaddingBars(chartCandles, shapes);
   const visible = visibleCandles(chartCandles, plot, view.zoom, view.offset, rightPaddingBars);
   const data = visible.data;
-  const start = Math.max(0, chartCandles.length - clampOffset(chartCandles, view.offset) - visible.data.length);
-  const end = start + visible.data.length;
+  const { start, end } = visible;
   const computed = computeIndicators(chartCandles, indicators);
   const extraValues = collectMainValues(computed, start, end);
 
@@ -203,6 +203,7 @@ export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRende
   if (chartType === "area" || chartType === "baseline") drawLineArea(renderContext, true);
   if (chartType === "renko") drawRenko(renderContext);
   if (chartType === "linebreak") drawLineBreak(renderContext);
+  if (chartType === "kagi") drawKagi(renderContext);
 
   // Compare overlay: normalized %-change lines for other symbols on the price
   // pane. Drawn against `visible.data` (the base's visible window) so it
@@ -294,10 +295,6 @@ export function drawChartInteraction(options: {
   if (options.viewport && options.crosshair) {
     drawCrosshair(options.ctx, options.viewport.plot, options.viewport, options.crosshair, options.decimals, theme);
   }
-}
-
-function clampOffset(candles: Candle[], offset: number) {
-  return Math.max(0, Math.min(offset, Math.max(0, candles.length - 24)));
 }
 
 function projectionPaddingBars(candles: Candle[], shapes?: ChartShapes) {

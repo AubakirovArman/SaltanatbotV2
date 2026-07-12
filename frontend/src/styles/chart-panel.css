@@ -304,12 +304,13 @@
 }
 
 /* Price-scale mode toggle, pinned by the price axis like TV. */
-.scale-toggle {
+.scale-toggle,
+.zoom-reset {
   position: absolute;
   inset-block-end: 4px;
   inset-inline-end: 8px;
   z-index: 2;
-  min-block-size: 20px;
+  min-block-size: 24px;
   padding: 0 7px;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-sm);
@@ -321,9 +322,15 @@
   cursor: pointer;
 }
 
-.scale-toggle:hover {
+.scale-toggle:hover,
+.zoom-reset:hover {
   color: var(--text);
   border-color: var(--line);
+}
+
+.zoom-reset {
+  inset-inline-end: 52px;
+  min-inline-size: 46px;
 }
 
 .chart-stage {
@@ -422,7 +429,11 @@
   min-block-size: 0;
   display: block;
   touch-action: none;
+  overscroll-behavior: contain;
 }
+
+.chart-canvas-interaction:not(.drawing) { cursor: grab; }
+.chart-canvas-interaction:not(.drawing):active { cursor: grabbing; }
 
 .chart-canvas.drawing {
   cursor: crosshair;

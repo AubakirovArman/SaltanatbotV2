@@ -7,6 +7,13 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Reworked chart navigation for mouse wheels and Mac trackpads: non-passive containment prevents page zoom leakage, frame-coalesced proportional zoom filters inertial tails, horizontal gestures pan, pinch is normalized and zoom stays anchored under the pointer.
+- Added primary-button-only drag panning, safe pointer-cancel cleanup, grab/grabbing feedback and an always-visible localized zoom percentage/reset control.
+- Prevented sparse price-based time labels from overlapping and switched axis labels to exact transformed-series timestamps instead of median-interval extrapolation.
+- Made sparse transformed-price series use the available X-axis width, with zoom-aware visible-leg counts and bounded pan instead of clustering a few Kagi reversals in the top-left corner.
+- Added confirmed close-only Kagi with a fixed 0.10%-seeded reversal, continuous price-extreme legs, shoulder/waist turns, aggregated source volume and no provisional live projection.
+- Integrated Kagi into the shared transformed-price pipeline, chart catalog, workspaces, semantic OHLC table, localized accessible picker and full Canvas/indicator/market-structure interaction model.
+- Raised only the aggregate JavaScript gzip budget from 446 KiB to 448 KiB for the added chart type; per-chunk, CSS and HTML limits remain unchanged.
 - Replaced the viewport-dependent Renko approximation with a full-history confirmed close-only model: fixed 0.05%-seeded boxes, true two-box reversals, multi-brick source bars, aggregated volume and actual discarded-close wicks.
 - Unified Heikin Ashi, Renko and Three Line Break behind one prepared display-candle pipeline so zoom/pan no longer reseeds Heikin Ashi and Canvas, crosshair, drawings, native indicators, market structure and semantic tables consume the same representation.
 - Made the open chart-data region keyboard-focusable and uniquely keyed same-time synthetic rows, closing a Safari scroll-region WCAG 2.1.1 regression found by the expanded Renko axe journey.

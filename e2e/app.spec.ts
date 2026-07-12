@@ -97,6 +97,35 @@ test("renders stable confirmed Renko with a semantic candle table", async ({ pag
   await expectNoAxeViolations(page);
 });
 
+test("renders accessible confirmed Kagi shoulders and waists", async ({ page }) => {
+  await selectChartSymbol(page, "EURUSD");
+  await page.getByTitle("Chart type").click();
+  await page.getByRole("menuitemradio", { name: "Kagi" }).click();
+  await expect(page.getByRole("img", { name: /EURUSD Kagi chart on 1m.*confirmed close-only lines with a fixed 0.10% reversal, shoulders and waists/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".legend-symbol")).toContainText("KAGI 0.10%");
+  await page.getByRole("button", { name: "Chart data", exact: true }).click();
+  await expect(page.getByRole("table", { name: "Latest candle" })).toBeVisible();
+  await expectNoAxeViolations(page);
+});
+
+test("keeps mouse and trackpad chart zoom controlled and resettable", async ({ page }) => {
+  const canvas = page.locator(".chart-canvas-interaction");
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+  const reset = page.getByRole("button", { name: "Reset chart zoom (100%)" });
+  await expect(reset).toBeVisible();
+  await canvas.hover();
+  await page.waitForTimeout(100);
+  const cancelled = await canvas.evaluate((element) => {
+    const event = new WheelEvent("wheel", { deltaY: -1, clientX: 500, clientY: 250, bubbles: true, cancelable: true });
+    return !element.dispatchEvent(event);
+  });
+  expect(cancelled).toBe(true);
+  await page.mouse.wheel(0, -60);
+  await expect(page.getByRole("button", { name: /Reset chart zoom \(1(0[1-9]|[1-9][0-9])%\)/ })).toBeVisible();
+  await page.getByRole("button", { name: /Reset chart zoom/ }).click();
+  await expect(reset).toBeVisible();
+});
+
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });

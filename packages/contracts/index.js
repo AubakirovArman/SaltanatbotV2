@@ -1,6 +1,6 @@
 /** Canonical transport-neutral market contracts shared by browser and server. */
 const timeframes = new Set(["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"]);
-const chartTypes = new Set(["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko", "linebreak"]);
+const chartTypes = new Set(["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko", "linebreak", "kagi"]);
 const assetClasses = new Set(["crypto", "forex", "stock", "index"]);
 function record(value, label) {
     if (typeof value !== "object" || value === null || Array.isArray(value))

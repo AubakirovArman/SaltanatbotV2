@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const calls = vi.hoisted(() => ({
   candles: vi.fn(),
   lineBreak: vi.fn(),
+  kagi: vi.fn(),
   renko: vi.fn(),
   lineArea: vi.fn(),
   volumeProfile: vi.fn(),
@@ -12,6 +13,7 @@ const calls = vi.hoisted(() => ({
 
 vi.mock("../src/chart/renderers/candles", () => ({ drawCandles: calls.candles }));
 vi.mock("../src/chart/renderers/lineBreak", () => ({ drawLineBreak: calls.lineBreak }));
+vi.mock("../src/chart/renderers/kagi", () => ({ drawKagi: calls.kagi }));
 vi.mock("../src/chart/renderers/renko", () => ({ drawRenko: calls.renko }));
 vi.mock("../src/chart/renderers/lineArea", () => ({ drawLineArea: calls.lineArea }));
 vi.mock("../src/chart/renderers/volumeProfile", () => ({ drawVolumeProfile: calls.volumeProfile }));
@@ -147,6 +149,15 @@ describe("chart render passes", () => {
 
     expect(calls.renko).toHaveBeenCalledTimes(1);
     if (!plan.empty) expect(plan.data.every((brick) => brick.high >= brick.open && brick.low <= brick.close)).toBe(true);
+  });
+
+  it("compresses confirmed source candles into Kagi reversal legs", () => {
+    const ctx = context();
+    const plan = prepareChartRender({ ...input, chartType: "kagi" });
+    drawChartPrimary(ctx, plan);
+
+    expect(calls.kagi).toHaveBeenCalledTimes(1);
+    if (!plan.empty) expect(plan.data.length).toBeLessThan(candles.length);
   });
 
   it("renders the visible-range profile only when requested", () => {

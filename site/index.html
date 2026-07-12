@@ -4,7 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#087f5b" />
-    <meta name="description" content="SaltanatbotV2 is a free self-hosted trading terminal with charts, Pine import, visual strategies, backtests and paper/live trading." />
+    <meta
+      name="description"
+      content="SaltanatbotV2 is a free self-hosted trading terminal with charts, Pine import, visual strategies, backtests and paper/live trading."
+    />
     <title>SaltanatbotV2 — open-source trading research terminal</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -12,7 +15,9 @@
     <a class="skip-link" href="#content">Skip to main content</a>
     <header class="wrap">
       <nav aria-label="Primary">
-        <a class="brand" href="./"><span class="brand-mark" aria-hidden="true">S</span> SaltanatbotV2</a>
+        <a class="brand" href="./"
+          ><span class="brand-mark" aria-hidden="true">S</span> SaltanatbotV2</a
+        >
         <ul class="languages" aria-label="Language">
           <li><strong aria-current="page">English</strong></li>
           <li><a lang="ru" href="ru/">Русский</a></li>
@@ -25,10 +30,22 @@
         <div>
           <p class="eyebrow">Free · local-first · open source</p>
           <h1>Research the market on your own terms.</h1>
-          <p class="lede">Live Binance/Bybit charts, visual indicators and strategies, supported Pine Script import, auditable backtests, paper trading and experimental live execution — self-hosted under MIT.</p>
+          <p class="lede">
+            Live Binance/Bybit charts, visual indicators and strategies,
+            supported Pine Script import, auditable backtests, paper trading and
+            experimental live execution — self-hosted under MIT.
+          </p>
           <div class="actions">
-            <a class="button primary" href="https://github.com/AubakirovArman/SaltanatbotV2">View on GitHub</a>
-            <a class="button secondary" href="https://github.com/AubakirovArman/SaltanatbotV2/archive/refs/heads/main.zip">Download source</a>
+            <a
+              class="button primary"
+              href="https://github.com/AubakirovArman/SaltanatbotV2"
+              >View on GitHub</a
+            >
+            <a
+              class="button secondary"
+              href="https://github.com/AubakirovArman/SaltanatbotV2/archive/refs/heads/main.zip"
+              >Download source</a
+            >
           </div>
         </div>
         <div class="terminal" aria-label="Quick-start commands">
@@ -40,19 +57,105 @@ npm run dev</code></pre>
         </div>
       </section>
       <section class="section wrap" aria-labelledby="features">
-        <div class="section-heading"><p class="eyebrow">One local workspace</p><h2 id="features">From an idea to evidence</h2><p class="lede">Build, explain and test strategies without sending keys or research to a project cloud.</p></div>
+        <div class="section-heading">
+          <p class="eyebrow">One local workspace</p>
+          <h2 id="features">From an idea to evidence</h2>
+          <p class="lede">
+            Build, explain and test strategies without sending keys or research
+            to a project cloud.
+          </p>
+        </div>
         <div class="grid">
-          <article class="card"><h3>Chart and market data</h3><p>Custom Canvas, stable confirmed Renko and Three Line Break, BOS/CHOCH and FVG, anchored/session VWAP, VPVR, depth and footprint/CVD.</p></article>
-          <article class="card"><h3>Strategies and Pine</h3><p>Blockly authoring plus fail-closed Pine v4–v6 conversion with explicit exact, approximate and unsupported diagnostics.</p></article>
-          <article class="card"><h3>Auditable backtests</h3><p>Costs, warm-up, provenance, Monte Carlo, walk-forward and deterministic traces for signals, fills and state changes.</p></article>
-          <article class="card"><h3>Paper before live</h3><p>Paper bots by default, durable order journals, exchange reconciliation, risk caps and an emergency stop.</p></article>
-          <article class="card"><h3>Local-first security</h3><p>Encrypted exchange keys, local SQLite, scoped access, CSRF protection and no project telemetry.</p></article>
-          <article class="card"><h3>Tested and inspectable</h3><p>Type checks, lint, unit/integration/parity tests, browser E2E, generated references and attested release artifacts.</p></article>
+          <article class="card">
+            <h3>Chart and market data</h3>
+            <p>
+              Custom Canvas, stable confirmed Renko, Three Line Break and Kagi,
+              BOS/CHOCH and FVG, anchored/session VWAP, VPVR, depth and
+              footprint/CVD.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Strategies and Pine</h3>
+            <p>
+              Blockly authoring plus fail-closed Pine v4–v6 conversion with
+              explicit exact, approximate and unsupported diagnostics.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Auditable backtests</h3>
+            <p>
+              Costs, warm-up, provenance, Monte Carlo, walk-forward and
+              deterministic traces for signals, fills and state changes.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Paper before live</h3>
+            <p>
+              Paper bots by default, durable order journals, exchange
+              reconciliation, risk caps and an emergency stop.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Local-first security</h3>
+            <p>
+              Encrypted exchange keys, local SQLite, scoped access, CSRF
+              protection and no project telemetry.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Tested and inspectable</h3>
+            <p>
+              Type checks, lint, unit/integration/parity tests, browser E2E,
+              generated references and attested release artifacts.
+            </p>
+          </article>
         </div>
       </section>
-      <section class="section wrap" aria-labelledby="update"><div class="section-heading"><p class="eyebrow">10–11 July 2026</p><h2 id="update">The 90-commit update</h2></div><div class="release"><strong aria-hidden="true">90</strong><p>Pine and backtest cores were modularized, strategy execution became traceable, chart data became accessible, live-order recovery became fail-closed, and test/release/documentation foundations were expanded across 363 files. <a href="https://github.com/AubakirovArman/SaltanatbotV2/blob/main/CHANGELOG.md">Read the verified changelog</a>.</p></div></section>
-      <section class="section wrap" aria-labelledby="safety"><h2 id="safety">Start with paper trading</h2><p class="notice"><strong>Early alpha:</strong> Pine compatibility is partial and live trading is experimental. Review every conversion warning, compare identical candles, use testnet/paper first and never grant withdrawal permission to an API key. This project is not financial advice.</p><div class="actions"><a class="button secondary" href="https://github.com/AubakirovArman/SaltanatbotV2/blob/main/README.md">Read the documentation</a><a class="button secondary" href="https://github.com/AubakirovArman/SaltanatbotV2/issues">Report an issue</a></div></section>
+      <section class="section wrap" aria-labelledby="update">
+        <div class="section-heading">
+          <p class="eyebrow">10–11 July 2026</p>
+          <h2 id="update">The 90-commit update</h2>
+        </div>
+        <div class="release">
+          <strong aria-hidden="true">90</strong>
+          <p>
+            Pine and backtest cores were modularized, strategy execution became
+            traceable, chart data became accessible, live-order recovery became
+            fail-closed, and test/release/documentation foundations were
+            expanded across 363 files.
+            <a
+              href="https://github.com/AubakirovArman/SaltanatbotV2/blob/main/CHANGELOG.md"
+              >Read the verified changelog</a
+            >.
+          </p>
+        </div>
+      </section>
+      <section class="section wrap" aria-labelledby="safety">
+        <h2 id="safety">Start with paper trading</h2>
+        <p class="notice">
+          <strong>Early alpha:</strong> Pine compatibility is partial and live
+          trading is experimental. Review every conversion warning, compare
+          identical candles, use testnet/paper first and never grant withdrawal
+          permission to an API key. This project is not financial advice.
+        </p>
+        <div class="actions">
+          <a
+            class="button secondary"
+            href="https://github.com/AubakirovArman/SaltanatbotV2/blob/main/README.md"
+            >Read the documentation</a
+          ><a
+            class="button secondary"
+            href="https://github.com/AubakirovArman/SaltanatbotV2/issues"
+            >Report an issue</a
+          >
+        </div>
+      </section>
     </main>
-    <footer><div class="wrap">MIT-licensed community project · Built for research, learning and transparent experimentation.</div></footer>
+    <footer>
+      <div class="wrap">
+        MIT-licensed community project · Built for research, learning and
+        transparent experimentation.
+      </div>
+    </footer>
   </body>
 </html>

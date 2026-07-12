@@ -199,7 +199,7 @@ export interface ChartLivePosition {
   entryPrice: number;
 }
 
-export type CompareChartType = Exclude<ChartType, "renko" | "linebreak">;
+export type CompareChartType = Exclude<ChartType, "renko" | "linebreak" | "kagi">;
 
 export interface CompareOverlayConfig {
   id: string;

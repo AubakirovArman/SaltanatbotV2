@@ -18,7 +18,7 @@ SaltanatbotV2 — ранняя alpha-версия самостоятельной
 
 Основные возможности:
 
-- собственный Canvas-график со свечами, Heikin-Ashi, барами, линиями, area, baseline и renko, а также VPVR, тепловой картой стакана, живым trade footprint/CVD и подсветкой imbalance/возможного absorption;
+- собственный Canvas-график со свечами, Heikin-Ashi, барами, линиями, area, baseline, стабильными Renko, Three Line Break и Kagi, а также VPVR, тепловой картой стакана, живым trade footprint/CVD и подсветкой imbalance/возможного absorption;
 - локально сохраняемые flow-алерты для stacked imbalance, возможного absorption, всплесков CVD и крупных принтов со звуком и системными уведомлениями по желанию;
 - Binance и Bybit market data с REST-историей и WebSocket-обновлениями;
 - визуальный Blockly-конструктор индикаторов и стратегий;

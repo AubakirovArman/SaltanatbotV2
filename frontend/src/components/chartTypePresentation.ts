@@ -4,6 +4,7 @@ import {
   BarChart3,
   Blocks,
   CandlestickChart,
+  ChartSpline,
   GitCommitVertical,
   LineChart,
   Rows3,
@@ -23,19 +24,20 @@ export const chartTypeIcons: Record<ChartType, LucideIcon> = {
   area: AreaChart,
   baseline: GitCommitVertical,
   renko: Blocks,
-  linebreak: Rows3
+  linebreak: Rows3,
+  kagi: ChartSpline
 };
 
 const labels: Record<Locale, Record<ChartType, string>> = {
   en: {
     candles: "Candles", hollow: "Hollow candles", heikin: "Heikin Ashi", bars: "Bars",
     line: "Line", step: "Step line", area: "Area", baseline: "Baseline", renko: "Renko",
-    linebreak: "Three Line Break"
+    linebreak: "Three Line Break", kagi: "Kagi"
   },
   ru: {
     candles: "Свечи", hollow: "Пустые свечи", heikin: "Хейкин Аши", bars: "Бары",
     line: "Линия", step: "Ступенчатая линия", area: "Область", baseline: "Базовая линия", renko: "Ренко",
-    linebreak: "Трёхлинейный прорыв"
+    linebreak: "Трёхлинейный прорыв", kagi: "Каги"
   }
 };
 
@@ -51,5 +53,8 @@ export function chartTypeAriaLabel(locale: Locale, type: ChartType, symbol: stri
   if (type === "renko") return locale === "ru"
     ? `${symbol}: график «${title}» на ${timeframe}. Подтверждённые close-only кирпичи фиксированного размера 0,05% с двухкирпичным разворотом.`
     : `${symbol} ${title} chart on ${timeframe}. Confirmed close-only fixed 0.05% bricks with a two-brick reversal.`;
+  if (type === "kagi") return locale === "ru"
+    ? `${symbol}: график «${title}» на ${timeframe}. Подтверждённые close-only линии с фиксированным разворотом 0,10%, плечами и талиями.`
+    : `${symbol} ${title} chart on ${timeframe}. Confirmed close-only lines with a fixed 0.10% reversal, shoulders and waists.`;
   return locale === "ru" ? `${symbol}: ${title}, интервал ${timeframe}` : `${symbol} ${title} chart on ${timeframe}`;
 }

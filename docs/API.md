@@ -80,7 +80,7 @@ Valid values for any `timeframe` parameter:
 Enumerated by `/api/catalog` (`chartTypes`):
 
 ```
-candles  hollow  heikin  bars  line  step  area  baseline  renko  linebreak
+candles  hollow  heikin  bars  line  step  area  baseline  renko  linebreak  kagi
 ```
 
 ---
@@ -134,7 +134,7 @@ Returns the full instrument catalog plus the supported timeframes and chart type
     }
   ],
   "timeframes": ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"],
-  "chartTypes": ["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko", "linebreak"]
+  "chartTypes": ["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko", "linebreak", "kagi"]
 }
 ```
 

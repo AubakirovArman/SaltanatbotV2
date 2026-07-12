@@ -26,8 +26,7 @@ export function buildViewport(input: ViewportInput): Viewport {
   const visible = visibleCandles(candles, plot, zoom, offset, rightPaddingBars);
   const data = visible.data;
   const barSpacing = visible.step;
-  const start = Math.max(0, candles.length - offsetClamped(candles, offset) - data.length);
-  const end = start + data.length;
+  const { start, end } = visible;
 
   const scale =
     input.scaleOverride ??
@@ -92,10 +91,6 @@ function interpolatedIndexToTime(candles: readonly Candle[], index: number, fall
   const low = Math.floor(index);
   const high = Math.ceil(index);
   return candles[low].time + (candles[high].time - candles[low].time) * (index - low);
-}
-
-function offsetClamped(candles: Candle[], offset: number) {
-  return Math.max(0, Math.min(offset, Math.max(0, candles.length - 24)));
 }
 
 /** Robust bar duration: median of consecutive time deltas over a sample. */

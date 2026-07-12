@@ -42,4 +42,14 @@ describe("future projection viewport", () => {
     expect(second - first).toBeCloseTo(third - second);
     expect(viewport.xToTime(second)).toBeCloseTo(irregular[1].time);
   });
+
+  it("fits sparse transformed series across the plot and reveals fewer legs when zoomed", () => {
+    const sparse = candles.slice(0, 10);
+    const fitted = visibleCandles(sparse, plot, 1, 0);
+    const zoomed = visibleCandles(sparse, plot, 2, 0);
+
+    expect(fitted).toMatchObject({ step: 80, start: 0, end: 10, maxOffset: 0 });
+    expect(zoomed).toMatchObject({ step: 160, start: 5, end: 10, maxOffset: 5 });
+    expect(zoomed.data).toHaveLength(5);
+  });
 });

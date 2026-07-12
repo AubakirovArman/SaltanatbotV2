@@ -4,7 +4,6 @@ import { createDrawing, TOOL_POINT_COUNT, type Anchor, type DrawingObject, type 
 import { useChartRenderer } from "../chart/useChartRenderer";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
-import { visibleCandles } from "../chart/scales";
 import { preparePriceCandles } from "../chart/priceRepresentation";
 import type { CompareLegendSnapshot, CompareSeries, PriceMode, VolumeProfileSnapshot } from "../chart/types";
 import { shellText } from "../i18n/shell";
@@ -23,6 +22,7 @@ import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
 import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
 import { clampIndex, formatVolume, moveDrawing, nextPriceMode, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
+import { useChartWheelNavigation } from "./chartCanvas/useChartNavigation";
 
 const MAX_COMPARE = 3;
 
@@ -240,6 +240,7 @@ export function ChartCanvas({
     onCompareLegend: (entries) => setCompareLegend((current) => (sameLegend(current, entries) ? current : entries)),
     onVolumeProfile: (profile) => setVolumeProfile((current) => sameVolumeProfile(current, profile) ? current : profile)
   });
+  useChartWheelNavigation(interactionCanvasRef, viewportRef, displayCandles, setView);
 
   // Lazy-load older history when the viewport nears the left (oldest) edge.
   useEffect(() => {
@@ -316,7 +317,7 @@ export function ChartCanvas({
           <span className="legend-symbol">
             <b>{instrument.symbol}</b>
             <i>
-              {chartType === "linebreak" ? "3LB · " : chartType === "renko" ? "RENKO 0.05% · " : ""}{timeframe} · {instrument.exchange}
+              {chartType === "linebreak" ? "3LB · " : chartType === "renko" ? "RENKO 0.05% · " : chartType === "kagi" ? "KAGI 0.10% · " : ""}{timeframe} · {instrument.exchange}
             </i>
           </span>
           {legendCandle && (
@@ -395,6 +396,15 @@ export function ChartCanvas({
         <button type="button" className="scale-toggle" aria-label={t("cyclePriceScale")} title={t("priceScale")} onClick={cyclePriceMode}>
           {view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}
         </button>
+        <button
+          type="button"
+          className="zoom-reset"
+          aria-label={locale === "ru" ? `Сбросить масштаб графика (${Math.round(view.zoom * 100)}%)` : `Reset chart zoom (${Math.round(view.zoom * 100)}%)`}
+          title={locale === "ru" ? "Сбросить масштаб" : "Reset zoom"}
+          onClick={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
+        >
+          {Math.round(view.zoom * 100)}%
+        </button>
         <VolumeProfileBadge visible={showVolumeProfile} profile={volumeProfile} decimals={instrument.decimals} locale={locale} />
         <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={chartTypeAriaLabel(locale, chartType, instrument.symbol, timeframe)} aria-describedby={chartDataSummaryId} />
         <OrderBookHeatmapLayer
@@ -416,6 +426,8 @@ export function ChartCanvas({
           className={`chart-canvas chart-canvas-interaction ${tool === "cursor" ? "" : "drawing"}`}
           aria-hidden="true"
           onPointerDown={(event) => {
+            if (!event.isPrimary || event.button !== 0) return;
+            event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
             const viewport = viewportRef.current;
             if (!viewport) return;
@@ -476,7 +488,9 @@ export function ChartCanvas({
             if (interaction?.mode === "pan") {
               const cssBar = (viewport ? viewport.barSpacing : 8) / devicePixelRatio;
               const delta = Math.round((interaction.startClientX - event.clientX) / Math.max(1, cssBar));
-              setView((current) => ({ ...current, offset: Math.max(0, interaction.startOffset + delta), crosshair: { x, y } }));
+              const visibleCount = Math.max(1, (viewport?.end ?? 0) - (viewport?.start ?? 0));
+              const limit = Math.max(0, displayCandles.length - Math.min(24, visibleCount));
+              setView((current) => ({ ...current, offset: Math.min(limit, Math.max(0, interaction.startOffset + delta)), crosshair: { x, y } }));
               return;
             }
 
@@ -493,26 +507,11 @@ export function ChartCanvas({
             onLinkedCrosshairChange?.();
           }}
           onPointerUp={(event) => {
-            event.currentTarget.releasePointerCapture(event.pointerId);
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
             interactionRef.current = undefined;
           }}
-          onWheel={(event) => {
-            const nextZoom = Math.min(4, Math.max(0.4, view.zoom + (event.deltaY > 0 ? -0.1 : 0.1)));
-            const vp = viewportRef.current;
-            if (!vp || displayCandles.length === 0) {
-              setView((current) => ({ ...current, zoom: nextZoom }));
-              return;
-            }
-            // Anchor the zoom on the bar under the cursor: keep its global index at
-            // the same x after the bar spacing changes.
-            const rect = event.currentTarget.getBoundingClientRect();
-            const cursorX = (event.clientX - rect.left) * devicePixelRatio;
-            const indexBefore = vp.xToIndex(cursorX);
-            const nv = visibleCandles(displayCandles, vp.plot, nextZoom, view.offset);
-            const desiredStart = indexBefore - (cursorX - vp.plot.left - nv.step / 2) / nv.step;
-            const newOffset = Math.max(0, Math.round(displayCandles.length - nv.data.length - desiredStart));
-            setView((current) => ({ ...current, zoom: nextZoom, offset: newOffset }));
-          }}
+          onPointerCancel={() => { interactionRef.current = undefined; }}
+          onLostPointerCapture={() => { interactionRef.current = undefined; }}
           onDoubleClick={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
           onContextMenu={(event) => {
             event.preventDefault();

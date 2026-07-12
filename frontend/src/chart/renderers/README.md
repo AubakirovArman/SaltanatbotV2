@@ -14,6 +14,8 @@ Renderers translate prepared chart models into Canvas 2D drawing commands.
 
 `renko.ts` paints prepared synthetic brick bodies plus actual-close wicks. Box sizing, two-box reversal, volume allocation and confirmation rules remain in `../renko.ts`.
 
+`kagi.ts` paints prepared directional legs, horizontal shoulder/waist turns and confirmed endpoints. Reversal sizing, close confirmation and source-volume aggregation remain in `../kagi.ts`.
+
 ## Rules
 
 - Renderers are deterministic for the same model, viewport and palette.
