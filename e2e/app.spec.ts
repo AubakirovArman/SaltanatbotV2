@@ -326,6 +326,7 @@ test("chooses an independent symbol directly in every secondary chart", async ({
   await expect(secondSymbol).toHaveValue("ETHUSDT");
   await expect(thirdSymbol).toHaveValue("BTCUSDT");
   await expect(page.getByRole("button", { name: /Current instrument ETHUSDT/i })).toBeVisible();
+  await expect(page.locator(".stats-panel .quote-meta")).toContainText("ETHUSDT");
   const secondPane = page.locator(".multi-chart-pane.secondary").first();
   await expect(secondPane).toHaveAttribute("aria-label", /ETHUSDT/);
   await expect(secondPane.getByRole("button", { name: "Link symbol to primary chart" })).toHaveAttribute("aria-pressed", "false");
@@ -342,9 +343,17 @@ test("chooses an independent symbol directly in every secondary chart", async ({
 
   await selectChartSymbol(page, "SOLUSDT");
   await expect(secondSymbol).toHaveValue("SOLUSDT");
+  await expect(page.locator(".stats-panel .quote-meta")).toContainText("SOLUSDT");
   await expect(page.locator(".multi-chart-pane.primary").getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible();
+
+  const marketSearch = page.getByRole("textbox", { name: "Search instruments" });
+  await marketSearch.fill("ADAUSDT");
+  await page.locator(".symbol-select").filter({ hasText: "ADAUSDT" }).click();
+  await expect(secondSymbol).toHaveValue("ADAUSDT");
+  await expect(page.locator(".stats-panel .quote-meta")).toContainText("ADAUSDT");
   await page.locator(".multi-chart-pane.primary").getByRole("button", { name: "Cursor (Esc)" }).click();
   await expect(page.getByRole("button", { name: /Current instrument BTCUSDT/i })).toBeVisible();
+  await expect(page.locator(".stats-panel .quote-meta")).toContainText("BTCUSDT");
   await expectNoAxeViolations(page);
 });
 

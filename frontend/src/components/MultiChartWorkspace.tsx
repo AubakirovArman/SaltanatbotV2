@@ -2,7 +2,7 @@ import { Crosshair, Link2, Link2Off, MoveHorizontal } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { LinkedCrosshair, LinkedTimeRange } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
-import { useMarketStream } from "../hooks/useMarketStream";
+import { useMarketStream, type MarketStreamState } from "../hooks/useMarketStream";
 import type { Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
 import type { CatalogResponse, DataExchange, Instrument } from "../types";
@@ -29,10 +29,16 @@ interface MultiChartWorkspaceProps {
   onUpdateChart: (id: string, patch: Partial<WorkspaceChart>) => void;
   activeChartId?: string;
   onActiveChartChange: (id: string) => void;
+  onMarketStreamChange: (id: string, stream?: PaneMarketStream) => void;
   maximizeShortcut: string;
 }
 
-export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdateChart, activeChartId, onActiveChartChange, maximizeShortcut }: MultiChartWorkspaceProps) {
+export interface PaneMarketStream extends MarketStreamState {
+  symbol: string;
+  timeframe: WorkspaceChart["timeframe"];
+}
+
+export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdateChart, activeChartId, onActiveChartChange, onMarketStreamChange, maximizeShortcut }: MultiChartWorkspaceProps) {
   const primaryChart = charts[0];
   const [maximizedChartId, setMaximizedChartId] = useState<string>();
   const canMaximize = charts.length > 1;
@@ -100,15 +106,20 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
           linkedTimeRange={linkedTimeRange}
           onLinkedTimeRangeChange={onLinkedTimeRangeChange}
           onUpdate={onUpdateChart}
+          onMarketStreamChange={onMarketStreamChange}
         />
       ))}
     </div>
   );
 }
 
-function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize, maximized, maximizeShortcut, onToggleMaximize, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart" | "activeChartId" | "onActiveChartChange"> & { chart: WorkspaceChart; paneNumber: number; paneProps: React.HTMLAttributes<HTMLElement>; active: boolean; canMaximize: boolean; maximized: boolean; onToggleMaximize: () => void; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
+function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize, maximized, maximizeShortcut, onToggleMaximize, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate, onMarketStreamChange }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart" | "activeChartId" | "onActiveChartChange"> & { chart: WorkspaceChart; paneNumber: number; paneProps: React.HTMLAttributes<HTMLElement>; active: boolean; canMaximize: boolean; maximized: boolean; onToggleMaximize: () => void; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
   const stream = useMarketStream(chart.symbol, chart.timeframe, exchange);
   const instrument = catalog?.instruments.find((item) => item.symbol === chart.symbol) ?? fallbackInstrument(chart.symbol);
+  useEffect(() => {
+    onMarketStreamChange(chart.id, active ? { ...stream, symbol: chart.symbol, timeframe: chart.timeframe } : undefined);
+  }, [active, chart.id, chart.symbol, chart.timeframe, onMarketStreamChange, stream]);
+  useEffect(() => () => onMarketStreamChange(chart.id), [chart.id, onMarketStreamChange]);
   const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair" | "linkTimeRange", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {
     const linked = chart[field];
     const Icon = linked ? ActiveIcon : Link2Off;

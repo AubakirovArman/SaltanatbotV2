@@ -100,7 +100,7 @@ stop-before-target rule when both prices occur in one candle.
 - empty, one-bar, NaN, gap, extreme-price and long-history datasets;
 - interaction tests for wheel, drag, touch and keyboard equivalents;
 - explicit DPR 1/2 browser checks for Canvas backing resolution, pointer/HUD alignment and density-invariant CSS interaction targets;
-- multi-chart focus/command-routing/maximize/restore checks proving top-bar and palette actions affect only the active pane while hidden panes stay mounted and retain symbol, zoom, tools and accessible state;
+- multi-chart focus/command-routing/market-context/maximize/restore checks proving top-bar, watchlist and statistics affect or describe only the active pane while hidden panes stay mounted and retain symbol, zoom, tools and accessible state;
 - component semantics for captions, scoped column headers, empty states and focused-bar synchronization across OHLC, signals and trades;
 - typed English/Russian parity for chart-table accessible names, headers, domain terms, dates and numbers;
 - typed English/Russian parity for trading settings, destructive confirmations, command references, runtime cards and semantic order/fill tables;

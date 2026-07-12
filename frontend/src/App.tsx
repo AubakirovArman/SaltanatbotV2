@@ -6,7 +6,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { StatsPanel } from "./components/StatsPanel";
 import { TopBar } from "./components/TopBar";
 import { PanelResizeHandle } from "./components/PanelResizeHandle";
-import { MultiChartWorkspace } from "./components/MultiChartWorkspace";
+import { MultiChartWorkspace, type PaneMarketStream } from "./components/MultiChartWorkspace";
 import { ShortcutSettingsDialog } from "./components/ShortcutSettingsDialog";
 import type { LinkedCrosshair, LinkedTimeRange } from "./chart/types";
 import { Watchlist } from "./components/Watchlist";
@@ -55,6 +55,7 @@ export default function App() {
   const [indicators, setIndicators] = useState(initialWorkspaceState.indicators);
   const [linkedCrosshair, setLinkedCrosshair] = useState<LinkedCrosshair>();
   const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
+  const [paneStreams, setPaneStreams] = useState<Record<string, PaneMarketStream>>({});
   const shell = useAppShell({
     symbol, setSymbol, timeframe, setTimeframe, chartType, setChartType,
     setMode, indicators, setIndicators, initialChartSession
@@ -81,6 +82,23 @@ export default function App() {
   const setActiveSymbol = useCallback((nextSymbol: string) => shell.updateActiveChart({ symbol: nextSymbol }), [shell.updateActiveChart]);
   const setActiveTimeframe = useCallback((nextTimeframe: Timeframe) => shell.updateActiveChart({ timeframe: nextTimeframe }), [shell.updateActiveChart]);
   const setActiveChartType = useCallback((nextChartType: ChartType) => shell.updateActiveChart({ chartType: nextChartType }), [shell.updateActiveChart]);
+  const updatePaneStream = useCallback((id: string, next?: PaneMarketStream) => {
+    setPaneStreams((current) => {
+      if (next) return current[id] === next ? current : { ...current, [id]: next };
+      if (!(id in current)) return current;
+      const copy = { ...current };
+      delete copy[id];
+      return copy;
+    });
+  }, []);
+  const activeIsPrimary = activeChart?.id === shell.charts[0]?.id;
+  const secondaryStream = paneStreams[activeChart?.id ?? ""];
+  const activeStream = activeIsPrimary
+    ? stream
+    : secondaryStream?.symbol === activeChart?.symbol && secondaryStream.timeframe === activeChart?.timeframe
+      ? secondaryStream
+      : undefined;
+  const activeCandles = activeStream?.candles ?? [];
   const compareState = useCompareSeries(compareOverlays, cryptoExchange);
   const showChart = useCallback((nextSymbol: string, nextTimeframe: Timeframe) => {
     setSymbol(nextSymbol);
@@ -107,7 +125,7 @@ export default function App() {
   }, [asset, catalog]);
 
   const allSymbols = useMemo(() => catalog?.instruments.map((item) => item.symbol) ?? [], [catalog]);
-  const sparklines = useSparklines(allSymbols, timeframe, cryptoExchange);
+  const sparklines = useSparklines(allSymbols, activeChart?.timeframe ?? timeframe, cryptoExchange);
 
   // Compare picker candidates — every catalog symbol except the active base one.
   const compareCandidates = useMemo(
@@ -121,14 +139,16 @@ export default function App() {
   // Live price map for alert detection: the active symbol streams tick-by-tick, other
   // symbols fall back to the periodically-refreshed sparkline `last`.
   const latestClose = stream.candles.at(-1)?.close;
+  const activeLatestClose = activeCandles.at(-1)?.close;
   const prices = useMemo(() => {
     const map: Record<string, number> = {};
     for (const [sym, series] of Object.entries(sparklines)) {
       if (series?.last != null) map[sym] = series.last;
     }
     if (latestClose !== undefined) map[symbol] = latestClose;
+    if (activeLatestClose !== undefined && activeChart) map[activeChart.symbol] = activeLatestClose;
     return map;
-  }, [sparklines, latestClose, symbol]);
+  }, [activeChart, activeLatestClose, sparklines, latestClose, symbol]);
 
   const decimalsFor = useCallback(
     (sym: string) => catalog?.instruments.find((item) => item.symbol === sym)?.decimals ?? 2,
@@ -158,12 +178,12 @@ export default function App() {
     <Watchlist
       locale={locale}
       instruments={instruments}
-      selectedSymbol={symbol}
+      selectedSymbol={activeChart?.symbol ?? symbol}
       selectedAsset={asset}
-      latest={stream.candles.at(-1)}
+      latest={activeCandles.at(-1)}
       sparklines={sparklines}
       cryptoExchange={cryptoExchange}
-      onSelectSymbol={setSymbol}
+      onSelectSymbol={setActiveSymbol}
       onSelectAsset={setAsset}
       onSelectExchange={shell.setCryptoExchange}
     />
@@ -171,15 +191,15 @@ export default function App() {
   const statsPanel = (
     <StatsPanel
       locale={locale}
-      instrument={instrument}
-      candles={stream.candles}
-      provider={stream.provider}
-      connection={stream.connection}
-      message={stream.message}
-      latencyMs={stream.latencyMs}
-      gapCount={stream.gapCount}
-      missingBars={stream.missingBars}
-      fallbackActive={stream.fallbackActive}
+      instrument={activeInstrument}
+      candles={activeCandles}
+      provider={activeStream?.provider ?? "Loading"}
+      connection={activeStream?.connection ?? "connecting"}
+      message={activeStream?.message ?? `Loading ${activeChart?.symbol ?? symbol} ${activeChart?.timeframe ?? timeframe}`}
+      latencyMs={activeStream?.latencyMs}
+      gapCount={activeStream?.gapCount}
+      missingBars={activeStream?.missingBars}
+      fallbackActive={activeStream?.fallbackActive}
       alerts={priceAlerts.alerts}
       onAddAlert={priceAlerts.addAlert}
       onRemoveAlert={priceAlerts.removeAlert}
@@ -197,7 +217,7 @@ export default function App() {
         timeframe={activeChart?.timeframe ?? timeframe}
         chartType={activeChart?.chartType ?? chartType}
         mode={mode}
-        connection={stream.connection}
+        connection={activeStream?.connection ?? "connecting"}
         theme={theme}
         locale={locale}
         leftOpen={leftOpen}
@@ -258,6 +278,7 @@ export default function App() {
               onUpdateChart={shell.updateChart}
               activeChartId={shell.activeChartId}
               onActiveChartChange={shell.setActiveChartId}
+              onMarketStreamChange={updatePaneStream}
               maximizeShortcut={appCommands.shortcuts.maximizeChart}
               primary={<ChartCanvas
               compactChrome={shell.layoutPreset !== "single"}

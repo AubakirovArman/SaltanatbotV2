@@ -8,7 +8,7 @@ export type ConnectionState = "connecting" | "connected" | "fallback" | "error";
 const MAX_CANDLES = 12_000;
 const EMPTY_CANDLES: Candle[] = [];
 
-interface MarketStreamState {
+export interface MarketStreamState {
   candles: Candle[];
   connection: ConnectionState;
   provider: string;
