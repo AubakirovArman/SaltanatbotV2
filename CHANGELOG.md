@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Continuous verification
 
+- Added a required eight-journey Firefox smoke gate for chart input, independent markets, accessibility, Pine import, backtest, authentication and paper execution on every push and pull request.
+- Added a daily, manually dispatchable and release-tag-triggered full 44-scenario Chromium/Firefox/WebKit matrix with 14-day failure evidence, without exchange credentials or testnet/mainnet access.
 - Made the complete production-build Playwright Chromium suite a required GitHub Actions job on every push and pull request, closing the gap where browser journeys were verified locally but did not block a remote regression.
 - Added seven-day failure-only workflow artifacts containing the HTML report, traces, screenshots and videos, while keeping exchange credentials and all mainnet/testnet access outside generic CI.
 - Fixed late chart panes on a shared market WebSocket by replaying the latest bounded stream message after their synthetic open event, preventing an added same-market pane from remaining in a loading state after the initial snapshot.

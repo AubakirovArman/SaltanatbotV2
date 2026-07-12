@@ -69,13 +69,47 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Test production journeys
-        run: npm run test:e2e -- --project=chromium
+        run: npm run test:e2e
 
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  firefox-smoke:
+    name: critical journeys (Firefox)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Firefox
+        run: npx playwright install --with-deps firefox
+
+      - name: Test critical production journeys
+        run: npm run test:e2e:firefox-smoke
+
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefox-smoke-failure-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             playwright-report/
             test-results/

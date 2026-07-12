@@ -170,11 +170,13 @@ Prefer native `<dialog>`, form controls and buttons. Canvas information must hav
 Pull requests:
 
 - Chromium desktop for all E2E;
-- Firefox for critical smoke journeys.
+- Firefox for eight tagged critical journeys covering chart input, multi-market layout, accessibility,
+  Pine import, backtest, authentication and paper execution.
 
 Nightly/release:
 
-- Chromium, Firefox and WebKit;
+- the complete production suite on Chromium, Firefox and WebKit in the scheduled/tag-triggered
+  `Browser matrix` workflow;
 - desktop dark/light;
 - one narrow touch viewport for monitoring workflows;
 - English and Russian;
@@ -224,6 +226,7 @@ The same suite verifies reviewed byte-level v4/v6 conversion golden hashes.
 
 - check, lint, unit, component, contract;
 - the complete production-build Chromium E2E suite in the required `end-to-end (Chromium)` CI job;
+- eight tagged production journeys in the required `critical journeys (Firefox)` CI job;
 - a seven-day Playwright report/trace/screenshot/video artifact when that browser job fails;
 - changed visual snapshots;
 - dependency and secret scan;
@@ -236,7 +239,8 @@ protected workflow described below.
 
 ### Nightly
 
-- full browser matrix;
+- the complete 44-scenario Chromium, Firefox and WebKit matrix, with per-browser failure evidence
+  retained for 14 days;
 - fuzz/property suite;
 - full Pine corpus;
 - long performance and leak tests;

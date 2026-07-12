@@ -16,7 +16,10 @@ export default defineConfig({
     video: "retain-on-failure"
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } }
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox-smoke", grep: /@smoke/, use: { ...devices["Desktop Firefox"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } }
   ],
   webServer: {
     command: `npm run build && PORT=${port} HOST=127.0.0.1 DEMO_MODE=1 AUTH_TOKEN=e2e-local-admin-token npm start`,

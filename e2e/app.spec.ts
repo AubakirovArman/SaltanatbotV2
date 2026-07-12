@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
-test("loads the terminal and exposes the chart semantically", async ({ page }) => {
+test("loads the terminal and exposes the chart semantically", { tag: "@smoke" }, async ({ page }) => {
   await expect(page.locator(".brand")).toContainText("SaltanatbotV2");
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("status")).toBeVisible();
@@ -192,7 +192,7 @@ test("isolates price-chart construction settings by pane and symbol", async ({ p
   await expectNoAxeViolations(page);
 });
 
-test("keeps mouse and trackpad chart zoom controlled and resettable", async ({ page }) => {
+test("keeps mouse and trackpad chart zoom controlled and resettable", { tag: "@smoke" }, async ({ page }) => {
   const canvas = page.locator(".chart-canvas-interaction");
   await expect(canvas).toBeVisible({ timeout: 20_000 });
   const reset = page.getByRole("button", { name: "Reset chart zoom (100%)" });
@@ -210,7 +210,7 @@ test("keeps mouse and trackpad chart zoom controlled and resettable", async ({ p
   await expect(reset).toBeVisible();
 });
 
-test("keeps Retina canvas, pointer HUD and price axis in CSS-pixel alignment", async ({ browser, baseURL }) => {
+test("keeps Retina canvas, pointer HUD and price axis in CSS-pixel alignment", async ({ browser, browserName, baseURL }) => {
   const context = await browser.newContext({
     baseURL,
     viewport: { width: 1280, height: 720 },
@@ -232,7 +232,10 @@ test("keeps Retina canvas, pointer HUD and price axis in CSS-pixel alignment", a
       cssHeight: element.clientHeight,
       dpr: window.devicePixelRatio
     }));
-    expect(density.dpr).toBe(2);
+    // Firefox currently ignores Playwright's deviceScaleFactor override on Linux;
+    // every engine must still size its backing store from the DPR it actually reports.
+    if (browserName === "chromium") expect(density.dpr).toBe(2);
+    else expect(density.dpr).toBeGreaterThanOrEqual(1);
     expect(Math.abs(density.width - density.cssWidth * density.dpr)).toBeLessThanOrEqual(1);
     expect(Math.abs(density.height - density.cssHeight * density.dpr)).toBeLessThanOrEqual(1);
 
@@ -398,7 +401,7 @@ test("chooses an independent symbol directly in every secondary chart", async ({
   await expectNoAxeViolations(page);
 });
 
-test("opens and restores four distinct markets from the keyboard layout menu", async ({ page }) => {
+test("opens and restores four distinct markets from the keyboard layout menu", { tag: "@smoke" }, async ({ page }) => {
   await page.getByRole("button", { name: "Chart layout" }).click();
   const currentLayout = page.getByRole("menuitemradio", { name: "Single chart" });
   await expect(currentLayout).toBeFocused();
@@ -704,7 +707,7 @@ test("renders a mocked live footprint and trade delta accessibly", async ({ page
   await expect(badge).toBeHidden();
 });
 
-test("passes automated WCAG A/AA audits on chart, strategy and trading surfaces", async ({ page }) => {
+test("passes automated WCAG A/AA audits on chart, strategy and trading surfaces", { tag: "@smoke" }, async ({ page }) => {
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
   await expectNoAxeViolations(page);
   const modes = page.getByLabel("Workspace mode");
@@ -807,7 +810,7 @@ test("persists the selected theme across reload", async ({ page }) => {
   await expect(root).toHaveAttribute("data-theme", after);
 });
 
-test("imports a Pine indicator as an editable artifact", async ({ page }) => {
+test("imports a Pine indicator as an editable artifact", { tag: "@smoke" }, async ({ page }) => {
   const workspaceModes = page.getByLabel("Workspace mode");
   await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
@@ -892,7 +895,7 @@ test("saves and restores a named chart workspace", async ({ page }) => {
   await expect(page.locator(".workspace-apply").filter({ hasText: "EUR research" })).toContainText("EURUSD");
 });
 
-test("runs a backtest and exposes assumptions and metrics", async ({ page }) => {
+test("runs a backtest and exposes assumptions and metrics", { tag: "@smoke" }, async ({ page }) => {
   const workspaceModes = page.getByLabel("Workspace mode");
   await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
@@ -909,7 +912,7 @@ test("runs a backtest and exposes assumptions and metrics", async ({ page }) => 
   await expect(report).toContainText("Trades");
 });
 
-test("keeps trading locked for a bad token and opens an authenticated session", async ({ page }) => {
+test("keeps trading locked for a bad token and opens an authenticated session", { tag: "@smoke" }, async ({ page }) => {
   const workspaceModes = page.getByLabel("Workspace mode");
   await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Trading is locked" })).toBeVisible();
@@ -961,7 +964,7 @@ test("adds an imported custom indicator to the chart", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Remove artifact from chart" })).toBeVisible();
 });
 
-test("creates, starts, journals and stops a paper bot", async ({ page }) => {
+test("creates, starts, journals and stops a paper bot", { tag: "@smoke" }, async ({ page }) => {
   const workspaceModes = page.getByLabel("Workspace mode");
   await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
