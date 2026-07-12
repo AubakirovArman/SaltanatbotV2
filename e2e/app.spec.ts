@@ -404,6 +404,7 @@ test("focuses and maximizes any chart pane without resetting its view", async ({
 
   const grid = page.locator(".multi-chart-grid");
   const panes = page.locator(".multi-chart-pane");
+  await expect.poll(() => page.evaluate(() => (window as Window & { __marketSocketAttempts?: number }).__marketSocketAttempts)).toBe(1);
   const primary = panes.filter({ has: page.locator(".with-indicator-controls") });
   const second = page.locator(".multi-chart-pane.secondary").first();
   const secondSymbol = second.getByRole("combobox", { name: "Symbol · 2" });

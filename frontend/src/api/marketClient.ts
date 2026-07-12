@@ -7,6 +7,7 @@ import {
   type SparklineSeries,
 } from "@saltanatbotv2/contracts";
 import type { DataExchange, Timeframe } from "../types";
+import { marketWebSocketPool } from "./sharedWebSocketPool";
 
 export async function getCatalog() {
   return request("/api/catalog", undefined, parseCatalogResponse);
@@ -45,7 +46,7 @@ export async function getSparklines(
 export function createMarketSocket(symbol: string, timeframe: Timeframe, exchange: DataExchange = "binance") {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const params = new URLSearchParams({ symbol, timeframe, limit: "1000", exchange });
-  return new WebSocket(`${protocol}://${window.location.host}/stream?${params}`);
+  return marketWebSocketPool.connect(`${protocol}://${window.location.host}/stream?${params}`);
 }
 
 export function createOrderBookSocket(symbol: string, exchange: DataExchange = "binance") {

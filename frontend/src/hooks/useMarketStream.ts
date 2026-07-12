@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createMarketSocket, getCandles, parseStreamMessage } from "../api/marketClient";
+import type { SharedSocketClient } from "../api/sharedWebSocketPool";
 import type { Candle, DataExchange, StreamMessage, Timeframe } from "../types";
 import { analyzeCandleGaps } from "../market/dataQuality";
 
@@ -51,7 +52,7 @@ export function useMarketStream(
 
   useEffect(() => {
     let alive = true;
-    let socket: WebSocket | undefined;
+    let socket: SharedSocketClient | undefined;
     let reconnect: number | undefined;
     const generation = generationRef.current + 1;
     generationRef.current = generation;
