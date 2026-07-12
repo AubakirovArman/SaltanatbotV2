@@ -18,6 +18,10 @@ migration.
 - Chart workspace exports use schema 3 with SHA-256 verification, bounded revisions and a persisted
   visible-time-range link flag. Existing schema-1/2 local workspaces default that link on during
   boundary normalization and remain preserved by ID.
+- Named chart workspaces now normalize to schema 7 and automatic chart sessions to version 5 so every
+  pane carries a validated display time zone. Existing schema 1–6 workspaces and session versions 1–4
+  retain browser-local labels; new panes default to exchange UTC. Unknown zones fail closed to UTC and
+  no migration rewrites candle timestamps, session membership or strategy data.
 
 For server data, follow [Backup and restore](BACKUP_RESTORE.md) before deployment. A breaking future
 IR, API, storage or event-trace change must add a dated section here and executable backward-compatibility

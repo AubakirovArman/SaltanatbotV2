@@ -32,6 +32,8 @@ import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
 import { calculateDrawingAvwaps, type AnchoredVwapSeries } from "./anchoredVwap";
 import type { MarketSessionRange } from "./marketSessions";
 import type { MarketStructureSnapshot } from "./marketStructure";
+import type { ChartTimeZone } from "./timeAxis";
+import type { Locale } from "../i18n";
 import { prepareCanvasContext, resizeCanvasToEntry } from "./canvasDensity";
 
 interface UseChartRendererOptions {
@@ -39,6 +41,8 @@ interface UseChartRendererOptions {
   displayCandles: Candle[];
   chartType: ChartType;
   decimals: number;
+  locale: Locale;
+  timeZone: ChartTimeZone;
   symbol: string;
   view: ChartView;
   indicators: IndicatorConfig[];
@@ -107,6 +111,8 @@ export function useChartRenderer(options: UseChartRendererOptions) {
         displayCandles: options.displayCandles,
         chartType: options.chartType,
         decimals: options.decimals,
+        locale: options.locale,
+        timeZone: options.timeZone,
         view: { zoom: options.view.zoom, offset: options.view.offset, priceMode: options.view.priceMode, priceZoom: options.view.priceZoom },
         indicators: options.indicators,
         drawings: options.drawings,
@@ -140,7 +146,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     });
     schedulerRef.current?.schedule("overlays", () => drawOverlays(overlaysCanvas, renderPlanRef.current, options, anchoredVwaps));
     schedulerRef.current?.schedule("interaction", () => drawInteraction(interactionCanvas, viewportRef.current, options));
-  }, [options.candles, options.displayCandles, options.chartType, options.indicators, options.decimals, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, options.view.priceZoom, renderRevision]);
+  }, [options.candles, options.displayCandles, options.chartType, options.indicators, options.decimals, options.locale, options.timeZone, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, options.view.priceZoom, renderRevision]);
 
   useEffect(() => {
     const canvas = primaryCanvasRef.current;
@@ -155,7 +161,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
   useEffect(() => {
     const canvas = interactionCanvasRef.current;
     if (canvas) schedulerRef.current?.schedule("interaction", () => drawInteraction(canvas, viewportRef.current, options));
-  }, [options.decimals, options.view.crosshair]);
+  }, [options.decimals, options.locale, options.timeZone, options.view.crosshair]);
 
   useEffect(() => {
     const canvases = [backgroundCanvasRef.current, primaryCanvasRef.current, indicatorsCanvasRef.current, overlaysCanvasRef.current, interactionCanvasRef.current];
@@ -218,7 +224,9 @@ function drawInteraction(canvas: HTMLCanvasElement, viewport: Viewport | undefin
     height: surface.height,
     viewport,
     crosshair: options.view.crosshair,
-    decimals: options.decimals
+    decimals: options.decimals,
+    locale: options.locale,
+    timeZone: options.timeZone
   });
 }
 

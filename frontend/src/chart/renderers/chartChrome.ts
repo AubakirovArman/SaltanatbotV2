@@ -1,6 +1,7 @@
 import type { Candle } from "../../types";
 import { niceTicks } from "../scales";
 import type { ChartTheme, PlotArea, PriceScale, Viewport } from "../types";
+import { createChartTimeFormatter, type ChartTimeFormatter } from "../timeAxis";
 
 export function drawGrid(ctx: CanvasRenderingContext2D, plot: PlotArea, scale: PriceScale, decimals: number, theme: ChartTheme) {
   ctx.strokeStyle = theme.grid;
@@ -19,7 +20,7 @@ export function drawGrid(ctx: CanvasRenderingContext2D, plot: PlotArea, scale: P
   }
 }
 
-export function drawTimeAxis(ctx: CanvasRenderingContext2D, viewport: Viewport, theme: ChartTheme) {
+export function drawTimeAxis(ctx: CanvasRenderingContext2D, viewport: Viewport, theme: ChartTheme, formatter: ChartTimeFormatter = createChartTimeFormatter("en", "local")) {
   ctx.fillStyle = theme.muted;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
@@ -27,19 +28,19 @@ export function drawTimeAxis(ctx: CanvasRenderingContext2D, viewport: Viewport, 
   ctx.strokeStyle = theme.grid;
   const { plot, start, end, barTimeMs } = viewport;
   const every = Math.max(1, Math.ceil(90 / viewport.barSpacing), Math.round(Math.max(1, end - start) / 7));
-  let previous: Date | undefined;
+  let previous: number | undefined;
   for (let index = start; index < end; index += 1) {
     if ((index - start) % every !== 0) continue;
     const x = viewport.indexToX(index);
-    const date = new Date(viewport.xToTime(x));
+    const time = viewport.xToTime(x);
     ctx.beginPath();
     ctx.moveTo(x, plot.top);
     ctx.lineTo(x, plot.bottom);
     ctx.strokeStyle = "rgba(134, 150, 166, 0.08)";
     ctx.stroke();
     ctx.fillStyle = theme.muted;
-    ctx.fillText(formatTimeLabel(date, previous, barTimeMs), x, plot.bottom + 8);
-    previous = date;
+    ctx.fillText(formatter.tick(time, previous, barTimeMs), x, plot.bottom + 8);
+    previous = time;
   }
   ctx.textAlign = "left";
 }
@@ -72,7 +73,8 @@ export function drawCrosshair(
   viewport: Viewport,
   crosshair: { x: number; y: number },
   decimals: number,
-  theme: ChartTheme
+  theme: ChartTheme,
+  formatter: ChartTimeFormatter = createChartTimeFormatter("en", "local")
 ) {
   if (crosshair.x < plot.left || crosshair.x > plot.right || crosshair.y < plot.top || crosshair.y > plot.bottom) return;
   ctx.save();
@@ -86,9 +88,7 @@ export function drawCrosshair(
   ctx.stroke();
   ctx.setLineDash([]);
   drawAxisTag(ctx, plot.right + 4, crosshair.y, formatAxisPrice(viewport.yToPrice(crosshair.y), viewport.scale, decimals), "#1c242c", theme.text);
-  const time = new Date(viewport.xToTime(crosshair.x)).toLocaleString([], {
-    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
-  });
+  const time = formatter.dateTime(viewport.xToTime(crosshair.x));
   drawTimeTag(ctx, crosshair.x, plot.bottom + 6, time, theme.text);
   ctx.restore();
 }
@@ -107,17 +107,6 @@ function formatAxisPrice(price: number, scale: PriceScale, decimals: number) {
     return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
   }
   return price.toFixed(decimals);
-}
-
-function formatTimeLabel(date: Date, previous: Date | undefined, barTimeMs: number) {
-  const newDay = !previous || previous.getDate() !== date.getDate() || previous.getMonth() !== date.getMonth();
-  if (barTimeMs >= 86_400_000) {
-    const newYear = !previous || previous.getFullYear() !== date.getFullYear();
-    return newYear ? String(date.getFullYear()) : date.toLocaleDateString([], { month: "short", day: "numeric" });
-  }
-  return newDay
-    ? date.toLocaleDateString([], { month: "short", day: "numeric" })
-    : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function drawAxisTag(ctx: CanvasRenderingContext2D, x: number, y: number, label: string, background: string, foreground: string) {

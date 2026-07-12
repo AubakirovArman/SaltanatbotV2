@@ -13,6 +13,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `dirtyLayers.ts`: requestAnimationFrame invalidation scheduler with deterministic base-before-interaction ordering.
 - `useChartRenderer.ts`: five-canvas ownership, ResizeObserver synchronization, render-plan reuse and dirty-pass invalidation.
 - `renderers/chartChrome.ts`: axes, grid, last-price and crosshair chrome.
+- `timeAxis.ts`: validated per-pane zone catalog plus cached locale/IANA formatters shared by Canvas and semantic DOM surfaces; formatting never mutates absolute candle time.
 - `renderers/candles.ts`: solid and hollow candle bodies with DPR-safe pixel alignment.
 - `renderers/lineArea.ts`: line, step-line and filled area primitives.
 - `volumeProfile.ts` and `renderers/volumeProfile.ts`: visible-range volume-at-price calculation, POC/value-area selection and Canvas rendering.
@@ -61,6 +62,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Session VWAP is a volume-weighted typical-price estimate from bars, not tick VWAP. A live tail cannot produce a confirmed previous-day liquidity sweep.
 - Anchored VWAP never substitutes the earliest loaded candle for a missing saved anchor; it remains unavailable until history reaches that anchor.
 - Regional session windows use candle-open membership and are limited to 1m–1h; they do not claim exchange-calendar or holiday awareness.
+- A chart time-zone setting changes labels only. Session membership, candle timestamps, linked ranges and strategy evaluation remain absolute; legacy saves migrate to local display while new panes default to exchange UTC.
 - Market structure never consumes the provisional tail: a swing waits for its full right-hand window, BOS/CHOCH requires a close through the confirmed level and an FVG requires three closed candles.
 - Three Line Break ignores source High/Low, omits the provisional tail and requires a strict break of the latest three confirmed line ranges to reverse; native indicators use the transformed series while timestamped strategy overlays remain aligned to their source bars.
 - Renko uses a close-only box fixed at 0.05% of the first loaded confirmed close and rounded to the instrument tick. New live bars cannot resize history; intentionally loading older history changes the source boundary and can reseed the representation.

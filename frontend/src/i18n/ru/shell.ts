@@ -290,5 +290,14 @@ export const ruShell = {
   showStatistics: "Показать статистику",
   metric: "Метрика",
   inputs: "Параметры",
-  closeInputs: "Закрыть параметры"
+  closeInputs: "Закрыть параметры",
+  timeZone: "Часовой пояс",
+  timeZoneExchange: "Биржа (UTC)",
+  timeZoneLocal: "Локальный",
+  timeZoneAlmaty: "Алматы",
+  timeZoneNewYork: "Нью-Йорк",
+  timeZoneLondon: "Лондон",
+  timeZoneBerlin: "Берлин",
+  timeZoneTokyo: "Токио",
+  timeZoneHongKong: "Гонконг"
 };

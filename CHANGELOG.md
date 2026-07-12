@@ -5,6 +5,13 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Per-chart time zones
+
+- Added a labelled native time-zone selector to every chart pane with exchange UTC, browser-local and seven IANA city zones.
+- Made axis ticks, crosshair tags, OHLC HUD/tables, AVWAP anchors and live flow-alert times use one locale-aware, DST-safe formatter without changing candle timestamps or strategy execution.
+- Persisted each pane's zone through automatic sessions, named workspace revisions, export/import and rollback. New charts default to exchange UTC; legacy sessions/workspaces retain their previous local-time display.
+- Added EN/RU/KK labels, corrupt-value fail-closed normalization, unit coverage for the New York DST gap and a production four-pane reload journey.
+
 ### Kazakh application locale
 
 - Added a complete typed `kk` UI catalog across the chart shell, market analytics, Strategy Studio, Pine import, backtest/optimizer and paper/live trading surfaces.

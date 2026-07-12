@@ -115,6 +115,12 @@ Chart үстіндегі карточкадағы `STRUCT` батырмасы р
 
 Есептеу OHLCV volume-мен өлшенген `(high + low + close) / 3` typical price қолданады. Бұл tick-VWAP емес, bar-based AVWAP; timeframe ауысқанда жаңа interval candle-дары бойынша қайта есептеледі. Reload-тан кейін сақталған anchor loaded history-ден ескі болса, есеп бірінші қолжетімді candle-дан жалған басталмайды: бастапқы range жүктелгенше DOM legend `—` көрсетеді. Legend anchor уақытын, ағымдағы AVWAP және σ мәнін Canvas-тан бөлек береді.
 
+## Chart уақыт белдеуі
+
+Әр pane-нің төменгі сол жағында native **Уақыт белдеуі** select бар. Жаңа chart **Биржа (UTC)** режимін қолданады; browser local time, UTC, Алматы, Нью-Йорк, Лондон, Берлин, Токио және Гонконг та қолжетімді. 2×2 grid-тің әр pane-і өз zone-ын сақтайды; ол automatic session, named workspace, revision және export құрамына кіреді.
+
+Таңдау тек уақыттың көрсетілуін өзгертеді. Candle timestamp, regional session boundary, strategy signal және execution absolute күйінде қалады. Axis, crosshair, OHLC HUD/table, AVWAP anchor және flow alert бір IANA/DST-aware formatter қолданады. Legacy save бұрынғы local display-ды сақтайды; unknown не corrupt мән exchange UTC-ке қауіпсіз қайтарылады.
+
 ## Asia, London және New York сессиялары
 
 **SESSION UTC** карточкасының төменгі қатарындағы `ASIA`, `LON` және `NY` батырмалары бір-бірінен тәуелсіз. `1m`–`1h` chart-та олар regional window-дың translucent high/low box-ын көрсетеді. Ағымдағы range solid әрі айқынырақ border, жабылған range әлсіз dashed border қолданады. Соңғы high/low және active/closed күйі Canvas-тан бөлек semantic DOM мәтінінде де бар.

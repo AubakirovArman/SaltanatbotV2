@@ -3,6 +3,7 @@ import type { ChartMarker, ChartTrade } from "../chart/types";
 import type { Candle, Timeframe } from "../types";
 import type { Locale } from "../i18n";
 import { chartSummary, chartTerm, chartText, executedTradesCaption, intlLocale, recentCandlesCaption, strategySignalsCaption } from "../i18n/chart";
+import { createChartTimeFormatter, type ChartTimeZone } from "../chart/timeAxis";
 
 const MAX_ROWS = 20;
 
@@ -16,10 +17,11 @@ interface ChartDataPanelProps {
   timeframe: Timeframe;
   summaryId: string;
   locale: Locale;
+  timeZone?: ChartTimeZone;
 }
 
 /** Semantic, keyboard-operable alternative to the pixels rendered by Canvas. */
-export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], trades = [], symbol, timeframe, summaryId, locale }: ChartDataPanelProps) {
+export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], trades = [], symbol, timeframe, summaryId, locale, timeZone = "local" }: ChartDataPanelProps) {
   const [open, setOpen] = useState(false);
   const panelId = `${summaryId}-panel`;
   const focused = focusedIndex === undefined ? candles.at(-1) : candles[focusedIndex];
@@ -55,7 +57,7 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
                 </tr>
               </thead>
               <tbody>
-                <CandleRow candle={focused} decimals={decimals} locale={locale} />
+                <CandleRow candle={focused} decimals={decimals} locale={locale} timeZone={timeZone} />
               </tbody>
             </table>
           ) : (
@@ -72,7 +74,7 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
               </thead>
               <tbody>
                 {recentCandles.map((candle, index) => (
-                  <CandleRow key={`${candle.time}-${index}`} candle={candle} decimals={decimals} locale={locale} />
+                  <CandleRow key={`${candle.time}-${index}`} candle={candle} decimals={decimals} locale={locale} timeZone={timeZone} />
                 ))}
               </tbody>
             </table>
@@ -93,7 +95,7 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
                 recentSignals.map((signal, index) => (
                   <tr key={`${signal.time}-${signal.kind}-${index}`}>
                     <td>
-                      <ChartTime value={signal.time} locale={locale} />
+                      <ChartTime value={signal.time} locale={locale} timeZone={timeZone} />
                     </td>
                     <td>{chartTerm(locale, signal.kind)}</td>
                     <td>{formatPrice(signal.price, decimals)}</td>
@@ -124,10 +126,10 @@ export function ChartDataPanel({ candles, decimals, focusedIndex, signals = [], 
                 recentTrades.map((trade, index) => (
                   <tr key={`${trade.entryTime}-${trade.exitTime}-${index}`}>
                     <td>
-                      <ChartTime value={trade.entryTime} locale={locale} />
+                      <ChartTime value={trade.entryTime} locale={locale} timeZone={timeZone} />
                     </td>
                     <td>
-                      <ChartTime value={trade.exitTime} locale={locale} />
+                      <ChartTime value={trade.exitTime} locale={locale} timeZone={timeZone} />
                     </td>
                     <td>{chartTerm(locale, trade.direction)}</td>
                     <td>{formatPrice(trade.entryPrice, decimals)}</td>
@@ -159,11 +161,11 @@ function CandleHeaders({ locale }: { locale: Locale }) {
   );
 }
 
-function CandleRow({ candle, decimals, locale }: { candle: Candle; decimals: number; locale: Locale }) {
+function CandleRow({ candle, decimals, locale, timeZone = "local" }: { candle: Candle; decimals: number; locale: Locale; timeZone?: ChartTimeZone }) {
   return (
     <tr>
       <td>
-        <ChartTime value={candle.time} locale={locale} />
+        <ChartTime value={candle.time} locale={locale} timeZone={timeZone} />
       </td>
       <td>{formatPrice(candle.open, decimals)}</td>
       <td>{formatPrice(candle.high, decimals)}</td>
@@ -174,9 +176,9 @@ function CandleRow({ candle, decimals, locale }: { candle: Candle; decimals: num
   );
 }
 
-function ChartTime({ value, locale }: { value: number; locale: Locale }) {
+function ChartTime({ value, locale, timeZone }: { value: number; locale: Locale; timeZone: ChartTimeZone }) {
   const date = new Date(value);
-  return <time dateTime={date.toISOString()}>{date.toLocaleString(intlLocale(locale), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time>;
+  return <time dateTime={date.toISOString()}>{createChartTimeFormatter(locale, timeZone).dateTime(value)}</time>;
 }
 
 function EmptyRow({ columns, children }: { columns: number; children: string }) {

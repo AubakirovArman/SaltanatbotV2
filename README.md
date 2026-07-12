@@ -53,6 +53,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - Confirmed HH/LH/HL/LL market structure with close-based BOS/CHOCH, adjustable swing strength and optional fully mitigated three-candle FVG zones on every timeframe.
 - One-click Anchored VWAP drawings with editable/persisted anchors, a ±1σ value area, ±1σ/±2σ bands and a semantic current-value legend.
 - DST-aware Asia, London and New York session high/low boxes with independent accessible toggles on precise intraday charts.
+- Every chart pane can display exchange UTC, browser-local time or a selected IANA city zone; axis, crosshair, OHLC tables and overlays stay consistent across DST and the choice survives workspace export/reload.
 - Indicators: **SMA, EMA, Bollinger, RSI, MACD, VWAP, ATR, Stochastic, OBV** and arrow **signal** overlays (e.g. EMA crossovers).
 - **Price alerts** (browser notification + sound), **symbol compare** overlay, crosshair with OHLC legend, persistent drawing tools, a zero-persistence **Shift-drag ruler** for price/%/bars/time, and **lazy-loaded history** on scroll-back.
 - Independent right-axis price scaling supports wheel/trackpad, vertical drag, keyboard arrows, `Home` and double-click reset without changing the visible candle range.
@@ -150,7 +151,7 @@ docker compose up --build          # open → http://localhost:4180
 
 The access token is printed in the container logs (`docker compose logs`), or set `AUTH_TOKEN` in your environment first. Pass `DEMO_MODE=1` for a paper-only public demo.
 
-**Tests & CI:** `npm test` (Vitest — command parser, paper engine, backtest honesty, evaluator parity), `npm run lint`, `npm run check`, the complete production-build Chromium suite (`npm run test:e2e`), tagged Firefox critical journeys (`npm run test:e2e:firefox-smoke`) and three deterministic visual baselines (`npm run test:visual`) run in [CI](.github/workflows/ci.yml) on every push and pull request. The scheduled and release-tagged [browser matrix](.github/workflows/browser-matrix.yml) runs all production journeys on Chromium, Firefox and WebKit. Failed browser runs retain their Playwright report, trace, screenshots and video. Authenticated exchange release checks are isolated in the manually dispatched, protected [testnet smoke workflow](.github/workflows/exchange-testnet-smoke.yml).
+**Tests & CI:** `npm test` (Vitest — command parser, paper engine, backtest honesty, evaluator parity), `npm run lint`, `npm run check`, the complete production-build Chromium suite (`npm run test:e2e`), tagged Firefox critical journeys (`npm run test:e2e:firefox-smoke`) and four deterministic visual baselines (`npm run test:visual`) run in [CI](.github/workflows/ci.yml) on every push and pull request. The scheduled and release-tagged [browser matrix](.github/workflows/browser-matrix.yml) runs all production journeys on Chromium, Firefox and WebKit. Failed browser runs retain their Playwright report, trace, screenshots and video. Authenticated exchange release checks are isolated in the manually dispatched, protected [testnet smoke workflow](.github/workflows/exchange-testnet-smoke.yml).
 
 ---
 

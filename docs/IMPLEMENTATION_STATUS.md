@@ -629,6 +629,14 @@ Current: 44 scenarios implemented; the critical-flow and accessibility checklist
 - [x] Add documentation link/example checks to CI.
 - [x] Add nightly/alpha/beta/stable release channels, SPDX SBOMs, SHA-256 checksums and GitHub/Sigstore-signed provenance/SBOM attestations.
 
+### Per-pane timezone axis
+
+- [x] Add exchange UTC, local and curated IANA city zones to every chart pane through a labelled native select.
+- [x] Apply one cached locale/DST-aware formatter to Canvas ticks/crosshair and the matching DOM HUD, tables, AVWAP and flow-alert timestamps.
+- [x] Keep candle time, linked ranges, regional-session membership and strategy execution absolute and unchanged.
+- [x] Version automatic sessions at v5 and named workspaces at schema v7, preserving local display for legacy state and exchange UTC for new panes.
+- [x] Cover DST transitions, zone validation, EN/RU/KK control semantics, workspace/session round trips and independent 2×2 reload behavior.
+
 ## Quality gates for every following commit
 
 Required unless the commit only changes prose:

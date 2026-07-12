@@ -25,6 +25,7 @@ SaltanatbotV2 — сауда идеяларын зерттеуге және ав
 - `Shift + drag` жылдам сызғышы баға/пайыз өзгерісін, candle санын және уақытты көрсетеді, бірақ уақытша нәтижені сақталған drawing-терге қоспайды;
 - оң жақ price axis wheel/trackpad, vertical drag және keyboard арқылы time range-ке тәуелсіз масштабталады; `Home` не double-click AUTO диапазонды қайтарады;
 - бір, екі және төрт chart layout symbol, timeframe, crosshair және көрінетін UTC time range-ті бөлек байланыстырып, әртүрлі market zoom/pan салыстыруын синхронды ұстайды;
+- әр pane exchange UTC, browser local time немесе таңдалған IANA zone-ды бөлек көрсетеді; axis, crosshair, OHLC table және legend DST-ті бірдей есептейді, ал таңдау session мен workspace-та сақталады;
 - stacked imbalance, potential absorption, CVD spike және large print үшін жергілікті сақталатын in-chart alert-тер, optional sound және desktop notification;
 - Binance және Bybit үшін REST тарихы мен WebSocket жаңартулары;
 - индикаторлар мен стратегияларға арналған Blockly визуалды құрастырушысы;

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { Candle, Timeframe } from "../../types";
 import type { Viewport, VolumeProfileSnapshot } from "../../chart/types";
-import { localeTag, type Locale } from "../../i18n";
+import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
 import { formatVolume } from "./drawingInteraction";
+import { createChartTimeFormatter, type ChartTimeZone } from "../../chart/timeAxis";
 
 interface ChartPriceHudProps {
   candle?: Candle;
@@ -11,11 +12,12 @@ interface ChartPriceHudProps {
   timeframe: Timeframe;
   decimals: number;
   locale: Locale;
+  timeZone: ChartTimeZone;
   viewport?: Viewport;
   crosshair?: { x: number; y: number };
 }
 
-export function ChartPriceHud({ candle, latest, timeframe, decimals, locale, viewport, crosshair }: ChartPriceHudProps) {
+export function ChartPriceHud({ candle, latest, timeframe, decimals, locale, timeZone, viewport, crosshair }: ChartPriceHudProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -38,6 +40,7 @@ export function ChartPriceHud({ candle, latest, timeframe, decimals, locale, vie
     const midpoint = (viewport.plot.left + viewport.plot.right) / 2;
     return x > midpoint ? { right: 78, top: y } : { left: Math.max(12, x + 18), top: y };
   }, [crosshair, viewport]);
+  const timeFormatter = useMemo(() => createChartTimeFormatter(locale, timeZone), [locale, timeZone]);
 
   if (!latest) return null;
   const up = latest.close >= latest.open;
@@ -56,7 +59,7 @@ export function ChartPriceHud({ candle, latest, timeframe, decimals, locale, vie
       {candle && crosshair && cardStyle && (
         <div className="crosshair-hud" style={cardStyle} aria-hidden="true">
           <header>
-            <strong>{new Intl.DateTimeFormat(localeTag(locale), { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(candle.time)}</strong>
+            <strong>{timeFormatter.dateTime(candle.time)}</strong>
             <span className={change >= 0 ? "up" : "down"}>{change >= 0 ? "+" : ""}{changePct.toFixed(2)}%</span>
           </header>
           <dl>

@@ -330,6 +330,8 @@ export default function App() {
               instrument={instrument}
               timeframe={timeframe}
               locale={locale}
+              timeZone={shell.charts[0]?.timeZone}
+              onTimeZoneChange={(timeZone) => shell.updateChart(shell.charts[0]?.id ?? "chart-1", { timeZone })}
               dataExchange={cryptoExchange}
               indicators={indicators}
               onIndicatorsChange={setIndicators}

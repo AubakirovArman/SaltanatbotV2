@@ -29,6 +29,8 @@ import { PriceAxisControl } from "./chartCanvas/PriceAxisControl";
 import { QuickMeasureSummary } from "./chartCanvas/QuickMeasureSummary";
 import { StrategyChip } from "./chartCanvas/StrategyChip";
 import { usePersistentDrawings } from "./chartCanvas/usePersistentDrawings";
+import { TimeZoneControl } from "./chartCanvas/TimeZoneControl";
+import { normalizeChartTimeZone } from "../chart/timeAxis";
 
 const MAX_COMPARE = 3;
 
@@ -40,6 +42,8 @@ export function ChartCanvas({
   instrument,
   timeframe,
   locale,
+  timeZone,
+  onTimeZoneChange,
   dataExchange,
   indicators,
   onIndicatorsChange,
@@ -119,6 +123,7 @@ export function ChartCanvas({
   const [volumeProfile, setVolumeProfile] = useState<VolumeProfileSnapshot>();
   const chartDataSummaryId = useId();
   const priceRepresentation = usePriceRepresentationSettings(instrument.symbol, chartId);
+  const chartTimeZone = normalizeChartTimeZone(timeZone);
 
   const latest = candles.at(-1);
   const displayCandles = useMemo(() => preparePriceCandles(candles, chartType, instrument.decimals, priceRepresentation.settings), [candles, chartType, instrument.decimals, priceRepresentation.settings]);
@@ -225,6 +230,8 @@ export function ChartCanvas({
     displayCandles,
     chartType,
     decimals: instrument.decimals,
+    locale,
+    timeZone: chartTimeZone,
     symbol: instrument.symbol,
     view,
     indicators,
@@ -355,6 +362,7 @@ export function ChartCanvas({
           />
         )}
         <PriceRepresentationControl key={chartType} chartType={chartType} locale={locale} state={priceRepresentation} />
+        <TimeZoneControl chartId={chartId} locale={locale} value={chartTimeZone} onChange={onTimeZoneChange} />
         <button type="button" className="scale-toggle" aria-label={t("cyclePriceScale")} title={t("priceScale")} onClick={cyclePriceMode}>
           <span>{view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}</span>
           <small>{view.priceZoom === 1 ? "AUTO" : `${Math.round(view.priceZoom * 100)}%`}</small>
@@ -381,8 +389,8 @@ export function ChartCanvas({
         />
         <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
         <SessionLiquidityBadge state={sessionLiquidity} decimals={instrument.decimals} locale={locale} compact={compactChrome} />
-        <AnchoredVwapLegend drawings={drawings} candles={candles} decimals={instrument.decimals} locale={locale} />
-        <TradeFootprintLayer enabled={showTradeFootprint && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} candles={candles} viewportRef={viewportRef} renderKey={heatmapRenderKey} />
+        <AnchoredVwapLegend drawings={drawings} candles={candles} decimals={instrument.decimals} locale={locale} timeZone={chartTimeZone} />
+        <TradeFootprintLayer enabled={showTradeFootprint && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} timeZone={chartTimeZone} candles={candles} viewportRef={viewportRef} renderKey={heatmapRenderKey} />
         <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />
         <canvas ref={overlaysCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-overlays" aria-hidden="true" />
         <canvas
@@ -514,12 +522,13 @@ export function ChartCanvas({
           timeframe={timeframe}
           decimals={instrument.decimals}
           locale={locale}
+          timeZone={chartTimeZone}
           viewport={viewportRef.current}
           crosshair={quickMeasure ? undefined : view.crosshair}
         />
         <QuickMeasureSummary active={quickMeasureActive} decimals={instrument.decimals} locale={locale} measurement={quickMeasure} viewport={viewportRef.current} />
         {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay locale={locale} tables={tables} />}
-        <ChartDataPanel candles={displayCandles} decimals={instrument.decimals} focusedIndex={hoverIndex} signals={signals} trades={trades} symbol={instrument.symbol} timeframe={timeframe} locale={locale} summaryId={chartDataSummaryId} />
+        <ChartDataPanel candles={displayCandles} decimals={instrument.decimals} focusedIndex={hoverIndex} signals={signals} trades={trades} symbol={instrument.symbol} timeframe={timeframe} locale={locale} timeZone={chartTimeZone} summaryId={chartDataSummaryId} />
         {showDrawingObjects && (
           <DrawingObjectsPanel
             locale={locale}

@@ -1,11 +1,13 @@
 import { BellRing, Settings2, Trash2, X } from "lucide-react";
 import { ensureNotificationPermission, playAlertBeep } from "../../market/alerts";
 import type { MicrostructureAlertEvent, MicrostructureAlertSettings } from "../../chart/microstructureAlerts";
-import { localeTag, type Locale } from "../../i18n";
+import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
+import { createChartTimeFormatter, type ChartTimeZone } from "../../chart/timeAxis";
 
 export function TradeFlowAlertCenter({
   locale,
+  timeZone,
   settings,
   events,
   onSettingsChange,
@@ -13,6 +15,7 @@ export function TradeFlowAlertCenter({
   onClear
 }: {
   locale: Locale;
+  timeZone: ChartTimeZone;
   settings: MicrostructureAlertSettings;
   events: MicrostructureAlertEvent[];
   onSettingsChange: (patch: Partial<MicrostructureAlertSettings>) => void;
@@ -40,7 +43,7 @@ export function TradeFlowAlertCenter({
             return (
               <li key={event.id} className={event.side ?? ""}>
                 <span title={label}>{label}</span>
-                <time dateTime={new Date(event.time).toISOString()} title={new Date(event.time).toLocaleString()}>{formatTime(event.time, locale)}</time>
+                <time dateTime={new Date(event.time).toISOString()} title={createChartTimeFormatter(locale, timeZone).dateTime(event.time)}>{createChartTimeFormatter(locale, timeZone).time(event.time)}</time>
                 <button type="button" onClick={() => onDismiss(event.id)} aria-label={t("dismissFlowAlert")}>
                   <X size={10} aria-hidden="true" />
                 </button>
@@ -98,8 +101,4 @@ function eventText(event: MicrostructureAlertEvent, t: (key: Parameters<typeof s
 
 function formatNotional(value: number) {
   return Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1, style: "currency", currency: "USD" }).format(value);
-}
-
-function formatTime(value: number, locale: Locale) {
-  return new Intl.DateTimeFormat(localeTag(locale), { hour: "2-digit", minute: "2-digit" }).format(value);
 }

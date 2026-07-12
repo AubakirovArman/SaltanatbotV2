@@ -2,6 +2,7 @@ import type { Candle, ChartType, Timeframe } from "../types";
 import type { Anchor, DrawingObject } from "./drawings";
 import type { IndicatorConfig } from "./indicatorTypes";
 import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
+import type { ChartTimeZone } from "./timeAxis";
 import type { AnchoredVwapSeries } from "./anchoredVwap";
 import type { MarketSessionRange } from "./marketSessions";
 import type { MarketStructureSnapshot } from "./marketStructure";
@@ -95,6 +96,8 @@ export interface DrawChartOptions {
   displayCandles?: Candle[];
   chartType: ChartType;
   decimals: number;
+  locale?: import("../i18n").Locale;
+  timeZone?: ChartTimeZone;
   view: ChartView;
   indicators: IndicatorConfig[];
   drawings: DrawingObject[];

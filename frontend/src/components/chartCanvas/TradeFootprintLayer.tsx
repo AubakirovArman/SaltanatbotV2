@@ -13,6 +13,7 @@ import { prepareCanvasContext, resizeCanvasToEntry } from "../../chart/canvasDen
 import { playAlertBeep, showSystemNotification } from "../../market/alerts";
 import type { Candle, DataExchange, TradeFlowStatus, TradeFlowStreamMessage, TradeFlowTrade } from "../../types";
 import { TradeFlowAlertCenter } from "./TradeFlowAlertCenter";
+import type { ChartTimeZone } from "../../chart/timeAxis";
 
 const RETENTION_MS = 30 * 60_000;
 const MAX_TRADES = 20_000;
@@ -36,6 +37,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   symbol,
   exchange,
   locale,
+  timeZone,
   candles,
   viewportRef,
   renderKey
@@ -44,6 +46,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   symbol: string;
   exchange: DataExchange;
   locale: Locale;
+  timeZone: ChartTimeZone;
   candles: Candle[];
   viewportRef: { current: Viewport | undefined };
   renderKey: string;
@@ -300,6 +303,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
       </div>
       <TradeFlowAlertCenter
         locale={locale}
+        timeZone={timeZone}
         settings={alertSettings}
         events={alertEvents}
         onSettingsChange={(patch) => setAlertSettings((current) => ({ ...current, ...patch }))}

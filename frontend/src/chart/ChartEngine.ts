@@ -44,6 +44,7 @@ import { buildVolumeProfile } from "./volumeProfile";
 import { calculateDrawingAvwaps } from "./anchoredVwap";
 import { preparePriceCandles } from "./priceRepresentation";
 import type { ChartShapes, DrawChartOptions, PlotArea, PriceMode, PriceScale, Viewport } from "./types";
+import { createChartTimeFormatter } from "./timeAxis";
 
 let theme = {
   background: "#0b0d10",
@@ -164,7 +165,7 @@ export function drawChartBackground(ctx: CanvasRenderingContext2D, plan: ChartRe
     return;
   }
   drawGrid(ctx, plan.plot, plan.viewport.scale, decimals, theme);
-  drawTimeAxis(ctx, plan.viewport, theme);
+  drawTimeAxis(ctx, plan.viewport, theme, createChartTimeFormatter(plan.input.locale ?? "en", plan.input.timeZone ?? "local"));
 }
 
 export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRenderPlan, clear = true) {
@@ -281,7 +282,7 @@ export function drawChart(options: DrawChartOptions) {
   drawChartIndicators(ctx, plan, false);
   drawChartOverlays(ctx, plan, false);
   if (!plan.empty && input.view.crosshair) {
-    drawCrosshair(ctx, plan.plot, plan.viewport, input.view.crosshair, input.decimals, theme);
+    drawCrosshair(ctx, plan.plot, plan.viewport, input.view.crosshair, input.decimals, theme, createChartTimeFormatter(input.locale ?? "en", input.timeZone ?? "local"));
   }
 }
 
@@ -293,10 +294,12 @@ export function drawChartInteraction(options: {
   viewport?: Viewport;
   crosshair?: { x: number; y: number };
   decimals: number;
+  locale?: import("../i18n").Locale;
+  timeZone?: import("./timeAxis").ChartTimeZone;
 }) {
   options.ctx.clearRect(0, 0, options.width, options.height);
   if (options.viewport && options.crosshair) {
-    drawCrosshair(options.ctx, options.viewport.plot, options.viewport, options.crosshair, options.decimals, theme);
+    drawCrosshair(options.ctx, options.viewport.plot, options.viewport, options.crosshair, options.decimals, theme, createChartTimeFormatter(options.locale ?? "en", options.timeZone ?? "local"));
   }
 }
 

@@ -3,9 +3,10 @@ import { normalizePaneIndicatorOverrides, type PaneIndicatorOverride } from "../
 import { normalizeCompareOverlays } from "../chart/compareConfig";
 import type { CompareOverlayConfig } from "../chart/types";
 import type { ChartType, DataExchange, Timeframe } from "../types";
+import { DEFAULT_CHART_TIME_ZONE, LEGACY_CHART_TIME_ZONE, normalizeChartTimeZone, type ChartTimeZone } from "../chart/timeAxis";
 
 const WORKSPACES_KEY = "sbv2:workspaces";
-export const WORKSPACE_SCHEMA_VERSION = 6;
+export const WORKSPACE_SCHEMA_VERSION = 7;
 export const WORKSPACE_FILE_FORMAT = "saltanatbotv2.workspace";
 export const WORKSPACE_FILE_VERSION = 1;
 export const MAX_WORKSPACE_REVISIONS = 20;
@@ -17,6 +18,7 @@ export interface WorkspaceChart {
   symbol: string;
   timeframe: Timeframe;
   chartType: ChartType;
+  timeZone?: ChartTimeZone;
   linkChartType: boolean;
   linkGroup?: string;
   linkSymbol: boolean;
@@ -226,7 +228,7 @@ function normalizeWorkspace(value: unknown): Workspace | undefined {
   const savedAt = finiteNumber(item.savedAt, createdAt);
   const layout = normalizeLayout(item.layout);
   const charts = Array.isArray(item.charts)
-    ? item.charts.map((chart, index) => normalizeChart(chart, item.schemaVersion === WORKSPACE_SCHEMA_VERSION, index === 0)).filter((chart): chart is WorkspaceChart => chart !== undefined)
+    ? item.charts.map((chart, index) => normalizeChart(chart, item.schemaVersion === WORKSPACE_SCHEMA_VERSION, index === 0, item.schemaVersion === WORKSPACE_SCHEMA_VERSION ? DEFAULT_CHART_TIME_ZONE : LEGACY_CHART_TIME_ZONE)).filter((chart): chart is WorkspaceChart => chart !== undefined)
     : [];
   const base: Workspace = {
     schemaVersion: WORKSPACE_SCHEMA_VERSION,
@@ -244,7 +246,7 @@ function normalizeWorkspace(value: unknown): Workspace | undefined {
     createdAt,
     updatedAt: finiteNumber(item.updatedAt, savedAt),
     layout,
-    charts: charts.length ? charts : [defaultChart(item.symbol, item.timeframe, item.chartType)],
+    charts: charts.length ? charts : [defaultChart(item.symbol, item.timeframe, item.chartType, item.schemaVersion === WORKSPACE_SCHEMA_VERSION ? DEFAULT_CHART_TIME_ZONE : LEGACY_CHART_TIME_ZONE)],
     history: []
   };
   base.history = Array.isArray(item.history)
@@ -257,7 +259,7 @@ function normalizeRevision(value: unknown, fallback: Workspace): WorkspaceRevisi
   if (!value || typeof value !== "object") return undefined;
   const item = value as Partial<WorkspaceRevision>;
   if (typeof item.symbol !== "string" || typeof item.timeframe !== "string" || typeof item.chartType !== "string") return undefined;
-  const charts = Array.isArray(item.charts) ? item.charts.map((chart, index) => normalizeChart(chart, false, index === 0)).filter((chart): chart is WorkspaceChart => chart !== undefined) : [];
+  const charts = Array.isArray(item.charts) ? item.charts.map((chart, index) => normalizeChart(chart, false, index === 0, LEGACY_CHART_TIME_ZONE)).filter((chart): chart is WorkspaceChart => chart !== undefined) : [];
   return {
     revision: Math.max(1, finiteNumber(item.revision, 1)),
     savedAt: finiteNumber(item.savedAt, fallback.createdAt),
@@ -269,7 +271,7 @@ function normalizeRevision(value: unknown, fallback: Workspace): WorkspaceRevisi
     compareOverlays: normalizeCompareOverlays(item.compareOverlays, item.timeframe, item.chartType),
     theme: item.theme === "light" ? "light" : "dark",
     layout: normalizeLayout(item.layout),
-    charts: charts.length ? charts : [defaultChart(item.symbol, item.timeframe, item.chartType)]
+    charts: charts.length ? charts : [defaultChart(item.symbol, item.timeframe, item.chartType, LEGACY_CHART_TIME_ZONE)]
   };
 }
 
@@ -284,7 +286,7 @@ function normalizeLayout(value?: Partial<WorkspaceLayout>): WorkspaceLayout {
   };
 }
 
-function normalizeChart(value: unknown, missingLinkChartType: boolean, primary: boolean): WorkspaceChart | undefined {
+function normalizeChart(value: unknown, missingLinkChartType: boolean, primary: boolean, fallbackTimeZone: ChartTimeZone): WorkspaceChart | undefined {
   if (!value || typeof value !== "object") return undefined;
   const item = value as Partial<WorkspaceChart>;
   if (typeof item.id !== "string" || typeof item.symbol !== "string" || typeof item.timeframe !== "string" || typeof item.chartType !== "string") return undefined;
@@ -295,6 +297,7 @@ function normalizeChart(value: unknown, missingLinkChartType: boolean, primary: 
     symbol: item.symbol,
     timeframe: item.timeframe,
     chartType: item.chartType,
+    timeZone: normalizeChartTimeZone(item.timeZone, fallbackTimeZone),
     linkChartType: primary || (typeof item.linkChartType === "boolean" ? item.linkChartType : missingLinkChartType),
     linkGroup: typeof item.linkGroup === "string" ? item.linkGroup : undefined,
     linkSymbol: item.linkSymbol !== false,
@@ -308,8 +311,8 @@ function normalizeChart(value: unknown, missingLinkChartType: boolean, primary: 
   };
 }
 
-function defaultChart(symbol: string, timeframe: Timeframe, chartType: ChartType): WorkspaceChart {
-  return { id: "chart-1", symbol, timeframe, chartType, linkChartType: true, linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true };
+function defaultChart(symbol: string, timeframe: Timeframe, chartType: ChartType, timeZone = DEFAULT_CHART_TIME_ZONE): WorkspaceChart {
+  return { id: "chart-1", symbol, timeframe, chartType, timeZone, linkChartType: true, linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true };
 }
 
 function toRevision(workspace: Workspace): WorkspaceRevision {

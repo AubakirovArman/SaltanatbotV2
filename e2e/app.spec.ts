@@ -637,6 +637,8 @@ test("restores the last four-chart session after reload without a named workspac
   await second.locator('[data-link-field="linkCrosshair"]').click();
   await third.getByRole("combobox", { name: "Symbol · 3" }).selectOption("SOLUSDT");
   await fourth.getByRole("combobox", { name: "Symbol · 4" }).selectOption("EURUSD");
+  await second.getByLabel("Time zone").selectOption("Asia/Almaty");
+  await third.getByLabel("Time zone").selectOption("America/New_York");
   await second.locator(".pane-maximize").click();
   await expect(second.locator(".chart-indicator-overlay")).toBeVisible();
   await second.getByRole("button", { name: "Remove SMA" }).click();
@@ -647,12 +649,12 @@ test("restores the last four-chart session after reload without a named workspac
   await expect(second.locator(".compare-chip").filter({ hasText: "SOLUSDT" })).toBeVisible();
 
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null"))).toMatchObject({
-    version: 4,
+    version: 5,
     preset: "grid-4",
     charts: [
       { id: "chart-1", symbol: "BTCUSDT" },
-      { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", linkTimeframe: false, linkChartType: true, linkCrosshair: false, linkIndicators: false },
-      { id: "chart-3", symbol: "SOLUSDT" },
+      { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", timeZone: "Asia/Almaty", linkTimeframe: false, linkChartType: true, linkCrosshair: false, linkIndicators: false },
+      { id: "chart-3", symbol: "SOLUSDT", timeZone: "America/New_York" },
       { id: "chart-4", symbol: "EURUSD" }
     ]
   });
@@ -674,6 +676,8 @@ test("restores the last four-chart session after reload without a named workspac
   await expect(page.getByRole("combobox", { name: "Timeframe · 2" })).toHaveValue("5m");
   await expect(page.getByRole("combobox", { name: "Symbol · 3" })).toHaveValue("SOLUSDT");
   await expect(page.getByRole("combobox", { name: "Symbol · 4" })).toHaveValue("EURUSD");
+  await expect(page.locator(".multi-chart-pane.secondary").nth(0).getByLabel("Time zone")).toHaveValue("Asia/Almaty");
+  await expect(page.locator(".multi-chart-pane.secondary").nth(1).getByLabel("Time zone")).toHaveValue("America/New_York");
   const restoredSecond = page.locator(".multi-chart-pane.secondary").first();
   await expect(restoredSecond.locator('[data-link-field="linkCrosshair"]')).toHaveAttribute("aria-pressed", "false");
   const indicatorLink = restoredSecond.locator('[data-link-field="linkIndicators"]');

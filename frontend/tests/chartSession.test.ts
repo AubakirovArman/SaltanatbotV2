@@ -33,15 +33,15 @@ describe("last chart session", () => {
       version: LAST_CHART_SESSION_VERSION,
       savedAt: 0,
       preset: "single",
-      charts: [expect.objectContaining({ id: "chart-1", symbol: "BTCUSDT", linkSymbol: true })]
+      charts: [expect.objectContaining({ id: "chart-1", symbol: "BTCUSDT", timeZone: "exchange", linkSymbol: true })]
     });
   });
 
   it("round-trips four independent panes with deterministic ids", () => {
     saveLastChartSession("grid-4", [
       chart("primary", "BTCUSDT"),
-      chart("duplicate", "ETHUSDT", { timeframe: "5m", linkCrosshair: false, linkIndicators: false, indicatorOverrides: [{ id: "sma-20", enabled: false, period: 55 }] }),
-      chart("duplicate", "SOLUSDT", { chartType: "line", linkChartType: false, linkCompare: false, compareOverlays: [{ id: "ETHUSDT", symbol: "ETHUSDT", timeframe: "15m", chartType: "area", color: "#abcdef", upColor: "#23c97a", downColor: "#ef5350" }] }),
+      chart("duplicate", "ETHUSDT", { timeframe: "5m", timeZone: "Asia/Almaty", linkCrosshair: false, linkIndicators: false, indicatorOverrides: [{ id: "sma-20", enabled: false, period: 55 }] }),
+      chart("duplicate", "SOLUSDT", { chartType: "line", timeZone: "America/New_York", linkChartType: false, linkCompare: false, compareOverlays: [{ id: "ETHUSDT", symbol: "ETHUSDT", timeframe: "15m", chartType: "area", color: "#abcdef", upColor: "#23c97a", downColor: "#ef5350" }] }),
       chart("other", "EURUSD", { linkTimeframe: false })
     ], 123);
 
@@ -51,8 +51,8 @@ describe("last chart session", () => {
       preset: "grid-4",
       charts: [
         { id: "chart-1", symbol: "BTCUSDT", linkSymbol: true },
-        { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", linkSymbol: false, linkChartType: true, linkCrosshair: false, linkIndicators: false, indicatorOverrides: [{ id: "sma-20", enabled: false, period: 55 }] },
-        { id: "chart-3", symbol: "SOLUSDT", chartType: "line", linkChartType: false, linkCompare: false, compareOverlays: [{ symbol: "ETHUSDT", timeframe: "15m", chartType: "area" }] },
+        { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", timeZone: "Asia/Almaty", linkSymbol: false, linkChartType: true, linkCrosshair: false, linkIndicators: false, indicatorOverrides: [{ id: "sma-20", enabled: false, period: 55 }] },
+        { id: "chart-3", symbol: "SOLUSDT", chartType: "line", timeZone: "America/New_York", linkChartType: false, linkCompare: false, compareOverlays: [{ symbol: "ETHUSDT", timeframe: "15m", chartType: "area" }] },
         { id: "chart-4", symbol: "EURUSD", linkTimeframe: false }
       ]
     });
@@ -70,7 +70,7 @@ describe("last chart session", () => {
     const restored = loadLastChartSession(fallback);
     expect(restored.preset).toBe("grid-4");
     expect(restored.charts).toHaveLength(4);
-    expect(restored.charts[0]).toMatchObject({ id: "chart-1", symbol: "ETHUSDT", timeframe: "4h", chartType: "line", linkSymbol: true, linkChartType: true });
+    expect(restored.charts[0]).toMatchObject({ id: "chart-1", symbol: "ETHUSDT", timeframe: "4h", chartType: "line", timeZone: "local", linkSymbol: true, linkChartType: true });
     expect(restored.charts[1]).toMatchObject({ id: "chart-2", symbol: "BTCUSDT", timeframe: "1m", chartType: "candles", linkSymbol: false, linkChartType: false, linkIndicators: true, linkCompare: true });
     expect(restored.charts[2]).toMatchObject({ id: "chart-3", linkChartType: true });
     expect(restored.charts[3].id).toBe("chart-4");

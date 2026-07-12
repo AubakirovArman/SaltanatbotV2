@@ -2,9 +2,10 @@ import type { ChartType, Timeframe } from "../types";
 import type { ChartLayoutPreset, WorkspaceChart } from "../workspace/workspaces";
 import { normalizePaneIndicatorOverrides } from "../chart/paneIndicators";
 import { normalizeCompareOverlays } from "../chart/compareConfig";
+import { DEFAULT_CHART_TIME_ZONE, LEGACY_CHART_TIME_ZONE, normalizeChartTimeZone } from "../chart/timeAxis";
 
 export const LAST_CHART_SESSION_KEY = "sbv2:last-chart-session:v1";
-export const LAST_CHART_SESSION_VERSION = 4;
+export const LAST_CHART_SESSION_VERSION = 5;
 const MAX_SESSION_BYTES = 64_000;
 const TIMEFRAMES: Timeframe[] = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"];
 const CHART_TYPES: ChartType[] = ["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko", "linebreak", "kagi", "pnf"];
@@ -29,11 +30,12 @@ export function loadLastChartSession(fallback: ChartSessionFallback): LastChartS
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return defaultSession(fallback);
     const item = parsed as Record<string, unknown>;
-    if (item.version !== undefined && item.version !== 1 && item.version !== 2 && item.version !== 3 && item.version !== LAST_CHART_SESSION_VERSION) return defaultSession(fallback);
+    if (item.version !== undefined && item.version !== 1 && item.version !== 2 && item.version !== 3 && item.version !== 4 && item.version !== LAST_CHART_SESSION_VERSION) return defaultSession(fallback);
     const preset = normalizePreset(item.preset ?? item.layoutPreset ?? (item.layout as Record<string, unknown> | undefined)?.preset);
     const count = chartCount(preset);
     const source = Array.isArray(item.charts) ? item.charts : [];
-    const charts = Array.from({ length: count }, (_, index) => normalizeChart(source[index], index, fallback));
+    const fallbackTimeZone = item.version === LAST_CHART_SESSION_VERSION ? DEFAULT_CHART_TIME_ZONE : LEGACY_CHART_TIME_ZONE;
+    const charts = Array.from({ length: count }, (_, index) => normalizeChart(source[index], index, fallback, fallbackTimeZone));
     return { version: LAST_CHART_SESSION_VERSION, savedAt: finiteNumber(item.savedAt, 0), preset, charts };
   } catch {
     return defaultSession(fallback);
@@ -57,7 +59,7 @@ export function saveLastChartSession(preset: ChartLayoutPreset, charts: Workspac
 }
 
 function defaultSession(fallback: ChartSessionFallback): LastChartSession {
-  return { version: LAST_CHART_SESSION_VERSION, savedAt: 0, preset: "single", charts: [normalizeChart(undefined, 0, fallback)] };
+  return { version: LAST_CHART_SESSION_VERSION, savedAt: 0, preset: "single", charts: [normalizeChart(undefined, 0, fallback, DEFAULT_CHART_TIME_ZONE)] };
 }
 
 function normalizePreset(value: unknown): ChartLayoutPreset {
@@ -68,7 +70,7 @@ function chartCount(preset: ChartLayoutPreset): number {
   return preset === "single" ? 1 : preset === "grid-4" ? 4 : 2;
 }
 
-function normalizeChart(value: unknown, index: number, fallback: ChartSessionFallback): WorkspaceChart {
+function normalizeChart(value: unknown, index: number, fallback: ChartSessionFallback, fallbackTimeZone: import("../chart/timeAxis").ChartTimeZone): WorkspaceChart {
   const item = value && typeof value === "object" ? value as Partial<WorkspaceChart> : {};
   const linkIndicators = item.linkIndicators !== false;
   const linkCompare = item.linkCompare !== false;
@@ -79,6 +81,7 @@ function normalizeChart(value: unknown, index: number, fallback: ChartSessionFal
     symbol: validSymbol(item.symbol) ? item.symbol : fallback.symbol,
     timeframe,
     chartType,
+    timeZone: normalizeChartTimeZone(item.timeZone, fallbackTimeZone),
     linkChartType: index === 0 || (typeof item.linkChartType === "boolean" ? item.linkChartType : value === undefined),
     linkGroup: "primary",
     linkSymbol: index === 0 ? true : item.linkSymbol === true,

@@ -301,4 +301,13 @@ export const kkShell: Record<ShellMessageKey, string> = {
   metric: "Метрика",
   inputs: "Кіріс",
   closeInputs: "Кірістерді жабу",
+  timeZone: "Уақыт белдеуі",
+  timeZoneExchange: "Биржа (UTC)",
+  timeZoneLocal: "Жергілікті",
+  timeZoneAlmaty: "Алматы",
+  timeZoneNewYork: "Нью-Йорк",
+  timeZoneLondon: "Лондон",
+  timeZoneBerlin: "Берлин",
+  timeZoneTokyo: "Токио",
+  timeZoneHongKong: "Гонконг",
 };

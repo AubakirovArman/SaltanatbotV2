@@ -454,6 +454,48 @@
   min-inline-size: 46px;
 }
 
+.time-zone-control {
+  position: absolute;
+  z-index: 7;
+  inset-block-end: 4px;
+  inset-inline-start: 10px;
+  display: flex;
+  align-items: center;
+  min-block-size: 24px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 88%, transparent);
+  color: var(--muted);
+  font: 600 var(--fs-xs) var(--font-mono);
+}
+
+.time-zone-control > span {
+  padding-inline: 7px 3px;
+  white-space: nowrap;
+}
+
+.time-zone-control select {
+  min-block-size: 22px;
+  max-inline-size: 9rem;
+  border: 0;
+  border-inline-start: 1px solid var(--line-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding-inline: 5px 20px;
+  background-color: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.time-zone-control:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* Compact panes reserve the bottom row for scale/construction controls and the active badge. */
+.compact-chart .time-zone-control { inset-block-end: 40px; }
+
 .price-representation-control {
   position: absolute;
   inset-block-end: 4px;
@@ -529,6 +571,8 @@
   .price-representation-control summary,
   .price-representation-input input,
   .price-representation-panel button,
+  .time-zone-control,
+  .time-zone-control select,
   .scale-toggle,
   .zoom-reset { min-block-size: 48px; }
 

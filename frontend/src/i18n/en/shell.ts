@@ -290,5 +290,14 @@ export const enShell = {
   showStatistics: "Show statistics",
   metric: "Metric",
   inputs: "Inputs",
-  closeInputs: "Close inputs"
+  closeInputs: "Close inputs",
+  timeZone: "Time zone",
+  timeZoneExchange: "Exchange (UTC)",
+  timeZoneLocal: "Local",
+  timeZoneAlmaty: "Almaty",
+  timeZoneNewYork: "New York",
+  timeZoneLondon: "London",
+  timeZoneBerlin: "Berlin",
+  timeZoneTokyo: "Tokyo",
+  timeZoneHongKong: "Hong Kong"
 } as const;

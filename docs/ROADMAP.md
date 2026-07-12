@@ -16,6 +16,7 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 - Versioned Strategy Studio, shared evaluator/backtest cores, reproducible reports, replay, optimizer and walk-forward.
 - Durable order/fill/position/run lifecycle, private streams plus polling, recovery and bot-attributed spot inventory.
 - Professional multi-chart workspaces, pane/scales, drawing management, accessible tables and responsive monitoring.
+- Per-pane IANA time-zone axes with DST-safe chart labels and versioned workspace/session persistence.
 - Scoped session security, encrypted keys, audit logs, verified backup/restore and fail-closed demo mode.
 - Complete EN/RU/KK UI and user documentation, public Pages, release artifacts, SBOM, checksums and attestations.
 - Enforced TypeScript, Biome, docs, architecture, unit/integration, build, performance and Playwright gates.
@@ -42,7 +43,6 @@ These are not silently marked complete and are not included in the P0/P1/P2 repo
 | Hosted read-only demo | Public deployment of the existing non-mutating demo mode | M, infrastructure |
 | PWA follow-on | The installable network-truth-safe shell is delivered; richer OS integration and optional offline local research artifacts remain | M |
 | More locale and RTL coverage | Formatting, long-string and bidirectional layout conformance | L |
-| Timezone/session axis | Exchange sessions, timezone-aware labels and calendars | M |
 | AI-assisted strategy drafts | Optional BYO-model natural language to validated blocks/IR | M |
 | Collaboration | Opt-in review/sharing service separated from local-first core | XL |
 | Advanced execution analytics | TCA, slippage attribution and venue-quality comparisons | L |

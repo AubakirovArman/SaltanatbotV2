@@ -224,6 +224,8 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
         instrument={instrument}
         timeframe={chart.timeframe}
         locale={locale}
+        timeZone={chart.timeZone}
+        onTimeZoneChange={(timeZone) => onUpdate(chart.id, { timeZone })}
         dataExchange={exchange}
         indicators={paneIndicators}
         onIndicatorsChange={(next) => onUpdate(chart.id, { linkIndicators: false, indicatorOverrides: capturePaneIndicatorOverrides(next) })}
