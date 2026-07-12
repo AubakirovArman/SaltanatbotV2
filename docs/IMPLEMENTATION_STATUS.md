@@ -10,6 +10,18 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Shared-capital portfolio backtests — 2026-07-12
+
+- [x] Run one compiled strategy across two to six unique markets over their common candle range.
+- [x] Replay candidate fills chronologically through one mark-to-market equity pool.
+- [x] Enforce concurrent-position, total gross-exposure, per-position and minimum-allocation limits.
+- [x] Report accepted/rejected entries, funding, exposure, contribution and synchronized return correlation.
+- [x] Export a versioned research file and disclose the market-local signal-equity limitation of v1.
+- [x] Provide typed EN/RU/KK controls and semantic report tables.
+
+Verification covers the pure allocator, market-loading orchestration, localized semantic rendering
+and a production Chromium journey with axe checks.
+
 ### Complete Kazakh application locale — 2026-07-12
 
 - [x] Add compile-time-complete Kazakh catalogs for Chart, Strategy Studio, Pine/backtest and Trading.

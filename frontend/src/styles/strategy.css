@@ -854,6 +854,101 @@
   min-inline-size: 0;
 }
 
+.strategy-backtest-form,
+.backtest-settings,
+.portfolio-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.backtest-settings,
+.portfolio-controls {
+  min-inline-size: 0;
+  margin: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 8px;
+}
+
+.backtest-settings > legend,
+.portfolio-controls > legend {
+  padding-inline: 4px;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+}
+
+.portfolio-controls > .check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.portfolio-help,
+.portfolio-range {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.portfolio-market-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.portfolio-market-chip {
+  min-block-size: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 5px 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-soft);
+}
+
+.portfolio-market-chip small { color: var(--muted); font-weight: 600; }
+.portfolio-market-chip button {
+  inline-size: 24px;
+  block-size: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.portfolio-controls > label:not(.check),
+.portfolio-risk-grid label {
+  display: grid;
+  gap: 3px;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.portfolio-controls select,
+.portfolio-controls input[type="number"] {
+  inline-size: 100%;
+  block-size: var(--ctl-h);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding-inline: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--fs-sm) var(--font-mono);
+}
+
+.portfolio-risk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .config-row label.check {
   flex-direction: row;
   display: flex;
@@ -929,6 +1024,69 @@
   display: grid;
   gap: 12px;
 }
+
+.report-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.report-title-row h3,
+.report-title-row p { margin: 0; }
+.report-title-row p { color: var(--muted); font-size: var(--fs-sm); }
+.report-title-row button {
+  min-block-size: var(--ctl-h);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.portfolio-assumption {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.portfolio-assumption svg { flex: 0 0 auto; }
+.portfolio-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.portfolio-metrics dt { color: var(--dim); font-size: var(--fs-xs); }
+.portfolio-metrics dd { margin: 0; font: 600 var(--fs-md) var(--font-mono); }
+.portfolio-metrics .positive dd { color: var(--up); }
+.portfolio-metrics .negative dd { color: var(--down); }
+
+.portfolio-equity-chart { margin: 0; }
+.portfolio-equity-chart figcaption { margin-block-end: 4px; font-weight: 700; }
+.portfolio-equity-chart svg {
+  inline-size: 100%;
+  block-size: 132px;
+  display: block;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.portfolio-equity-line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.portfolio-equity-fill { fill: color-mix(in srgb, var(--accent) 12%, transparent); stroke: none; }
+
+.portfolio-table-grid { display: grid; gap: 10px; overflow-x: auto; }
+.portfolio-report table { inline-size: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+.portfolio-report caption { padding-block: 5px; color: var(--text); font-weight: 700; text-align: start; }
+.portfolio-report :is(th, td) { padding: 5px; border-block-end: 1px solid var(--line-soft); text-align: end; white-space: nowrap; }
+.portfolio-report :is(th, td):first-child { text-align: start; }
+.portfolio-report td { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.report-table-scroll { max-inline-size: 100%; overflow: auto; }
+.portfolio-report details > summary { cursor: pointer; font-weight: 700; }
 
 .metric-grid {
   display: grid;

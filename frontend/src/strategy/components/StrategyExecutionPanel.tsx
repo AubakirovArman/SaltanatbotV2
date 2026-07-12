@@ -1,4 +1,5 @@
 import { AlertTriangle, Code2, FileJson, Loader2, Play, Save, Share2, Workflow } from "lucide-react";
+import type { PortfolioBacktestConfig, PortfolioBacktestResult } from "@saltanatbotv2/backtest-core";
 import { useState, type Dispatch, type SetStateAction } from "react";
 import type { BacktestConfig, BacktestResult } from "../backtest";
 import { blockInspectorDoc } from "../blockCatalog";
@@ -8,11 +9,13 @@ import type { OptimizeResult, WalkForwardResult } from "../optimizer";
 import type { OptSpecState } from "../optimization/model";
 import type { CatalogResponse, Timeframe } from "../../types";
 import { BacktestReport } from "../../components/BacktestReport";
+import { PortfolioBacktestReport } from "../../components/PortfolioBacktestReport";
 import { localeTag, type Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
 import { OptimizePanel } from "./OptimizePanel";
 import { ArtifactVersionPanel } from "./ArtifactVersionPanel";
 import type { CompileDiagnostic } from "../compile";
+import { PortfolioControls } from "./PortfolioControls";
 
 const BAR_CHOICES = [500, 1000, 3000, 5000, 10000, 20000, 50000];
 
@@ -47,6 +50,12 @@ interface StrategyExecutionPanelProps {
   onBarsChange: (bars: number) => void;
   config: BacktestConfig;
   onConfigChange: Dispatch<SetStateAction<BacktestConfig>>;
+  portfolioEnabled: boolean;
+  onPortfolioEnabledChange: (enabled: boolean) => void;
+  portfolioSymbols: string[];
+  onPortfolioSymbolsChange: Dispatch<SetStateAction<string[]>>;
+  portfolioConfig: PortfolioBacktestConfig;
+  onPortfolioConfigChange: Dispatch<SetStateAction<PortfolioBacktestConfig>>;
   optSpec: OptSpecState | null;
   onOptSpecChange: Dispatch<SetStateAction<OptSpecState | null>>;
   onOptimize: () => void;
@@ -64,6 +73,7 @@ interface StrategyExecutionPanelProps {
   diagnostics: CompileDiagnostic[];
   onDiagnosticSelect: (blockId?: string) => void;
   result?: BacktestResult;
+  portfolioResult?: PortfolioBacktestResult;
   decimals: number;
   onShowOnChart?: () => void;
   onOpenTrading?: () => void;
@@ -143,9 +153,13 @@ export function StrategyExecutionPanel(props: StrategyExecutionPanelProps) {
 
       {stage === "backtest" && (
         <section className="studio-stage-panel">
-          <div className="backtest-controls"><button type="button" className="run-button" onClick={props.onRun} disabled={props.running || props.optimizing}>{props.running ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}{props.running ? t("loadingHistory") : t("runBacktest")}</button></div>
-          <MarketControls {...props} />
-          {props.result ? <BacktestReport locale={props.locale} result={props.result} decimals={props.decimals} config={props.config} onShowOnChart={props.onShowOnChart} /> : <p>{t("runBacktestHint")}</p>}
+          <form className="strategy-backtest-form" onSubmit={(event) => { event.preventDefault(); props.onRun(); }}>
+            <div className="backtest-controls"><button type="submit" className="run-button" disabled={props.running || props.optimizing}>{props.running ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}{props.running ? t("loadingHistory") : t("runBacktest")}</button></div>
+            <MarketControls {...props} />
+            <PortfolioControls locale={props.locale} enabled={props.portfolioEnabled} onEnabledChange={props.onPortfolioEnabledChange} primarySymbol={props.symbol} symbols={props.portfolioSymbols} onSymbolsChange={props.onPortfolioSymbolsChange} catalog={props.catalog} config={props.portfolioConfig} onConfigChange={props.onPortfolioConfigChange} />
+          </form>
+          {props.errors.length > 0 && <div className="strategy-warnings" role="alert">{props.errors.map((message) => <span key={message}><AlertTriangle size={12} aria-hidden="true" />{message}</span>)}</div>}
+          {props.portfolioResult ? <PortfolioBacktestReport locale={props.locale} result={props.portfolioResult} /> : props.result ? <BacktestReport locale={props.locale} result={props.result} decimals={props.decimals} config={props.config} onShowOnChart={props.onShowOnChart} /> : <p>{t("runBacktestHint")}</p>}
         </section>
       )}
 
@@ -191,24 +205,25 @@ function MarketControls(props: StrategyExecutionPanelProps) {
   const setConfig = props.onConfigChange;
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(props.locale, key);
   return (
-    <>
+    <fieldset className="backtest-settings">
+      <legend>{t("backtestSettings")}</legend>
       <div className="config-row">
-        <label>{t("market")}<select value={props.symbol} onChange={(event) => props.onSymbolChange(event.target.value)}>{(props.catalog?.instruments ?? []).map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol}</option>)}</select></label>
-        <label>{t("interval")}<select value={props.timeframe} onChange={(event) => props.onTimeframeChange(event.target.value as Timeframe)}>{(props.catalog?.timeframes ?? []).map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-        <label>{t("bars")}<select value={props.bars} onChange={(event) => props.onBarsChange(Number(event.target.value))}>{BAR_CHOICES.map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
+        <label>{t("market")}<select name="backtest-market" value={props.symbol} onChange={(event) => props.onSymbolChange(event.target.value)}>{(props.catalog?.instruments ?? []).map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol}</option>)}</select></label>
+        <label>{t("interval")}<select name="backtest-timeframe" value={props.timeframe} onChange={(event) => props.onTimeframeChange(event.target.value as Timeframe)}>{(props.catalog?.timeframes ?? []).map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+        <label>{t("bars")}<select name="backtest-bars" value={props.bars} onChange={(event) => props.onBarsChange(Number(event.target.value))}>{BAR_CHOICES.map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
       </div>
       <div className="config-row">
-        <label>{t("capital")}<input type="number" value={props.config.initialCapital} min={100} step={100} onChange={(event) => setConfig((current) => ({ ...current, initialCapital: Number(event.target.value) || 0 }))} /></label>
-        <label>{t("costPreset")}<select value={matchPreset(props.config.commissionPct, props.config.slippagePct ?? 0)} onChange={(event) => applyPreset(event.target.value, setConfig)}>{COST_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{t(preset.labelKey)}</option>)}</select></label>
-        <label className="check"><input type="checkbox" checked={props.config.allowShort} onChange={(event) => setConfig((current) => ({ ...current, allowShort: event.target.checked }))} />{t("shorts")}</label>
+        <label>{t("capital")}<input name="backtest-capital" type="number" value={props.config.initialCapital} min={100} step={100} onChange={(event) => setConfig((current) => ({ ...current, initialCapital: Number(event.target.value) || 0 }))} /></label>
+        <label>{t("costPreset")}<select name="backtest-cost-preset" value={matchPreset(props.config.commissionPct, props.config.slippagePct ?? 0)} onChange={(event) => applyPreset(event.target.value, setConfig)}>{COST_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{t(preset.labelKey)}</option>)}</select></label>
+        <label className="check"><input name="backtest-shorts" type="checkbox" checked={props.config.allowShort} onChange={(event) => setConfig((current) => ({ ...current, allowShort: event.target.checked }))} />{t("shorts")}</label>
       </div>
       <div className="config-row">
-        <label>{t("fee")}<input type="number" value={props.config.commissionPct} min={0} step={0.01} onChange={(event) => setConfig((current) => ({ ...current, commissionPct: Number(event.target.value) || 0 }))} /></label>
-        <label>{t("slippage")}<input type="number" value={props.config.slippagePct ?? 0} min={0} step={0.01} onChange={(event) => setConfig((current) => ({ ...current, slippagePct: Number(event.target.value) || 0 }))} /></label>
-        <label title={t("fundingHelp")}>{t("funding")}<input type="number" value={props.config.fundingRatePctPer8h ?? 0} step={0.001} onChange={(event) => setConfig((current) => ({ ...current, fundingRatePctPer8h: Number(event.target.value) || 0 }))} /></label>
-        <label>{t("fills")}<select value={props.config.fillTiming ?? "next_open"} onChange={(event) => setConfig((current) => ({ ...current, fillTiming: event.target.value as "next_open" | "same_close" }))}><option value="next_open">{t("nextOpen")}</option><option value="same_close">{t("sameClose")}</option></select></label>
+        <label>{t("fee")}<input name="backtest-fee" type="number" value={props.config.commissionPct} min={0} step={0.01} onChange={(event) => setConfig((current) => ({ ...current, commissionPct: Number(event.target.value) || 0 }))} /></label>
+        <label>{t("slippage")}<input name="backtest-slippage" type="number" value={props.config.slippagePct ?? 0} min={0} step={0.01} onChange={(event) => setConfig((current) => ({ ...current, slippagePct: Number(event.target.value) || 0 }))} /></label>
+        <label title={t("fundingHelp")}>{t("funding")}<input name="backtest-funding" type="number" value={props.config.fundingRatePctPer8h ?? 0} step={0.001} onChange={(event) => setConfig((current) => ({ ...current, fundingRatePctPer8h: Number(event.target.value) || 0 }))} /></label>
+        <label>{t("fills")}<select name="backtest-fills" value={props.config.fillTiming ?? "next_open"} onChange={(event) => setConfig((current) => ({ ...current, fillTiming: event.target.value as "next_open" | "same_close" }))}><option value="next_open">{t("nextOpen")}</option><option value="same_close">{t("sameClose")}</option></select></label>
       </div>
-    </>
+    </fieldset>
   );
 }
 

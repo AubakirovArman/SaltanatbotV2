@@ -1,4 +1,9 @@
 import type * as Blockly from "blockly/core";
+import {
+  DEFAULT_PORTFOLIO_BACKTEST_CONFIG,
+  type PortfolioBacktestConfig,
+  type PortfolioBacktestResult
+} from "@saltanatbotv2/backtest-core";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { runBacktest, previewStrategy, DEFAULT_CONFIG, type BacktestConfig, type BacktestResult, type PlotSeries, type ShapeOverlays } from "./backtest";
 import { loadCandleHistory } from "./candleHistory";
@@ -9,6 +14,7 @@ import { runOptimizeInWorker, runWalkForwardInWorker } from "./optimizerClient";
 import { buildSpec, initOptSpec, type OptSpecState } from "./optimization/model";
 import type { SecurityDataContext } from "./securityData";
 import { loadSecurityDataForIr } from "./securityLoader";
+import { runPortfolioResearch, uniqueSymbols } from "./portfolioResearch";
 import type { Candle, DataExchange, Timeframe } from "../types";
 
 interface UseStrategyResearchOptions {
@@ -28,10 +34,16 @@ interface UseStrategyResearchOptions {
 export function useStrategyResearch(options: UseStrategyResearchOptions) {
   const [errors, setErrors] = useState<string[]>([]);
   const [result, setResult] = useState<BacktestResult>();
+  const [portfolioResult, setPortfolioResult] = useState<PortfolioBacktestResult>();
   const [config, setConfig] = useState<BacktestConfig>(DEFAULT_CONFIG);
   const [symbol, setSymbol] = useState(options.initialSymbol);
   const [timeframe, setTimeframe] = useState<Timeframe>(options.initialTimeframe);
   const [bars, setBars] = useState(1_000);
+  const [portfolioEnabled, setPortfolioEnabled] = useState(false);
+  const [portfolioSymbols, setPortfolioSymbols] = useState<string[]>([]);
+  const [portfolioConfig, setPortfolioConfig] = useState<PortfolioBacktestConfig>({
+    ...DEFAULT_PORTFOLIO_BACKTEST_CONFIG
+  });
   const [running, setRunning] = useState(false);
   const [optOpen, setOptOpen] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
@@ -86,12 +98,31 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
     if (!compiled.ir || compiled.errors.length > 0) {
       setErrors(compiled.errors.length > 0 ? compiled.errors : ["Nothing to run."]);
       setResult(undefined);
+      setPortfolioResult(undefined);
       return;
     }
     const operation = beginOperation();
     setErrors([]);
     setRunning(true);
     try {
+      if (portfolioEnabled) {
+        const symbols = uniqueSymbols([symbol, ...portfolioSymbols]);
+        const portfolio = await runPortfolioResearch({
+          ir: compiled.ir,
+          symbols,
+          timeframe,
+          bars,
+          exchange: options.exchange,
+          backtestConfig: config,
+          portfolioConfig: { ...portfolioConfig, initialCapital: config.initialCapital },
+          signal: operation.signal
+        });
+        if (!isCurrent(operation.id)) return;
+        setPortfolioResult(portfolio);
+        setResult(undefined);
+        setOptimizeResult(undefined);
+        return;
+      }
       const candles = await loadHistory(operation.signal);
       if (!isCurrent(operation.id)) return;
       if (candles.length < 30) {
@@ -110,6 +141,7 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
       const visuals = previewStrategy(compiled.ir, candles, securityData);
       if (!isCurrent(operation.id)) return;
       setResult(backtest);
+      setPortfolioResult(undefined);
       setOptimizeResult(undefined);
       options.onApplyResult?.(backtest, symbol, timeframe, { plots: visuals.plots, shapes: visuals.shapes });
     } catch (cause) {
@@ -139,6 +171,7 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
     setOptimizing(true);
     setOptProgress({ done: 0, total: 0 });
     setResult(undefined);
+    setPortfolioResult(undefined);
     setOptimizeResult(undefined);
     setWalkForwardResult(undefined);
     try {
@@ -187,6 +220,7 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
     const backtest = runBacktest(cloned, candles, config, securityData, reportContext());
     const visuals = previewStrategy(cloned, candles, securityData);
     setResult(backtest);
+    setPortfolioResult(undefined);
     setOptimizeResult(undefined);
     options.onApplyResult?.(backtest, symbol, timeframe, { plots: visuals.plots, shapes: visuals.shapes });
   };
@@ -197,11 +231,14 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
     setRunning(false);
     setOptimizing(false);
     setResult(undefined);
+    setPortfolioResult(undefined);
   };
 
   return {
-    errors, setErrors, result, clearResult,
+    errors, setErrors, result, portfolioResult, clearResult,
     config, setConfig, symbol, setSymbol, timeframe, setTimeframe, bars, setBars,
+    portfolioEnabled, setPortfolioEnabled, portfolioSymbols, setPortfolioSymbols,
+    portfolioConfig, setPortfolioConfig,
     running, run, optOpen, setOptOpen, optimizing, optProgress, optSpec, setOptSpec,
     optimizeResult, walkForwardOn, setWalkForwardOn, optFolds, setOptFolds,
     walkForwardMode, setWalkForwardMode,

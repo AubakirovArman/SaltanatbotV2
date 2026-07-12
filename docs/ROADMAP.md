@@ -14,6 +14,7 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 - Strict Binance/Bybit market routing, shared feeds, persistent history and explicit unavailable/fallback states.
 - Version-aware Pine compiler with typed fidelity diagnostics, corpus, compatibility matrix and fuzz tests.
 - Versioned Strategy Studio, shared evaluator/backtest cores, reproducible reports, replay, optimizer and walk-forward.
+- Multi-symbol portfolio backtests with one shared capital pool, correlated returns and portfolio-level exposure limits.
 - Durable order/fill/position/run lifecycle, private streams plus polling, recovery and bot-attributed spot inventory.
 - Professional multi-chart workspaces, pane/scales, drawing management, accessible tables and responsive monitoring.
 - Per-pane IANA time-zone axes with DST-safe chart labels and versioned workspace/session persistence.
@@ -35,7 +36,6 @@ These are not silently marked complete and are not included in the P0/P1/P2 repo
 | Epic | Outcome | Relative effort |
 | --- | --- | --- |
 | Additional exchange adapters | Conformance-tested OKX and later KuCoin/MEXC data/execution adapters | L |
-| Multi-symbol portfolio backtests | One capital pool, correlated positions and portfolio-level risk | XL |
 | Order-book and derivatives data | Depth, tape, funding, open interest and licensed advanced feeds | L–XL |
 | Plugin API | Declarative versioned extension schemas without arbitrary in-process JavaScript | XL |
 | Signed community packages | Moderated indicator/strategy sharing with permissions and supply-chain policy | XL |

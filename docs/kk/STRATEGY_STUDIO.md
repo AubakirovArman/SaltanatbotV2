@@ -55,6 +55,20 @@ Report деректердің шығу тегін және versioned traces кө
 unknown деректер performance claim үшін жарамсыз. Monte Carlo — болжам емес, іске асқан trades
 ретін өзгерту арқылы robustness зерттеуі.
 
+### Портфель бэктесті
+
+**Портфель режимін** қосып, екіден алтыға дейін әртүрлі нарықты және бір мезгілдегі
+позициялар, жалпы экспозиция, бір позиция экспозициясы мен ең аз ішінара бөлу
+лимиттерін таңдаңыз. Studio әр нарық үшін мәміле кандидаттарын жасап, оларды уақыт
+бойынша бір ортақ капитал арқылы өткізеді. Есеп портфель equity curve, drawdown,
+exposure, funding, қабылданбаған кірулер, нарық үлесі және synchronized return
+correlation matrix көрсетеді.
+
+V1 шекарасы: кандидаттар алдымен жеке market backtest арқылы есептеледі, кейін
+ортақ портфель олардың көлемін өзгертеді немесе кіруді қабылдамайды. Сондықтан
+strategy equity оқитын сигнал әзірге бүкіл портфель капиталын емес, сол нарықтың
+жергілікті капиталын көреді. Бұл assumption есеп пен JSON export ішінде сақталады.
+
 Әр нәтиже immutable symbol/timeframe/exchange, market/price type, data range,
 execution settings, fill assumptions және missing/partially-loaded history
 мәліметтерін сақтайды. Export батырмасы versioned `.saltanat-report.json`

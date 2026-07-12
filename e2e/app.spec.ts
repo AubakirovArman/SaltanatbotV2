@@ -1011,6 +1011,31 @@ test("runs a backtest and exposes assumptions and metrics", { tag: "@smoke" }, a
   await expect(report).toContainText("Trades");
 });
 
+test("runs several markets through one portfolio capital pool", async ({ page }) => {
+  await mockCandleHistory(page, mockChartCandles());
+  const workspaceModes = page.getByLabel("Workspace mode");
+  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("navigation", { name: "Studio stages" }).getByRole("button", { name: "Backtest", exact: true }).click();
+
+  await page.getByLabel("Portfolio mode").check();
+  await page.getByLabel("Add market").selectOption("ETHUSDT");
+  await expect(page.locator(".portfolio-market-chip")).toContainText(["BTCUSDT", "ETHUSDT"]);
+  await page.getByLabel("Max concurrent positions").fill("2");
+  await page.getByLabel("Max gross exposure %").fill("100");
+  expect(await page.locator(".strategy-backtest-form").evaluate((form) => [...(form as HTMLFormElement).elements].filter((element) => !(element as HTMLInputElement).checkValidity()).map((element) => ({ name: (element as HTMLInputElement).name, value: (element as HTMLInputElement).value, message: (element as HTMLInputElement).validationMessage })))).toEqual([]);
+  await page.getByRole("button", { name: "Run backtest" }).click();
+
+  const report = page.locator(".portfolio-report");
+  await expect(report.getByRole("heading", { name: "Portfolio backtest" })).toBeVisible({ timeout: 30_000 });
+  await expect(report).toContainText("BTCUSDT");
+  await expect(report).toContainText("ETHUSDT");
+  await expect(report.getByRole("table", { name: "Contribution by market" })).toBeVisible();
+  await expect(report.getByRole("table", { name: /Return correlation/ })).toBeVisible();
+  await expect(report.getByRole("note")).toContainText(/first generates single-market candidate fills/i);
+  await expectNoAxeViolations(page);
+});
+
 test("keeps trading locked for a bad token and opens an authenticated session", { tag: "@smoke" }, async ({ page }) => {
   const workspaceModes = page.getByLabel("Workspace mode");
   await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();

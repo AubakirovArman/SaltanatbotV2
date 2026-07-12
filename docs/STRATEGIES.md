@@ -166,6 +166,25 @@ Fills use `applySlippage()`; long entries and short exits fill *higher*, the opp
 
 Any position still open on the last bar is closed at that bar's close with reason `"close"` for reporting.
 
+### Multi-symbol portfolio backtest
+
+Strategy Studio can run the same compiled strategy on two to six markets and pass their candidate
+fills through `simulatePortfolioBacktest()` from `@saltanatbotv2/backtest-core`. The allocator uses
+one mark-to-market capital pool and processes funding and exits before new entries at the same
+timestamp. It can cap concurrent positions, gross exposure, per-position exposure and reject a
+partial allocation below a configured minimum. Only the candle range shared by every selected
+market contributes to the result.
+
+The portfolio report includes its equity curve, drawdown, peak exposure, accepted and rejected
+entries, funding, per-market contribution and a synchronized-return correlation matrix. Its JSON
+export uses a versioned `saltanat-portfolio-backtest-report` envelope.
+
+This first version deliberately replays fills produced by canonical single-market backtests and
+re-sizes their quantities without changing fill prices or exit reasons. A signal that reads strategy
+equity therefore reads its market-local backtest equity, not the shared portfolio equity. The UI and
+exported assumptions state this boundary; the result must not be described as a globally
+equity-dependent signal simulation.
+
 ### Result
 
 ```ts

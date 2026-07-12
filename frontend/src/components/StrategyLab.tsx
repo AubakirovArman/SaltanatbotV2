@@ -149,6 +149,12 @@ export function StrategyLab({
           onBarsChange={research.setBars}
           config={research.config}
           onConfigChange={research.setConfig}
+          portfolioEnabled={research.portfolioEnabled}
+          onPortfolioEnabledChange={research.setPortfolioEnabled}
+          portfolioSymbols={research.portfolioSymbols}
+          onPortfolioSymbolsChange={research.setPortfolioSymbols}
+          portfolioConfig={research.portfolioConfig}
+          onPortfolioConfigChange={research.setPortfolioConfig}
           optSpec={research.optSpec}
           onOptSpecChange={research.setOptSpec}
           onOptimize={() => void research.optimize()}
@@ -166,6 +172,7 @@ export function StrategyLab({
           diagnostics={diagnostics}
           onDiagnosticSelect={workspace.focusDiagnostic}
           result={research.result}
+          portfolioResult={research.portfolioResult}
           decimals={instrument?.decimals ?? 2}
           onShowOnChart={onShowOnChart ? () => onShowOnChart(research.symbol, research.timeframe) : undefined}
           onOpenTrading={onOpenTrading}

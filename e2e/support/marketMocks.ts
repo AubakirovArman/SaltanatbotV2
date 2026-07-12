@@ -20,11 +20,28 @@ export function mockChartCandles() {
 }
 
 export async function mockCandleHistory(page: Page, candles: ReturnType<typeof mockCandles>) {
-  await page.route("**/api/candles?**", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ candles, provider: "mock", hasMore: false })
-  }));
+  await page.route("**/api/candles?**", (route) => {
+    const symbol = new URL(route.request().url()).searchParams.get("symbol") ?? "BTCUSDT";
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        instrument: {
+          symbol,
+          displayName: symbol,
+          assetClass: "crypto",
+          exchange: "Mock",
+          currency: "USDT",
+          provider: "synthetic",
+          basePrice: candles.at(-1)?.close ?? 100,
+          decimals: 2
+        },
+        candles,
+        provider: "mock",
+        hasMore: false
+      })
+    });
+  });
 }
 
 export async function installMarketSocketMock(

@@ -5,6 +5,15 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Shared-capital portfolio backtests
+
+- Added a Strategy Studio portfolio mode that runs one compiled strategy across two to six selected markets over their common historical range.
+- Replays canonical market-level candidate fills chronologically through one mark-to-market capital pool with maximum concurrent-position, gross-exposure, per-position and minimum-partial-allocation limits.
+- Added portfolio equity, drawdown, exposure, funding, rejected-entry, per-market contribution and return-correlation reporting with a versioned JSON export.
+- States the v1 research boundary in the interface and documentation: fills are generated per market first and then re-sized, so signals that read strategy equity remain market-local.
+- Added complete EN/RU/KK controls and report terminology plus core, orchestration, semantic-rendering and production-browser coverage.
+- Raised only the measured aggregate JavaScript gzip ceiling from 473 KiB to 480 KiB and CSS from 17 KiB to 18 KiB for the lazy portfolio controls, report tables and chart; initial-shell and per-file JavaScript limits are unchanged.
+
 ### Per-chart time zones
 
 - Added a labelled native time-zone selector to every chart pane with exchange UTC, browser-local and seven IANA city zones.
