@@ -9,11 +9,17 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 - Added reviewed deterministic Chromium visual baselines for the desktop terminal, isolated four-market grid and Strategy Studio, with fixed time/data, verified Canvas readback, narrow volatile masks and a required failure-artifact CI gate pinned to the official Playwright Noble image.
 - Extracted reusable production-browser market mocks from the monolithic E2E specification so functional and visual suites share the same bounded offline feed.
+- Removed a drawing-isolation E2E race by requiring the late secondary pane to expose loaded candle data before pointer input; five no-retry repetitions now pass consecutively.
 - Added a required eight-journey Firefox smoke gate for chart input, independent markets, accessibility, Pine import, backtest, authentication and paper execution on every push and pull request.
 - Added a daily, manually dispatchable and release-tag-triggered full 44-scenario Chromium/Firefox/WebKit matrix with 14-day failure evidence, without exchange credentials or testnet/mainnet access.
 - Made the complete production-build Playwright Chromium suite a required GitHub Actions job on every push and pull request, closing the gap where browser journeys were verified locally but did not block a remote regression.
 - Added seven-day failure-only workflow artifacts containing the HTML report, traces, screenshots and videos, while keeping exchange credentials and all mainnet/testnet access outside generic CI.
 - Fixed late chart panes on a shared market WebSocket by replaying the latest bounded stream message after their synthetic open event, preventing an added same-market pane from remaining in a loading state after the initial snapshot.
+
+### Loading performance
+
+- Isolated the stable third-party Blockly runtime from SaltanatbotV2 block definitions inside the already lazy Strategy Studio boundary, reducing the largest JavaScript request from about 208 KiB to 198 KiB gzip while preserving the initial Chart shell and saved XML contracts.
+- Tightened enforced per-file production budgets from 800 to 760 KiB raw and from 220 to 200 KiB gzip; the aggregate JavaScript ceiling remains unchanged.
 
 ### Precision chart experience
 

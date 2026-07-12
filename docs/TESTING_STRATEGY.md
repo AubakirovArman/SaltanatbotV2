@@ -214,8 +214,8 @@ raised with measured justification. Current limits preserve a small regression m
 measured baseline; the longer-term targets remain:
 
 - initial JS gzip <= 150 KB target;
-- no lazy feature chunk > 200 KB gzip without an approved exception (Blockly is currently near this
-  threshold and remains an explicit split/optimization target);
+- no JavaScript chunk > 200 KiB gzip (enforced); the stable Blockly vendor boundary is currently
+  about 198 KiB and remains lazy with Strategy Studio;
 - chart crosshair update p95 <= 16 ms on reference hardware;
 - pan/zoom maintains responsive frames on 10,000 visible/loaded candles;
 - Pine import of the maximum supported file completes or rejects within a fixed timeout;

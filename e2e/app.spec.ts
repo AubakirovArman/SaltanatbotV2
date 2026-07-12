@@ -627,6 +627,7 @@ test("isolates and restores drawings for identical symbols in separate panes", a
   await page.getByRole("menuitemradio", { name: "Vertical split" }).click();
   const primary = page.locator(".multi-chart-pane.primary");
   const secondary = page.locator(".multi-chart-pane.secondary");
+  await expect(secondary.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   await secondary.locator(".pane-maximize").click();
   await secondary.getByRole("button", { name: "Horizontal line" }).click();
   await secondary.locator(".chart-canvas-interaction").click({ position: { x: 430, y: 260 } });

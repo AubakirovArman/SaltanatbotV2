@@ -3,6 +3,24 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    // The reviewed raw ceiling is enforced independently by perf:check.
+    chunkSizeWarningLimit: 780,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: "blockly-runtime",
+              test: /node_modules[\\/]blockly[\\/]/,
+              priority: 10,
+              minSize: 64 * 1024
+            }
+          ]
+        }
+      }
+    }
+  },
   server: {
     host: "0.0.0.0",
     port: 4180,

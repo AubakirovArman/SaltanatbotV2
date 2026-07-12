@@ -23,6 +23,7 @@ This is the execution ledger. It records what is proven complete, what is active
 Verification:
 
 - Complete TypeScript, Biome, documentation, architecture, Vitest, production build, bundle-budget, 44-scenario Playwright and three-baseline visual gates pass.
+- The largest production JavaScript request is below the enforced 200 KiB gzip ceiling; Blockly remains outside the initial Chart shell and is cached separately from project-owned block definitions.
 - The funded 7–14-day Binance/Bybit soak and mainnet-readiness claim remain explicitly excluded.
 
 ### Accessibility and open-source release baseline — 2026-07-11
