@@ -26,6 +26,7 @@ test("toggles the visible-range volume profile accessibly", async ({ page }) => 
 
 test("shows and toggles the semantic UTC session liquidity map", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
+  await openChartAnalysis(page);
   const toggle = page.getByRole("button", { name: "Toggle UTC map" });
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".session-liquidity-values")).toContainText("VWAP", { timeout: 20_000 });
@@ -37,6 +38,7 @@ test("shows and toggles the semantic UTC session liquidity map", async ({ page }
 
 test("toggles DST-aware regional session boxes accessibly", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
+  await openChartAnalysis(page);
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   const asia = page.getByRole("button", { name: "Asia session" });
   const london = page.getByRole("button", { name: "London session" });
@@ -54,6 +56,7 @@ test("toggles DST-aware regional session boxes accessibly", async ({ page }) => 
 
 test("controls confirmed market structure independently on every timeframe", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
+  await openChartAnalysis(page);
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   const structure = page.getByRole("button", { name: "Toggle confirmed swings and BOS / CHOCH" });
   const fvg = page.getByRole("button", { name: "Toggle closed-candle fair value gaps" });
@@ -325,6 +328,43 @@ test("chooses an independent symbol directly in every secondary chart", async ({
   const secondPane = page.locator(".multi-chart-pane.secondary").first();
   await expect(secondPane).toHaveAttribute("aria-label", /ETHUSDT/);
   await expect(secondPane.getByRole("button", { name: "Link symbol to primary chart" })).toHaveAttribute("aria-pressed", "false");
+});
+
+test("keeps embedded chart analysis compact and keyboard-expandable", async ({ page }) => {
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await page.reload();
+  await page.getByRole("button", { name: "Chart layout" }).click();
+  await page.getByRole("menuitemradio", { name: "Four-chart grid" }).click();
+
+  const primary = page.locator(".multi-chart-pane.primary");
+  const secondary = page.locator(".multi-chart-pane.secondary");
+  await expect(primary.locator(".compact-chart")).toHaveCount(1);
+  await expect(primary.locator(".chart-indicator-overlay")).toHaveCount(1);
+  await expect(secondary.locator(".chart-indicator-overlay")).toHaveCount(0);
+  await expect(secondary.locator(".compact-chart")).toHaveCount(3);
+
+  const indicatorBox = await primary.locator(".chart-indicator-overlay").boundingBox();
+  const compareBox = await primary.locator(".compare-control").boundingBox();
+  const primaryAnalysisBox = await primary.locator(".session-liquidity-badge").boundingBox();
+  expect(indicatorBox).not.toBeNull();
+  expect(compareBox).not.toBeNull();
+  expect(primaryAnalysisBox).not.toBeNull();
+  expect(indicatorBox!.y + indicatorBox!.height).toBeLessThanOrEqual(compareBox!.y);
+  expect(compareBox!.y + compareBox!.height).toBeLessThanOrEqual(primaryAnalysisBox!.y);
+
+  const analysis = secondary.first().locator("details.session-liquidity-badge.compact");
+  await expect(analysis).not.toHaveAttribute("open", "");
+  const collapsedBox = await analysis.boundingBox();
+  expect(collapsedBox).not.toBeNull();
+  expect(collapsedBox!.height).toBeLessThanOrEqual(26);
+  const summary = analysis.locator("summary");
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  await expect(analysis).toHaveAttribute("open", "");
+  await expect(analysis.getByRole("button", { name: "Toggle UTC map" })).toBeVisible();
+  await expectNoAxeViolations(page);
 });
 
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
@@ -709,6 +749,12 @@ test("keeps the chart usable at a narrow mobile viewport", async ({ page }) => {
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("button", { name: "Toggle markets panel" })).toBeVisible();
   await expect(page.locator(".stats-panel")).toBeHidden();
+  const stageBox = await page.locator(".chart-stage").boundingBox();
+  const analysisBox = await page.locator(".session-liquidity-badge").boundingBox();
+  expect(stageBox).not.toBeNull();
+  expect(analysisBox).not.toBeNull();
+  expect(analysisBox!.x).toBeGreaterThanOrEqual(stageBox!.x);
+  expect(analysisBox!.x + analysisBox!.width).toBeLessThanOrEqual(stageBox!.x + stageBox!.width);
 
   await page.getByRole("button", { name: "Toggle markets panel" }).click();
   await expect(page.locator(".watchlist")).toBeHidden();
@@ -938,6 +984,13 @@ async function installTradeFlowSocketMock(page: Page) {
 async function expectNoAxeViolations(page: Page) {
   const audit = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(audit.violations, audit.violations.map((item) => `${item.id}: ${item.help} (${item.nodes.length})`).join("\n")).toEqual([]);
+}
+
+async function openChartAnalysis(page: Page) {
+  const analysis = page.locator("details.session-liquidity-badge").first();
+  await expect(analysis).toBeVisible({ timeout: 20_000 });
+  if (await analysis.getAttribute("open") === null) await analysis.locator("summary").click();
+  await expect(analysis).toHaveAttribute("open", "");
 }
 
 async function selectChartSymbol(page: Page, symbol: string) {

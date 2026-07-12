@@ -77,7 +77,9 @@ export function ChartCanvas({
   linkedCrosshair,
   onLinkedCrosshairChange,
   linkedTimeRange,
-  onLinkedTimeRangeChange
+  onLinkedTimeRangeChange,
+  compactChrome = false,
+  showIndicatorControls = true
 }: ChartCanvasProps) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const interactionRef = useRef<Interaction>();
@@ -299,7 +301,7 @@ export function ChartCanvas({
   const legendCandle = (hoverIndex !== undefined ? displayCandles[hoverIndex] : undefined) ?? displayCandles.at(-1) ?? latest;
 
   return (
-    <div className="chart-surface">
+    <div className={`chart-surface ${compactChrome ? "compact-chart" : ""} ${showIndicatorControls ? "with-indicator-controls" : ""}`}>
       <ChartDrawingToolbar
         locale={locale}
         tool={tool}
@@ -338,7 +340,7 @@ export function ChartCanvas({
           trades={trades?.length ?? 0}
         />}
         {showArtifactSettings && strategyInputs && onStrategyInputChange && <ArtifactInputPanel locale={locale} inputs={strategyInputs} onChange={onStrategyInputChange} onClose={() => setShowArtifactSettings(false)} />}
-        <ChartIndicatorOverlay locale={locale} indicators={indicators} onChange={onIndicatorsChange} onEditLogic={onEditIndicatorLogic} customIndicators={customIndicators} strategies={strategies} activeArtifactId={activeArtifactId} onAddArtifact={onAddArtifact} />
+        {showIndicatorControls && <ChartIndicatorOverlay locale={locale} indicators={indicators} onChange={onIndicatorsChange} onEditLogic={onEditIndicatorLogic} customIndicators={customIndicators} strategies={strategies} activeArtifactId={activeArtifactId} onAddArtifact={onAddArtifact} />}
         {onAddCompare && onUpdateCompare && onRemoveCompare && (
           <CompareControl
             locale={locale}
@@ -381,7 +383,7 @@ export function ChartCanvas({
           renderKey={heatmapRenderKey}
         />
         <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
-        <SessionLiquidityBadge state={sessionLiquidity} decimals={instrument.decimals} locale={locale} />
+        <SessionLiquidityBadge state={sessionLiquidity} decimals={instrument.decimals} locale={locale} compact={compactChrome} />
         <AnchoredVwapLegend drawings={drawings} candles={candles} decimals={instrument.decimals} locale={locale} />
         <TradeFootprintLayer enabled={showTradeFootprint && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} candles={candles} viewportRef={viewportRef} renderKey={heatmapRenderKey} />
         <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />

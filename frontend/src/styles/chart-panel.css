@@ -654,7 +654,7 @@
 
 .session-liquidity-badge {
   position: absolute;
-  inset-block-start: 42px;
+  inset-block-start: 58px;
   inset-inline-end: 230px;
   z-index: 7;
   min-inline-size: 196px;
@@ -691,6 +691,64 @@
 .session-liquidity-values { display: grid; gap: 2px; padding: 4px 6px 6px; border-block-start: 1px solid var(--line-soft); }
 .session-liquidity-values b { color: var(--text); font-weight: 600; }
 .session-liquidity-values small { color: var(--muted); }
+
+.session-liquidity-badge[open] { z-index: 11; box-shadow: var(--shadow-pop); }
+
+.session-liquidity-badge summary {
+  min-block-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  color: var(--dim);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.session-liquidity-badge summary::-webkit-details-marker { display: none; }
+.session-liquidity-badge summary:hover { background: var(--hover); color: var(--text); }
+.session-liquidity-badge summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.session-liquidity-badge summary span { transition: rotate 120ms ease; }
+.session-liquidity-badge[open] summary span { rotate: 180deg; }
+.session-liquidity-badge .session-liquidity-panel { border-block-start: 1px solid var(--line-soft); }
+
+.session-liquidity-badge.compact {
+  inset-inline: 8px auto;
+  min-inline-size: 0;
+  inline-size: 116px;
+  box-shadow: none;
+}
+
+.compact-chart.with-indicator-controls .session-liquidity-badge.compact { inset-block-start: 90px; }
+
+.compact-chart :is(.indicator-strip, .compare-strip) {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.compact-chart :is(.indicator-chip, .compare-chip) { flex: 0 0 auto; }
+.compact-chart :is(.chart-indicator-overlay, .compare-control) { max-inline-size: calc(100% - 16px); }
+
+.session-liquidity-badge.compact[open] {
+  inline-size: min(210px, calc(100% - 90px));
+}
+
+@container (max-width: 32rem) {
+  .session-liquidity-badge:not(.compact) {
+    inset-inline: 8px auto;
+    min-inline-size: 0;
+    inline-size: 116px;
+  }
+
+  .session-liquidity-badge:not(.compact)[open] { inline-size: min(210px, calc(100% - 90px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-liquidity-badge summary span { transition: none; }
+}
 
 .market-session-toggles {
   display: grid;

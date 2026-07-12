@@ -245,6 +245,7 @@ export default function App() {
               onLinkedTimeRangeChange={setLinkedTimeRange}
               onUpdateChart={shell.updateChart}
               primary={<ChartCanvas
+              compactChrome={shell.layoutPreset !== "single"}
               candles={stream.candles}
               chartType={chartType}
               instrument={instrument}

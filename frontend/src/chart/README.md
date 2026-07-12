@@ -72,6 +72,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Holding `Shift` while dragging starts an ephemeral ruler instead of panning. It shares snapped data-space anchors with the persistent Measure drawing, never enters drawing storage/history and is dismissed by `Escape` or the next ordinary drag.
 - `linkedTimeRange.ts` transports visible windows as absolute UTC start/end timestamps and maps them to each pane's local candle density; ranges outside loaded history fail closed and external applications are not echoed.
 - `ChartView.priceZoom` is orthogonal to candle zoom/offset. `scales.ts` applies its bounded factor around the auto-range center in linear value space or logarithmic space, and every price-aligned render layer consumes the resulting shared viewport.
+- Multi-chart panes use role-aware compact chrome: global indicator/compare editing remains on the primary pane, siblings omit duplicate editors, and each pane retains its local session/structure controls behind a native keyboard-operable disclosure.
 - Heikin Ashi is seeded once from full loaded history before viewport slicing, so zoom and pan never change the same bar's transformed OHLC.
 - Viewport time/index conversion maps every loaded timestamp exactly, interpolates inside irregular gaps and uses median duration only beyond loaded edges.
 - Crosshair/drawing redraws must not recompute unchanged indicators.

@@ -58,4 +58,8 @@ export interface ChartCanvasProps {
   onLinkedCrosshairChange?: (crosshair?: LinkedCrosshair) => void;
   linkedTimeRange?: LinkedTimeRange;
   onLinkedTimeRangeChange?: (range?: LinkedTimeRange) => void;
+  /** Reduce duplicated editor chrome when the chart is embedded in a small multi-chart pane. */
+  compactChrome?: boolean;
+  /** Indicator editing is global today, so embedded sibling panes can omit duplicate controls. */
+  showIndicatorControls?: boolean;
 }

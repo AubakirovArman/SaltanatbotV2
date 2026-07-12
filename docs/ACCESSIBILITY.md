@@ -19,6 +19,7 @@ excluding application regions.
 | 200% text | Logical sizing, scrolling panels and responsive monitoring layout | Playwright 200% text-size smoke with chart-data table access |
 | Reduced motion | Global `prefers-reduced-motion: reduce` disables meaningful animation/transition timing | Computed-style Playwright assertion |
 | Canvas alternative | Focused/latest OHLC, recent candles, signals and trades are native captioned tables; transformed chart types expose their displayed OHLC; the Shift-drag ruler mirrors its final price/%/bars/time result in localized DOM output | Component tests and keyboard/price-representation/measurement Playwright journeys |
+| Compact chart analysis | Native `details`/`summary` exposes UTC session and market-structure controls without permanently covering small chart panes | Keyboard expansion and axe multi-chart Playwright journey |
 | Colour contrast | Dark/light semantic tokens meet text contrast targets on current core surfaces | axe WCAG AA audit; low-contrast secondary token regression fixed |
 
 ## Known scope boundary

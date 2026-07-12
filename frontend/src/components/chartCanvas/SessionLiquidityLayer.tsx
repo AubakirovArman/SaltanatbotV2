@@ -33,10 +33,11 @@ export function useSessionLiquidity(candles: Candle[], symbol: string, timeframe
   return { enabled, setEnabled, snapshot, supported, marketSessions, marketSessionsSupported, marketSessionVisibility, setMarketSessionVisibility, marketStructure, marketStructureSettings, setMarketStructureSettings };
 }
 
-export function SessionLiquidityBadge({ state, decimals, locale }: {
+export function SessionLiquidityBadge({ state, decimals, locale, compact = false }: {
   state: ReturnType<typeof useSessionLiquidity>;
   decimals: number;
   locale: Locale;
+  compact?: boolean;
 }) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const mt = (key: Parameters<typeof marketStructureText>[1]) => marketStructureText(locale, key);
@@ -51,8 +52,9 @@ export function SessionLiquidityBadge({ state, decimals, locale }: {
   const latestBreak = structure.breaks.at(-1);
   const openFvg = structure.fairValueGaps.filter((gap) => gap.mitigatedAt === undefined).length;
   const nextStrength = state.marketStructureSettings.swingStrength >= 5 ? 2 : state.marketStructureSettings.swingStrength + 1;
-  return (
-    <section className="session-liquidity-badge" aria-label={`${t("sessionLiquidityMap")}: ${summary}; ${mt("marketStructure")}`}>
+  const label = `${t("sessionLiquidityMap")}: ${summary}; ${mt("marketStructure")}`;
+  const controls = (
+    <>
       <button type="button" disabled={!state.supported} aria-label={state.supported ? t("toggleSessionLiquidity") : `${t("toggleSessionLiquidity")} · ${mt("utcMapTimeframes")}`} aria-pressed={state.enabled && state.supported} onClick={() => state.setEnabled((current) => !current)}>
         <strong>SESSION UTC</strong><span>{!state.supported ? t("off") : state.enabled ? t("on") : t("hide")}</span>
       </button>
@@ -74,11 +76,20 @@ export function SessionLiquidityBadge({ state, decimals, locale }: {
         <button type="button" aria-label={mt("toggleFvg")} aria-pressed={state.marketStructureSettings.showFvg} onClick={() => state.setMarketStructureSettings((current) => ({ ...current, showFvg: !current.showFvg }))}>FVG</button>
         <button type="button" aria-label={`${mt("swingStrength")}: ${state.marketStructureSettings.swingStrength}`} onClick={() => state.setMarketStructureSettings((current) => ({ ...current, swingStrength: nextStrength }))}>S{state.marketStructureSettings.swingStrength}</button>
       </div>
-      <ul className="sr-only">
-        {latestMarketSessions.map((session) => <li key={`${session.id}:${session.dateKey}`}>{sessionLabels[session.id]} · {session.dateKey} · H {price(session.high)} · L {price(session.low)} · {t(session.active ? "sessionActive" : "sessionClosed")}</li>)}
-        <li>{mt("trend")}: {mt(structure.trend)}; {structure.swings.length} {mt("confirmedSwings")}; {structure.breaks.length} {mt("structureBreaks")}; {openFvg} {mt("openFvg")}</li>
-        <li>{latestBreak ? `${mt("latestEvent")}: ${latestBreak.kind.toUpperCase()} ${mt(latestBreak.direction)} · ${price(latestBreak.price)}` : mt("noEvents")}</li>
-      </ul>
-    </section>
+    </>
+  );
+  const semanticSummary = (
+    <ul className="sr-only">
+      {latestMarketSessions.map((session) => <li key={`${session.id}:${session.dateKey}`}>{sessionLabels[session.id]} · {session.dateKey} · H {price(session.high)} · L {price(session.low)} · {t(session.active ? "sessionActive" : "sessionClosed")}</li>)}
+      <li>{mt("trend")}: {mt(structure.trend)}; {structure.swings.length} {mt("confirmedSwings")}; {structure.breaks.length} {mt("structureBreaks")}; {openFvg} {mt("openFvg")}</li>
+      <li>{latestBreak ? `${mt("latestEvent")}: ${latestBreak.kind.toUpperCase()} ${mt(latestBreak.direction)} · ${price(latestBreak.price)}` : mt("noEvents")}</li>
+    </ul>
+  );
+  return (
+    <details className={`session-liquidity-badge ${compact ? "compact" : ""}`} aria-label={label}>
+      <summary><strong>UTC · STRUCT</strong><span aria-hidden="true">⌄</span></summary>
+      <div className="session-liquidity-panel">{controls}</div>
+      {semanticSummary}
+    </details>
   );
 }

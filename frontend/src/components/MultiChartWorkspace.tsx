@@ -97,6 +97,8 @@ function SecondaryChartPane({ chart, paneNumber, catalog, exchange, locale, indi
         <span className={`pane-feed ${stream.connection}`} role="status">{stream.provider} · {stream.latencyMs ?? "—"} ms</span>
       </div>
       <ChartCanvas
+        compactChrome
+        showIndicatorControls={false}
         candles={stream.candles}
         chartType={chart.chartType}
         instrument={instrument}

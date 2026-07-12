@@ -12,6 +12,7 @@ This directory currently contains both reusable terminal components and large fe
 - strategy UI: `StrategyLab`, Pine import and backtest report;
 - trading UI: `TradingView`.
 - `chartCanvas/` owns focused drawing controls, overlays, pure interaction helpers and the stable facade prop contract.
+- Embedded `ChartCanvas` instances use `compactChrome`; only the primary pane exposes global indicator editing, while local analysis remains available through the native `UTC · STRUCT` disclosure.
 
 ## Dependency rules
 
