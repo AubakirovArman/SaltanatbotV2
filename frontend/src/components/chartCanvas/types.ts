@@ -1,4 +1,4 @@
-import type { ChartLivePosition, ChartMarker, ChartPlot, ChartShapes, ChartTable, ChartTrade, CompareOverlayConfig, LinkedCrosshair } from "../../chart/types";
+import type { ChartLivePosition, ChartMarker, ChartPlot, ChartShapes, ChartTable, ChartTrade, CompareOverlayConfig, LinkedCrosshair, LinkedTimeRange } from "../../chart/types";
 import type { IndicatorConfig } from "../../chart/indicatorTypes";
 import type { PriceAlert } from "../../market/alerts";
 import type { Locale } from "../../i18n";
@@ -56,4 +56,6 @@ export interface ChartCanvasProps {
   chartId?: string;
   linkedCrosshair?: LinkedCrosshair;
   onLinkedCrosshairChange?: (crosshair?: LinkedCrosshair) => void;
+  linkedTimeRange?: LinkedTimeRange;
+  onLinkedTimeRangeChange?: (range?: LinkedTimeRange) => void;
 }

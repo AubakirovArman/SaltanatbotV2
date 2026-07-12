@@ -8,7 +8,7 @@ import { TopBar } from "./components/TopBar";
 import { PanelResizeHandle } from "./components/PanelResizeHandle";
 import { MultiChartWorkspace } from "./components/MultiChartWorkspace";
 import { ShortcutSettingsDialog } from "./components/ShortcutSettingsDialog";
-import type { LinkedCrosshair } from "./chart/types";
+import type { LinkedCrosshair, LinkedTimeRange } from "./chart/types";
 import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
 import { useCompareSeries } from "./hooks/useCompareSeries";
@@ -51,6 +51,7 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>("chart");
   const [indicators, setIndicators] = useState(initialWorkspaceState.indicators);
   const [linkedCrosshair, setLinkedCrosshair] = useState<LinkedCrosshair>();
+  const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
   const shell = useAppShell({
     symbol, setSymbol, timeframe, setTimeframe, chartType, setChartType,
     setMode, indicators, setIndicators
@@ -240,6 +241,8 @@ export default function App() {
               theme={theme}
               linkedCrosshair={linkedCrosshair}
               onLinkedCrosshairChange={setLinkedCrosshair}
+              linkedTimeRange={linkedTimeRange}
+              onLinkedTimeRangeChange={setLinkedTimeRange}
               onUpdateChart={shell.updateChart}
               primary={<ChartCanvas
               candles={stream.candles}
@@ -290,6 +293,8 @@ export default function App() {
               chartId={shell.charts[0]?.id}
               linkedCrosshair={linkedCrosshair}
               onLinkedCrosshairChange={setLinkedCrosshair}
+              linkedTimeRange={linkedTimeRange}
+              onLinkedTimeRangeChange={setLinkedTimeRange}
             />}
             />
           )}

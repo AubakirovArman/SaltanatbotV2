@@ -23,6 +23,12 @@ export interface LinkedCrosshair {
   price: number;
 }
 
+export interface LinkedTimeRange {
+  sourceId: string;
+  startTime: number;
+  endTime: number;
+}
+
 export interface PriceScale {
   min: number;
   max: number;

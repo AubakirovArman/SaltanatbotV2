@@ -60,7 +60,7 @@ Verification:
 ### Professional chart workspace — 2026-07-11
 
 - [x] Add keyboard/pointer-resizable side docks, dock swapping and 1/2/4 chart presets.
-- [x] Link or unlink symbol, timeframe and crosshair for every secondary chart.
+- [x] Link or unlink symbol, timeframe, crosshair and absolute visible time range for every secondary chart.
 - [x] Add native indicator pane placement and independent left/right/hidden scales.
 - [x] Add a drawing object tree with visibility, locks, style templates, undo and redo.
 - [x] Add replay jump-to-signal/trade event controls and explicit feed gap/fallback status.

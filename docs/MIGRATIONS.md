@@ -4,7 +4,7 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
-## Unreleased / schema baseline 2
+## Unreleased / schema baseline 3
 
 - Trading SQLite state is upgraded transactionally through ordered `schema_migrations`; a database
   declaring a newer unsupported version is rejected without mutation.
@@ -15,8 +15,9 @@ migration.
   adding semantic version, bounded immutable history, parameters, dependencies and provenance.
 - Legacy `.strategy` envelope v1 can be imported through an explicit unverified migration path. New
   exports are checksum-verified schema-v2 envelopes; import never silently downgrades them.
-- Chart workspace exports use schema 2 with SHA-256 verification and bounded revisions. Existing local
-  workspaces are normalized on read and preserved by ID.
+- Chart workspace exports use schema 3 with SHA-256 verification, bounded revisions and a persisted
+  visible-time-range link flag. Existing schema-1/2 local workspaces default that link on during
+  boundary normalization and remain preserved by ID.
 
 For server data, follow [Backup and restore](BACKUP_RESTORE.md) before deployment. A breaking future
 IR, API, storage or event-trace change must add a dated section here and executable backward-compatibility

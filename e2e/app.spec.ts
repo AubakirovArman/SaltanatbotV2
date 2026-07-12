@@ -196,6 +196,38 @@ test("measures price, percent, bars and time with Shift-drag", async ({ page }) 
   await expect(summary).toBeHidden();
 });
 
+test("links and unlinks the visible time range across chart panes", async ({ page }) => {
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await page.reload();
+  await page.getByRole("button", { name: "Chart layout" }).click();
+  await page.getByRole("menuitemradio", { name: "Vertical split" }).click();
+  const primary = page.locator(".multi-chart-pane.primary");
+  const secondary = page.locator(".multi-chart-pane.secondary");
+  await expect(primary.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+  await expect(secondary.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+  const rangeLink = secondary.getByRole("button", { name: "Link visible time range between charts" });
+  await expect(rangeLink).toHaveAttribute("aria-pressed", "true");
+
+  await primary.locator(".chart-canvas-interaction").hover();
+  await page.mouse.wheel(0, -90);
+  const primaryZoom = primary.locator(".zoom-reset");
+  const secondaryZoom = secondary.locator(".zoom-reset");
+  await expect(primaryZoom).not.toHaveText("100%");
+  await expect(secondaryZoom).not.toHaveText("100%");
+  const linkedSecondaryZoom = await secondaryZoom.innerText();
+
+  await rangeLink.click();
+  await expect(rangeLink).toHaveAttribute("aria-pressed", "false");
+  await primaryZoom.click();
+  await expect(primaryZoom).toHaveText("100%");
+  await expect(secondaryZoom).toHaveText(linkedSecondaryZoom);
+  await rangeLink.click();
+  await expect(secondaryZoom).not.toHaveText(linkedSecondaryZoom);
+  await expectNoAxeViolations(page);
+});
+
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
@@ -617,6 +649,18 @@ function mockCandles() {
   ];
 }
 
+function mockChartCandles() {
+  return Array.from({ length: 180 }, (_, index) => ({
+    time: 1_710_000_000_000 + index * 60_000,
+    open: 100 + index * 0.1,
+    high: 101 + index * 0.1,
+    low: 99 + index * 0.1,
+    close: 100.5 + index * 0.1,
+    volume: 10 + index,
+    source: "mock"
+  }));
+}
+
 async function mockCandleHistory(page: Page, candles: ReturnType<typeof mockCandles>) {
   await page.route("**/api/candles?**", (route) => route.fulfill({
     status: 200,
@@ -627,7 +671,7 @@ async function mockCandleHistory(page: Page, candles: ReturnType<typeof mockCand
 
 async function installMarketSocketMock(
   page: Page,
-  mode: "reconnect" | "unavailable",
+  mode: "reconnect" | "stable" | "unavailable",
   candles: ReturnType<typeof mockCandles>
 ) {
   await page.addInitScript(({ socketMode, rows }) => {
@@ -672,6 +716,7 @@ async function installMarketSocketMock(
             return;
           }
           this.emit({ type: "snapshot", symbol: "BTCUSDT", timeframe: "1m", candles: rows, provider: "mock", ts: Date.now() });
+          if (socketMode === "stable") return;
           if (attempt === 1) {
             window.setTimeout(() => {
               this.readyState = MockWebSocket.CLOSED;

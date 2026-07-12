@@ -31,7 +31,7 @@ describe("versioned chart workspaces", () => {
       revision: 1,
       cryptoExchange: "binance",
       layout: { preset: "single", leftOpen: true, rightOpen: true },
-      charts: [{ symbol: "ETHUSDT", linkCrosshair: true }]
+      charts: [{ symbol: "ETHUSDT", linkCrosshair: true, linkTimeRange: true }]
     });
   });
 

@@ -69,6 +69,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Point & Figure defaults to `0.10% × 3`; both box percentage and reversal count are constrained and persisted. The live source tail/projected column is omitted, and the fixed first-price seed avoids retroactive LTP resizing.
 - `components/chartCanvas/useChartNavigation.ts` owns non-passive wheel containment and testable mouse/trackpad intent: vertical gestures zoom proportionally under the pointer, horizontal gestures pan, browser pinch is normalized and sub-threshold inertia is discarded.
 - Holding `Shift` while dragging starts an ephemeral ruler instead of panning. It shares snapped data-space anchors with the persistent Measure drawing, never enters drawing storage/history and is dismissed by `Escape` or the next ordinary drag.
+- `linkedTimeRange.ts` transports visible windows as absolute UTC start/end timestamps and maps them to each pane's local candle density; ranges outside loaded history fail closed and external applications are not echoed.
 - Heikin Ashi is seeded once from full loaded history before viewport slicing, so zoom and pan never change the same bar's transformed OHLC.
 - Viewport time/index conversion maps every loaded timestamp exactly, interpolates inside irregular gaps and uses median duration only beyond loaded edges.
 - Crosshair/drawing redraws must not recompute unchanged indicators.

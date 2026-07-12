@@ -56,7 +56,7 @@ export function useAppShell(options: UseAppShellOptions) {
   const [layoutPreset, setLayoutPresetState] = useState<ChartLayoutPreset>("single");
   const [charts, setCharts] = useState<WorkspaceChart[]>(() => [{
     id: "chart-1", symbol: options.symbol, timeframe: options.timeframe, chartType: options.chartType,
-    linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true
+    linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true
   }]);
   const [leftSize, setLeftSize] = useState(260);
   const [rightSize, setRightSize] = useState(280);
@@ -231,7 +231,8 @@ export function useAppShell(options: UseAppShellOptions) {
       linkGroup: "primary",
       linkSymbol: true,
       linkTimeframe: true,
-      linkCrosshair: true
+      linkCrosshair: true,
+      linkTimeRange: true
     }));
   }, [options.chartType, options.symbol, options.timeframe]);
 

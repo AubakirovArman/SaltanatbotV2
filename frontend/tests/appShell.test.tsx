@@ -61,6 +61,7 @@ describe("useAppShell", () => {
     await act(async () => shell?.setLayoutPreset("grid-4"));
     expect(shell?.charts).toHaveLength(4);
     expect(shell?.charts.every((chart) => chart.linkCrosshair)).toBe(true);
+    expect(shell?.charts.every((chart) => chart.linkTimeRange)).toBe(true);
     await act(async () => shell?.setLayoutPreset("split-horizontal"));
     expect(shell?.charts).toHaveLength(2);
     await act(async () => root.unmount());

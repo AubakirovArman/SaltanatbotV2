@@ -7,6 +7,9 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added opt-in visible-time-range linking across 2/4-chart layouts: zoom and pan publish absolute UTC boundaries, and every linked pane maps them to its own symbol/timeframe without index drift or feedback loops.
+- Persisted the new range-link preference in workspace schema v3, default-migrated older workspaces, added a keyboard-addressable per-pane toggle and compact container-responsive controls.
+- Raised only the aggregate JavaScript gzip allowance from 451 KiB to 452 KiB for the measured linked-viewport protocol/UI; per-chunk, CSS and HTML limits remain unchanged.
 - Added a zero-persistence `Shift`-drag quick ruler with live signed price/percentage change, exact bar distance and elapsed time; `Escape` or the next normal chart drag dismisses the result.
 - Reworked persistent measurement drawings with directional range shading, a two-line badge that stays inside the plot and a synchronized localized DOM result; extracted chart legend and measurement rendering from the near-budget Canvas coordinator.
 - Raised only the aggregate JavaScript gzip allowance from 450 KiB to 451 KiB for the measured ruler/semantic-output addition; per-chunk, CSS and HTML limits remain unchanged.

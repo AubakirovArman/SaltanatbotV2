@@ -195,7 +195,7 @@ The detailed blockers are maintained in `CODE_IMPROVEMENT_PLAN.md`. Release gate
 ## Priority 2: chart and terminal experience
 
 - [x] layout presets and resizable/dockable panels;
-- [x] multi-chart layouts with linked symbol, interval and crosshair;
+- [x] multi-chart layouts with linked symbol, interval, crosshair and drift-free UTC viewport;
 - [x] indicator pane management and per-series scale placement;
 - [x] drawing object tree, visibility lock, templates and undo/redo;
 - [x] replay controls and jump-to-trade/signal;

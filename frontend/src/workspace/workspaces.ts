@@ -2,7 +2,7 @@ import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { ChartType, DataExchange, Timeframe } from "../types";
 
 const WORKSPACES_KEY = "sbv2:workspaces";
-export const WORKSPACE_SCHEMA_VERSION = 2;
+export const WORKSPACE_SCHEMA_VERSION = 3;
 export const WORKSPACE_FILE_FORMAT = "saltanatbotv2.workspace";
 export const WORKSPACE_FILE_VERSION = 1;
 export const MAX_WORKSPACE_REVISIONS = 20;
@@ -18,6 +18,7 @@ export interface WorkspaceChart {
   linkSymbol: boolean;
   linkTimeframe: boolean;
   linkCrosshair: boolean;
+  linkTimeRange: boolean;
 }
 
 export interface WorkspaceLayout {
@@ -282,12 +283,13 @@ function normalizeChart(value: unknown): WorkspaceChart | undefined {
     linkGroup: typeof item.linkGroup === "string" ? item.linkGroup : undefined,
     linkSymbol: item.linkSymbol !== false,
     linkTimeframe: item.linkTimeframe !== false,
-    linkCrosshair: item.linkCrosshair !== false
+    linkCrosshair: item.linkCrosshair !== false,
+    linkTimeRange: item.linkTimeRange !== false
   };
 }
 
 function defaultChart(symbol: string, timeframe: Timeframe, chartType: ChartType): WorkspaceChart {
-  return { id: "chart-1", symbol, timeframe, chartType, linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true };
+  return { id: "chart-1", symbol, timeframe, chartType, linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true };
 }
 
 function toRevision(workspace: Workspace): WorkspaceRevision {

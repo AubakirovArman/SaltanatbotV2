@@ -16,7 +16,7 @@ export function computePlot(width: number, height: number): PlotArea {
   };
 }
 
-export function visibleCandles(candles: Candle[], plot: PlotArea, zoom: number, offset: number, rightPaddingBars = 0) {
+export function visibleCandles(candles: readonly Candle[], plot: PlotArea, zoom: number, offset: number, rightPaddingBars = 0) {
   let step = Math.max(4, Math.min(26, 8 * zoom));
   let count = Math.max(24, Math.floor(plot.width / step));
   let padding = Math.max(0, Math.min(Math.ceil(rightPaddingBars), Math.floor(count * 0.32), Math.max(0, count - 24)));

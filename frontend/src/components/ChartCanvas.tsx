@@ -23,6 +23,7 @@ import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
 import { clampIndex, moveDrawing, nextPriceMode, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
 import { useChartWheelNavigation } from "./chartCanvas/useChartNavigation";
+import { useLinkedTimeRange } from "./chartCanvas/useLinkedTimeRange";
 import { PriceRepresentationControl, usePriceRepresentationSettings } from "./chartCanvas/PriceRepresentationControl";
 import { QuickMeasureSummary } from "./chartCanvas/QuickMeasureSummary";
 import { StrategyChip } from "./chartCanvas/StrategyChip";
@@ -73,7 +74,9 @@ export function ChartCanvas({
   onRemoveCompare,
   chartId = "chart-1",
   linkedCrosshair,
-  onLinkedCrosshairChange
+  onLinkedCrosshairChange,
+  linkedTimeRange,
+  onLinkedTimeRangeChange
 }: ChartCanvasProps) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const interactionRef = useRef<Interaction>();
@@ -248,6 +251,7 @@ export function ChartCanvas({
     onVolumeProfile: (profile) => setVolumeProfile((current) => sameVolumeProfile(current, profile) ? current : profile)
   });
   useChartWheelNavigation(interactionCanvasRef, viewportRef, displayCandles, setView);
+  useLinkedTimeRange({ candles: displayCandles, chartId, linkedRange: linkedTimeRange, onLinkedRangeChange: onLinkedTimeRangeChange, setView, view, viewportRef });
 
   // Lazy-load older history when the viewport nears the left (oldest) edge.
   useEffect(() => {

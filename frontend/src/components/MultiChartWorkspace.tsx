@@ -1,6 +1,6 @@
-import { Link2, Link2Off } from "lucide-react";
+import { Crosshair, Link2, Link2Off, MoveHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
-import type { LinkedCrosshair } from "../chart/types";
+import type { LinkedCrosshair, LinkedTimeRange } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import { useMarketStream } from "../hooks/useMarketStream";
 import type { Locale } from "../i18n";
@@ -23,10 +23,12 @@ interface MultiChartWorkspaceProps {
   theme: string;
   linkedCrosshair?: LinkedCrosshair;
   onLinkedCrosshairChange: (crosshair?: LinkedCrosshair) => void;
+  linkedTimeRange?: LinkedTimeRange;
+  onLinkedTimeRangeChange: (range?: LinkedTimeRange) => void;
   onUpdateChart: (id: string, patch: Partial<WorkspaceChart>) => void;
 }
 
-export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, onUpdateChart }: MultiChartWorkspaceProps) {
+export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdateChart }: MultiChartWorkspaceProps) {
   return (
     <div className={`multi-chart-grid ${preset}`} aria-label={shellText(locale, "multiChartWorkspace")}>
       <section className="multi-chart-pane primary" aria-label={shellText(locale, "primaryChart")}>{primary}</section>
@@ -43,6 +45,8 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
           theme={theme}
           linkedCrosshair={linkedCrosshair}
           onLinkedCrosshairChange={onLinkedCrosshairChange}
+          linkedTimeRange={linkedTimeRange}
+          onLinkedTimeRangeChange={onLinkedTimeRangeChange}
           onUpdate={onUpdateChart}
         />
       ))}
@@ -50,12 +54,12 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
   );
 }
 
-function SecondaryChartPane({ chart, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, onUpdate }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart"> & { chart: WorkspaceChart; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
+function SecondaryChartPane({ chart, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart"> & { chart: WorkspaceChart; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
   const stream = useMarketStream(chart.symbol, chart.timeframe, exchange);
   const instrument = catalog?.instruments.find((item) => item.symbol === chart.symbol) ?? fallbackInstrument(chart.symbol);
-  const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair", label: string) => {
+  const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair" | "linkTimeRange", label: string, ActiveIcon = Link2) => {
     const linked = chart[field];
-    const Icon = linked ? Link2 : Link2Off;
+    const Icon = linked ? ActiveIcon : Link2Off;
     return (
       <button type="button" className={linked ? "active" : ""} aria-pressed={linked} aria-label={label} title={label} onClick={() => onUpdate(chart.id, { [field]: !linked })}>
         <Icon size={12} aria-hidden="true" />
@@ -85,7 +89,8 @@ function SecondaryChartPane({ chart, catalog, exchange, locale, indicators, onIn
             {(catalog?.chartTypes ?? [chart.chartType]).map((item) => <option key={item} value={item}>{chartTypeLabel(locale, item)}</option>)}
           </select>
         </label>
-        {linkButton("linkCrosshair", shellText(locale, "linkCrosshair"))}
+        {linkButton("linkCrosshair", shellText(locale, "linkCrosshair"), Crosshair)}
+        {linkButton("linkTimeRange", shellText(locale, "linkTimeRange"), MoveHorizontal)}
         <span className={`pane-feed ${stream.connection}`} role="status">{stream.provider} · {stream.latencyMs ?? "—"} ms</span>
       </div>
       <ChartCanvas
@@ -103,6 +108,8 @@ function SecondaryChartPane({ chart, catalog, exchange, locale, indicators, onIn
         chartId={chart.id}
         linkedCrosshair={chart.linkCrosshair ? linkedCrosshair : undefined}
         onLinkedCrosshairChange={chart.linkCrosshair ? onLinkedCrosshairChange : undefined}
+        linkedTimeRange={chart.linkTimeRange ? linkedTimeRange : undefined}
+        onLinkedTimeRangeChange={chart.linkTimeRange ? onLinkedTimeRangeChange : undefined}
       />
     </section>
   );
