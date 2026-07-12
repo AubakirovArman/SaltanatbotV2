@@ -275,7 +275,7 @@ function TimeframeControl({
 
   return (
     <div className="timeframe-control" ref={wrapRef}>
-      <div className="segmented timeframes" aria-label={shellText(locale, "timeframe")}>
+      <div className="segmented timeframes" role="group" aria-label={shellText(locale, "timeframe")}>
         {inline.map((item) => (
           <button
             type="button"

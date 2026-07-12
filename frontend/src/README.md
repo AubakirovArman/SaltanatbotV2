@@ -14,6 +14,7 @@ The frontend is the React composition layer for charting, strategy research and 
 - Pure chart, strategy and trading rules belong outside React components.
 - Network access is centralized under `api/` or feature-specific clients.
 - Persistent browser state is accessed through named storage modules, not ad hoc keys in new components.
+- `pwa/` registers the generated production-only offline shell; it must never cache APIs, credentials, streams or trading mutations.
 - New user-facing strings should use the planned typed i18n layer.
 
 ## Invariants

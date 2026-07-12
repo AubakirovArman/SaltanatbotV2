@@ -5,6 +5,15 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Installable offline shell
+
+- Added a standards-based web app manifest and production-only service-worker registration so the self-hosted terminal can be installed from supporting browsers.
+- Generate a content-fingerprinted service worker from the actual Vite output. It precaches only the same-origin initial shell and static imports, leaving lazy Strategy Studio/Blockly code on demand; manifest and worker updates remain network-managed.
+- Keep every API, authentication, market-data and trading stream network-only. The worker has no background sync and never queues or replays a request, so offline mode cannot create stale-market or deferred-order semantics.
+- Added explicit HTTP cache policy: shell metadata revalidates, content-hashed bundles are immutable and stable public filenames revalidate normally.
+- Deferred only the first service-worker registration until after the critical startup window, while already installed clients continue checking updates immediately.
+- Added a build-time PWA verifier, static-cache unit tests and a production Chromium journey that proves the shell reloads offline while runtime API access rejects and never enters Cache Storage.
+
 ### Continuous verification
 
 - Added reviewed deterministic Chromium visual baselines for the desktop terminal, isolated four-market grid and Strategy Studio, with fixed time/data, verified Canvas readback, narrow volatile masks and a required failure-artifact CI gate pinned to the official Playwright Noble image.

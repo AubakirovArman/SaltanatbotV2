@@ -119,6 +119,19 @@ Mitigations:
 - transactional forward migrations with `PRAGMA user_version`;
 - databases from newer unsupported application versions are rejected.
 
+### Stale offline state and deferred commands
+
+An installable application can mislead an operator if cached prices look live or if failed trading
+commands are silently replayed after connectivity returns.
+
+Mitigations:
+
+- the service worker caches only the static same-origin application shell and reviewed assets;
+- API, authentication, quote, order-book, trade-flow and private trading endpoints are network-only;
+- non-GET, cross-origin and opaque responses are never cached;
+- no background sync or request queue exists, and worker updates do not force `skipWaiting`;
+- offline shell behavior and the empty runtime-data cache boundary are verified in production E2E.
+
 ## Explicit non-goals and residual risks
 
 - The application does not provide custody, guaranteed execution, financial advice or profit claims.

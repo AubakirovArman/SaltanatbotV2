@@ -225,6 +225,17 @@ measured baseline; the longer-term targets remain:
 - no unbounded DOM growth in watchlists, journals or reports;
 - reconnect does not increase active subscriptions/listeners.
 
+## PWA and offline boundary
+
+`npm run build` runs `scripts/check-pwa.mjs` after Vite. The verifier requires a root-scoped
+standalone manifest, usable PNG icon, content-derived generated precache, complete emitted JS/CSS
+coverage, explicit runtime endpoint guards and the absence of `skipWaiting` or background sync.
+
+The Chromium production journey additionally checks real server headers and Cache Storage, waits
+for an active controller, disables the browser network and reloads the shell. It then proves that a
+fresh `/api/*` request rejects rather than resolving from the worker. This is a safety invariant:
+an offline UI must never be evidence of fresh market state or a queued trading command.
+
 ## Test data policy
 
 - deterministic clocks, random seeds and candle fixtures;

@@ -1,6 +1,6 @@
 # Improvement implementation status
 
-Updated: 2026-07-11
+Updated: 2026-07-12
 
 Active branch: `main`
 
@@ -9,6 +9,18 @@ Source plan: [MASTER_IMPROVEMENT_PLAN.md](./MASTER_IMPROVEMENT_PLAN.md)
 This is the execution ledger. It records what is proven complete, what is active, and what remains. A checked item requires code plus the listed verification evidence.
 
 ## Completed
+
+### Installable network-truth-safe shell — 2026-07-12
+
+- [x] Add a root-scoped standalone web manifest with a verified 512×512 PNG icon.
+- [x] Register a generated service worker only in production and use a content-derived cache version.
+- [x] Precache the exact same-origin static build while leaving manifest/worker updates network-managed.
+- [x] Keep APIs, authentication and all market/trading streams network-only with no background sync or replay.
+- [x] Align Express cache headers with immutable hashed assets and revalidated shell metadata.
+- [x] Verify emitted assets at build time, cache policy in unit tests and real offline behavior in Chromium.
+
+Offline availability means only that the static interface opens; it never claims current market
+data, authenticated trading access or deferred execution.
 
 ### Mobile chart panels — 2026-07-12
 

@@ -53,7 +53,7 @@ Key pieces wired up in `backend/src/server.ts`:
 - **HTTP + WebSocket on one port** — `createServer(app)` plus a `WebSocketServer({ noServer: true })`. The server's `upgrade` handler dispatches on the URL path: `/stream` goes to the market-data socket server, `/trade-stream` goes to the trading API's socket server, and anything else is destroyed.
 - **REST endpoints** — `GET /api/health`, `GET /api/catalog`, `GET /api/candles`, `GET /api/sparklines`, plus the trading router mounted at `/api/trade`.
 - **Validation** — every query is parsed with `zod` (e.g. `candleQuery` enforces `symbol`, an enum `timeframe`, a `limit` clamped to `10..1000`, and an `exchange` enum of `binance | bybit` defaulting to `binance`).
-- **Static hosting** — after the API routes, `express.static` serves `../../frontend/dist` and a catch-all route (`app.get(/.*/, ...)`) returns `index.html` so the SPA can deep-link.
+- **Static hosting** — after the API routes, `express.static` serves `../../frontend/dist` and a catch-all route (`app.get(/.*/, ...)`) returns `index.html` so the SPA can deep-link. Shell metadata and the generated service worker revalidate; content-hashed Vite assets are immutable.
 - **Configuration** — `PORT` (default `4180`) and `HOST` (default `127.0.0.1`) come from the environment. A wider bind must be explicitly requested.
 - **Graceful shutdown** — `SIGINT`/`SIGTERM` stop Telegram control, call `trading.engine.shutdown()` so desired bot state remains resumable, and close the server.
 
@@ -105,6 +105,7 @@ The frontend is a React 18 single-page app built with Vite 8. Its notable depend
 - **Runtime exchange selector** — for crypto instruments the user can pick `binance` or `bybit`; the choice is persisted in `localStorage` (`mf:cryptoExchange`) and threaded through candle/sparkline/stream requests.
 - **Command palette + hotkeys** — `⌘/Ctrl-K` toggles a command palette; number keys `1..6` select timeframes.
 - **Local workspace persistence** — indicators, the strategy library, theme, and panel state are stored in `localStorage`; a bounded versioned last-chart-session record restores layout/panes independently of named workspace revision history and rejects corrupt, oversized or future payloads. A strategy can be imported from a `#s=…` URL hash as a remixable copy.
+- **Safe installable shell** — `pwa/registerServiceWorker.ts` registers only in a production build. `vite/pwaPlugin.ts` fingerprints the emitted Vite graph and generates an exact initial-shell precache without eager Strategy Studio/Blockly chunks. Navigations are network-first; APIs and every market/trading stream are network-only, with no background sync or deferred request replay.
 
 ### Frontend source tree
 
@@ -121,6 +122,7 @@ frontend/src/
 │   └── useSparklines.ts      # Watchlist sparkline series
 ├── components/               # Shell UI plus ChartCanvas and its semantic ChartDataPanel fallback
 ├── chart/                    # Canvas ChartEngine, renderers, indicators, drawings
+├── pwa/                      # Production registration and offline trust-boundary notes
 ├── strategy/                 # Blockly blocks, shared IR, compiler, backtester, library
 ├── trading/                  # TradingView (lazy) client
 └── styles/                   # CSS (theme variables)

@@ -13,6 +13,62 @@ test("loads the terminal and exposes the chart semantically", { tag: "@smoke" },
   await expect(page.getByRole("button", { name: "Toggle markets panel" })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("installs a static offline shell without caching runtime market or trading data", async ({ page, context, browserName }) => {
+  test.skip(browserName !== "chromium", "The required push gate verifies service-worker behavior in Chromium.");
+  test.setTimeout(60_000);
+
+  const manifestHref = await page.locator('link[rel="manifest"]').getAttribute("href");
+  expect(manifestHref).toBe("/manifest.webmanifest");
+  const manifestResponse = await page.request.get(manifestHref!);
+  expect(manifestResponse.ok()).toBe(true);
+  expect(manifestResponse.headers()["cache-control"]).toContain("no-cache");
+  expect(await manifestResponse.json()).toMatchObject({
+    id: "/",
+    start_url: "/",
+    scope: "/",
+    display: "standalone"
+  });
+
+  const workerResponse = await page.request.get("/service-worker.js");
+  expect(workerResponse.ok()).toBe(true);
+  expect(workerResponse.headers()["cache-control"]).toContain("no-cache");
+  expect(workerResponse.headers()["service-worker-allowed"]).toBe("/");
+
+  const scriptUrl = await page.locator('script[type="module"][src*="/assets/"]').getAttribute("src");
+  expect(scriptUrl).toBeTruthy();
+  const scriptResponse = await page.request.get(scriptUrl!);
+  expect(scriptResponse.headers()["cache-control"]).toContain("immutable");
+
+  await expect.poll(() => page.evaluate(async () => Boolean((await navigator.serviceWorker.ready).active)), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), { timeout: 20_000 }).toBe(true);
+
+  const cachedUrls = await page.evaluate(async () => {
+    const names = (await caches.keys()).filter((name) => name.startsWith("saltanat-shell-"));
+    return (await Promise.all(names.map(async (name) => (await (await caches.open(name)).keys()).map((request) => new URL(request.url).pathname)))).flat();
+  });
+  expect(cachedUrls).toContain("/");
+  expect(cachedUrls.some((url) => url.startsWith("/assets/") && url.endsWith(".js"))).toBe(true);
+  expect(cachedUrls.some((url) => ["/api/", "/stream", "/quotes", "/orderbook", "/trade-flow", "/trade-stream"].some((prefix) => url.startsWith(prefix)))).toBe(false);
+
+  await page.route("**/api/pwa-offline-probe", (route) => route.abort());
+  await context.setOffline(true);
+  try {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator(".brand")).toContainText("SaltanatbotV2");
+    const runtimeRequest = await page.evaluate(async () => {
+      try {
+        await fetch("/api/pwa-offline-probe");
+        return "resolved";
+      } catch {
+        return "rejected";
+      }
+    });
+    expect(runtimeRequest).toBe("rejected");
+  } finally {
+    await context.setOffline(false);
+  }
+});
+
 test("toggles the visible-range volume profile accessibly", async ({ page }) => {
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
   const toggle = page.getByRole("button", { name: "Toggle visible-range volume profile" });

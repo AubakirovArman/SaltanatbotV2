@@ -40,7 +40,7 @@ These are not silently marked complete and are not included in the P0/P1/P2 repo
 | Signed community packages | Moderated indicator/strategy sharing with permissions and supply-chain policy | XL |
 | Optional encrypted sync | User-controlled cross-device strategies and workspace synchronization | XL |
 | Hosted read-only demo | Public deployment of the existing non-mutating demo mode | M, infrastructure |
-| Mobile/PWA expansion | Touch-first monitoring, offline shell and installable experience | L |
+| PWA follow-on | The installable network-truth-safe shell is delivered; richer OS integration and optional offline local research artifacts remain | M |
 | Kazakh UI locale | Extend the typed catalog beyond the completed EN/RU UI baseline | M |
 | More locale and RTL coverage | Formatting, long-string and bidirectional layout conformance | L |
 | Timezone/session axis | Exchange sessions, timezone-aware labels and calendars | M |

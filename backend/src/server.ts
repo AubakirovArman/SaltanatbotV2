@@ -11,6 +11,7 @@ import { timeframes } from "./market/timeframes.js";
 import { OrderBookHub } from "./orderbook/hub.js";
 import { ProviderRouter } from "./providers/router.js";
 import { securityHeaders } from "./securityHeaders.js";
+import { frontendCacheControl } from "./staticCache.js";
 import { createTradingApi } from "./trading/routes.js";
 import { TradeFlowHub } from "./tradeflow/hub.js";
 import type { Candle, OrderBookStreamMessage, QuoteStreamMessage, StreamMessage, Timeframe, TradeFlowStreamMessage } from "./types.js";
@@ -386,9 +387,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const frontendDist = path.resolve(__dirname, "../../frontend/dist");
 
-app.use(express.static(frontendDist));
+app.use(express.static(frontendDist, {
+  setHeaders(response, filePath) {
+    const relative = path.relative(frontendDist, filePath);
+    response.setHeader("Cache-Control", frontendCacheControl(relative));
+    if (relative === "service-worker.js") response.setHeader("Service-Worker-Allowed", "/");
+  }
+}));
 app.get(/.*/, (_request, response) => {
-  response.sendFile(path.join(frontendDist, "index.html"));
+  response.sendFile(path.join(frontendDist, "index.html"), { headers: { "Cache-Control": "no-cache" } });
 });
 
 server.listen(port, host, () => {

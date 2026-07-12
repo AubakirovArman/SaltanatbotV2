@@ -272,6 +272,26 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 ```
 
+### Installable PWA and cache policy
+
+The production build emits `manifest.webmanifest` and a generated `service-worker.js`. Supporting
+browsers can install the self-hosted terminal when it is served from HTTPS; localhost is also a
+secure development context. Registration is disabled in the Vite development server.
+
+The service worker is deliberately a static, read-only application shell:
+
+- navigations use network-first with the last verified shell as the offline fallback;
+- initial entry JavaScript/CSS and reviewed root public assets are precached under a content-derived cache name; lazy Strategy Studio/Blockly files remain on demand;
+- `/api/*`, `/stream`, `/quotes`, `/orderbook`, `/trade-flow` and `/trade-stream` always use the network;
+- POST requests, cross-origin responses and opaque responses are never cached;
+- there is no background sync, request queue or automatic trading replay.
+
+The Express server sends `no-cache` for `index.html`, the manifest and service worker, one-year
+`immutable` caching for content-hashed `/assets/*` files, and revalidation for stable public names.
+A reverse proxy must preserve these response headers and must not add an offline cache in front of
+API or WebSocket routes. Offline installation proves only that the interface can open; it does not
+claim current prices, authenticated access or available order execution.
+
 ### Example: run behind a process manager
 
 Because `npm start` is a plain long-lived Node process, any supervisor works. For example, with a bound loopback host so a reverse proxy fronts it:

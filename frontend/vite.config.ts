@@ -1,8 +1,19 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { pwaPlugin } from "./vite/pwaPlugin";
+
+const frontendRoot = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    pwaPlugin({
+      entryHtml: fileURLToPath(new URL("./index.html", import.meta.url)),
+      publicDir: fileURLToPath(new URL("./public", import.meta.url))
+    })
+  ],
+  root: frontendRoot,
   build: {
     // The reviewed raw ceiling is enforced independently by perf:check.
     chunkSizeWarningLimit: 780,

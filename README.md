@@ -83,6 +83,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 ### 🔒 Local-first & secure
 - Exchange API keys are **encrypted at rest** with AES-256-GCM (`node:crypto`) — they are **never** sent back to the browser and never leave your machine.
 - Persistence uses Node's **built-in** `node:sqlite` — no native builds, no external database, no occupied ports.
+- The production terminal is **installable as a PWA** and can reopen its static interface offline. APIs, authentication, quotes, order books, trades and trading commands are never cached or replayed; offline does not mean fresh market data or available execution.
 
 ---
 

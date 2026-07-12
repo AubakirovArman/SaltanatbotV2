@@ -1,0 +1,23 @@
+{
+  "id": "/",
+  "name": "SaltanatbotV2 — Open Trading Research Terminal",
+  "short_name": "SaltanatbotV2",
+  "description": "Local-first open-source charts, indicators, strategies, backtesting and paper trading.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080d13",
+  "theme_color": "#080d13",
+  "categories": ["finance", "productivity", "utilities"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
