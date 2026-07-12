@@ -23,25 +23,25 @@
   font-family: var(--font-ui);
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
-  background: #0b0d10;
-  color: #e8eef4;
+  background: #080d13;
+  color: #e9f0f6;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 
-  --bg: #0b0d10;
-  --panel: #10141a;
-  --panel-soft: #151a21;
-  --line: #222933;
-  --line-soft: #1a2027;
+  --bg: #080d13;
+  --panel: #0d141c;
+  --panel-soft: #121b25;
+  --line: #22303d;
+  --line-soft: #18232e;
   --hover: rgba(154, 167, 179, 0.07);
-  --text: #e8eef4;
-  --muted: #8b99a6;
-  --dim: #748390;
-  --accent: #4db6ff;
-  --accent-soft: rgba(77, 182, 255, 0.12);
-  --accent-line: rgba(77, 182, 255, 0.45);
-  --up: #26a69a;
-  --down: #ef5350;
+  --text: #e9f0f6;
+  --muted: #93a3b2;
+  --dim: #6f8293;
+  --accent: #53b7e8;
+  --accent-soft: rgba(83, 183, 232, 0.12);
+  --accent-line: rgba(83, 183, 232, 0.42);
+  --up: #23b99a;
+  --down: #ef6a65;
   --up-soft: rgba(38, 166, 154, 0.10);
   --down-soft: rgba(239, 83, 80, 0.10);
   --warn: #f7c948;
@@ -49,9 +49,9 @@
   --overlay: rgba(16, 20, 25, 0.85);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.35);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.5);
-  --chart-bg: #0b0d10;
-  --chart-panel: #10141a;
-  --chart-grid: rgba(134, 150, 166, 0.10);
+  --chart-bg: #080d13;
+  --chart-panel: #0d141c;
+  --chart-grid: rgba(126, 151, 171, 0.105);
 }
 
 :root[data-theme="light"] {

@@ -177,9 +177,10 @@ export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRende
     theme
   };
 
-  if (chartType === "candles" || chartType === "heikin") drawCandles(renderContext);
+  if (chartType === "candles" || chartType === "heikin" || chartType === "hollow") drawCandles(renderContext, chartType === "hollow");
   if (chartType === "bars") drawBars(renderContext);
   if (chartType === "line") drawLineArea(renderContext, false);
+  if (chartType === "step") drawLineArea(renderContext, false, true);
   if (chartType === "area" || chartType === "baseline") drawLineArea(renderContext, true);
   if (chartType === "renko") drawRenko(renderContext, plan.bricks);
 
@@ -242,7 +243,7 @@ export function drawChartOverlays(ctx: CanvasRenderingContext2D, plan: ChartRend
   if (livePositions && livePositions.length > 0) drawLivePositions(ctx, plan.viewport, livePositions, decimals);
   if (trades && trades.length > 0) drawTradeOverlay(ctx, plan.viewport, trades, theme, decimals);
   if (signals && signals.length > 0) drawMarkers(ctx, plan.viewport, signals, theme);
-  drawLastPrice(ctx, plan.plot, plan.viewport.scale, candles[candles.length - 1], decimals, theme);
+  drawLastPrice(ctx, plan.plot, plan.viewport.scale, candles[candles.length - 1], theme);
 }
 
 /** Backward-compatible single-canvas facade. */

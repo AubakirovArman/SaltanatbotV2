@@ -1,10 +1,11 @@
 import type { RenderContext } from "../types";
 
-export function drawCandles({ ctx, candles, plot, scale, step, theme }: RenderContext) {
-  const bodyWidth = Math.max(2, Math.min(12, step * 0.64));
+export function drawCandles({ ctx, candles, plot, scale, step, theme }: RenderContext, hollow = false) {
+  const bodyWidth = Math.max(3, Math.min(14, Math.floor(step * 0.7)));
+  ctx.lineWidth = 1;
 
   candles.forEach((candle, index) => {
-    const x = plot.left + index * step + step / 2;
+    const x = Math.round(plot.left + index * step + step / 2) + 0.5;
     const open = scale.y(candle.open);
     const close = scale.y(candle.close);
     const high = scale.y(candle.high);
@@ -15,12 +16,15 @@ export function drawCandles({ ctx, candles, plot, scale, step, theme }: RenderCo
     const height = Math.max(1, Math.abs(open - close));
 
     ctx.strokeStyle = color;
-    ctx.fillStyle = up ? "rgba(35, 201, 122, 0.16)" : "rgba(239, 83, 80, 0.2)";
+    ctx.fillStyle = hollow && up ? theme.background : color;
     ctx.beginPath();
     ctx.moveTo(x, high);
     ctx.lineTo(x, low);
     ctx.stroke();
-    ctx.fillRect(x - bodyWidth / 2, top, bodyWidth, height);
-    ctx.strokeRect(x - bodyWidth / 2, top, bodyWidth, height);
+    const left = Math.round(x - bodyWidth / 2) + 0.5;
+    const bodyTop = Math.round(top) + 0.5;
+    const bodyHeight = Math.max(1, Math.round(height));
+    ctx.fillRect(left, bodyTop, bodyWidth, bodyHeight);
+    ctx.strokeRect(left, bodyTop, bodyWidth, bodyHeight);
   });
 }

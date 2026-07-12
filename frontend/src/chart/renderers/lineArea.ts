@@ -2,7 +2,8 @@ import type { RenderContext } from "../types";
 
 export function drawLineArea(
   { ctx, candles, plot, scale, step, theme }: RenderContext,
-  fill: boolean
+  fill: boolean,
+  stepped = false
 ) {
   if (candles.length < 2) return;
   const path = new Path2D();
@@ -11,7 +12,10 @@ export function drawLineArea(
     const x = plot.left + index * step + step / 2;
     const y = scale.y(candle.close);
     if (index === 0) path.moveTo(x, y);
-    else path.lineTo(x, y);
+    else if (stepped) {
+      path.lineTo(x, scale.y(candles[index - 1].close));
+      path.lineTo(x, y);
+    } else path.lineTo(x, y);
   });
 
   if (fill) {

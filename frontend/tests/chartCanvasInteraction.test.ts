@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DrawingObject } from "../src/chart/drawings";
 import { formatVolume, moveDrawing, sameLegend } from "../src/components/chartCanvas/drawingInteraction";
+import { formatBarCountdown, nextBarTime } from "../src/components/chartCanvas/ChartPriceHud";
 
 const drawing: DrawingObject = {
   id: "line",
@@ -24,5 +25,13 @@ describe("ChartCanvas interaction helpers", () => {
 
   it("formats compact chart volumes deterministically", () => {
     expect([formatVolume(999), formatVolume(12_345), formatVolume(1_500_000)]).toEqual(["999", "12.3K", "1.50M"]);
+  });
+
+  it("calculates exact fixed and calendar candle deadlines", () => {
+    const open = Date.UTC(2026, 0, 31, 0, 0, 0);
+    expect(nextBarTime(open, "15m")).toBe(open + 900_000);
+    expect(new Date(nextBarTime(open, "1M")).toISOString()).toBe("2026-02-28T00:00:00.000Z");
+    expect(formatBarCountdown(3_661_000)).toBe("01:01:01");
+    expect(formatBarCountdown(-1)).toBe("00:00:00");
   });
 });

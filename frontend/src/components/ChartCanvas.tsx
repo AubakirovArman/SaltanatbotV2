@@ -14,6 +14,7 @@ import { DrawingObjectsPanel } from "./DrawingObjectsPanel";
 import { ChartDrawingToolbar } from "./chartCanvas/ChartDrawingToolbar";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
+import { ChartPriceHud } from "./chartCanvas/ChartPriceHud";
 import { clampIndex, formatVolume, moveDrawing, sameLegend, snapAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
 
@@ -490,6 +491,15 @@ export function ChartCanvas({
             if (hit) setSelectedId(hit.id);
             setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id, price: viewport?.yToPrice(y) });
           }}
+        />
+        <ChartPriceHud
+          candle={legendCandle}
+          latest={latest}
+          timeframe={timeframe}
+          decimals={instrument.decimals}
+          locale={locale}
+          viewport={viewportRef.current}
+          crosshair={view.crosshair}
         />
         {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay locale={locale} tables={tables} />}
         <ChartDataPanel candles={candles} decimals={instrument.decimals} focusedIndex={hoverIndex} signals={signals} trades={trades} symbol={instrument.symbol} timeframe={timeframe} locale={locale} summaryId={chartDataSummaryId} />

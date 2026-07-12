@@ -2,7 +2,7 @@
 
 export type AssetClass = "crypto" | "forex" | "stock" | "index";
 export type Timeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "1d" | "1w" | "1M";
-export type ChartType = "candles" | "heikin" | "bars" | "line" | "area" | "baseline" | "renko";
+export type ChartType = "candles" | "hollow" | "heikin" | "bars" | "line" | "step" | "area" | "baseline" | "renko";
 export type DataExchange = "binance" | "bybit";
 
 export interface Instrument {
@@ -108,7 +108,7 @@ export interface ErrorMessage {
 export type StreamMessage = StreamStatus | SnapshotMessage | CandleMessage | ErrorMessage;
 
 const timeframes = new Set<Timeframe>(["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"]);
-const chartTypes = new Set<ChartType>(["candles", "heikin", "bars", "line", "area", "baseline", "renko"]);
+const chartTypes = new Set<ChartType>(["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko"]);
 const assetClasses = new Set<AssetClass>(["crypto", "forex", "stock", "index"]);
 
 function record(value: unknown, label: string): Record<string, unknown> {

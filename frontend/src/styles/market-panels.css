@@ -15,7 +15,7 @@
 }
 
 .stats-panel {
-  grid-template-rows: auto auto auto;
+  grid-template-rows: repeat(4, auto);
   align-content: start;
   padding-inline: 12px;
   border-inline-start: 1px solid var(--line);
@@ -295,6 +295,47 @@ small {
 .quote-block em {
   font-style: normal;
   font-size: var(--fs-md);
+}
+
+.session-range {
+  display: grid;
+  gap: 6px;
+  padding-block: 4px 8px;
+  border-block-end: 1px solid var(--line-soft);
+}
+
+.session-range > div:first-child,
+.session-range footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.session-range > div:first-child strong {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.session-range-track {
+  position: relative;
+  block-size: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--down), var(--dim) 50%, var(--up));
+}
+
+.session-range-track i {
+  position: absolute;
+  inset-block-start: 50%;
+  inline-size: 8px;
+  block-size: 8px;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  background: var(--text);
+  translate: -50% -50%;
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 /* Label-left / value-right hairline table. */

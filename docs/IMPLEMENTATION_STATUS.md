@@ -570,6 +570,7 @@ Current: 21 scenarios implemented; the critical-flow and accessibility checklist
   - [x] Localize Strategy Studio controls, template library, Pine import, backtest reports and optimizer/walk-forward research.
   - [x] Localize command search/actions, watchlist filters/favorites, bar/feed statistics and price-alert controls/toasts.
   - [x] Localize chart drawings, indicator/artifact inputs, compare controls, chart types and saved workspaces.
+  - [x] Add hollow candles, step line, a DOM price/countdown HUD and a trailing 24-hour range indicator.
 - [x] Complete Russian user-guide parity for the current chart, strategy research and trading product surfaces.
   - [x] Add the Russian chart navigation and accessible table-data guide.
   - [x] Add the Russian paper/live trading, key safety, recovery, command-console and journal guide.

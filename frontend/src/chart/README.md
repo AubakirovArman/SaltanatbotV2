@@ -13,6 +13,9 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `dirtyLayers.ts`: requestAnimationFrame invalidation scheduler with deterministic base-before-interaction ordering.
 - `useChartRenderer.ts`: five-canvas ownership, ResizeObserver synchronization, render-plan reuse and dirty-pass invalidation.
 - `renderers/chartChrome.ts`: axes, grid, last-price and crosshair chrome.
+- `renderers/candles.ts`: solid and hollow candle bodies with DPR-safe pixel alignment.
+- `renderers/lineArea.ts`: line, step-line and filled area primitives.
+- `../components/chartCanvas/ChartPriceHud.tsx`: DOM current-price/countdown pill and crosshair OHLC HUD.
 - `../components/ChartDataPanel.tsx`: bounded semantic tables for the focused OHLC candle, recent candles, strategy signals and executed trades.
 - `drawingTemplates.ts`: validated local drawing-style templates consumed by
   the object tree; visibility, locking, undo and redo stay owned by `ChartCanvas`.
@@ -26,6 +29,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Time/price coordinate transforms remain reversible within rendering precision.
 - Pointer-only behavior must have a documented keyboard or UI alternative.
 - Canvas information remains available through real DOM; the canvas description points to the synchronized chart-data summary.
+- The one-second candle countdown updates only its DOM overlay and never invalidates Canvas render passes.
 - Crosshair/drawing redraws must not recompute unchanged indicators.
 - Crosshair-only movement paints the transparent interaction canvas without clearing or repainting the base canvas.
 - Primary-series, indicator and drawing/strategy passes use separate transparent canvases and reuse one prepared viewport/indicator plan.

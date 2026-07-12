@@ -1,0 +1,44 @@
+# Precision Terminal design QA
+
+- Source visual truth: `/home/arman/.codex/generated_images/019f4ec0-4b02-7621-a5f9-371b76b95cd9/exec-11130df5-a697-467e-9fa3-dd5981a626e9.png`
+- Browser-rendered implementation: `/home/arman/.codex/design-qa/saltanatbotv2/precision-terminal-final.png`
+- Full-view comparison: `/home/arman/.codex/design-qa/saltanatbotv2/full-comparison.png`
+- Focused chart/HUD comparison: `/home/arman/.codex/design-qa/saltanatbotv2/chart-focus-comparison-final.png`
+- Viewport: 1616 × 965 CSS pixels, Chromium, DPR 1
+- State: dark chart workspace, BTCUSDT 1m, SMA/Bollinger/RSI visible, volume visible, crosshair hover active
+
+## Findings
+
+No actionable P0, P1 or P2 mismatch remains.
+
+- Typography uses the product's existing system UI and mono stacks with the same compact hierarchy as the target. Axis and market data remain tabular and readable.
+- Layout preserves the target's left market rail, dominant chart pane and right quote/status rail. Existing production controls make the top bar denser than the concept, but no persistent control is clipped.
+- Colors map to the target's restrained graphite/navy, teal, coral and blue system without glow-heavy effects. State contrast remains semantic in both dark and light themes.
+- The only visible raster brand asset is the existing project logo; standard controls continue to use the installed Lucide icon system. No target asset is replaced by a placeholder or handcrafted icon.
+- Copy reflects live application data and the existing product vocabulary. The concept's 52-week/performance blocks are intentionally omitted because the current feed does not provide trustworthy values for them.
+
+## Comparison evidence
+
+The full-view comparison confirms matching information hierarchy, terminal density, three-pane composition, compact market rows, high-contrast candle bodies and restrained panel borders. The focused comparison confirms the crosshair, OHLC HUD, solid candles, indicator hierarchy, dotted last-price line and price/countdown pill at readable scale.
+
+## Comparison history
+
+1. Initial browser capture found one P2 runtime-quality issue: the production Content Security Policy blocked the inline pre-paint theme initializer. The initializer was moved to the same-origin `/theme-init.js` asset and the dark theme color was synchronized to `#080d13`.
+2. The implementation was rebuilt and recaptured at the same viewport/state. Chromium reported zero console or page errors; both the crosshair HUD and price/countdown pill were visible.
+3. Final full-view and focused combined comparisons found no remaining P0/P1/P2 issue.
+
+## Primary interactions tested
+
+- Hovering the plot reveals and repositions the crosshair OHLC/change/volume HUD.
+- The last-price pill and one-second candle countdown remain visible.
+- Hollow Candles can be selected and report the checked state.
+- Step Line renders after selection.
+- Price scale cycles from LIN to LOG.
+- Browser console and uncaught page errors: none after the CSP fix.
+
+## Follow-up polish
+
+- P3: add longer-window performance and contract-detail cards only after authoritative market-history/funding data is available.
+- P3: add stable screenshot fixtures for Hollow Candles and Step Line to the visual regression suite.
+
+final result: passed

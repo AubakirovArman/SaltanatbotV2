@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls = vi.hoisted(() => ({
   candles: vi.fn(),
+  lineArea: vi.fn(),
   indicator: vi.fn(),
   drawings: vi.fn()
 }));
 
 vi.mock("../src/chart/renderers/candles", () => ({ drawCandles: calls.candles }));
+vi.mock("../src/chart/renderers/lineArea", () => ({ drawLineArea: calls.lineArea }));
 vi.mock("../src/chart/renderers/drawingRenderers", () => ({ drawDrawings: calls.drawings }));
 vi.mock("../src/chart/renderers/indicatorRenderers", () => ({
   drawBollinger: vi.fn(),
@@ -112,5 +114,14 @@ describe("chart render passes", () => {
     if (plan.empty || basePlan.empty) return;
     expect(plan.lowerIndicators).toMatchObject([{ id: "sma", pane: "separate", scalePlacement: "left" }]);
     expect(plan.plot.height).toBeLessThan(basePlan.plot.height);
+  });
+
+  it("routes hollow candles and step lines through their specialized renderer modes", () => {
+    const ctx = context();
+    drawChartPrimary(ctx, prepareChartRender({ ...input, chartType: "hollow" }));
+    expect(calls.candles).toHaveBeenCalledWith(expect.any(Object), true);
+
+    drawChartPrimary(ctx, prepareChartRender({ ...input, chartType: "step" }));
+    expect(calls.lineArea).toHaveBeenCalledWith(expect.any(Object), false, true);
   });
 });

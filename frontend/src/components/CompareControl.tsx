@@ -181,7 +181,7 @@ function isCompareChartType(value: ChartType): value is CompareChartType {
 }
 
 function isCandleLike(type: CompareChartType) {
-  return type === "candles" || type === "heikin" || type === "bars";
+  return type === "candles" || type === "hollow" || type === "heikin" || type === "bars";
 }
 
 function dotStyle(entry: CompareOverlayConfig) {
@@ -215,7 +215,7 @@ function symbolBase(symbol: string): string {
 }
 
 function typeLabel(locale: Locale, type: CompareChartType) {
-  const keys = { heikin: "heikinType", candles: "candlesType", bars: "barsType", area: "areaType", baseline: "baselineType", line: "lineType" } as const;
+  const keys = { heikin: "heikinType", candles: "candlesType", hollow: "hollowType", bars: "barsType", area: "areaType", baseline: "baselineType", line: "lineType", step: "stepType" } as const;
   return shellText(locale, keys[type]);
 }
 

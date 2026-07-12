@@ -47,6 +47,7 @@ export function StatsPanel({
   const percent = latest && previous ? (change / previous.close) * 100 : 0;
   const direction = change >= 0 ? "up" : "down";
   const range = latest ? latest.high - latest.low : undefined;
+  const session = sessionRange(candles);
 
   return (
     <aside className="stats-panel">
@@ -61,6 +62,16 @@ export function StatsPanel({
           </em>
         </div>
       </section>
+
+      {latest && session && (
+        <section className="session-range" aria-label={t("sessionRange")}>
+          <div><span>{t("sessionRange")}</span><strong className="num">{session.low.toFixed(instrument.decimals)} — {session.high.toFixed(instrument.decimals)}</strong></div>
+          <div className="session-range-track" aria-hidden="true">
+            <i style={{ insetInlineStart: `${session.position}%` }} />
+          </div>
+          <footer><span>L</span><span>{Math.round(session.position)}%</span><span>H</span></footer>
+        </section>
+      )}
 
       <section className="stat-table" aria-label={t("barStatistics")}>
         <StatRow label={t("open")} value={format(latest?.open, instrument.decimals)} />
@@ -210,4 +221,16 @@ function compact(value: number | undefined, locale: Locale) {
   return value === undefined
     ? "…"
     : Intl.NumberFormat(locale === "ru" ? "ru-RU" : "en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value);
+}
+
+export function sessionRange(candles: Candle[]) {
+  const latest = candles.at(-1);
+  if (!latest) return undefined;
+  const cutoff = latest.time - 86_400_000;
+  const window = candles.filter((candle) => candle.time >= cutoff);
+  const source = window.length > 0 ? window : candles;
+  const low = Math.min(...source.map((candle) => candle.low));
+  const high = Math.max(...source.map((candle) => candle.high));
+  const position = high === low ? 50 : Math.min(100, Math.max(0, (latest.close - low) / (high - low) * 100));
+  return { low, high, position };
 }

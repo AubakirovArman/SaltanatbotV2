@@ -71,15 +71,17 @@ interface TopBarProps {
 
 const chartIcons = {
   candles: CandlestickChart,
+  hollow: Square,
   heikin: Activity,
   bars: BarChart3,
   line: LineChart,
+  step: GitCommitVertical,
   area: AreaChart,
   baseline: GitCommitVertical,
   renko: Blocks
 } satisfies Record<ChartType, typeof CandlestickChart>;
 
-const chartLabelKeys = { candles: "candlesType", heikin: "heikinType", bars: "barsType", line: "lineType", area: "areaType", baseline: "baselineType", renko: "renkoType" } as const;
+const chartLabelKeys = { candles: "candlesType", hollow: "hollowType", heikin: "heikinType", bars: "barsType", line: "lineType", step: "stepType", area: "areaType", baseline: "baselineType", renko: "renkoType" } as const;
 
 /** Timeframes shown inline in the compact top-bar segment. The rest live in the
  * "more" dropdown so every timeframe stays selectable without cluttering the bar. */

@@ -228,7 +228,7 @@
   min-block-size: 0;
   min-inline-size: 0;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr);
   background: var(--chart-bg);
   overflow: hidden;
 }
@@ -239,7 +239,7 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 6px 0;
+  padding: 8px 0;
   border-inline-end: 1px solid var(--line);
   background: var(--panel);
   overflow: hidden;
@@ -248,8 +248,8 @@
 .tool-rail button {
   display: inline-grid;
   place-content: center;
-  inline-size: 28px;
-  block-size: 28px;
+  inline-size: 30px;
+  block-size: 30px;
   border: none;
   border-radius: var(--radius);
   background: transparent;
@@ -321,6 +321,59 @@
   overflow: hidden;
 }
 
+.current-price-pill {
+  position: absolute;
+  inset-inline-end: 5px;
+  z-index: 7;
+  min-inline-size: 66px;
+  display: grid;
+  gap: 1px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  color: #07100f;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  translate: 0 -50%;
+  pointer-events: none;
+}
+
+.current-price-pill.up { background: var(--up); color: #041310; }
+.current-price-pill.down { background: var(--down); color: #180605; }
+.current-price-pill strong { font-size: var(--fs-sm); font-weight: 700; }
+.current-price-pill span { font-size: 9px; opacity: 0.76; }
+
+.crosshair-hud {
+  position: absolute;
+  z-index: 6;
+  inline-size: 188px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.crosshair-hud header,
+.crosshair-hud footer,
+.crosshair-hud dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.crosshair-hud header { padding-block-end: 6px; border-block-end: 1px solid var(--line-soft); }
+.crosshair-hud header strong { font-weight: 600; }
+.crosshair-hud dl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 12px; margin: 7px 0; }
+.crosshair-hud dt { color: var(--dim); }
+.crosshair-hud dd { margin: 0; color: var(--text); }
+.crosshair-hud footer { padding-block-start: 6px; border-block-start: 1px solid var(--line-soft); color: var(--muted); }
+
 .chart-canvas {
   inline-size: 100%;
   block-size: 100%;
@@ -354,8 +407,8 @@
 /* Single legend line: identity + OHLC. No plaque — TV-style text over chart. */
 .chart-legend {
   position: absolute;
-  inset-block-start: 8px;
-  inset-inline-start: 10px;
+  inset-block-start: 10px;
+  inset-inline-start: 12px;
   z-index: 2;
   display: flex;
   align-items: baseline;

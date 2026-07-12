@@ -28,15 +28,15 @@ export function drawCompareShape(
   entry: CompareShapeEntry,
   pctToY: (pct: number) => number
 ) {
-  if ((entry.chartType === "candles" || entry.chartType === "heikin") && entry.candles.length > 0) {
-    drawCompareCandles(ctx, viewport, entry, pctToY);
+  if ((entry.chartType === "candles" || entry.chartType === "hollow" || entry.chartType === "heikin") && entry.candles.length > 0) {
+    drawCompareCandles(ctx, viewport, entry, pctToY, entry.chartType === "hollow");
     return;
   }
   if (entry.chartType === "bars" && entry.candles.length > 0) {
     drawCompareBars(ctx, viewport, entry, pctToY);
     return;
   }
-  drawCompareLine(ctx, viewport, entry, pctToY, entry.chartType === "area" || entry.chartType === "baseline");
+  drawCompareLine(ctx, viewport, entry, pctToY, entry.chartType === "area" || entry.chartType === "baseline", entry.chartType === "step");
 }
 
 export function drawZeroLine(ctx: CanvasRenderingContext2D, plot: PlotArea, pctToY: (pct: number) => number, theme: ChartTheme) {
@@ -82,7 +82,8 @@ function drawCompareLine(
   viewport: Viewport,
   entry: CompareShapeEntry,
   pctToY: (pct: number) => number,
-  fill: boolean
+  fill: boolean,
+  stepped: boolean
 ) {
   if (entry.line.length < 2) return;
   const path = new Path2D();
@@ -90,7 +91,10 @@ function drawCompareLine(
     const x = viewport.timeToX(point.time);
     const y = pctToY(point.value);
     if (index === 0) path.moveTo(x, y);
-    else path.lineTo(x, y);
+    else if (stepped) {
+      path.lineTo(x, pctToY(entry.line[index - 1].value));
+      path.lineTo(x, y);
+    } else path.lineTo(x, y);
   });
 
   if (fill) {
@@ -114,7 +118,8 @@ function drawCompareCandles(
   ctx: CanvasRenderingContext2D,
   viewport: Viewport,
   entry: CompareShapeEntry,
-  pctToY: (pct: number) => number
+  pctToY: (pct: number) => number,
+  hollow: boolean
 ) {
   const width = candleWidth(entry.candles, viewport);
   ctx.lineWidth = 1.2;
@@ -129,12 +134,12 @@ function drawCompareCandles(
     const up = candle.close >= candle.open;
     const color = up ? entry.upColor : entry.downColor;
     ctx.strokeStyle = color;
-    ctx.fillStyle = colorAlpha(color, up ? 0.12 : 0.24);
+    ctx.fillStyle = hollow && up ? "transparent" : color;
     ctx.beginPath();
     ctx.moveTo(x, high);
     ctx.lineTo(x, low);
     ctx.stroke();
-    ctx.fillRect(x - width / 2, top, width, height);
+    if (!(hollow && up)) ctx.fillRect(x - width / 2, top, width, height);
     ctx.strokeRect(x - width / 2, top, width, height);
   }
 }

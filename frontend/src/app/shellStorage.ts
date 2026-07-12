@@ -55,7 +55,7 @@ export function loadCompare(defaultTimeframe: Timeframe, defaultChartType: Chart
 }
 
 export function asCompareChartType(value: unknown): CompareChartType {
-  const allowed: CompareChartType[] = ["candles", "heikin", "bars", "line", "area", "baseline"];
+  const allowed: CompareChartType[] = ["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline"];
   return typeof value === "string" && allowed.includes(value as CompareChartType) ? value as CompareChartType : "line";
 }
 

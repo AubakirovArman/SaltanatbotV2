@@ -5,6 +5,14 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Precision chart experience
+
+- Added hollow-candle and step-line price renderers to the shared market contract, catalog, chart picker, compare overlays and saved-workspace migration.
+- Added a DPR-aware current-price pill with candle-close countdown and a crosshair OHLC/change/volume HUD without invalidating Canvas render layers every second.
+- Added a trailing 24-hour price-range visualization to the instrument panel and tightened the dark terminal palette, tool rail, candle geometry and data hierarchy.
+- Moved pre-paint theme initialization to a same-origin asset so the production Content Security Policy no longer blocks it.
+- Updated English, Russian and Kazakh chart documentation and added focused contract, renderer, countdown and session-range tests.
+
 ### Strategy Studio and accessibility
 
 - Added explicit Build/Validate/Preview/Backtest/Optimize/Run/Learn stages, a guided editable-strategy

@@ -49,7 +49,6 @@ export function drawLastPrice(
   plot: PlotArea,
   scale: PriceScale,
   last: Candle | undefined,
-  decimals: number,
   theme: ChartTheme
 ) {
   if (!last) return;
@@ -64,15 +63,6 @@ export function drawLastPrice(
   ctx.lineTo(plot.right, y);
   ctx.stroke();
   ctx.setLineDash([]);
-  const label = formatAxisPrice(last.close, scale, decimals);
-  ctx.font = '600 10px "SF Mono", SFMono-Regular, ui-monospace, Menlo, Consolas, monospace';
-  const paddingX = 6;
-  ctx.fillStyle = color;
-  ctx.fillRect(plot.right + 4, y - 9, ctx.measureText(label).width + paddingX * 2, 18);
-  ctx.fillStyle = "#0b0d10";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, plot.right + 4 + paddingX, y);
   ctx.restore();
 }
 
