@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const calls = vi.hoisted(() => ({
   candles: vi.fn(),
   lineArea: vi.fn(),
+  volumeProfile: vi.fn(),
   indicator: vi.fn(),
   drawings: vi.fn()
 }));
 
 vi.mock("../src/chart/renderers/candles", () => ({ drawCandles: calls.candles }));
 vi.mock("../src/chart/renderers/lineArea", () => ({ drawLineArea: calls.lineArea }));
+vi.mock("../src/chart/renderers/volumeProfile", () => ({ drawVolumeProfile: calls.volumeProfile }));
 vi.mock("../src/chart/renderers/drawingRenderers", () => ({ drawDrawings: calls.drawings }));
 vi.mock("../src/chart/renderers/indicatorRenderers", () => ({
   drawBollinger: vi.fn(),
@@ -123,5 +125,15 @@ describe("chart render passes", () => {
 
     drawChartPrimary(ctx, prepareChartRender({ ...input, chartType: "step" }));
     expect(calls.lineArea).toHaveBeenCalledWith(expect.any(Object), false, true);
+  });
+
+  it("renders the visible-range profile only when requested", () => {
+    const ctx = context();
+    drawChartPrimary(ctx, prepareChartRender({ ...input, showVolumeProfile: true }));
+    expect(calls.volumeProfile).toHaveBeenCalledTimes(1);
+
+    vi.clearAllMocks();
+    drawChartPrimary(ctx, prepareChartRender({ ...input, showVolumeProfile: false }));
+    expect(calls.volumeProfile).not.toHaveBeenCalled();
   });
 });

@@ -5,7 +5,7 @@
 - Full-view comparison: `/home/arman/.codex/design-qa/saltanatbotv2/full-comparison.png`
 - Focused chart/HUD comparison: `/home/arman/.codex/design-qa/saltanatbotv2/chart-focus-comparison-final.png`
 - Viewport: 1616 × 965 CSS pixels, Chromium, DPR 1
-- State: dark chart workspace, BTCUSDT 1m, SMA/Bollinger/RSI visible, volume visible, crosshair hover active
+- State: dark chart workspace, BTCUSDT 1m, SMA/Bollinger/RSI visible, volume and visible-range Volume Profile enabled, crosshair hover active
 
 ## Findings
 
@@ -16,16 +16,18 @@ No actionable P0, P1 or P2 mismatch remains.
 - Colors map to the target's restrained graphite/navy, teal, coral and blue system without glow-heavy effects. State contrast remains semantic in both dark and light themes.
 - The only visible raster brand asset is the existing project logo; standard controls continue to use the installed Lucide icon system. No target asset is replaced by a placeholder or handcrafted icon.
 - Copy reflects live application data and the existing product vocabulary. The concept's 52-week/performance blocks are intentionally omitted because the current feed does not provide trustworthy values for them.
+- The explicitly labelled `EST` VPVR bars and POC badge are an intentional functional extension beyond the selected concept. They remain inside the chart's right-side analysis zone, preserve candle legibility and can be hidden from the accessible tool rail.
 
 ## Comparison evidence
 
-The full-view comparison confirms matching information hierarchy, terminal density, three-pane composition, compact market rows, high-contrast candle bodies and restrained panel borders. The focused comparison confirms the crosshair, OHLC HUD, solid candles, indicator hierarchy, dotted last-price line and price/countdown pill at readable scale.
+The full-view comparison confirms matching information hierarchy, terminal density, three-pane composition, compact market rows, high-contrast candle bodies and restrained panel borders. The focused comparison confirms the crosshair, OHLC HUD, solid candles, indicator hierarchy, dotted last-price line, price/countdown pill and the added directional VPVR/POC treatment at readable scale.
 
 ## Comparison history
 
 1. Initial browser capture found one P2 runtime-quality issue: the production Content Security Policy blocked the inline pre-paint theme initializer. The initializer was moved to the same-origin `/theme-init.js` asset and the dark theme color was synchronized to `#080d13`.
 2. The implementation was rebuilt and recaptured at the same viewport/state. Chromium reported zero console or page errors; both the crosshair HUD and price/countdown pill were visible.
 3. Final full-view and focused combined comparisons found no remaining P0/P1/P2 issue.
+4. A later chart iteration added visible-range Volume Profile. Its first capture exposed a duplicated Canvas/DOM label; the Canvas label was removed, the implementation was recaptured, and the final combined comparison found no new P0/P1/P2 issue.
 
 ## Primary interactions tested
 
@@ -34,6 +36,7 @@ The full-view comparison confirms matching information hierarchy, terminal densi
 - Hollow Candles can be selected and report the checked state.
 - Step Line renders after selection.
 - Price scale cycles from LIN to LOG.
+- The localized Volume Profile control reports its pressed state, hides both profile and summary, and restores them on the next activation.
 - Browser console and uncaught page errors: none after the CSP fix.
 
 ## Follow-up polish

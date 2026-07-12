@@ -5,7 +5,7 @@ import { useChartRenderer } from "../chart/useChartRenderer";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import { visibleCandles } from "../chart/scales";
-import type { CompareLegendSnapshot, CompareSeries, PriceMode } from "../chart/types";
+import type { CompareLegendSnapshot, CompareSeries, PriceMode, VolumeProfileSnapshot } from "../chart/types";
 import { shellText } from "../i18n/shell";
 import { ChartIndicatorOverlay } from "./ChartIndicatorOverlay";
 import { ChartDataPanel } from "./ChartDataPanel";
@@ -15,7 +15,7 @@ import { ChartDrawingToolbar } from "./chartCanvas/ChartDrawingToolbar";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
 import { ChartPriceHud } from "./chartCanvas/ChartPriceHud";
-import { clampIndex, formatVolume, moveDrawing, sameLegend, snapAnchor } from "./chartCanvas/drawingInteraction";
+import { clampIndex, formatVolume, moveDrawing, sameLegend, sameVolumeProfile, snapAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
 
 const MAX_COMPARE = 3;
@@ -78,6 +78,7 @@ export function ChartCanvas({
   const [magnet, setMagnet] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; id?: string; price?: number }>();
   const [showVolume, setShowVolume] = useState(true);
+  const [showVolumeProfile, setShowVolumeProfile] = useState(true);
   const [showArtifactSettings, setShowArtifactSettings] = useState(false);
   const [showDrawingObjects, setShowDrawingObjects] = useState(false);
   const [, setHistoryVersion] = useState(0);
@@ -95,6 +96,7 @@ export function ChartCanvas({
     priceMode: PriceMode;
   }>({ zoom: 1, offset: 0, priceMode: "linear" });
   const [compareLegend, setCompareLegend] = useState<CompareLegendSnapshot[]>([]);
+  const [volumeProfile, setVolumeProfile] = useState<VolumeProfileSnapshot>();
   const chartDataSummaryId = useId();
 
   const latest = candles.at(-1);
@@ -217,9 +219,11 @@ export function ChartCanvas({
     alerts: chartAlerts,
     livePositions,
     showVolume,
+    showVolumeProfile,
     compare,
     theme,
-    onCompareLegend: (entries) => setCompareLegend((current) => (sameLegend(current, entries) ? current : entries))
+    onCompareLegend: (entries) => setCompareLegend((current) => (sameLegend(current, entries) ? current : entries)),
+    onVolumeProfile: (profile) => setVolumeProfile((current) => sameVolumeProfile(current, profile) ? current : profile)
   });
 
   // Lazy-load older history when the viewport nears the left (oldest) edge.
@@ -277,11 +281,13 @@ export function ChartCanvas({
         tool={tool}
         magnet={magnet}
         showVolume={showVolume}
+        showVolumeProfile={showVolumeProfile}
         showObjects={showDrawingObjects}
         hasDrawings={drawings.length > 0}
         onTool={setTool}
         onToggleMagnet={() => setMagnet((value) => !value)}
         onToggleVolume={() => setShowVolume((value) => !value)}
+        onToggleVolumeProfile={() => setShowVolumeProfile((value) => !value)}
         onToggleObjects={() => setShowDrawingObjects((value) => !value)}
         onDeleteAll={() => {
           if (drawings.length > 0 && !window.confirm(t("deleteDrawingsConfirm"))) return;
@@ -374,6 +380,12 @@ export function ChartCanvas({
         <button type="button" className="scale-toggle" aria-label={t("cyclePriceScale")} title={t("priceScale")} onClick={cyclePriceMode}>
           {view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}
         </button>
+        {showVolumeProfile && volumeProfile && (
+          <div className="volume-profile-badge" title={`${t("volumeProfileEstimate")}. ${t("valueArea")}: ${volumeProfile.valueAreaLow.toFixed(instrument.decimals)} — ${volumeProfile.valueAreaHigh.toFixed(instrument.decimals)}`}>
+            <strong>VPVR · EST · {volumeProfile.bins}</strong>
+            <span>{t("pointOfControl")} <b>{volumeProfile.pocPrice.toFixed(instrument.decimals)}</b></span>
+          </div>
+        )}
         <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={`${instrument.symbol} ${chartType} chart on ${timeframe}`} aria-describedby={chartDataSummaryId} />
         <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
         <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />

@@ -1,5 +1,5 @@
 import { anchorFromPixel, type Anchor, type DrawingObject } from "../../chart/drawings";
-import type { CompareLegendSnapshot, Viewport } from "../../chart/types";
+import type { CompareLegendSnapshot, Viewport, VolumeProfileSnapshot } from "../../chart/types";
 import type { Candle } from "../../types";
 
 export function snapAnchor(viewport: Viewport, candles: Candle[], x: number, y: number, magnet: boolean): Anchor {
@@ -39,6 +39,15 @@ export function sameLegend(a: CompareLegendSnapshot[], b: CompareLegendSnapshot[
     const other = b[index];
     return entry.symbol === other.symbol && entry.id === other.id && entry.color === other.color && entry.base === other.base && entry.timeframe === other.timeframe && entry.chartType === other.chartType && roundPct(entry.pct) === roundPct(other.pct);
   });
+}
+
+export function sameVolumeProfile(current?: VolumeProfileSnapshot, next?: VolumeProfileSnapshot) {
+  if (!current || !next) return current === next;
+  return current.bins === next.bins
+    && Math.abs(current.pocPrice - next.pocPrice) < 1e-8
+    && Math.abs(current.valueAreaLow - next.valueAreaLow) < 1e-8
+    && Math.abs(current.valueAreaHigh - next.valueAreaHigh) < 1e-8
+    && Math.abs(current.totalVolume - next.totalVolume) < 1e-5;
 }
 
 function roundPct(pct?: number) {

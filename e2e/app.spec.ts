@@ -12,6 +12,18 @@ test("loads the terminal and exposes the chart semantically", async ({ page }) =
   await expect(page.getByRole("button", { name: "Toggle markets panel" })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("toggles the visible-range volume profile accessibly", async ({ page }) => {
+  await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
+  const toggle = page.getByRole("button", { name: "Toggle visible-range volume profile" });
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".volume-profile-badge")).toContainText("POC", { timeout: 20_000 });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".volume-profile-badge")).toBeHidden();
+  await toggle.click();
+  await expect(page.locator(".volume-profile-badge")).toBeVisible();
+});
+
 test("passes automated WCAG A/AA audits on chart, strategy and trading surfaces", async ({ page }) => {
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
   await expectNoAxeViolations(page);

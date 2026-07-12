@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DrawingObject } from "../src/chart/drawings";
-import { formatVolume, moveDrawing, sameLegend } from "../src/components/chartCanvas/drawingInteraction";
+import { formatVolume, moveDrawing, sameLegend, sameVolumeProfile } from "../src/components/chartCanvas/drawingInteraction";
 import { formatBarCountdown, nextBarTime } from "../src/components/chartCanvas/ChartPriceHud";
 
 const drawing: DrawingObject = {
@@ -21,6 +21,12 @@ describe("ChartCanvas interaction helpers", () => {
     const entry = { id: "btc", symbol: "BTCUSDT", color: "red", base: 100, pct: 1.234, timeframe: "1m" as const, chartType: "line" as const };
     expect(sameLegend([entry], [{ ...entry, pct: 1.233 }])).toBe(true);
     expect(sameLegend([entry], [{ ...entry, symbol: "ETHUSDT" }])).toBe(false);
+  });
+
+  it("suppresses equivalent volume-profile summary updates", () => {
+    const profile = { bins: 28, pocPrice: 100, valueAreaLow: 90, valueAreaHigh: 110, totalVolume: 1_000 };
+    expect(sameVolumeProfile(profile, { ...profile, totalVolume: 1_000.000001 })).toBe(true);
+    expect(sameVolumeProfile(profile, { ...profile, pocPrice: 101 })).toBe(false);
   });
 
   it("formats compact chart volumes deterministically", () => {

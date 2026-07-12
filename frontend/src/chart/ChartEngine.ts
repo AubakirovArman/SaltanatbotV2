@@ -30,10 +30,12 @@ import { drawLivePositions } from "./renderers/livePositions";
 import { drawShapes } from "./renderers/shapes";
 import { drawStrategyPlots, drawSubPlots } from "./renderers/strategyPlots";
 import { drawCompareSeries } from "./renderers/compareSeries";
+import { drawVolumeProfile } from "./renderers/volumeProfile";
 import { drawCrosshair, drawEmpty, drawGrid, drawLastPrice, drawTimeAxis } from "./renderers/chartChrome";
 import { toHeikinAshi } from "./heikinAshi";
 import { computePlot, priceScale, visibleCandles } from "./scales";
 import { buildViewport, medianBarTime } from "./viewport";
+import { buildVolumeProfile } from "./volumeProfile";
 import type { ChartShapes, DrawChartOptions, PlotArea, PriceMode, PriceScale, Viewport } from "./types";
 
 let theme = {
@@ -78,6 +80,7 @@ interface PopulatedChartRenderPlan {
   lowerHeight: number;
   subPanelHeight: number;
   panelTop: number;
+  volumeProfile: ReturnType<typeof buildVolumeProfile>;
 }
 
 export type ChartRenderPlan = EmptyChartRenderPlan | PopulatedChartRenderPlan;
@@ -93,7 +96,7 @@ export function withChartRenderInput(
 /** Compute geometry and expensive indicator series once for every dirty pass. */
 export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
   const {
-    width, height, candles, chartType, view, indicators, plots, shapes, showVolume, onViewport
+    width, height, candles, chartType, view, indicators, plots, shapes, showVolume, showVolumeProfile, onViewport
   } = input;
 
   const priceMode: PriceMode = view.priceMode ?? "linear";
@@ -141,7 +144,8 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
     volumeHeight,
     lowerHeight,
     subPanelHeight,
-    panelTop: plot.bottom + 22
+    panelTop: plot.bottom + 22,
+    volumeProfile: showVolumeProfile ? buildVolumeProfile(visible.data) : undefined
   };
 }
 
@@ -159,10 +163,11 @@ export function drawChartBackground(ctx: CanvasRenderingContext2D, plan: ChartRe
 }
 
 export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRenderPlan, clear = true) {
-  const { width, height, chartType, decimals, showVolume, compare, onCompareLegend } = plan.input;
+  const { width, height, chartType, decimals, showVolume, compare, onCompareLegend, onVolumeProfile } = plan.input;
   if (clear) ctx.clearRect(0, 0, width, height);
   if (plan.empty) {
     onCompareLegend?.([]);
+    onVolumeProfile?.();
     return;
   }
   const scale = plan.viewport.scale;
@@ -176,6 +181,15 @@ export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRende
     decimals,
     theme
   };
+
+  if (plan.volumeProfile) drawVolumeProfile(ctx, plan.plot, scale, plan.volumeProfile, theme);
+  onVolumeProfile?.(plan.volumeProfile ? {
+    bins: plan.volumeProfile.bins.length,
+    pocPrice: plan.volumeProfile.pocPrice,
+    valueAreaLow: plan.volumeProfile.valueAreaLow,
+    valueAreaHigh: plan.volumeProfile.valueAreaHigh,
+    totalVolume: plan.volumeProfile.totalVolume
+  } : undefined);
 
   if (chartType === "candles" || chartType === "heikin" || chartType === "hollow") drawCandles(renderContext, chartType === "hollow");
   if (chartType === "bars") drawBars(renderContext);

@@ -1,4 +1,4 @@
-import { Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, TrendingDown, TrendingUp, Trash2 } from "lucide-react";
+import { BarChart3, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, TrendingDown, TrendingUp, Trash2 } from "lucide-react";
 import type { DrawingTool } from "../../chart/drawings";
 import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
@@ -8,11 +8,13 @@ export function ChartDrawingToolbar({
   tool,
   magnet,
   showVolume,
+  showVolumeProfile,
   showObjects,
   hasDrawings,
   onTool,
   onToggleMagnet,
   onToggleVolume,
+  onToggleVolumeProfile,
   onToggleObjects,
   onDeleteAll
 }: {
@@ -20,11 +22,13 @@ export function ChartDrawingToolbar({
   tool: DrawingTool;
   magnet: boolean;
   showVolume: boolean;
+  showVolumeProfile: boolean;
   showObjects: boolean;
   hasDrawings: boolean;
   onTool: (tool: DrawingTool) => void;
   onToggleMagnet: () => void;
   onToggleVolume: () => void;
+  onToggleVolumeProfile: () => void;
   onToggleObjects: () => void;
   onDeleteAll: () => void;
 }) {
@@ -74,6 +78,9 @@ export function ChartDrawingToolbar({
       <span className="rail-spacer" aria-hidden="true" />
       <Tool active={showVolume} label={t("toggleVolume")} onClick={onToggleVolume}>
         <Scaling size={15} aria-hidden="true" />
+      </Tool>
+      <Tool active={showVolumeProfile} label={t("toggleVolumeProfile")} onClick={onToggleVolumeProfile}>
+        <BarChart3 size={15} aria-hidden="true" />
       </Tool>
       <Tool active={showObjects} label={t("drawingObjects")} onClick={onToggleObjects}>
         <Layers3 size={15} aria-hidden="true" />

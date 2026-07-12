@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added an explicitly labelled OHLCV-estimated visible-range Volume Profile with range-weighted volume distribution, up/down composition, Point of Control and a contiguous 70% value area.
+- Added an accessible localized toolbar toggle and synchronized DOM summary while keeping profile calculations out of crosshair-only render passes.
 - Added hollow-candle and step-line price renderers to the shared market contract, catalog, chart picker, compare overlays and saved-workspace migration.
 - Added a DPR-aware current-price pill with candle-close countdown and a crosshair OHLC/change/volume HUD without invalidating Canvas render layers every second.
 - Added a trailing 24-hour price-range visualization to the instrument panel and tightened the dark terminal palette, tool rail, candle geometry and data hierarchy.

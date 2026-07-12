@@ -343,6 +343,36 @@
 .current-price-pill strong { font-size: var(--fs-sm); font-weight: 700; }
 .current-price-pill span { font-size: 9px; opacity: 0.76; }
 
+.volume-profile-badge {
+  position: absolute;
+  inset-block-start: 42px;
+  inset-inline-end: 82px;
+  z-index: 5;
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  padding: 4px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 90%, transparent);
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.volume-profile-badge strong {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+}
+
+.volume-profile-badge b {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .crosshair-hud {
   position: absolute;
   z-index: 6;

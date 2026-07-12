@@ -25,7 +25,8 @@ import type {
   CompareLegendSnapshot,
   CompareSeries,
   DraftDrawing,
-  Viewport
+  Viewport,
+  VolumeProfileSnapshot
 } from "./types";
 
 interface UseChartRendererOptions {
@@ -46,9 +47,11 @@ interface UseChartRendererOptions {
   alerts: ChartAlert[];
   livePositions?: ChartLivePosition[];
   showVolume: boolean;
+  showVolumeProfile: boolean;
   compare: CompareSeries[];
   theme?: string;
   onCompareLegend(entries: CompareLegendSnapshot[]): void;
+  onVolumeProfile(profile?: VolumeProfileSnapshot): void;
 }
 
 export function useChartRenderer(options: UseChartRendererOptions) {
@@ -60,7 +63,9 @@ export function useChartRenderer(options: UseChartRendererOptions) {
   const renderPlanRef = useRef<ChartRenderPlan>();
   const viewportRef = useRef<Viewport>();
   const legendCallbackRef = useRef(options.onCompareLegend);
+  const volumeProfileCallbackRef = useRef(options.onVolumeProfile);
   legendCallbackRef.current = options.onCompareLegend;
+  volumeProfileCallbackRef.current = options.onVolumeProfile;
   const [renderRevision, setRenderRevision] = useState(0);
   const schedulerRef = useRef<ReturnType<typeof createChartLayerScheduler>>();
   if (!schedulerRef.current) {
@@ -104,10 +109,12 @@ export function useChartRenderer(options: UseChartRendererOptions) {
         alerts: options.alerts,
         livePositions: options.livePositions,
         showVolume: options.showVolume,
+        showVolumeProfile: options.showVolumeProfile,
         compare: options.compare,
         baseSymbol: options.symbol,
         onViewport: (viewport) => { viewportRef.current = viewport; },
-        onCompareLegend: (entries) => legendCallbackRef.current(entries)
+        onCompareLegend: (entries) => legendCallbackRef.current(entries),
+        onVolumeProfile: (profile) => volumeProfileCallbackRef.current(profile)
       });
       renderPlanRef.current = plan;
       drawChartBackground(ctx, plan);
@@ -120,7 +127,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     });
     schedulerRef.current?.schedule("overlays", () => drawOverlays(overlaysCanvas, renderPlanRef.current, options));
     schedulerRef.current?.schedule("interaction", () => drawInteraction(interactionCanvas, viewportRef.current, options));
-  }, [options.candles, options.chartType, options.indicators, options.decimals, options.symbol, options.plots, options.shapes, options.showVolume, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, renderRevision]);
+  }, [options.candles, options.chartType, options.indicators, options.decimals, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, renderRevision]);
 
   useEffect(() => {
     const canvas = primaryCanvasRef.current;

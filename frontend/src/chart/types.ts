@@ -102,6 +102,8 @@ export interface DrawChartOptions {
   /** Live bot positions on the current symbol, drawn as entry lines. */
   livePositions?: ChartLivePosition[];
   showVolume?: boolean;
+  /** Visible-range volume-at-price overlay. */
+  showVolumeProfile?: boolean;
   /** Symbols overlaid on the price pane, normalized to % change (Compare). */
   compare?: CompareSeries[];
   /** The base chart's symbol — labels the base line in the compare legend. */
@@ -110,6 +112,8 @@ export interface DrawChartOptions {
   onViewport?: (viewport: Viewport) => void;
   /** Called with the compare legend (symbol · %change · color) each frame. */
   onCompareLegend?: (entries: CompareLegendSnapshot[]) => void;
+  /** Called with the visible-range profile summary for an accessible DOM legend. */
+  onVolumeProfile?: (profile?: VolumeProfileSnapshot) => void;
 }
 
 /** Legend row emitted by the compare renderer for the React overlay. */
@@ -121,6 +125,14 @@ export interface CompareLegendSnapshot {
   base: boolean;
   timeframe?: Timeframe;
   chartType?: CompareChartType;
+}
+
+export interface VolumeProfileSnapshot {
+  bins: number;
+  pocPrice: number;
+  valueAreaLow: number;
+  valueAreaHigh: number;
+  totalVolume: number;
 }
 
 export interface DraftDrawing {
