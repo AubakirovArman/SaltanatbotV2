@@ -282,6 +282,8 @@ export default function App() {
               compareOverlays={compareOverlays}
               compareState={compareState}
               maximizeShortcut={appCommands.shortcuts.maximizeChart}
+              previousChartShortcut={appCommands.shortcuts.previousChart}
+              nextChartShortcut={appCommands.shortcuts.nextChart}
               primary={<ChartCanvas
               compactChrome={shell.layoutPreset !== "single"}
               candles={stream.candles}

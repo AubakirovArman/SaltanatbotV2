@@ -56,7 +56,7 @@ export function ShortcutSettingsDialog({ locale, open, shortcuts, onChange, onCl
 function shortcutActionLabel(locale: Locale, action: ShortcutAction) {
   const keys: Record<ShortcutAction, Parameters<typeof shellText>[1]> = {
     commandPalette: "commandPalette", shortcutSettings: "keyboardShortcuts", openChart: "openChart", openStrategy: "openStrategy", openTrading: "openTrading",
-    toggleMarkets: "markets", toggleInstrument: "barStatistics", maximizeChart: "maximizeChart",
+    toggleMarkets: "markets", toggleInstrument: "barStatistics", previousChart: "previousChart", nextChart: "nextChart", maximizeChart: "maximizeChart",
     timeframe1: "timeframeSlot1", timeframe2: "timeframeSlot2", timeframe3: "timeframeSlot3", timeframe4: "timeframeSlot4", timeframe5: "timeframeSlot5", timeframe6: "timeframeSlot6"
   };
   return shellText(locale, keys[action]);

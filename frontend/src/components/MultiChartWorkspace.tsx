@@ -1,5 +1,5 @@
 import { Activity, Crosshair, GitCompareArrows, Link2, Link2Off, MoveHorizontal } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithRef, type ReactNode } from "react";
 import type { CompareOverlayConfig, LinkedCrosshair, LinkedTimeRange } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import { useMarketStream, type MarketStreamState } from "../hooks/useMarketStream";
@@ -36,6 +36,8 @@ interface MultiChartWorkspaceProps {
   compareOverlays: CompareOverlayConfig[];
   compareState: CompareSeriesState;
   maximizeShortcut: string;
+  previousChartShortcut: string;
+  nextChartShortcut: string;
 }
 
 export interface PaneMarketStream extends MarketStreamState {
@@ -45,14 +47,23 @@ export interface PaneMarketStream extends MarketStreamState {
 
 const EMPTY_COMPARE_OVERLAYS: CompareOverlayConfig[] = [];
 
-export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdateChart, activeChartId, onActiveChartChange, onMarketStreamChange, compareOverlays, compareState, maximizeShortcut }: MultiChartWorkspaceProps) {
+export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdateChart, activeChartId, onActiveChartChange, onMarketStreamChange, compareOverlays, compareState, maximizeShortcut, previousChartShortcut, nextChartShortcut }: MultiChartWorkspaceProps) {
   const primaryChart = charts[0];
   const [maximizedChartId, setMaximizedChartId] = useState<string>();
+  const paneRefs = useRef(new Map<string, HTMLElement>());
   const canMaximize = charts.length > 1;
   const toggleMaximize = (id: string) => {
     onActiveChartChange(id);
     setMaximizedChartId((current) => current === id ? undefined : id);
   };
+  const moveActiveChart = useCallback((offset: number) => {
+    if (charts.length < 2) return;
+    const currentIndex = Math.max(0, charts.findIndex(({ id }) => id === activeChartId));
+    const next = charts[(currentIndex + offset + charts.length) % charts.length];
+    onActiveChartChange(next.id);
+    if (maximizedChartId) setMaximizedChartId(next.id);
+    window.requestAnimationFrame(() => paneRefs.current.get(next.id)?.focus({ preventScroll: true }));
+  }, [activeChartId, charts, maximizedChartId, onActiveChartChange]);
 
   useEffect(() => {
     const ids = new Set(charts.map((chart) => chart.id));
@@ -62,31 +73,49 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
   useEffect(() => {
     if (!canMaximize && maximizedChartId) setMaximizedChartId(undefined);
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat) return;
+      if (event.repeat || event.defaultPrevented) return;
+      if (event.target instanceof HTMLElement && event.target.closest("[aria-modal='true']")) return;
+      const editing = event.target instanceof HTMLElement && event.target.matches("input, textarea, [contenteditable='true']");
+      if (!editing && matchesShortcut(event, previousChartShortcut)) {
+        event.preventDefault();
+        moveActiveChart(-1);
+        return;
+      }
+      if (!editing && matchesShortcut(event, nextChartShortcut)) {
+        event.preventDefault();
+        moveActiveChart(1);
+        return;
+      }
       if (event.key === "Escape" && maximizedChartId) {
         event.preventDefault();
         setMaximizedChartId(undefined);
         return;
       }
       if (!matchesShortcut(event, maximizeShortcut) || !canMaximize || !activeChartId) return;
-      if (event.target instanceof HTMLElement && event.target.matches("input, textarea, [contenteditable='true']")) return;
+      if (editing) return;
       event.preventDefault();
       toggleMaximize(activeChartId);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeChartId, canMaximize, maximizeShortcut, maximizedChartId]);
+  }, [activeChartId, canMaximize, maximizeShortcut, maximizedChartId, moveActiveChart, nextChartShortcut, previousChartShortcut]);
 
   const paneProps = (id: string) => ({
     className: `multi-chart-pane ${id === primaryChart?.id ? "primary" : "secondary"} ${activeChartId === id && canMaximize ? "active" : ""} ${maximizedChartId === id ? "maximized" : ""}`,
     "data-active": activeChartId === id ? "true" : "false",
+    tabIndex: -1,
+    ref: (node: HTMLElement | null) => {
+      if (node) paneRefs.current.set(id, node);
+      else paneRefs.current.delete(id);
+    },
     onFocusCapture: () => onActiveChartChange(id),
     onPointerDownCapture: () => onActiveChartChange(id)
   });
 
   return (
     <div className={`multi-chart-grid ${preset} ${maximizedChartId ? "has-maximized" : ""}`} aria-label={shellText(locale, "multiChartWorkspace")}>
-      {primaryChart && <section {...paneProps(primaryChart.id)} aria-label={`${shellText(locale, "primaryChart")}${activeChartId === primaryChart.id ? ` · ${shellText(locale, "activeChart")}` : ""}`}>
+      {primaryChart && <section {...paneProps(primaryChart.id)} aria-label={`${shellText(locale, "primaryChart")} · ${primaryChart.symbol} ${primaryChart.timeframe}${activeChartId === primaryChart.id ? ` · ${shellText(locale, "activeChart")}` : ""}`}>
+        {canMaximize && activeChartId === primaryChart.id && <PaneActiveIndicator locale={locale} paneNumber={1} />}
         {canMaximize && <PaneMaximizeButton locale={locale} symbol={primaryChart.symbol} shortcut={maximizeShortcut} maximized={maximizedChartId === primaryChart.id} floating onToggle={() => toggleMaximize(primaryChart.id)} />}
         {primary}
       </section>}
@@ -122,7 +151,7 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
   );
 }
 
-function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize, maximized, maximizeShortcut, onToggleMaximize, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate, onMarketStreamChange, compareOverlays, compareState }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart" | "activeChartId" | "onActiveChartChange"> & { chart: WorkspaceChart; paneNumber: number; paneProps: React.HTMLAttributes<HTMLElement>; active: boolean; canMaximize: boolean; maximized: boolean; onToggleMaximize: () => void; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
+function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize, maximized, maximizeShortcut, onToggleMaximize, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate, onMarketStreamChange, compareOverlays, compareState }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart" | "activeChartId" | "onActiveChartChange" | "previousChartShortcut" | "nextChartShortcut"> & { chart: WorkspaceChart; paneNumber: number; paneProps: ComponentPropsWithRef<"section">; active: boolean; canMaximize: boolean; maximized: boolean; onToggleMaximize: () => void; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
   const stream = useMarketStream(chart.symbol, chart.timeframe, exchange);
   const instrument = catalog?.instruments.find((item) => item.symbol === chart.symbol) ?? fallbackInstrument(chart.symbol);
   const paneIndicators = chart.linkIndicators ? indicators : applyPaneIndicatorOverrides(indicators, chart.indicatorOverrides);
@@ -156,6 +185,7 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
   };
   return (
     <section {...paneProps} aria-label={`${chart.symbol} ${chart.timeframe}${active ? ` · ${shellText(locale, "activeChart")}` : ""}`}>
+      {active && <PaneActiveIndicator locale={locale} paneNumber={paneNumber} />}
       <div className="chart-pane-controls">
         <span className="pane-number" aria-hidden="true">{paneNumber}</span>
         <label>
@@ -217,6 +247,10 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
       />
     </section>
   );
+}
+
+function PaneActiveIndicator({ locale, paneNumber }: { locale: Locale; paneNumber: number }) {
+  return <span className="pane-active-indicator" aria-hidden="true"><span>●</span>{shellText(locale, "activeChart")} · {paneNumber}</span>;
 }
 
 function PaneMaximizeButton({ locale, symbol, shortcut, maximized, floating = false, onToggle }: { locale: Locale; symbol: string; shortcut: string; maximized: boolean; floating?: boolean; onToggle: () => void }) {

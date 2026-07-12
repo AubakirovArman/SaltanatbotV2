@@ -1,6 +1,6 @@
 export type ShortcutAction =
   | "commandPalette" | "shortcutSettings" | "openChart" | "openStrategy" | "openTrading"
-  | "toggleMarkets" | "toggleInstrument" | "maximizeChart"
+  | "toggleMarkets" | "toggleInstrument" | "previousChart" | "nextChart" | "maximizeChart"
   | "timeframe1" | "timeframe2" | "timeframe3" | "timeframe4" | "timeframe5" | "timeframe6";
 
 export type ShortcutMap = Record<ShortcutAction, string>;
@@ -13,6 +13,8 @@ export const DEFAULT_SHORTCUTS: ShortcutMap = {
   openTrading: "T",
   toggleMarkets: "[",
   toggleInstrument: "]",
+  previousChart: "Alt+K",
+  nextChart: "Alt+J",
   maximizeChart: "Alt+Enter",
   timeframe1: "1",
   timeframe2: "2",

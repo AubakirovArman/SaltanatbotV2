@@ -413,6 +413,17 @@ test("focuses and maximizes any chart pane without resetting its view", async ({
   await expect(primary).toHaveAttribute("data-active", "false");
   await expect(second).toHaveAttribute("data-active", "true");
   await expect(second).toHaveAttribute("aria-label", /Active chart/);
+  await expect(second.locator(".pane-active-indicator")).toContainText("Active chart · 2");
+
+  const third = page.locator(".multi-chart-pane.secondary").nth(1);
+  await second.locator(".chart-canvas-interaction").click({ position: { x: 150, y: 220 } });
+  await page.keyboard.press("Alt+J");
+  await expect(third).toHaveAttribute("data-active", "true");
+  await expect(third.locator(".pane-active-indicator")).toContainText("Active chart · 3");
+  await expect.poll(() => third.evaluate((element) => element === document.activeElement)).toBe(true);
+  await page.keyboard.press("Alt+K");
+  await expect(second).toHaveAttribute("data-active", "true");
+  await expect.poll(() => second.evaluate((element) => element === document.activeElement)).toBe(true);
 
   await second.locator(".chart-canvas-interaction").hover();
   await page.mouse.wheel(0, -90);
@@ -438,12 +449,17 @@ test("focuses and maximizes any chart pane without resetting its view", async ({
   await expect(secondSymbol).toHaveValue("ETHUSDT");
   await expect(zoom).toHaveText(zoomBefore);
 
-  const third = page.locator(".multi-chart-pane.secondary").nth(1);
   await third.getByRole("combobox", { name: "Symbol · 3" }).focus();
   await expect(third).toHaveAttribute("data-active", "true");
   await page.keyboard.press("Alt+Enter");
   await expect(page.locator(".multi-chart-pane:visible")).toHaveCount(1);
   await expect(third).toHaveClass(/maximized/);
+  const fourth = page.locator(".multi-chart-pane.secondary").nth(2);
+  await page.keyboard.press("Alt+J");
+  await expect(fourth).toHaveClass(/maximized/);
+  await expect(fourth).toHaveAttribute("data-active", "true");
+  await expect(page.locator(".multi-chart-pane:visible")).toHaveCount(1);
+  await expect.poll(() => fourth.evaluate((element) => element === document.activeElement)).toBe(true);
   await page.keyboard.press("Alt+Enter");
   await expect(page.locator(".multi-chart-pane:visible")).toHaveCount(4);
   await expectNoAxeViolations(page);

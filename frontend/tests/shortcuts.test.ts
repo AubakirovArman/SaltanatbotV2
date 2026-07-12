@@ -19,9 +19,9 @@ describe("custom keyboard shortcuts", () => {
     expect(loadShortcuts().openChart).toBe("Alt+C");
   });
 
-  it("migrates older shortcut maps with the pane maximize binding", () => {
+  it("migrates older shortcut maps with pane navigation bindings", () => {
     localStorage.setItem("sbv2:shortcuts:v1", JSON.stringify({ commandPalette: "Mod+P" }));
-    expect(loadShortcuts()).toMatchObject({ commandPalette: "Mod+P", maximizeChart: "Alt+Enter" });
+    expect(loadShortcuts()).toMatchObject({ commandPalette: "Mod+P", previousChart: "Alt+K", nextChart: "Alt+J", maximizeChart: "Alt+Enter" });
     expect(matchesShortcut(new KeyboardEvent("keydown", { key: "Enter", altKey: true }), loadShortcuts().maximizeChart)).toBe(true);
   });
 });

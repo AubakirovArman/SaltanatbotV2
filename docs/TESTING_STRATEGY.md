@@ -28,17 +28,18 @@ The initial Playwright suite must cover:
 3. indicator is added, configured, persisted and restored;
 4. drawing can be created, selected, edited and deleted;
 5. identical symbols in separate panes retain isolated drawing sets through reload;
-6. Pine strategy imports, reports diagnostics, opens as blocks and runs a backtest;
-7. Pine indicator imports and appears on the current chart;
-8. strategy is created from a template, edited, compiled and saved;
-9. backtest shows assumptions, trades, metrics and chart markers;
-10. optimizer runs in a worker and can be cancelled;
-11. named workspace and bounded last-chart-session state save and restore after reload, while malformed/future storage fails closed;
-12. paper bot is created, started, receives a signal, records an order and stops;
-13. authentication, CSRF expiry and logout behave correctly;
-14. kill switch requires the right role and visibly updates state;
-15. WebSocket disconnect reconnects without duplicating candles or orders;
-16. invalid/fallback market data is visibly distinguished from real data.
+6. keyboard-only pane cycling moves focus and continues through maximized charts without resetting state;
+7. Pine strategy imports, reports diagnostics, opens as blocks and runs a backtest;
+8. Pine indicator imports and appears on the current chart;
+9. strategy is created from a template, edited, compiled and saved;
+10. backtest shows assumptions, trades, metrics and chart markers;
+11. optimizer runs in a worker and can be cancelled;
+12. named workspace and bounded last-chart-session state save and restore after reload, while malformed/future storage fails closed;
+13. paper bot is created, started, receives a signal, records an order and stops;
+14. authentication, CSRF expiry and logout behave correctly;
+15. kill switch requires the right role and visibly updates state;
+16. WebSocket disconnect reconnects without duplicating candles or orders;
+17. invalid/fallback market data is visibly distinguished from real data.
 
 Live-mainnet orders must never run in generic E2E. Exchange testnets require an explicit opt-in environment and isolated credentials.
 
