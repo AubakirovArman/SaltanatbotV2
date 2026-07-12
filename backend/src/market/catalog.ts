@@ -2,7 +2,7 @@ import type { CatalogResponse, ChartType, Instrument } from "../types.js";
 import { fetchDynamicCrypto } from "./dynamicCrypto.js";
 import { timeframes } from "./timeframes.js";
 
-export const chartTypes: ChartType[] = ["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko"];
+export const chartTypes: ChartType[] = ["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko", "linebreak"];
 
 /** USDT spot pair listed on both Binance and Bybit — the exchange is user-selectable at runtime. */
 function crypto(base: string, name: string, basePrice: number, decimals: number): Instrument {

@@ -31,4 +31,15 @@ describe("future projection viewport", () => {
     expect(viewport.timeToX(future)).toBeGreaterThan(viewport.timeToX(candles.at(-1)!.time));
     expect(viewport.xToTime(viewport.timeToX(future))).toBeCloseTo(future);
   });
+
+  it("maps irregular source timestamps to evenly spaced exact columns", () => {
+    const irregular = [candles[0], { ...candles[1], time: 5 * 60_000 }, { ...candles[2], time: 20 * 60_000 }];
+    const viewport = buildViewport({ candles: irregular, plot, zoom: 1, offset: 0, priceMode: "linear" });
+    const first = viewport.timeToX(irregular[0].time);
+    const second = viewport.timeToX(irregular[1].time);
+    const third = viewport.timeToX(irregular[2].time);
+
+    expect(second - first).toBeCloseTo(third - second);
+    expect(viewport.xToTime(second)).toBeCloseTo(irregular[1].time);
+  });
 });

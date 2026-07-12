@@ -22,6 +22,7 @@ import { drawBars } from "./renderers/bars";
 import { drawCandles } from "./renderers/candles";
 import { drawLineArea } from "./renderers/lineArea";
 import { buildRenko, drawRenko } from "./renderers/renko";
+import { drawLineBreak } from "./renderers/lineBreak";
 import { drawVolume } from "./renderers/volume";
 import { drawMarkers } from "./renderers/markers";
 import { drawTradeOverlay } from "./renderers/tradeOverlay";
@@ -40,6 +41,7 @@ import { computePlot, priceScale, visibleCandles } from "./scales";
 import { buildViewport, medianBarTime } from "./viewport";
 import { buildVolumeProfile } from "./volumeProfile";
 import { calculateDrawingAvwaps } from "./anchoredVwap";
+import { buildLineBreak } from "./lineBreak";
 import type { ChartShapes, DrawChartOptions, PlotArea, PriceMode, PriceScale, Viewport } from "./types";
 
 let theme = {
@@ -116,18 +118,21 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
   const plot = computePlot(width, mainHeight);
   if (candles.length === 0) return { empty: true, input };
 
-  const rightPaddingBars = projectionPaddingBars(candles, shapes);
-  const visible = visibleCandles(candles, plot, view.zoom, view.offset, rightPaddingBars);
+  const lineBreak = chartType === "linebreak" && !input.displayCandles ? buildLineBreak(candles) : [];
+  const chartCandles = input.displayCandles ?? (chartType === "linebreak" ? lineBreak : candles);
+  if (chartCandles.length === 0) return { empty: true, input };
+  const rightPaddingBars = projectionPaddingBars(chartCandles, shapes);
+  const visible = visibleCandles(chartCandles, plot, view.zoom, view.offset, rightPaddingBars);
   const data = chartType === "heikin" ? toHeikinAshi(visible.data) : visible.data;
-  const start = Math.max(0, candles.length - clampOffset(candles, view.offset) - visible.data.length);
+  const start = Math.max(0, chartCandles.length - clampOffset(chartCandles, view.offset) - visible.data.length);
   const end = start + visible.data.length;
-  const computed = computeIndicators(candles, indicators);
+  const computed = computeIndicators(chartCandles, indicators);
   const bricks = chartType === "renko" ? buildRenko(visible.data) : [];
   const extraValues = collectMainValues(computed, start, end);
   const scaleOverride = chartType === "renko" && bricks.length > 0 ? renkoScale(plot, bricks) : undefined;
 
   const viewport = buildViewport({
-    candles, plot, zoom: view.zoom, offset: view.offset, priceMode, extraValues, scaleOverride, rightPaddingBars
+    candles: chartCandles, plot, zoom: view.zoom, offset: view.offset, priceMode, extraValues, scaleOverride, rightPaddingBars
   });
   onViewport?.(viewport);
 
@@ -203,6 +208,7 @@ export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRende
   if (chartType === "step") drawLineArea(renderContext, false, true);
   if (chartType === "area" || chartType === "baseline") drawLineArea(renderContext, true);
   if (chartType === "renko") drawRenko(renderContext, plan.bricks);
+  if (chartType === "linebreak") drawLineBreak(renderContext);
 
   // Compare overlay: normalized %-change lines for other symbols on the price
   // pane. Drawn against `visible.data` (the base's visible window) so it

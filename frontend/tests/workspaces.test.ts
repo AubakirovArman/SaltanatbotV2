@@ -54,4 +54,10 @@ describe("versioned chart workspaces", () => {
     const tampered = encoded.replace("BTCUSDT", "ETHUSDT");
     await expect(parseWorkspaceFile(tampered)).resolves.toBeUndefined();
   });
+
+  it("preserves price-compressed chart types across local workspace storage", () => {
+    const workspace = captureWorkspace("Line Break", { ...context, chartType: "linebreak" }, 100);
+    saveWorkspaces([workspace]);
+    expect(loadWorkspaces()[0]).toMatchObject({ chartType: "linebreak", charts: [{ chartType: "linebreak" }] });
+  });
 });

@@ -28,6 +28,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `anchoredVwap.ts` and `renderers/anchoredVwap.ts`: fail-closed cumulative AVWAP study preparation and render-only band/line geometry.
 - `marketSessions.ts` and `renderers/marketSessions.ts`: cached IANA-time-zone membership/range preparation and behind-price session-box rendering.
 - `marketStructure.ts` and `renderers/marketStructure.ts`: closed-candle swing/BOS/CHOCH/FVG analysis with separately composed background and overlay passes.
+- `lineBreak.ts` and `renderers/lineBreak.ts`: confirmed close-only Three Line Break transformation, source-volume aggregation and body-only rendering.
 - `../components/chartCanvas/SessionLiquidityLayer.tsx`: independently scheduled session overlay, persisted semantic toggle and authoritative PDH/PDL daily-candle request.
 - `../components/chartCanvas/ChartPriceHud.tsx`: DOM current-price/countdown pill and crosshair OHLC HUD.
 - `../components/ChartDataPanel.tsx`: bounded semantic tables for the focused OHLC candle, recent candles, strategy signals and executed trades.
@@ -53,6 +54,8 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Anchored VWAP never substitutes the earliest loaded candle for a missing saved anchor; it remains unavailable until history reaches that anchor.
 - Regional session windows use candle-open membership and are limited to 1m–1h; they do not claim exchange-calendar or holiday awareness.
 - Market structure never consumes the provisional tail: a swing waits for its full right-hand window, BOS/CHOCH requires a close through the confirmed level and an FVG requires three closed candles.
+- Three Line Break ignores source High/Low, omits the provisional tail and requires a strict break of the latest three confirmed line ranges to reverse; native indicators use the transformed series while timestamped strategy overlays remain aligned to their source bars.
+- Viewport time/index conversion maps every loaded timestamp exactly, interpolates inside irregular gaps and uses median duration only beyond loaded edges.
 - Crosshair/drawing redraws must not recompute unchanged indicators.
 - Crosshair-only movement paints the transparent interaction canvas without clearing or repainting the base canvas.
 - Primary-series, indicator and drawing/strategy passes use separate transparent canvases and reuse one prepared viewport/indicator plan.

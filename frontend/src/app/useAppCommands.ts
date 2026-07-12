@@ -9,6 +9,7 @@ import type { AppMode } from "./useAppShell";
 import type { Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
 import { loadShortcuts, matchesShortcut, saveShortcuts, type ShortcutAction, type ShortcutMap } from "./shortcuts";
+import { chartTypeLabel } from "../components/chartTypePresentation";
 
 interface UseAppCommandsOptions {
   locale?: Locale;
@@ -45,7 +46,7 @@ export function useAppCommands(options: UseAppCommandsOptions) {
       id: `tf-${timeframe}`, group: shellText(locale, "timeframe"), label: timeframe, hint: `${shellText(locale, "key")} ${index + 1}`, run: () => options.setTimeframe(timeframe)
     }));
     for (const chartType of options.catalog?.chartTypes ?? []) list.push({
-      id: `ct-${chartType}`, group: shellText(locale, "chartType"), label: chartType, run: () => { options.setChartType(chartType); options.setMode("chart"); }
+      id: `ct-${chartType}`, group: shellText(locale, "chartType"), label: chartTypeLabel(locale, chartType), run: () => { options.setChartType(chartType); options.setMode("chart"); }
     });
     list.push({ id: "view-chart", group: shellText(locale, "view"), label: shellText(locale, "openChart"), run: () => options.setMode("chart") });
     list.push({ id: "view-strategy", group: shellText(locale, "view"), label: shellText(locale, "openStrategy"), run: () => { warmStrategyLab(); options.setMode("strategy"); } });

@@ -72,6 +72,20 @@ test("controls confirmed market structure independently on every timeframe", asy
   await expect(fvg).toBeEnabled();
 });
 
+test("renders a localized non-repainting Three Line Break chart", async ({ page }) => {
+  await selectChartSymbol(page, "EURUSD");
+  await page.getByTitle("Chart type").click();
+  const lineBreak = page.getByRole("menuitemradio", { name: "Three Line Break" });
+  await expect(lineBreak).toBeVisible();
+  await lineBreak.click();
+  await expect(page.getByRole("img", { name: /EURUSD Three Line Break chart on 1m.*confirmed close-only lines with a three-line reversal/i })).toBeVisible({ timeout: 20_000 });
+  await expectNoAxeViolations(page);
+
+  await page.getByRole("button", { name: "Switch interface language to Russian" }).click();
+  await page.getByTitle("Тип графика").click();
+  await expect(page.getByRole("menuitemradio", { name: "Трёхлинейный прорыв" })).toHaveAttribute("aria-checked", "true");
+});
+
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });

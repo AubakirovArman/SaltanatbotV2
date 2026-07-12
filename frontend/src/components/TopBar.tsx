@@ -1,20 +1,14 @@
 import {
-  Activity,
-  AreaChart,
   ArrowLeftRight,
-  BarChart3,
-  Blocks,
   Bot,
   CandlestickChart,
   ChevronDown,
   Command,
   Columns2,
   Download,
-  GitCommitVertical,
   Grid2X2,
   LayoutDashboard,
   Keyboard,
-  LineChart,
   Moon,
   PanelLeft,
   PanelRight,
@@ -33,6 +27,7 @@ import { shellText } from "../i18n/shell";
 import type { CatalogResponse, ChartType, Instrument, Timeframe } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
 import type { ChartLayoutPreset, Workspace } from "../workspace/workspaces";
+import { chartTypeIcons, chartTypeLabel } from "./chartTypePresentation";
 
 interface TopBarProps {
   catalog?: CatalogResponse;
@@ -68,20 +63,6 @@ interface TopBarProps {
   onToggleRight: () => void;
   onSwapPanels: () => void;
 }
-
-const chartIcons = {
-  candles: CandlestickChart,
-  hollow: Square,
-  heikin: Activity,
-  bars: BarChart3,
-  line: LineChart,
-  step: GitCommitVertical,
-  area: AreaChart,
-  baseline: GitCommitVertical,
-  renko: Blocks
-} satisfies Record<ChartType, typeof CandlestickChart>;
-
-const chartLabelKeys = { candles: "candlesType", hollow: "hollowType", heikin: "heikinType", bars: "barsType", line: "lineType", step: "stepType", area: "areaType", baseline: "baselineType", renko: "renkoType" } as const;
 
 /** Timeframes shown inline in the compact top-bar segment. The rest live in the
  * "more" dropdown so every timeframe stays selectable without cluttering the bar. */
@@ -387,7 +368,7 @@ function ChartTypeMenu({
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  const Icon = chartIcons[chartType];
+  const Icon = chartTypeIcons[chartType];
 
   useEffect(() => {
     if (!open) return;
@@ -421,7 +402,7 @@ function ChartTypeMenu({
       {open && (
         <div className="charttype-menu" role="menu">
           {catalog?.chartTypes.map((item) => {
-            const ItemIcon = chartIcons[item];
+            const ItemIcon = chartTypeIcons[item];
             return (
               <button
                 type="button"
@@ -435,7 +416,7 @@ function ChartTypeMenu({
                 }}
               >
                 <ItemIcon size={14} strokeWidth={1.75} aria-hidden="true" />
-                {shellText(locale, chartLabelKeys[item])}
+                {chartTypeLabel(locale, item)}
               </button>
             );
           })}

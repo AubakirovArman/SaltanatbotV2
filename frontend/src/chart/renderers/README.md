@@ -10,6 +10,8 @@ Renderers translate prepared chart models into Canvas 2D drawing commands.
 
 `marketStructure.ts` has two explicit entry points: FVG rectangles paint behind price, while confirmed swing and BOS/CHOCH marks paint in the overlay. Detection remains in `../marketStructure.ts`.
 
+`lineBreak.ts` paints prepared close-to-close bodies only. Reversal rules, live-tail exclusion and source-volume aggregation remain in `../lineBreak.ts`.
+
 ## Rules
 
 - Renderers are deterministic for the same model, viewport and palette.

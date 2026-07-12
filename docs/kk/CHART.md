@@ -6,7 +6,13 @@
 немесе Bybit дереккөзін бөлек таңдауға болады. Индикаторлар, салыстырылатын құралдар, сызбалар және
 белсенді стратегия бір уақыт диапазонында көрсетіледі.
 
-Қарапайым және іші бос candle, Heikin Ashi, bar, line, step line, area, baseline және Renko түрлері бар. Іші бос candle өскен денені боямайды, ал step line келесі өзгеріске дейін алдыңғы бағаны ұстайды.
+Қарапайым және іші бос candle, Heikin Ashi, bar, line, step line, area, baseline, Renko және **Three Line Break** түрлері бар. Іші бос candle өскен денені боямайды, ал step line келесі өзгеріске дейін алдыңғы бағаны ұстайды.
+
+### Three Line Break
+
+Бұл price-based chart бастапқы candle-дардың тек close мәндерін пайдаланады және жаңа расталған қозғалыс жоқ аралықтарды қысады. Ағымдағы бағыт жаңа close-extreme арқылы жалғасады; reversal соңғы үш confirmed line-ның толық range-і қатаң бұзылғанда ғана пайда болады. Source High/Low есепке кірмейді, ал жабылмаған live candle projection жасамайды және repaint тудырмайды.
+
+Әр line бастапқы candle timestamp-ын сақтайды, ал арада өткізіліп кеткен volume қосылады. Сондықтан crosshair, drawing және time-stamped signal нақты дерекке байланып қалады, бірақ chart column-дары бірдей аралықпен орналасады. Built-in indicator-лар transformed line-break OHLC/volume бойынша есептеледі; Strategy Lab пен backtest бастапқы time candle-дарды қолданады. Бұл екі түрлі data representation, сондықтан нәтижені transformation-ды ескермей тікелей салыстыруға болмайды. Ережелер [TradingView](https://www.tradingview.com/support/solutions/43000502273-introduction-to-line-break-charts/) және [Sierra Chart](https://www.sierrachart.com/index.php?ID=131&page=doc%2FStudiesReference.php) құжаттарымен тексерілді.
 
 ## Басқару
 

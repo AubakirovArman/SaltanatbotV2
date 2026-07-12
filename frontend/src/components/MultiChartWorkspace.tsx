@@ -8,6 +8,7 @@ import { shellText } from "../i18n/shell";
 import type { CatalogResponse, DataExchange, Instrument } from "../types";
 import type { ChartLayoutPreset, WorkspaceChart } from "../workspace/workspaces";
 import { ChartCanvas } from "./ChartCanvas";
+import { chartTypeLabel } from "./chartTypePresentation";
 
 interface MultiChartWorkspaceProps {
   preset: ChartLayoutPreset;
@@ -81,7 +82,7 @@ function SecondaryChartPane({ chart, catalog, exchange, locale, indicators, onIn
         <label>
           <span className="sr-only">{shellText(locale, "chartType")}</span>
           <select value={chart.chartType} onChange={(event) => onUpdate(chart.id, { chartType: event.target.value as WorkspaceChart["chartType"] })}>
-            {(catalog?.chartTypes ?? [chart.chartType]).map((item) => <option key={item} value={item}>{item}</option>)}
+            {(catalog?.chartTypes ?? [chart.chartType]).map((item) => <option key={item} value={item}>{chartTypeLabel(locale, item)}</option>)}
           </select>
         </label>
         {linkButton("linkCrosshair", shellText(locale, "linkCrosshair"))}

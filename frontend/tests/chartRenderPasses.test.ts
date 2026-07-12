@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls = vi.hoisted(() => ({
   candles: vi.fn(),
+  lineBreak: vi.fn(),
   lineArea: vi.fn(),
   volumeProfile: vi.fn(),
   indicator: vi.fn(),
@@ -9,6 +10,7 @@ const calls = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/chart/renderers/candles", () => ({ drawCandles: calls.candles }));
+vi.mock("../src/chart/renderers/lineBreak", () => ({ drawLineBreak: calls.lineBreak }));
 vi.mock("../src/chart/renderers/lineArea", () => ({ drawLineArea: calls.lineArea }));
 vi.mock("../src/chart/renderers/volumeProfile", () => ({ drawVolumeProfile: calls.volumeProfile }));
 vi.mock("../src/chart/renderers/drawingRenderers", () => ({ drawDrawings: calls.drawings }));
@@ -125,6 +127,15 @@ describe("chart render passes", () => {
 
     drawChartPrimary(ctx, prepareChartRender({ ...input, chartType: "step" }));
     expect(calls.lineArea).toHaveBeenCalledWith(expect.any(Object), false, true);
+  });
+
+  it("compresses source candles before rendering Three Line Break", () => {
+    const ctx = context();
+    const plan = prepareChartRender({ ...input, chartType: "linebreak" });
+    drawChartPrimary(ctx, plan);
+
+    expect(calls.lineBreak).toHaveBeenCalledTimes(1);
+    if (!plan.empty) expect(plan.data.length).toBeLessThan(candles.length);
   });
 
   it("renders the visible-range profile only when requested", () => {

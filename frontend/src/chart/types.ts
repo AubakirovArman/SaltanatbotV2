@@ -84,6 +84,8 @@ export interface DrawChartOptions {
   width: number;
   height: number;
   candles: Candle[];
+  /** Optional precomputed price representation shared with pointer/DOM layers. */
+  displayCandles?: Candle[];
   chartType: ChartType;
   decimals: number;
   view: ChartView;
@@ -197,7 +199,7 @@ export interface ChartLivePosition {
   entryPrice: number;
 }
 
-export type CompareChartType = Exclude<ChartType, "renko">;
+export type CompareChartType = Exclude<ChartType, "renko" | "linebreak">;
 
 export interface CompareOverlayConfig {
   id: string;

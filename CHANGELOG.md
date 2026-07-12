@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added a close-only, non-repainting Three Line Break price representation with strict three-line reversal confirmation, compressed time columns and aggregated source volume.
+- Reworked viewport timestamp interpolation so drawings, crosshairs, strategy markers and semantic OHLC data remain aligned across market gaps and price-compressed charts; extracted chart-type icons/labels from the top-bar coordinator.
 - Added non-repainting confirmed market structure on every timeframe: delayed fractal swing labels (HH/LH/HL/LL) and close-confirmed BOS/CHOCH overlays, with adjustable strength.
 - Added optional three-closed-candle fair value gap zones that remain open until full later wick mitigation, plus localized keyboard controls and a synchronized semantic summary.
 - Added independently toggleable Asia, London and New York high/low session boxes on 1m–1h charts, using IANA time zones for daylight-saving-aware boundaries and a cached timestamp conversion path for live updates.

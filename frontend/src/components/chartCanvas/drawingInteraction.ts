@@ -1,5 +1,5 @@
 import { anchorFromPixel, type Anchor, type DrawingObject, type DrawingTool } from "../../chart/drawings";
-import type { CompareLegendSnapshot, Viewport, VolumeProfileSnapshot } from "../../chart/types";
+import type { CompareLegendSnapshot, PriceMode, Viewport, VolumeProfileSnapshot } from "../../chart/types";
 import type { Candle } from "../../types";
 
 export function snapAnchor(viewport: Viewport, candles: Candle[], x: number, y: number, magnet: boolean): Anchor {
@@ -38,6 +38,11 @@ export function moveDrawing(drawing: DrawingObject, part: number | "body", next:
 
 export function clampIndex(index: number, length: number) {
   return Math.max(0, Math.min(length - 1, index));
+}
+
+export function nextPriceMode(current: PriceMode): PriceMode {
+  const modes: PriceMode[] = ["linear", "log", "percent"];
+  return modes[(modes.indexOf(current) + 1) % modes.length];
 }
 
 export function sameLegend(a: CompareLegendSnapshot[], b: CompareLegendSnapshot[]) {

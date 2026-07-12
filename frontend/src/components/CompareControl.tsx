@@ -2,6 +2,7 @@ import { GitCompareArrows, Plus, Search, SlidersHorizontal, X } from "lucide-rea
 import { useMemo, useState } from "react";
 import type { CompareChartType, CompareLegendSnapshot, CompareOverlayConfig } from "../chart/types";
 import type { ChartType, Timeframe } from "../types";
+import { chartTypeLabel } from "./chartTypePresentation";
 import type { Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
 
@@ -177,7 +178,7 @@ export function CompareControl({
 }
 
 function isCompareChartType(value: ChartType): value is CompareChartType {
-  return value !== "renko";
+  return value !== "renko" && value !== "linebreak";
 }
 
 function isCandleLike(type: CompareChartType) {
@@ -215,8 +216,7 @@ function symbolBase(symbol: string): string {
 }
 
 function typeLabel(locale: Locale, type: CompareChartType) {
-  const keys = { heikin: "heikinType", candles: "candlesType", hollow: "hollowType", bars: "barsType", area: "areaType", baseline: "baselineType", line: "lineType", step: "stepType" } as const;
-  return shellText(locale, keys[type]);
+  return chartTypeLabel(locale, type);
 }
 
 function formatPct(pct?: number) {

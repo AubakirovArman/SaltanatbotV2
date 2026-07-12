@@ -41,10 +41,11 @@ export function buildViewport(input: ViewportInput): Viewport {
     plot.left + (globalIndex - start) * barSpacing + barSpacing / 2;
   const xToIndex = (x: number) => start + (x - plot.left - barSpacing / 2) / barSpacing;
 
-  // Time <-> index uses the last candle as anchor and extrapolates by barTimeMs,
-  // which lets drawings/markers sit correctly to the right of the last bar.
-  const timeToIndex = (time: number) => lastIndex + (time - lastTime) / barTimeMs;
-  const indexToTime = (index: number) => lastTime + (index - lastIndex) * barTimeMs;
+  // Exact candle timestamps map to exact columns. Interpolation keeps drawings
+  // aligned across market gaps and compressed price-based representations;
+  // median duration is used only for projection beyond the loaded edges.
+  const timeToIndex = (time: number) => interpolatedTimeToIndex(candles, time, barTimeMs);
+  const indexToTime = (index: number) => interpolatedIndexToTime(candles, index, barTimeMs);
 
   const timeToX = (time: number) => indexToX(timeToIndex(time));
   const xToTime = (x: number) => indexToTime(xToIndex(x));
@@ -65,6 +66,32 @@ export function buildViewport(input: ViewportInput): Viewport {
     priceToY: scale.y,
     yToPrice: scale.priceAt
   };
+}
+
+function interpolatedTimeToIndex(candles: readonly Candle[], time: number, fallback: number) {
+  if (candles.length === 0) return 0;
+  if (time <= candles[0].time) return (time - candles[0].time) / fallback;
+  const last = candles.length - 1;
+  if (time >= candles[last].time) return last + (time - candles[last].time) / fallback;
+  let low = 0;
+  let high = last;
+  while (low + 1 < high) {
+    const middle = (low + high) >> 1;
+    if (candles[middle].time <= time) low = middle;
+    else high = middle;
+  }
+  const span = candles[high].time - candles[low].time;
+  return low + (span > 0 ? (time - candles[low].time) / span : 0);
+}
+
+function interpolatedIndexToTime(candles: readonly Candle[], index: number, fallback: number) {
+  if (candles.length === 0) return 0;
+  const last = candles.length - 1;
+  if (index <= 0) return candles[0].time + index * fallback;
+  if (index >= last) return candles[last].time + (index - last) * fallback;
+  const low = Math.floor(index);
+  const high = Math.ceil(index);
+  return candles[low].time + (candles[high].time - candles[low].time) * (index - low);
 }
 
 function offsetClamped(candles: Candle[], offset: number) {

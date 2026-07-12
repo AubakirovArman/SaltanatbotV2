@@ -16,3 +16,5 @@ This directory owns focused presentation and interaction helpers behind the stab
 
 Rendering and viewport state remain in `chart/`; these components must not recalculate indicators or
 own market transport. Preserve Canvas DOM alternatives, localized labels and render-layer isolation.
+
+For price-compressed representations, `useChartRenderer` returns the same prepared candle sequence used by Canvas so pointer snapping, the crosshair HUD and `ChartDataPanel` expose the transformed OHLC rather than unrelated source-bar indices.

@@ -10,6 +10,7 @@ import { shellText } from "../i18n/shell";
 import { ChartIndicatorOverlay } from "./ChartIndicatorOverlay";
 import { ChartDataPanel } from "./ChartDataPanel";
 import { CompareControl } from "./CompareControl";
+import { chartTypeAriaLabel } from "./chartTypePresentation";
 import { DrawingObjectsPanel } from "./DrawingObjectsPanel";
 import { ChartDrawingToolbar } from "./chartCanvas/ChartDrawingToolbar";
 import { AnchoredVwapLegend } from "./chartCanvas/AnchoredVwapLegend";
@@ -19,14 +20,12 @@ import { TradeFootprintLayer } from "./chartCanvas/TradeFootprintLayer";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
 import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
-import { clampIndex, formatVolume, moveDrawing, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
+import { clampIndex, formatVolume, moveDrawing, nextPriceMode, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
 
 const MAX_COMPARE = 3;
 
 type Interaction = { mode: "pan"; startClientX: number; startOffset: number } | { mode: "edit"; id: string; part: number | "body"; last: Anchor } | undefined;
-
-const PRICE_MODES: PriceMode[] = ["linear", "log", "percent"];
 
 export function ChartCanvas({
   candles,
@@ -211,7 +210,7 @@ export function ChartCanvas({
     return { tool: draft.tool, points };
   }, [draft, hoverAnchor]);
 
-  const { backgroundCanvasRef, primaryCanvasRef, indicatorsCanvasRef, overlaysCanvasRef, interactionCanvasRef, viewportRef } = useChartRenderer({
+  const { backgroundCanvasRef, primaryCanvasRef, indicatorsCanvasRef, overlaysCanvasRef, interactionCanvasRef, viewportRef, displayCandles } = useChartRenderer({
     candles,
     chartType,
     decimals: instrument.decimals,
@@ -247,12 +246,12 @@ export function ChartCanvas({
 
   // Scroll to a requested time (e.g. the latest backtest signal).
   useEffect(() => {
-    if (focusTime === undefined || candles.length === 0) return;
-    let idx = candles.length - 1;
-    while (idx > 0 && candles[idx].time > focusTime) idx -= 1;
+    if (focusTime === undefined || displayCandles.length === 0) return;
+    let idx = displayCandles.length - 1;
+    while (idx > 0 && displayCandles[idx].time > focusTime) idx -= 1;
     setView((current) => ({
       ...current,
-      offset: Math.max(0, candles.length - 1 - idx - 20)
+      offset: Math.max(0, displayCandles.length - 1 - idx - 20)
     }));
   }, [focusTime]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -260,15 +259,15 @@ export function ChartCanvas({
     if (!linkedCrosshair || linkedCrosshair.sourceId === chartId) return;
     const viewport = viewportRef.current;
     if (!viewport) return;
-    let index = candles.findIndex((candle) => candle.time >= linkedCrosshair.time);
-    if (index < 0) index = candles.length - 1;
-    const candle = candles[index];
+    let index = displayCandles.findIndex((candle) => candle.time >= linkedCrosshair.time);
+    if (index < 0) index = displayCandles.length - 1;
+    const candle = displayCandles[index];
     if (!candle) return;
     setView((current) => ({
       ...current,
       crosshair: { x: viewport.indexToX(index), y: viewport.priceToY(linkedCrosshair.price) }
     }));
-  }, [candles, chartId, linkedCrosshair]);
+  }, [displayCandles, chartId, linkedCrosshair]);
 
   const devicePoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -278,14 +277,9 @@ export function ChartCanvas({
     };
   };
 
-  const cyclePriceMode = () => {
-    setView((current) => {
-      const next = PRICE_MODES[(PRICE_MODES.indexOf(current.priceMode) + 1) % PRICE_MODES.length];
-      return { ...current, priceMode: next };
-    });
-  };
+  const cyclePriceMode = () => setView((current) => ({ ...current, priceMode: nextPriceMode(current.priceMode) }));
 
-  const legendCandle = hoverIndex !== undefined ? candles[hoverIndex] : latest;
+  const legendCandle = (hoverIndex !== undefined ? displayCandles[hoverIndex] : undefined) ?? displayCandles.at(-1) ?? latest;
 
   return (
     <div className="chart-surface">
@@ -319,7 +313,7 @@ export function ChartCanvas({
           <span className="legend-symbol">
             <b>{instrument.symbol}</b>
             <i>
-              {timeframe} · {instrument.exchange}
+              {chartType === "linebreak" ? "3LB · " : ""}{timeframe} · {instrument.exchange}
             </i>
           </span>
           {legendCandle && (
@@ -399,7 +393,7 @@ export function ChartCanvas({
           {view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}
         </button>
         <VolumeProfileBadge visible={showVolumeProfile} profile={volumeProfile} decimals={instrument.decimals} locale={locale} />
-        <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={`${instrument.symbol} ${chartType} chart on ${timeframe}`} aria-describedby={chartDataSummaryId} />
+        <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={chartTypeAriaLabel(locale, chartType, instrument.symbol, timeframe)} aria-describedby={chartDataSummaryId} />
         <OrderBookHeatmapLayer
           enabled={showOrderBookHeatmap && orderBookAvailable}
           symbol={instrument.symbol}
@@ -425,7 +419,7 @@ export function ChartCanvas({
             const { x, y } = devicePoint(event);
 
             if (tool !== "cursor") {
-              const anchor = snapDrawingAnchor(tool, viewport, candles, x, y, magnet);
+              const anchor = snapDrawingAnchor(tool, viewport, displayCandles, x, y, magnet);
               const committed = draft && draft.tool === tool ? [...draft.points, anchor] : [anchor];
               if (committed.length >= TOOL_POINT_COUNT[tool]) {
                 const object = createDrawing(tool, committed);
@@ -443,7 +437,7 @@ export function ChartCanvas({
             const hit = hitTest(viewport, drawingsRef.current, x, y, selectedId);
             if (hit) {
               setSelectedId(hit.id);
-              interactionRef.current = { mode: "edit", id: hit.id, part: hit.part, last: snapAnchor(viewport, candles, x, y, magnet) };
+              interactionRef.current = { mode: "edit", id: hit.id, part: hit.part, last: snapAnchor(viewport, displayCandles, x, y, magnet) };
             } else {
               setSelectedId(undefined);
               interactionRef.current = { mode: "pan", startClientX: event.clientX, startOffset: view.offset };
@@ -452,22 +446,22 @@ export function ChartCanvas({
           onPointerMove={(event) => {
             const viewport = viewportRef.current;
             const { x, y } = devicePoint(event);
-            if (viewport) setHoverIndex(clampIndex(Math.round(viewport.xToIndex(x)), candles.length));
+            if (viewport) setHoverIndex(clampIndex(Math.round(viewport.xToIndex(x)), displayCandles.length));
             if (viewport && onLinkedCrosshairChange) {
-              const index = clampIndex(Math.round(viewport.xToIndex(x)), candles.length);
-              const candle = candles[index];
+              const index = clampIndex(Math.round(viewport.xToIndex(x)), displayCandles.length);
+              const candle = displayCandles[index];
               if (candle) onLinkedCrosshairChange({ sourceId: chartId, time: candle.time, price: viewport.yToPrice(y) });
             }
 
             if (tool !== "cursor" && draft && viewport) {
-              setHoverAnchor(snapAnchor(viewport, candles, x, y, magnet));
+              setHoverAnchor(snapAnchor(viewport, displayCandles, x, y, magnet));
               setView((current) => ({ ...current, crosshair: { x, y } }));
               return;
             }
 
             const interaction = interactionRef.current;
             if (interaction?.mode === "edit" && viewport) {
-              const next = snapAnchor(viewport, candles, x, y, magnet);
+              const next = snapAnchor(viewport, displayCandles, x, y, magnet);
               const dt = next.time - interaction.last.time;
               const dp = next.price - interaction.last.price;
               setDrawings((current) => current.map((drawing) => (drawing.id === interaction.id ? moveDrawing(drawing, interaction.part, next, dt, dp) : drawing)));
@@ -502,7 +496,7 @@ export function ChartCanvas({
           onWheel={(event) => {
             const nextZoom = Math.min(4, Math.max(0.4, view.zoom + (event.deltaY > 0 ? -0.1 : 0.1)));
             const vp = viewportRef.current;
-            if (!vp || candles.length === 0) {
+            if (!vp || displayCandles.length === 0) {
               setView((current) => ({ ...current, zoom: nextZoom }));
               return;
             }
@@ -511,9 +505,9 @@ export function ChartCanvas({
             const rect = event.currentTarget.getBoundingClientRect();
             const cursorX = (event.clientX - rect.left) * devicePixelRatio;
             const indexBefore = vp.xToIndex(cursorX);
-            const nv = visibleCandles(candles, vp.plot, nextZoom, view.offset);
+            const nv = visibleCandles(displayCandles, vp.plot, nextZoom, view.offset);
             const desiredStart = indexBefore - (cursorX - vp.plot.left - nv.step / 2) / nv.step;
-            const newOffset = Math.max(0, Math.round(candles.length - nv.data.length - desiredStart));
+            const newOffset = Math.max(0, Math.round(displayCandles.length - nv.data.length - desiredStart));
             setView((current) => ({ ...current, zoom: nextZoom, offset: newOffset }));
           }}
           onDoubleClick={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
@@ -538,7 +532,7 @@ export function ChartCanvas({
           crosshair={view.crosshair}
         />
         {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay locale={locale} tables={tables} />}
-        <ChartDataPanel candles={candles} decimals={instrument.decimals} focusedIndex={hoverIndex} signals={signals} trades={trades} symbol={instrument.symbol} timeframe={timeframe} locale={locale} summaryId={chartDataSummaryId} />
+        <ChartDataPanel candles={displayCandles} decimals={instrument.decimals} focusedIndex={hoverIndex} signals={signals} trades={trades} symbol={instrument.symbol} timeframe={timeframe} locale={locale} summaryId={chartDataSummaryId} />
         {showDrawingObjects && (
           <DrawingObjectsPanel
             locale={locale}

@@ -72,7 +72,7 @@ Returned by `/api/catalog` and embedded in the `/api/candles` response.
 Valid values for any `timeframe` parameter:
 
 ```
-1m  5m  15m  1h  4h  1d
+1m  5m  15m  30m  1h  2h  4h  1d  1w  1M
 ```
 
 ### Chart types
@@ -80,7 +80,7 @@ Valid values for any `timeframe` parameter:
 Enumerated by `/api/catalog` (`chartTypes`):
 
 ```
-candles  hollow  heikin  bars  line  step  area  baseline  renko
+candles  hollow  heikin  bars  line  step  area  baseline  renko  linebreak
 ```
 
 ---
@@ -133,8 +133,8 @@ Returns the full instrument catalog plus the supported timeframes and chart type
       "decimals": 2
     }
   ],
-  "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"],
-  "chartTypes": ["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko"]
+  "timeframes": ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"],
+  "chartTypes": ["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko", "linebreak"]
 }
 ```
 

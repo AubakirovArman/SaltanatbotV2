@@ -26,7 +26,7 @@ describe("runtime market contracts", () => {
     expect(parseCatalogResponse({
       instruments: [instrument],
       timeframes: ["1m", "1h"],
-      chartTypes: ["candles", "hollow", "line", "step"],
+      chartTypes: ["candles", "hollow", "line", "step", "linebreak"],
     }).instruments[0]).toEqual(instrument);
     expect(parseCandlesResponse({ instrument, candles: [candle], provider: "binance", hasMore: true })).toMatchObject({
       candles: [candle],
