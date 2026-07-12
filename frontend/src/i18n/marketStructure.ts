@@ -1,4 +1,5 @@
 import type { Locale } from ".";
+import { kkMarketStructure } from "./kk/marketStructure";
 
 const en = {
   marketStructure: "Confirmed market structure",
@@ -36,7 +37,7 @@ const ru: Record<MarketStructureMessageKey, string> = {
   utcMapTimeframes: "Карта UTC-сессии доступна на графиках от 1 минуты до 4 часов"
 };
 
-const messages: Record<Locale, Record<MarketStructureMessageKey, string>> = { en, ru };
+const messages: Record<Locale, Record<MarketStructureMessageKey, string>> = { en, ru, kk: kkMarketStructure };
 
 export function marketStructureText(locale: Locale, key: MarketStructureMessageKey): string {
   return messages[locale][key] ?? en[key];

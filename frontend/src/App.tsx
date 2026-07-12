@@ -27,7 +27,7 @@ import { useAppShell, type AppMode } from "./app/useAppShell";
 import { useAppCommands } from "./app/useAppCommands";
 import { shellText } from "./i18n/shell";
 import type { Locale } from "./i18n";
-import { translate } from "./i18n";
+import { localized, translate } from "./i18n";
 import { loadLastChartSession } from "./app/chartSession";
 import { pickDistinctMarketSymbols } from "./app/distinctMarkets";
 
@@ -278,7 +278,7 @@ export default function App() {
               id="markets-panel"
               open={mobilePanel === "markets"}
               label={shellText(locale, "markets")}
-              closeLabel={locale === "ru" ? "Закрыть рынки" : "Close markets"}
+              closeLabel={localized(locale, { en: "Close markets", ru: "Закрыть рынки", kk: "Нарықтарды жабу" })}
               initialFocus=".market-search input"
               onClose={() => setMobilePanel(undefined)}
             >
@@ -288,7 +288,7 @@ export default function App() {
               id="instrument-panel"
               open={mobilePanel === "instrument"}
               label={shellText(locale, "currentInstrument")}
-              closeLabel={locale === "ru" ? "Закрыть данные инструмента" : "Close instrument details"}
+              closeLabel={localized(locale, { en: "Close instrument details", ru: "Закрыть данные инструмента", kk: "Құрал деректерін жабу" })}
               onClose={() => setMobilePanel(undefined)}
             >
               {statsPanel}

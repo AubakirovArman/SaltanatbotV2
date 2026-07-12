@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { CompareOverlayConfig } from "../chart/types";
-import { loadLocale, localeDirection, storeLocale, type Locale } from "../i18n";
+import { loadLocale, localeDirection, nextLocale, storeLocale, type Locale } from "../i18n";
 import { warmStrategyLab } from "../strategy/loadStrategyLab";
 import { storeIndicators } from "../strategy/storage";
 import type { ChartType, DataExchange, Timeframe } from "../types";
@@ -303,7 +303,7 @@ export function useAppShell(options: UseAppShellOptions) {
     compareOverlays, addCompare, updateCompare, removeCompare,
     saveWorkspace, applyWorkspace, deleteWorkspace, exportWorkspace, importWorkspace, rollbackWorkspaceVersion,
     toggleTheme: () => setTheme((current) => current === "dark" ? "light" : "dark"),
-    toggleLocale: () => setLocale((current) => current === "en" ? "ru" : "en"),
+    toggleLocale: () => setLocale(nextLocale),
     toggleLeft: () => setLeftOpen((current) => !current),
     toggleRight: () => setRightOpen((current) => !current),
     swapPanels: () => setPanelsSwapped((current) => !current)

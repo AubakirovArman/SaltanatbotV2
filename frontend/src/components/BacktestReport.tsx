@@ -2,7 +2,7 @@ import { Download, LineChart, Target } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { BacktestConfig, BacktestResult, Trade } from "../strategy/backtest";
 import { monteCarlo, type MonteCarloStats } from "../strategy/montecarlo";
-import type { Locale } from "../i18n";
+import { localeTag, type Locale } from "../i18n";
 import { strategyText } from "../i18n/strategy";
 import { serializeBacktestResearchFile } from "@saltanatbotv2/backtest-core";
 import { BacktestReplayPanel } from "../strategy/components/BacktestReplayPanel";
@@ -362,16 +362,16 @@ function fmt(value: number): string {
 }
 
 function fmt0(value: number, locale: Locale = "en"): string {
-  return Math.round(value).toLocaleString(locale === "ru" ? "ru-RU" : "en-US");
+  return Math.round(value).toLocaleString(localeTag(locale));
 }
 
 function fmtTime(ms: number, locale: Locale): string {
   if (!ms) return "—";
-  return new Date(ms).toLocaleString(locale === "ru" ? "ru-RU" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(ms).toLocaleString(localeTag(locale), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function fmtRange(from: number, to: number, locale: Locale): string {
   if (!from || !to) return "—";
-  const d = (ms: number) => new Date(ms).toLocaleDateString(locale === "ru" ? "ru-RU" : "en-US", { month: "short", day: "numeric", year: "2-digit" });
+  const d = (ms: number) => new Date(ms).toLocaleDateString(localeTag(locale), { month: "short", day: "numeric", year: "2-digit" });
   return `${d(from)} → ${d(to)}`;
 }

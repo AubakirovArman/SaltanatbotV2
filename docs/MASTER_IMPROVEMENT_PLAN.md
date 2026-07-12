@@ -34,7 +34,7 @@ It is not enough to resemble TradingView visually. The differentiator must be tr
 | Distribution | Installable production PWA with a static offline shell and network-only runtime/trading boundary | Alpha, verified offline boundary |
 | Tests | 700+ unit/integration/parity tests plus a 46-scenario Playwright production suite | Strong baseline, enforced in CI |
 | Documentation | Source-checked English docs and current RU/KK user guides with public Pages | Current alpha baseline |
-| Localization | Typed English/Russian UI catalogs; English/Russian/Kazakh user documentation | P2 language baseline complete; further UI locales are P3 |
+| Localization | Complete typed English/Russian/Kazakh UI catalogs and user documentation | Three-locale product baseline complete |
 
 ## Guiding engineering rules
 

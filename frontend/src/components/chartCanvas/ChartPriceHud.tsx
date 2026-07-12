@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { Candle, Timeframe } from "../../types";
 import type { Viewport, VolumeProfileSnapshot } from "../../chart/types";
-import type { Locale } from "../../i18n";
+import { localeTag, type Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
 import { formatVolume } from "./drawingInteraction";
 
@@ -56,7 +56,7 @@ export function ChartPriceHud({ candle, latest, timeframe, decimals, locale, vie
       {candle && crosshair && cardStyle && (
         <div className="crosshair-hud" style={cardStyle} aria-hidden="true">
           <header>
-            <strong>{new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(candle.time)}</strong>
+            <strong>{new Intl.DateTimeFormat(localeTag(locale), { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(candle.time)}</strong>
             <span className={change >= 0 ? "up" : "down"}>{change >= 0 ? "+" : ""}{changePct.toFixed(2)}%</span>
           </header>
           <dl>

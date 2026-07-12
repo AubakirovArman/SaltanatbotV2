@@ -10,6 +10,18 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Complete Kazakh application locale — 2026-07-12
+
+- [x] Add compile-time-complete Kazakh catalogs for Chart, Strategy Studio, Pine/backtest and Trading.
+- [x] Cycle EN → RU → KK with persisted locale, browser-language discovery and localized document metadata.
+- [x] Use `kk-KZ` for dates/numbers and remove binary EN/RU branches from components.
+- [x] Keep Pine identifiers, command syntax and reviewed trading terms semantically stable.
+- [x] Split the former 599-line shell catalog into independent language modules and a small facade.
+- [x] Verify locale registry, safety copy, command reference, semantic rendering, browser persistence and axe.
+
+Verification includes the complete 46-scenario Chromium gate, ten tagged Firefox critical journeys
+and compile-time equality of every EN/RU/KK domain catalog.
+
 ### Installable network-truth-safe shell — 2026-07-12
 
 - [x] Add a root-scoped standalone web manifest with a verified 512×512 PNG icon.

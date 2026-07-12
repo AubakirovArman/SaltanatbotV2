@@ -84,6 +84,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - Exchange API keys are **encrypted at rest** with AES-256-GCM (`node:crypto`) — they are **never** sent back to the browser and never leave your machine.
 - Persistence uses Node's **built-in** `node:sqlite` — no native builds, no external database, no occupied ports.
 - The production terminal is **installable as a PWA** and can reopen its static interface offline. APIs, authentication, quotes, order books, trades and trading commands are never cached or replayed; offline does not mean fresh market data or available execution.
+- The complete application interface is available in **English, Russian and Kazakh**. The native language control cycles EN → RU → KK and persists the selected locale with matching document metadata and regional number/date formatting.
 
 ---
 
@@ -175,7 +176,7 @@ published by the `Deploy documentation site` workflow and is also set as the rep
 | [**Implementation status**](docs/IMPLEMENTATION_STATUS.md) | Completed commits, verification evidence, active work and remaining checklist |
 | [**Modular architecture**](docs/MODULAR_ARCHITECTURE.md) | Target packages, module boundaries and safe decomposition sequence |
 | [**Testing strategy**](docs/TESTING_STRATEGY.md) | Unit, parity, browser E2E, visual, accessibility, performance and recovery testing |
-| [**Internationalization & docs**](docs/I18N_AND_DOCUMENTATION.md) | English/Russian structure, UI i18n and documentation quality gates |
+| [**Internationalization & docs**](docs/I18N_AND_DOCUMENTATION.md) | EN/RU/KK UI structure, terminology and documentation quality gates |
 | [**Documentation status**](docs/DOCUMENTATION_STATUS.md) | Currency audit, ownership, verification dates and EN/RU/KK user-guide coverage |
 | [**Russian user guide**](docs/ru/README.md) | Chart, Strategy Studio, Pine/backtest, trading, traces and safety in Russian |
 | [**Kazakh user guide**](docs/kk/README.md) | Chart, Strategy Studio, Pine/backtest, trading, traces and safety in Kazakh |

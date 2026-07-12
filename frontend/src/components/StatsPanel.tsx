@@ -4,7 +4,7 @@ import type { PriceAlert } from "../market/alerts";
 import type { NewAlertInput } from "../hooks/usePriceAlerts";
 import type { Candle, Instrument } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
-import type { Locale } from "../i18n";
+import { localeTag, type Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
 
 interface StatsPanelProps {
@@ -220,7 +220,7 @@ function format(value: number | undefined, decimals: number) {
 function compact(value: number | undefined, locale: Locale) {
   return value === undefined
     ? "…"
-    : Intl.NumberFormat(locale === "ru" ? "ru-RU" : "en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value);
+    : Intl.NumberFormat(localeTag(locale), { notation: "compact", maximumFractionDigits: 2 }).format(value);
 }
 
 export function sessionRange(candles: Candle[]) {

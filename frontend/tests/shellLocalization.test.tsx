@@ -15,6 +15,14 @@ describe("shell localization", () => {
     expect(shellText("ru", "savedWorkspaces")).toBe("Сохранённые рабочие пространства");
   });
 
+  it("provides typed Kazakh navigation and market vocabulary", () => {
+    expect(shellText("kk", "commandPalette")).toBe("Пәрмендер палитрасы");
+    expect(shellText("kk", "markets")).toBe("Нарықтар");
+    expect(shellText("kk", "barStatistics")).toBe("Шам статистикасы");
+    expect(shellText("kk", "trendLine")).toBe("Тренд сызығы");
+    expect(shellText("kk", "savedWorkspaces")).toBe("Сақталған жұмыс кеңістіктері");
+  });
+
   it("renders Russian statistics, alert form and toast semantics", () => {
     const stats = renderToStaticMarkup(
       <StatsPanel locale="ru" instrument={instrument} candles={[]} provider="binance" connection="connected" message="ok" alerts={[]} onAddAlert={() => {}} onRemoveAlert={() => {}} onResetAlert={() => {}} />
@@ -28,5 +36,20 @@ describe("shell localization", () => {
     expect(stats).toContain("Поток данных");
     expect(toasts).toContain("поднялся выше");
     expect(toasts).toContain('aria-label="Закрыть алерт"');
+  });
+
+  it("renders Kazakh statistics and alert semantics", () => {
+    const stats = renderToStaticMarkup(
+      <StatsPanel locale="kk" instrument={instrument} candles={[]} provider="binance" connection="connected" message="ok" alerts={[]} onAddAlert={() => {}} onRemoveAlert={() => {}} onResetAlert={() => {}} />
+    );
+    const toasts = renderToStaticMarkup(
+      <AlertToasts locale="kk" toasts={[{ id: "a", symbol: "BTCUSDT", direction: "above", price: 100, hitPrice: 101 }]} decimalsFor={() => 2} onDismiss={() => {}} />
+    );
+
+    expect(stats).toContain('aria-label="Шам статистикасы"');
+    expect(stats).toContain('aria-label="Баға туралы ескертулер"');
+    expect(stats).toContain("Арна");
+    expect(toasts).toContain("жоғары көтерілді");
+    expect(toasts).toContain('aria-label="Ескертуді өшіру"');
   });
 });

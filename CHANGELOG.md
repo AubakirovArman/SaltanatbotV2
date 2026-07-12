@@ -5,6 +5,15 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Kazakh application locale
+
+- Added a complete typed `kk` UI catalog across the chart shell, market analytics, Strategy Studio, Pine import, backtest/optimizer and paper/live trading surfaces.
+- Replaced the binary EN/RU toggle with an accessible EN → RU → KK cycle, persisted `kk`, browser-language discovery, `kk-KZ` date/number formatting and live `<html lang>`/title updates.
+- Removed every component-level EN/RU conditional in favour of a shared locale registry and compile-time-complete records; technical Pine/trading tokens remain intentionally untranslated.
+- Split the near-limit shell catalog into independent EN, RU and KK modules, leaving a small typed facade instead of growing another localization monolith.
+- Added unit coverage for locale order/persistence, chart/shell/strategy/trading terminology and a required Chromium/Firefox production journey that verifies Russian-to-Kazakh switching, safety copy, persistence and axe-compatible semantics.
+- Raised only the aggregate JavaScript gzip ceiling from 461 KiB to 473 KiB for the measured complete third-locale catalogs; the initial shell remains below the 150 KiB target and every existing per-file, CSS and HTML limit is unchanged.
+
 ### Installable offline shell
 
 - Added a standards-based web app manifest and production-only service-worker registration so the self-hosted terminal can be installed from supporting browsers.

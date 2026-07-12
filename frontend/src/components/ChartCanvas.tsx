@@ -5,6 +5,7 @@ import { hitTest } from "../chart/objects/hitTest";
 import { preparePriceCandles } from "../chart/priceRepresentation";
 import type { CompareLegendSnapshot, CompareSeries, DraftDrawing, PriceMode, VolumeProfileSnapshot } from "../chart/types";
 import { shellText } from "../i18n/shell";
+import { localized } from "../i18n";
 import { ChartIndicatorOverlay } from "./ChartIndicatorOverlay";
 import { ChartDataPanel } from "./ChartDataPanel";
 import { CompareControl } from "./CompareControl";
@@ -362,8 +363,8 @@ export function ChartCanvas({
         <button
           type="button"
           className="zoom-reset"
-          aria-label={locale === "ru" ? `Сбросить масштаб графика (${Math.round(view.zoom * 100)}%)` : `Reset chart zoom (${Math.round(view.zoom * 100)}%)`}
-          title={locale === "ru" ? "Сбросить масштаб" : "Reset zoom"}
+          aria-label={localized(locale, { en: `Reset chart zoom (${Math.round(view.zoom * 100)}%)`, ru: `Сбросить масштаб графика (${Math.round(view.zoom * 100)}%)`, kk: `График масштабын қалпына келтіру (${Math.round(view.zoom * 100)}%)` })}
+          title={localized(locale, { en: "Reset zoom", ru: "Сбросить масштаб", kk: "Масштабты қалпына келтіру" })}
           onClick={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
         >
           {Math.round(view.zoom * 100)}%
@@ -388,7 +389,7 @@ export function ChartCanvas({
           ref={interactionCanvasRef}
           className={`chart-canvas chart-canvas-interaction ${tool === "cursor" ? "" : "drawing"}`}
           aria-hidden="true"
-          title={locale === "ru" ? "Перетаскивание — прокрутка · два пальца — масштаб · Shift — измерение" : "Drag to pan · pinch to zoom · Shift-drag to measure"}
+          title={localized(locale, { en: "Drag to pan · pinch to zoom · Shift-drag to measure", ru: "Перетаскивание — прокрутка · два пальца — масштаб · Shift — измерение", kk: "Сүйреу — жылжыту · екі саусақ — масштаб · Shift-сүйреу — өлшеу" })}
           onPointerDown={(event) => {
             if (!event.isPrimary || event.button !== 0) return;
             event.preventDefault();

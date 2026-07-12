@@ -1,5 +1,10 @@
-export type Locale = "en" | "ru";
+import { kkCore } from "./kk";
+
+export type Locale = "en" | "ru" | "kk";
 export type TextDirection = "ltr" | "rtl";
+
+export const supportedLocales: readonly Locale[] = ["en", "ru", "kk"];
+export const localeNames: Record<Locale, string> = { en: "English", ru: "Русский", kk: "Қазақша" };
 
 /** Central direction metadata keeps future RTL locales out of component logic. */
 export function localeDirection(_locale: Locale): TextDirection {
@@ -15,6 +20,7 @@ const en = {
   openPalette: "Open command palette",
   toggleTheme: "Toggle light or dark theme",
   switchToRussian: "Switch interface language to Russian",
+  switchToKazakh: "Switch interface language to Kazakh",
   switchToEnglish: "Switch interface language to English",
   statusConnected: "live",
   statusFallback: "synth",
@@ -22,7 +28,7 @@ const en = {
   statusConnecting: "sync"
 } as const;
 
-type MessageKey = keyof typeof en;
+export type MessageKey = keyof typeof en;
 
 const ru: Record<MessageKey, string> = {
   chart: "График",
@@ -33,6 +39,7 @@ const ru: Record<MessageKey, string> = {
   openPalette: "Открыть палитру команд",
   toggleTheme: "Переключить светлую или тёмную тему",
   switchToRussian: "Переключить язык интерфейса на русский",
+  switchToKazakh: "Переключить язык интерфейса на казахский",
   switchToEnglish: "Переключить язык интерфейса на английский",
   statusConnected: "онлайн",
   statusFallback: "синт.",
@@ -40,7 +47,7 @@ const ru: Record<MessageKey, string> = {
   statusConnecting: "синхр."
 };
 
-const messages: Record<Locale, Record<MessageKey, string>> = { en, ru };
+const messages: Record<Locale, Record<MessageKey, string>> = { en, ru, kk: kkCore };
 
 export function translate(locale: Locale, key: MessageKey): string {
   return messages[locale][key] ?? en[key];
@@ -49,11 +56,28 @@ export function translate(locale: Locale, key: MessageKey): string {
 export function loadLocale(): Locale {
   try {
     const saved = window.localStorage.getItem("sbv2:locale");
-    if (saved === "en" || saved === "ru") return saved;
+    if (supportedLocales.includes(saved as Locale)) return saved as Locale;
   } catch {
     // Browser storage may be unavailable in private/restricted contexts.
   }
-  return typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("ru") ? "ru" : "en";
+  if (typeof navigator !== "undefined") {
+    const language = navigator.language.toLowerCase();
+    if (language.startsWith("kk")) return "kk";
+    if (language.startsWith("ru")) return "ru";
+  }
+  return "en";
+}
+
+export function nextLocale(locale: Locale): Locale {
+  return supportedLocales[(supportedLocales.indexOf(locale) + 1) % supportedLocales.length];
+}
+
+export function localeTag(locale: Locale): string {
+  return locale === "kk" ? "kk-KZ" : locale === "ru" ? "ru-RU" : "en-US";
+}
+
+export function localized<T>(locale: Locale, values: Record<Locale, T>): T {
+  return values[locale];
 }
 
 export function storeLocale(locale: Locale): void {

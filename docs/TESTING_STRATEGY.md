@@ -111,9 +111,10 @@ stop-before-target rule when both prices occur in one candle.
 - per-pane indicator tests covering bounded untrusted-state normalization, canonical logic retention, unlink-on-edit, primary isolation, v1→v2 session migration, reload persistence and explicit relinking;
 - per-pane compare tests covering legacy/global normalization, three-overlay caps, linked-state reuse, unlink-on-edit, primary isolation, v1/v2→v3 session migration, named-workspace export/rollback, reload persistence and relinking;
 - component semantics for captions, scoped column headers, empty states and focused-bar synchronization across OHLC, signals and trades;
-- typed English/Russian parity for chart-table accessible names, headers, domain terms, dates and numbers;
-- typed English/Russian parity for trading settings, destructive confirmations, command references, runtime cards and semantic order/fill tables;
-- typed English/Russian parity for Strategy Studio, Pine-import diagnostics, backtest assumptions/metrics and optimizer controls;
+- typed English/Russian/Kazakh parity for chart-table accessible names, headers, domain terms, dates and numbers;
+- typed English/Russian/Kazakh parity for trading settings, destructive confirmations, command references, runtime cards and semantic order/fill tables;
+- typed English/Russian/Kazakh parity for Strategy Studio, Pine-import diagnostics, backtest assumptions/metrics and optimizer controls;
+- production-browser switching and reload persistence for `lang=ru` and `lang=kk`, localized document titles and safety-critical trading copy;
 - browser flow proving the Canvas alternative opens from the keyboard and exposes named native tables.
 
 Avoid pixel snapshots for every candle. Use semantic renderer assertions for logic and a small stable visual suite for integration.
@@ -190,8 +191,8 @@ Prefer native `<dialog>`, form controls and buttons. Canvas information must hav
 Pull requests:
 
 - Chromium desktop for all E2E;
-- Firefox for eight tagged critical journeys covering chart input, multi-market layout, accessibility,
-  Pine import, backtest, authentication and paper execution.
+- Firefox for ten tagged critical journeys covering chart input, multi-market layout, accessibility,
+  EN/RU/KK localization, Pine import, backtest, authentication, paper execution and mobile panels.
 
 Nightly/release:
 
@@ -257,7 +258,7 @@ The same suite verifies reviewed byte-level v4/v6 conversion golden hashes.
 
 - check, lint, unit, component, contract;
 - the complete production-build Chromium E2E suite in the required `end-to-end (Chromium)` CI job;
-- eight tagged production journeys in the required `critical journeys (Firefox)` CI job;
+- ten tagged production journeys in the required `critical journeys (Firefox)` CI job;
 - three deterministic interface baselines in the required `visual regression (Chromium)` CI job;
 - a seven-day Playwright report/trace/screenshot/video artifact when that browser job fails;
 - reviewed visual snapshot changes;
@@ -271,7 +272,7 @@ protected workflow described below.
 
 ### Nightly
 
-- the complete 44-scenario Chromium, Firefox and WebKit matrix, with per-browser failure evidence
+- the complete 46-scenario Chromium, Firefox and WebKit matrix, with per-browser failure evidence
   retained for 14 days;
 - fuzz/property suite;
 - full Pine corpus;

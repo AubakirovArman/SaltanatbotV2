@@ -1,5 +1,6 @@
 import type { ChartMarker, ChartTrade } from "../chart/types";
-import type { Locale } from ".";
+import { localeTag, localized, type Locale } from ".";
+import { kkChart } from "./kk/chart";
 
 const en = {
   chartData: "Chart data",
@@ -57,7 +58,7 @@ const ru: Record<ChartMessageKey, string> = {
   noTrades: "Исполненных сделок нет."
 };
 
-const messages: Record<Locale, Record<ChartMessageKey, string>> = { en, ru };
+const messages: Record<Locale, Record<ChartMessageKey, string>> = { en, ru, kk: kkChart };
 
 export function chartText(locale: Locale, key: ChartMessageKey) {
   return messages[locale][key];
@@ -65,26 +66,35 @@ export function chartText(locale: Locale, key: ChartMessageKey) {
 
 export function chartSummary(locale: Locale, input: { symbol: string; timeframe: string; close?: string; signals: number; trades: number }) {
   if (input.close === undefined) {
-    return locale === "ru" ? `${input.symbol} ${input.timeframe}. Данные графика загружаются.` : `${input.symbol} ${input.timeframe}. Chart data is loading.`;
+    return localized(locale, {
+      en: `${input.symbol} ${input.timeframe}. Chart data is loading.`,
+      ru: `${input.symbol} ${input.timeframe}. Данные графика загружаются.`,
+      kk: `${input.symbol} ${input.timeframe}. График деректері жүктелуде.`
+    });
   }
-  return locale === "ru" ? `${input.symbol} ${input.timeframe}. Закрытие выбранной свечи: ${input.close}. Сигналов: ${input.signals}, сделок: ${input.trades}.` : `${input.symbol} ${input.timeframe}. Focused candle close ${input.close}. ${input.signals} signals and ${input.trades} trades.`;
+  return localized(locale, {
+    en: `${input.symbol} ${input.timeframe}. Focused candle close ${input.close}. ${input.signals} signals and ${input.trades} trades.`,
+    ru: `${input.symbol} ${input.timeframe}. Закрытие выбранной свечи: ${input.close}. Сигналов: ${input.signals}, сделок: ${input.trades}.`,
+    kk: `${input.symbol} ${input.timeframe}. Таңдалған шамның жабылуы: ${input.close}. Сигналдар: ${input.signals}, мәмілелер: ${input.trades}.`
+  });
 }
 
 export function recentCandlesCaption(locale: Locale, limit: number) {
-  return locale === "ru" ? `Последние свечи (сначала новые, до ${limit})` : `Recent candles (newest first, up to ${limit})`;
+  return localized(locale, { en: `Recent candles (newest first, up to ${limit})`, ru: `Последние свечи (сначала новые, до ${limit})`, kk: `Соңғы шамдар (жаңалары алдымен, ${limit} дейін)` });
 }
 
 export function strategySignalsCaption(locale: Locale, total: number, limit: number) {
-  return locale === "ru" ? `Сигналы стратегии (всего ${total}; показаны последние ${limit})` : `Strategy signals (${total} total; newest ${limit} shown)`;
+  return localized(locale, { en: `Strategy signals (${total} total; newest ${limit} shown)`, ru: `Сигналы стратегии (всего ${total}; показаны последние ${limit})`, kk: `Стратегия сигналдары (барлығы ${total}; соңғы ${limit} көрсетілді)` });
 }
 
 export function executedTradesCaption(locale: Locale, total: number, limit: number) {
-  return locale === "ru" ? `Исполненные сделки (всего ${total}; показаны последние ${limit})` : `Executed trades (${total} total; newest ${limit} shown)`;
+  return localized(locale, { en: `Executed trades (${total} total; newest ${limit} shown)`, ru: `Исполненные сделки (всего ${total}; показаны последние ${limit})`, kk: `Орындалған мәмілелер (барлығы ${total}; соңғы ${limit} көрсетілді)` });
 }
 
 const terms = {
   en: { buy: "Buy", sell: "Sell", exit: "Exit", marker: "Marker", long: "Long", short: "Short", signal: "Signal", stop: "Stop", target: "Target", close: "Close", liquidation: "Liquidation" },
-  ru: { buy: "Покупка", sell: "Продажа", exit: "Выход", marker: "Метка", long: "Лонг", short: "Шорт", signal: "Сигнал", stop: "Стоп", target: "Цель", close: "Закрытие", liquidation: "Ликвидация" }
+  ru: { buy: "Покупка", sell: "Продажа", exit: "Выход", marker: "Метка", long: "Лонг", short: "Шорт", signal: "Сигнал", stop: "Стоп", target: "Цель", close: "Закрытие", liquidation: "Ликвидация" },
+  kk: { buy: "Сатып алу", sell: "Сату", exit: "Шығу", marker: "Белгі", long: "Лонг", short: "Шорт", signal: "Сигнал", stop: "Стоп", target: "Мақсат", close: "Жабу", liquidation: "Ликвидация" }
 } satisfies Record<Locale, Record<ChartMarker["kind"] | ChartTrade["direction"] | ChartTrade["reason"], string>>;
 
 export function chartTerm(locale: Locale, value: ChartMarker["kind"] | ChartTrade["direction"] | ChartTrade["reason"]) {
@@ -92,5 +102,5 @@ export function chartTerm(locale: Locale, value: ChartMarker["kind"] | ChartTrad
 }
 
 export function intlLocale(locale: Locale) {
-  return locale === "ru" ? "ru-RU" : "en-US";
+  return localeTag(locale);
 }

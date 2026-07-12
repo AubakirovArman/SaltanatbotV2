@@ -1,4 +1,5 @@
-import type { Locale } from ".";
+import { localeTag, localized, type Locale } from ".";
+import { kkTrading } from "./kk/trading";
 
 const en = {
   tradingLocked: "Trading is locked",
@@ -246,30 +247,30 @@ const ru: Record<TradingMessageKey, string> = {
   unrealizedPnl: "Нереализ. прибыль/убыток"
 };
 
-const messages: Record<Locale, Record<TradingMessageKey, string>> = { en, ru };
+const messages: Record<Locale, Record<TradingMessageKey, string>> = { en, ru, kk: kkTrading };
 
 export function tradingText(locale: Locale, key: TradingMessageKey) {
   return messages[locale][key];
 }
 
 export function tradingSaveKeys(locale: Locale, exchange: string) {
-  return locale === "ru" ? `Сохранить ключи ${exchange}` : `Save ${exchange} keys`;
+  return localized(locale, { en: `Save ${exchange} keys`, ru: `Сохранить ключи ${exchange}`, kk: `${exchange} кілттерін сақтау` });
 }
 
 export function tradingLiveConfirm(locale: Locale, exchange: string) {
-  return locale === "ru" ? `Запустить РЕАЛЬНУЮ торговлю на ${exchange} с РЕАЛЬНЫМИ средствами?` : `Start LIVE trading on ${exchange} with REAL funds?`;
+  return localized(locale, { en: `Start LIVE trading on ${exchange} with REAL funds?`, ru: `Запустить РЕАЛЬНУЮ торговлю на ${exchange} с РЕАЛЬНЫМИ средствами?`, kk: `${exchange} биржасында НАҚТЫ қаражатпен LIVE сауданы бастау керек пе?` });
 }
 
 export function tradingCancelOrder(locale: Locale, type: string, id: string) {
-  return locale === "ru" ? `Отменить ордер ${type} ${id}` : `Cancel ${type} order ${id}`;
+  return localized(locale, { en: `Cancel ${type} order ${id}`, ru: `Отменить ордер ${type} ${id}`, kk: `${type} ${id} ордерін болдырмау` });
 }
 
 export function tradingFillCount(locale: Locale, count: number) {
-  return locale === "ru" ? `исполнений: ${count}` : `${count} fills`;
+  return localized(locale, { en: `${count} fills`, ru: `исполнений: ${count}`, kk: `орындалулар: ${count}` });
 }
 
 export function tradingLocale(locale: Locale) {
-  return locale === "ru" ? "ru-RU" : "en-US";
+  return localeTag(locale);
 }
 
 const domainTerms: Record<Locale, Record<string, string>> = {
@@ -344,6 +345,17 @@ const domainTerms: Record<Locale, Record<string, string>> = {
     replace: "замена",
     get: "получить",
     set: "установить"
+  },
+  kk: {
+    buy: "сатып алу", sell: "сату", long: "лонг", short: "шорт", flat: "позиция жоқ",
+    intent: "ниет", accepted: "қабылданды", partially_filled: "ішінара орындалды", filled: "орындалды",
+    cancelled: "болдырылмады", replaced: "ауыстырылды", expired: "мерзімі өтті", rejected: "қабылданбады", unknown: "белгісіз",
+    market: "нарықтық", limit: "лимиттік", stop_market: "стоп-маркет", stop_limit: "стоп-лимит",
+    tp_market: "тейк-профит маркет", tp_limit: "тейк-профит лимит", neworder: "жаңа ордер",
+    open: "ашу", close: "жабу", flatten: "бәрін жабу", turnover: "кері бұрылу",
+    chporders: "қорғанысты өзгерту", openorders: "ордерлерді ашу", spreadentry: "сатылы кіру",
+    cancel: "болдырмау", cancelall: "бәрін болдырмау", cancelorphans: "жетім ордерлерді болдырмау",
+    replace: "ауыстыру", get: "алу", set: "орнату"
   }
 };
 

@@ -1,7 +1,7 @@
 import { BellRing, Settings2, Trash2, X } from "lucide-react";
 import { ensureNotificationPermission, playAlertBeep } from "../../market/alerts";
 import type { MicrostructureAlertEvent, MicrostructureAlertSettings } from "../../chart/microstructureAlerts";
-import type { Locale } from "../../i18n";
+import { localeTag, type Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
 
 export function TradeFlowAlertCenter({
@@ -101,5 +101,5 @@ function formatNotional(value: number) {
 }
 
 function formatTime(value: number, locale: Locale) {
-  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", { hour: "2-digit", minute: "2-digit" }).format(value);
+  return new Intl.DateTimeFormat(localeTag(locale), { hour: "2-digit", minute: "2-digit" }).format(value);
 }

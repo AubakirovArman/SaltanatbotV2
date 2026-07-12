@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight, ScanSearch } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createBacktestReplay, replayFrame } from "@saltanatbotv2/backtest-core";
-import type { Locale } from "../../i18n";
+import { localeTag, type Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
 import type { BacktestResult } from "../backtest";
 
@@ -49,7 +49,7 @@ export function BacktestReplayPanel({ locale, result }: { locale: Locale; result
             <option value="" disabled>{t("eventFrame")}</option>
             {eventFrames.map(({ item, index }) => (
               <option key={item.barTime} value={index}>
-                {index + 1} · {new Date(item.barTime).toLocaleString(locale === "ru" ? "ru-RU" : "en-US")} · {[
+                {index + 1} · {new Date(item.barTime).toLocaleString(localeTag(locale))} · {[
                   ...item.strategyEvents.map((event) => `signal:${event.kind}`),
                   ...item.executionEvents.map((event) => `trade:${event.kind}`)
                 ].join(", ")}
@@ -59,7 +59,7 @@ export function BacktestReplayPanel({ locale, result }: { locale: Locale; result
         </label>
       </div>
       <div className="replay-summary">
-        <span>{new Date(frame.barTime).toLocaleString(locale === "ru" ? "ru-RU" : "en-US")}</span>
+        <span>{new Date(frame.barTime).toLocaleString(localeTag(locale))}</span>
         {frame.equity !== undefined && <span>{t("equity")} {frame.equity.toFixed(2)}</span>}
         <span>{events.length ? events.join(" · ") : t("noEvents")}</span>
       </div>

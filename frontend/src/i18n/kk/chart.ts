@@ -1,0 +1,28 @@
+import type { ChartMessageKey } from "../chart";
+
+export const kkChart: Record<ChartMessageKey, string> = {
+  chartData: "График деректері",
+  hideChartData: "График деректерін жасыру",
+  semanticAlternative: "Визуалды графиктің семантикалық баламасы",
+  latestCandle: "Соңғы шам",
+  focusedCandle: "Фокусталған шам",
+  time: "Уақыт",
+  open: "Ашу",
+  high: "Максимум",
+  low: "Минимум",
+  close: "Жабылу",
+  volume: "Көлем",
+  marketDataLoading: "Нарық деректері жүктелуде.",
+  type: "Түр",
+  price: "Бағасы",
+  label: "Белгі",
+  entry: "Кіру",
+  exit: "Шығу",
+  side: "Бағыт",
+  entryPrice: "Кіру бағасы",
+  exitPrice: "Шығу бағасы",
+  pnl: "P&L",
+  reason: "Себеп",
+  noSignals: "Стратегия сигналдары жоқ.",
+  noTrades: "Орындалған мәмілелер жоқ.",
+};

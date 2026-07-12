@@ -8,7 +8,7 @@ import type { OptimizeResult, WalkForwardResult } from "../optimizer";
 import type { OptSpecState } from "../optimization/model";
 import type { CatalogResponse, Timeframe } from "../../types";
 import { BacktestReport } from "../../components/BacktestReport";
-import type { Locale } from "../../i18n";
+import { localeTag, type Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
 import { OptimizePanel } from "./OptimizePanel";
 import { ArtifactVersionPanel } from "./ArtifactVersionPanel";
@@ -181,7 +181,7 @@ export function StrategyExecutionPanel(props: StrategyExecutionPanelProps) {
 
       <div className="ir-note">
         <FileJson size={15} aria-hidden="true" />
-        {props.savedAt ? `${t("autosaved")} ${new Date(props.savedAt).toLocaleTimeString(props.locale === "ru" ? "ru-RU" : "en-US", { hour: "2-digit", minute: "2-digit" })}` : t("changesAutosave")}
+        {props.savedAt ? `${t("autosaved")} ${new Date(props.savedAt).toLocaleTimeString(localeTag(props.locale), { hour: "2-digit", minute: "2-digit" })}` : t("changesAutosave")}
       </div>
     </aside>
   );

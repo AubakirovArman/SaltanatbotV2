@@ -2,7 +2,7 @@ import { Loader2, SlidersHorizontal } from "lucide-react";
 import type { StrategyIR } from "../ir";
 import type { Objective, OptimizeResult, WalkForwardResult } from "../optimizer";
 import { OBJECTIVES, comboCount, type AxisState, type OptSpecState } from "../optimization/model";
-import type { Locale } from "../../i18n";
+import { localized, type Locale } from "../../i18n";
 import { strategyNumber, strategyObjective, strategyText } from "../../i18n/strategy";
 
 const MAX_COMBOS = 2000;
@@ -141,9 +141,11 @@ export function OptimizePanel({
 
       {combos > MAX_COMBOS && (
         <div className="opt-hint">
-          {locale === "ru"
-            ? `Сетка содержит ${strategyNumber(locale, combos)} комбинаций — будут проверены только первые ${strategyNumber(locale, MAX_COMBOS)}. Увеличьте шаг, чтобы уменьшить сетку.`
-            : `Grid has ${strategyNumber(locale, combos)} combos — only the first ${strategyNumber(locale, MAX_COMBOS)} will be evaluated. Widen the step to shrink the grid.`}
+          {localized(locale, {
+            en: `Grid has ${strategyNumber(locale, combos)} combos — only the first ${strategyNumber(locale, MAX_COMBOS)} will be evaluated. Widen the step to shrink the grid.`,
+            ru: `Сетка содержит ${strategyNumber(locale, combos)} комбинаций — будут проверены только первые ${strategyNumber(locale, MAX_COMBOS)}. Увеличьте шаг, чтобы уменьшить сетку.`,
+            kk: `Торда ${strategyNumber(locale, combos)} комбинация бар — тек алғашқы ${strategyNumber(locale, MAX_COMBOS)} тексеріледі. Торды азайту үшін қадамды үлкейтіңіз.`
+          })}
         </div>
       )}
 

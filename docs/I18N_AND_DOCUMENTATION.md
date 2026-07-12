@@ -3,8 +3,7 @@
 ## Goals
 
 - English is the canonical engineering and API documentation language.
-- Russian and Kazakh are supported user-documentation languages; Russian is the complete second UI
-  locale. Kazakh UI messages are a future P3 localization opportunity, not an unfinished P2 gate.
+- Russian and Kazakh are supported user-documentation and complete application UI languages.
 - The UI is locale-aware and structurally ready for additional languages and RTL.
 - Documentation stays versioned with the code and cannot silently describe old behavior.
 
@@ -68,16 +67,13 @@ Introduce a small typed message layer before selecting a larger library:
 ```text
 frontend/src/i18n/
   index.ts
-  locale.ts
-  messages/
-    en.ts
-    ru.ts
-    kk.ts
-  format/
-    number.ts
-    date.ts
-    currency.ts
-    percent.ts
+  shell.ts                 # small typed facade
+  chart.ts
+  strategy.ts
+  trading.ts
+  en/shell.ts
+  ru/shell.ts
+  kk/                      # complete Kazakh domain catalogs
 ```
 
 Requirements:
@@ -88,9 +84,10 @@ Requirements:
 - pluralization uses `Intl.PluralRules` or ICU semantics;
 - numbers, dates, currencies and percentages use `Intl`;
 - locale is persisted locally and can default from the browser;
+- the native language control cycles through EN → RU → KK in a stable order;
 - `<html lang>` and document title update with locale/view;
 - layouts use logical CSS properties and are tested with long strings;
-- English fallback is explicit and missing translations fail a CI check;
+- English fallback is explicit and every EN/RU/KK record is compile-time complete;
 - trading commands, Pine identifiers and API field names remain untranslated code tokens.
 
 ## Translation workflow

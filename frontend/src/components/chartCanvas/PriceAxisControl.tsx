@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { Locale } from "../../i18n";
+import { localized, type Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
 
 export const MIN_PRICE_ZOOM = 0.25;
@@ -40,7 +40,7 @@ export function PriceAxisControl({ locale, onZoomChange, zoom }: {
       aria-valuemin={25}
       aria-valuemax={400}
       aria-valuenow={percent}
-      aria-valuetext={zoom === 1 ? (locale === "ru" ? "Автоматически" : "Automatic") : `${percent}%`}
+      aria-valuetext={zoom === 1 ? localized(locale, { en: "Automatic", ru: "Автоматически", kk: "Автоматты" }) : `${percent}%`}
       title={label}
       onDoubleClick={() => onZoomChange(1)}
       onKeyDown={(event) => {

@@ -914,7 +914,7 @@ test("imports a Pine indicator as an editable artifact", { tag: "@smoke" }, asyn
   await expect(page.locator(".strategy-library")).toContainText("E2E SMA");
 });
 
-test("switches and persists the interface locale", async ({ page }) => {
+test("switches and persists the interface locale", { tag: "@smoke" }, async ({ page }) => {
   await page.getByRole("button", { name: "Switch interface language to Russian" }).click();
 
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
@@ -923,7 +923,7 @@ test("switches and persists the interface locale", async ({ page }) => {
   const workspaceModes = page.locator(".mode-tabs");
   await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
   await expect(workspaceModes.getByRole("button", { name: "Стратегия", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Переключить язык интерфейса на английский" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Переключить язык интерфейса на казахский" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Данные графика", exact: true })).toBeVisible();
   await expect(page.getByText("Рынки", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Статистика свечи")).toBeVisible();
@@ -951,12 +951,25 @@ test("switches and persists the interface locale", async ({ page }) => {
   await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
   await workspaceModes.getByRole("button", { name: "Торговля", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Торговля заблокирована" })).toBeVisible();
-  await page.getByLabel("Токен доступа").fill("e2e-local-admin-token");
-  await page.getByRole("button", { name: "Разблокировать" }).click();
-  await page.getByRole("button", { name: "Настройки" }).click();
-  await expect(page.getByText("Включён демонстрационный режим — доступна только paper-торговля.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Сохранить ключи binance" })).toBeVisible();
-  await expect(page.getByLabel("Токен бота")).toBeVisible();
+  await page.getByRole("button", { name: "Переключить язык интерфейса на казахский" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "kk");
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+  await expect(page).toHaveTitle("Сауда · SaltanatbotV2");
+  await expect(page.getByRole("heading", { name: "Сауда жабық" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Интерфейс тілін ағылшын тіліне ауыстыру" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("sbv2:locale"))).toBe("kk");
+
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("lang", "kk");
+  await expect(page).toHaveTitle("График · SaltanatbotV2");
+  await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
+  await workspaceModes.getByRole("button", { name: "Сауда", exact: true }).click();
+  await page.getByLabel("Access token").fill("e2e-local-admin-token");
+  await page.getByRole("button", { name: "Құлыпты ашу" }).click();
+  await page.getByRole("button", { name: "Параметрлер" }).click();
+  await expect(page.getByText("Demo режимі қосулы — тек paper сауда қолжетімді.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "binance кілттерін сақтау" })).toBeVisible();
+  await expect(page.getByLabel("Бот token-і")).toBeVisible();
 });
 
 test("saves and restores a named chart workspace", async ({ page }) => {

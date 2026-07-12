@@ -53,6 +53,9 @@ They must be read together with `IMPLEMENTATION_STATUS.md` and must not be prese
 | Backup and recovery | [operator guide](BACKUP_RESTORE.md) | [guide](ru/BACKUP_RESTORE.md) | [guide](kk/BACKUP_RESTORE.md) |
 | 90-commit update | [changelog](../CHANGELOG.md) | [release notes](ru/RELEASE_2026-07-11.md) | [release notes](kk/RELEASE_2026-07-11.md) |
 
+The complete runtime UI follows the same EN/RU/KK coverage. Locale catalogs are typed against one
+canonical key set; the production browser suite verifies Russian and Kazakh switching/persistence.
+
 English remains canonical for exact API schemas and developer internals. Generated reference tables
 are not copied by hand into translations; localized guides link to the single generated source.
 

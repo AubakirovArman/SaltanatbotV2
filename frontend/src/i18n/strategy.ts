@@ -1,4 +1,5 @@
-import type { Locale } from ".";
+import { localeTag, type Locale } from ".";
+import { kkStrategy } from "./kk/strategy";
 
 const en = {
   editorFailed: "Strategy editor did not start",
@@ -55,14 +56,14 @@ const ru: Record<StrategyMessageKey, string> = {
   importPine: "Импорт Pine Script", pineHint: "Вставьте TradingView Pine Script (v4–v6) или загрузите файлы .pine. Каждый indicator() станет индикатором, а strategy() — редактируемой стратегией. Неподдерживаемые конструкции отклоняются с понятной причиной.", loadPineFiles: "Загрузить файл(ы) .pine", pastedScript: "Вставленный скрипт", convert: "Преобразовать", artifact: "артефакт", artifacts: "артефакта(ов)", add: "Добавить", converted: "преобразовано", rejected: "отклонено", approximations: "Диагностика совместимости — проверьте перед использованием с реальными средствами:", fidelity: "Точность", exact: "точно", approximation: "приближённо", displayOnly: "только отображение", profile: "профиль", sourceLine: "строка", remediation: "Что сделать", pineSource: "Исходный Pine", generatedBlocks: "Созданные блоки", originalPineSource: "Исходник импорта сохранён как подтверждение. Изменение блоков не переписывает Pine-код.", exportReport: "Экспорт отчёта", partialHistory: "История загружена частично", dataGaps: "Пропущенные свечи", barReplay: "Повтор по свечам", previousBar: "Предыдущая свеча", nextBar: "Следующая свеча", replayPosition: "Позиция повтора", jumpToEvent: "Перейти к", eventFrame: "Сигналу / сделке", noEvents: "Нет событий", someFilesUnreadable: "Некоторые файлы не удалось прочитать.", skippedTooLarge: "пропущено (слишком большой размер)", couldNotRead: "не удалось прочитать", skippedMaxFiles: "пропущено (лимит файлов)", artifactVersions: "Версии артефакта", schemaVersion: "Схема", provenance: "Происхождение", migratedFrom: "Перенесено со схемы", dependencies: "Зависимости индикаторов", noIndicatorDependencies: "Нет доступных переиспользуемых индикаторов.", dependencyCycle: "Эта зависимость создаст цикл.", missingDependency: "Отсутствует зависимость", historyAndDiff: "История и различия", rollbackTo: "Откатить к", artifactDiff: "Различия версий артефакта", metadataChanged: "Изменены метаданные", remove: "Удалить"
 };
 
-const messages: Record<Locale, Record<StrategyMessageKey, string>> = { en, ru };
+const messages: Record<Locale, Record<StrategyMessageKey, string>> = { en, ru, kk: kkStrategy };
 
 export function strategyText(locale: Locale, key: StrategyMessageKey): string {
   return messages[locale][key] ?? en[key];
 }
 
 export function strategyNumber(locale: Locale, value: number): string {
-  return value.toLocaleString(locale === "ru" ? "ru-RU" : "en-US");
+  return value.toLocaleString(localeTag(locale));
 }
 
 export function strategyCategory(locale: Locale, category: string): string {

@@ -12,7 +12,7 @@ import {
   type PriceRepresentationSettingsEventDetail,
   type PriceRepresentationSettings
 } from "../../chart/priceRepresentationSettings";
-import type { Locale } from "../../i18n";
+import { localized, type Locale } from "../../i18n";
 import type { ChartType } from "../../types";
 
 export { priceRepresentationBadge } from "../../chart/priceRepresentationSettings";
@@ -69,7 +69,7 @@ export function PriceRepresentationControl({ chartType, locale, state }: { chart
   if (!isConfigurablePriceRepresentation(chartType)) return null;
   const configs = controlConfigs(chartType, locale, state.settings);
   const badge = priceRepresentationBadge(chartType, state.settings);
-  const settingsLabel = locale === "ru" ? `Настройки ${badge}` : `${badge} settings`;
+  const settingsLabel = localized(locale, { en: `${badge} settings`, ru: `Настройки ${badge}`, kk: `${badge} параметрлері` });
 
   return (
     <details className="price-representation-control" onKeyDown={(event) => {
@@ -110,7 +110,7 @@ export function PriceRepresentationControl({ chartType, locale, state }: { chart
         })}
         <button type="button" onClick={() => state.reset(configs.map((config) => config.key))}>
           <RotateCcw size={13} aria-hidden="true" />
-          {locale === "ru" ? "По умолчанию" : "Reset default"}
+          {localized(locale, { en: "Reset default", ru: "По умолчанию", kk: "Әдепкі мәнді қалпына келтіру" })}
         </button>
       </div>
     </details>
@@ -130,20 +130,20 @@ interface ControlConfig {
 
 function controlConfigs(chartType: ChartType, locale: Locale, settings: PriceRepresentationSettings): ControlConfig[] {
   if (chartType === "linebreak") return [{
-    key: "lineBreakDepth" as const, value: settings.lineBreakDepth, min: 1, max: 10, step: 1, suffix: locale === "ru" ? "линий" : "lines",
-    label: locale === "ru" ? "Глубина разворота" : "Reversal depth",
-    help: locale === "ru" ? "Разворот требует пробоя диапазона последних N подтверждённых линий." : "A reversal must break the range of the latest N confirmed lines."
+    key: "lineBreakDepth" as const, value: settings.lineBreakDepth, min: 1, max: 10, step: 1, suffix: localized(locale, { en: "lines", ru: "линий", kk: "сызық" }),
+    label: localized(locale, { en: "Reversal depth", ru: "Глубина разворота", kk: "Кері бұрылу тереңдігі" }),
+    help: localized(locale, { en: "A reversal must break the range of the latest N confirmed lines.", ru: "Разворот требует пробоя диапазона последних N подтверждённых линий.", kk: "Кері бұрылу соңғы N расталған сызықтың диапазонын бұзуы керек." })
   }];
   if (chartType === "pnf") return [
     {
       key: "pnfBoxPercent", value: settings.pnfBoxPercent, min: 0.01, max: 10, step: 0.01, suffix: "%",
-      label: locale === "ru" ? "Размер клетки" : "Box percentage",
-      help: locale === "ru" ? "Фиксируется от первой загруженной подтверждённой цены." : "Seeded from the first loaded confirmed price."
+      label: localized(locale, { en: "Box percentage", ru: "Размер клетки", kk: "Ұяшық пайызы" }),
+      help: localized(locale, { en: "Seeded from the first loaded confirmed price.", ru: "Фиксируется от первой загруженной подтверждённой цены.", kk: "Алғашқы жүктелген расталған бағадан бекітіледі." })
     },
     {
-      key: "pnfReversalBoxes", value: settings.pnfReversalBoxes, min: 1, max: 10, step: 1, suffix: locale === "ru" ? "клеток" : "boxes",
-      label: locale === "ru" ? "Клеток для разворота" : "Reversal boxes",
-      help: locale === "ru" ? "Новая X/O-колонка требует движения на это число клеток." : "A new X/O column requires this many boxes in the opposite direction."
+      key: "pnfReversalBoxes", value: settings.pnfReversalBoxes, min: 1, max: 10, step: 1, suffix: localized(locale, { en: "boxes", ru: "клеток", kk: "ұяшық" }),
+      label: localized(locale, { en: "Reversal boxes", ru: "Клеток для разворота", kk: "Кері бұрылу ұяшықтары" }),
+      help: localized(locale, { en: "A new X/O column requires this many boxes in the opposite direction.", ru: "Новая X/O-колонка требует движения на это число клеток.", kk: "Жаңа X/O бағаны қарсы бағытта осынша ұяшық қозғалысын талап етеді." })
     }
   ];
   const kagi = chartType === "kagi";
@@ -151,7 +151,7 @@ function controlConfigs(chartType: ChartType, locale: Locale, settings: PriceRep
     key: kagi ? "kagiReversalPercent" as const : "renkoBrickPercent" as const,
     value: kagi ? settings.kagiReversalPercent : settings.renkoBrickPercent,
     min: 0.01, max: 10, step: 0.01, suffix: "%",
-    label: locale === "ru" ? (kagi ? "Процент разворота" : "Размер кирпича") : (kagi ? "Reversal percentage" : "Brick percentage"),
-    help: locale === "ru" ? "Фиксируется от первой загруженной подтверждённой цены и перестраивает всю отображаемую историю." : "Seeded from the first loaded confirmed price and rebuilds the full displayed history."
+    label: localized(locale, { en: kagi ? "Reversal percentage" : "Brick percentage", ru: kagi ? "Процент разворота" : "Размер кирпича", kk: kagi ? "Кері бұрылу пайызы" : "Кірпіш пайызы" }),
+    help: localized(locale, { en: "Seeded from the first loaded confirmed price and rebuilds the full displayed history.", ru: "Фиксируется от первой загруженной подтверждённой цены и перестраивает всю отображаемую историю.", kk: "Алғашқы жүктелген расталған бағадан бекітіліп, көрсетілген тарихты толық қайта құрады." })
   }];
 }
