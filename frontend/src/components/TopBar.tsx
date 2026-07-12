@@ -4,9 +4,7 @@ import {
   CandlestickChart,
   ChevronDown,
   Command,
-  Columns2,
   Download,
-  Grid2X2,
   LayoutDashboard,
   Keyboard,
   Moon,
@@ -14,8 +12,6 @@ import {
   PanelRight,
   Plus,
   RotateCcw,
-  Rows2,
-  Square,
   Sun,
   Trash2,
   Upload,
@@ -28,6 +24,7 @@ import type { CatalogResponse, ChartType, Instrument, Timeframe } from "../types
 import type { ConnectionState } from "../hooks/useMarketStream";
 import type { ChartLayoutPreset, Workspace } from "../workspace/workspaces";
 import { chartTypeIcons, chartTypeLabel } from "./chartTypePresentation";
+import { LayoutMenu } from "./topbar/LayoutMenu";
 
 interface TopBarProps {
   catalog?: CatalogResponse;
@@ -51,6 +48,8 @@ interface TopBarProps {
   onImportWorkspace: (raw: string) => Promise<boolean>;
   onRollbackWorkspace: (id: string, revision: number) => boolean;
   onLayoutPresetChange: (preset: ChartLayoutPreset) => void;
+  canUseDistinctMarkets: boolean;
+  onDistinctMarkets: () => void;
   onTimeframeChange: (timeframe: Timeframe) => void;
   onChartTypeChange: (chartType: ChartType) => void;
   onModeChange: (mode: "chart" | "strategy" | "trade") => void;
@@ -90,6 +89,8 @@ export function TopBar({
   onImportWorkspace,
   onRollbackWorkspace,
   onLayoutPresetChange,
+  canUseDistinctMarkets,
+  onDistinctMarkets,
   onTimeframeChange,
   onChartTypeChange,
   onModeChange,
@@ -184,7 +185,7 @@ export function TopBar({
             >
               <PanelRight size={15} strokeWidth={1.75} aria-hidden="true" />
             </button>
-            <LayoutMenu locale={locale} preset={layoutPreset} onChange={onLayoutPresetChange} />
+            <LayoutMenu locale={locale} preset={layoutPreset} canUseDistinctMarkets={canUseDistinctMarkets} onChange={onLayoutPresetChange} onDistinctMarkets={onDistinctMarkets} />
             <button type="button" className={`icon-button ${panelsSwapped ? "active" : ""}`} onClick={onSwapPanels} aria-pressed={panelsSwapped} title={shellText(locale, "swapDockedPanels")} aria-label={shellText(locale, "swapDockedPanels")}>
               <ArrowLeftRight size={15} aria-hidden="true" />
             </button>
@@ -225,44 +226,6 @@ export function TopBar({
         </div>
       </div>
     </header>
-  );
-}
-
-const layoutOptions: Array<{ id: ChartLayoutPreset; icon: typeof Square; label: "singleChart" | "verticalSplit" | "horizontalSplit" | "fourChartGrid" }> = [
-  { id: "single", icon: Square, label: "singleChart" },
-  { id: "split-vertical", icon: Columns2, label: "verticalSplit" },
-  { id: "split-horizontal", icon: Rows2, label: "horizontalSplit" },
-  { id: "grid-4", icon: Grid2X2, label: "fourChartGrid" }
-];
-
-function LayoutMenu({ locale, preset, onChange }: { locale: Locale; preset: ChartLayoutPreset; onChange: (preset: ChartLayoutPreset) => void }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const Current = layoutOptions.find((item) => item.id === preset)?.icon ?? Square;
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: PointerEvent) => { if (!wrapRef.current?.contains(event.target as Node)) setOpen(false); };
-    window.addEventListener("pointerdown", close);
-    return () => window.removeEventListener("pointerdown", close);
-  }, [open]);
-  return (
-    <div className="charttype-menu-wrap" ref={wrapRef}>
-      <button type="button" className="icon-button" aria-label={shellText(locale, "chartLayout")} title={shellText(locale, "chartLayout")} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        <Current size={15} aria-hidden="true" />
-      </button>
-      {open && (
-        <div className="charttype-menu layout-menu" role="menu">
-          {layoutOptions.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button type="button" role="menuitemradio" aria-checked={item.id === preset} className={item.id === preset ? "active" : ""} key={item.id} onClick={() => { onChange(item.id); setOpen(false); }}>
-                <Icon size={14} aria-hidden="true" /> {shellText(locale, item.label)}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
   );
 }
 

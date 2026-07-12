@@ -213,6 +213,9 @@
   color: var(--accent);
 }
 
+.layout-menu-separator { block-size: 1px; margin: 3px 4px; background: var(--line-soft); }
+.layout-menu button:disabled { color: var(--dim); cursor: not-allowed; opacity: 0.65; }
+
 /* Timeframe segment + overflow dropdown. */
 .timeframe-control {
   display: flex;

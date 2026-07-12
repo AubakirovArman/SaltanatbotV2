@@ -66,6 +66,11 @@ describe("useAppShell", () => {
     expect(shell?.charts.every((chart) => chart.linkIndicators)).toBe(true);
     expect(shell?.charts.every((chart) => chart.linkCompare)).toBe(true);
     expect(JSON.parse(localStorage.getItem(LAST_CHART_SESSION_KEY) ?? "null")).toMatchObject({ preset: "grid-4", charts: [{ id: "chart-1" }, { id: "chart-2" }, { id: "chart-3" }, { id: "chart-4" }] });
+    expect(shell?.setDistinctMarketLayout(["BTCUSDT", "ETHUSDT"])).toBe(false);
+    await act(async () => { expect(shell?.setDistinctMarketLayout(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"])).toBe(true); });
+    expect(shell?.charts.map((chart) => chart.symbol)).toEqual(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]);
+    expect(shell?.charts.map((chart) => chart.linkSymbol)).toEqual([true, false, false, false]);
+    expect(shell?.charts.every((chart) => chart.linkTimeframe && chart.linkIndicators && chart.linkCompare)).toBe(true);
     await act(async () => shell?.setActiveChartId("chart-2"));
     await act(async () => shell?.updateActiveChart({ symbol: "ETHUSDT", timeframe: "5m", chartType: "line" }));
     expect(shell?.activeChart).toMatchObject({ id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", chartType: "line", linkSymbol: false, linkTimeframe: false });

@@ -29,17 +29,18 @@ The initial Playwright suite must cover:
 4. drawing can be created, selected, edited and deleted;
 5. identical symbols in separate panes retain isolated drawing sets through reload;
 6. keyboard-only pane cycling moves focus and continues through maximized charts without resetting state;
-7. Pine strategy imports, reports diagnostics, opens as blocks and runs a backtest;
-8. Pine indicator imports and appears on the current chart;
-9. strategy is created from a template, edited, compiled and saved;
-10. backtest shows assumptions, trades, metrics and chart markers;
-11. optimizer runs in a worker and can be cancelled;
-12. named workspace and bounded last-chart-session state save and restore after reload, while malformed/future storage fails closed;
-13. paper bot is created, started, receives a signal, records an order and stops;
-14. authentication, CSRF expiry and logout behave correctly;
-15. kill switch requires the right role and visibly updates state;
-16. WebSocket disconnect reconnects without duplicating candles or orders;
-17. invalid/fallback market data is visibly distinguished from real data.
+7. the keyboard layout menu creates four distinct symbols and restores them after reload;
+8. Pine strategy imports, reports diagnostics, opens as blocks and runs a backtest;
+9. Pine indicator imports and appears on the current chart;
+10. strategy is created from a template, edited, compiled and saved;
+11. backtest shows assumptions, trades, metrics and chart markers;
+12. optimizer runs in a worker and can be cancelled;
+13. named workspace and bounded last-chart-session state save and restore after reload, while malformed/future storage fails closed;
+14. paper bot is created, started, receives a signal, records an order and stops;
+15. authentication, CSRF expiry and logout behave correctly;
+16. kill switch requires the right role and visibly updates state;
+17. WebSocket disconnect reconnects without duplicating candles or orders;
+18. invalid/fallback market data is visibly distinguished from real data.
 
 Live-mainnet orders must never run in generic E2E. Exchange testnets require an explicit opt-in environment and isolated credentials.
 

@@ -27,6 +27,7 @@ import { shellText } from "./i18n/shell";
 import type { Locale } from "./i18n";
 import { translate } from "./i18n";
 import { loadLastChartSession } from "./app/chartSession";
+import { pickDistinctMarketSymbols } from "./app/distinctMarkets";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
@@ -123,6 +124,7 @@ export default function App() {
     const list = catalog?.instruments ?? [fallbackInstrument];
     return asset === "all" ? list : list.filter((item) => item.assetClass === asset);
   }, [asset, catalog]);
+  const distinctMarketSymbols = useMemo(() => pickDistinctMarketSymbols(symbol, catalog?.instruments ?? []), [catalog, symbol]);
 
   const allSymbols = useMemo(() => catalog?.instruments.map((item) => item.symbol) ?? [], [catalog]);
   const sparklines = useSparklines(allSymbols, activeChart?.timeframe ?? timeframe, cryptoExchange);
@@ -233,6 +235,8 @@ export default function App() {
         onImportWorkspace={shell.importWorkspace}
         onRollbackWorkspace={shell.rollbackWorkspaceVersion}
         onLayoutPresetChange={shell.setLayoutPreset}
+        canUseDistinctMarkets={distinctMarketSymbols.length === 4}
+        onDistinctMarkets={() => shell.setDistinctMarketLayout(distinctMarketSymbols)}
         onTimeframeChange={setActiveTimeframe}
         onChartTypeChange={setActiveChartType}
         onModeChange={setMode}

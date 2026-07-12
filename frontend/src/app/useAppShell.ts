@@ -30,6 +30,7 @@ import {
 } from "./shellStorage";
 import { compareColor } from "../chart/compareColors";
 import { loadLastChartSession, saveLastChartSession, type LastChartSession } from "./chartSession";
+import { normalizeDistinctMarketSymbols } from "./distinctMarkets";
 
 export type AppMode = "chart" | "strategy" | "trade";
 export type AppTheme = "dark" | "light";
@@ -248,6 +249,21 @@ export function useAppShell(options: UseAppShellOptions) {
     }));
   }, [options.chartType, options.symbol, options.timeframe]);
 
+  const setDistinctMarketLayout = useCallback((symbols: string[]) => {
+    const distinct = normalizeDistinctMarketSymbols(options.symbol, symbols, 4);
+    if (distinct.length < 4) return false;
+    setLayoutPresetState("grid-4");
+    setCharts((current) => Array.from({ length: 4 }, (_, index) => {
+      const chart = current[index] ?? {
+        id: `chart-${index + 1}`, symbol: options.symbol, timeframe: options.timeframe, chartType: options.chartType,
+        linkGroup: "primary", linkSymbol: index === 0, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true
+      };
+      const symbol = distinct[index];
+      return { ...chart, symbol, linkSymbol: index === 0, compareOverlays: chart.linkCompare ? undefined : chart.compareOverlays?.filter((overlay) => overlay.symbol !== symbol) };
+    }));
+    return true;
+  }, [options.chartType, options.symbol, options.timeframe]);
+
   const updateChart = useCallback((id: string, patch: Partial<WorkspaceChart>) => {
     setCharts((current) => current.map((chart) => {
       if (chart.id !== id) return chart;
@@ -280,7 +296,7 @@ export function useAppShell(options: UseAppShellOptions) {
   const activeChart = charts.find((chart) => chart.id === activeChartId) ?? charts[0];
 
   return {
-    cryptoExchange, setCryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, setLeftSize, setRightSize, panelsSwapped, workspaces, activeWorkspaceId, layoutPreset, setLayoutPreset, charts, activeChart, activeChartId, setActiveChartId, updateChart, updateActiveChart,
+    cryptoExchange, setCryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, setLeftSize, setRightSize, panelsSwapped, workspaces, activeWorkspaceId, layoutPreset, setLayoutPreset, setDistinctMarketLayout, charts, activeChart, activeChartId, setActiveChartId, updateChart, updateActiveChart,
     compareOverlays, addCompare, updateCompare, removeCompare,
     saveWorkspace, applyWorkspace, deleteWorkspace, exportWorkspace, importWorkspace, rollbackWorkspaceVersion,
     toggleTheme: () => setTheme((current) => current === "dark" ? "light" : "dark"),

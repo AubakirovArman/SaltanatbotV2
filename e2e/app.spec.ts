@@ -357,6 +357,38 @@ test("chooses an independent symbol directly in every secondary chart", async ({
   await expectNoAxeViolations(page);
 });
 
+test("opens and restores four distinct markets from the keyboard layout menu", async ({ page }) => {
+  await page.getByRole("button", { name: "Chart layout" }).click();
+  const currentLayout = page.getByRole("menuitemradio", { name: "Single chart" });
+  await expect(currentLayout).toBeFocused();
+  const distinct = page.getByRole("menuitem", { name: "Four different markets" });
+  await expect(distinct).toBeEnabled();
+  await page.keyboard.press("End");
+  await expect(distinct).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Chart layout" })).toBeFocused();
+
+  const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
+  await expect(page.locator(".multi-chart-pane")).toHaveCount(4);
+  await expect(page.getByRole("button", { name: /Current instrument BTCUSDT/i })).toBeVisible();
+  for (let index = 1; index < symbols.length; index += 1) {
+    const select = page.getByRole("combobox", { name: `Symbol · ${index + 1}` });
+    await expect(select).toHaveValue(symbols[index]);
+    await expect(page.locator(".multi-chart-pane.secondary").nth(index - 1).locator('[data-link-field="linkSymbol"]')).toHaveAttribute("aria-pressed", "false");
+  }
+  await expect.poll(() => page.evaluate(() => {
+    const session = JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null");
+    return session?.charts?.map((chart: { symbol?: string }) => chart.symbol);
+  })).toEqual(symbols);
+
+  await page.reload();
+  await expect(page.locator(".multi-chart-pane")).toHaveCount(4);
+  await expect(page.getByRole("combobox", { name: "Symbol · 2" })).toHaveValue("ETHUSDT");
+  await expect(page.getByRole("combobox", { name: "Symbol · 3" })).toHaveValue("SOLUSDT");
+  await expect(page.getByRole("combobox", { name: "Symbol · 4" })).toHaveValue("BNBUSDT");
+  await expectNoAxeViolations(page);
+});
+
 test("keeps embedded chart analysis compact and keyboard-expandable", async ({ page }) => {
   const candles = mockChartCandles();
   await mockCandleHistory(page, candles);
