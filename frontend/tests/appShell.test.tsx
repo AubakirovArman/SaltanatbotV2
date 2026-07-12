@@ -70,11 +70,16 @@ describe("useAppShell", () => {
     await act(async () => { expect(shell?.setDistinctMarketLayout(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"])).toBe(true); });
     expect(shell?.charts.map((chart) => chart.symbol)).toEqual(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]);
     expect(shell?.charts.map((chart) => chart.linkSymbol)).toEqual([true, false, false, false]);
-    expect(shell?.charts.every((chart) => chart.linkTimeframe && chart.linkIndicators && chart.linkCompare)).toBe(true);
+    expect(shell?.charts.every((chart) => chart.linkTimeframe && chart.linkChartType && chart.linkIndicators && chart.linkCompare)).toBe(true);
     await act(async () => shell?.setActiveChartId("chart-2"));
     await act(async () => shell?.updateActiveChart({ symbol: "ETHUSDT", timeframe: "5m", chartType: "line" }));
-    expect(shell?.activeChart).toMatchObject({ id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", chartType: "line", linkSymbol: false, linkTimeframe: false });
+    expect(shell?.activeChart).toMatchObject({ id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", chartType: "line", linkSymbol: false, linkTimeframe: false, linkChartType: false });
     expect(shell?.charts[0]).toMatchObject({ symbol: "BTCUSDT", timeframe: "1m", chartType: "candles" });
+    await act(async () => shell?.updateChart("chart-2", { linkChartType: true }));
+    expect(shell?.activeChart).toMatchObject({ chartType: "candles", linkChartType: true });
+    await act(async () => shell?.updateChart("chart-1", { chartType: "line" }));
+    expect(shell?.charts.every((chart) => chart.chartType === "line")).toBe(true);
+    await act(async () => shell?.updateChart("chart-1", { chartType: "candles" }));
     await act(async () => shell?.setLayoutPreset("split-horizontal"));
     expect(shell?.charts).toHaveLength(2);
     await act(async () => shell?.addCompare("ETHUSDT"));

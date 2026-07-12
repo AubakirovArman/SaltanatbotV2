@@ -82,7 +82,7 @@ export function useAppShell(options: UseAppShellOptions) {
       ...chart,
       symbol: index === 0 || chart.linkSymbol ? options.symbol : chart.symbol,
       timeframe: index === 0 || chart.linkTimeframe ? options.timeframe : chart.timeframe,
-      chartType: index === 0 ? options.chartType : chart.chartType
+      chartType: index === 0 || chart.linkChartType ? options.chartType : chart.chartType
     })));
   }, [options.chartType, options.symbol, options.timeframe]);
 
@@ -239,6 +239,7 @@ export function useAppShell(options: UseAppShellOptions) {
       symbol: options.symbol,
       timeframe: options.timeframe,
       chartType: options.chartType,
+      linkChartType: true,
       linkGroup: "primary",
       linkSymbol: index === 0,
       linkTimeframe: true,
@@ -256,7 +257,7 @@ export function useAppShell(options: UseAppShellOptions) {
     setCharts((current) => Array.from({ length: 4 }, (_, index) => {
       const chart = current[index] ?? {
         id: `chart-${index + 1}`, symbol: options.symbol, timeframe: options.timeframe, chartType: options.chartType,
-        linkGroup: "primary", linkSymbol: index === 0, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true
+        linkGroup: "primary", linkSymbol: index === 0, linkTimeframe: true, linkChartType: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true
       };
       const symbol = distinct[index];
       return { ...chart, symbol, linkSymbol: index === 0, compareOverlays: chart.linkCompare ? undefined : chart.compareOverlays?.filter((overlay) => overlay.symbol !== symbol) };
@@ -270,6 +271,7 @@ export function useAppShell(options: UseAppShellOptions) {
       const next = { ...chart, ...patch, id: chart.id };
       if (patch.linkSymbol === true) next.symbol = options.symbol;
       if (patch.linkTimeframe === true) next.timeframe = options.timeframe;
+      if (patch.linkChartType === true) next.chartType = options.chartType;
       if (patch.linkIndicators === true) next.indicatorOverrides = undefined;
       if (patch.linkCompare === true) next.compareOverlays = undefined;
       if (patch.symbol !== undefined && next.compareOverlays) next.compareOverlays = next.compareOverlays.filter((overlay) => overlay.symbol !== patch.symbol);
@@ -288,7 +290,8 @@ export function useAppShell(options: UseAppShellOptions) {
     const independentPatch = chart.id === charts[0]?.id ? patch : {
       ...patch,
       ...(patch.symbol === undefined ? {} : { linkSymbol: false }),
-      ...(patch.timeframe === undefined ? {} : { linkTimeframe: false })
+      ...(patch.timeframe === undefined ? {} : { linkTimeframe: false }),
+      ...(patch.chartType === undefined ? {} : { linkChartType: false })
     };
     updateChart(chart.id, independentPatch);
   }, [activeChartId, charts, updateChart]);

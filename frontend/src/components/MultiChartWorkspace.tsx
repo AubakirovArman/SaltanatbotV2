@@ -170,7 +170,7 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
     onMarketStreamChange(chart.id, active ? { ...stream, symbol: chart.symbol, timeframe: chart.timeframe } : undefined);
   }, [active, chart.id, chart.symbol, chart.timeframe, onMarketStreamChange, stream]);
   useEffect(() => () => onMarketStreamChange(chart.id), [chart.id, onMarketStreamChange]);
-  const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair" | "linkTimeRange" | "linkIndicators" | "linkCompare", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {
+  const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkChartType" | "linkCrosshair" | "linkTimeRange" | "linkIndicators" | "linkCompare", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {
     const linked = chart[field];
     const Icon = linked ? ActiveIcon : Link2Off;
     const label = linked ? unlinkLabel : linkLabel;
@@ -204,10 +204,11 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
         {linkButton("linkTimeframe", shellText(locale, "linkTimeframe"), shellText(locale, "unlinkTimeframe"))}
         <label>
           <span className="sr-only">{shellText(locale, "chartType")}</span>
-          <select aria-label={`${shellText(locale, "chartType")} · ${paneNumber}`} value={chart.chartType} onChange={(event) => onUpdate(chart.id, { chartType: event.target.value as WorkspaceChart["chartType"] })}>
+          <select aria-label={`${shellText(locale, "chartType")} · ${paneNumber}`} value={chart.chartType} onChange={(event) => onUpdate(chart.id, { chartType: event.target.value as WorkspaceChart["chartType"], linkChartType: false })}>
             {(catalog?.chartTypes ?? [chart.chartType]).map((item) => <option key={item} value={item}>{chartTypeLabel(locale, item)}</option>)}
           </select>
         </label>
+        {linkButton("linkChartType", shellText(locale, "linkChartType"), shellText(locale, "unlinkChartType"))}
         {linkButton("linkIndicators", shellText(locale, "linkIndicators"), shellText(locale, "unlinkIndicators"), Activity)}
         {linkButton("linkCompare", shellText(locale, "linkCompare"), shellText(locale, "unlinkCompare"), GitCompareArrows)}
         {linkButton("linkCrosshair", shellText(locale, "linkCrosshair"), shellText(locale, "unlinkCrosshair"), Crosshair)}

@@ -4,7 +4,7 @@ import { normalizePaneIndicatorOverrides } from "../chart/paneIndicators";
 import { normalizeCompareOverlays } from "../chart/compareConfig";
 
 export const LAST_CHART_SESSION_KEY = "sbv2:last-chart-session:v1";
-export const LAST_CHART_SESSION_VERSION = 3;
+export const LAST_CHART_SESSION_VERSION = 4;
 const MAX_SESSION_BYTES = 64_000;
 const TIMEFRAMES: Timeframe[] = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"];
 const CHART_TYPES: ChartType[] = ["candles", "hollow", "heikin", "bars", "line", "step", "area", "baseline", "renko", "linebreak", "kagi", "pnf"];
@@ -29,7 +29,7 @@ export function loadLastChartSession(fallback: ChartSessionFallback): LastChartS
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return defaultSession(fallback);
     const item = parsed as Record<string, unknown>;
-    if (item.version !== undefined && item.version !== 1 && item.version !== 2 && item.version !== LAST_CHART_SESSION_VERSION) return defaultSession(fallback);
+    if (item.version !== undefined && item.version !== 1 && item.version !== 2 && item.version !== 3 && item.version !== LAST_CHART_SESSION_VERSION) return defaultSession(fallback);
     const preset = normalizePreset(item.preset ?? item.layoutPreset ?? (item.layout as Record<string, unknown> | undefined)?.preset);
     const count = chartCount(preset);
     const source = Array.isArray(item.charts) ? item.charts : [];
@@ -48,7 +48,7 @@ export function saveLastChartSession(preset: ChartLayoutPreset, charts: Workspac
       version: LAST_CHART_SESSION_VERSION,
       savedAt: now,
       preset,
-      charts: charts.slice(0, count).map((chart, index) => ({ ...chart, id: `chart-${index + 1}`, linkSymbol: index === 0 ? true : chart.linkSymbol, indicatorOverrides: chart.linkIndicators ? undefined : chart.indicatorOverrides?.map((override) => ({ ...override })), compareOverlays: chart.linkCompare ? undefined : chart.compareOverlays?.map((overlay) => ({ ...overlay })) }))
+      charts: charts.slice(0, count).map((chart, index) => ({ ...chart, id: `chart-${index + 1}`, linkSymbol: index === 0 ? true : chart.linkSymbol, linkChartType: index === 0 ? true : chart.linkChartType, indicatorOverrides: chart.linkIndicators ? undefined : chart.indicatorOverrides?.map((override) => ({ ...override })), compareOverlays: chart.linkCompare ? undefined : chart.compareOverlays?.map((overlay) => ({ ...overlay })) }))
     };
     localStorage.setItem(LAST_CHART_SESSION_KEY, JSON.stringify(session));
   } catch {
@@ -79,6 +79,7 @@ function normalizeChart(value: unknown, index: number, fallback: ChartSessionFal
     symbol: validSymbol(item.symbol) ? item.symbol : fallback.symbol,
     timeframe,
     chartType,
+    linkChartType: index === 0 || (typeof item.linkChartType === "boolean" ? item.linkChartType : value === undefined),
     linkGroup: "primary",
     linkSymbol: index === 0 ? true : item.linkSymbol === true,
     linkTimeframe: item.linkTimeframe !== false,

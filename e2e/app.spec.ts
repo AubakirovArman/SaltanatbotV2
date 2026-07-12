@@ -77,7 +77,7 @@ test("controls confirmed market structure independently on every timeframe", asy
 
 test("renders a localized non-repainting Three Line Break chart", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
-  await page.getByTitle("Chart type").click();
+  await page.getByRole("button", { name: "Chart type", exact: true }).click();
   const lineBreak = page.getByRole("menuitemradio", { name: "Three Line Break" });
   await expect(lineBreak).toBeVisible();
   await lineBreak.click();
@@ -336,10 +336,17 @@ test("chooses an independent symbol directly in every secondary chart", async ({
   await expect(secondPane.getByRole("button", { name: "Link timeframe to primary chart" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".multi-chart-pane.primary").getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible();
 
-  await page.getByTitle("Chart type").click();
+  await page.getByRole("button", { name: "Chart type", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "Line", exact: true }).click();
   await expect(secondPane.getByRole("combobox", { name: "Chart type · 2" })).toHaveValue("line");
   await expect(secondPane.getByRole("img", { name: /ETHUSDT Line chart on 5m/i })).toBeVisible();
+  const chartTypeLink = secondPane.locator('[data-link-field="linkChartType"]');
+  await expect(chartTypeLink).toHaveAttribute("aria-pressed", "false");
+  await expect(chartTypeLink).toHaveAccessibleName("Link chart type to primary chart");
+  await chartTypeLink.click();
+  await expect(chartTypeLink).toHaveAttribute("aria-pressed", "true");
+  await expect(secondPane.getByRole("combobox", { name: "Chart type · 2" })).toHaveValue("candles");
+  await expect(secondPane.getByRole("img", { name: /ETHUSDT candles chart on 5m/i })).toBeVisible();
 
   await selectChartSymbol(page, "SOLUSDT");
   await expect(secondSymbol).toHaveValue("SOLUSDT");
@@ -522,11 +529,11 @@ test("restores the last four-chart session after reload without a named workspac
   await expect(second.locator(".compare-chip").filter({ hasText: "SOLUSDT" })).toBeVisible();
 
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null"))).toMatchObject({
-    version: 3,
+    version: 4,
     preset: "grid-4",
     charts: [
       { id: "chart-1", symbol: "BTCUSDT" },
-      { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", linkTimeframe: false, linkCrosshair: false, linkIndicators: false },
+      { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", linkTimeframe: false, linkChartType: true, linkCrosshair: false, linkIndicators: false },
       { id: "chart-3", symbol: "SOLUSDT" },
       { id: "chart-4", symbol: "EURUSD" }
     ]
@@ -553,8 +560,10 @@ test("restores the last four-chart session after reload without a named workspac
   await expect(restoredSecond.locator('[data-link-field="linkCrosshair"]')).toHaveAttribute("aria-pressed", "false");
   const indicatorLink = restoredSecond.locator('[data-link-field="linkIndicators"]');
   const compareLink = restoredSecond.locator('[data-link-field="linkCompare"]');
+  const restoredChartTypeLink = restoredSecond.locator('[data-link-field="linkChartType"]');
   await expect(indicatorLink).toHaveAttribute("aria-pressed", "false");
   await expect(compareLink).toHaveAttribute("aria-pressed", "false");
+  await expect(restoredChartTypeLink).toHaveAttribute("aria-pressed", "true");
   await restoredSecond.locator(".pane-maximize").click();
   await expect(restoredSecond.locator(".indicator-chip").filter({ hasText: "SMA" })).toHaveCount(0);
   await expect(restoredSecond.locator(".compare-chip").filter({ hasText: "SOLUSDT" })).toBeVisible();

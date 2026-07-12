@@ -34,8 +34,20 @@ describe("versioned chart workspaces", () => {
       cryptoExchange: "binance",
       compareOverlays: [],
       layout: { preset: "single", leftOpen: true, rightOpen: true },
-      charts: [{ symbol: "ETHUSDT", linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true }]
+      charts: [{ symbol: "ETHUSDT", linkChartType: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true }]
     });
+  });
+
+  it("preserves legacy independent secondary chart types while keeping the primary canonical", () => {
+    localStorage.setItem("sbv2:workspaces", JSON.stringify([{
+      id: "v5", name: "Legacy panes", schemaVersion: 5, symbol: "BTCUSDT", timeframe: "1h", chartType: "candles", enabledIndicators: [], createdAt: 10,
+      layout: { preset: "split-vertical" },
+      charts: [
+        { id: "chart-1", symbol: "BTCUSDT", timeframe: "1h", chartType: "candles" },
+        { id: "chart-2", symbol: "ETHUSDT", timeframe: "1h", chartType: "line" }
+      ]
+    }]));
+    expect(loadWorkspaces()[0]).toMatchObject({ schemaVersion: WORKSPACE_SCHEMA_VERSION, charts: [{ linkChartType: true }, { chartType: "line", linkChartType: false }] });
   });
 
   it("autosaves changed state as bounded immutable revisions and rolls back", () => {
@@ -66,15 +78,15 @@ describe("versioned chart workspaces", () => {
 
   it("versions, exports and restores independent pane indicator settings", async () => {
     const charts: WorkspaceChart[] = [
-      { id: "chart-1", symbol: "BTCUSDT", timeframe: "1h", chartType: "candles", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true },
-      { id: "chart-2", symbol: "ETHUSDT", timeframe: "4h", chartType: "line", linkSymbol: false, linkTimeframe: false, linkCrosshair: true, linkTimeRange: true, linkIndicators: false, indicatorOverrides: [{ id: "ema", enabled: true, period: 55 }], linkCompare: false, compareOverlays: [{ id: "SOLUSDT", symbol: "SOLUSDT", timeframe: "1h", chartType: "line", color: "#abcdef", upColor: "#23c97a", downColor: "#ef5350" }] }
+      { id: "chart-1", symbol: "BTCUSDT", timeframe: "1h", chartType: "candles", linkChartType: true, linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true },
+      { id: "chart-2", symbol: "ETHUSDT", timeframe: "4h", chartType: "line", linkChartType: false, linkSymbol: false, linkTimeframe: false, linkCrosshair: true, linkTimeRange: true, linkIndicators: false, indicatorOverrides: [{ id: "ema", enabled: true, period: 55 }], linkCompare: false, compareOverlays: [{ id: "SOLUSDT", symbol: "SOLUSDT", timeframe: "1h", chartType: "line", color: "#abcdef", upColor: "#23c97a", downColor: "#ef5350" }] }
     ];
     const initial = captureWorkspace("Independent indicators", { ...context, charts, layout: { preset: "split-vertical" } }, 100);
     const changedCharts = charts.map((chart) => chart.id === "chart-2" ? { ...chart, indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }] } : chart) as WorkspaceChart[];
     const revised = reviseWorkspace(initial, { ...context, charts: changedCharts, layout: { preset: "split-vertical" } }, 200);
     expect(revised).toMatchObject({ revision: 2, compareOverlays: [{ symbol: "ETHUSDT" }], charts: [{ linkIndicators: true, linkCompare: true }, { linkIndicators: false, indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }], linkCompare: false, compareOverlays: [{ symbol: "SOLUSDT" }] }] });
     saveWorkspaces([revised]);
-    expect(loadWorkspaces()[0]).toMatchObject({ schemaVersion: 5, charts: [{ linkIndicators: true, linkCompare: true }, { indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }], compareOverlays: [{ symbol: "SOLUSDT" }] }] });
+    expect(loadWorkspaces()[0]).toMatchObject({ schemaVersion: WORKSPACE_SCHEMA_VERSION, charts: [{ linkChartType: true, linkIndicators: true, linkCompare: true }, { linkChartType: false, indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }], compareOverlays: [{ symbol: "SOLUSDT" }] }] });
     await expect(parseWorkspaceFile(await encodeWorkspaceFile(revised, 250))).resolves.toMatchObject({ charts: [{ linkIndicators: true, linkCompare: true }, { indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }], compareOverlays: [{ symbol: "SOLUSDT" }] }] });
     expect(rollbackWorkspace(revised, 1, 300)).toMatchObject({ charts: [{ linkIndicators: true }, { indicatorOverrides: [{ id: "ema", enabled: true, period: 55 }] }] });
   });

@@ -24,6 +24,7 @@ excluding application regions.
 | Layout actions | The layout trigger exposes a real vertical ARIA menu; selected radio state, Arrow/Home/End navigation, Escape focus restoration and a native named distinct-markets action are available without pointer input | Keyboard preset/reload/axe Playwright journey |
 | Per-pane indicators | Native pressed chain controls announce linked/independent state; the existing keyboard-operable editor appears when a secondary pane is maximized | Unlink/edit/reload/relink and axe multi-chart journey |
 | Per-pane comparisons | A named native pressed control exposes linked state; maximized panes reuse the existing keyboard-operable compare picker/settings UI | Add/unlink/reload/relink and axe multi-chart journey |
+| Per-pane chart types | The native select and adjacent named pressed chain control expose independent/linked state without custom widgets; manual selection and relink remain keyboard-operable | Unlink/change/relink/reload and axe multi-chart journey |
 | Per-pane drawings | Every pane/symbol owns a separate persistent Canvas set and exposes it through the maximized pane's native DOM object tree | Same-symbol create/reload/isolation and axe multi-chart journey |
 | Colour contrast | Dark/light semantic tokens meet text contrast targets on current core surfaces | axe WCAG AA audit; low-contrast secondary token regression fixed |
 
