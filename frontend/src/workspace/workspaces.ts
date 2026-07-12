@@ -1,8 +1,9 @@
 import type { IndicatorConfig } from "../chart/indicatorTypes";
+import { normalizePaneIndicatorOverrides, type PaneIndicatorOverride } from "../chart/paneIndicators";
 import type { ChartType, DataExchange, Timeframe } from "../types";
 
 const WORKSPACES_KEY = "sbv2:workspaces";
-export const WORKSPACE_SCHEMA_VERSION = 3;
+export const WORKSPACE_SCHEMA_VERSION = 4;
 export const WORKSPACE_FILE_FORMAT = "saltanatbotv2.workspace";
 export const WORKSPACE_FILE_VERSION = 1;
 export const MAX_WORKSPACE_REVISIONS = 20;
@@ -19,6 +20,8 @@ export interface WorkspaceChart {
   linkTimeframe: boolean;
   linkCrosshair: boolean;
   linkTimeRange: boolean;
+  linkIndicators: boolean;
+  indicatorOverrides?: PaneIndicatorOverride[];
 }
 
 export interface WorkspaceLayout {
@@ -189,7 +192,7 @@ export async function downloadWorkspaceFile(workspace: Workspace) {
 function snapshotFromContext(context: WorkspaceContext, revision: number, savedAt: number): WorkspaceRevision {
   const layout = normalizeLayout(context.layout);
   const charts = context.charts?.length
-    ? context.charts.map((chart) => ({ ...chart }))
+    ? context.charts.map(cloneChart)
     : [defaultChart(context.symbol, context.timeframe, context.chartType)];
   return {
     revision,
@@ -275,6 +278,7 @@ function normalizeChart(value: unknown): WorkspaceChart | undefined {
   if (!value || typeof value !== "object") return undefined;
   const item = value as Partial<WorkspaceChart>;
   if (typeof item.id !== "string" || typeof item.symbol !== "string" || typeof item.timeframe !== "string" || typeof item.chartType !== "string") return undefined;
+  const linkIndicators = item.linkIndicators !== false;
   return {
     id: item.id,
     symbol: item.symbol,
@@ -284,12 +288,14 @@ function normalizeChart(value: unknown): WorkspaceChart | undefined {
     linkSymbol: item.linkSymbol !== false,
     linkTimeframe: item.linkTimeframe !== false,
     linkCrosshair: item.linkCrosshair !== false,
-    linkTimeRange: item.linkTimeRange !== false
+    linkTimeRange: item.linkTimeRange !== false,
+    linkIndicators,
+    indicatorOverrides: linkIndicators ? undefined : normalizePaneIndicatorOverrides(item.indicatorOverrides)
   };
 }
 
 function defaultChart(symbol: string, timeframe: Timeframe, chartType: ChartType): WorkspaceChart {
-  return { id: "chart-1", symbol, timeframe, chartType, linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true };
+  return { id: "chart-1", symbol, timeframe, chartType, linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true };
 }
 
 function toRevision(workspace: Workspace): WorkspaceRevision {
@@ -307,8 +313,12 @@ function cloneRevision(revision: WorkspaceRevision): WorkspaceRevision {
     enabledIndicators: [...revision.enabledIndicators],
     theme: revision.theme,
     layout: { ...revision.layout },
-    charts: revision.charts.map((chart) => ({ ...chart }))
+    charts: revision.charts.map(cloneChart)
   };
+}
+
+function cloneChart(chart: WorkspaceChart): WorkspaceChart {
+  return { ...chart, indicatorOverrides: chart.indicatorOverrides?.map((override) => ({ ...override })) };
 }
 
 function revisionFingerprint(revision: WorkspaceRevision): string {

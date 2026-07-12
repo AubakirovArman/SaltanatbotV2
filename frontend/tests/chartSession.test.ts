@@ -19,6 +19,7 @@ const chart = (id: string, symbol: string, patch: Partial<WorkspaceChart> = {}):
   linkTimeframe: true,
   linkCrosshair: true,
   linkTimeRange: true,
+  linkIndicators: true,
   ...patch
 });
 
@@ -37,26 +38,27 @@ describe("last chart session", () => {
   it("round-trips four independent panes with deterministic ids", () => {
     saveLastChartSession("grid-4", [
       chart("primary", "BTCUSDT"),
-      chart("duplicate", "ETHUSDT", { timeframe: "5m", linkCrosshair: false }),
+      chart("duplicate", "ETHUSDT", { timeframe: "5m", linkCrosshair: false, linkIndicators: false, indicatorOverrides: [{ id: "sma-20", enabled: false, period: 55 }] }),
       chart("duplicate", "SOLUSDT", { chartType: "line" }),
       chart("other", "EURUSD", { linkTimeframe: false })
     ], 123);
 
     expect(loadLastChartSession(fallback)).toMatchObject({
-      version: 1,
+      version: LAST_CHART_SESSION_VERSION,
       savedAt: 123,
       preset: "grid-4",
       charts: [
         { id: "chart-1", symbol: "BTCUSDT", linkSymbol: true },
-        { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", linkSymbol: false, linkCrosshair: false },
+        { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", linkSymbol: false, linkCrosshair: false, linkIndicators: false, indicatorOverrides: [{ id: "sma-20", enabled: false, period: 55 }] },
         { id: "chart-3", symbol: "SOLUSDT", chartType: "line" },
         { id: "chart-4", symbol: "EURUSD", linkTimeframe: false }
       ]
     });
   });
 
-  it("migrates an unversioned layout and repairs missing or invalid panes", () => {
+  it("migrates a v1 layout and repairs missing or invalid panes", () => {
     localStorage.setItem(LAST_CHART_SESSION_KEY, JSON.stringify({
+      version: 1,
       layoutPreset: "grid-4",
       charts: [
         { id: "bad", symbol: "ETHUSDT", timeframe: "4h", chartType: "line", linkSymbol: false },
@@ -67,7 +69,7 @@ describe("last chart session", () => {
     expect(restored.preset).toBe("grid-4");
     expect(restored.charts).toHaveLength(4);
     expect(restored.charts[0]).toMatchObject({ id: "chart-1", symbol: "ETHUSDT", timeframe: "4h", chartType: "line", linkSymbol: true });
-    expect(restored.charts[1]).toMatchObject({ id: "chart-2", symbol: "BTCUSDT", timeframe: "1m", chartType: "candles", linkSymbol: false });
+    expect(restored.charts[1]).toMatchObject({ id: "chart-2", symbol: "BTCUSDT", timeframe: "1m", chartType: "candles", linkSymbol: false, linkIndicators: true });
     expect(restored.charts[3].id).toBe("chart-4");
   });
 

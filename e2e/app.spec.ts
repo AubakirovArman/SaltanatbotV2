@@ -452,7 +452,6 @@ test("focuses and maximizes any chart pane without resetting its view", async ({
 test("restores the last four-chart session after reload without a named workspace", async ({ page }) => {
   const candles = mockChartCandles();
   await mockCandleHistory(page, candles);
-  await installMarketSocketMock(page, "stable", candles);
   await page.reload();
   await page.getByRole("button", { name: "Chart layout" }).click();
   await page.getByRole("menuitemradio", { name: "Four-chart grid" }).click();
@@ -466,28 +465,47 @@ test("restores the last four-chart session after reload without a named workspac
   await third.getByRole("combobox", { name: "Symbol · 3" }).selectOption("SOLUSDT");
   await fourth.getByRole("combobox", { name: "Symbol · 4" }).selectOption("EURUSD");
   await second.locator(".pane-maximize").click();
+  await expect(second.locator(".chart-indicator-overlay")).toBeVisible();
+  await second.getByRole("button", { name: "Remove SMA" }).click();
 
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null"))).toMatchObject({
-    version: 1,
+    version: 2,
     preset: "grid-4",
     charts: [
       { id: "chart-1", symbol: "BTCUSDT" },
-      { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", linkTimeframe: false, linkCrosshair: false },
+      { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", linkTimeframe: false, linkCrosshair: false, linkIndicators: false },
       { id: "chart-3", symbol: "SOLUSDT" },
       { id: "chart-4", symbol: "EURUSD" }
     ]
   });
+  await expect.poll(() => page.evaluate(() => {
+    const session = JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null");
+    return session?.charts?.[1]?.indicatorOverrides?.find((item: { id?: string }) => item.id === "sma-20")?.enabled;
+  })).toBe(false);
 
   await page.reload();
   const restoredPanes = page.locator(".multi-chart-pane");
   await expect(restoredPanes).toHaveCount(4);
   await expect(page.locator(".multi-chart-pane:visible")).toHaveCount(4);
+  await expect(page.getByRole("button", { name: /Current instrument BTCUSDT/i })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Symbol · 2" })).toHaveValue("ETHUSDT");
   await expect(page.getByRole("combobox", { name: "Timeframe · 2" })).toHaveValue("5m");
   await expect(page.getByRole("combobox", { name: "Symbol · 3" })).toHaveValue("SOLUSDT");
   await expect(page.getByRole("combobox", { name: "Symbol · 4" })).toHaveValue("EURUSD");
-  await expect(page.locator(".multi-chart-pane.secondary").first().locator('[data-link-field="linkCrosshair"]')).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: /Current instrument BTCUSDT/i })).toBeVisible();
+  const restoredSecond = page.locator(".multi-chart-pane.secondary").first();
+  await expect(restoredSecond.locator('[data-link-field="linkCrosshair"]')).toHaveAttribute("aria-pressed", "false");
+  const indicatorLink = restoredSecond.locator('[data-link-field="linkIndicators"]');
+  await expect(indicatorLink).toHaveAttribute("aria-pressed", "false");
+  await restoredSecond.locator(".pane-maximize").click();
+  await expect(restoredSecond.locator(".indicator-chip").filter({ hasText: "SMA" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".multi-chart-pane.primary .indicator-chip").filter({ hasText: "SMA" })).toBeVisible();
+  await indicatorLink.click();
+  await expect(indicatorLink).toHaveAttribute("aria-pressed", "true");
+  await restoredSecond.locator(".pane-maximize").click();
+  await expect(restoredSecond.locator(".indicator-chip").filter({ hasText: "SMA" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: /Current instrument ETHUSDT/i })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem("sbv2:workspaces"))).toBe("[]");
   await expectNoAxeViolations(page);
 });

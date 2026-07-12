@@ -238,7 +238,8 @@ export function useAppShell(options: UseAppShellOptions) {
       linkSymbol: index === 0,
       linkTimeframe: true,
       linkCrosshair: true,
-      linkTimeRange: true
+      linkTimeRange: true,
+      linkIndicators: true
     }));
   }, [options.chartType, options.symbol, options.timeframe]);
 
@@ -248,6 +249,7 @@ export function useAppShell(options: UseAppShellOptions) {
       const next = { ...chart, ...patch, id: chart.id };
       if (patch.linkSymbol === true) next.symbol = options.symbol;
       if (patch.linkTimeframe === true) next.timeframe = options.timeframe;
+      if (patch.linkIndicators === true) next.indicatorOverrides = undefined;
       return next;
     }));
     const chart = charts.find((item) => item.id === id);

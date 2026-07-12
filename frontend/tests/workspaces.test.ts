@@ -10,6 +10,7 @@ import {
   saveWorkspaces,
   WORKSPACE_SCHEMA_VERSION
 } from "../src/workspace/workspaces";
+import type { WorkspaceChart } from "../src/workspace/workspaces";
 
 const context = {
   symbol: "BTCUSDT",
@@ -31,7 +32,7 @@ describe("versioned chart workspaces", () => {
       revision: 1,
       cryptoExchange: "binance",
       layout: { preset: "single", leftOpen: true, rightOpen: true },
-      charts: [{ symbol: "ETHUSDT", linkCrosshair: true, linkTimeRange: true }]
+      charts: [{ symbol: "ETHUSDT", linkCrosshair: true, linkTimeRange: true, linkIndicators: true }]
     });
   });
 
@@ -59,5 +60,20 @@ describe("versioned chart workspaces", () => {
     const workspace = captureWorkspace("Line Break", { ...context, chartType: "linebreak" }, 100);
     saveWorkspaces([workspace]);
     expect(loadWorkspaces()[0]).toMatchObject({ chartType: "linebreak", charts: [{ chartType: "linebreak" }] });
+  });
+
+  it("versions, exports and restores independent pane indicator settings", async () => {
+    const charts: WorkspaceChart[] = [
+      { id: "chart-1", symbol: "BTCUSDT", timeframe: "1h", chartType: "candles", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true },
+      { id: "chart-2", symbol: "ETHUSDT", timeframe: "4h", chartType: "line", linkSymbol: false, linkTimeframe: false, linkCrosshair: true, linkTimeRange: true, linkIndicators: false, indicatorOverrides: [{ id: "ema", enabled: true, period: 55 }] }
+    ];
+    const initial = captureWorkspace("Independent indicators", { ...context, charts, layout: { preset: "split-vertical" } }, 100);
+    const changedCharts = charts.map((chart) => chart.id === "chart-2" ? { ...chart, indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }] } : chart) as WorkspaceChart[];
+    const revised = reviseWorkspace(initial, { ...context, charts: changedCharts, layout: { preset: "split-vertical" } }, 200);
+    expect(revised).toMatchObject({ revision: 2, charts: [{ linkIndicators: true }, { linkIndicators: false, indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }] }] });
+    saveWorkspaces([revised]);
+    expect(loadWorkspaces()[0]).toMatchObject({ schemaVersion: 4, charts: [{ linkIndicators: true }, { indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }] }] });
+    await expect(parseWorkspaceFile(await encodeWorkspaceFile(revised, 250))).resolves.toMatchObject({ charts: [{ linkIndicators: true }, { indicatorOverrides: [{ id: "ema", enabled: false, period: 89 }] }] });
+    expect(rollbackWorkspace(revised, 1, 300)).toMatchObject({ charts: [{ linkIndicators: true }, { indicatorOverrides: [{ id: "ema", enabled: true, period: 55 }] }] });
   });
 });

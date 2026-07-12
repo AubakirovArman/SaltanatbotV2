@@ -1,4 +1,4 @@
-import { Crosshair, Link2, Link2Off, MoveHorizontal } from "lucide-react";
+import { Activity, Crosshair, Link2, Link2Off, MoveHorizontal } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { LinkedCrosshair, LinkedTimeRange } from "../chart/types";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
@@ -10,6 +10,7 @@ import type { ChartLayoutPreset, WorkspaceChart } from "../workspace/workspaces"
 import { matchesShortcut } from "../app/shortcuts";
 import { ChartCanvas } from "./ChartCanvas";
 import { chartTypeLabel } from "./chartTypePresentation";
+import { applyPaneIndicatorOverrides, capturePaneIndicatorOverrides } from "../chart/paneIndicators";
 
 interface MultiChartWorkspaceProps {
   preset: ChartLayoutPreset;
@@ -116,16 +117,19 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
 function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize, maximized, maximizeShortcut, onToggleMaximize, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate, onMarketStreamChange }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart" | "activeChartId" | "onActiveChartChange"> & { chart: WorkspaceChart; paneNumber: number; paneProps: React.HTMLAttributes<HTMLElement>; active: boolean; canMaximize: boolean; maximized: boolean; onToggleMaximize: () => void; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
   const stream = useMarketStream(chart.symbol, chart.timeframe, exchange);
   const instrument = catalog?.instruments.find((item) => item.symbol === chart.symbol) ?? fallbackInstrument(chart.symbol);
+  const paneIndicators = chart.linkIndicators ? indicators : applyPaneIndicatorOverrides(indicators, chart.indicatorOverrides);
   useEffect(() => {
     onMarketStreamChange(chart.id, active ? { ...stream, symbol: chart.symbol, timeframe: chart.timeframe } : undefined);
   }, [active, chart.id, chart.symbol, chart.timeframe, onMarketStreamChange, stream]);
   useEffect(() => () => onMarketStreamChange(chart.id), [chart.id, onMarketStreamChange]);
-  const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair" | "linkTimeRange", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {
+  const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkCrosshair" | "linkTimeRange" | "linkIndicators", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {
     const linked = chart[field];
     const Icon = linked ? ActiveIcon : Link2Off;
     const label = linked ? unlinkLabel : linkLabel;
     return (
-      <button type="button" data-link-field={field} className={linked ? "active" : ""} aria-pressed={linked} aria-label={label} title={label} onClick={() => onUpdate(chart.id, { [field]: !linked })}>
+      <button type="button" data-link-field={field} className={linked ? "active" : ""} aria-pressed={linked} aria-label={label} title={label} onClick={() => onUpdate(chart.id, field === "linkIndicators" && linked
+        ? { linkIndicators: false, indicatorOverrides: capturePaneIndicatorOverrides(paneIndicators) }
+        : { [field]: !linked })}>
         <Icon size={12} aria-hidden="true" />
       </button>
     );
@@ -154,6 +158,7 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
             {(catalog?.chartTypes ?? [chart.chartType]).map((item) => <option key={item} value={item}>{chartTypeLabel(locale, item)}</option>)}
           </select>
         </label>
+        {linkButton("linkIndicators", shellText(locale, "linkIndicators"), shellText(locale, "unlinkIndicators"), Activity)}
         {linkButton("linkCrosshair", shellText(locale, "linkCrosshair"), shellText(locale, "unlinkCrosshair"), Crosshair)}
         {linkButton("linkTimeRange", shellText(locale, "linkTimeRange"), shellText(locale, "unlinkTimeRange"), MoveHorizontal)}
         {canMaximize && <PaneMaximizeButton locale={locale} symbol={chart.symbol} shortcut={maximizeShortcut} maximized={maximized} onToggle={onToggleMaximize} />}
@@ -168,8 +173,8 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
         timeframe={chart.timeframe}
         locale={locale}
         dataExchange={exchange}
-        indicators={indicators}
-        onIndicatorsChange={onIndicatorsChange}
+        indicators={paneIndicators}
+        onIndicatorsChange={(next) => onUpdate(chart.id, { linkIndicators: false, indicatorOverrides: capturePaneIndicatorOverrides(next) })}
         onEditIndicatorLogic={onEditIndicatorLogic}
         theme={theme}
         onNeedHistory={stream.loadOlder}

@@ -63,6 +63,7 @@ describe("useAppShell", () => {
     expect(shell?.charts).toHaveLength(4);
     expect(shell?.charts.every((chart) => chart.linkCrosshair)).toBe(true);
     expect(shell?.charts.every((chart) => chart.linkTimeRange)).toBe(true);
+    expect(shell?.charts.every((chart) => chart.linkIndicators)).toBe(true);
     expect(JSON.parse(localStorage.getItem(LAST_CHART_SESSION_KEY) ?? "null")).toMatchObject({ preset: "grid-4", charts: [{ id: "chart-1" }, { id: "chart-2" }, { id: "chart-3" }, { id: "chart-4" }] });
     await act(async () => shell?.setActiveChartId("chart-2"));
     await act(async () => shell?.updateActiveChart({ symbol: "ETHUSDT", timeframe: "5m", chartType: "line" }));

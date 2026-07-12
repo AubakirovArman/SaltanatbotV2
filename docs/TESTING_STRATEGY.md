@@ -102,6 +102,7 @@ stop-before-target rule when both prices occur in one candle.
 - explicit DPR 1/2 browser checks for Canvas backing resolution, pointer/HUD alignment and density-invariant CSS interaction targets;
 - multi-chart focus/command-routing/market-context/maximize/restore checks proving top-bar, watchlist and statistics affect or describe only the active pane while hidden panes stay mounted and retain symbol, zoom, tools and accessible state;
 - shared-market transport checks proving matching pane keys fan out one physical socket, distinct keys stay isolated, late subscribers receive open state and the final consumer closes the resource;
+- per-pane indicator tests covering bounded untrusted-state normalization, canonical logic retention, unlink-on-edit, primary isolation, v1→v2 session migration, reload persistence and explicit relinking;
 - component semantics for captions, scoped column headers, empty states and focused-bar synchronization across OHLC, signals and trades;
 - typed English/Russian parity for chart-table accessible names, headers, domain terms, dates and numbers;
 - typed English/Russian parity for trading settings, destructive confirmations, command references, runtime cards and semantic order/fill tables;
