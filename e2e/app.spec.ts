@@ -78,7 +78,7 @@ test("renders a localized non-repainting Three Line Break chart", async ({ page 
   const lineBreak = page.getByRole("menuitemradio", { name: "Three Line Break" });
   await expect(lineBreak).toBeVisible();
   await lineBreak.click();
-  await expect(page.getByRole("img", { name: /EURUSD Three Line Break chart on 1m.*confirmed close-only lines with a three-line reversal/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("img", { name: /EURUSD Three Line Break chart on 1m.*confirmed close-only lines with a 3-line reversal/i })).toBeVisible({ timeout: 20_000 });
   await expectNoAxeViolations(page);
 
   await page.getByRole("button", { name: "Switch interface language to Russian" }).click();
@@ -106,6 +106,42 @@ test("renders accessible confirmed Kagi shoulders and waists", async ({ page }) 
   await page.getByRole("button", { name: "Chart data", exact: true }).click();
   await expect(page.getByRole("table", { name: "Latest candle" })).toBeVisible();
   await expectNoAxeViolations(page);
+});
+
+test("configures and persists confirmed price-chart construction", async ({ page }) => {
+  await selectChartSymbol(page, "EURUSD");
+
+  await page.getByTitle("Chart type").click();
+  await page.getByRole("menuitemradio", { name: "Kagi" }).click();
+  await page.locator('summary[aria-label="KAGI 0.10% settings"]').click();
+  await page.getByLabel("Reversal percentage").fill("0.25");
+  await expect(page.getByRole("img", { name: /fixed 0.25% reversal/ })).toBeVisible();
+  await expect(page.locator(".legend-symbol")).toContainText("KAGI 0.25%");
+  await page.getByRole("button", { name: "Reset default" }).click();
+  await expect(page.locator(".legend-symbol")).toContainText("KAGI 0.10%");
+  await page.getByLabel("Reversal percentage").fill("0.25");
+
+  await page.getByTitle("Chart type").click();
+  await page.getByRole("menuitemradio", { name: "Renko" }).click();
+  await page.locator('summary[aria-label="RENKO 0.05% settings"]').click();
+  await page.getByLabel("Brick percentage").fill("0.20");
+  await expect(page.getByRole("img", { name: /fixed 0.20% bricks/ })).toBeVisible();
+
+  await page.getByTitle("Chart type").click();
+  await page.getByRole("menuitemradio", { name: "Three Line Break" }).click();
+  const lineBreakSettings = page.locator(".price-representation-control summary");
+  await lineBreakSettings.click();
+  await page.getByLabel("Reversal depth").fill("5");
+  await expect(page.getByRole("img", { name: /5-line reversal/ })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("mf:price-representation-settings:v1") ?? "null"))).toMatchObject({
+    renkoBrickPercent: 0.2,
+    lineBreakDepth: 5,
+    kagiReversalPercent: 0.25
+  });
+  await expectNoAxeViolations(page);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".price-representation-control")).not.toHaveAttribute("open", "");
+  await expect(lineBreakSettings).toBeFocused();
 });
 
 test("keeps mouse and trackpad chart zoom controlled and resettable", async ({ page }) => {

@@ -333,6 +333,82 @@
   min-inline-size: 46px;
 }
 
+.price-representation-control {
+  position: absolute;
+  inset-block-end: 4px;
+  inset-inline-end: 106px;
+  z-index: 7;
+  color: var(--text);
+  font-size: var(--fs-xs);
+}
+
+.price-representation-control summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-block-size: 24px;
+  padding-inline: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 88%, transparent);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.price-representation-control summary::-webkit-details-marker { display: none; }
+.price-representation-control summary:hover { color: var(--text); border-color: var(--line); }
+.price-representation-control[open] summary { color: var(--accent); border-color: var(--accent); }
+
+.price-representation-panel {
+  position: absolute;
+  inset-inline-end: 0;
+  inset-block-end: calc(100% + 7px);
+  inline-size: min(17rem, calc(100vi - 2rem));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: var(--shadow-lg);
+}
+
+.price-representation-panel label { display: block; margin-block-end: 6px; color: var(--text); font-weight: 600; }
+.price-representation-input { display: flex; align-items: center; gap: 8px; }
+.price-representation-input input {
+  min-block-size: 34px;
+  min-inline-size: 0;
+  inline-size: 100%;
+  padding-inline: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: 1rem var(--font-mono);
+}
+.price-representation-input output { min-inline-size: 3.5rem; color: var(--muted); font-family: var(--font-mono); }
+.price-representation-panel p { margin: 8px 0; color: var(--muted); line-height: 1.4; }
+.price-representation-panel button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-block-size: 30px;
+  padding-inline: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.price-representation-panel button:hover { border-color: var(--accent); color: var(--accent); }
+
+@media (pointer: coarse) {
+  .price-representation-control summary,
+  .price-representation-input input,
+  .price-representation-panel button { min-block-size: 48px; }
+}
+
 .chart-stage {
   position: relative;
   min-inline-size: 0;

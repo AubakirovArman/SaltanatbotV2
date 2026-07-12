@@ -23,6 +23,7 @@ import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
 import { clampIndex, formatVolume, moveDrawing, nextPriceMode, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
 import { useChartWheelNavigation } from "./chartCanvas/useChartNavigation";
+import { PriceRepresentationControl, priceRepresentationBadge, usePriceRepresentationSettings } from "./chartCanvas/PriceRepresentationControl";
 
 const MAX_COMPARE = 3;
 
@@ -105,9 +106,10 @@ export function ChartCanvas({
   const [compareLegend, setCompareLegend] = useState<CompareLegendSnapshot[]>([]);
   const [volumeProfile, setVolumeProfile] = useState<VolumeProfileSnapshot>();
   const chartDataSummaryId = useId();
+  const priceRepresentation = usePriceRepresentationSettings();
 
   const latest = candles.at(-1);
-  const displayCandles = useMemo(() => preparePriceCandles(candles, chartType, instrument.decimals), [candles, chartType, instrument.decimals]);
+  const displayCandles = useMemo(() => preparePriceCandles(candles, chartType, instrument.decimals, priceRepresentation.settings), [candles, chartType, instrument.decimals, priceRepresentation.settings]);
   const orderBookAvailable = instrument.assetClass === "crypto" && instrument.provider === "binance";
   const heatmapRenderKey = `${latest?.time ?? 0}:${candles.length}:${view.zoom}:${view.offset}:${view.priceMode}`;
   const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange, displayCandles);
@@ -317,7 +319,7 @@ export function ChartCanvas({
           <span className="legend-symbol">
             <b>{instrument.symbol}</b>
             <i>
-              {chartType === "linebreak" ? "3LB · " : chartType === "renko" ? "RENKO 0.05% · " : chartType === "kagi" ? "KAGI 0.10% · " : ""}{timeframe} · {instrument.exchange}
+              {priceRepresentationBadge(chartType, priceRepresentation.settings) ? `${priceRepresentationBadge(chartType, priceRepresentation.settings)} · ` : ""}{timeframe} · {instrument.exchange}
             </i>
           </span>
           {legendCandle && (
@@ -393,6 +395,7 @@ export function ChartCanvas({
             onRemove={onRemoveCompare}
           />
         )}
+        <PriceRepresentationControl key={chartType} chartType={chartType} locale={locale} state={priceRepresentation} />
         <button type="button" className="scale-toggle" aria-label={t("cyclePriceScale")} title={t("priceScale")} onClick={cyclePriceMode}>
           {view.priceMode === "linear" ? "LIN" : view.priceMode === "log" ? "LOG" : "%"}
         </button>
@@ -406,7 +409,7 @@ export function ChartCanvas({
           {Math.round(view.zoom * 100)}%
         </button>
         <VolumeProfileBadge visible={showVolumeProfile} profile={volumeProfile} decimals={instrument.decimals} locale={locale} />
-        <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={chartTypeAriaLabel(locale, chartType, instrument.symbol, timeframe)} aria-describedby={chartDataSummaryId} />
+        <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={chartTypeAriaLabel(locale, chartType, instrument.symbol, timeframe, priceRepresentation.settings)} aria-describedby={chartDataSummaryId} />
         <OrderBookHeatmapLayer
           enabled={showOrderBookHeatmap && orderBookAvailable}
           symbol={instrument.symbol}

@@ -3,11 +3,12 @@ import { toHeikinAshi } from "./heikinAshi";
 import { buildKagi } from "./kagi";
 import { buildLineBreak } from "./lineBreak";
 import { buildRenko } from "./renko";
+import { DEFAULT_PRICE_REPRESENTATION_SETTINGS, type PriceRepresentationSettings } from "./priceRepresentationSettings";
 
-export function preparePriceCandles(candles: Candle[], chartType: ChartType, decimals: number): Candle[] {
+export function preparePriceCandles(candles: Candle[], chartType: ChartType, decimals: number, settings: PriceRepresentationSettings = DEFAULT_PRICE_REPRESENTATION_SETTINGS): Candle[] {
   if (chartType === "heikin") return toHeikinAshi(candles);
-  if (chartType === "linebreak") return buildLineBreak(candles);
-  if (chartType === "renko") return buildRenko(candles, { decimals });
-  if (chartType === "kagi") return buildKagi(candles, { decimals });
+  if (chartType === "linebreak") return buildLineBreak(candles, settings.lineBreakDepth);
+  if (chartType === "renko") return buildRenko(candles, { decimals, brickPercent: settings.renkoBrickPercent });
+  if (chartType === "kagi") return buildKagi(candles, { decimals, reversalPercent: settings.kagiReversalPercent });
   return candles;
 }

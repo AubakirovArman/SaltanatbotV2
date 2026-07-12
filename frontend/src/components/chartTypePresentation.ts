@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { Locale } from "../i18n";
 import type { ChartType } from "../types";
+import { DEFAULT_PRICE_REPRESENTATION_SETTINGS, type PriceRepresentationSettings } from "../chart/priceRepresentationSettings";
 
 export const chartTypeIcons: Record<ChartType, LucideIcon> = {
   candles: CandlestickChart,
@@ -45,16 +46,21 @@ export function chartTypeLabel(locale: Locale, type: ChartType): string {
   return labels[locale][type] ?? labels.en[type];
 }
 
-export function chartTypeAriaLabel(locale: Locale, type: ChartType, symbol: string, timeframe: string): string {
+export function chartTypeAriaLabel(locale: Locale, type: ChartType, symbol: string, timeframe: string, settings: PriceRepresentationSettings = DEFAULT_PRICE_REPRESENTATION_SETTINGS): string {
   const title = chartTypeLabel(locale, type);
   if (type === "linebreak") return locale === "ru"
-    ? `${symbol}: график «${title}» на ${timeframe}. Подтверждённые линии только по цене закрытия, разворот после трёх линий.`
-    : `${symbol} ${title} chart on ${timeframe}. Confirmed close-only lines with a three-line reversal.`;
+    ? `${symbol}: график «${title}» на ${timeframe}. Подтверждённые линии только по цене закрытия, глубина разворота ${settings.lineBreakDepth}.`
+    : `${symbol} ${title} chart on ${timeframe}. Confirmed close-only lines with a ${settings.lineBreakDepth}-line reversal.`;
   if (type === "renko") return locale === "ru"
-    ? `${symbol}: график «${title}» на ${timeframe}. Подтверждённые close-only кирпичи фиксированного размера 0,05% с двухкирпичным разворотом.`
-    : `${symbol} ${title} chart on ${timeframe}. Confirmed close-only fixed 0.05% bricks with a two-brick reversal.`;
+    ? `${symbol}: график «${title}» на ${timeframe}. Подтверждённые close-only кирпичи фиксированного размера ${percent(locale, settings.renkoBrickPercent)} с двухкирпичным разворотом.`
+    : `${symbol} ${title} chart on ${timeframe}. Confirmed close-only fixed ${percent(locale, settings.renkoBrickPercent)} bricks with a two-brick reversal.`;
   if (type === "kagi") return locale === "ru"
-    ? `${symbol}: график «${title}» на ${timeframe}. Подтверждённые close-only линии с фиксированным разворотом 0,10%, плечами и талиями.`
-    : `${symbol} ${title} chart on ${timeframe}. Confirmed close-only lines with a fixed 0.10% reversal, shoulders and waists.`;
+    ? `${symbol}: график «${title}» на ${timeframe}. Подтверждённые close-only линии с фиксированным разворотом ${percent(locale, settings.kagiReversalPercent)}, плечами и талиями.`
+    : `${symbol} ${title} chart on ${timeframe}. Confirmed close-only lines with a fixed ${percent(locale, settings.kagiReversalPercent)} reversal, shoulders and waists.`;
   return locale === "ru" ? `${symbol}: ${title}, интервал ${timeframe}` : `${symbol} ${title} chart on ${timeframe}`;
+}
+
+function percent(locale: Locale, value: number) {
+  const formatted = value.toFixed(2);
+  return `${locale === "ru" ? formatted.replace(".", ",") : formatted}%`;
 }

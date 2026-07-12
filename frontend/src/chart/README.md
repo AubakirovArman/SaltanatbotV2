@@ -30,6 +30,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `marketStructure.ts` and `renderers/marketStructure.ts`: closed-candle swing/BOS/CHOCH/FVG analysis with separately composed background and overlay passes.
 - `confirmedCandles.ts`: canonical provisional-tail exclusion shared by confirmed price transforms and market-structure analysis.
 - `priceRepresentation.ts`: one full-history preparation boundary for Heikin Ashi, Renko, Three Line Break and Kagi, shared by Canvas and semantic/pointer consumers.
+- `priceRepresentationSettings.ts` and `components/chartCanvas/PriceRepresentationControl.tsx`: clamped local persistence, pane/tab synchronization and a native accessible construction control for Renko/Kagi percentages and Line Break depth.
 - `lineBreak.ts` and `renderers/lineBreak.ts`: confirmed close-only Three Line Break transformation, source-volume aggregation and body-only rendering.
 - `renko.ts` and `renderers/renko.ts`: fixed seeded box construction, two-box reversals, actual close-wicks, source-volume allocation and render-only brick geometry.
 - `kagi.ts` and `renderers/kagi.ts`: fixed seeded percentage reversals, compressed directional legs, aggregated source volume and shoulder/waist line geometry.
@@ -62,6 +63,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Renko uses a close-only box fixed at 0.05% of the first loaded confirmed close and rounded to the instrument tick. New live bars cannot resize history; intentionally loading older history changes the source boundary and can reseed the representation.
 - Renko reversal requires two boxes, projection bricks are omitted, multiple bricks may share one honest source timestamp and their allocated volumes sum to the contributing source volume. Its wicks use only discarded source closes.
 - Kagi uses a close-only reversal fixed at 0.10% of the first loaded confirmed close. It extends only at new directional extremes, starts a new column at a confirmed reversal, aggregates skipped source volume and omits the provisional projection.
+- The documented Renko `0.05%`, Kagi `0.10%` and Line Break `3` values are defaults. User changes are constrained to `0.01–10%` or `1–10` lines and rebuild the full loaded representation; source candles used by Strategy Lab/backtest remain unchanged.
 - `components/chartCanvas/useChartNavigation.ts` owns non-passive wheel containment and testable mouse/trackpad intent: vertical gestures zoom proportionally under the pointer, horizontal gestures pan, browser pinch is normalized and sub-threshold inertia is discarded.
 - Heikin Ashi is seeded once from full loaded history before viewport slicing, so zoom and pan never change the same bar's transformed OHLC.
 - Viewport time/index conversion maps every loaded timestamp exactly, interpolates inside irregular gaps and uses median duration only beyond loaded edges.

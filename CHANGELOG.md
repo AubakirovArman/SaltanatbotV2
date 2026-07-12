@@ -7,6 +7,9 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added persistent, fail-closed construction controls for confirmed price-based charts: Renko brick percentage, Kagi reversal percentage and Line Break reversal depth now rebuild the entire shared display series immediately.
+- Added dynamic chart legends and accessible Canvas descriptions, explicit labels/help text, per-parameter reset, Escape dismissal and coarse-pointer targets for the compact settings disclosure.
+- Raised the aggregate JavaScript gzip allowance from 448 KiB to 450 KiB and CSS from 15 KiB to 16 KiB for the typed settings/persistence/control layer; all per-chunk and HTML limits remain unchanged.
 - Reworked chart navigation for mouse wheels and Mac trackpads: non-passive containment prevents page zoom leakage, frame-coalesced proportional zoom filters inertial tails, horizontal gestures pan, pinch is normalized and zoom stays anchored under the pointer.
 - Added primary-button-only drag panning, safe pointer-cancel cleanup, grab/grabbing feedback and an always-visible localized zoom percentage/reset control.
 - Prevented sparse price-based time labels from overlapping and switched axis labels to exact transformed-series timestamps instead of median-interval extrapolation.
