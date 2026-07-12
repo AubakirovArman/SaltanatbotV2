@@ -195,6 +195,13 @@ stressed net profit and maximum drawdown. The report also shows the additional p
 cost that would consume a positive baseline net profit. This is an execution-cost sensitivity test;
 it does not simulate order-book capacity, changed signals or a different future market path.
 
+The execution-quality panel performs deterministic transaction-cost attribution for the accepted
+portfolio fills. It reconciles commission from recorded gross and net trade PnL, reads funding from
+the execution trace and reverses the configured adverse slippage adjustment only for fill paths
+where the simulator applies it. The report shows reference gross PnL, total cost drag, all-in basis
+points and per-market/exit-reason breakdowns. This is modeled TCA for comparing research settings;
+it is not measured order-book impact, latency or venue-quality telemetry.
+
 This first version deliberately replays fills produced by canonical single-market backtests and
 re-sizes their quantities without changing fill prices or exit reasons. A signal that reads strategy
 equity therefore reads its market-local backtest equity, not the shared portfolio equity. The UI and

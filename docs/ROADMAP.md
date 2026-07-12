@@ -15,6 +15,7 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 - Version-aware Pine compiler with typed fidelity diagnostics, corpus, compatibility matrix and fuzz tests.
 - Versioned Strategy Studio, shared evaluator/backtest cores, reproducible reports, replay, optimizer and walk-forward.
 - Multi-symbol portfolio backtests with one shared capital pool, correlated returns and portfolio-level exposure limits.
+- Modeled portfolio TCA with reconciled commission, configured slippage, funding and per-market/exit-reason attribution.
 - Durable order/fill/position/run lifecycle, private streams plus polling, recovery and bot-attributed spot inventory.
 - Professional multi-chart workspaces, pane/scales, drawing management, accessible tables and responsive monitoring.
 - Per-pane IANA time-zone axes with DST-safe chart labels and versioned workspace/session persistence.
@@ -45,7 +46,7 @@ These are not silently marked complete and are not included in the P0/P1/P2 repo
 | More locale and RTL coverage | Formatting, long-string and bidirectional layout conformance | L |
 | AI-assisted strategy drafts | Optional BYO-model natural language to validated blocks/IR | M |
 | Collaboration | Opt-in review/sharing service separated from local-first core | XL |
-| Advanced execution analytics | TCA, slippage attribution and venue-quality comparisons | L |
+| Live venue-quality telemetry | Compare measured latency, spread, order-book impact and execution quality across connected venues | L, external data |
 
 ## Stable-release gates beyond alpha
 

@@ -2,6 +2,7 @@ export * from "./types.js";
 export * from "./broker.js";
 export * from "./portfolio.js";
 export * from "./portfolioBacktest.js";
+export * from "./portfolioExecution.js";
 export * from "./portfolioRisk.js";
 export * from "./warmup.js";
 export * from "./reporting.js";

@@ -20,6 +20,8 @@ This is the execution ledger. It records what is proven complete, what is active
 - [x] Run a deterministic, CPU-bounded moving-block bootstrap over shared-equity returns.
 - [x] Reprice accepted trades under execution-cost, adverse-exit, doubled-funding and combined stress scenarios.
 - [x] Report stressed drawdown and the break-even additional per-fill cost buffer without claiming a new market path.
+- [x] Attribute accepted-fill commission, configured slippage and traced funding into a reconciled modeled TCA report.
+- [x] Break execution cost and net outcome down by market and exit reason without claiming venue telemetry.
 - [x] Export a versioned research file and disclose the market-local signal-equity limitation of v1.
 - [x] Provide typed EN/RU/KK controls and semantic report tables.
 

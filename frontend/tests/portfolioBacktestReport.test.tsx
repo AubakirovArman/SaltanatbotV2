@@ -19,6 +19,12 @@ const result = {
   ],
   correlation: { symbols: ["BTCUSDT", "ETHUSDT"], values: [[1, 0.5], [0.5, 1]], averagePairwise: 0.5 },
   metrics: { netProfit: 100, netProfitPct: 1, finalEquity: 10_100, totalCandidates: 1, acceptedTrades: 1, rejectedTrades: 0, excludedCandidates: 0, wins: 1, winRate: 100, profitFactor: Infinity, maxDrawdown: 0, maxDrawdownPct: 0, sharpe: 1, timeInMarketPct: 50, peakGrossExposurePct: 50, maxConcurrentPositions: 1, fundingPaid: 0 },
+  execution: {
+    method: "configured_fill_attribution",
+    totals: { trades: 1, turnover: 1_000, referenceGrossPnl: 112, commissionPaid: 5, estimatedSlippageCost: 5, fundingPaid: 2, totalCost: 12, netPnl: 100, allInCostBps: 120, costDragPct: 10.71 },
+    byMarket: [{ symbol: "BTCUSDT", commissionPct: 0.05, slippagePct: 0.02, trades: 1, turnover: 1_000, referenceGrossPnl: 112, commissionPaid: 5, estimatedSlippageCost: 5, fundingPaid: 2, totalCost: 12, netPnl: 100, allInCostBps: 120, costDragPct: 10.71 }],
+    byExitReason: [{ reason: "signal", trades: 1, turnover: 1_000, referenceGrossPnl: 112, commissionPaid: 5, estimatedSlippageCost: 5, fundingPaid: 2, totalCost: 12, netPnl: 100, allInCostBps: 120, costDragPct: 10.71 }]
+  },
   risk: {
     historical: { observations: 1, lossProbabilityPct: 0, valueAtRisk95Pct: 0, expectedShortfall95Pct: 0, valueAtRisk99Pct: 0, expectedShortfall99Pct: 0, worstPeriodPct: 0, ulcerIndex: 0, longestRecoveryPeriods: 0 },
     concentration: { largestSymbol: "BTCUSDT", largestAllocationPct: 100, effectiveSymbols: 1, herfindahlIndex: 1, allocations: [{ symbol: "BTCUSDT", allocatedNotional: 100, sharePct: 100 }] },
@@ -30,15 +36,16 @@ const result = {
 
 describe("PortfolioBacktestReport", () => {
   it.each([
-    ["en", "Portfolio backtest", "Contribution by market", "Portfolio risk lab", "Portfolio stress scenarios"],
-    ["ru", "Портфельный бэктест", "Вклад по рынкам", "Лаборатория риска портфеля", "Стресс-сценарии портфеля"],
-    ["kk", "Портфель бэктесті", "Нарықтар бойынша үлес", "Портфель тәуекел зертханасы", "Портфель стресс-сценарийлері"]
-  ] as const)("renders semantic tables, risk and the v1 caveat in %s", (locale, title, caption, riskTitle, stressCaption) => {
+    ["en", "Portfolio backtest", "Contribution by market", "Portfolio risk lab", "Portfolio stress scenarios", "Execution costs by market"],
+    ["ru", "Портфельный бэктест", "Вклад по рынкам", "Лаборатория риска портфеля", "Стресс-сценарии портфеля", "Издержки исполнения по рынкам"],
+    ["kk", "Портфель бэктесті", "Нарықтар бойынша үлес", "Портфель тәуекел зертханасы", "Портфель стресс-сценарийлері", "Нарық бойынша орындау шығындары"]
+  ] as const)("renders semantic tables, execution quality, risk and the v1 caveat in %s", (locale, title, caption, riskTitle, stressCaption, executionCaption) => {
     const html = renderToStaticMarkup(<PortfolioBacktestReport locale={locale} result={result} />);
     expect(html).toContain(`<h3 id="portfolio-report-title">${title}</h3>`);
     expect(html).toContain(`<caption>${caption}</caption>`);
     expect(html).toContain(riskTitle);
     expect(html).toContain(`<caption>${stressCaption}</caption>`);
+    expect(html).toContain(`<caption>${executionCaption}</caption>`);
     expect(html).toContain("role=\"note\"");
     expect(html).toContain("<svg");
     expect(html).toContain("BTCUSDT");

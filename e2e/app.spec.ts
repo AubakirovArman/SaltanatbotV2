@@ -1043,6 +1043,9 @@ test("runs several markets through one portfolio capital pool", async ({ page })
   await expect(report).toContainText("ETHUSDT");
   await expect(report.getByRole("table", { name: "Contribution by market" })).toBeVisible();
   await expect(report.getByRole("table", { name: /Return correlation/ })).toBeVisible();
+  await expect(report.getByRole("heading", { name: "Execution quality analysis" })).toBeVisible();
+  await expect(report.getByRole("table", { name: "Execution costs by market" })).toBeVisible();
+  await expect(report).toContainText("All-in cost");
   await expect(report.getByRole("heading", { name: "Portfolio risk lab" })).toBeVisible();
   await expect(report.getByRole("table", { name: "Moving-block bootstrap" })).toBeVisible();
   await expect(report.getByRole("table", { name: "Portfolio stress scenarios" })).toBeVisible();

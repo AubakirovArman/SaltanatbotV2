@@ -1,4 +1,5 @@
 import type { Candle } from "@saltanatbotv2/contracts";
+import { type PortfolioExecutionAnalysis } from "./portfolioExecution.js";
 import { type PortfolioRiskAnalysis } from "./portfolioRisk.js";
 import type { BacktestResult, EquityPoint, Trade } from "./types.js";
 export interface PortfolioBacktestConfig {
@@ -87,6 +88,7 @@ export interface PortfolioBacktestResult {
     contributions: PortfolioSymbolContribution[];
     correlation: PortfolioCorrelationMatrix;
     metrics: PortfolioBacktestMetrics;
+    execution: PortfolioExecutionAnalysis;
     risk: PortfolioRiskAnalysis;
     assumptions: string[];
 }

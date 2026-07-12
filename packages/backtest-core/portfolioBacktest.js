@@ -1,3 +1,4 @@
+import { analyzePortfolioExecution } from "./portfolioExecution.js";
 import { analyzePortfolioRisk } from "./portfolioRisk.js";
 export const DEFAULT_PORTFOLIO_BACKTEST_CONFIG = Object.freeze({
     initialCapital: 10_000,
@@ -115,6 +116,11 @@ export function simulatePortfolioBacktest(legs, config = {}) {
         contributions: symbolContributions(symbols, allCandidates, accepted, rejected, metrics.netProfit),
         correlation: correlationMatrix(safeLegs, fromTime, toTime),
         metrics,
+        execution: analyzePortfolioExecution(accepted, safeLegs.map((leg) => ({
+            symbol: leg.symbol,
+            commissionPct: leg.report.metadata.config.commissionPct,
+            slippagePct: leg.report.metadata.config.slippagePct
+        }))),
         risk: analyzePortfolioRisk(curve, accepted, cfg.initialCapital),
         assumptions: [
             "Each market first produces canonical candidate fills with the same strategy and execution settings.",

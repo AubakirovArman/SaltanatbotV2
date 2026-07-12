@@ -1088,6 +1088,43 @@
 .report-table-scroll { max-inline-size: 100%; overflow: auto; }
 .portfolio-report details > summary { cursor: pointer; font-weight: 700; }
 
+.portfolio-execution-analysis {
+  display: grid;
+  gap: 9px;
+  padding: 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 420px;
+}
+
+.portfolio-execution-analysis > header {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.portfolio-execution-analysis > header svg { flex: 0 0 auto; color: var(--accent); }
+.portfolio-execution-analysis :is(h4, p) { margin: 0; }
+.portfolio-execution-analysis h4 { font-size: var(--fs-md); }
+.portfolio-execution-analysis p { max-inline-size: 80ch; color: var(--muted); font-size: var(--fs-xs); line-height: 1.45; }
+.portfolio-execution-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.portfolio-execution-metrics dt { color: var(--dim); font-size: var(--fs-xs); }
+.portfolio-execution-metrics dd { margin: 0; color: var(--text); font: 600 var(--fs-sm) var(--font-mono); }
+
+.portfolio-execution-table {
+  max-inline-size: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  overflow-x: auto;
+}
+
+@supports not (content-visibility: auto) {
+  .portfolio-execution-analysis { contain: layout style paint; }
+}
+
 .portfolio-risk-lab {
   display: grid;
   gap: 9px;

@@ -3,6 +3,7 @@ import { Download, ShieldAlert } from "lucide-react";
 import type { Locale } from "../i18n";
 import { localeTag } from "../i18n";
 import { strategyText } from "../i18n/strategy";
+import { PortfolioExecutionPanel } from "./PortfolioExecutionPanel";
 import { PortfolioRiskPanel } from "./PortfolioRiskPanel";
 
 interface PortfolioBacktestReportProps {
@@ -46,6 +47,7 @@ export function PortfolioBacktestReport({ locale, result }: PortfolioBacktestRep
           <path className="portfolio-equity-line" d={path} />
         </svg>
       </figure>
+      <PortfolioExecutionPanel locale={locale} execution={result.execution} />
       <PortfolioRiskPanel locale={locale} risk={result.risk} />
       {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Safari requires overflow regions to be explicitly keyboard-focusable. */}
       <div className="portfolio-table-grid" role="region" aria-label={`${t("contributionByMarket")} · ${t("correlationMatrix")}`} tabIndex={0}>
