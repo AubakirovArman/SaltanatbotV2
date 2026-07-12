@@ -29,6 +29,26 @@ interface NavigationInput extends WheelFrame {
   viewport?: Viewport;
 }
 
+export interface ChartTouchPoint {
+  x: number;
+  y: number;
+}
+
+export interface ChartPinchGesture {
+  anchorIndex: number;
+  startDistance: number;
+  startOffset: number;
+  startZoom: number;
+}
+
+interface PinchNavigationInput {
+  gesture: ChartPinchGesture;
+  points: readonly [ChartTouchPoint, ChartTouchPoint];
+  view: ChartNavigationView;
+  candles: Candle[];
+  viewport?: Viewport;
+}
+
 /** Apply one normalized/coalesced trackpad or mouse-wheel frame. */
 export function applyChartWheelNavigation(input: NavigationInput): ChartNavigationView {
   const { view, candles, viewport } = input;
@@ -49,6 +69,39 @@ export function applyChartWheelNavigation(input: NavigationInput): ChartNavigati
   const desiredStart = indexBefore - (input.cursorX - viewport.plot.left - nextVisible.step / 2) / nextVisible.step;
   const offset = candles.length - nextVisible.data.length - desiredStart;
   return { ...view, zoom: nextZoom, offset: clamp(Math.round(offset), 0, nextVisible.maxOffset) };
+}
+
+/** Capture the data-space anchor below the midpoint of a two-finger gesture. */
+export function beginChartPinchGesture(
+  points: readonly [ChartTouchPoint, ChartTouchPoint],
+  view: ChartNavigationView,
+  viewport: Viewport
+): ChartPinchGesture {
+  return {
+    anchorIndex: viewport.xToIndex(midpointX(points)),
+    startDistance: Math.max(8, touchDistance(points)),
+    startOffset: view.offset,
+    startZoom: view.zoom
+  };
+}
+
+/** Apply simultaneous touch pinch and horizontal pan while keeping the midpoint data-anchored. */
+export function applyChartPinchNavigation(input: PinchNavigationInput): ChartNavigationView {
+  const { gesture, points, view, candles, viewport } = input;
+  const distanceRatio = touchDistance(points) / gesture.startDistance;
+  const zoom = Number(clamp(gesture.startZoom * distanceRatio, MIN_CHART_ZOOM, MAX_CHART_ZOOM).toFixed(4));
+  if (!viewport || candles.length === 0) return { ...view, zoom, crosshair: undefined };
+
+  const nextVisible = visibleCandles(candles, viewport.plot, zoom, gesture.startOffset);
+  const midpoint = midpointX(points);
+  const desiredStart = gesture.anchorIndex - (midpoint - viewport.plot.left - nextVisible.step / 2) / nextVisible.step;
+  const offset = candles.length - nextVisible.data.length - desiredStart;
+  return {
+    ...view,
+    zoom,
+    offset: clamp(Math.round(offset), 0, nextVisible.maxOffset),
+    crosshair: undefined
+  };
 }
 
 export function useChartWheelNavigation(
@@ -99,6 +152,110 @@ export function useChartWheelNavigation(
   }, [canvasRef, setView, viewportRef]);
 }
 
+export function useChartTouchNavigation(
+  canvasRef: RefObject<HTMLCanvasElement | null>,
+  viewportRef: RefObject<Viewport | undefined>,
+  candles: Candle[],
+  view: ChartNavigationView,
+  setView: Dispatch<SetStateAction<ChartNavigationView>>,
+  onSingleTouchResume?: (x: number, offset: number) => void
+) {
+  const candlesRef = useRef(candles);
+  const viewRef = useRef(view);
+  const resumeRef = useRef(onSingleTouchResume);
+  candlesRef.current = candles;
+  viewRef.current = view;
+  resumeRef.current = onSingleTouchResume;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const points = new Map<number, ChartTouchPoint>();
+    let gesture: ChartPinchGesture | undefined;
+
+    const pointFromEvent = (event: PointerEvent): ChartTouchPoint => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    };
+    const pair = (): [ChartTouchPoint, ChartTouchPoint] | undefined => {
+      const current = [...points.values()];
+      return current.length >= 2 ? [current[0], current[1]] : undefined;
+    };
+    const contain = (event: PointerEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      if (gesture || points.size >= 2) {
+        contain(event);
+        return;
+      }
+      points.set(event.pointerId, pointFromEvent(event));
+      const currentPair = pair();
+      if (!currentPair) return;
+      contain(event);
+      if (!viewportRef.current) return;
+      canvas.setPointerCapture(event.pointerId);
+      gesture = beginChartPinchGesture(currentPair, viewRef.current, viewportRef.current);
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      if (!points.has(event.pointerId)) {
+        if (gesture) contain(event);
+        return;
+      }
+      points.set(event.pointerId, pointFromEvent(event));
+      const currentPair = pair();
+      if (!gesture || !currentPair) return;
+      contain(event);
+      setView((current) => {
+        const next = applyChartPinchNavigation({
+          gesture: gesture as ChartPinchGesture,
+          points: currentPair,
+          view: current,
+          candles: candlesRef.current,
+          viewport: viewportRef.current ?? undefined
+        });
+        viewRef.current = next;
+        return next;
+      });
+    };
+    const finishPointer = (event: PointerEvent, resume: boolean) => {
+      if (event.pointerType !== "touch" || !points.has(event.pointerId)) return;
+      const wasGesture = gesture !== undefined;
+      points.delete(event.pointerId);
+      if (!wasGesture) return;
+      event.preventDefault();
+      if (resume) event.stopPropagation();
+      gesture = undefined;
+      const remaining = resume ? points.values().next().value as ChartTouchPoint | undefined : undefined;
+      if (remaining) resumeRef.current?.(remaining.x, viewRef.current.offset);
+    };
+    const onPointerUp = (event: PointerEvent) => finishPointer(event, true);
+    const onPointerCancel = (event: PointerEvent) => finishPointer(event, false);
+    const onLostPointerCapture = (event: PointerEvent) => {
+      if (!points.has(event.pointerId)) return;
+      points.delete(event.pointerId);
+      gesture = undefined;
+    };
+
+    canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
+    canvas.addEventListener("pointermove", onPointerMove, { passive: false });
+    canvas.addEventListener("pointerup", onPointerUp, { passive: false });
+    canvas.addEventListener("pointercancel", onPointerCancel, { passive: false });
+    canvas.addEventListener("lostpointercapture", onLostPointerCapture);
+    return () => {
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerCancel);
+      canvas.removeEventListener("lostpointercapture", onLostPointerCapture);
+      points.clear();
+    };
+  }, [canvasRef, setView, viewportRef]);
+}
+
 function zoomOnly(view: ChartNavigationView, deltaY: number, ctrlKey: boolean): ChartNavigationView {
   const zoom = zoomValue(view.zoom, deltaY, ctrlKey);
   return zoom === view.zoom ? view : { ...view, zoom };
@@ -112,4 +269,12 @@ function zoomValue(current: number, deltaY: number, ctrlKey: boolean) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function midpointX(points: readonly [ChartTouchPoint, ChartTouchPoint]) {
+  return (points[0].x + points[1].x) / 2;
+}
+
+function touchDistance(points: readonly [ChartTouchPoint, ChartTouchPoint]) {
+  return Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
 }

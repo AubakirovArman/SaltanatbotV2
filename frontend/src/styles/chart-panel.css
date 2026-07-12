@@ -528,7 +528,12 @@
 @media (pointer: coarse) {
   .price-representation-control summary,
   .price-representation-input input,
-  .price-representation-panel button { min-block-size: 48px; }
+  .price-representation-panel button,
+  .scale-toggle,
+  .zoom-reset { min-block-size: 48px; }
+
+  .scale-toggle,
+  .zoom-reset { min-inline-size: 48px; }
 }
 
 .chart-stage {
@@ -536,6 +541,30 @@
   min-inline-size: 0;
   min-block-size: 0;
   overflow: hidden;
+}
+
+.chart-touch-hint {
+  display: none;
+  position: absolute;
+  z-index: 7;
+  inset-block-end: 38px;
+  inset-inline-start: 10px;
+  max-inline-size: calc(100% - 20px);
+  padding: 5px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 88%, transparent);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  pointer-events: none;
+}
+
+.chart-touch-hint::before { content: "1 finger: pan · 2 fingers: zoom"; }
+.chart-surface:lang(ru) .chart-touch-hint::before { content: "1 палец: двигать · 2 пальца: масштаб"; }
+
+@media (pointer: coarse) {
+  .chart-touch-hint { display: block; }
 }
 
 .current-price-pill {

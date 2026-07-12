@@ -23,6 +23,9 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added native two-finger touchscreen navigation: pinch and horizontal midpoint movement update zoom/pan in one data-anchored gesture, releasing one finger hands control back to single-finger pan, and chart-scoped pointer containment prevents the surrounding page from moving or zooming.
+- Added a coarse-pointer-only gesture hint, 48px scale/reset targets, pure zoom-boundary tests and a real Chromium multi-touch browser journey while preserving mouse, Mac trackpad, keyboard and drawing behavior.
+- Raised only the aggregate JavaScript gzip allowance from 459 KiB to 460 KiB for the measured touch-pointer lifecycle and visible localized guidance; per-file JavaScript, CSS and HTML limits remain unchanged.
 - Made every Canvas layer Retina/HiDPI-correct: backing stores now follow CSS size × device-pixel ratio while renderers, pointers, wheel gestures, overlays and the price HUD share one CSS-pixel coordinate space.
 - Made 2×2 chart layouts independently usable by default: panes 2–4 expose numbered symbol/timeframe/type selectors, choosing a symbol, interval or chart type automatically unlinks that field, and the chain controls can explicitly restore primary-chart synchronization.
 - Added adaptive multi-chart chrome: the primary pane keeps the single global indicator/compare editor in non-wrapping rows, secondary panes omit those duplicate controls, and UTC session/structure analysis is now a compact keyboard-expandable disclosure instead of a permanently open card over price.

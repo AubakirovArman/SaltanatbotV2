@@ -10,6 +10,14 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Touch-first chart navigation — 2026-07-12
+
+- [x] Add data-anchored two-finger pinch and simultaneous horizontal pan on the interaction Canvas.
+- [x] Hand a remaining finger back to ordinary pan without a viewport jump.
+- [x] Keep native page scroll/zoom containment scoped to the chart and retain wheel, trackpad, pointer and keyboard paths.
+- [x] Add coarse-pointer guidance and 48px scale/reset controls.
+- [x] Verify the pure gesture model and a production-build Chromium multi-touch journey.
+
 ### P0/P1/P2 closure and architecture enforcement — 2026-07-11
 
 - [x] Require complete `MarketKey` envelopes for trading candle events and prove Bybit/linear routing.

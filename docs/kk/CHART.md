@@ -47,6 +47,7 @@ Heikin Ashi де visible window кесілгенге дейін бүкіл loade
 - Тінтуір дөңгелегі курсор тұрған candle маңында масштабтайды.
 - Retina/HiDPI экрандарда барлық Canvas layer-дің ішкі resolution-ы автоматты түрде өседі, ал mouse, trackpad, crosshair, HUD және axis тұрақты CSS coordinate қолданады. Сондықтан display density zoom/pan жылдамдығын өзгертпейді және candle-ды бұлдырлатпайды.
 - Mac trackpad-та vertical two-finger gesture chart-ты бірқалыпты zoom жасайды, horizontal gesture history-ді pan жасайды. System pinch chart ішінде қалады және бүкіл page-ті масштабтамайды; ұсақ inertia tail есепке алынбайды.
+- Сенсорлық экранда бір саусақ history-ді жылжытады, ал екі саусақ жанасу ортасының маңында chart-ты бір уақытта zoom және pan жасайды. Бір саусақты көтергеннен кейін қалған саусақ pan-ды бірден жалғастырады; page scroll/zoom тек Canvas үстінде тоқтатылады. Coarse pointer құрылғысында қысқа gesture hint көрсетіліп, scale/reset батырмалары 48 px-ге үлкейеді.
 - Негізгі (сол) mouse button-мен сүйреу time range-ті жылжытады; `grab` / `grabbing` cursor режимді көрсетеді, double-click бастапқы масштабты қайтарады.
 - Төменгі percentage indicator ағымдағы zoom-ды көрсетеді және бір click арқылы `100%` пен latest price-қа қайтарады.
 - `LIN` / `LOG` / `%` баға шкаласын ауыстырады.

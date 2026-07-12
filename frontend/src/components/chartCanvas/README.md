@@ -8,6 +8,7 @@ This directory owns focused presentation and interaction helpers behind the stab
 - `QuickMeasureSummary.tsx` exposes the transient Shift-drag ruler as localized DOM output without announcing every pointer frame.
 - `StrategyChip.tsx` owns the active strategy name, counts and compact settings/removal actions.
 - `useLinkedTimeRange.ts` maps external UTC boundaries into local zoom/offset and suppresses republishing externally applied views, preventing multi-pane feedback loops.
+- `useChartNavigation.ts` contains wheel/trackpad normalization and data-anchored two-finger touch pinch/pan; native pointer containment is scoped to the interaction Canvas and hands a remaining finger back to ordinary pan. Keep gesture math pure so browser injection and unit invariants cover the same model.
 - `usePersistentDrawings.ts` atomically changes pane/symbol drawing scopes and flushes the departing snapshot so rapid symbol changes cannot cross-contaminate storage.
 - `PriceAxisControl.tsx` is the focusable semantic slider over the right axis; it contains wheel events and normalizes pointer/keyboard gestures to the bounded `priceZoom` model.
 - `PriceRepresentationControl.tsx` owns labelled construction inputs and an atomic pane+symbol settings hook; scoped custom/storage events cannot mutate a sibling chart instance.

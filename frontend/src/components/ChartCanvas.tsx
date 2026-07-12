@@ -21,7 +21,7 @@ import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
 import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
 import { clampIndex, moveDrawing, nextPriceMode, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
-import { useChartWheelNavigation } from "./chartCanvas/useChartNavigation";
+import { useChartTouchNavigation, useChartWheelNavigation } from "./chartCanvas/useChartNavigation";
 import { useLinkedTimeRange } from "./chartCanvas/useLinkedTimeRange";
 import { PriceRepresentationControl, usePriceRepresentationSettings } from "./chartCanvas/PriceRepresentationControl";
 import { PriceAxisControl } from "./chartCanvas/PriceAxisControl";
@@ -31,7 +31,7 @@ import { usePersistentDrawings } from "./chartCanvas/usePersistentDrawings";
 
 const MAX_COMPARE = 3;
 
-type Interaction = { mode: "pan"; startClientX: number; startOffset: number } | { mode: "edit"; id: string; part: number | "body"; last: Anchor } | { mode: "measure"; start: Anchor } | undefined;
+type Interaction = { mode: "pan"; startX: number; startOffset: number } | { mode: "edit"; id: string; part: number | "body"; last: Anchor } | { mode: "measure"; start: Anchor } | undefined;
 
 export function ChartCanvas({
   candles,
@@ -248,6 +248,9 @@ export function ChartCanvas({
     onVolumeProfile: (profile) => setVolumeProfile((current) => sameVolumeProfile(current, profile) ? current : profile)
   });
   useChartWheelNavigation(interactionCanvasRef, viewportRef, displayCandles, setView);
+  useChartTouchNavigation(interactionCanvasRef, viewportRef, displayCandles, view, setView, (x, offset) => {
+    interactionRef.current = { mode: "pan", startX: x, startOffset: offset };
+  });
   useLinkedTimeRange({ candles: displayCandles, chartId, linkedRange: linkedTimeRange, onLinkedRangeChange: onLinkedTimeRangeChange, setView, view, viewportRef });
 
   // Lazy-load older history when the viewport nears the left (oldest) edge.
@@ -294,7 +297,7 @@ export function ChartCanvas({
   const legendCandle = (hoverIndex !== undefined ? displayCandles[hoverIndex] : undefined) ?? displayCandles.at(-1) ?? latest;
 
   return (
-    <div className={`chart-surface ${compactChrome ? "compact-chart" : ""} ${showIndicatorControls ? "with-indicator-controls" : ""}`}>
+    <div className={`chart-surface ${compactChrome ? "compact-chart" : ""} ${showIndicatorControls ? "with-indicator-controls" : ""}`} lang={locale}>
       <ChartDrawingToolbar
         locale={locale}
         tool={tool}
@@ -385,7 +388,7 @@ export function ChartCanvas({
           ref={interactionCanvasRef}
           className={`chart-canvas chart-canvas-interaction ${tool === "cursor" ? "" : "drawing"}`}
           aria-hidden="true"
-          title={locale === "ru" ? "Shift + перетаскивание — быстрое измерение" : "Shift + drag to measure"}
+          title={locale === "ru" ? "Перетаскивание — прокрутка · два пальца — масштаб · Shift — измерение" : "Drag to pan · pinch to zoom · Shift-drag to measure"}
           onPointerDown={(event) => {
             if (!event.isPrimary || event.button !== 0) return;
             event.preventDefault();
@@ -427,7 +430,7 @@ export function ChartCanvas({
               interactionRef.current = { mode: "edit", id: hit.id, part: hit.part, last: snapAnchor(viewport, displayCandles, x, y, magnet) };
             } else {
               setSelectedId(undefined);
-              interactionRef.current = { mode: "pan", startClientX: event.clientX, startOffset: view.offset };
+              interactionRef.current = { mode: "pan", startX: x, startOffset: view.offset };
             }
           }}
           onPointerMove={(event) => {
@@ -465,7 +468,7 @@ export function ChartCanvas({
 
             if (interaction?.mode === "pan") {
               const bar = viewport ? viewport.barSpacing : 8;
-              const delta = Math.round((interaction.startClientX - event.clientX) / Math.max(1, bar));
+              const delta = Math.round((interaction.startX - x) / Math.max(1, bar));
               const visibleCount = Math.max(1, (viewport?.end ?? 0) - (viewport?.start ?? 0));
               const limit = Math.max(0, displayCandles.length - Math.min(24, visibleCount));
               setView((current) => ({ ...current, offset: Math.min(limit, Math.max(0, interaction.startOffset + delta)), crosshair: { x, y } }));
@@ -503,6 +506,7 @@ export function ChartCanvas({
             setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id, price: viewport?.yToPrice(y) });
           }}
         />
+        {!compactChrome && <span className="chart-touch-hint" aria-hidden="true" />}
         <ChartPriceHud
           candle={legendCandle}
           latest={latest}

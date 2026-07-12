@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { applyChartWheelNavigation, type ChartNavigationView } from "../src/components/chartCanvas/useChartNavigation";
+import {
+  applyChartPinchNavigation,
+  applyChartWheelNavigation,
+  beginChartPinchGesture,
+  type ChartNavigationView,
+  type ChartTouchPoint
+} from "../src/components/chartCanvas/useChartNavigation";
 import type { Viewport } from "../src/chart/types";
 import type { Candle } from "../src/types";
 
@@ -40,6 +46,50 @@ describe("chart wheel and trackpad navigation", () => {
     const pinch = apply({ deltaY: -8, ctrlKey: true });
     expect(pinch.zoom).toBeGreaterThan(1.09);
     expect(apply({ deltaY: 10_000 }).zoom).toBeGreaterThanOrEqual(0.4);
+  });
+});
+
+describe("chart touch navigation", () => {
+  const start: [ChartTouchPoint, ChartTouchPoint] = [
+    { x: 300, y: 200 },
+    { x: 500, y: 200 }
+  ];
+  const gesture = beginChartPinchGesture(start, view, viewport);
+
+  it("zooms around the two-finger midpoint instead of the chart center", () => {
+    const next = applyChartPinchNavigation({
+      gesture,
+      points: [{ x: 250, y: 200 }, { x: 550, y: 200 }],
+      view,
+      candles,
+      viewport
+    });
+    expect(next.zoom).toBe(1.5);
+    expect(next.offset).toBeGreaterThan(view.offset);
+    expect(next.crosshair).toBeUndefined();
+  });
+
+  it("pans with a moving pinch midpoint without changing its scale", () => {
+    const next = applyChartPinchNavigation({
+      gesture,
+      points: [{ x: 380, y: 200 }, { x: 580, y: 200 }],
+      view,
+      candles,
+      viewport
+    });
+    expect(next.zoom).toBe(1);
+    expect(next.offset).toBe(30);
+  });
+
+  it("clamps extreme touch distances to the shared chart zoom limits", () => {
+    const next = applyChartPinchNavigation({
+      gesture,
+      points: [{ x: 300, y: -2_000 }, { x: 500, y: 3_000 }],
+      view,
+      candles,
+      viewport
+    });
+    expect(next.zoom).toBe(4);
   });
 });
 

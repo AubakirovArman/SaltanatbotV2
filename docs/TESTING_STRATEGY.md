@@ -104,6 +104,7 @@ stop-before-target rule when both prices occur in one candle.
 - DPR 1/2/3 and resize tests;
 - empty, one-bar, NaN, gap, extreme-price and long-history datasets;
 - interaction tests for wheel, drag, touch and keyboard equivalents;
+- pure two-finger midpoint/zoom-limit invariants plus a real Chromium CDP multi-touch journey proving pinch containment, data-anchored scaling and no page-scroll leakage;
 - explicit DPR 1/2 browser checks for Canvas backing resolution, pointer/HUD alignment and density-invariant CSS interaction targets;
 - multi-chart focus/command-routing/market-context/maximize/restore checks proving top-bar, watchlist and statistics affect or describe only the active pane while hidden panes stay mounted and retain symbol, zoom, tools and accessible state;
 - shared-market transport checks proving matching pane keys fan out one physical socket, distinct keys stay isolated, late subscribers receive open state and the final consumer closes the resource;

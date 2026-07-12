@@ -211,6 +211,30 @@ test("keeps mouse and trackpad chart zoom controlled and resettable", { tag: "@s
   await expect(reset).toBeVisible();
 });
 
+test("keeps a two-finger touch gesture inside the chart and zooms around its midpoint", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "CDP multi-touch injection is Chromium-specific; pure gesture math is engine-independent.");
+  const canvas = page.locator(".chart-canvas-interaction");
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await expect(canvas).toHaveCSS("touch-action", "none");
+  await expect(canvas).toHaveCSS("overscroll-behavior", "contain");
+
+  const client = await page.context().newCDPSession(page);
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
+  const y = box!.y + box!.height * 0.52;
+  const center = box!.x + box!.width * 0.5;
+  const point = (x: number, id: number) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 });
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point(center - 60, 1)] });
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point(center - 60, 1), point(center + 60, 2)] });
+  await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [point(center - 120, 1), point(center + 120, 2)] });
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+  await expect(page.getByRole("button", { name: /Reset chart zoom \((1[1-9][0-9]|[2-4][0-9]{2})%\)/ })).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+});
+
 test("keeps Retina canvas, pointer HUD and price axis in CSS-pixel alignment", async ({ browser, browserName, baseURL }) => {
   const context = await browser.newContext({
     baseURL,
