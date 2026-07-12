@@ -173,6 +173,29 @@ test("keeps mouse and trackpad chart zoom controlled and resettable", async ({ p
   await expect(reset).toBeVisible();
 });
 
+test("measures price, percent, bars and time with Shift-drag", async ({ page }) => {
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+  const canvas = page.locator(".chart-canvas-interaction");
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.keyboard.down("Shift");
+  await page.mouse.move(box!.x + 320, box!.y + 330);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + 520, box!.y + 220, { steps: 4 });
+  const summary = page.locator(".quick-measure-summary");
+  await expect(summary).toContainText("Measuring");
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await expect(summary).toContainText("Measurement result");
+  await expect(summary).toContainText(/[-+]\d+\.\d+%/);
+  await expect(summary).toContainText(/\d+ bars · \d+[smhd]/);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("mf:drawings:BTCUSDT") ?? "[]").some((drawing: { tool?: string }) => drawing.tool === "measure"))).toBe(false);
+  await expectNoAxeViolations(page);
+  await page.keyboard.press("Escape");
+  await expect(summary).toBeHidden();
+});
+
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });

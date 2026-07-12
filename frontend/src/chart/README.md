@@ -37,6 +37,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `pointAndFigure.ts` and `renderers/pointAndFigure.ts`: fixed seeded boxes, alternating confirmed X/O columns, multi-box reversals, aggregated source volume and glyph-only geometry.
 - `../components/chartCanvas/SessionLiquidityLayer.tsx`: independently scheduled session overlay, persisted semantic toggle and authoritative PDH/PDL daily-candle request.
 - `../components/chartCanvas/ChartPriceHud.tsx`: DOM current-price/countdown pill and crosshair OHLC HUD.
+- `measurement.ts` and `renderers/measurement.ts`: pure price/percentage/bar/time metrics and plot-bounded directional ruler rendering; the sibling DOM summary keeps quick measurements exposed outside Canvas.
 - `../components/ChartDataPanel.tsx`: bounded semantic tables for the focused OHLC candle, recent candles, strategy signals and executed trades.
 - `drawingTemplates.ts`: validated local drawing-style templates consumed by
   the object tree; visibility, locking, undo and redo stay owned by `ChartCanvas`.
@@ -67,6 +68,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - The documented Renko `0.05%`, Kagi `0.10%` and Line Break `3` values are defaults. User changes are constrained to `0.01–10%` or `1–10` lines and rebuild the full loaded representation; source candles used by Strategy Lab/backtest remain unchanged.
 - Point & Figure defaults to `0.10% × 3`; both box percentage and reversal count are constrained and persisted. The live source tail/projected column is omitted, and the fixed first-price seed avoids retroactive LTP resizing.
 - `components/chartCanvas/useChartNavigation.ts` owns non-passive wheel containment and testable mouse/trackpad intent: vertical gestures zoom proportionally under the pointer, horizontal gestures pan, browser pinch is normalized and sub-threshold inertia is discarded.
+- Holding `Shift` while dragging starts an ephemeral ruler instead of panning. It shares snapped data-space anchors with the persistent Measure drawing, never enters drawing storage/history and is dismissed by `Escape` or the next ordinary drag.
 - Heikin Ashi is seeded once from full loaded history before viewport slicing, so zoom and pan never change the same bar's transformed OHLC.
 - Viewport time/index conversion maps every loaded timestamp exactly, interpolates inside irregular gaps and uses median duration only beyond loaded edges.
 - Crosshair/drawing redraws must not recompute unchanged indicators.

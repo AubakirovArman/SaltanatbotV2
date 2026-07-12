@@ -7,6 +7,7 @@ import {
 import type { DraftDrawing, PlotArea, Viewport } from "../types";
 import type { AnchoredVwapSeries } from "../anchoredVwap";
 import { drawAnchoredVwap } from "./anchoredVwap";
+import { drawMeasurement } from "./measurement";
 
 interface DrawOptions {
   draft?: DraftDrawing;
@@ -103,7 +104,7 @@ function drawShape(
       position(ctx, plot, viewport, drawing, decimals);
       break;
     case "measure":
-      if (pts.length >= 2) measure(ctx, viewport, pts, drawing, decimals);
+      if (pts.length >= 2) drawMeasurement(ctx, viewport, pts, drawing, decimals);
       break;
     case "anchored-vwap":
       drawAnchoredVwap(ctx, viewport, drawing, anchoredVwaps[drawing.id] ?? [], decimals, selected || hovered);
@@ -119,28 +120,6 @@ function line(ctx: CanvasRenderingContext2D, a: PixelPoint, b: PixelPoint) {
   ctx.moveTo(a.x, a.y);
   ctx.lineTo(b.x, b.y);
   ctx.stroke();
-}
-
-/** Measure tool: line between two anchors + a Δprice / Δ% / Δbars label. */
-function measure(ctx: CanvasRenderingContext2D, viewport: Viewport, pts: PixelPoint[], drawing: DrawingObject, decimals: number) {
-  line(ctx, pts[0], pts[1]);
-  const p0 = drawing.points[0].price;
-  const p1 = drawing.points[1].price;
-  const dPrice = p1 - p0;
-  const dPct = p0 ? (dPrice / p0) * 100 : 0;
-  const bars = Math.round(Math.abs(pts[1].x - pts[0].x) / Math.max(1, viewport.barSpacing));
-  const label = `Δ ${dPrice.toFixed(decimals)}  ${dPct >= 0 ? "+" : ""}${dPct.toFixed(2)}%  ${bars} bars`;
-  ctx.setLineDash([]);
-  ctx.font = "600 10px Inter, system-ui, sans-serif";
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "left";
-  const w = ctx.measureText(label).width + 12;
-  const bx = pts[1].x + 8;
-  const by = pts[1].y - 9;
-  ctx.fillStyle = dPrice >= 0 ? "rgba(35,201,122,0.92)" : "rgba(239,83,80,0.92)";
-  ctx.fillRect(bx, by, w, 18);
-  ctx.fillStyle = "#0b0e14";
-  ctx.fillText(label, bx + 6, by + 9);
 }
 
 function horizontal(ctx: CanvasRenderingContext2D, plot: PlotArea, y: number, x1: number, x2: number) {

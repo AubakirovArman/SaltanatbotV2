@@ -7,6 +7,9 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added a zero-persistence `Shift`-drag quick ruler with live signed price/percentage change, exact bar distance and elapsed time; `Escape` or the next normal chart drag dismisses the result.
+- Reworked persistent measurement drawings with directional range shading, a two-line badge that stays inside the plot and a synchronized localized DOM result; extracted chart legend and measurement rendering from the near-budget Canvas coordinator.
+- Raised only the aggregate JavaScript gzip allowance from 450 KiB to 451 KiB for the measured ruler/semantic-output addition; per-chunk, CSS and HTML limits remain unchanged.
 - Added confirmed close-only Point & Figure with alternating X/O columns, fixed seeded percentage boxes, configurable multi-box reversals, source-volume aggregation and no provisional live column.
 - Integrated Point & Figure into the shared viewport/settings/catalog/semantic pipeline, including synchronized box/reversal controls, dynamic accessible descriptions and dedicated Canvas glyph rendering.
 - Added persistent, fail-closed construction controls for confirmed price-based charts: Renko brick percentage, Kagi reversal percentage and Line Break reversal depth now rebuild the entire shared display series immediately.

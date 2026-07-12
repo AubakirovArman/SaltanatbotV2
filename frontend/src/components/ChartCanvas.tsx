@@ -1,11 +1,10 @@
-import { SlidersHorizontal, Workflow, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createDrawing, TOOL_POINT_COUNT, type Anchor, type DrawingObject, type DrawingTool, type ShapeTool } from "../chart/drawings";
 import { useChartRenderer } from "../chart/useChartRenderer";
 import { loadDrawings, saveDrawings } from "../chart/drawingStore";
 import { hitTest } from "../chart/objects/hitTest";
 import { preparePriceCandles } from "../chart/priceRepresentation";
-import type { CompareLegendSnapshot, CompareSeries, PriceMode, VolumeProfileSnapshot } from "../chart/types";
+import type { CompareLegendSnapshot, CompareSeries, DraftDrawing, PriceMode, VolumeProfileSnapshot } from "../chart/types";
 import { shellText } from "../i18n/shell";
 import { ChartIndicatorOverlay } from "./ChartIndicatorOverlay";
 import { ChartDataPanel } from "./ChartDataPanel";
@@ -13,6 +12,7 @@ import { CompareControl } from "./CompareControl";
 import { chartTypeAriaLabel } from "./chartTypePresentation";
 import { DrawingObjectsPanel } from "./DrawingObjectsPanel";
 import { ChartDrawingToolbar } from "./chartCanvas/ChartDrawingToolbar";
+import { ChartLegend } from "./chartCanvas/ChartLegend";
 import { AnchoredVwapLegend } from "./chartCanvas/AnchoredVwapLegend";
 import { OrderBookHeatmapLayer } from "./chartCanvas/OrderBookHeatmapLayer";
 import { SessionLiquidityBadge, useSessionLiquidity } from "./chartCanvas/SessionLiquidityLayer";
@@ -20,14 +20,16 @@ import { TradeFootprintLayer } from "./chartCanvas/TradeFootprintLayer";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
 import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
-import { clampIndex, formatVolume, moveDrawing, nextPriceMode, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
+import { clampIndex, moveDrawing, nextPriceMode, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
 import { useChartWheelNavigation } from "./chartCanvas/useChartNavigation";
-import { PriceRepresentationControl, priceRepresentationBadge, usePriceRepresentationSettings } from "./chartCanvas/PriceRepresentationControl";
+import { PriceRepresentationControl, usePriceRepresentationSettings } from "./chartCanvas/PriceRepresentationControl";
+import { QuickMeasureSummary } from "./chartCanvas/QuickMeasureSummary";
+import { StrategyChip } from "./chartCanvas/StrategyChip";
 
 const MAX_COMPARE = 3;
 
-type Interaction = { mode: "pan"; startClientX: number; startOffset: number } | { mode: "edit"; id: string; part: number | "body"; last: Anchor } | undefined;
+type Interaction = { mode: "pan"; startClientX: number; startOffset: number } | { mode: "edit"; id: string; part: number | "body"; last: Anchor } | { mode: "measure"; start: Anchor } | undefined;
 
 export function ChartCanvas({
   candles,
@@ -92,6 +94,8 @@ export function ChartCanvas({
   const [, setHistoryVersion] = useState(0);
   const [drawings, setDrawings] = useState<DrawingObject[]>([]);
   const [draft, setDraft] = useState<{ tool: ShapeTool; points: Anchor[] }>();
+  const [quickMeasure, setQuickMeasure] = useState<DraftDrawing>();
+  const [quickMeasureActive, setQuickMeasureActive] = useState(false);
   const chartAlerts = useMemo(() => (alerts ?? []).filter((a) => a.symbol === instrument.symbol).map((a) => ({ price: a.price, direction: a.direction, triggered: a.triggered })), [alerts, instrument.symbol]);
   const [hoverAnchor, setHoverAnchor] = useState<Anchor>();
   const [selectedId, setSelectedId] = useState<string>();
@@ -197,6 +201,7 @@ export function ChartCanvas({
       }
       if (event.key === "Escape") {
         setDraft(undefined);
+        setQuickMeasure(undefined);
         setSelectedId(undefined);
         setTool("cursor");
       } else if ((event.key === "Delete" || event.key === "Backspace") && selectedId) {
@@ -223,7 +228,7 @@ export function ChartCanvas({
     view,
     indicators,
     drawings,
-    draftDrawing: draftPreview,
+    draftDrawing: quickMeasure ?? draftPreview,
     selectedDrawingId: selectedId,
     hoveredDrawingId: hoveredId,
     signals,
@@ -315,68 +320,17 @@ export function ChartCanvas({
         }}
       />
       <div className="chart-stage">
-        <div className="chart-legend" aria-hidden="true">
-          <span className="legend-symbol">
-            <b>{instrument.symbol}</b>
-            <i>
-              {priceRepresentationBadge(chartType, priceRepresentation.settings) ? `${priceRepresentationBadge(chartType, priceRepresentation.settings)} · ` : ""}{timeframe} · {instrument.exchange}
-            </i>
-          </span>
-          {legendCandle && (
-            <>
-              <span>
-                O <b>{legendCandle.open.toFixed(instrument.decimals)}</b>
-              </span>
-              <span>
-                H <b>{legendCandle.high.toFixed(instrument.decimals)}</b>
-              </span>
-              <span>
-                L <b>{legendCandle.low.toFixed(instrument.decimals)}</b>
-              </span>
-              <span>
-                C <b>{legendCandle.close.toFixed(instrument.decimals)}</b>
-              </span>
-              <span className={legendCandle.close >= legendCandle.open ? "up" : "down"}>
-                {legendCandle.close >= legendCandle.open ? "+" : ""}
-                {(((legendCandle.close - legendCandle.open) / legendCandle.open) * 100).toFixed(2)}%
-              </span>
-              <span className="vol">V {formatVolume(legendCandle.volume)}</span>
-            </>
-          )}
-        </div>
-        {strategyName && (
-          <div className="strategy-chip">
-            <Workflow size={12} aria-hidden="true" />
-            <span>{strategyName}</span>
-            {strategySummary && <b>{strategySummary}</b>}
-            {trades && trades.length > 0 && (
-              <b>
-                {trades.length} {t("trades")}
-              </b>
-            )}
-            {!strategySummary && signals && signals.length > 0 && (
-              <b>
-                {signals.length} {t("signals")}
-              </b>
-            )}
-            {strategyInputs && strategyInputs.length > 0 && onStrategyInputChange && (
-              <button type="button" onClick={() => setShowArtifactSettings((open) => !open)} title={t("indicatorInputs")} aria-label={t("editIndicatorInputs")}>
-                <SlidersHorizontal size={12} aria-hidden="true" />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setShowArtifactSettings(false);
-                onClearStrategy?.();
-              }}
-              title={t("removeFromChart")}
-              aria-label={t("removeArtifact")}
-            >
-              <X size={12} aria-hidden="true" />
-            </button>
-          </div>
-        )}
+        <ChartLegend candle={legendCandle} chartType={chartType} instrument={instrument} settings={priceRepresentation.settings} timeframe={timeframe} />
+        {strategyName && <StrategyChip
+          hasInputs={Boolean(strategyInputs?.length && onStrategyInputChange)}
+          locale={locale}
+          name={strategyName}
+          onClear={() => { setShowArtifactSettings(false); onClearStrategy?.(); }}
+          onToggleSettings={() => setShowArtifactSettings((open) => !open)}
+          signals={signals?.length ?? 0}
+          summary={strategySummary}
+          trades={trades?.length ?? 0}
+        />}
         {showArtifactSettings && strategyInputs && onStrategyInputChange && <ArtifactInputPanel locale={locale} inputs={strategyInputs} onChange={onStrategyInputChange} onClose={() => setShowArtifactSettings(false)} />}
         <ChartIndicatorOverlay locale={locale} indicators={indicators} onChange={onIndicatorsChange} onEditLogic={onEditIndicatorLogic} customIndicators={customIndicators} strategies={strategies} activeArtifactId={activeArtifactId} onAddArtifact={onAddArtifact} />
         {onAddCompare && onUpdateCompare && onRemoveCompare && (
@@ -428,6 +382,7 @@ export function ChartCanvas({
           ref={interactionCanvasRef}
           className={`chart-canvas chart-canvas-interaction ${tool === "cursor" ? "" : "drawing"}`}
           aria-hidden="true"
+          title={locale === "ru" ? "Shift + перетаскивание — быстрое измерение" : "Shift + drag to measure"}
           onPointerDown={(event) => {
             if (!event.isPrimary || event.button !== 0) return;
             event.preventDefault();
@@ -451,6 +406,17 @@ export function ChartCanvas({
               }
               return;
             }
+
+            if (event.shiftKey) {
+              const start = snapAnchor(viewport, displayCandles, x, y, magnet);
+              interactionRef.current = { mode: "measure", start };
+              setQuickMeasure({ tool: "measure", points: [start, start] });
+              setQuickMeasureActive(true);
+              setSelectedId(undefined);
+              return;
+            }
+
+            setQuickMeasure(undefined);
 
             const hit = hitTest(viewport, drawingsRef.current, x, y, selectedId);
             if (hit) {
@@ -478,6 +444,12 @@ export function ChartCanvas({
             }
 
             const interaction = interactionRef.current;
+            if (interaction?.mode === "measure" && viewport) {
+              const end = snapAnchor(viewport, displayCandles, x, y, magnet);
+              setQuickMeasure({ tool: "measure", points: [interaction.start, end] });
+              setView((current) => ({ ...current, crosshair: { x, y } }));
+              return;
+            }
             if (interaction?.mode === "edit" && viewport) {
               const next = snapAnchor(viewport, displayCandles, x, y, magnet);
               const dt = next.time - interaction.last.time;
@@ -511,10 +483,11 @@ export function ChartCanvas({
           }}
           onPointerUp={(event) => {
             if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+            if (interactionRef.current?.mode === "measure") setQuickMeasureActive(false);
             interactionRef.current = undefined;
           }}
-          onPointerCancel={() => { interactionRef.current = undefined; }}
-          onLostPointerCapture={() => { interactionRef.current = undefined; }}
+          onPointerCancel={() => { interactionRef.current = undefined; setQuickMeasure(undefined); setQuickMeasureActive(false); }}
+          onLostPointerCapture={() => { interactionRef.current = undefined; setQuickMeasureActive(false); }}
           onDoubleClick={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
           onContextMenu={(event) => {
             event.preventDefault();
@@ -534,8 +507,9 @@ export function ChartCanvas({
           decimals={instrument.decimals}
           locale={locale}
           viewport={viewportRef.current}
-          crosshair={view.crosshair}
+          crosshair={quickMeasure ? undefined : view.crosshair}
         />
+        <QuickMeasureSummary active={quickMeasureActive} decimals={instrument.decimals} locale={locale} measurement={quickMeasure} viewport={viewportRef.current} />
         {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay locale={locale} tables={tables} />}
         <ChartDataPanel candles={displayCandles} decimals={instrument.decimals} focusedIndex={hoverIndex} signals={signals} trades={trades} symbol={instrument.symbol} timeframe={timeframe} locale={locale} summaryId={chartDataSummaryId} />
         {showDrawingObjects && (

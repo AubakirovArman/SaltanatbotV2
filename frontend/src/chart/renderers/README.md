@@ -18,6 +18,8 @@ Renderers translate prepared chart models into Canvas 2D drawing commands.
 
 `pointAndFigure.ts` paints X diagonals and O circles for each prepared box. Fixed box construction, alternating columns, reversal confirmation and volume aggregation remain in `../pointAndFigure.ts`.
 
+`measurement.ts` paints directional range shading and a plot-bounded two-line price/percentage/bar/time badge. Metric calculation and compact duration formatting remain in `../measurement.ts`.
+
 ## Rules
 
 - Renderers are deterministic for the same model, viewport and palette.

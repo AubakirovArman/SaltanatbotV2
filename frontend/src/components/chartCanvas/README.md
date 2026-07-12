@@ -4,6 +4,9 @@ This directory owns focused presentation and interaction helpers behind the stab
 `../ChartCanvas.tsx` facade.
 
 - `ChartDrawingToolbar.tsx` renders keyboard-addressable drawing tools.
+- `ChartLegend.tsx` owns the visual symbol/OHLC/volume legend, keeping the Canvas coordinator below its enforced module budget.
+- `QuickMeasureSummary.tsx` exposes the transient Shift-drag ruler as localized DOM output without announcing every pointer frame.
+- `StrategyChip.tsx` owns the active strategy name, counts and compact settings/removal actions.
 - `DrawingMenus.tsx` owns selected-object style and context controls.
 - `ChartOverlays.tsx` owns accessible metric tables and artifact inputs.
 - `drawingInteraction.ts` contains pure anchor, movement, legend and formatting helpers.

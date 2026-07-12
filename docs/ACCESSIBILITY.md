@@ -18,7 +18,7 @@ excluding application regions.
 | Status beyond colour | Every feed/order/validation state has text or an icon plus accessible label | Axe audit and localized browser journeys |
 | 200% text | Logical sizing, scrolling panels and responsive monitoring layout | Playwright 200% text-size smoke with chart-data table access |
 | Reduced motion | Global `prefers-reduced-motion: reduce` disables meaningful animation/transition timing | Computed-style Playwright assertion |
-| Canvas alternative | Focused/latest OHLC, recent candles, signals and trades are native captioned tables; transformed chart types expose their displayed OHLC | Component tests and keyboard/price-representation Playwright journeys |
+| Canvas alternative | Focused/latest OHLC, recent candles, signals and trades are native captioned tables; transformed chart types expose their displayed OHLC; the Shift-drag ruler mirrors its final price/%/bars/time result in localized DOM output | Component tests and keyboard/price-representation/measurement Playwright journeys |
 | Colour contrast | Dark/light semantic tokens meet text contrast targets on current core surfaces | axe WCAG AA audit; low-contrast secondary token regression fixed |
 
 ## Known scope boundary
