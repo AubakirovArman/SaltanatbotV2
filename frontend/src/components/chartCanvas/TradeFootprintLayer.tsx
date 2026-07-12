@@ -2,10 +2,12 @@ import { parseTradeFlowStreamMessage } from "@saltanatbotv2/contracts";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createTradeFlowSocket } from "../../api/marketClient";
 import { aggregateTradeFootprint, tradeFlowDeltaPercent } from "../../chart/tradeFootprint";
+import { detectFootprintInsights } from "../../chart/footprintInsights";
+import { drawFootprintInsights } from "../../chart/renderers/footprintInsights";
 import type { Viewport } from "../../chart/types";
 import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
-import type { DataExchange, TradeFlowStatus, TradeFlowStreamMessage, TradeFlowTrade } from "../../types";
+import type { Candle, DataExchange, TradeFlowStatus, TradeFlowStreamMessage, TradeFlowTrade } from "../../types";
 
 const RETENTION_MS = 30 * 60_000;
 const MAX_TRADES = 20_000;
@@ -18,11 +20,18 @@ interface FlowMeta {
   sellNotional: number;
 }
 
+interface InsightMeta {
+  imbalances: number;
+  stacks: number;
+  absorptions: number;
+}
+
 export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   enabled,
   symbol,
   exchange,
   locale,
+  candles,
   viewportRef,
   renderKey
 }: {
@@ -30,6 +39,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   symbol: string;
   exchange: DataExchange;
   locale: Locale;
+  candles: Candle[];
   viewportRef: { current: Viewport | undefined };
   renderKey: string;
 }) {
@@ -39,7 +49,12 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   const seenRef = useRef(new Set<string>());
   const statusRef = useRef<FlowMeta["status"]>("connecting");
   const rafRef = useRef<number>();
+  const insightMetaRef = useRef<InsightMeta>({ imbalances: 0, stacks: 0, absorptions: 0 });
+  const pendingInsightMetaRef = useRef<InsightMeta>();
+  const insightMetaTimerRef = useRef<number>();
+  const lastInsightMetaAtRef = useRef(0);
   const [meta, setMeta] = useState<FlowMeta>({ status: "connecting", message: "", prints: 0, buyNotional: 0, sellNotional: 0 });
+  const [insightMeta, setInsightMeta] = useState<InsightMeta>(insightMetaRef.current);
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
 
   const draw = useCallback(() => {
@@ -50,6 +65,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const footprint = aggregateTradeFootprint(tradesRef.current, viewport);
+    const insights = detectFootprintInsights(footprint, candles);
     const styles = getComputedStyle(canvas);
     const up = styles.getPropertyValue("--up").trim() || "#23b99a";
     const down = styles.getPropertyValue("--down").trim() || "#ef6a65";
@@ -63,10 +79,33 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
     ctx.beginPath();
     ctx.rect(viewport.plot.left, viewport.plot.top, viewport.plot.width, viewport.plot.height);
     ctx.clip();
-    drawFootprintCells(ctx, footprint, viewport, up, down, text, dimmed);
+    const cellWidth = footprintCellWidth(viewport);
+    drawFootprintCells(ctx, footprint, viewport, up, down, text, dimmed, cellWidth);
     drawDeltaRibbon(ctx, footprint, viewport, up, down, accent, panel, grid, dimmed);
+    drawFootprintInsights(ctx, insights, viewport, cellWidth, up, down, accent, panel, dimmed);
     ctx.restore();
-  }, [enabled, viewportRef]);
+    const nextMeta = { imbalances: insights.imbalances.length, stacks: insights.stacks.length, absorptions: insights.absorptions.length };
+    const previous = insightMetaRef.current;
+    const now = Date.now();
+    if (!sameInsightMeta(nextMeta, previous)) {
+      pendingInsightMetaRef.current = nextMeta;
+      const remaining = 1_000 - (now - lastInsightMetaAtRef.current);
+      if (remaining <= 0) {
+        if (insightMetaTimerRef.current !== undefined) window.clearTimeout(insightMetaTimerRef.current);
+        insightMetaTimerRef.current = undefined;
+        pendingInsightMetaRef.current = undefined;
+        publishInsightMeta(nextMeta, insightMetaRef, lastInsightMetaAtRef, setInsightMeta);
+      }
+      else if (insightMetaTimerRef.current === undefined) {
+        insightMetaTimerRef.current = window.setTimeout(() => {
+          insightMetaTimerRef.current = undefined;
+          const pending = pendingInsightMetaRef.current;
+          pendingInsightMetaRef.current = undefined;
+          if (pending) publishInsightMeta(pending, insightMetaRef, lastInsightMetaAtRef, setInsightMeta);
+        }, remaining);
+      }
+    }
+  }, [candles, enabled, viewportRef]);
 
   const scheduleDraw = useCallback(() => {
     if (rafRef.current !== undefined) return;
@@ -118,6 +157,11 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
       seenRef.current.clear();
       lastTradeAt = 0;
       setMeta((current) => ({ ...current, prints: 0, buyNotional: 0, sellNotional: 0 }));
+      insightMetaRef.current = { imbalances: 0, stacks: 0, absorptions: 0 };
+      pendingInsightMetaRef.current = undefined;
+      if (insightMetaTimerRef.current !== undefined) window.clearTimeout(insightMetaTimerRef.current);
+      insightMetaTimerRef.current = undefined;
+      setInsightMeta(insightMetaRef.current);
     };
     const connect = () => {
       if (stopped || paused()) return;
@@ -208,6 +252,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
       if (staleTimer) window.clearInterval(staleTimer);
       socket?.close();
       if (rafRef.current !== undefined) cancelAnimationFrame(rafRef.current);
+      if (insightMetaTimerRef.current !== undefined) window.clearTimeout(insightMetaTimerRef.current);
     };
   }, [enabled, exchange, scheduleDraw, symbol]);
 
@@ -221,10 +266,11 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   return (
     <div ref={rootRef} className="trade-footprint-layer">
       <canvas ref={canvasRef} className="chart-canvas chart-canvas-layer trade-footprint-canvas" aria-hidden="true" />
-      <div className={`trade-footprint-badge ${meta.status}`} role="status" title={meta.message} aria-label={`${t("tradeFootprint")}: ${statusLabel}; ${t("tradeDelta")} ${deltaPct.toFixed(1)}%`}>
+      <div className={`trade-footprint-badge ${meta.status}`} role="status" title={meta.message} aria-label={`${t("tradeFootprint")}: ${statusLabel}; ${t("tradeDelta")} ${deltaPct.toFixed(1)}%; ${insightMeta.imbalances} ${t("imbalances")}; ${insightMeta.stacks} ${t("stacks")}; ${insightMeta.absorptions} ${t("potentialAbsorptions")}`}>
         <strong>FOOTPRINT · {exchange.toUpperCase()} · LIVE</strong>
         <span>{statusLabel} · Δ <b className={deltaPct >= 0 ? "up" : "down"}>{deltaPct >= 0 ? "+" : ""}{deltaPct.toFixed(1)}%</b></span>
         {meta.prints > 0 && <small>{meta.prints} {t("prints")} · {formatCompact(meta.buyNotional + meta.sellNotional)}</small>}
+        {meta.prints > 0 && <small className="trade-footprint-insights">{insightMeta.imbalances} {t("imbalances")} · {insightMeta.stacks} {t("stacks")} · {insightMeta.absorptions} ABS?</small>}
       </div>
     </div>
   );
@@ -237,11 +283,11 @@ function drawFootprintCells(
   up: string,
   down: string,
   text: string,
-  dimmed: number
+  dimmed: number,
+  width: number
 ) {
   if (footprint.maxCellNotional <= 0) return;
   const logMax = Math.log1p(footprint.maxCellNotional);
-  const width = Math.min(52, Math.max(8, viewport.barSpacing * (viewport.barSpacing >= 24 ? 1.35 : 0.86)));
   const half = width / 2;
   for (const cell of footprint.cells) {
     const sellIntensity = Math.log1p(cell.sellNotional) / logMax;
@@ -268,6 +314,25 @@ function drawFootprintCells(
       ctx.fillText(label, labelX, cell.y);
     }
   }
+}
+
+function footprintCellWidth(viewport: Viewport) {
+  return Math.min(52, Math.max(8, viewport.barSpacing * (viewport.barSpacing >= 24 ? 1.35 : 0.86)));
+}
+
+function sameInsightMeta(left: InsightMeta, right: InsightMeta) {
+  return left.imbalances === right.imbalances && left.stacks === right.stacks && left.absorptions === right.absorptions;
+}
+
+function publishInsightMeta(
+  value: InsightMeta,
+  current: { current: InsightMeta },
+  lastPublishedAt: { current: number },
+  publish: (value: InsightMeta) => void
+) {
+  current.current = value;
+  lastPublishedAt.current = Date.now();
+  publish(value);
 }
 
 function drawDeltaRibbon(

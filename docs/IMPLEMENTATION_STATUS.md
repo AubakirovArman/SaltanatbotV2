@@ -70,6 +70,7 @@ Verification:
 - [x] Version workspaces with bounded autosave history, rollback and SHA-256 verified export/import.
 - [x] Preserve semantic chart tables and responsive monitoring layouts.
 - [x] Render real Binance/Bybit aggressor prints as a live footprint with per-candle delta and cumulative delta, backed by a bounded shared public stream.
+- [x] Add documented live-only diagonal/stacked imbalance and potential-absorption heuristics with Canvas annotations and an accessible DOM summary.
 
 Verification:
 

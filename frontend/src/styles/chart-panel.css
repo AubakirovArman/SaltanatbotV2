@@ -516,6 +516,7 @@
 .trade-footprint-badge .up { color: var(--up); }
 .trade-footprint-badge .down { color: var(--down); }
 .trade-footprint-badge small { color: var(--dim); }
+.trade-footprint-badge .trade-footprint-insights { color: var(--accent); }
 
 .chart-canvas-interaction {
   position: absolute;

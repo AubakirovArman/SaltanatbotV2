@@ -33,6 +33,14 @@ Frontend тек same-origin `/orderbook` арнасына қосылады. Back
 Frontend тек батырма қосылғаннан кейінгі жаңа мәмілелерді same-origin `/trade-flow` арқылы алады. Backend бір market үшін бір upstream пайдаланады, print-терді 100 мс batch-ке біріктіреді, бір хабарды 500 trade-пен және жалпы stream санын 32-мен шектейді. Reconnect жаңа observation window бастайды: жоқ history ойдан жасалмайды және OHLCV estimate-пен алмастырылмайды. Tab жасырылса немесе browser component render-ін өткізіп жіберсе, WebSocket пен Canvas pause болады.
 
 Side баға қозғалысынан болжанбайды: Binance-та `m=true` aggressive sell дегенді білдіреді, Bybit-та `S` taker side-ты тікелей береді. Дереккөздер: [Binance Aggregate Trade Streams](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#aggregate-trade-streams), [Bybit Public Trade](https://bybit-exchange.github.io/docs/v5/websocket/public/trade).
+
+### Imbalance, stacked imbalance және ықтимал absorption
+
+Контур кемінде `3:1` diagonal imbalance-ты көрсетеді: ағымдағы жолдың buy көлемі төменгі жолдың sell көлемімен, sell көлемі жоғарғы жолдың buy көлемімен салыстырылады. Dominant side осы candle-дегі ең үлкен біржақты көлемнің кемінде 8%-ы болуы керек. Бір side-тағы қатар тұрған үш немесе одан көп imbalance `3×` не үлкен bracket-ке біріктіріледі. Imbalance, stack және `ABS?` саны Canvas түсіне ғана емес, кәдімгі DOM мәтініне де шығарылады.
+
+`ABS?` ромбы тек candle-дің бақыланған бөлігіндегі **ықтимал absorption** дегенді білдіреді: кемінде 20 normalized print, абсолют delta кемінде 35%, candle көлемі көрінетін candle-дардағы ең үлкен бақыланған көлемнің кемінде 15%-ы болуы және close aggressor бағытына қарсы High–Low жартысында қалуы керек. Төменгі жартыда жабылған buy aggression — buy absorption ықтималдығы; жоғарғы жартыда жабылған sell aggression — sell absorption ықтималдығы.
+
+Бұл live-only heuristic, trading signal немесе historical exchange data емес. Нәтиже қосылған уақытқа және zoom-ға тәуелді: price row-лар screen pixel бойынша агрегатталады, сондықтан scale өзгергенде cluster саны да өзгеруі мүмкін. Reconnect analysis window-ды тазалайды. Сауда шешімі үшін context, liquidity және ұзақ history-ді бөлек тексеріңіз.
 - **Қосу** мәзірі кірістірілген және пайдаланушы индикаторларын басқарады.
 - **Салыстыру** үш символға дейін қосады.
 - `Ctrl+K` (`⌘K`) command palette ашады; `Enter` орындайды, `Esc` жабады.

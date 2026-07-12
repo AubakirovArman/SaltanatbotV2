@@ -44,6 +44,7 @@ test("renders a mocked live footprint and trade delta accessibly", async ({ page
   const badge = page.locator(".trade-footprint-badge");
   await expect(badge).toContainText(/live.*Δ \+33\.3%/i);
   await expect(badge).toContainText("2 prints");
+  await expect(badge).toContainText(/0 imbalances.*0 stacks.*0 ABS\?/i);
   await expect(badge).toHaveAttribute("role", "status");
   await toggle.click();
   await expect(badge).toBeHidden();

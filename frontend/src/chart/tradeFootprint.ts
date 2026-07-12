@@ -2,6 +2,8 @@ import type { TradeFlowTrade } from "../types";
 import type { Viewport } from "./types";
 
 export interface FootprintCell {
+  time: number;
+  row: number;
   x: number;
   y: number;
   buyNotional: number;
@@ -9,7 +11,11 @@ export interface FootprintCell {
 }
 
 export interface DeltaBar {
+  time: number;
   x: number;
+  buyNotional: number;
+  sellNotional: number;
+  prints: number;
   delta: number;
   cumulative: number;
 }
@@ -26,7 +32,7 @@ export interface TradeFootprint {
 /** Aggregate real exchange prints into visible candle × screen-price cells. */
 export function aggregateTradeFootprint(trades: TradeFlowTrade[], viewport: Viewport, priceRowPx = 9): TradeFootprint {
   const cells = new Map<string, FootprintCell>();
-  const barDeltas = new Map<number, number>();
+  const barTotals = new Map<number, { buyNotional: number; sellNotional: number; prints: number }>();
   let buyNotional = 0;
   let sellNotional = 0;
   let maxCellNotional = 0;
@@ -40,6 +46,8 @@ export function aggregateTradeFootprint(trades: TradeFlowTrade[], viewport: View
     const row = Math.floor((rawY - viewport.plot.top) / priceRowPx);
     const key = `${bucketTime}:${row}`;
     const cell = cells.get(key) ?? {
+      time: bucketTime,
+      row,
       x,
       y: viewport.plot.top + row * priceRowPx + priceRowPx / 2,
       buyNotional: 0,
@@ -54,16 +62,21 @@ export function aggregateTradeFootprint(trades: TradeFlowTrade[], viewport: View
       sellNotional += notional;
     }
     cells.set(key, cell);
-    barDeltas.set(bucketTime, (barDeltas.get(bucketTime) ?? 0) + (trade.side === "buy" ? notional : -notional));
+    const bar = barTotals.get(bucketTime) ?? { buyNotional: 0, sellNotional: 0, prints: 0 };
+    if (trade.side === "buy") bar.buyNotional += notional;
+    else bar.sellNotional += notional;
+    bar.prints += 1;
+    barTotals.set(bucketTime, bar);
   }
 
   for (const cell of cells.values()) maxCellNotional = Math.max(maxCellNotional, cell.buyNotional, cell.sellNotional);
   let cumulative = 0;
   let maxAbsDelta = 0;
-  const bars = [...barDeltas.entries()].sort(([a], [b]) => a - b).map(([time, delta]) => {
+  const bars = [...barTotals.entries()].sort(([a], [b]) => a - b).map(([time, totals]) => {
+    const delta = totals.buyNotional - totals.sellNotional;
     cumulative += delta;
     maxAbsDelta = Math.max(maxAbsDelta, Math.abs(delta));
-    return { x: viewport.timeToX(time), delta, cumulative };
+    return { time, x: viewport.timeToX(time), ...totals, delta, cumulative };
   });
   return { cells: [...cells.values()], bars, buyNotional, sellNotional, maxCellNotional, maxAbsDelta };
 }

@@ -9,7 +9,7 @@ This directory owns focused presentation and interaction helpers behind the stab
 - `drawingInteraction.ts` contains pure anchor, movement, legend and formatting helpers.
 - `types.ts` is the public prop contract of the facade.
 - `OrderBookHeatmapLayer.tsx` owns the isolated real-depth Canvas and lifecycle.
-- `TradeFootprintLayer.tsx` owns the isolated public-print footprint/CVD Canvas, semantic status and visibility-aware stream suspension.
+- `TradeFootprintLayer.tsx` owns the isolated public-print footprint/CVD/cluster Canvas, throttled semantic insight summary and visibility-aware stream suspension.
 
 Rendering and viewport state remain in `chart/`; these components must not recalculate indicators or
 own market transport. Preserve Canvas DOM alternatives, localized labels and render-layer isolation.
