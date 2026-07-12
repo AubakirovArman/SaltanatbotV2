@@ -58,7 +58,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - Independent right-axis price scaling supports wheel/trackpad, vertical drag, keyboard arrows, `Home` and double-click reset without changing the visible candle range.
 - Retina/HiDPI Canvas backing keeps candles, axes, footprint and depth crisp without changing mouse, trackpad or HUD geometry.
 - One-, two- and four-chart layouts have direct numbered pane selectors, adaptive compact chrome and a state-preserving active-pane maximize mode. Secondary symbols/timeframes are independent by default and can explicitly link symbol, timeframe, crosshair and the absolute visible **time range**.
-- Watchlist with **favorites** and **%-change sorting**; **saved workspaces** (named chart layouts); overlay a saved strategy directly on the chart with its **plotted indicator lines**, **buy/sell signal points** and simulated trades.
+- Watchlist with **favorites** and **%-change sorting**; automatic last-session recovery plus **saved workspaces** for named/versioned layouts; overlay a saved strategy directly on the chart with its **plotted indicator lines**, **buy/sell signal points** and simulated trades.
 
 ### 🧱 Visual strategy builder + backtester
 - **Blockly** no-code builder — snap together Market / Indicators / Math / Logic / Time / Signals / Risk & Size / State & Alerts blocks. Start from a **template gallery**.

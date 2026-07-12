@@ -32,7 +32,7 @@ The initial Playwright suite must cover:
 7. strategy is created from a template, edited, compiled and saved;
 8. backtest shows assumptions, trades, metrics and chart markers;
 9. optimizer runs in a worker and can be cancelled;
-10. workspace saves and restores after reload;
+10. named workspace and bounded last-chart-session state save and restore after reload, while malformed/future storage fails closed;
 11. paper bot is created, started, receives a signal, records an order and stops;
 12. authentication, CSRF expiry and logout behave correctly;
 13. kill switch requires the right role and visibly updates state;

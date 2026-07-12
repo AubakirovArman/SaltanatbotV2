@@ -29,6 +29,7 @@ import {
   writePanel
 } from "./shellStorage";
 import { compareColor } from "../chart/compareColors";
+import { loadLastChartSession, saveLastChartSession, type LastChartSession } from "./chartSession";
 
 export type AppMode = "chart" | "strategy" | "trade";
 export type AppTheme = "dark" | "light";
@@ -43,9 +44,11 @@ interface UseAppShellOptions {
   setMode: Dispatch<SetStateAction<AppMode>>;
   indicators: IndicatorConfig[];
   setIndicators: Dispatch<SetStateAction<IndicatorConfig[]>>;
+  initialChartSession?: LastChartSession;
 }
 
 export function useAppShell(options: UseAppShellOptions) {
+  const [initialChartSession] = useState(() => options.initialChartSession ?? loadLastChartSession({ symbol: options.symbol, timeframe: options.timeframe, chartType: options.chartType }));
   const [cryptoExchange, setCryptoExchange] = useState<DataExchange>(loadCryptoExchange);
   const [theme, setTheme] = useState<AppTheme>(loadTheme);
   const [locale, setLocale] = useState<Locale>(loadLocale);
@@ -53,11 +56,8 @@ export function useAppShell(options: UseAppShellOptions) {
   const [rightOpen, setRightOpen] = useState(() => readPanel("mf:panel:right", true));
   const [workspaces, setWorkspaces] = useState(loadWorkspaces);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>();
-  const [layoutPreset, setLayoutPresetState] = useState<ChartLayoutPreset>("single");
-  const [charts, setCharts] = useState<WorkspaceChart[]>(() => [{
-    id: "chart-1", symbol: options.symbol, timeframe: options.timeframe, chartType: options.chartType,
-    linkGroup: "primary", linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true
-  }]);
+  const [layoutPreset, setLayoutPresetState] = useState<ChartLayoutPreset>(initialChartSession.preset);
+  const [charts, setCharts] = useState<WorkspaceChart[]>(initialChartSession.charts);
   const [leftSize, setLeftSize] = useState(260);
   const [rightSize, setRightSize] = useState(280);
   const [panelsSwapped, setPanelsSwapped] = useState(false);
@@ -69,6 +69,7 @@ export function useAppShell(options: UseAppShellOptions) {
   useEffect(() => writePanel("mf:panel:right", rightOpen), [rightOpen]);
   useEffect(() => { try { localStorage.setItem("sbv2:compare", JSON.stringify(compareOverlays)); } catch { /* noop */ } }, [compareOverlays]);
   useEffect(() => storeIndicators(options.indicators), [options.indicators]);
+  useEffect(() => saveLastChartSession(layoutPreset, charts), [charts, layoutPreset]);
 
   useEffect(() => {
     setCharts((current) => current.map((chart, index) => ({

@@ -196,6 +196,7 @@ The detailed blockers are maintained in `CODE_IMPROVEMENT_PLAN.md`. Release gate
 
 - [x] layout presets and resizable/dockable panels;
 - [x] multi-chart layouts with linked symbol, interval, crosshair and drift-free UTC viewport;
+- [x] bounded automatic last-session recovery for multi-chart layout, independent pane markets and link preferences;
 - [x] independent pointer/trackpad/keyboard price-axis scaling with automatic reset;
 - [x] indicator pane management and per-series scale placement;
 - [x] drawing object tree, visibility lock, templates and undo/redo;

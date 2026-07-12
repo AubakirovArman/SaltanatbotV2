@@ -6,6 +6,7 @@ import type { IndicatorConfig } from "../src/chart/indicatorTypes";
 import { loadCompare, readPanel } from "../src/app/shellStorage";
 import { useAppShell, type AppMode } from "../src/app/useAppShell";
 import { useAppCommands } from "../src/app/useAppCommands";
+import { LAST_CHART_SESSION_KEY } from "../src/app/chartSession";
 import type { CatalogResponse, ChartType, Timeframe } from "../src/types";
 
 beforeEach(() => {
@@ -62,6 +63,7 @@ describe("useAppShell", () => {
     expect(shell?.charts).toHaveLength(4);
     expect(shell?.charts.every((chart) => chart.linkCrosshair)).toBe(true);
     expect(shell?.charts.every((chart) => chart.linkTimeRange)).toBe(true);
+    expect(JSON.parse(localStorage.getItem(LAST_CHART_SESSION_KEY) ?? "null")).toMatchObject({ preset: "grid-4", charts: [{ id: "chart-1" }, { id: "chart-2" }, { id: "chart-3" }, { id: "chart-4" }] });
     await act(async () => shell?.setLayoutPreset("split-horizontal"));
     expect(shell?.charts).toHaveLength(2);
     await act(async () => root.unmount());

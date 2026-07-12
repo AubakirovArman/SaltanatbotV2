@@ -421,6 +421,49 @@ test("focuses and maximizes any chart pane without resetting its view", async ({
   await expectNoAxeViolations(page);
 });
 
+test("restores the last four-chart session after reload without a named workspace", async ({ page }) => {
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await page.reload();
+  await page.getByRole("button", { name: "Chart layout" }).click();
+  await page.getByRole("menuitemradio", { name: "Four-chart grid" }).click();
+
+  const second = page.locator(".multi-chart-pane.secondary").nth(0);
+  const third = page.locator(".multi-chart-pane.secondary").nth(1);
+  const fourth = page.locator(".multi-chart-pane.secondary").nth(2);
+  await second.getByRole("combobox", { name: "Symbol · 2" }).selectOption("ETHUSDT");
+  await second.getByRole("combobox", { name: "Timeframe · 2" }).selectOption("5m");
+  await second.locator('[data-link-field="linkCrosshair"]').click();
+  await third.getByRole("combobox", { name: "Symbol · 3" }).selectOption("SOLUSDT");
+  await fourth.getByRole("combobox", { name: "Symbol · 4" }).selectOption("EURUSD");
+  await second.locator(".pane-maximize").click();
+
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null"))).toMatchObject({
+    version: 1,
+    preset: "grid-4",
+    charts: [
+      { id: "chart-1", symbol: "BTCUSDT" },
+      { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", linkTimeframe: false, linkCrosshair: false },
+      { id: "chart-3", symbol: "SOLUSDT" },
+      { id: "chart-4", symbol: "EURUSD" }
+    ]
+  });
+
+  await page.reload();
+  const restoredPanes = page.locator(".multi-chart-pane");
+  await expect(restoredPanes).toHaveCount(4);
+  await expect(page.locator(".multi-chart-pane:visible")).toHaveCount(4);
+  await expect(page.getByRole("combobox", { name: "Symbol · 2" })).toHaveValue("ETHUSDT");
+  await expect(page.getByRole("combobox", { name: "Timeframe · 2" })).toHaveValue("5m");
+  await expect(page.getByRole("combobox", { name: "Symbol · 3" })).toHaveValue("SOLUSDT");
+  await expect(page.getByRole("combobox", { name: "Symbol · 4" })).toHaveValue("EURUSD");
+  await expect(page.locator(".multi-chart-pane.secondary").first().locator('[data-link-field="linkCrosshair"]')).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: /Current instrument BTCUSDT/i })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("sbv2:workspaces"))).toBe("[]");
+  await expectNoAxeViolations(page);
+});
+
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
@@ -466,9 +509,13 @@ test("renders a mocked live footprint and trade delta accessibly", async ({ page
   await alertCenter.getByText("Alert settings", { exact: true }).click();
   await expect(alertCenter.getByLabel("Enable in-chart alerts")).toBeChecked();
   await alertCenter.getByLabel("Large-print threshold").fill("100");
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:microstructure-alerts:v1") ?? "null")?.largePrintNotional)).toBe(100);
+  await page.evaluate(() => {
+    const target = window as Window & { __emitTradeFlow?: (trades: Array<{ id: string; price: number; size: number; side: "buy" | "sell"; exchangeTs: number }>) => void };
+    target.__emitTradeFlow?.([{ id: "large-after-threshold", price: 100, size: 2, side: "buy", exchangeTs: Date.now() }]);
+  });
   const dismissAlert = alertCenter.getByRole("button", { name: "Dismiss microstructure alert" }).first();
   await expect(dismissAlert).toBeVisible({ timeout: 5_000 });
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:microstructure-alerts:v1") ?? "null")?.largePrintNotional)).toBe(100);
   await dismissAlert.click();
   await expectNoAxeViolations(page);
   await toggle.click();
@@ -994,6 +1041,7 @@ async function installOrderBookSocketMock(page: Page) {
 async function installTradeFlowSocketMock(page: Page) {
   await page.evaluate(() => {
     const NativeWebSocket = window.WebSocket;
+    const target = window as Window & { __emitTradeFlow?: (trades: Array<{ id: string; price: number; size: number; side: "buy" | "sell"; exchangeTs: number }>) => void };
     class MockTradeFlowSocket {
       static readonly CONNECTING = 0;
       static readonly OPEN = 1;
@@ -1008,6 +1056,7 @@ async function installTradeFlowSocketMock(page: Page) {
 
       constructor(url: string) {
         this.url = url;
+        target.__emitTradeFlow = (trades) => this.emit({ type: "trade_flow", symbol: "BTCUSDT", exchange: "binance", ts: Date.now(), trades });
         window.setTimeout(() => {
           this.readyState = MockTradeFlowSocket.OPEN;
           this.onopen?.(new Event("open"));

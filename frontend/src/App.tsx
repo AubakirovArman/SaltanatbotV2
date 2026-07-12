@@ -26,6 +26,7 @@ import { useAppCommands } from "./app/useAppCommands";
 import { shellText } from "./i18n/shell";
 import type { Locale } from "./i18n";
 import { translate } from "./i18n";
+import { loadLastChartSession } from "./app/chartSession";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
@@ -43,10 +44,12 @@ const fallbackInstrument: Instrument = {
 };
 
 export default function App() {
+  const [initialChartSession] = useState(() => loadLastChartSession({ symbol: "BTCUSDT", timeframe: "1m", chartType: "candles" }));
+  const initialPrimaryChart = initialChartSession.charts[0];
   const { catalog, loading, error } = useCatalog();
-  const [symbol, setSymbol] = useState("BTCUSDT");
-  const [timeframe, setTimeframe] = useState<Timeframe>("1m");
-  const [chartType, setChartType] = useState<ChartType>("candles");
+  const [symbol, setSymbol] = useState(initialPrimaryChart.symbol);
+  const [timeframe, setTimeframe] = useState<Timeframe>(initialPrimaryChart.timeframe);
+  const [chartType, setChartType] = useState<ChartType>(initialPrimaryChart.chartType);
   const [asset, setAsset] = useState<AssetClass | "all">("all");
   const [mode, setMode] = useState<AppMode>("chart");
   const [indicators, setIndicators] = useState(initialWorkspaceState.indicators);
@@ -54,7 +57,7 @@ export default function App() {
   const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
   const shell = useAppShell({
     symbol, setSymbol, timeframe, setTimeframe, chartType, setChartType,
-    setMode, indicators, setIndicators
+    setMode, indicators, setIndicators, initialChartSession
   });
   const { cryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, workspaces, activeWorkspaceId, compareOverlays } = shell;
   useEffect(() => {

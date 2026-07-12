@@ -96,7 +96,7 @@ backend/src/
 
 The frontend is a React 18 single-page app built with Vite 8. Its notable dependencies are `blockly` (visual strategy builder), `lucide-react` (icons), and `react`/`react-dom`. There is no third-party charting library — charts are drawn by a hand-written engine.
 
-`frontend/src/App.tsx` is the workspace composition root. It retains selected market/chart routing state and switches between `chart`, `strategy`, and `trade`. `frontend/src/app/useAppShell.ts` owns cross-workspace preferences, panels, exchange, named workspaces and compare overlays; `useAppCommands.ts` owns commands and global shortcuts.
+`frontend/src/App.tsx` is the workspace composition root. It restores selected market/chart routing from the bounded `chartSession.ts` schema and switches between `chart`, `strategy`, and `trade`. `frontend/src/app/useAppShell.ts` owns cross-workspace preferences, panels, exchange, named workspaces and compare overlays; `useAppCommands.ts` owns commands and global shortcuts.
 
 - **Custom canvas chart engine** — `frontend/src/chart/ChartEngine.ts` prepares one viewport/indicator render plan consumed by five cached canvases: background/axes, primary series, indicators, drawing/strategy overlays, and pointer interaction. `useChartRenderer` owns sizing and dirty invalidation, while `canvasDensity.ts` sizes every backing store to CSS size × DPR and transforms all renderers back into one logical CSS-pixel space. A coalescing scheduler preserves pass order. `priceRepresentation.ts` prepares full-history Heikin-Ashi, confirmed Renko, Three-Line-Break, Kagi or Point-and-Figure columns once for every Canvas/DOM consumer; exact timestamp interpolation preserves alignment. The chart supports `candles`, `hollow`, `heikin`, `bars`, `line`, `step`, `area`, `baseline`, `renko`, `linebreak`, `kagi`, and `pnf`.
 - **Price-representation settings** — `priceRepresentationSettings.ts` validates and stores Renko/Kagi/P&F percentages, Line Break depth and P&F reversal boxes, then synchronizes same-page panes and other tabs. `PriceRepresentationControl.tsx` uses one native disclosure and explicitly labelled numeric inputs; updates cross the same preparation boundary, so Canvas, pointer math, indicators, market structure and semantic data never disagree.
@@ -104,7 +104,7 @@ The frontend is a React 18 single-page app built with Vite 8. Its notable depend
 - **Lazy-loaded views** — the heavier `StrategyLab` and `TradingView` views are code-split with `React.lazy` and rendered inside `<Suspense>`. Shell and command controllers warm those chunks ahead of likely navigation.
 - **Runtime exchange selector** — for crypto instruments the user can pick `binance` or `bybit`; the choice is persisted in `localStorage` (`mf:cryptoExchange`) and threaded through candle/sparkline/stream requests.
 - **Command palette + hotkeys** — `⌘/Ctrl-K` toggles a command palette; number keys `1..6` select timeframes.
-- **Local workspace persistence** — indicators, the strategy library, theme, and panel state are stored in `localStorage`; a strategy can be imported from a `#s=…` URL hash as a remixable copy.
+- **Local workspace persistence** — indicators, the strategy library, theme, and panel state are stored in `localStorage`; a bounded versioned last-chart-session record restores layout/panes independently of named workspace revision history and rejects corrupt, oversized or future payloads. A strategy can be imported from a `#s=…` URL hash as a remixable copy.
 
 ### Frontend source tree
 
