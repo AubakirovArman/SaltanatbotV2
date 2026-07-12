@@ -52,6 +52,26 @@ test("toggles DST-aware regional session boxes accessibly", async ({ page }) => 
   await expect(page.getByRole("button", { name: /Asia session.*Available on 1-minute through 1-hour charts/ })).toBeDisabled();
 });
 
+test("controls confirmed market structure independently on every timeframe", async ({ page }) => {
+  await selectChartSymbol(page, "EURUSD");
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+  const structure = page.getByRole("button", { name: "Toggle confirmed swings and BOS / CHOCH" });
+  const fvg = page.getByRole("button", { name: "Toggle closed-candle fair value gaps" });
+  await expect(structure).toHaveAttribute("aria-pressed", "true");
+  await expect(fvg).toHaveAttribute("aria-pressed", "false");
+  await fvg.click();
+  await expect(fvg).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Swing confirmation strength: 3" }).click();
+  await expect(page.getByRole("button", { name: "Swing confirmation strength: 4" })).toBeVisible();
+  await expect(page.locator(".session-liquidity-badge .sr-only")).toContainText(/Trend: .*confirmed swings.*structure breaks.*open fair value gaps/);
+  await expectNoAxeViolations(page);
+
+  await page.getByRole("button", { name: "1d", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Toggle UTC map.*available on 1-minute through 4-hour charts/i })).toBeDisabled();
+  await expect(structure).toBeEnabled();
+  await expect(fvg).toBeEnabled();
+});
+
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });

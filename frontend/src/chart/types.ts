@@ -4,6 +4,7 @@ import type { IndicatorConfig } from "./indicatorTypes";
 import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
 import type { AnchoredVwapSeries } from "./anchoredVwap";
 import type { MarketSessionRange } from "./marketSessions";
+import type { MarketStructureSnapshot } from "./marketStructure";
 
 export interface PlotArea {
   left: number;
@@ -113,6 +114,8 @@ export interface DrawChartOptions {
   anchoredVwapSeries?: AnchoredVwapSeries;
   /** Prepared DST-aware regional market-session ranges. */
   marketSessions?: MarketSessionRange[];
+  /** Confirmed swing, structure-break and three-candle imbalance analysis. */
+  marketStructure?: MarketStructureSnapshot;
   /** Symbols overlaid on the price pane, normalized to % change (Compare). */
   compare?: CompareSeries[];
   /** The base chart's symbol — labels the base line in the compare legend. */

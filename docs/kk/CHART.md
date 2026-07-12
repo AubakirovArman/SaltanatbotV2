@@ -58,6 +58,16 @@ VWAP әр OHLCV candle-дың жалпы volume-ымен өлшенген `(high
 
 `PDH SWEEP` жабылған candle previous-day high-тан wick жасап, төменде жабылғанда; `PDL SWEEP` previous-day low-дан төмен түсіп, қайта жоғарыда жабылғанда пайда болады. Ағымдағы жабылмаған candle confirmed marker жасамайды. Sweep — context, жеке entry signal емес.
 
+## Расталған market structure
+
+Chart үстіндегі карточкадағы `STRUCT` батырмасы расталған `HH`, `LH`, `HL`, `LL` swing-нүктелерін және `BOS` / `CHOCH` сызықтарын қосады. `S3` fractal күшін 2-ден 5-ке дейін өзгертеді: сан жоғары болса noise азаяды, бірақ confirmation кешірек келеді. Бұл layer intraday session-дар өшірілген үлкен timeframe-дерде де жұмыс істейді.
+
+Алгоритм confirmation-нан кейін future data қолданбайды: swing оң жағындағы таңдалған candle саны жабылған соң ғана пайда болады, ал BOS/CHOCH соңғы расталған high/low деңгейінен candle close өткенде ғана жасалады. Wick-пен бір рет тесу break емес. `BOS` ағымдағы бағытты жалғастырады, `CHOCH` қарама-қарсы бағыттағы алғашқы расталған break-ті белгілейді.
+
+`FVG` батырмасы үш жабық candle бойынша optional fair value gap zone-дарын көрсетеді. Bullish zone үшін үшінші candle low-ы бірінші candle high-ынан жоғары; bearish zone үшін үшінші candle high-ы бірінші candle low-ынан төмен болуы керек. Кейінгі wick zone-ды толық толтырғанда ғана ол mitigated деп есептеледі. Ағымдағы жабылмаған candle structure жасамайды және FVG жаппайды.
+
+Бұл белгілер loaded OHLC candle-дардың механикалық контексті, кепілденген trading signal емес. Нәтиже timeframe, swing strength және қолжетімді history-ге тәуелді; trade алдында risk, liquidity және басқа деректермен бірге тексеріңіз.
+
 ## Anchored VWAP
 
 Сол жақ rail-дегі **Anchored VWAP** құралы candle үстінен бір click арқылы жасалады. Таңдалған уақыттан соңғы loaded candle-ға дейін cumulative VWAP, translucent ±1σ value area және ±1σ/±2σ сызықтары салынады. Anchor кәдімгі drawing object болғандықтан оны move, hide, lock, duplicate, style, undo жасауға және ағымдағы symbol drawings-імен бірге сақтауға болады.

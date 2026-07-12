@@ -33,6 +33,7 @@ import { drawCompareSeries } from "./renderers/compareSeries";
 import { drawVolumeProfile } from "./renderers/volumeProfile";
 import { drawSessionLiquidity } from "./renderers/sessionLiquidity";
 import { drawMarketSessions } from "./renderers/marketSessions";
+import { drawMarketStructureBackground, drawMarketStructureOverlay } from "./renderers/marketStructure";
 import { drawCrosshair, drawEmpty, drawGrid, drawLastPrice, drawTimeAxis } from "./renderers/chartChrome";
 import { toHeikinAshi } from "./heikinAshi";
 import { computePlot, priceScale, visibleCandles } from "./scales";
@@ -166,7 +167,7 @@ export function drawChartBackground(ctx: CanvasRenderingContext2D, plan: ChartRe
 }
 
 export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRenderPlan, clear = true) {
-  const { width, height, chartType, decimals, showVolume, compare, onCompareLegend, onVolumeProfile, marketSessions } = plan.input;
+  const { width, height, chartType, decimals, showVolume, compare, onCompareLegend, onVolumeProfile, marketSessions, marketStructure } = plan.input;
   if (clear) ctx.clearRect(0, 0, width, height);
   if (plan.empty) {
     onCompareLegend?.([]);
@@ -186,6 +187,7 @@ export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRende
   };
 
   if (marketSessions?.length) drawMarketSessions(ctx, plan.viewport, marketSessions);
+  if (marketStructure?.fairValueGaps.length) drawMarketStructureBackground(ctx, plan.viewport, marketStructure);
   if (plan.volumeProfile) drawVolumeProfile(ctx, plan.plot, scale, plan.volumeProfile, theme);
   onVolumeProfile?.(plan.volumeProfile ? {
     bins: plan.volumeProfile.bins.length,
@@ -244,11 +246,12 @@ export function drawChartIndicators(ctx: CanvasRenderingContext2D, plan: ChartRe
 export function drawChartOverlays(ctx: CanvasRenderingContext2D, plan: ChartRenderPlan, clear = true) {
   const {
     width, height, decimals, candles, drawings, draftDrawing, signals, trades, shapes, alerts, livePositions,
-    selectedDrawingId, hoveredDrawingId, sessionLiquidity, anchoredVwapSeries
+    selectedDrawingId, hoveredDrawingId, sessionLiquidity, anchoredVwapSeries, marketStructure
   } = plan.input;
   if (clear) ctx.clearRect(0, 0, width, height);
   if (plan.empty) return;
   if (sessionLiquidity) drawSessionLiquidity(ctx, sessionLiquidity, plan.viewport, theme);
+  if (marketStructure?.swings.length || marketStructure?.breaks.length) drawMarketStructureOverlay(ctx, plan.viewport, marketStructure);
   // Strategy shading sits UNDER the user's own drawings so it never obscures them.
   if (shapes && (shapes.boxes.length > 0 || shapes.vlines.length > 0 || shapes.rays.length > 0)) drawShapes(ctx, plan.viewport, shapes);
   drawDrawings(ctx, plan.viewport, drawings, anchoredVwapSeries ?? {}, {

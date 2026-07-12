@@ -31,6 +31,7 @@ import type {
 import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
 import { calculateDrawingAvwaps, type AnchoredVwapSeries } from "./anchoredVwap";
 import type { MarketSessionRange } from "./marketSessions";
+import type { MarketStructureSnapshot } from "./marketStructure";
 
 interface UseChartRendererOptions {
   candles: Candle[];
@@ -53,6 +54,7 @@ interface UseChartRendererOptions {
   showVolumeProfile: boolean;
   sessionLiquidity?: SessionLiquiditySnapshot;
   marketSessions?: MarketSessionRange[];
+  marketStructure?: MarketStructureSnapshot;
   compare: CompareSeries[];
   theme?: string;
   onCompareLegend(entries: CompareLegendSnapshot[]): void;
@@ -117,6 +119,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
         showVolume: options.showVolume,
         showVolumeProfile: options.showVolumeProfile,
         marketSessions: options.marketSessions,
+        marketStructure: options.marketStructure,
         compare: options.compare,
         baseSymbol: options.symbol,
         onViewport: (viewport) => { viewportRef.current = viewport; },
@@ -134,7 +137,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     });
     schedulerRef.current?.schedule("overlays", () => drawOverlays(overlaysCanvas, renderPlanRef.current, options, anchoredVwaps));
     schedulerRef.current?.schedule("interaction", () => drawInteraction(interactionCanvas, viewportRef.current, options));
-  }, [options.candles, options.chartType, options.indicators, options.decimals, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.marketSessions, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, renderRevision]);
+  }, [options.candles, options.chartType, options.indicators, options.decimals, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, renderRevision]);
 
   useEffect(() => {
     const canvas = primaryCanvasRef.current;
@@ -203,6 +206,7 @@ function drawOverlays(canvas: HTMLCanvasElement, plan: ChartRenderPlan | undefin
     alerts: options.alerts,
     livePositions: options.livePositions,
     sessionLiquidity: options.sessionLiquidity,
+    marketStructure: options.marketStructure,
     anchoredVwapSeries
   }));
 }

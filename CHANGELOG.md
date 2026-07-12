@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added non-repainting confirmed market structure on every timeframe: delayed fractal swing labels (HH/LH/HL/LL) and close-confirmed BOS/CHOCH overlays, with adjustable strength.
+- Added optional three-closed-candle fair value gap zones that remain open until full later wick mitigation, plus localized keyboard controls and a synchronized semantic summary.
 - Added independently toggleable Asia, London and New York high/low session boxes on 1m–1h charts, using IANA time zones for daylight-saving-aware boundaries and a cached timestamp conversion path for live updates.
 - Kept regional-session shading behind candles, exposed the latest ranges as semantic DOM text and documented that these are time windows rather than exchange-holiday calendars or trading signals.
 - Added a one-click Anchored VWAP drawing with cumulative bar-based typical-price weighting, a translucent ±1σ value area, ±1σ/±2σ lines, editable anchors and symbol-scoped persistence through the existing drawing system.

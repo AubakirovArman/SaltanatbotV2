@@ -495,7 +495,6 @@
   pointer-events: auto;
 }
 
-.session-liquidity-badge.disabled { min-inline-size: 0; }
 .session-liquidity-badge button {
   inline-size: 100%;
   min-block-size: 25px;
@@ -512,6 +511,7 @@
   pointer-events: auto;
 }
 .session-liquidity-badge button:hover { background: var(--hover); color: var(--text); }
+.session-liquidity-badge button:disabled { cursor: not-allowed; opacity: 0.35; }
 .session-liquidity-badge button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .session-liquidity-badge strong { color: var(--accent); font-size: var(--fs-xs); font-weight: 650; }
 .session-liquidity-values { display: grid; gap: 2px; padding: 4px 6px 6px; border-block-start: 1px solid var(--line-soft); }
@@ -523,6 +523,22 @@
   grid-template-columns: repeat(3, 1fr);
   border-block-start: 1px solid var(--line-soft);
 }
+.market-structure-toggles {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 0.75fr;
+  border-block-start: 1px solid var(--line-soft);
+}
+.session-liquidity-badge .market-structure-toggles button {
+  min-block-size: 22px;
+  padding: 2px 4px;
+  justify-content: center;
+  border-inline-end: 1px solid var(--line-soft);
+  border-radius: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+.session-liquidity-badge .market-structure-toggles button:last-child { border-inline-end: 0; color: var(--muted); }
+.market-structure-toggles button[aria-pressed="false"] { color: var(--dim); opacity: 0.65; }
 .session-liquidity-badge .market-session-toggles button {
   min-block-size: 22px;
   padding: 2px 4px;
@@ -540,7 +556,7 @@
 
 .anchored-vwap-legend {
   position: absolute;
-  inset-block-start: 138px;
+  inset-block-start: 162px;
   inset-inline-end: 230px;
   z-index: 7;
   min-inline-size: 196px;
