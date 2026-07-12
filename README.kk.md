@@ -20,8 +20,8 @@ SaltanatbotV2 — сауда идеяларын зерттеуге және ав
 
 Негізгі мүмкіндіктер:
 
-- candlestick, Heikin-Ashi, bars, line, area, baseline, тұрақты Renko, Three Line Break және Kagi түрлері, VPVR, order-book heatmap, live trade footprint/CVD және imbalance/potential absorption белгілеуі бар жеке Canvas-график;
-- local сақталатын Renko brick percentage, Kagi reversal percentage және Line Break depth параметрлері Canvas, indicator және accessible OHLC table үшін бір transformed series-ті толық қайта есептейді;
+- candlestick, Heikin-Ashi, bars, line, area, baseline, тұрақты Renko, Three Line Break, Kagi және Point & Figure түрлері, VPVR, order-book heatmap, live trade footprint/CVD және imbalance/potential absorption белгілеуі бар жеке Canvas-график;
+- local сақталатын Renko/P&F box percentage, Kagi reversal percentage, Line Break depth және P&F reversal-box count Canvas, indicator және accessible OHLC table үшін бір transformed series-ті толық қайта есептейді;
 - stacked imbalance, potential absorption, CVD spike және large print үшін жергілікті сақталатын in-chart alert-тер, optional sound және desktop notification;
 - Binance және Bybit үшін REST тарихы мен WebSocket жаңартулары;
 - индикаторлар мен стратегияларға арналған Blockly визуалды құрастырушысы;

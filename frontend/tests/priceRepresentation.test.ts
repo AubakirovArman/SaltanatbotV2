@@ -23,12 +23,14 @@ describe("price representation preparation", () => {
     expect(preparePriceCandles(candles, "renko", 2).length).toBeGreaterThan(0);
     expect(preparePriceCandles(candles, "linebreak", 2).length).toBeGreaterThan(0);
     expect(preparePriceCandles(candles, "kagi", 2).length).toBeGreaterThan(0);
+    expect(preparePriceCandles(candles, "pnf", 2).length).toBeGreaterThan(0);
   });
 
   it("routes explicit construction settings into every price-compressed transform", () => {
-    const settings = { renkoBrickPercent: 1, lineBreakDepth: 5, kagiReversalPercent: 1 };
+    const settings = { renkoBrickPercent: 1, lineBreakDepth: 5, kagiReversalPercent: 1, pnfBoxPercent: 1, pnfReversalBoxes: 4 };
     expect(preparePriceCandles(candles, "renko", 2, settings).length).toBeLessThan(preparePriceCandles(candles, "renko", 2).length);
     expect(preparePriceCandles(candles, "kagi", 2, settings).every((leg) => leg.high >= leg.low)).toBe(true);
     expect(preparePriceCandles(candles, "linebreak", 2, settings).length).toBeGreaterThan(0);
+    expect(preparePriceCandles(candles, "pnf", 2, settings).length).toBeGreaterThan(0);
   });
 });

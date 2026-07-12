@@ -24,7 +24,7 @@ It is not enough to resemble TradingView visually. The differentiator must be tr
 
 | Area | Current state | Maturity |
 | --- | --- | --- |
-| Chart | Custom Canvas chart, seven chart types, indicators, drawings, compare, alerts | Alpha, broad functionality |
+| Chart | Custom Canvas chart, twelve chart types including configurable confirmed Renko, Line Break, Kagi and Point & Figure; indicators, drawings, compare, alerts | Alpha, broad functionality |
 | Market data | Binance, Bybit, explicit fallback/unavailable states, REST/WebSocket history and SQLite cache | Alpha, guarded fallback behavior |
 | Strategy authoring | Blockly editor, templates, indicator artifacts, safe JSON IR | Alpha |
 | Pine import | Modular v4/v5/v6 compiler, semantic analysis, typed diagnostics, compatibility registry and fuzz tests | Experimental, explicit fidelity |

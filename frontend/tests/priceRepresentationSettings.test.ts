@@ -20,7 +20,7 @@ describe("price-representation settings", () => {
 
   it("clamps and rounds every persisted construction parameter", () => {
     const safe = sanitizePriceRepresentationSettings({ renkoBrickPercent: 99, lineBreakDepth: 2.8, kagiReversalPercent: -1 });
-    expect(safe).toEqual({ renkoBrickPercent: 10, lineBreakDepth: 3, kagiReversalPercent: 0.01 });
+    expect(safe).toEqual({ renkoBrickPercent: 10, lineBreakDepth: 3, kagiReversalPercent: 0.01, pnfBoxPercent: 0.1, pnfReversalBoxes: 3 });
     storePriceRepresentationSettings(safe);
     expect(loadPriceRepresentationSettings()).toEqual(safe);
   });
@@ -28,15 +28,16 @@ describe("price-representation settings", () => {
   it("notifies every chart instance after a same-tab update", () => {
     let detail: unknown;
     window.addEventListener(PRICE_REPRESENTATION_SETTINGS_EVENT, (event) => { detail = (event as CustomEvent).detail; }, { once: true });
-    storePriceRepresentationSettings({ renkoBrickPercent: 0.2, lineBreakDepth: 4, kagiReversalPercent: 0.3 });
-    expect(detail).toEqual({ renkoBrickPercent: 0.2, lineBreakDepth: 4, kagiReversalPercent: 0.3 });
+    storePriceRepresentationSettings({ renkoBrickPercent: 0.2, lineBreakDepth: 4, kagiReversalPercent: 0.3, pnfBoxPercent: 0.4, pnfReversalBoxes: 5 });
+    expect(detail).toEqual({ renkoBrickPercent: 0.2, lineBreakDepth: 4, kagiReversalPercent: 0.3, pnfBoxPercent: 0.4, pnfReversalBoxes: 5 });
   });
 
   it("formats the active chart construction compactly", () => {
-    const settings = { renkoBrickPercent: 0.2, lineBreakDepth: 4, kagiReversalPercent: 0.35 };
+    const settings = { renkoBrickPercent: 0.2, lineBreakDepth: 4, kagiReversalPercent: 0.35, pnfBoxPercent: 0.5, pnfReversalBoxes: 4 };
     expect(priceRepresentationBadge("renko", settings)).toBe("RENKO 0.20%");
     expect(priceRepresentationBadge("linebreak", settings)).toBe("4LB");
     expect(priceRepresentationBadge("kagi", settings)).toBe("KAGI 0.35%");
+    expect(priceRepresentationBadge("pnf", settings)).toBe("P&F 0.50% ×4");
     expect(priceRepresentationBadge("candles", settings)).toBe("");
   });
 });

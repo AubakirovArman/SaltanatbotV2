@@ -4,6 +4,7 @@ const calls = vi.hoisted(() => ({
   candles: vi.fn(),
   lineBreak: vi.fn(),
   kagi: vi.fn(),
+  pnf: vi.fn(),
   renko: vi.fn(),
   lineArea: vi.fn(),
   volumeProfile: vi.fn(),
@@ -14,6 +15,7 @@ const calls = vi.hoisted(() => ({
 vi.mock("../src/chart/renderers/candles", () => ({ drawCandles: calls.candles }));
 vi.mock("../src/chart/renderers/lineBreak", () => ({ drawLineBreak: calls.lineBreak }));
 vi.mock("../src/chart/renderers/kagi", () => ({ drawKagi: calls.kagi }));
+vi.mock("../src/chart/renderers/pointAndFigure", () => ({ drawPointAndFigure: calls.pnf }));
 vi.mock("../src/chart/renderers/renko", () => ({ drawRenko: calls.renko }));
 vi.mock("../src/chart/renderers/lineArea", () => ({ drawLineArea: calls.lineArea }));
 vi.mock("../src/chart/renderers/volumeProfile", () => ({ drawVolumeProfile: calls.volumeProfile }));
@@ -157,6 +159,15 @@ describe("chart render passes", () => {
     drawChartPrimary(ctx, plan);
 
     expect(calls.kagi).toHaveBeenCalledTimes(1);
+    if (!plan.empty) expect(plan.data.length).toBeLessThan(candles.length);
+  });
+
+  it("compresses confirmed source candles into Point & Figure columns", () => {
+    const ctx = context();
+    const plan = prepareChartRender({ ...input, chartType: "pnf" });
+    drawChartPrimary(ctx, plan);
+
+    expect(calls.pnf).toHaveBeenCalledTimes(1);
     if (!plan.empty) expect(plan.data.length).toBeLessThan(candles.length);
   });
 

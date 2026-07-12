@@ -23,6 +23,7 @@ import { drawCandles } from "./renderers/candles";
 import { drawLineArea } from "./renderers/lineArea";
 import { drawRenko } from "./renderers/renko";
 import { drawKagi } from "./renderers/kagi";
+import { drawPointAndFigure } from "./renderers/pointAndFigure";
 import { drawLineBreak } from "./renderers/lineBreak";
 import { drawVolume } from "./renderers/volume";
 import { drawMarkers } from "./renderers/markers";
@@ -204,6 +205,7 @@ export function drawChartPrimary(ctx: CanvasRenderingContext2D, plan: ChartRende
   if (chartType === "renko") drawRenko(renderContext);
   if (chartType === "linebreak") drawLineBreak(renderContext);
   if (chartType === "kagi") drawKagi(renderContext);
+  if (chartType === "pnf") drawPointAndFigure(renderContext);
 
   // Compare overlay: normalized %-change lines for other symbols on the price
   // pane. Drawn against `visible.data` (the base's visible window) so it

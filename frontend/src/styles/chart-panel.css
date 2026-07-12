@@ -375,6 +375,7 @@
 }
 
 .price-representation-panel label { display: block; margin-block-end: 6px; color: var(--text); font-weight: 600; }
+.price-representation-field + .price-representation-field { margin-block-start: 11px; padding-block-start: 11px; border-block-start: 1px solid var(--line-soft); }
 .price-representation-input { display: flex; align-items: center; gap: 8px; }
 .price-representation-input input {
   min-block-size: 34px;

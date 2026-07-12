@@ -11,7 +11,7 @@ excluding application regions.
 
 | Criterion | Implementation | Verification |
 | --- | --- | --- |
-| Keyboard-only operation | Native controls, global shortcuts, focusable scrolling chart-data region, resizable panel separator keys and modal focus containment | Playwright command, chart-data, Renko axe, resize, wizard and focus-return scenarios |
+| Keyboard-only operation | Native controls, global shortcuts, focusable scrolling chart-data region, price-chart settings disclosures, resizable panel separator keys and modal focus containment | Playwright command, chart-data, price-based settings/axe, resize, wizard and focus-return scenarios |
 | Visible focus | Global high-contrast `:focus-visible` outline and halo | CSS contract plus keyboard browser scenarios |
 | Semantic dialogs | Named `role="dialog"`, `aria-modal`, initial focus, Tab/Shift+Tab containment, Escape and opener restoration | Shared `useModalFocus` contract and wizard/command tests |
 | Announcements | Polite status regions for loading, connection, alerts, shortcut changes and compile validation; alerts for failures | Component semantics and axe audit |

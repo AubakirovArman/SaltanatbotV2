@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added confirmed close-only Point & Figure with alternating X/O columns, fixed seeded percentage boxes, configurable multi-box reversals, source-volume aggregation and no provisional live column.
+- Integrated Point & Figure into the shared viewport/settings/catalog/semantic pipeline, including synchronized box/reversal controls, dynamic accessible descriptions and dedicated Canvas glyph rendering.
 - Added persistent, fail-closed construction controls for confirmed price-based charts: Renko brick percentage, Kagi reversal percentage and Line Break reversal depth now rebuild the entire shared display series immediately.
 - Added dynamic chart legends and accessible Canvas descriptions, explicit labels/help text, per-parameter reset, Escape dismissal and coarse-pointer targets for the compact settings disclosure.
 - Raised the aggregate JavaScript gzip allowance from 448 KiB to 450 KiB and CSS from 15 KiB to 16 KiB for the typed settings/persistence/control layer; all per-chunk and HTML limits remain unchanged.

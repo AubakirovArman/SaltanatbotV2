@@ -30,7 +30,15 @@ Kagi уақытты қысып, маңызды price movement-ті ғана кө
 
 Kagi — synthetic representation: column аралығы бірдей уақытты білдірмейді, leg OHLC орындалатын market price-ты дәлелдемейді. Strategy Lab пен backtest source time candle-дармен қалады. Ереже мен терминология ресми [TradingView Kagi](https://www.tradingview.com/support/solutions/43000502272-learn-to-use-kagi-charts/) сипаттамасымен салыстырылды; осы кезеңде configurable fixed Percentage бар, ATR/Traditional әлі жоқ.
 
-Ағымдағы мәні бар (`RENKO …%`, `KAGI …%` немесе `NLB`) button labelled numeric field пен help ашады. Өзгеріс бүкіл loaded display history-ді қайта құрып, legend, accessible description, indicator, structure және OHLC table-ды бірге жаңартады. Мән тек current browser-де сақталады; reset тек active parameter default-ын қайтарады. Strategy Lab/backtest source candle-дары өзгермейді.
+### Point & Figure
+
+Point & Figure alternating column құрады: `X` өсу, `O` төмендеу. Бір column ішінде екі symbol араласпайды. Default box size — бірінші loaded confirmed price-тың tick-ке дөңгелектелген тұрақты `0,10%` мәні. Continuation ағымдағы column-ға box қосады; opposite column тек configured reversal box санына қозғалғанда пайда болады, default `3`.
+
+Екі setting те өзгертіледі: box percentage `0,01–10%`, reversal `1–10` box. Есеп тек closed source candle close қолданады, skipped volume-ды duplicate жасамай жинайды және unclosed live tail/projection column-ды қоспайды. Fixed seed historical box-тарды қайта өзгертетін Percentage LTP repainting-ін әдейі қайталамайды. X/O alternation және multi-box reversal ережелері [TradingView Point & Figure](https://www.tradingview.com/support/solutions/43000502276-what-are-point-and-figure-charts/) құжатымен тексерілді.
+
+P&F column synthetic: equal spacing equal time емес, column OHLC execution price дәлелі емес. Chart indicator/structure transformed column қолданады; Strategy Lab/backtest source time candle-дарда қалады.
+
+Ағымдағы мәні бар (`RENKO …%`, `KAGI …%`, `NLB` немесе `P&F …% ×N`) button explicitly labelled numeric field пен help ашады. Өзгеріс бүкіл loaded display history-ді қайта құрып, legend, accessible description, indicator, structure және OHLC table-ды бірге жаңартады. Мән тек current browser-де сақталады; reset active chart type defaults-ын қайтарады. Strategy Lab/backtest source candle-дары өзгермейді.
 
 Heikin Ashi де visible window кесілгенге дейін бүкіл loaded history бойынша есептеледі: zoom немесе pan бір candle-дың seed/OHLC мәнін енді өзгертпейді.
 
@@ -94,7 +102,7 @@ Chart үстіндегі карточкадағы `STRUCT` батырмасы р
 
 `FVG` батырмасы үш жабық candle бойынша optional fair value gap zone-дарын көрсетеді. Bullish zone үшін үшінші candle low-ы бірінші candle high-ынан жоғары; bearish zone үшін үшінші candle high-ы бірінші candle low-ынан төмен болуы керек. Кейінгі wick zone-ды толық толтырғанда ғана ол mitigated деп есептеледі. Ағымдағы жабылмаған candle structure жасамайды және FVG жаппайды.
 
-Бұл белгілер displayed OHLC bar-лардың механикалық контексті, кепілденген trading signal емес. Қарапайым candle үшін source bars, ал Heikin Ashi, Renko, Three Line Break және Kagi үшін таңдалған transformed representation қолданылады. Нәтиже chart type, timeframe, swing strength және қолжетімді history-ге тәуелді; trade алдында risk, liquidity және басқа деректермен бірге тексеріңіз.
+Бұл белгілер displayed OHLC bar-лардың механикалық контексті, кепілденген trading signal емес. Қарапайым candle үшін source bars, ал Heikin Ashi, Renko, Three Line Break, Kagi және Point & Figure үшін таңдалған transformed representation қолданылады. Нәтиже chart type, timeframe, swing strength және қолжетімді history-ге тәуелді; trade алдында risk, liquidity және басқа деректермен бірге тексеріңіз.
 
 ## Anchored VWAP
 

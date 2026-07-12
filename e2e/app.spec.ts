@@ -133,15 +133,26 @@ test("configures and persists confirmed price-chart construction", async ({ page
   await lineBreakSettings.click();
   await page.getByLabel("Reversal depth").fill("5");
   await expect(page.getByRole("img", { name: /5-line reversal/ })).toBeVisible();
+
+  await page.getByTitle("Chart type").click();
+  await page.getByRole("menuitemradio", { name: "Point & Figure" }).click();
+  const pointAndFigureSettings = page.locator(".price-representation-control summary");
+  await pointAndFigureSettings.click();
+  await page.getByLabel("Box percentage").fill("0.50");
+  await page.getByLabel("Reversal boxes").fill("4");
+  await expect(page.getByRole("img", { name: /Point & Figure.*0.50% boxes and a 4-box reversal/ })).toBeVisible();
+  await expect(page.locator(".legend-symbol")).toContainText("P&F 0.50% ×4");
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("mf:price-representation-settings:v1") ?? "null"))).toMatchObject({
     renkoBrickPercent: 0.2,
     lineBreakDepth: 5,
-    kagiReversalPercent: 0.25
+    kagiReversalPercent: 0.25,
+    pnfBoxPercent: 0.5,
+    pnfReversalBoxes: 4
   });
   await expectNoAxeViolations(page);
   await page.keyboard.press("Escape");
   await expect(page.locator(".price-representation-control")).not.toHaveAttribute("open", "");
-  await expect(lineBreakSettings).toBeFocused();
+  await expect(pointAndFigureSettings).toBeFocused();
 });
 
 test("keeps mouse and trackpad chart zoom controlled and resettable", async ({ page }) => {
