@@ -1,5 +1,6 @@
 import type { Candle } from "@saltanatbotv2/contracts";
 import type { BacktestExecutionEvent } from "./executionTrace.js";
+import { analyzePortfolioRisk, type PortfolioRiskAnalysis } from "./portfolioRisk.js";
 import type { BacktestResult, EquityPoint, Trade } from "./types.js";
 
 export interface PortfolioBacktestConfig {
@@ -100,6 +101,7 @@ export interface PortfolioBacktestResult {
   contributions: PortfolioSymbolContribution[];
   correlation: PortfolioCorrelationMatrix;
   metrics: PortfolioBacktestMetrics;
+  risk: PortfolioRiskAnalysis;
   assumptions: string[];
 }
 
@@ -234,6 +236,7 @@ export function simulatePortfolioBacktest(
     contributions: symbolContributions(symbols, allCandidates, accepted, rejected, metrics.netProfit),
     correlation: correlationMatrix(safeLegs, fromTime, toTime),
     metrics,
+    risk: analyzePortfolioRisk(curve, accepted, cfg.initialCapital),
     assumptions: [
       "Each market first produces canonical candidate fills with the same strategy and execution settings.",
       "Candidate quantities are re-scaled chronologically against one shared mark-to-market equity pool.",

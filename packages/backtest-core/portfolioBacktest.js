@@ -1,3 +1,4 @@
+import { analyzePortfolioRisk } from "./portfolioRisk.js";
 export const DEFAULT_PORTFOLIO_BACKTEST_CONFIG = Object.freeze({
     initialCapital: 10_000,
     maxConcurrentPositions: 3,
@@ -114,6 +115,7 @@ export function simulatePortfolioBacktest(legs, config = {}) {
         contributions: symbolContributions(symbols, allCandidates, accepted, rejected, metrics.netProfit),
         correlation: correlationMatrix(safeLegs, fromTime, toTime),
         metrics,
+        risk: analyzePortfolioRisk(curve, accepted, cfg.initialCapital),
         assumptions: [
             "Each market first produces canonical candidate fills with the same strategy and execution settings.",
             "Candidate quantities are re-scaled chronologically against one shared mark-to-market equity pool.",

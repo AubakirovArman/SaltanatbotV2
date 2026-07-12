@@ -16,6 +16,8 @@ This is the execution ledger. It records what is proven complete, what is active
 - [x] Replay candidate fills chronologically through one mark-to-market equity pool.
 - [x] Enforce concurrent-position, total gross-exposure, per-position and minimum-allocation limits.
 - [x] Report accepted/rejected entries, funding, exposure, contribution and synchronized return correlation.
+- [x] Measure historical VaR/expected shortfall, Ulcer Index, recovery duration and allocation concentration.
+- [x] Run a deterministic, CPU-bounded moving-block bootstrap over shared-equity returns.
 - [x] Export a versioned research file and disclose the market-local signal-equity limitation of v1.
 - [x] Provide typed EN/RU/KK controls and semantic report tables.
 

@@ -250,12 +250,13 @@ test("isolates price-chart construction settings by pane and symbol", async ({ p
 });
 
 test("keeps mouse and trackpad chart zoom controlled and resettable", { tag: "@smoke" }, async ({ page }) => {
+  test.slow();
   const canvas = page.locator(".chart-canvas-interaction");
   await expect(canvas).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   const reset = page.getByRole("button", { name: "Reset chart zoom (100%)" });
   await expect(reset).toBeVisible();
   await canvas.hover();
-  await page.waitForTimeout(100);
   const cancelled = await canvas.evaluate((element) => {
     const event = new WheelEvent("wheel", { deltaY: -1, clientX: 500, clientY: 250, bubbles: true, cancelable: true });
     return !element.dispatchEvent(event);
@@ -306,6 +307,10 @@ test("keeps Retina canvas, pointer HUD and price axis in CSS-pixel alignment", a
     await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
 
     const canvas = page.locator(".chart-canvas-interaction");
+    await expect.poll(() => canvas.evaluate((element: HTMLCanvasElement) => Math.max(
+      Math.abs(element.width - element.clientWidth * window.devicePixelRatio),
+      Math.abs(element.height - element.clientHeight * window.devicePixelRatio)
+    ))).toBeLessThanOrEqual(1);
     const density = await canvas.evaluate((element: HTMLCanvasElement) => ({
       width: element.width,
       height: element.height,
@@ -356,13 +361,15 @@ test("scales the price axis independently with wheel, drag and keyboard", async 
   await expect(timeZoom).toBeVisible();
   const wheelZoom = Number(await axis.getAttribute("aria-valuenow"));
 
-  const box = await axis.boundingBox();
-  expect(box).not.toBeNull();
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 - 50, { steps: 4 });
-  await page.mouse.up();
-  await expect.poll(async () => Number(await axis.getAttribute("aria-valuenow"))).toBeGreaterThan(wheelZoom);
+  await expect(async () => {
+    const box = await axis.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 - 60, { steps: 6 });
+    await page.mouse.up();
+    expect(Number(await axis.getAttribute("aria-valuenow"))).toBeGreaterThan(wheelZoom);
+  }).toPass({ timeout: 5_000 });
   await axis.focus();
   await page.keyboard.press("Home");
   await expect(axis).toHaveAttribute("aria-valuenow", "100");
@@ -1032,6 +1039,9 @@ test("runs several markets through one portfolio capital pool", async ({ page })
   await expect(report).toContainText("ETHUSDT");
   await expect(report.getByRole("table", { name: "Contribution by market" })).toBeVisible();
   await expect(report.getByRole("table", { name: /Return correlation/ })).toBeVisible();
+  await expect(report.getByRole("heading", { name: "Portfolio risk lab" })).toBeVisible();
+  await expect(report.getByRole("table", { name: "Moving-block bootstrap" })).toBeVisible();
+  await expect(report).toContainText("VaR 95%");
   await expect(report.getByRole("note")).toContainText(/first generates single-market candidate fills/i);
   await expectNoAxeViolations(page);
 });

@@ -8,6 +8,7 @@ Runtime-neutral historical trading primitives shared independently of the React 
 - slippage, stop/target resolution and hit detection;
 - position sizing, leverage/quantity guardrails and open/close accounting;
 - chronological multi-symbol candidate replay through one mark-to-market capital pool, with concurrent/gross/position allocation limits, per-market contribution and correlation analytics;
+- historical tail-loss/concentration analytics and deterministic bounded moving-block portfolio bootstrap;
 - exhaustive StrategyIR warm-up analysis;
 - evaluator context and bounded variable traces;
 - deterministic performance and risk metrics.

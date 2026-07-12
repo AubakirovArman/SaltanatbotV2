@@ -1088,6 +1088,61 @@
 .report-table-scroll { max-inline-size: 100%; overflow: auto; }
 .portfolio-report details > summary { cursor: pointer; font-weight: 700; }
 
+.portfolio-risk-lab {
+  display: grid;
+  gap: 9px;
+  padding: 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.portfolio-risk-lab > header {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.portfolio-risk-lab > header svg { flex: 0 0 auto; color: var(--accent); }
+.portfolio-risk-lab :is(h4, h5, p) { margin: 0; }
+.portfolio-risk-lab h4 { font-size: var(--fs-md); }
+.portfolio-risk-lab h5 { font-size: var(--fs-sm); }
+.portfolio-risk-lab p { color: var(--muted); font-size: var(--fs-xs); line-height: 1.45; }
+.portfolio-risk-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.portfolio-risk-metrics dt,
+.portfolio-risk-probabilities dt { color: var(--dim); font-size: var(--fs-xs); }
+.portfolio-risk-metrics dd,
+.portfolio-risk-probabilities dd { margin: 0; color: var(--text); font: 600 var(--fs-sm) var(--font-mono); }
+
+.portfolio-risk-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 9px;
+}
+
+.portfolio-risk-columns > div {
+  min-inline-size: 0;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  overflow-x: auto;
+}
+
+.portfolio-risk-probabilities {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--line-soft);
+}
+
+.portfolio-risk-lab details p { padding-block-start: 6px; max-inline-size: 80ch; }
+
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

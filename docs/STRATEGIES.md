@@ -179,6 +179,15 @@ The portfolio report includes its equity curve, drawdown, peak exposure, accepte
 entries, funding, per-market contribution and a synchronized-return correlation matrix. Its JSON
 export uses a versioned `saltanat-portfolio-backtest-report` envelope.
 
+The embedded risk lab measures historical 95%/99% Value at Risk and expected shortfall from
+shared-equity period returns, the worst period, Ulcer Index, longest underwater recovery and
+allocation concentration by accepted notional. It also runs 1,000 deterministic moving-block
+bootstrap paths. Resampling contiguous return blocks retains short volatility clusters better than
+independently shuffling trades; histories above the bounded observation budget are compounded into
+adjacent buckets before simulation. The report exposes P5/P50/P95 profit and drawdown, probability
+of loss, 50% capital loss and ruin. These are robustness estimates, not forecasts or guaranteed loss
+limits.
+
 This first version deliberately replays fills produced by canonical single-market backtests and
 re-sizes their quantities without changing fill prices or exit reasons. A signal that reads strategy
 equity therefore reads its market-local backtest equity, not the shared portfolio equity. The UI and

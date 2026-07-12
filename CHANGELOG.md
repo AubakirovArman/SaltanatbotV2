@@ -10,6 +10,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 - Added a Strategy Studio portfolio mode that runs one compiled strategy across two to six selected markets over their common historical range.
 - Replays canonical market-level candidate fills chronologically through one mark-to-market capital pool with maximum concurrent-position, gross-exposure, per-position and minimum-partial-allocation limits.
 - Added portfolio equity, drawdown, exposure, funding, rejected-entry, per-market contribution and return-correlation reporting with a versioned JSON export.
+- Added a deterministic portfolio risk lab with historical VaR/expected shortfall, Ulcer Index, recovery duration, allocation concentration and a bounded moving-block bootstrap that preserves short volatility clusters.
+- Raised only the aggregate JavaScript gzip ceiling from 480 KiB to 484 KiB for the measured reusable risk engine and localized lazy report; initial-shell and per-file limits remain unchanged.
 - States the v1 research boundary in the interface and documentation: fills are generated per market first and then re-sized, so signals that read strategy equity remain market-local.
 - Added complete EN/RU/KK controls and report terminology plus core, orchestration, semantic-rendering and production-browser coverage.
 - Raised only the measured aggregate JavaScript gzip ceiling from 473 KiB to 480 KiB and CSS from 17 KiB to 18 KiB for the lazy portfolio controls, report tables and chart; initial-shell and per-file JavaScript limits are unchanged.

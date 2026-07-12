@@ -19,18 +19,24 @@ const result = {
   ],
   correlation: { symbols: ["BTCUSDT", "ETHUSDT"], values: [[1, 0.5], [0.5, 1]], averagePairwise: 0.5 },
   metrics: { netProfit: 100, netProfitPct: 1, finalEquity: 10_100, totalCandidates: 1, acceptedTrades: 1, rejectedTrades: 0, excludedCandidates: 0, wins: 1, winRate: 100, profitFactor: Infinity, maxDrawdown: 0, maxDrawdownPct: 0, sharpe: 1, timeInMarketPct: 50, peakGrossExposurePct: 50, maxConcurrentPositions: 1, fundingPaid: 0 },
+  risk: {
+    historical: { observations: 1, lossProbabilityPct: 0, valueAtRisk95Pct: 0, expectedShortfall95Pct: 0, valueAtRisk99Pct: 0, expectedShortfall99Pct: 0, worstPeriodPct: 0, ulcerIndex: 0, longestRecoveryPeriods: 0 },
+    concentration: { largestSymbol: "BTCUSDT", largestAllocationPct: 100, effectiveSymbols: 1, herfindahlIndex: 1, allocations: [{ symbol: "BTCUSDT", allocatedNotional: 100, sharePct: 100 }] },
+    monteCarlo: null
+  },
   assumptions: []
 } satisfies PortfolioBacktestResult;
 
 describe("PortfolioBacktestReport", () => {
   it.each([
-    ["en", "Portfolio backtest", "Contribution by market"],
-    ["ru", "Портфельный бэктест", "Вклад по рынкам"],
-    ["kk", "Портфель бэктесті", "Нарықтар бойынша үлес"]
-  ] as const)("renders semantic tables and the v1 caveat in %s", (locale, title, caption) => {
+    ["en", "Portfolio backtest", "Contribution by market", "Portfolio risk lab"],
+    ["ru", "Портфельный бэктест", "Вклад по рынкам", "Лаборатория риска портфеля"],
+    ["kk", "Портфель бэктесті", "Нарықтар бойынша үлес", "Портфель тәуекел зертханасы"]
+  ] as const)("renders semantic tables, risk and the v1 caveat in %s", (locale, title, caption, riskTitle) => {
     const html = renderToStaticMarkup(<PortfolioBacktestReport locale={locale} result={result} />);
     expect(html).toContain(`<h3 id="portfolio-report-title">${title}</h3>`);
     expect(html).toContain(`<caption>${caption}</caption>`);
+    expect(html).toContain(riskTitle);
     expect(html).toContain("role=\"note\"");
     expect(html).toContain("<svg");
     expect(html).toContain("BTCUSDT");
