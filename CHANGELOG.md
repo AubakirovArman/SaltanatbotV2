@@ -7,6 +7,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Precision chart experience
 
+- Added a one-click Anchored VWAP drawing with cumulative bar-based typical-price weighting, a translucent ±1σ value area, ±1σ/±2σ lines, editable anchors and symbol-scoped persistence through the existing drawing system.
+- Added a synchronized semantic AVWAP legend and fail-closed history handling: a saved anchor never silently restarts from incomplete loaded candles.
 - Added an opt-out UTC session-liquidity map with bar-based session VWAP and volume-weighted ±1σ bands, session open/high/low, authoritative previous-day high/low from daily exchange candles and confirmed wick-and-reclaim sweep markers.
 - Integrated the analysis into the existing dirty overlay pass and paired it with a keyboard-operable toggle plus a synchronized semantic DOM summary; live-tail candles cannot emit confirmed sweeps.
 - Added a persisted in-chart microstructure alert center for stacked imbalance, provisional absorption, CVD spikes and configurable large prints, with bounded deduplication, dismiss/clear controls, optional sound and opt-in desktop notifications.

@@ -5,6 +5,8 @@ import {
   type PixelPoint
 } from "../drawings";
 import type { DraftDrawing, PlotArea, Viewport } from "../types";
+import type { AnchoredVwapSeries } from "../anchoredVwap";
+import { drawAnchoredVwap } from "./anchoredVwap";
 
 interface DrawOptions {
   draft?: DraftDrawing;
@@ -17,6 +19,7 @@ export function drawDrawings(
   ctx: CanvasRenderingContext2D,
   viewport: Viewport,
   drawings: DrawingObject[],
+  anchoredVwaps: AnchoredVwapSeries,
   options: DrawOptions
 ) {
   ctx.save();
@@ -24,7 +27,7 @@ export function drawDrawings(
     if (drawing.hidden) return;
     const selected = drawing.id === options.selectedId;
     const hovered = drawing.id === options.hoveredId;
-    drawShape(ctx, viewport, drawing, options.decimals, selected, hovered);
+    drawShape(ctx, viewport, drawing, anchoredVwaps, options.decimals, selected, hovered);
   });
 
   if (options.draft) {
@@ -39,6 +42,7 @@ export function drawDrawings(
           points,
           style: { color: "rgba(255,255,255,0.85)", width: 1.4, dashed: true, levels: [...DEFAULT_FIB_LEVELS] }
         },
+        anchoredVwaps,
         options.decimals,
         false,
         false
@@ -52,6 +56,7 @@ function drawShape(
   ctx: CanvasRenderingContext2D,
   viewport: Viewport,
   drawing: DrawingObject,
+  anchoredVwaps: AnchoredVwapSeries,
   decimals: number,
   selected: boolean,
   hovered: boolean
@@ -99,6 +104,9 @@ function drawShape(
       break;
     case "measure":
       if (pts.length >= 2) measure(ctx, viewport, pts, drawing, decimals);
+      break;
+    case "anchored-vwap":
+      drawAnchoredVwap(ctx, viewport, drawing, anchoredVwaps[drawing.id] ?? [], decimals, selected || hovered);
       break;
   }
   ctx.setLineDash([]);

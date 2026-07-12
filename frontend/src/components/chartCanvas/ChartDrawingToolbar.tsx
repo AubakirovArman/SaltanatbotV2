@@ -1,4 +1,4 @@
-import { Activity, BarChart3, BookOpen, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, TrendingDown, TrendingUp, Trash2 } from "lucide-react";
+import { Activity, Anchor as AnchorIcon, BarChart3, BookOpen, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, TrendingDown, TrendingUp, Trash2 } from "lucide-react";
 import type { DrawingTool } from "../../chart/drawings";
 import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
@@ -71,6 +71,9 @@ export function ChartDrawingToolbar({
       </Tool>
       <Tool active={tool === "fib"} label={t("fibonacci")} onClick={() => onTool("fib")}>
         <Ratio size={15} aria-hidden="true" />
+      </Tool>
+      <Tool active={tool === "anchored-vwap"} label={t("anchoredVwap")} onClick={() => onTool("anchored-vwap")}>
+        <AnchorIcon size={15} aria-hidden="true" />
       </Tool>
       <Tool active={tool === "long"} label={t("longPosition")} onClick={() => onTool("long")}>
         <TrendingUp size={15} aria-hidden="true" className="ic-up" />

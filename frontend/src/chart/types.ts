@@ -2,6 +2,7 @@ import type { Candle, ChartType, Timeframe } from "../types";
 import type { Anchor, DrawingObject } from "./drawings";
 import type { IndicatorConfig } from "./indicatorTypes";
 import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
+import type { AnchoredVwapSeries } from "./anchoredVwap";
 
 export interface PlotArea {
   left: number;
@@ -107,6 +108,8 @@ export interface DrawChartOptions {
   showVolumeProfile?: boolean;
   /** UTC session VWAP, previous-day levels and confirmed sweep context. */
   sessionLiquidity?: SessionLiquiditySnapshot;
+  /** Prepared drawing-study points, kept out of Canvas renderers. */
+  anchoredVwapSeries?: AnchoredVwapSeries;
   /** Symbols overlaid on the price pane, normalized to % change (Compare). */
   compare?: CompareSeries[];
   /** The base chart's symbol — labels the base line in the compare legend. */

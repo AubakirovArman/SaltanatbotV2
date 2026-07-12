@@ -57,6 +57,12 @@ Flow alert trading journal-ға жазылмайды, Telegram-ға жібері
 VWAP әр OHLCV candle-дың жалпы volume-ымен өлшенген `(high + low + close) / 3` typical price арқылы есептеледі. Бұл deterministic **bar-based estimate**, tick-VWAP емес: candle ішіндегі volume таралуы ойдан жасалмайды. Volume нөл болса, VWAP және band көрсетілмейді.
 
 `PDH SWEEP` жабылған candle previous-day high-тан wick жасап, төменде жабылғанда; `PDL SWEEP` previous-day low-дан төмен түсіп, қайта жоғарыда жабылғанда пайда болады. Ағымдағы жабылмаған candle confirmed marker жасамайды. Sweep — context, жеке entry signal емес.
+
+## Anchored VWAP
+
+Сол жақ rail-дегі **Anchored VWAP** құралы candle үстінен бір click арқылы жасалады. Таңдалған уақыттан соңғы loaded candle-ға дейін cumulative VWAP, translucent ±1σ value area және ±1σ/±2σ сызықтары салынады. Anchor кәдімгі drawing object болғандықтан оны move, hide, lock, duplicate, style, undo жасауға және ағымдағы symbol drawings-імен бірге сақтауға болады.
+
+Есептеу OHLCV volume-мен өлшенген `(high + low + close) / 3` typical price қолданады. Бұл tick-VWAP емес, bar-based AVWAP; timeframe ауысқанда жаңа interval candle-дары бойынша қайта есептеледі. Reload-тан кейін сақталған anchor loaded history-ден ескі болса, есеп бірінші қолжетімді candle-дан жалған басталмайды: бастапқы range жүктелгенше DOM legend `—` көрсетеді. Legend anchor уақытын, ағымдағы AVWAP және σ мәнін Canvas-тан бөлек береді.
 - **Қосу** мәзірі кірістірілген және пайдаланушы индикаторларын басқарады.
 - **Салыстыру** үш символға дейін қосады.
 - `Ctrl+K` (`⌘K`) command palette ашады; `Enter` орындайды, `Esc` жабады.

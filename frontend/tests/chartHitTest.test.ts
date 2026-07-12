@@ -62,4 +62,10 @@ describe("chart drawing hit testing", () => {
     const x = (viewport.timeToX(candles[1].time) + viewport.timeToX(candles[4].time)) / 2;
     expect(hitTest(viewport, [position], x, viewport.priceToY(103))).toEqual({ id: "position", part: "body" });
   });
+
+  it("selects an anchored VWAP from its vertical anchor guide", () => {
+    const avwap = drawing({ id: "avwap", tool: "anchored-vwap", points: [{ time: candles[2].time, price: 102 }] });
+    const x = viewport.timeToX(candles[2].time);
+    expect(hitTest(viewport, [avwap], x, plot.top + 40)).toEqual({ id: "avwap", part: "body" });
+  });
 });

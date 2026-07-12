@@ -12,13 +12,14 @@ import { ChartDataPanel } from "./ChartDataPanel";
 import { CompareControl } from "./CompareControl";
 import { DrawingObjectsPanel } from "./DrawingObjectsPanel";
 import { ChartDrawingToolbar } from "./chartCanvas/ChartDrawingToolbar";
+import { AnchoredVwapLegend } from "./chartCanvas/AnchoredVwapLegend";
 import { OrderBookHeatmapLayer } from "./chartCanvas/OrderBookHeatmapLayer";
 import { SessionLiquidityBadge, useSessionLiquidity } from "./chartCanvas/SessionLiquidityLayer";
 import { TradeFootprintLayer } from "./chartCanvas/TradeFootprintLayer";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
 import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
-import { clampIndex, formatVolume, moveDrawing, sameLegend, sameVolumeProfile, snapAnchor } from "./chartCanvas/drawingInteraction";
+import { clampIndex, formatVolume, moveDrawing, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
 
 const MAX_COMPARE = 3;
@@ -407,6 +408,7 @@ export function ChartCanvas({
         />
         <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
         <SessionLiquidityBadge state={sessionLiquidity} decimals={instrument.decimals} locale={locale} />
+        <AnchoredVwapLegend drawings={drawings} candles={candles} decimals={instrument.decimals} locale={locale} />
         <TradeFootprintLayer enabled={showTradeFootprint && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} candles={candles} viewportRef={viewportRef} renderKey={heatmapRenderKey} />
         <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />
         <canvas ref={overlaysCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-overlays" aria-hidden="true" />
@@ -421,7 +423,7 @@ export function ChartCanvas({
             const { x, y } = devicePoint(event);
 
             if (tool !== "cursor") {
-              const anchor = snapAnchor(viewport, candles, x, y, magnet);
+              const anchor = snapDrawingAnchor(tool, viewport, candles, x, y, magnet);
               const committed = draft && draft.tool === tool ? [...draft.points, anchor] : [anchor];
               if (committed.length >= TOOL_POINT_COUNT[tool]) {
                 const object = createDrawing(tool, committed);

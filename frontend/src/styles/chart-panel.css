@@ -186,6 +186,8 @@
   text-align: start;
 }
 
+.drawing-object-list .drawing-object-name small { color: var(--text); }
+
 .drawing-objects-empty {
   padding: 10px;
   color: var(--dim);
@@ -242,8 +244,13 @@
   padding: 8px 0;
   border-inline-end: 1px solid var(--line);
   background: var(--panel);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
 }
+
+.tool-rail::-webkit-scrollbar { display: none; }
 
 .tool-rail button {
   display: inline-grid;
@@ -509,6 +516,29 @@
 .session-liquidity-values { display: grid; gap: 2px; padding: 4px 6px 6px; border-block-start: 1px solid var(--line-soft); }
 .session-liquidity-values b { color: var(--text); font-weight: 600; }
 .session-liquidity-values small { color: var(--muted); }
+
+.anchored-vwap-legend {
+  position: absolute;
+  inset-block-start: 99px;
+  inset-inline-end: 230px;
+  z-index: 7;
+  min-inline-size: 196px;
+  padding: 5px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chart-bg) 93%, transparent);
+  box-shadow: 0 4px 18px color-mix(in srgb, #000 20%, transparent);
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.anchored-vwap-legend > strong { color: var(--accent); font-size: var(--fs-xs); }
+.anchored-vwap-legend ul { display: grid; gap: 2px; margin: 4px 0 0; padding: 4px 0 0; border-block-start: 1px solid var(--line-soft); list-style: none; }
+.anchored-vwap-legend li { display: grid; grid-template-columns: 1fr auto auto; gap: 7px; }
+.anchored-vwap-legend li b { color: var(--text); font-weight: 600; }
+.anchored-vwap-legend li small { color: var(--muted); }
 
 .trade-footprint-layer {
   position: absolute;

@@ -37,6 +37,7 @@ import { toHeikinAshi } from "./heikinAshi";
 import { computePlot, priceScale, visibleCandles } from "./scales";
 import { buildViewport, medianBarTime } from "./viewport";
 import { buildVolumeProfile } from "./volumeProfile";
+import { calculateDrawingAvwaps } from "./anchoredVwap";
 import type { ChartShapes, DrawChartOptions, PlotArea, PriceMode, PriceScale, Viewport } from "./types";
 
 let theme = {
@@ -241,14 +242,14 @@ export function drawChartIndicators(ctx: CanvasRenderingContext2D, plan: ChartRe
 export function drawChartOverlays(ctx: CanvasRenderingContext2D, plan: ChartRenderPlan, clear = true) {
   const {
     width, height, decimals, candles, drawings, draftDrawing, signals, trades, shapes, alerts, livePositions,
-    selectedDrawingId, hoveredDrawingId, sessionLiquidity
+    selectedDrawingId, hoveredDrawingId, sessionLiquidity, anchoredVwapSeries
   } = plan.input;
   if (clear) ctx.clearRect(0, 0, width, height);
   if (plan.empty) return;
   if (sessionLiquidity) drawSessionLiquidity(ctx, sessionLiquidity, plan.viewport, theme);
   // Strategy shading sits UNDER the user's own drawings so it never obscures them.
   if (shapes && (shapes.boxes.length > 0 || shapes.vlines.length > 0 || shapes.rays.length > 0)) drawShapes(ctx, plan.viewport, shapes);
-  drawDrawings(ctx, plan.viewport, drawings, {
+  drawDrawings(ctx, plan.viewport, drawings, anchoredVwapSeries ?? {}, {
     draft: draftDrawing,
     selectedId: selectedDrawingId,
     hoveredId: hoveredDrawingId,
@@ -265,7 +266,7 @@ export function drawChartOverlays(ctx: CanvasRenderingContext2D, plan: ChartRend
 /** Backward-compatible single-canvas facade. */
 export function drawChart(options: DrawChartOptions) {
   const { ctx, ...input } = options;
-  const plan = prepareChartRender(input);
+  const plan = prepareChartRender({ ...input, anchoredVwapSeries: input.anchoredVwapSeries ?? calculateDrawingAvwaps(input.candles, input.drawings) });
   drawChartBackground(ctx, plan);
   drawChartPrimary(ctx, plan, false);
   drawChartIndicators(ctx, plan, false);

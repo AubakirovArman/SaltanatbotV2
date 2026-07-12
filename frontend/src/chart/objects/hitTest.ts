@@ -67,6 +67,8 @@ function bodyHit(viewport: Viewport, drawing: DrawingObject, x: number, y: numbe
       return x >= pts[0].x - LINE_TOLERANCE && Math.abs(y - pts[0].y) <= LINE_TOLERANCE;
     case "vline":
       return Math.abs(x - pts[0].x) <= LINE_TOLERANCE;
+    case "anchored-vwap":
+      return Math.abs(x - pts[0].x) <= LINE_TOLERANCE && y >= plot.top && y <= plot.bottom;
     case "rectangle":
       return pts.length >= 2 && insideRect(x, y, pts[0], pts[1], 6);
     case "fib":

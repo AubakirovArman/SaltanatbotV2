@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Candle, ChartType } from "../types";
 import type { DrawingObject } from "./drawings";
 import type { IndicatorConfig } from "./indicatorTypes";
@@ -29,6 +29,7 @@ import type {
   VolumeProfileSnapshot
 } from "./types";
 import type { SessionLiquiditySnapshot } from "./sessionLiquidity";
+import { calculateDrawingAvwaps, type AnchoredVwapSeries } from "./anchoredVwap";
 
 interface UseChartRendererOptions {
   candles: Candle[];
@@ -57,6 +58,7 @@ interface UseChartRendererOptions {
 }
 
 export function useChartRenderer(options: UseChartRendererOptions) {
+  const anchoredVwaps = useMemo(() => calculateDrawingAvwaps(options.candles, options.drawings), [options.candles, options.drawings]);
   const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const primaryCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const indicatorsCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -127,7 +129,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
       const ctx = indicatorsCanvas.getContext("2d");
       if (plan && ctx) drawChartIndicators(ctx, plan);
     });
-    schedulerRef.current?.schedule("overlays", () => drawOverlays(overlaysCanvas, renderPlanRef.current, options));
+    schedulerRef.current?.schedule("overlays", () => drawOverlays(overlaysCanvas, renderPlanRef.current, options, anchoredVwaps));
     schedulerRef.current?.schedule("interaction", () => drawInteraction(interactionCanvas, viewportRef.current, options));
   }, [options.candles, options.chartType, options.indicators, options.decimals, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, renderRevision]);
 
@@ -138,8 +140,8 @@ export function useChartRenderer(options: UseChartRendererOptions) {
 
   useEffect(() => {
     const canvas = overlaysCanvasRef.current;
-    if (canvas) schedulerRef.current?.schedule("overlays", () => drawOverlays(canvas, renderPlanRef.current, options));
-  }, [options.draftDrawing, options.drawings, options.hoveredDrawingId, options.selectedDrawingId, options.signals, options.trades, options.plots, options.shapes, options.alerts, options.livePositions, options.sessionLiquidity]);
+    if (canvas) schedulerRef.current?.schedule("overlays", () => drawOverlays(canvas, renderPlanRef.current, options, anchoredVwaps));
+  }, [options.draftDrawing, options.drawings, options.hoveredDrawingId, options.selectedDrawingId, options.signals, options.trades, options.plots, options.shapes, options.alerts, options.livePositions, options.sessionLiquidity, anchoredVwaps]);
 
   useEffect(() => {
     const canvas = interactionCanvasRef.current;
@@ -184,7 +186,7 @@ function drawPrimary(
   }));
 }
 
-function drawOverlays(canvas: HTMLCanvasElement, plan: ChartRenderPlan | undefined, options: UseChartRendererOptions) {
+function drawOverlays(canvas: HTMLCanvasElement, plan: ChartRenderPlan | undefined, options: UseChartRendererOptions, anchoredVwapSeries: AnchoredVwapSeries) {
   const ctx = canvas.getContext("2d");
   if (plan && ctx) drawChartOverlays(ctx, withChartRenderInput(plan, {
     drawings: options.drawings,
@@ -197,7 +199,8 @@ function drawOverlays(canvas: HTMLCanvasElement, plan: ChartRenderPlan | undefin
     shapes: options.shapes,
     alerts: options.alerts,
     livePositions: options.livePositions,
-    sessionLiquidity: options.sessionLiquidity
+    sessionLiquidity: options.sessionLiquidity,
+    anchoredVwapSeries
   }));
 }
 

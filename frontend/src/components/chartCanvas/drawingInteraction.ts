@@ -1,4 +1,4 @@
-import { anchorFromPixel, type Anchor, type DrawingObject } from "../../chart/drawings";
+import { anchorFromPixel, type Anchor, type DrawingObject, type DrawingTool } from "../../chart/drawings";
 import type { CompareLegendSnapshot, Viewport, VolumeProfileSnapshot } from "../../chart/types";
 import type { Candle } from "../../types";
 
@@ -20,6 +20,13 @@ export function snapAnchor(viewport: Viewport, candles: Candle[], x: number, y: 
     }
   }
   return { time, price: bestDist <= 14 ? best : base.price };
+}
+
+export function snapDrawingAnchor(tool: DrawingTool, viewport: Viewport, candles: Candle[], x: number, y: number, magnet: boolean) {
+  const anchor = snapAnchor(viewport, candles, x, y, magnet);
+  if (tool !== "anchored-vwap") return anchor;
+  const candle = candles[clampIndex(Math.round(viewport.xToIndex(x)), candles.length)];
+  return candle ? { time: candle.time, price: (candle.high + candle.low + candle.close) / 3 } : anchor;
 }
 
 export function moveDrawing(drawing: DrawingObject, part: number | "body", next: Anchor, dt: number, dp: number): DrawingObject {

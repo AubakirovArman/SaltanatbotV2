@@ -35,6 +35,23 @@ test("shows and toggles the semantic UTC session liquidity map", async ({ page }
   await expect(page.locator(".session-liquidity-values")).toBeHidden();
 });
 
+test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
+  await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+  const tool = page.getByRole("button", { name: "Anchored VWAP", exact: true });
+  await tool.click();
+  await expect(tool).toHaveAttribute("aria-pressed", "true");
+  await page.locator(".chart-canvas-interaction").click({ position: { x: 420, y: 260 } });
+  const legend = page.getByRole("complementary", { name: "Anchored VWAP" });
+  await expect(legend).toContainText(/AVWAP.*σ/);
+  await page.getByRole("button", { name: "Drawing object tree" }).click();
+  await expect(page.locator(".drawing-object-list")).toContainText("Anchored VWAP");
+  await expectNoAxeViolations(page);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("mf:drawings:BTCUSDT") ?? "[]").some((drawing: { tool?: string }) => drawing.tool === "anchored-vwap"))).toBe(true);
+  await page.reload();
+  await expect(page.getByRole("complementary", { name: "Anchored VWAP" })).toBeVisible({ timeout: 20_000 });
+});
+
 test("renders and pauses a mocked live order book heatmap", async ({ page }) => {
   await installOrderBookSocketMock(page);
   const toggle = page.getByRole("button", { name: "Toggle live order book heatmap" });

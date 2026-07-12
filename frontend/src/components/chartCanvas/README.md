@@ -11,6 +11,7 @@ This directory owns focused presentation and interaction helpers behind the stab
 - `OrderBookHeatmapLayer.tsx` owns the isolated real-depth Canvas and lifecycle.
 - `TradeFootprintLayer.tsx` owns the isolated public-print footprint/CVD/cluster Canvas, throttled semantic insight summary and visibility-aware stream suspension.
 - `TradeFlowAlertCenter.tsx` owns the keyboard-operable bounded event feed and native disclosure settings; it is a sibling above the interaction Canvas so controls remain clickable without raising the render layer.
+- `AnchoredVwapLegend.tsx` exposes every visible AVWAP's anchor, current value and deviation as ordinary localized DOM text.
 
 Rendering and viewport state remain in `chart/`; these components must not recalculate indicators or
 own market transport. Preserve Canvas DOM alternatives, localized labels and render-layer isolation.

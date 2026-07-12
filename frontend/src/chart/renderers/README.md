@@ -4,6 +4,8 @@ Renderers translate prepared chart models into Canvas 2D drawing commands.
 
 `footprintInsights.ts` paints precomputed imbalance outlines, boundary-aware stack brackets and offset `ABS?` markers. Detection thresholds remain in `../footprintInsights.ts`; this renderer contains no signal logic.
 
+`anchoredVwap.ts` receives already prepared cumulative points from `../anchoredVwap.ts`; it only paints the anchor guide, value area, deviation lines and latest label.
+
 ## Rules
 
 - Renderers are deterministic for the same model, viewport and palette.

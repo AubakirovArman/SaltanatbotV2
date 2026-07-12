@@ -46,7 +46,7 @@ export function DrawingObjectsPanel({ locale, drawings, selectedId, canUndo, can
         {drawings.map((drawing, index) => (
           <li key={drawing.id} className={drawing.id === selectedId ? "active" : ""}>
             <button type="button" className="drawing-object-name" onClick={() => onSelect(drawing.id)}>
-              <span>{drawing.tool}</span><small>#{index + 1}</small>
+              <span>{drawing.tool === "anchored-vwap" ? t("anchoredVwap") : drawing.tool}</span><small>#{index + 1}</small>
             </button>
             <button type="button" onClick={() => onToggleHidden(drawing.id)} aria-label={drawing.hidden ? t("showDrawing") : t("hideDrawing")}>
               {drawing.hidden ? <EyeOff size={12} aria-hidden="true" /> : <Eye size={12} aria-hidden="true" />}

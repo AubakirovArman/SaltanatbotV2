@@ -25,6 +25,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - `renderers/footprintInsights.ts`: Canvas outlines, stack brackets and `ABS?` markers; the synchronized semantic counts stay in DOM.
 - `../components/chartCanvas/TradeFootprintLayer.tsx`: isolated Canvas/WebSocket footprint and cumulative-delta layer with bounded retention and off-screen suspension.
 - `sessionLiquidity.ts` and `renderers/sessionLiquidity.ts`: pure UTC-session OHLCV/VWAP/deviation/sweep analysis and its Canvas primitives.
+- `anchoredVwap.ts` and `renderers/anchoredVwap.ts`: fail-closed cumulative AVWAP study preparation and render-only band/line geometry.
 - `../components/chartCanvas/SessionLiquidityLayer.tsx`: independently scheduled session overlay, persisted semantic toggle and authoritative PDH/PDL daily-candle request.
 - `../components/chartCanvas/ChartPriceHud.tsx`: DOM current-price/countdown pill and crosshair OHLC HUD.
 - `../components/ChartDataPanel.tsx`: bounded semantic tables for the focused OHLC candle, recent candles, strategy signals and executed trades.
@@ -47,6 +48,7 @@ The chart domain owns coordinate systems, viewport state, indicator calculations
 - Footprint insight rows are screen-price buckets and may change with zoom. They use only the post-activation observation window and must remain labelled as heuristics rather than exchange-authored signals.
 - Microstructure candidates deduplicate within one observation window, remain bounded in memory and never enter the durable price-alert, Telegram or order-execution paths.
 - Session VWAP is a volume-weighted typical-price estimate from bars, not tick VWAP. A live tail cannot produce a confirmed previous-day liquidity sweep.
+- Anchored VWAP never substitutes the earliest loaded candle for a missing saved anchor; it remains unavailable until history reaches that anchor.
 - Crosshair/drawing redraws must not recompute unchanged indicators.
 - Crosshair-only movement paints the transparent interaction canvas without clearing or repainting the base canvas.
 - Primary-series, indicator and drawing/strategy passes use separate transparent canvases and reuse one prepared viewport/indicator plan.
