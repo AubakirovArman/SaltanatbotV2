@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearPwaShareTargetLaunch, discardPwaShareTarget, loadPwaShareTarget, parsePwaShareTargetLaunch } from "../src/pwa/shareTarget";
 
-const token = "123e4567-e89b-42d3-a456-426614174000";
+const shareId = "123e4567-e89b-42d3-a456-426614174000";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -13,8 +13,8 @@ afterEach(() => {
 describe("PWA Web Share Target client", () => {
   it("accepts one strict opaque token and rejects ambiguous or malformed launches", () => {
     expect(parsePwaShareTargetLaunch("")).toEqual({ kind: "none" });
-    expect(parsePwaShareTargetLaunch(`?share=${token}`)).toEqual({ kind: "token", token });
-    expect(parsePwaShareTargetLaunch(`?share=${token}&share=${token}`)).toEqual({ kind: "error" });
+    expect(parsePwaShareTargetLaunch(`?share=${shareId}`)).toEqual({ kind: "token", token: shareId });
+    expect(parsePwaShareTargetLaunch(`?share=${shareId}&share=${shareId}`)).toEqual({ kind: "error" });
     expect(parsePwaShareTargetLaunch("?share=../../orders.json")).toEqual({ kind: "error" });
     expect(parsePwaShareTargetLaunch("?share_error=unavailable")).toEqual({ kind: "error" });
   });
@@ -36,7 +36,7 @@ describe("PWA Web Share Target client", () => {
       };
     });
 
-    const batch = await loadPwaShareTarget(token);
+    const batch = await loadPwaShareTarget(shareId);
 
     expect(batch).toMatchObject({
       source: "share_target",
@@ -44,23 +44,23 @@ describe("PWA Web Share Target client", () => {
       rejected: [{ name: "orders.json", reason: "unsupported" }]
     });
     expect(text).not.toHaveBeenCalled();
-    expect(messages).toEqual([{ type: "saltanat:share-target:load", token }]);
+    expect(messages).toEqual([{ type: "saltanat:share-target:load", token: shareId }]);
   });
 
   it("fails closed when storage is unavailable and explicitly discards reviewed payloads", async () => {
     installWorker((message) => ({ ok: message.type.endsWith(":discard") }));
 
-    expect(await loadPwaShareTarget(token)).toMatchObject({
+    expect(await loadPwaShareTarget(shareId)).toMatchObject({
       source: "share_target",
       files: [],
       rejected: [{ reason: "expired" }]
     });
-    expect(await discardPwaShareTarget(token)).toBe(true);
+    expect(await discardPwaShareTarget(shareId)).toBe(true);
     expect(await discardPwaShareTarget("invalid")).toBe(false);
   });
 
   it("removes only private share handoff parameters from the current URL", () => {
-    window.history.replaceState({ kept: true }, "", `/?view=strategy&share=${token}&other=1#section`);
+    window.history.replaceState({ kept: true }, "", `/?view=strategy&share=${shareId}&other=1#section`);
     clearPwaShareTargetLaunch();
     expect(`${window.location.pathname}${window.location.search}${window.location.hash}`).toBe("/?view=strategy&other=1#section");
     expect(window.history.state).toEqual({ kept: true });
