@@ -7,6 +7,20 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Cross-exchange arbitrage screener
 
+- Added a shared read-only WebSocket stream with bounded reconnect, hidden-tab pause and REST
+  fallback; one server cache feeds all connected viewers.
+- Added on-demand two-book depth analysis for a selected USD notional with VWAP, worst price,
+  levels consumed, slippage and fail-closed liquidity completeness.
+- Added persistent route-specific Binance/Bybit spot/perpetual taker fee profiles and a separate
+  round-trip slippage reserve.
+- Added threshold-crossing desktop alerts and authenticated best-effort Telegram forwarding with
+  cooldown-by-crossing semantics and no order path.
+- Added local two-leg paper positions whose entry uses depth VWAP and whose PnL marks spot to bid
+  and short perpetual to ask, including estimated round-trip costs.
+- Added complete EN/RU/KK UI and guide coverage plus unit/API tests for depth walking, transport,
+  fee calculation and paper accounting.
+- Raised only the measured aggregate JavaScript gzip ceiling from 532 KiB to 536 KiB for the
+  lazy-loaded depth, alert and paper models; initial-shell and per-file ceilings are unchanged.
 - Added a credential-free Binance/Bybit scanner that compares executable spot asks with perpetual
   bids on the other venue in both directions, using only common USDT markets.
 - Added gross and configurable cost-adjusted edge, top-book capacity, funding visibility, source

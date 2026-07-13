@@ -5,9 +5,11 @@ export interface ArbitrageOpportunity {
   symbol: string;
   spotExchange: ArbitrageExchange;
   futuresExchange: ArbitrageExchange;
+  spotBid: number;
   spotAsk: number;
   spotAskSize: number;
   futuresBid: number;
+  futuresAsk: number;
   futuresBidSize: number;
   grossSpreadBps: number;
   estimatedTotalCostBps: number;
@@ -16,6 +18,17 @@ export interface ArbitrageOpportunity {
   fundingRate: number;
   nextFundingTime?: number;
   capturedAt: number;
+}
+
+export interface ArbitrageDepthLeg {
+  exchange: ArbitrageExchange; market: "spot" | "perpetual"; side: "buy" | "sell";
+  requestedNotionalUsd: number; filledNotionalUsd: number; quantity: number; averagePrice: number;
+  worstPrice: number; topPrice: number; slippageBps: number; levelsUsed: number; complete: boolean; capturedAt: number;
+}
+
+export interface ArbitrageDepthResponse {
+  symbol: string; requestedNotionalUsd: number; spot: ArbitrageDepthLeg; perpetual: ArbitrageDepthLeg;
+  grossSpreadBps: number; complete: boolean; capturedAt: number;
 }
 
 export interface ArbitrageScanResponse {
@@ -35,6 +48,25 @@ export async function fetchArbitrageScan(costBps: number, signal?: AbortSignal):
     throw new Error(body.error ?? `Arbitrage API ${response.status}`);
   }
   return parseArbitrageScan(await response.json());
+}
+
+export async function fetchArbitrageDepth(row: Pick<ArbitrageOpportunity, "symbol" | "spotExchange" | "futuresExchange">, notionalUsd: number, signal?: AbortSignal): Promise<ArbitrageDepthResponse> {
+  const query = new URLSearchParams({ symbol: row.symbol, spotExchange: row.spotExchange, futuresExchange: row.futuresExchange, notionalUsd: String(notionalUsd) });
+  const response = await fetch(`/api/arbitrage/depth?${query}`, { signal });
+  if (!response.ok) { const body = await response.json().catch(() => ({})) as { error?: string }; throw new Error(body.error ?? `Arbitrage depth API ${response.status}`); }
+  return parseArbitrageDepth(await response.json());
+}
+
+export function createArbitrageSocket(): WebSocket {
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  return new WebSocket(`${protocol}://${window.location.host}/arbitrage-stream`);
+}
+
+export function parseArbitrageStreamMessage(value: unknown): { type: "snapshot"; data: ArbitrageScanResponse } | { type: "error"; message: string } {
+  const input = record(value, "arbitrage stream message");
+  if (input.type === "arbitrage_snapshot") return { type: "snapshot", data: parseArbitrageScan(input.data) };
+  if (input.type === "arbitrage_error") return { type: "error", message: string(input.message, "message") };
+  throw new Error("Unsupported arbitrage stream message");
 }
 
 export function parseArbitrageScan(value: unknown): ArbitrageScanResponse {
@@ -63,8 +95,9 @@ function opportunity(value: unknown, index: number): ArbitrageOpportunity {
     id: string(row.id, "id"), symbol: string(row.symbol, "symbol"),
     spotExchange: exchangeId(row.spotExchange, "spotExchange"),
     futuresExchange: exchangeId(row.futuresExchange, "futuresExchange"),
+    spotBid: finite(row.spotBid, "spotBid"),
     spotAsk: finite(row.spotAsk, "spotAsk"), spotAskSize: finite(row.spotAskSize, "spotAskSize"),
-    futuresBid: finite(row.futuresBid, "futuresBid"), futuresBidSize: finite(row.futuresBidSize, "futuresBidSize"),
+    futuresBid: finite(row.futuresBid, "futuresBid"), futuresAsk: finite(row.futuresAsk, "futuresAsk"), futuresBidSize: finite(row.futuresBidSize, "futuresBidSize"),
     grossSpreadBps: finite(row.grossSpreadBps, "grossSpreadBps"),
     estimatedTotalCostBps: finite(row.estimatedTotalCostBps, "estimatedTotalCostBps"),
     netEdgeBps: finite(row.netEdgeBps, "netEdgeBps"),
@@ -72,6 +105,30 @@ function opportunity(value: unknown, index: number): ArbitrageOpportunity {
     fundingRate: finite(row.fundingRate, "fundingRate"),
     nextFundingTime: row.nextFundingTime === undefined ? undefined : finite(row.nextFundingTime, "nextFundingTime"),
     capturedAt: finite(row.capturedAt, "capturedAt")
+  };
+}
+
+export function parseArbitrageDepth(value: unknown): ArbitrageDepthResponse {
+  const input = record(value, "arbitrage depth response");
+  return {
+    symbol: string(input.symbol, "symbol"), requestedNotionalUsd: finite(input.requestedNotionalUsd, "requestedNotionalUsd"),
+    spot: depthLeg(input.spot, "spot"), perpetual: depthLeg(input.perpetual, "perpetual"),
+    grossSpreadBps: finite(input.grossSpreadBps, "grossSpreadBps"), complete: boolean(input.complete, "complete"), capturedAt: finite(input.capturedAt, "capturedAt")
+  };
+}
+
+function depthLeg(value: unknown, label: string): ArbitrageDepthLeg {
+  const row = record(value, label);
+  const market = string(row.market, `${label}.market`);
+  const side = string(row.side, `${label}.side`);
+  if (market !== "spot" && market !== "perpetual") throw new Error(`${label}.market is unsupported`);
+  if (side !== "buy" && side !== "sell") throw new Error(`${label}.side is unsupported`);
+  return {
+    exchange: exchangeId(row.exchange, `${label}.exchange`), market, side,
+    requestedNotionalUsd: finite(row.requestedNotionalUsd, `${label}.requestedNotionalUsd`), filledNotionalUsd: finite(row.filledNotionalUsd, `${label}.filledNotionalUsd`),
+    quantity: finite(row.quantity, `${label}.quantity`), averagePrice: finite(row.averagePrice, `${label}.averagePrice`), worstPrice: finite(row.worstPrice, `${label}.worstPrice`),
+    topPrice: finite(row.topPrice, `${label}.topPrice`), slippageBps: finite(row.slippageBps, `${label}.slippageBps`), levelsUsed: finite(row.levelsUsed, `${label}.levelsUsed`),
+    complete: boolean(row.complete, `${label}.complete`), capturedAt: finite(row.capturedAt, `${label}.capturedAt`)
   };
 }
 

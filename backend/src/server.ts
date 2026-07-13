@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
 import { getAuthToken, isDemoMode, verifyWsToken, wasAuthTokenGeneratedThisRun } from "./auth.js";
-import { createArbitrageHandler } from "./arbitrage/routes.js";
+import { createArbitrageDepthHandler, createArbitrageHandler } from "./arbitrage/routes.js";
+import { ArbitrageScannerService } from "./arbitrage/service.js";
+import { ArbitrageStreamHub } from "./arbitrage/stream.js";
 import { findInstrument, getCatalog, initCatalog } from "./market/catalog.js";
 import { timeframes } from "./market/timeframes.js";
 import { OrderBookHub } from "./orderbook/hub.js";
@@ -27,9 +29,12 @@ const wss = new WebSocketServer({ noServer: true });
 const quoteWss = new WebSocketServer({ noServer: true });
 const orderBookWss = new WebSocketServer({ noServer: true });
 const tradeFlowWss = new WebSocketServer({ noServer: true });
+const arbitrageWss = new WebSocketServer({ noServer: true });
 const orderBookHub = new OrderBookHub();
 const tradeFlowHub = new TradeFlowHub();
 const trading = createTradingApi(provider);
+const arbitrageScanner = new ArbitrageScannerService();
+const arbitrageStream = new ArbitrageStreamHub(arbitrageWss, arbitrageScanner);
 
 // CORS: same-origin needs nothing (the SPA is served by this app). Allow an
 // explicit allowlist for cross-origin dev/proxy setups via ALLOWED_ORIGINS.
@@ -89,7 +94,8 @@ app.get("/api/catalog", (_request, response) => {
   response.json(getCatalog());
 });
 
-app.get("/api/arbitrage", createArbitrageHandler());
+app.get("/api/arbitrage", createArbitrageHandler(arbitrageScanner));
+app.get("/api/arbitrage/depth", createArbitrageDepthHandler());
 
 app.get("/api/candles", async (request, response) => {
   const parsed = candleQuery.safeParse(request.query);
@@ -184,6 +190,9 @@ server.on("upgrade", (request, socket, head) => {
   } else if (url.pathname === "/trade-flow") {
     // Public read-only exchange prints; one shared upstream serves all viewers.
     tradeFlowWss.handleUpgrade(request, socket, head, (client) => tradeFlowWss.emit("connection", client, request));
+  } else if (url.pathname === "/arbitrage-stream") {
+    // Public read-only cross-venue snapshots; no account data or order path.
+    arbitrageWss.handleUpgrade(request, socket, head, (client) => arbitrageWss.emit("connection", client, request));
   } else if (url.pathname === "/trade-stream") {
     // Trade events can reveal positions/PnL — require the access token.
     if (!verifyWsToken(url, request.headers["sec-websocket-protocol"])) {
@@ -441,6 +450,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     // Preserve desired status so running bots resume on the next start.
     trading.telegramControl.stop();
     trading.engine.shutdown();
+    arbitrageStream.close();
     server.close(() => process.exit(0));
   });
 }

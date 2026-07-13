@@ -1665,6 +1665,14 @@ test("shows Bybit UTA collateral risk and requires explicit debt confirmations",
 
 test("filters executable cross-exchange arbitrage routes without placing orders", { tag: "@smoke" }, async ({ page }) => {
   await page.route("**/api/arbitrage**", async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith("/depth")) {
+      await route.fulfill({ json: {
+        symbol: "BTCUSDT", requestedNotionalUsd: 10000, grossSpreadBps: 150, complete: true, capturedAt: Date.now(),
+        spot: { exchange: "binance", market: "spot", side: "buy", requestedNotionalUsd: 10000, filledNotionalUsd: 10000, quantity: 0.1, averagePrice: 100000, worstPrice: 100000, topPrice: 100000, slippageBps: 0, levelsUsed: 1, complete: true, capturedAt: Date.now() },
+        perpetual: { exchange: "bybit", market: "perpetual", side: "sell", requestedNotionalUsd: 10000, filledNotionalUsd: 10000, quantity: 0.098522, averagePrice: 101500, worstPrice: 101500, topPrice: 101500, slippageBps: 0, levelsUsed: 1, complete: true, capturedAt: Date.now() }
+      } });
+      return;
+    }
     await route.fulfill({ json: {
       updatedAt: Date.now(), stale: false, scannedSymbols: 2, estimatedTotalCostBps: 30,
       sources: [
@@ -1674,16 +1682,25 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
         { exchange: "bybit", market: "perpetual", ok: true }
       ],
       opportunities: [
-        { id: "BTCUSDT:binance:bybit", symbol: "BTCUSDT", spotExchange: "binance", futuresExchange: "bybit", spotAsk: 100000, spotAskSize: 1, futuresBid: 101500, futuresBidSize: 0.5, grossSpreadBps: 150, estimatedTotalCostBps: 30, netEdgeBps: 120, topBookCapacityUsd: 50750, fundingRate: 0.0001, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() },
-        { id: "ETHUSDT:bybit:binance", symbol: "ETHUSDT", spotExchange: "bybit", futuresExchange: "binance", spotAsk: 4000, spotAskSize: 0.2, futuresBid: 4020, futuresBidSize: 0.2, grossSpreadBps: 50, estimatedTotalCostBps: 30, netEdgeBps: 20, topBookCapacityUsd: 800, fundingRate: -0.00005, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() }
+        { id: "BTCUSDT:binance:bybit", symbol: "BTCUSDT", spotExchange: "binance", futuresExchange: "bybit", spotBid: 99900, spotAsk: 100000, spotAskSize: 1, futuresBid: 101500, futuresAsk: 101600, futuresBidSize: 0.5, grossSpreadBps: 150, estimatedTotalCostBps: 30, netEdgeBps: 120, topBookCapacityUsd: 50750, fundingRate: 0.0001, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() },
+        { id: "ETHUSDT:bybit:binance", symbol: "ETHUSDT", spotExchange: "bybit", futuresExchange: "binance", spotBid: 3999, spotAsk: 4000, spotAskSize: 0.2, futuresBid: 4020, futuresAsk: 4021, futuresBidSize: 0.2, grossSpreadBps: 50, estimatedTotalCostBps: 30, netEdgeBps: 20, topBookCapacityUsd: 800, fundingRate: -0.00005, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() }
       ]
     } });
   });
 
   await page.getByLabel("Workspace mode").getByRole("button", { name: "Screener", exact: true }).click();
   const table = page.getByRole("table", { name: "Executable cross-exchange spot/perpetual routes" });
-  await expect(table.getByRole("row").filter({ hasText: "BTCUSDT" })).toBeVisible();
+  const btcRow = table.getByRole("row").filter({ hasText: "BTCUSDT" });
+  await expect(btcRow).toBeVisible();
   await expect(table.getByRole("row").filter({ hasText: "ETHUSDT" })).toBeHidden();
+  await btcRow.getByRole("button", { name: "Analyze order-book depth for BTCUSDT" }).click();
+  await expect(table.getByText("Depth estimate for $10,000")).toBeVisible();
+  await expect(table.getByText("Both legs have enough visible depth")).toBeVisible();
+  await btcRow.getByRole("button", { name: "Open paper two-leg position for BTCUSDT" }).click();
+  const paper = page.getByRole("region", { name: "Paper arbitrage positions" });
+  await expect(paper).toContainText("BTCUSDT");
+  await paper.getByRole("button", { name: "Close paper" }).click();
+  await expect(paper).toContainText("Closed");
   await page.getByLabel("Minimum top-book capacity").fill("0");
   await page.getByLabel("Search pair").fill("ETH");
   const ethRow = table.getByRole("row").filter({ hasText: "ETHUSDT" });

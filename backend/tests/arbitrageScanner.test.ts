@@ -1,7 +1,8 @@
 import express from "express";
 import type { Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { createArbitrageHandler } from "../src/arbitrage/routes.js";
+import { ArbitrageDepthService, walkDepth } from "../src/arbitrage/depth.js";
+import { createArbitrageDepthHandler, createArbitrageHandler } from "../src/arbitrage/routes.js";
 import { ArbitrageScannerService } from "../src/arbitrage/service.js";
 
 afterEach(() => {
@@ -21,8 +22,10 @@ describe("cross-exchange arbitrage scanner", () => {
       id: "BTCUSDT:binance:bybit",
       spotExchange: "binance",
       futuresExchange: "bybit",
+      spotBid: 99,
       spotAsk: 100,
       futuresBid: 103,
+      futuresAsk: 104,
       grossSpreadBps: 300,
       netEdgeBps: 270,
       topBookCapacityUsd: 309,
@@ -100,6 +103,48 @@ describe("cross-exchange arbitrage scanner", () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it("walks multiple order-book levels and reports incomplete liquidity", () => {
+    const buy = walkDepth("binance", "spot", "buy", [[100, 1], [101, 2]], 250, 1_000);
+    const sell = walkDepth("bybit", "perpetual", "sell", [[103, 1]], 250, 1_000);
+    expect(buy.complete).toBe(true);
+    expect(buy.levelsUsed).toBe(2);
+    expect(buy.averagePrice).toBeGreaterThan(100);
+    expect(buy.slippageBps).toBeGreaterThan(0);
+    expect(sell.complete).toBe(false);
+    expect(sell.filledNotionalUsd).toBe(103);
+  });
+
+  it("exposes validated two-leg depth analysis", async () => {
+    let depthFetches = 0;
+    const service = new ArbitrageDepthService({
+      now: () => 2_000,
+      fetch: async (input) => {
+        depthFetches += 1;
+        const url = String(input);
+        if (url.includes("api/v3/depth")) return json({ asks: [["100", "2"]], bids: [["99", "2"]] });
+        if (url.includes("category=linear")) return json({ retCode: 0, retMsg: "OK", result: { b: [["103", "2"]], a: [["104", "2"]], ts: 2_000 } });
+        throw new Error(`Unexpected URL: ${url}`);
+      }
+    });
+    const app = express();
+    app.get("/api/arbitrage/depth", createArbitrageDepthHandler(service));
+    const server = await listen(app);
+    const address = server.address();
+    const base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/api/arbitrage/depth`;
+    try {
+      const valid = await fetch(`${base}?symbol=BTCUSDT&spotExchange=binance&futuresExchange=bybit&notionalUsd=100`);
+      const body = await valid.json() as { complete: boolean; grossSpreadBps: number; spot: { averagePrice: number } };
+      expect(valid.status).toBe(200);
+      expect(body.complete).toBe(true);
+      expect(body.spot.averagePrice).toBe(100);
+      expect(body.grossSpreadBps).toBe(300);
+      expect((await fetch(`${base}?symbol=BTCUSDT&spotExchange=binance&futuresExchange=bybit&notionalUsd=50`)).status).toBe(200);
+      expect(depthFetches).toBe(2);
+      expect((await fetch(`${base}?symbol=BTCUSDT&spotExchange=binance&futuresExchange=binance&notionalUsd=100`)).status).toBe(400);
+      expect((await fetch(`${base}?symbol=BTCUSDT&spotExchange=binance&futuresExchange=bybit&notionalUsd=1`)).status).toBe(400);
+    } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
   });
 });
 

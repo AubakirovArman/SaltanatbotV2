@@ -288,6 +288,8 @@ export const getOrderEvents = (id: string, orderId: string) =>
 /** Deliver a triggered price alert through the server notification channel (Telegram). */
 export const notifyAlert = (payload: { symbol: string; price: number; direction: "above" | "below"; hitPrice?: number }) =>
   req<{ ok: boolean }>("/notify-alert", { method: "POST", body: JSON.stringify(payload) });
+export const notifyArbitrageAlert = (payload: { symbol: string; spotExchange: "binance" | "bybit"; futuresExchange: "binance" | "bybit"; netEdgeBps: number; minimumNetEdgeBps: number }) =>
+  req<{ ok: boolean }>("/notify-arbitrage", { method: "POST", body: JSON.stringify(payload) });
 export const getKeys = () => req<{ binance: boolean; bybit: boolean }>("/keys");
 export const saveKeys = (exchange: ExchangeId, apiKey: string, apiSecret: string) =>
   req("/keys", { method: "POST", body: JSON.stringify({ exchange, apiKey, apiSecret }) });

@@ -9,6 +9,7 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | Method | Path | Access | Source |
 | --- | --- | --- | --- |
 | `GET` | `/api/arbitrage` | Public | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/depth` | Public | `backend/src/server.ts` |
 | `GET` | `/api/candles` | Public | `backend/src/server.ts` |
 | `GET` | `/api/catalog` | Public | `backend/src/server.ts` |
 | `GET` | `/api/health` | Public | `backend/src/server.ts` |
@@ -39,6 +40,7 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `GET` | `/api/trade/notify` | Authenticated · admin | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/notify` | Authenticated · admin | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/notify-alert` | Authenticated · paper-trade | `backend/src/trading/routes.ts` |
+| `POST` | `/api/trade/notify-arbitrage` | Authenticated · paper-trade | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/notify/test` | Authenticated · admin | `backend/src/trading/routes.ts` |
 | `GET` | `/api/trade/portfolio` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
 | `DELETE` | `/api/trade/session` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
@@ -55,6 +57,7 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `/quotes` | Public | Multiplexed watchlist quote snapshots and updates |
 | `/orderbook` | Public | Shared Binance/Bybit order-book snapshots and status |
 | `/trade-flow` | Public | Shared Binance/Bybit aggressor-trade batches and status |
+| `/arbitrage-stream` | Public | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **38 HTTP endpoints** and **5 WebSocket endpoints**.
+Generated totals: **40 HTTP endpoints** and **6 WebSocket endpoints**.
