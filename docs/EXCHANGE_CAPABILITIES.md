@@ -12,6 +12,7 @@ remains **Experimental** and disarmed by default.
 | Binance inverse | No | No | No | No | No | Unsupported |
 | Bybit spot | Yes | Yes | Adapter commands only | No protected strategy-entry guarantee | Linear stream is not a spot guarantee | Experimental; explicit inventory override |
 | Bybit USDT linear | Yes | Yes | Trigger orders / trading stop | Acknowledgement required; emergency close on rejection | v5 order/execution + REST polling fallback | Experimental |
+| Bybit UTA cross collateral | Account snapshot + explicit collateral switch | Manual variable-rate borrow | No-conversion repay by default | IMR/MMR, funded-collateral and 80% borrow-usage guards | Signed V5 account APIs + audit log | Explicit bot opt-in; HTTPS required for UI mutations |
 | Bybit inverse | No | No | No | No | No | Unsupported |
 
 Private execution normalization preserves venue execution ID, cumulative and

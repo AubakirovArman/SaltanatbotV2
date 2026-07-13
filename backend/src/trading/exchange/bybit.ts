@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import type {
   AccountState,
   ExchangeAdapter,
@@ -10,11 +9,11 @@ import type {
   PositionState
 } from "../types.js";
 import type { ExchangeKeys } from "./binance.js";
+import { BybitV5Client } from "./bybitClient.js";
 import { bybitFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
-import { ExchangeTransportError, isAmbiguousExchangeError } from "./errors.js";
+import { isAmbiguousExchangeError } from "./errors.js";
 import { normalizeBybitOrderStatus } from "./orderStatus.js";
 import { subscribeBybitOrders } from "./privateOrderStreams.js";
-import { getExchangeRequestGuard } from "./requestGuard.js";
 
 /**
  * Bybit adapter (v5 unified API). `linear` category for USDT futures, `spot`
@@ -24,8 +23,7 @@ export class BybitAdapter implements ExchangeAdapter {
   readonly id = "bybit" as const;
   readonly market: MarketType;
   private readonly base = "https://api.bybit.com";
-  private readonly recvWindow = "5000";
-  private readonly requestGuard = getExchangeRequestGuard("bybit");
+  private readonly client: BybitV5Client;
 
   constructor(
     private readonly botId: string,
@@ -33,6 +31,7 @@ export class BybitAdapter implements ExchangeAdapter {
     market: MarketType
   ) {
     this.market = market;
+    this.client = new BybitV5Client(keys);
   }
 
   private get category() {
@@ -47,9 +46,7 @@ export class BybitAdapter implements ExchangeAdapter {
   }
 
   async account(): Promise<AccountState> {
-    const data = (await this.signed("GET", "/v5/account/wallet-balance", { accountType: "UNIFIED" })) as {
-      result: { list: Array<{ totalEquity: string; totalAvailableBalance: string }> };
-    };
+    const data = await this.signed<{ list: Array<{ totalEquity: string; totalAvailableBalance: string }> }>("GET", "/v5/account/wallet-balance", { accountType: "UNIFIED" });
     const row = data.result.list[0];
     const equity = Number(row?.totalEquity ?? 0);
     return { balance: Number(row?.totalAvailableBalance ?? equity), equity, currency: "USDT" };
@@ -290,50 +287,8 @@ export class BybitAdapter implements ExchangeAdapter {
     return this.signed("POST", "/v5/position/trading-stop", params);
   }
 
-  private async signed(method: "GET" | "POST", path: string, params: Record<string, unknown>): Promise<any> {
-    if (!this.keys.apiKey || !this.keys.apiSecret) throw new Error("Bybit API keys are not set");
-    this.requestGuard.assertAvailable();
-    const timestamp = String(Date.now());
-    let url = `${this.base}${path}`;
-    let body = "";
-    let payload = "";
-    if (method === "GET") {
-      const qs = new URLSearchParams(params as Record<string, string>).toString();
-      payload = qs;
-      url += `?${qs}`;
-    } else {
-      body = JSON.stringify(params);
-      payload = body;
-    }
-    const sign = createHmac("sha256", this.keys.apiSecret)
-      .update(timestamp + this.keys.apiKey + this.recvWindow + payload)
-      .digest("hex");
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method,
-        headers: {
-          "X-BAPI-API-KEY": this.keys.apiKey,
-          "X-BAPI-TIMESTAMP": timestamp,
-          "X-BAPI-RECV-WINDOW": this.recvWindow,
-          "X-BAPI-SIGN": sign,
-          "Content-Type": "application/json"
-        },
-        body: method === "POST" ? body : undefined
-      });
-    } catch (error) {
-      throw new ExchangeTransportError(`Bybit transport failed: ${error instanceof Error ? error.message : error}`, method !== "GET", { cause: error });
-    }
-    this.requestGuard.observeHttpResponse(res);
-    if (!res.ok) {
-      const message = `Bybit HTTP ${res.status}: ${await res.text()}`;
-      if (method !== "GET" && res.status >= 500) throw new ExchangeTransportError(message, true);
-      throw new Error(message);
-    }
-    const json = (await res.json()) as { retCode: number; retMsg: string };
-    this.requestGuard.detectClockSkew(json.retCode, json.retMsg, res.headers?.get?.("date") ?? null);
-    if (json.retCode !== 0) throw new Error(`Bybit: ${json.retMsg}`);
-    return json;
+  private signed<T = any>(method: "GET" | "POST", path: string, params: Record<string, unknown>): Promise<{ result: T }> {
+    return this.client.request<T>(method, path, params);
   }
 }
 

@@ -1,5 +1,5 @@
 import { AlertTriangle, KeyRound, XOctagon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { Locale } from "../../i18n";
 import { tradingSaveKeys, tradingText } from "../../i18n/trading";
 import {
@@ -15,6 +15,8 @@ import {
   type ExchangeId,
   type NotifyStatus
 } from "../tradeClient";
+
+const BybitUtaPanel = lazy(() => import("./bybit-uta/BybitUtaPanel").then((module) => ({ default: module.BybitUtaPanel })));
 
 export function TradingSettings({ locale }: { locale: Locale }) {
   const [keys, setKeys] = useState({ binance: false, bybit: false });
@@ -71,6 +73,15 @@ export function TradingSettings({ locale }: { locale: Locale }) {
       <p className="settings-note">{tradingText(locale, "keysSecurityNote")}</p>
       <ExchangeKeyForm exchange="binance" configured={keys.binance} locale={locale} onSaved={() => getKeys().then(setKeys)} />
       <ExchangeKeyForm exchange="bybit" configured={keys.bybit} locale={locale} onSaved={() => getKeys().then(setKeys)} />
+
+      <Suspense fallback={<p className="settings-note">{tradingText(locale, "checkingAccess")}</p>}>
+        <BybitUtaPanel
+          locale={locale}
+          configured={keys.bybit}
+          demo={settings?.demo ?? false}
+          liveArmed={settings?.liveTradingEnabled ?? false}
+        />
+      </Suspense>
 
       <div className="panel-header"><strong>{tradingText(locale, "notifications")}</strong></div>
       <TelegramForm status={notifyStatus} locale={locale} onSaved={() => getNotify().then(setNotifyStatus)} />

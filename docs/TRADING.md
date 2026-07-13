@@ -224,11 +224,23 @@ Before a live bot resumes after process restart, the engine sequentially queries
 ### 4.2 Bybit (`exchange/bybit.ts`)
 
 - **Markets:** v5 unified API. `linear` category for USDT futures, `spot` for spot.
-- **Signing:** `signed()` builds an **HMAC-SHA256** signature over `timestamp + apiKey + recvWindow + payload` (query string for GET, JSON body for POST) and sends `X-BAPI-API-KEY`, `X-BAPI-TIMESTAMP`, `X-BAPI-RECV-WINDOW`, and `X-BAPI-SIGN` headers with `recvWindow=5000`. A non-zero `retCode` in the response is raised as an error.
+- **Signing:** execution and account operations share `exchange/bybitClient.ts`; it builds an **HMAC-SHA256** signature over `timestamp + apiKey + recvWindow + payload` (query string for GET, JSON body for POST) and sends `X-BAPI-API-KEY`, `X-BAPI-TIMESTAMP`, `X-BAPI-RECV-WINDOW`, and `X-BAPI-SIGN` headers with `recvWindow=5000`. A non-zero `retCode` is raised as an error.
 - **Orders:** `Market`/`Limit`, with `triggerPrice` + `triggerDirection` for conditionals. `close`/`flatten`/`turnover` read the live position first; `cancel*` uses `order/cancel-all`.
 - **Set:** on futures, `LEVERAGE` (`set-leverage`), `ISOLATEDMARGIN` (`switch-isolated`), and `DUALSIDE` (`switch-mode`); ignored on spot.
 
-### 4.3 The strategy-driven path
+### 4.3 Bybit UTA cross collateral and manual debt
+
+The Trade settings screen reads Bybit Unified Trading Account margin and debt without flattening the account into one balance. It shows account IMR/MMR, initial and maintenance margin, per-coin wallet/equity/USD value, spot versus derivatives liability, accrued interest, hourly variable rate, borrowing quota/usage, collateral switches and platform collateral restrictions.
+
+Mutations are deliberately separated:
+
+- `POST /bybit/uta/borrow` creates only a manually confirmed variable-rate loan. Live trading must be armed; the server rejects isolated margin, missing funded collateral, unavailable coins, account MMR at or above 50%, and projected borrowing usage above 80%.
+- `POST /bybit/uta/repay` uses Bybit's no-conversion repayment by default. Allowing Bybit to convert collateral requires a separate second confirmation because it can sell collateral and charge a conversion fee.
+- `POST /bybit/uta/collateral` explicitly changes a supported coin's collateral switch. USDT/USDC are exchange-managed and cannot be toggled here.
+
+A Bybit futures bot only enters this mode when **Use Bybit UTA cross collateral** is selected. Start then requires a Unified Trading Account, a funded enabled collateral asset and a passing risk snapshot. Strategy code cannot request a loan: borrow and repay remain operator-only admin actions, CSRF-protected and audit logged. The browser disables all UTA mutations on insecure public HTTP; configure HTTPS before using this surface.
+
+### 4.4 The strategy-driven path
 
 Beyond manual commands, a running strategy emits entry/exit intents on each closed bar (`onClosedBar()`). Paper entries and live entries with trailing protection keep stop/target management inside the engine (`onTick()`). Live futures entries with fixed stop or target request exchange-side protection so it survives a process/network failure. The adapter must explicitly confirm every requested protection order; otherwise it performs a best-effort emergency close and returns a failed result. Position sizing follows the bot's `sizeMode` when the strategy does not specify a size.
 

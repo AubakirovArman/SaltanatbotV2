@@ -226,11 +226,18 @@
 }
 
 /* ---- create form ---- */
+.trade-form {
+  max-inline-size: 520px;
+}
+
 .trade-form,
 .trade-settings {
-  max-inline-size: 520px;
   display: grid;
   gap: 10px;
+}
+
+.trade-settings {
+  max-inline-size: 920px;
 }
 
 .trade-form label,
@@ -887,6 +894,234 @@
   border: 1px solid color-mix(in srgb, var(--up) 35%, transparent);
   border-radius: 999px;
   padding: 1px 7px;
+}
+
+/* ---- Bybit Unified Trading Account ---- */
+.uta-panel {
+  display: grid;
+  gap: 10px;
+  min-inline-size: 0;
+  padding-block: 4px 12px;
+}
+
+.uta-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.uta-panel-header strong,
+.uta-notice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.uta-notice {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.uta-notice.danger,
+.uta-confirm-row.danger {
+  border-color: color-mix(in srgb, var(--down) 45%, var(--line));
+  color: var(--down);
+}
+
+.uta-notice.success {
+  border-color: color-mix(in srgb, var(--up) 45%, var(--line));
+  color: var(--up);
+}
+
+.uta-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.uta-metric {
+  min-inline-size: 0;
+  padding: 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.uta-metric dt {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+}
+
+.uta-metric dd {
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uta-metric.safe { border-color: color-mix(in srgb, var(--up) 40%, var(--line)); }
+.uta-metric.warning { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.uta-metric.critical { border-color: color-mix(in srgb, var(--down) 50%, var(--line)); }
+.uta-metric.safe dd { color: var(--up); }
+.uta-metric.warning dd { color: var(--warn); }
+.uta-metric.critical dd { color: var(--down); }
+
+.uta-risk-reasons {
+  margin: 0;
+  padding: 9px 10px 9px 28px;
+  border-inline-start: 3px solid var(--down);
+  background: color-mix(in srgb, var(--down) 7%, transparent);
+  color: var(--muted);
+}
+
+.uta-table-wrap {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+.uta-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.uta-table caption {
+  padding: 9px;
+  color: var(--text);
+  font-weight: 700;
+  text-align: start;
+}
+
+.uta-table th,
+.uta-table td {
+  padding: 7px 9px;
+  border-block-start: 1px solid var(--line-soft);
+  text-align: end;
+  white-space: nowrap;
+}
+
+.uta-table th:first-child,
+.uta-table td:first-child {
+  text-align: start;
+}
+
+.uta-table thead th {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+}
+
+.uta-collateral-toggle {
+  min-block-size: 28px;
+  padding-inline: 9px;
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.uta-collateral-toggle.active {
+  border-color: color-mix(in srgb, var(--up) 45%, var(--line));
+  color: var(--up);
+}
+
+.uta-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.uta-action-card {
+  min-inline-size: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.uta-action-card fieldset {
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 11px;
+  border: 0;
+}
+
+.uta-action-card legend {
+  padding: 0;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.uta-action-card label:not(.check-row) {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+}
+
+.uta-action-card input:not([type="checkbox"]),
+.uta-action-card select {
+  block-size: var(--ctl-h);
+  inline-size: 100%;
+  padding-inline: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.uta-input-row {
+  display: grid;
+  grid-template-columns: auto minmax(70px, 0.7fr) auto minmax(100px, 1.3fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.uta-confirm-row {
+  align-items: flex-start;
+  padding: 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+.uta-history {
+  display: grid;
+  gap: 6px;
+  max-inline-size: 100%;
+  overflow-x: auto;
+}
+
+.uta-updated {
+  color: var(--dim);
+  text-align: end;
+}
+
+.uta-opt-in {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+@media (max-width: 780px) {
+  .uta-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .uta-action-grid { grid-template-columns: 1fr; }
+  .uta-input-row { grid-template-columns: auto 1fr; }
 }
 
 .status-dot.stopped span {

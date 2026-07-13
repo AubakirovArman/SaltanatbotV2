@@ -17,6 +17,7 @@ export interface TradingBot {
   sizeMode: "quote" | "base" | "equity_pct" | "risk_pct";
   sizeValue: number;
   leverage: number;
+  bybitCrossCollateral?: boolean;
   notifyMarkers: boolean;
   status: BotStatus;
   createdAt: number;
@@ -135,6 +136,53 @@ export interface NotifyStatus {
   vk: { enabled: boolean; peerId: string; hasToken: boolean };
 }
 
+export interface BybitUtaAsset {
+  coin: string;
+  equity: number;
+  usdValue: number;
+  walletBalance: number;
+  borrowAmount: number;
+  spotBorrow: number;
+  derivativesBorrow: number;
+  accruedInterest: number;
+  unrealisedPnl: number;
+  marginCollateral: boolean;
+  collateralEnabled: boolean;
+  collateralRestriction: "unknown" | "none" | "near_limit" | "restricted";
+  hourlyBorrowRate: number;
+  maxBorrowingAmount: number;
+  availableToBorrow: number;
+  borrowUsageRate: number;
+  borrowable: boolean;
+}
+
+export interface BybitUtaSnapshot {
+  updatedAt: number;
+  account: {
+    unifiedMarginStatus: number;
+    marginMode: "ISOLATED_MARGIN" | "REGULAR_MARGIN" | "PORTFOLIO_MARGIN" | "UNKNOWN";
+    totalEquity: number;
+    totalWalletBalance: number;
+    totalMarginBalance: number;
+    totalAvailableBalance: number;
+    totalPerpUpl: number;
+    totalInitialMargin: number;
+    totalMaintenanceMargin: number;
+    accountImRate: number;
+    accountMmRate: number;
+  };
+  assets: BybitUtaAsset[];
+  borrowHistory: Array<{ coin: string; createdAt: number; borrowAmount: number; interestBearingAmount: number; hourlyBorrowRate: number; borrowCost: number; freeBorrowedAmount: number }>;
+  risk: { level: "safe" | "warning" | "critical"; entryAllowed: boolean; reasons: string[]; maxBorrowUsageRate: number };
+  limits: { maxBorrowUsageRate: number; maxAccountMmRate: number };
+}
+
+export interface BybitUtaActionResult {
+  ok: true;
+  status: "processing" | "success";
+  snapshot: BybitUtaSnapshot;
+}
+
 const BASE = "/api/trade";
 const TOKEN_KEY = "sbv2:token";
 const SESSION_KEY = "sbv2:session";
@@ -243,6 +291,13 @@ export const notifyAlert = (payload: { symbol: string; price: number; direction:
 export const getKeys = () => req<{ binance: boolean; bybit: boolean }>("/keys");
 export const saveKeys = (exchange: ExchangeId, apiKey: string, apiSecret: string) =>
   req("/keys", { method: "POST", body: JSON.stringify({ exchange, apiKey, apiSecret }) });
+export const getBybitUta = () => req<{ configured: boolean; snapshot?: BybitUtaSnapshot }>("/bybit/uta");
+export const borrowBybitUta = (coin: string, amount: number) =>
+  req<BybitUtaActionResult>("/bybit/uta/borrow", { method: "POST", body: JSON.stringify({ coin, amount, confirm: true }) });
+export const repayBybitUta = (input: { coin: string; amount?: number; repaymentType: "ALL" | "FIXED" | "FLEXIBLE"; convertCollateral: boolean; confirmConversion?: boolean }) =>
+  req<BybitUtaActionResult>("/bybit/uta/repay", { method: "POST", body: JSON.stringify({ ...input, confirm: true }) });
+export const setBybitCollateral = (coin: string, enabled: boolean) =>
+  req<BybitUtaActionResult>("/bybit/uta/collateral", { method: "POST", body: JSON.stringify({ coin, enabled, confirm: true }) });
 export const getNotify = () => req<NotifyStatus>("/notify");
 export const saveNotify = (config: unknown) => req("/notify", { method: "POST", body: JSON.stringify(config) });
 export const testNotify = () => req<{ ok: boolean; message: string }>("/notify/test", { method: "POST" });

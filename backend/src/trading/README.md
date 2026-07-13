@@ -12,6 +12,7 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - `enginePortfolio.ts`: cross-bot account aggregation without double counting.
 - `engineOrderCoordinator.ts`: private streams, polling fallback, idempotent execution ingestion and restart reconciliation.
 - `engineRisk.ts`: pure position-sizing and stop/target resolution.
+- `bybitUta.ts`: normalized Unified Trading Account collateral/debt snapshot, hard borrow guards and explicit borrow/repay/collateral mutations.
 - `spotInventory.ts`: versioned bot-attributed live-spot inventory and close constraints.
 - `orderLifecycle.ts`: durable intent/result/fill transitions around exchange I/O.
 - `orderEventIngest.ts`: venue/client identity resolution and idempotent snapshot ingest shared by polling and private streams.

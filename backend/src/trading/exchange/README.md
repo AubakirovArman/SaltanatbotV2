@@ -12,6 +12,7 @@ This folder implements the `ExchangeAdapter` boundary for paper, Binance and Byb
 - `paper.ts`: deterministic local balance, position and resting-order simulator.
 - `binance.ts`: Binance Spot and USDⓈ-M signed REST adapter.
 - `bybit.ts`: Bybit v5 Spot and Linear signed REST adapter.
+- `bybitClient.ts`: shared Bybit v5 signing, transport ambiguity and request-budget boundary used by execution and UTA account services.
 - `filters.ts`: venue filter loading, caching and deterministic tick/step rounding.
 - `orderStatus.ts`: venue-status normalization into the durable journal state machine.
 - `errors.ts`: explicit ambiguous transport-error classification.

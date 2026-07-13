@@ -149,6 +149,19 @@ describe("trading API E2E (real router, in-memory store)", () => {
       body: JSON.stringify(validBody({ exchange: "binance", market: "futures" })),
     });
     expect(paperLiveRes.status).toBe(403);
+
+    const readOnlyUta = await fetch(base + "/bybit/uta", { headers: { cookie: readOnlyCookie } });
+    expect(readOnlyUta.status).toBe(403);
+  });
+
+  it("keeps Bybit UTA mutations closed until keys and live arm are configured", async () => {
+    const status = await get("/bybit/uta");
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual({ configured: false });
+
+    const borrow = await post("/bybit/uta/borrow", { coin: "USDT", amount: 100, confirm: true });
+    expect(borrow.status).toBe(409);
+    expect((await borrow.json()).error).toMatch(/keys are not configured/i);
   });
 
   it("creates a paper bot with valid IR and lists it", async () => {
@@ -159,6 +172,13 @@ describe("trading API E2E (real router, in-memory store)", () => {
     expect(bot.status).toBe("stopped");
     const list = await (await get("/bots")).json();
     expect(list.bots.some((b: { id: string }) => b.id === bot.id)).toBe(true);
+  });
+
+  it("persists explicit Bybit cross-collateral opt-in only for Bybit futures", async () => {
+    const live = await (await post("/bots", validBody({ exchange: "bybit", market: "futures", bybitCrossCollateral: true }))).json();
+    expect(live.bot.bybitCrossCollateral).toBe(true);
+    const paper = await (await post("/bots", validBody({ bybitCrossCollateral: true }))).json();
+    expect(paper.bot.bybitCrossCollateral).toBe(false);
   });
 
   it("rejects IR with an unknown node kind (structural whitelist)", async () => {

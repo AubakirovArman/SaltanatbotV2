@@ -8,6 +8,9 @@ import { timeframes } from "../market/timeframes.js";
 import type { ProviderRouter } from "../providers/router.js";
 import { TradingEngine, type TradeEvent } from "./engine.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
+import { BybitV5Client } from "./exchange/bybitClient.js";
+import { BybitUtaService } from "./bybitUta.js";
+import { createBybitUtaHandlers } from "./bybitUtaRoutes.js";
 import { getNotifyConfig, notify, testNotify, type NotifyConfig } from "./notifications.js";
 import { TelegramControl } from "./telegramControl.js";
 import { deleteBot, deleteSetting, initStore, insertAuditLog, listAuditLog, listBots, listFills, listLogs, listOrderEvents, listOrderJournal, getSetting, setSetting, upsertBot } from "./store.js";
@@ -30,6 +33,7 @@ const botBodySchema = z.object({
   sizeMode: z.enum(["quote", "base", "equity_pct", "risk_pct"]).default("quote"),
   sizeValue: z.coerce.number().positive().finite().max(1_000_000_000),
   leverage: z.coerce.number().int().min(1).max(125).default(1),
+  bybitCrossCollateral: z.boolean().default(false),
   notifyMarkers: z.boolean().default(false),
   // Live-trading risk caps (0/undefined = unlimited; enforced by the engine).
   maxPositionQuote: z.coerce.number().nonnegative().finite().max(1_000_000_000).optional(),
@@ -104,6 +108,11 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
   });
 
   const liveEnabled = () => getSetting<boolean>("liveTradingEnabled") === true;
+  const uta = createBybitUtaHandlers({
+    demo: isDemoMode,
+    liveEnabled,
+    keys: () => getSetting<ExchangeKeys>("keys:bybit")
+  });
 
   router.post("/session", (req, res) => {
     const parsed = sessionBodySchema.safeParse(req.body);
@@ -211,6 +220,7 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
       sizeMode: body.sizeMode,
       sizeValue: body.sizeValue,
       leverage: body.leverage,
+      bybitCrossCollateral: body.exchange === "bybit" && body.market === "futures" && body.bybitCrossCollateral,
       notifyMarkers: body.notifyMarkers,
       maxPositionQuote: body.maxPositionQuote,
       maxDailyLossQuote: body.maxDailyLossQuote,
@@ -253,6 +263,13 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
       }
     }
     try {
+      if (bot.exchange === "bybit" && bot.market === "futures" && bot.bybitCrossCollateral) {
+        const snapshot = await bybitUta().snapshot();
+        if (!snapshot.risk.entryAllowed) throw new Error(`Bybit UTA risk guard blocked start: ${snapshot.risk.reasons.join("; ")}`);
+        if (!snapshot.assets.some((asset) => asset.collateralEnabled && asset.usdValue > 0)) {
+          throw new Error("Bybit cross-collateral mode requires a funded collateral asset to be enabled.");
+        }
+      }
       const override = (req.body as { override?: boolean })?.override === true;
       await engine.start(bot, { override });
       res.json({ ok: true, bot: withStatus(bot) });
@@ -366,6 +383,12 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
     res.json({ ok: true });
   });
 
+  // ---- Bybit Unified Trading Account collateral + manual debt ----
+  router.get("/bybit/uta", requireRole("admin"), uta.status);
+  router.post("/bybit/uta/borrow", requireRole("admin"), uta.borrow);
+  router.post("/bybit/uta/repay", requireRole("admin"), uta.repay);
+  router.post("/bybit/uta/collateral", requireRole("admin"), uta.collateral);
+
   // ---- notifications ----
   router.get("/notify", requireRole("admin"), (_req, res) => {
     const config = getNotifyConfig();
@@ -442,6 +465,12 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
 function hasKeys(exchange: ExchangeId): boolean {
   const keys = getSetting<ExchangeKeys>(`keys:${exchange}`);
   return !!(keys?.apiKey && keys.apiSecret);
+}
+
+function bybitUta(): BybitUtaService {
+  const keys = getSetting<ExchangeKeys>("keys:bybit");
+  if (!keys?.apiKey || !keys.apiSecret) throw new Error("Bybit API keys are not configured.");
+  return new BybitUtaService(new BybitV5Client(keys));
 }
 
 function requireRole(required: AuthRole) {

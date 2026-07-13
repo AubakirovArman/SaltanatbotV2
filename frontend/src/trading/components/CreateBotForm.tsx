@@ -25,6 +25,7 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
   const [sizeMode, setSizeMode] = useState<TradingBot["sizeMode"]>("quote");
   const [sizeValue, setSizeValue] = useState(100);
   const [leverage, setLeverage] = useState(3);
+  const [bybitCrossCollateral, setBybitCrossCollateral] = useState(false);
   const [notifyMarkers, setNotifyMarkers] = useState(true);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -54,6 +55,7 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
         sizeMode,
         sizeValue,
         leverage,
+        bybitCrossCollateral: exchange === "bybit" && market === "futures" && bybitCrossCollateral,
         notifyMarkers
       });
       onCreated(bot);
@@ -133,6 +135,15 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
           <input name="notify-markers" type="checkbox" checked={notifyMarkers} onChange={(event) => setNotifyMarkers(event.target.checked)} />
           {tradingText(locale, "notifyMarkers")}
         </label>
+        {exchange === "bybit" && market === "futures" && (
+          <div className="uta-opt-in">
+            <label className="check-row">
+              <input name="bybit-cross-collateral" type="checkbox" checked={bybitCrossCollateral} onChange={(event) => setBybitCrossCollateral(event.target.checked)} />
+              {tradingText(locale, "bybitCrossCollateral")}
+            </label>
+            <p className="field-help">{tradingText(locale, "bybitCrossCollateralHelp")}</p>
+          </div>
+        )}
       </fieldset>
 
       {exchange !== "paper" && <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> {tradingText(locale, "realTradingWarning")}</div>}

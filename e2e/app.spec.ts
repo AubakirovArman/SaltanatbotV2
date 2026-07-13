@@ -1606,6 +1606,63 @@ test("exposes safe demo trading settings and labeled secret forms", async ({ pag
   await expect(page.getByLabel("Chat ID")).toHaveAttribute("inputmode", "numeric");
 });
 
+test("shows Bybit UTA collateral risk and requires explicit debt confirmations", { tag: "@smoke" }, async ({ page }) => {
+  const mutations: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const snapshot = bybitUtaFixture();
+  await page.route("**/api/trade/settings", async (route) => {
+    if (route.request().method() === "GET") await route.fulfill({ json: { demo: false, liveTradingEnabled: true } });
+    else await route.continue();
+  });
+  await page.route("**/api/trade/keys", async (route) => {
+    if (route.request().method() === "GET") await route.fulfill({ json: { binance: false, bybit: true } });
+    else await route.continue();
+  });
+  await page.route("**/api/trade/bybit/uta**", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      await route.fulfill({ json: { configured: true, snapshot } });
+      return;
+    }
+    mutations.push({ url: request.url(), body: request.postDataJSON() as Record<string, unknown> });
+    await route.fulfill({ json: { ok: true, status: "success", snapshot } });
+  });
+
+  const workspaceModes = page.getByLabel("Workspace mode");
+  await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();
+  await page.getByLabel("Access token").fill("e2e-local-admin-token");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+
+  const panel = page.locator(".uta-panel");
+  await expect(panel.getByText("Bybit UTA collateral & debt", { exact: true })).toBeVisible();
+  await expect(panel.getByText("$50,000.00", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("table", { name: "Collateral and liabilities" })).toContainText("BTC");
+  await expect(panel.getByRole("table", { name: "Collateral and liabilities" })).toContainText("USDT");
+
+  const borrow = panel.getByRole("group", { name: "Manual variable-rate borrow" });
+  await borrow.getByLabel("Amount").fill("25");
+  await borrow.getByLabel("I understand that interest accrues and BTC collateral can be liquidated.").check();
+  page.once("dialog", (dialog) => dialog.accept());
+  await borrow.getByRole("button", { name: "Borrow USDT" }).click();
+  await expect.poll(() => mutations.length).toBe(1);
+  expect(mutations[0]).toMatchObject({ body: { coin: "USDT", amount: 25, confirm: true } });
+
+  const repay = panel.getByRole("group", { name: "Repay liability" });
+  await repay.getByLabel("Amount").fill("10");
+  await repay.getByLabel("I confirm this repayment instruction.").check();
+  page.once("dialog", (dialog) => dialog.accept());
+  await repay.getByRole("button", { name: "Repay USDT" }).click();
+  await expect.poll(() => mutations.length).toBe(2);
+  expect(mutations[1]).toMatchObject({ body: { coin: "USDT", amount: 10, repaymentType: "FLEXIBLE", convertCollateral: false, confirm: true } });
+
+  await page.getByRole("button", { name: "New bot" }).click();
+  const botForm = page.locator("form.trade-form");
+  await botForm.locator('select[name="exchange"]').selectOption("bybit");
+  await botForm.locator('select[name="market"]').selectOption("futures");
+  await expect(page.getByLabel("Use Bybit UTA cross collateral")).toBeVisible();
+  await expect(page.getByText(/require a Unified Trading Account/i)).toBeVisible();
+});
+
 test("traps command-palette focus and restores it on Escape", async ({ page }) => {
   const trigger = page.getByRole("button", { name: "Open command palette" });
   await trigger.click();
@@ -1783,6 +1840,20 @@ async function installTradeFlowSocketMock(page: Page) {
       }
     });
   });
+}
+
+function bybitUtaFixture() {
+  return {
+    updatedAt: 1_780_000_000_000,
+    account: { unifiedMarginStatus: 5, marginMode: "REGULAR_MARGIN", totalEquity: 50_000, totalWalletBalance: 49_000, totalMarginBalance: 49_500, totalAvailableBalance: 39_000, totalPerpUpl: 500, totalInitialMargin: 10_000, totalMaintenanceMargin: 5_000, accountImRate: 0.2, accountMmRate: 0.1 },
+    assets: [
+      { coin: "BTC", equity: 1, usdValue: 49_000, walletBalance: 1, borrowAmount: 0, spotBorrow: 0, derivativesBorrow: 0, accruedInterest: 0, unrealisedPnl: 0, marginCollateral: true, collateralEnabled: true, collateralRestriction: "none", hourlyBorrowRate: 0.000001, maxBorrowingAmount: 10, availableToBorrow: 9, borrowUsageRate: 0.1, borrowable: true },
+      { coin: "USDT", equity: -100, usdValue: -100, walletBalance: 0, borrowAmount: 100, spotBorrow: 40, derivativesBorrow: 60, accruedInterest: 0.01, unrealisedPnl: 0, marginCollateral: true, collateralEnabled: true, collateralRestriction: "none", hourlyBorrowRate: 0.00001, maxBorrowingAmount: 1_000, availableToBorrow: 900, borrowUsageRate: 0.1, borrowable: true }
+    ],
+    borrowHistory: [],
+    risk: { level: "warning", entryAllowed: true, reasons: [], maxBorrowUsageRate: 0.1 },
+    limits: { maxBorrowUsageRate: 0.8, maxAccountMmRate: 0.5 }
+  };
 }
 
 async function expectNoAxeViolations(page: Page) {

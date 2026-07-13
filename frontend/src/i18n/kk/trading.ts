@@ -33,6 +33,8 @@ export const kkTrading: Record<TradingMessageKey, string> = {
   amount: "Сома",
   leverage: "Иінтірек",
   notifyMarkers: "Сигнал маркерлері туралы хабарландыру жіберіңіз",
+  bybitCrossCollateral: "Bybit UTA ортақ кепілін пайдалану",
+  bybitCrossCollateralHelp: "Бот іске қосылғанда Unified Trading Account, балансы бар қосылған кепіл және аккаунт қорғанысынан өту талап етіледі.",
   createBot: "Бот жасау",
   creating: "Жасалуда…",
   pickStrategy: "Стратегияны таңдаңыз",

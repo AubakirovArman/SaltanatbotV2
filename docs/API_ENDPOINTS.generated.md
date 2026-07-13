@@ -28,6 +28,10 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `POST` | `/api/trade/bots/:id/reset-state` | Authenticated · admin | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/bots/:id/start` | Authenticated · paper/live role by bot | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/bots/:id/stop` | Authenticated · paper/live role by bot | `backend/src/trading/routes.ts` |
+| `GET` | `/api/trade/bybit/uta` | Authenticated · admin | `backend/src/trading/routes.ts` |
+| `POST` | `/api/trade/bybit/uta/borrow` | Authenticated · admin | `backend/src/trading/routes.ts` |
+| `POST` | `/api/trade/bybit/uta/collateral` | Authenticated · admin | `backend/src/trading/routes.ts` |
+| `POST` | `/api/trade/bybit/uta/repay` | Authenticated · admin | `backend/src/trading/routes.ts` |
 | `GET` | `/api/trade/keys` | Authenticated · admin | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/keys` | Authenticated · admin | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/kill` | Authenticated · live-trade | `backend/src/trading/routes.ts` |
@@ -52,4 +56,4 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `/trade-flow` | Public | Shared Binance/Bybit aggressor-trade batches and status |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **33 HTTP endpoints** and **5 WebSocket endpoints**.
+Generated totals: **37 HTTP endpoints** and **5 WebSocket endpoints**.

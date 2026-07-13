@@ -69,6 +69,8 @@ export interface BotConfig {
   sizeMode: "quote" | "base" | "equity_pct" | "risk_pct";
   sizeValue: number;
   leverage: number;
+  /** Explicit opt-in to using non-settlement assets as Bybit UTA cross collateral. */
+  bybitCrossCollateral?: boolean;
   /** Notify on signals that don't open trades (marker blocks). */
   notifyMarkers: boolean;
   /** Live risk caps (quote currency). 0/undefined = unlimited. */
