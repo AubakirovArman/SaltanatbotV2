@@ -45,6 +45,7 @@ export const ruShell = {
   openChart: "Открыть график",
   openStrategy: "Открыть студию стратегий",
   openTrading: "Открыть торговлю",
+  openScreener: "Открыть арбитражный скринер",
   toggleTheme: "Переключить светлую / тёмную тему",
   indicator: "Индикатор",
   hide: "Скрыть",

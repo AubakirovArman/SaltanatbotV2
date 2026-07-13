@@ -11,6 +11,7 @@ API-схем и инженерных внутренних контрактов.
 - [Студия стратегий, импорт Pine Script, бэктест и оптимизация](STRATEGY_STUDIO.md)
 - [Paper/live trading, ключи, безопасность и журналы](TRADING.md)
 - [Возможности бирж и operator checklist](EXCHANGE_CAPABILITIES.md)
+- [Межбиржевой spot/perpetual арбитражный скринер](ARBITRAGE_SCREENER.md)
 - [Краткая политика безопасности](SECURITY.md)
 - [Резервное копирование и восстановление](BACKUP_RESTORE.md)
 - [Восстановление запуска вместо пустого экрана](STARTUP_RECOVERY.md)

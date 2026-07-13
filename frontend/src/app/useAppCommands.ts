@@ -3,6 +3,7 @@ import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { Command } from "../components/CommandPalette";
 import { warmStrategyLab } from "../strategy/loadStrategyLab";
 import { warmTradingView } from "../trading/loadTradingView";
+import { warmArbitrageScreener } from "../arbitrage/loadArbitrageScreener";
 import type { CatalogResponse, ChartType, Timeframe } from "../types";
 import type { PriceAlert } from "../market/alerts";
 import type { AppMode } from "./useAppShell";
@@ -51,6 +52,7 @@ export function useAppCommands(options: UseAppCommandsOptions) {
     list.push({ id: "view-chart", group: shellText(locale, "view"), label: shellText(locale, "openChart"), run: () => options.setMode("chart") });
     list.push({ id: "view-strategy", group: shellText(locale, "view"), label: shellText(locale, "openStrategy"), run: () => { warmStrategyLab(); options.setMode("strategy"); } });
     list.push({ id: "view-trade", group: shellText(locale, "view"), label: shellText(locale, "openTrading"), run: () => { warmTradingView(); options.setMode("trade"); } });
+    list.push({ id: "view-screener", group: shellText(locale, "view"), label: shellText(locale, "openScreener"), run: () => { warmArbitrageScreener(); options.setMode("screener"); } });
     list.push({ id: "theme", group: shellText(locale, "view"), label: shellText(locale, "toggleTheme"), run: options.toggleTheme });
     list.push({ id: "keyboard-shortcuts", group: shellText(locale, "view"), label: shellText(locale, "keyboardShortcuts"), hint: shortcuts.shortcutSettings, run: () => setShortcutSettingsOpen(true) });
     for (const indicator of options.indicators) list.push({

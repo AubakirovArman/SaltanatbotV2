@@ -81,6 +81,7 @@ npm run build
 - [Архитектура](docs/ARCHITECTURE.md)
 - [Стратегии и backtest](docs/STRATEGIES.md)
 - [Декларативные плагины](docs/ru/PLUGINS.md)
+- [Межбиржевой арбитражный скринер](docs/ru/ARBITRAGE_SCREENER.md)
 - [Сгенерированная матрица совместимости Pine](docs/PINE_COMPATIBILITY.generated.md)
 - [Trading](docs/TRADING.md)
 - [Конфигурация и безопасность](docs/CONFIGURATION.md)

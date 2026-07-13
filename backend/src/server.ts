@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
 import { getAuthToken, isDemoMode, verifyWsToken, wasAuthTokenGeneratedThisRun } from "./auth.js";
+import { createArbitrageHandler } from "./arbitrage/routes.js";
 import { findInstrument, getCatalog, initCatalog } from "./market/catalog.js";
 import { timeframes } from "./market/timeframes.js";
 import { OrderBookHub } from "./orderbook/hub.js";
@@ -87,6 +88,8 @@ app.get("/api/health", (_request, response) => {
 app.get("/api/catalog", (_request, response) => {
   response.json(getCatalog());
 });
+
+app.get("/api/arbitrage", createArbitrageHandler());
 
 app.get("/api/candles", async (request, response) => {
   const parsed = candleQuery.safeParse(request.query);

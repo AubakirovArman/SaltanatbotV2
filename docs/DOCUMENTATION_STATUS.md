@@ -41,6 +41,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Distribution incident response](INCIDENT_RESPONSE.md) | operators/maintainers | current; drill-tested | 2026-07-13 |
 | [Offline local research](OFFLINE_RESEARCH.md) | users/operators | current; production-tested | 2026-07-13 |
 | [PWA file opening and sharing](PWA_FILE_HANDLING.md) | users/contributors | current; production-tested | 2026-07-13 |
+| [Cross-exchange arbitrage screener](ARBITRAGE_SCREENER.md) | users/contributors | current; read-only | 2026-07-13 |
 
 Planning and audit documents describe research or target architecture rather than shipped behavior.
 They must be read together with `IMPLEMENTATION_STATUS.md` and must not be presented as release notes.
@@ -61,6 +62,7 @@ They must be read together with `IMPLEMENTATION_STATUS.md` and must not be prese
 | Distribution incident response | [runbook](INCIDENT_RESPONSE.md) | [runbook](ru/INCIDENT_RESPONSE.md) | [runbook](kk/INCIDENT_RESPONSE.md) |
 | Offline local research | [guide](OFFLINE_RESEARCH.md) | [guide](ru/OFFLINE_RESEARCH.md) | [guide](kk/OFFLINE_RESEARCH.md) |
 | PWA file opening and sharing | [guide](PWA_FILE_HANDLING.md) | [guide](ru/PWA_FILE_HANDLING.md) | [guide](kk/PWA_FILE_HANDLING.md) |
+| Cross-exchange arbitrage screener | [guide](ARBITRAGE_SCREENER.md) | [guide](ru/ARBITRAGE_SCREENER.md) | [guide](kk/ARBITRAGE_SCREENER.md) |
 | 90-commit update | [changelog](../CHANGELOG.md) | [release notes](ru/RELEASE_2026-07-11.md) | [release notes](kk/RELEASE_2026-07-11.md) |
 
 The complete runtime UI follows the same EN/RU/KK coverage. Locale catalogs are typed against one

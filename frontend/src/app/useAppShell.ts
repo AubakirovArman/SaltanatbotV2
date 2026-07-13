@@ -32,7 +32,7 @@ import { compareColor } from "../chart/compareColors";
 import { loadLastChartSession, saveLastChartSession, type LastChartSession } from "./chartSession";
 import { normalizeDistinctMarketSymbols } from "./distinctMarkets";
 
-export type AppMode = "chart" | "strategy" | "trade";
+export type AppMode = "chart" | "strategy" | "trade" | "screener";
 export type AppTheme = "dark" | "light";
 
 interface UseAppShellOptions {

@@ -11,6 +11,7 @@ EN/RU/KK тілдерінде толық типтелген; нақты API сх
 - [Strategy Studio, Pine Script, backtest және optimizer](STRATEGY_STUDIO.md)
 - [Paper/live trading, кілттер және журналдар](TRADING.md)
 - [Exchange мүмкіндіктері және operator checklist](EXCHANGE_CAPABILITIES.md)
+- [Биржааралық spot/perpetual арбитраж скринері](ARBITRAGE_SCREENER.md)
 - [Оқиғалар мен орындалу трассалары](EVENT_TRACES.md)
 - [Қауіпсіздік бойынша қысқаша нұсқаулық](SECURITY.md)
 - [Backup және қалпына келтіру](BACKUP_RESTORE.md)

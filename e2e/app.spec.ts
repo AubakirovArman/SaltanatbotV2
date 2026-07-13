@@ -1663,6 +1663,36 @@ test("shows Bybit UTA collateral risk and requires explicit debt confirmations",
   await expect(page.getByText(/require a Unified Trading Account/i)).toBeVisible();
 });
 
+test("filters executable cross-exchange arbitrage routes without placing orders", { tag: "@smoke" }, async ({ page }) => {
+  await page.route("**/api/arbitrage**", async (route) => {
+    await route.fulfill({ json: {
+      updatedAt: Date.now(), stale: false, scannedSymbols: 2, estimatedTotalCostBps: 30,
+      sources: [
+        { exchange: "binance", market: "spot", ok: true },
+        { exchange: "binance", market: "perpetual", ok: true },
+        { exchange: "bybit", market: "spot", ok: true },
+        { exchange: "bybit", market: "perpetual", ok: true }
+      ],
+      opportunities: [
+        { id: "BTCUSDT:binance:bybit", symbol: "BTCUSDT", spotExchange: "binance", futuresExchange: "bybit", spotAsk: 100000, spotAskSize: 1, futuresBid: 101500, futuresBidSize: 0.5, grossSpreadBps: 150, estimatedTotalCostBps: 30, netEdgeBps: 120, topBookCapacityUsd: 50750, fundingRate: 0.0001, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() },
+        { id: "ETHUSDT:bybit:binance", symbol: "ETHUSDT", spotExchange: "bybit", futuresExchange: "binance", spotAsk: 4000, spotAskSize: 0.2, futuresBid: 4020, futuresBidSize: 0.2, grossSpreadBps: 50, estimatedTotalCostBps: 30, netEdgeBps: 20, topBookCapacityUsd: 800, fundingRate: -0.00005, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() }
+      ]
+    } });
+  });
+
+  await page.getByLabel("Workspace mode").getByRole("button", { name: "Screener", exact: true }).click();
+  const table = page.getByRole("table", { name: "Executable cross-exchange spot/perpetual routes" });
+  await expect(table.getByRole("row").filter({ hasText: "BTCUSDT" })).toBeVisible();
+  await expect(table.getByRole("row").filter({ hasText: "ETHUSDT" })).toBeHidden();
+  await page.getByLabel("Minimum top-book capacity").fill("0");
+  await page.getByLabel("Search pair").fill("ETH");
+  const ethRow = table.getByRole("row").filter({ hasText: "ETHUSDT" });
+  await expect(ethRow).toContainText("Bybit");
+  await expect(ethRow).toContainText("Binance");
+  await ethRow.getByRole("button", { name: "Open chart for ETHUSDT" }).click();
+  await expect(page.getByRole("button", { name: /Current instrument ETHUSDT/ })).toBeVisible();
+});
+
 test("traps command-palette focus and restores it on Escape", async ({ page }) => {
   const trigger = page.getByRole("button", { name: "Open command palette" });
   await trigger.click();

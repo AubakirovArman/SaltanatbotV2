@@ -5,5 +5,6 @@
 @import "./styles/indicator-settings.css";
 @import "./styles/strategy.css";
 @import "./styles/trading.css";
+@import "./styles/arbitrage.css";
 @import "./styles/command-palette.css";
 @import "./styles/responsive.css";

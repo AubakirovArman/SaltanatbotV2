@@ -45,6 +45,7 @@ export const enShell = {
   openChart: "Open Chart",
   openStrategy: "Open Strategy Lab",
   openTrading: "Open Trading",
+  openScreener: "Open arbitrage screener",
   toggleTheme: "Toggle light / dark theme",
   indicator: "Indicator",
   hide: "Hide",

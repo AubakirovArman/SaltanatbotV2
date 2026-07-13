@@ -10,6 +10,15 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Cross-exchange spot/perpetual arbitrage screener — 2026-07-13
+
+- [x] Aggregate public Binance/Bybit spot and perpetual best bid/ask data without credentials.
+- [x] Compare buy-spot ask with other-venue perpetual bid in both venue directions.
+- [x] Report configurable cost-adjusted edge, top-book capacity and funding separately.
+- [x] Exclude delivery/non-executable rows and expose partial/stale source status explicitly.
+- [x] Add lazy EN/RU/KK workspace, accessible table, responsive filters, docs and unit/API/E2E tests.
+- [x] Keep the entire feature read-only; no order placement or guaranteed-profit claim.
+
 ### Reviewed installed-PWA Share Target — 2026-07-13
 
 - [x] Register one file-only Share Target for exact Pine, strategy and plugin formats.

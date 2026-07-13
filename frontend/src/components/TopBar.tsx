@@ -13,6 +13,7 @@ import {
   PanelRight,
   Plus,
   RotateCcw,
+  ScanSearch,
   Sun,
   Trash2,
   Upload,
@@ -32,7 +33,7 @@ interface TopBarProps {
   instrument: Instrument;
   timeframe: Timeframe;
   chartType: ChartType;
-  mode: "chart" | "strategy" | "trade";
+  mode: "chart" | "strategy" | "trade" | "screener";
   connection: ConnectionState;
   theme: "dark" | "light";
   locale: Locale;
@@ -54,7 +55,7 @@ interface TopBarProps {
   onDistinctMarkets: () => void;
   onTimeframeChange: (timeframe: Timeframe) => void;
   onChartTypeChange: (chartType: ChartType) => void;
-  onModeChange: (mode: "chart" | "strategy" | "trade") => void;
+  onModeChange: (mode: "chart" | "strategy" | "trade" | "screener") => void;
   onStrategyWarmup: () => void;
   onOpenPalette: () => void;
   onOpenShortcutSettings: () => void;
@@ -164,6 +165,15 @@ export function TopBar({
           >
             <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
             <span>{translate(locale, "trade")}</span>
+          </button>
+          <button
+            type="button"
+            className={mode === "screener" ? "active" : ""}
+            onClick={() => onModeChange("screener")}
+            aria-pressed={mode === "screener"}
+          >
+            <ScanSearch size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{translate(locale, "screener")}</span>
           </button>
         </div>
 

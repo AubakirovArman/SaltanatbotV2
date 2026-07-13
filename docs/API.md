@@ -11,7 +11,7 @@ The generated [API endpoint index](./API_ENDPOINTS.generated.md) is the route-pr
 
 - Base URL (default): `http://localhost:4180`
 - Content type: `application/json`
-- Validation: query parameters on `/api/candles`, `/api/sparklines`, `/stream`, `/quotes`, `/orderbook` and `/trade-flow` are validated with [zod](https://zod.dev); invalid HTTP input returns `400`, while invalid WebSocket input receives a typed error and closes.
+- Validation: query parameters on `/api/candles`, `/api/sparklines`, `/api/arbitrage`, `/stream`, `/quotes`, `/orderbook` and `/trade-flow` are validated with [zod](https://zod.dev); invalid HTTP input returns `400`, while invalid WebSocket input receives a typed error and closes.
 
 ## Trading auth
 
@@ -140,6 +140,20 @@ Returns the full instrument catalog plus the supported timeframes and chart type
 
 ```bash
 curl http://localhost:4180/api/catalog
+```
+
+---
+
+### `GET /api/arbitrage`
+
+Returns credential-free Binance/Bybit cross-exchange spot/perpetual routes using executable best
+ask/bid prices. Query parameters: `costBps` (`0..1000`, default `30`), `minSpreadBps`
+(`-10000..10000`, default `-1000`) and `limit` (`1..500`, default `250`). The response contains
+source health, stale status, scanned-symbol count and opportunities sorted by estimated net edge.
+This endpoint is read-only and never places orders. See the [screener guide](ARBITRAGE_SCREENER.md).
+
+```bash
+curl 'http://localhost:4180/api/arbitrage?costBps=30&minSpreadBps=0&limit=50'
 ```
 
 ---

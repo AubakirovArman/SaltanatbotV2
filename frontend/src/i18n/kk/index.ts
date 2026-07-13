@@ -4,6 +4,7 @@ export const kkCore: Record<MessageKey, string> = {
   chart: "График",
   strategy: "Стратегия",
   trade: "Сауда",
+  screener: "Скринер",
   toggleMarkets: "Нарықтар панелін көрсету немесе жасыру",
   toggleInstrument: "Құрал панелін көрсету немесе жасыру",
   openPalette: "Командалар палитрасын ашу",

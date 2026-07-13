@@ -5,6 +5,18 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Cross-exchange arbitrage screener
+
+- Added a credential-free Binance/Bybit scanner that compares executable spot asks with perpetual
+  bids on the other venue in both directions, using only common USDT markets.
+- Added gross and configurable cost-adjusted edge, top-book capacity, funding visibility, source
+  health and a bounded stale fallback without presenting asynchronous quotes as guaranteed profit.
+- Added a lazy responsive Screener workspace with EN/RU/KK filters, semantic table, chart hand-off,
+  public API validation, unit/API coverage and production Chromium/Firefox journeys.
+- Raised only the measured aggregate JavaScript gzip ceiling from 525 KiB to 532 KiB and CSS from
+  21 KiB to 22 KiB for the isolated screener chunk and responsive table; initial-shell and
+  per-file JavaScript ceilings remain unchanged.
+
 - Added a file-only installed-PWA Web Share Target for exact `.pine`, `.strategy` and
   `.saltanat-plugin` files. A generated same-origin service-worker hand-off stores at most five
   opaque, 24-hour batches and exposes only a UUID to the root shell; title, text, URL, generic JSON,

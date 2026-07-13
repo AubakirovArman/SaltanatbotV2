@@ -47,6 +47,7 @@ export const kkShell: Record<ShellMessageKey, string> = {
   openChart: "Графикті ашу",
   openStrategy: "Стратегия студиясын ашу",
   openTrading: "Сауданы ашу",
+  openScreener: "Арбитраж скринерін ашу",
   toggleTheme: "Ашық немесе күңгірт тақырыпқа ауысу",
   indicator: "Индикатор",
   hide: "Жасыру",

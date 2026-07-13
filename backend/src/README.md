@@ -13,6 +13,7 @@ The backend composes public market data, authenticated trading APIs, WebSocket s
 - Market/exchange adapters implement explicit ports.
 - SQLite access stays behind stores/repositories.
 - Live trading paths fail closed and never consume synthetic fallback data.
+- Public arbitrage discovery stays read-only and compares executable bid/ask prices rather than last trades.
 
 ## Invariants
 

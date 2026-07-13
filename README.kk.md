@@ -87,6 +87,7 @@ npm run build
 - [График және қолжетімді кестелік деректер](docs/kk/CHART.md)
 - [Strategy Studio, Pine Script және backtest](docs/kk/STRATEGY_STUDIO.md)
 - [Декларативті плагиндер](docs/kk/PLUGINS.md)
+- [Биржааралық арбитраж скринері](docs/kk/ARBITRAGE_SCREENER.md)
 - [Paper/live trading](docs/kk/TRADING.md)
 - [Оқиғалар мен орындалу трассалары](docs/kk/EVENT_TRACES.md)
 - [Қауіпсіздік бойынша қысқаша нұсқаулық](docs/kk/SECURITY.md)

@@ -21,6 +21,7 @@ import { usePriceAlerts } from "./hooks/usePriceAlerts";
 import { useSparklines } from "./hooks/useSparklines";
 import { loadStrategyLab, warmStrategyLab } from "./strategy/loadStrategyLab";
 import { loadTradingView } from "./trading/loadTradingView";
+import { loadArbitrageScreener } from "./arbitrage/loadArbitrageScreener";
 import { loadInitialWorkspaceState } from "./strategy/storage";
 import { useArtifactLibrary } from "./strategy/useArtifactLibrary";
 import type { AssetClass, ChartType, Instrument, Timeframe } from "./types";
@@ -38,6 +39,7 @@ import { clearPwaShareTargetLaunch, discardPwaShareTarget, loadPwaShareTarget, p
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
+const ArbitrageScreener = lazy(loadArbitrageScreener);
 const initialWorkspaceState = loadInitialWorkspaceState();
 
 interface QueuedPwaLaunch {
@@ -435,6 +437,11 @@ export default function App() {
           {mode === "trade" && (
             <Suspense fallback={<StrategyLoading locale={locale} />}>
               <TradingView strategies={strategyLibrary} catalog={catalog} locale={locale} />
+            </Suspense>
+          )}
+          {mode === "screener" && (
+            <Suspense fallback={<StrategyLoading locale={locale} />}>
+              <ArbitrageScreener locale={locale} onOpenChart={(nextSymbol) => { setSymbol(nextSymbol); setMode("chart"); }} />
             </Suspense>
           )}
           {mode === "strategy" && (

@@ -78,6 +78,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 
 ### 🔀 Multi-exchange market data
 - **Binance** and **Bybit** public providers (REST klines + live WebSocket) with **auto-reconnect + gap backfill**, plus a deterministic **synthetic** feed for FX/stocks/indices.
+- A read-only **cross-exchange arbitrage screener** compares executable spot asks with other-venue perpetual bids, configurable costs, top-book capacity, funding and source health.
 - **~200 USDT-spot pairs** discovered dynamically from the exchanges (curated fallback), a **persistent SQLite candle store** for deep history, and rate-limit-aware fetching.
 - Pick the crypto **data source** (Binance ⇄ Bybit) right in the Markets panel — the whole chart, sparklines and stream re-point instantly.
 
