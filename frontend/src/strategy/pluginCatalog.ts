@@ -1,4 +1,4 @@
-import type { PluginPermission } from "@saltanatbotv2/plugin-core";
+import type { PluginPermission, VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 import type { StrategyArtifact } from "./library";
 
 export interface InstalledPlugin {
@@ -26,6 +26,18 @@ export interface PluginRemovalAnalysis {
   remainingArtifacts: StrategyArtifact[];
   removedArtifactIds: string[];
   canRemove: boolean;
+}
+
+export type PluginVersionTransition = "new" | "upgrade" | "same_version" | "downgrade" | "duplicate";
+export type PluginSignerTransition = "new_signed" | "new_unsigned" | "same" | "changed" | "introduced" | "removed" | "unsigned";
+
+export interface PluginImportAnalysis {
+  reference?: InstalledPlugin;
+  relatedInstallations: number;
+  versionTransition: PluginVersionTransition;
+  signerTransition: PluginSignerTransition;
+  requiresVersionAcknowledgement: boolean;
+  requiresSignerAcknowledgement: boolean;
 }
 
 /** Reconstruct installed packages from persisted artifact provenance, including legacy imports. */
@@ -76,6 +88,38 @@ export function analyzePluginRemoval(artifacts: StrategyArtifact[], key: string)
   };
 }
 
+/** Compare an import with the highest installed version of the same stable package ID. */
+export function analyzePluginImport(artifacts: StrategyArtifact[], plugin: VerifiedPlugin): PluginImportAnalysis {
+  const related = installedPlugins(artifacts).filter((installed) => installed.id === plugin.manifest.id);
+  if (!related.length) {
+    return {
+      relatedInstallations: 0,
+      versionTransition: "new",
+      signerTransition: plugin.signature ? "new_signed" : "new_unsigned",
+      requiresVersionAcknowledgement: false,
+      requiresSignerAcknowledgement: false
+    };
+  }
+  const reference = [...related].sort((left, right) => compareSemver(right.version, left.version) || right.importedAt - left.importedAt)[0];
+  const versionComparison = compareSemver(plugin.manifest.version, reference.version);
+  const versionTransition: PluginVersionTransition = related.some((installed) => installed.checksum === plugin.checksum)
+    ? "duplicate"
+    : versionComparison > 0 ? "upgrade" : versionComparison < 0 ? "downgrade" : "same_version";
+  const previousSigner = reference.signerFingerprint;
+  const nextSigner = plugin.signature?.keyFingerprint;
+  const signerTransition: PluginSignerTransition = previousSigner
+    ? nextSigner ? previousSigner === nextSigner ? "same" : "changed" : "removed"
+    : nextSigner ? "introduced" : "unsigned";
+  return {
+    reference,
+    relatedInstallations: related.length,
+    versionTransition,
+    signerTransition,
+    requiresVersionAcknowledgement: versionTransition === "duplicate" || versionTransition === "same_version" || versionTransition === "downgrade",
+    requiresSignerAcknowledgement: signerTransition === "changed" || signerTransition === "introduced" || signerTransition === "removed"
+  };
+}
+
 export function removeArtifactScopedValues<T>(values: Record<string, T>, artifactIds: string[]): Record<string, T> {
   const removed = new Set(artifactIds);
   return Object.fromEntries(Object.entries(values).filter(([id]) => !removed.has(id)));
@@ -86,3 +130,15 @@ function pluginInstallationKey(id: string, checksum: string, importedAt: number)
 }
 
 function compareText(left: string, right: string) { return left === right ? 0 : left < right ? -1 : 1; }
+function compareSemver(left: string, right: string) {
+  const leftParts = semverParts(left);
+  const rightParts = semverParts(right);
+  for (let index = 0; index < 3; index += 1) {
+    if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index];
+  }
+  return 0;
+}
+function semverParts(value: string) {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(value);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : [0, 0, 0];
+}

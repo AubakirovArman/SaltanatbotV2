@@ -153,6 +153,9 @@ Mitigations:
 - The installed-plugin catalog only activates validated HTTPS publisher links. Uninstall requires a
   destructive confirmation and fails closed while external library artifacts depend on package
   contents; it intentionally does not stop independent bot or chart runtime snapshots.
+- Repeated plugin IDs are compared with the highest installed semantic version and signer key.
+  Downgrades, duplicates, same-version content changes and unproven key transitions keep import
+  disabled until separate explicit acknowledgements; no package silently replaces local artifacts.
 - Exchange/API behavior can change independently; operator monitoring and exchange-side limits remain required.
 
 ## Security verification

@@ -13,7 +13,7 @@ import { parsePluginFile, type PluginParseErrorCode, type VerifiedPlugin } from 
 import { PluginImportReviewDialog } from "./PluginImportReviewDialog";
 import { PluginExportDialog } from "./PluginExportDialog";
 import { PluginCatalogDialog } from "./PluginCatalogDialog";
-import { installedPlugins } from "../pluginCatalog";
+import { analyzePluginImport, installedPlugins } from "../pluginCatalog";
 import { trustPluginKey } from "../pluginTrust";
 
 export function StrategyLibrary({
@@ -183,6 +183,7 @@ export function StrategyLibrary({
         <PluginImportReviewDialog
           locale={locale}
           plugin={pendingPlugin}
+          analysis={analyzePluginImport(artifacts, pendingPlugin)}
           onClose={() => setPendingPlugin(undefined)}
           onConfirm={(plugin, trustSigner) => {
             if (trustSigner && plugin.signature) trustPluginKey(plugin.signature.keyFingerprint, plugin.manifest.publisher.name);

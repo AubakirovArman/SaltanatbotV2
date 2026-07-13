@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { analyzePluginRemoval, installedPlugins, removeArtifactScopedValues } from "../src/strategy/pluginCatalog";
+import { analyzePluginImport, analyzePluginRemoval, installedPlugins, removeArtifactScopedValues } from "../src/strategy/pluginCatalog";
 import type { StrategyArtifact } from "../src/strategy/library";
+import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 
 describe("installed plugin catalog", () => {
   it("groups one installation and retains its package metadata", () => {
@@ -15,6 +16,24 @@ describe("installed plugin catalog", () => {
     const first = pluginArtifact("indicator:a", "Alpha");
     const second = pluginArtifact("indicator:b", "Beta", { provenance: { ...first.provenance!, importedAt: 20 } });
     expect(installedPlugins([first, second]).map((plugin) => plugin.importedAt)).toEqual([20, 10]);
+  });
+
+  it("classifies upgrades from the same signer without requiring an acknowledgement", () => {
+    const analysis = analyzePluginImport([pluginArtifact("indicator:a", "Alpha")], verifiedPlugin({ version: "1.3.0" }));
+    expect(analysis).toMatchObject({ relatedInstallations: 1, versionTransition: "upgrade", signerTransition: "same", requiresVersionAcknowledgement: false, requiresSignerAcknowledgement: false });
+    expect(analysis.reference?.version).toBe("1.2.0");
+  });
+
+  it("requires explicit acknowledgement for downgrade and signer replacement", () => {
+    const analysis = analyzePluginImport([pluginArtifact("indicator:a", "Alpha")], verifiedPlugin({ version: "1.1.0", fingerprint: "e".repeat(64) }));
+    expect(analysis).toMatchObject({ versionTransition: "downgrade", signerTransition: "changed", requiresVersionAcknowledgement: true, requiresSignerAcknowledgement: true });
+  });
+
+  it("distinguishes exact duplicates, unsigned removal and first installs", () => {
+    const installed = pluginArtifact("indicator:a", "Alpha");
+    expect(analyzePluginImport([installed], verifiedPlugin({ checksum: "a".repeat(64) }))).toMatchObject({ versionTransition: "duplicate", signerTransition: "same", requiresVersionAcknowledgement: true });
+    expect(analyzePluginImport([installed], verifiedPlugin({ signature: false }))).toMatchObject({ versionTransition: "same_version", signerTransition: "removed", requiresSignerAcknowledgement: true });
+    expect(analyzePluginImport([], verifiedPlugin({ signature: false }))).toMatchObject({ versionTransition: "new", signerTransition: "new_unsigned", requiresSignerAcknowledgement: false });
   });
 
   it("blocks removal when an artifact outside the package depends on it", () => {
@@ -64,4 +83,23 @@ function pluginArtifact(id: string, name: string, overrides: Partial<StrategyArt
 
 function artifact(id: string, name: string, overrides: Partial<StrategyArtifact> = {}): StrategyArtifact {
   return { id, kind: id.startsWith("indicator:") ? "indicator" : "strategy", name, description: "Test", xml: '<xml><block type="strategy_start" /></xml>', createdAt: 1, updatedAt: 1, ...overrides };
+}
+
+function verifiedPlugin(options: { version?: string; checksum?: string; fingerprint?: string; signature?: boolean } = {}): VerifiedPlugin {
+  const fingerprint = options.fingerprint ?? "f".repeat(64);
+  return {
+    checksum: options.checksum ?? "b".repeat(64),
+    manifest: {
+      id: "community.pack",
+      name: "Community pack",
+      version: options.version ?? "1.2.0",
+      description: "Test",
+      license: "MIT",
+      publisher: { name: "Publisher" },
+      minAppVersion: "0.1.0",
+      permissions: ["market.read", "chart.overlay"],
+      artifacts: [{ id: "overlay", kind: "indicator", name: "Overlay", description: "Test", xml: '<xml><block type="strategy_start" /></xml>', schemaVersion: 2, semanticVersion: "1.0.0", parameters: [], dependencies: [] }]
+    },
+    signature: options.signature === false ? undefined : { scheme: "ECDSA-P256-SHA256", key: { kty: "EC", crv: "P-256", x: "x", y: "y" }, keyFingerprint: fingerprint }
+  };
 }

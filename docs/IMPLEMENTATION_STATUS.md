@@ -10,6 +10,18 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Plugin update and signer-continuity review — 2026-07-13
+
+- [x] Compare repeated package IDs against their highest installed semantic version.
+- [x] Distinguish upgrades, same-version content changes, exact duplicates and downgrades.
+- [x] Independently detect stable, changed, introduced, removed and absent signer keys.
+- [x] Require separate explicit acknowledgements for every dangerous version and signer transition.
+- [x] Preserve separate local installations rather than silently replacing editable or running state.
+- [x] Provide complete EN/RU/KK review copy and production accessibility coverage.
+
+Verification covers the pure transition matrix plus a production signed downgrade with an unrelated
+key, sequentially blocked acknowledgements, axe review and cancellation without library mutation.
+
 ### Signed plugin identity and local trust — 2026-07-13
 
 - [x] Add a strict signed envelope version while preserving visibly unsigned version-1 compatibility.

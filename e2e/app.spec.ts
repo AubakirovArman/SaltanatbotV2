@@ -1005,6 +1005,28 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   await expect(restoredLibrary).toContainText("E2E plugin overlay", { timeout: 20_000 });
   await expect(restoredLibrary).toContainText("E2E plugin strategy");
 
+  const replacementSigner = await createPluginSigningKeyPair();
+  const riskyReplacement = await encodeSignedPluginFile({ ...plugin, version: "0.9.0" }, replacementSigner);
+  await page.getByLabel("Import plugin package").setInputFiles({
+    name: "e2e-risky-replacement.saltanat-plugin",
+    mimeType: "application/json",
+    buffer: Buffer.from(riskyReplacement)
+  });
+  const riskyReview = page.getByRole("dialog", { name: "Review plugin package" });
+  const confirmRiskyImport = riskyReview.getByRole("button", { name: "Import reviewed plugin" });
+  await expect(riskyReview).toContainText("Older package version detected");
+  await expect(riskyReview).toContainText("Signer fingerprint changed. No authenticated key rotation proves continuity.");
+  await expect(riskyReview).toContainText("v1.0.0 → v0.9.0");
+  await expect(confirmRiskyImport).toBeDisabled();
+  await riskyReview.getByLabel("I understand this is not a normal newer-version upgrade and want a separate local installation.").check();
+  await expect(confirmRiskyImport).toBeDisabled();
+  await riskyReview.getByLabel("I verified this signer transition independently and accept the new package identity.").check();
+  await expect(confirmRiskyImport).toBeEnabled();
+  await expectNoAxeViolations(page);
+  await page.keyboard.press("Escape");
+  await expect(riskyReview).toBeHidden();
+  await expect(restoredLibrary.getByRole("button", { name: /Installed plugins 1/ })).toBeVisible();
+
   await restoredLibrary.getByRole("button", { name: /Installed plugins 1/ }).click();
   const catalog = page.getByRole("dialog", { name: "Installed plugins" });
   await expect(catalog).toContainText("E2E research pack");

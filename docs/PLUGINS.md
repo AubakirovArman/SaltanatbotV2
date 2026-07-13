@@ -145,6 +145,15 @@ but unknown key stays visibly untrusted; unsigned version-1 packages remain supp
 unsigned. The installed-package catalog preserves the verified fingerprint and trust-at-import
 provenance, and lets the user trust or forget that key locally.
 
+When the same stable package ID is already installed, review compares the candidate against the
+highest installed semantic version (using import time only as a tie-breaker). It distinguishes a
+normal upgrade from a same-version content change, exact duplicate or downgrade. It separately
+compares signer continuity and detects a changed key, a newly introduced signature or removal of a
+previous signature. A downgrade/duplicate/same-version replacement and every unproven signer
+transition require separate explicit acknowledgements before import is enabled. The candidate still
+becomes a separate local installation, so existing editable artifacts and runtime snapshots are not
+silently overwritten. A changed key is never treated as authenticated rotation in this release.
+
 ## Installed package catalog
 
 Choose **Installed plugins** in Strategy Studio to inspect each local installation. The catalog
