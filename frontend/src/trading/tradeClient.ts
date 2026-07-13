@@ -183,6 +183,22 @@ export interface BybitUtaActionResult {
   snapshot: BybitUtaSnapshot;
 }
 
+export interface ArbitrageAlertRule {
+  id: string;
+  symbol?: string;
+  spotExchange?: "binance" | "bybit";
+  futuresExchange?: "binance" | "bybit";
+  minimumNetEdgeBps: number;
+  minimumCapacityUsd: number;
+  estimatedNonFundingCostBps: number;
+  holdingHours: number;
+  cooldownSeconds: number;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+  lastTriggeredAt?: number;
+}
+
 const BASE = "/api/trade";
 const TOKEN_KEY = "sbv2:token";
 const SESSION_KEY = "sbv2:session";
@@ -265,41 +281,33 @@ export async function checkAuth(token?: string): Promise<AuthState> {
 }
 
 export const getSettings = () => req<AuthState>("/settings");
-export const setLiveTrading = (liveTradingEnabled: boolean) =>
-  req<{ liveTradingEnabled: boolean }>("/settings", { method: "POST", body: JSON.stringify({ liveTradingEnabled }) });
+export const setLiveTrading = (liveTradingEnabled: boolean) => req<{ liveTradingEnabled: boolean }>("/settings", { method: "POST", body: JSON.stringify({ liveTradingEnabled }) });
 export const killAll = () => req<{ ok: boolean }>("/kill", { method: "POST" });
 
 export const listBots = () => req<{ bots: TradingBot[] }>("/bots").then((r) => r.bots);
-export const saveBot = (bot: Partial<TradingBot>) =>
-  req<{ bot: TradingBot }>("/bots", { method: "POST", body: JSON.stringify(bot) }).then((r) => r.bot);
+export const saveBot = (bot: Partial<TradingBot>) => req<{ bot: TradingBot }>("/bots", { method: "POST", body: JSON.stringify(bot) }).then((r) => r.bot);
 export const deleteBot = (id: string) => req(`/bots/${id}`, { method: "DELETE" });
-export const startBot = (id: string, confirmLive = false) =>
-  req<{ ok: boolean; error?: string }>(`/bots/${id}/start`, { method: "POST", body: JSON.stringify({ confirmLive }) });
+export const startBot = (id: string, confirmLive = false) => req<{ ok: boolean; error?: string }>(`/bots/${id}/start`, { method: "POST", body: JSON.stringify({ confirmLive }) });
 export const stopBot = (id: string) => req(`/bots/${id}/stop`, { method: "POST" });
-export const sendCommand = (id: string, command: string, dryRun = false) =>
-  req<{ ok: boolean; message: string }>(`/bots/${id}/command`, { method: "POST", body: JSON.stringify({ command, dryRun }) });
+export const sendCommand = (id: string, command: string, dryRun = false) => req<{ ok: boolean; message: string }>(`/bots/${id}/command`, { method: "POST", body: JSON.stringify({ command, dryRun }) });
 export const getFills = (id: string) => req<{ fills: Fill[] }>(`/bots/${id}/fills`).then((r) => r.fills);
 export const getLogs = (id: string) => req<{ logs: LogRow[] }>(`/bots/${id}/logs`).then((r) => r.logs);
 export const getLive = (id: string) => req<LiveState>(`/bots/${id}/live`);
 export const getOrders = (id: string) => req<{ orders: PendingOrder[] }>(`/bots/${id}/orders`).then((r) => r.orders);
 export const getOrderJournal = (id: string) => req<{ orders: OrderJournal[] }>(`/bots/${id}/order-journal`).then((r) => r.orders);
-export const getOrderEvents = (id: string, orderId: string) =>
-  req<{ events: OrderEvent[] }>(`/bots/${id}/order-journal/${encodeURIComponent(orderId)}/events`).then((r) => r.events);
+export const getOrderEvents = (id: string, orderId: string) => req<{ events: OrderEvent[] }>(`/bots/${id}/order-journal/${encodeURIComponent(orderId)}/events`).then((r) => r.events);
 /** Deliver a triggered price alert through the server notification channel (Telegram). */
-export const notifyAlert = (payload: { symbol: string; price: number; direction: "above" | "below"; hitPrice?: number }) =>
-  req<{ ok: boolean }>("/notify-alert", { method: "POST", body: JSON.stringify(payload) });
-export const notifyArbitrageAlert = (payload: { symbol: string; spotExchange: "binance" | "bybit"; futuresExchange: "binance" | "bybit"; netEdgeBps: number; minimumNetEdgeBps: number }) =>
-  req<{ ok: boolean }>("/notify-arbitrage", { method: "POST", body: JSON.stringify(payload) });
+export const notifyAlert = (payload: { symbol: string; price: number; direction: "above" | "below"; hitPrice?: number }) => req<{ ok: boolean }>("/notify-alert", { method: "POST", body: JSON.stringify(payload) });
+export const notifyArbitrageAlert = (payload: { symbol: string; spotExchange: "binance" | "bybit"; futuresExchange: "binance" | "bybit"; netEdgeBps: number; minimumNetEdgeBps: number }) => req<{ ok: boolean }>("/notify-arbitrage", { method: "POST", body: JSON.stringify(payload) });
+export const listArbitrageAlertRules = () => req<{ rules: ArbitrageAlertRule[] }>("/arbitrage-alerts").then((value) => value.rules);
+export const saveArbitrageAlertRule = (rule: Omit<ArbitrageAlertRule, "id" | "createdAt" | "updatedAt" | "lastTriggeredAt"> & { id?: string }) => req<{ rule: ArbitrageAlertRule }>("/arbitrage-alerts", { method: "POST", body: JSON.stringify(rule) }).then((value) => value.rule);
+export const deleteArbitrageAlertRule = (id: string) => req<{ rules: ArbitrageAlertRule[] }>(`/arbitrage-alerts/${encodeURIComponent(id)}`, { method: "DELETE" }).then((value) => value.rules);
 export const getKeys = () => req<{ binance: boolean; bybit: boolean }>("/keys");
-export const saveKeys = (exchange: ExchangeId, apiKey: string, apiSecret: string) =>
-  req("/keys", { method: "POST", body: JSON.stringify({ exchange, apiKey, apiSecret }) });
+export const saveKeys = (exchange: ExchangeId, apiKey: string, apiSecret: string) => req("/keys", { method: "POST", body: JSON.stringify({ exchange, apiKey, apiSecret }) });
 export const getBybitUta = () => req<{ configured: boolean; snapshot?: BybitUtaSnapshot }>("/bybit/uta");
-export const borrowBybitUta = (coin: string, amount: number) =>
-  req<BybitUtaActionResult>("/bybit/uta/borrow", { method: "POST", body: JSON.stringify({ coin, amount, confirm: true }) });
-export const repayBybitUta = (input: { coin: string; amount?: number; repaymentType: "ALL" | "FIXED" | "FLEXIBLE"; convertCollateral: boolean; confirmConversion?: boolean }) =>
-  req<BybitUtaActionResult>("/bybit/uta/repay", { method: "POST", body: JSON.stringify({ ...input, confirm: true }) });
-export const setBybitCollateral = (coin: string, enabled: boolean) =>
-  req<BybitUtaActionResult>("/bybit/uta/collateral", { method: "POST", body: JSON.stringify({ coin, enabled, confirm: true }) });
+export const borrowBybitUta = (coin: string, amount: number) => req<BybitUtaActionResult>("/bybit/uta/borrow", { method: "POST", body: JSON.stringify({ coin, amount, confirm: true }) });
+export const repayBybitUta = (input: { coin: string; amount?: number; repaymentType: "ALL" | "FIXED" | "FLEXIBLE"; convertCollateral: boolean; confirmConversion?: boolean }) => req<BybitUtaActionResult>("/bybit/uta/repay", { method: "POST", body: JSON.stringify({ ...input, confirm: true }) });
+export const setBybitCollateral = (coin: string, enabled: boolean) => req<BybitUtaActionResult>("/bybit/uta/collateral", { method: "POST", body: JSON.stringify({ coin, enabled, confirm: true }) });
 export const getNotify = () => req<NotifyStatus>("/notify");
 export const saveNotify = (config: unknown) => req("/notify", { method: "POST", body: JSON.stringify(config) });
 export const testNotify = () => req<{ ok: boolean; message: string }>("/notify/test", { method: "POST" });

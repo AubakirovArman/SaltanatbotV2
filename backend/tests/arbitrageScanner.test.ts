@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ArbitrageDepthService, walkDepth } from "../src/arbitrage/depth.js";
 import { createArbitrageDepthHandler, createArbitrageHandler } from "../src/arbitrage/routes.js";
 import { ArbitrageScannerService } from "../src/arbitrage/service.js";
+import { parseBinanceBookTicker } from "../src/arbitrage/upstream/binance.js";
+import { parseBybitTicker } from "../src/arbitrage/upstream/bybit.js";
+import { effectiveNetEdgeBps } from "../src/arbitrage/alerts.js";
 
 afterEach(() => {
   // Every test owns its server and fetch implementation.
@@ -93,7 +96,7 @@ describe("cross-exchange arbitrage scanner", () => {
     const base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/api/arbitrage`;
     try {
       const valid = await fetch(`${base}?costBps=40&minSpreadBps=0&limit=1`);
-      const body = await valid.json() as { opportunities: unknown[]; estimatedTotalCostBps: number };
+      const body = (await valid.json()) as { opportunities: unknown[]; estimatedTotalCostBps: number };
       expect(valid.status).toBe(200);
       expect(valid.headers.get("cache-control")).toContain("max-age=1");
       expect(body.estimatedTotalCostBps).toBe(40);
@@ -106,7 +109,17 @@ describe("cross-exchange arbitrage scanner", () => {
   });
 
   it("walks multiple order-book levels and reports incomplete liquidity", () => {
-    const buy = walkDepth("binance", "spot", "buy", [[100, 1], [101, 2]], 250, 1_000);
+    const buy = walkDepth(
+      "binance",
+      "spot",
+      "buy",
+      [
+        [100, 1],
+        [101, 2]
+      ],
+      250,
+      1_000
+    );
     const sell = walkDepth("bybit", "perpetual", "sell", [[103, 1]], 250, 1_000);
     expect(buy.complete).toBe(true);
     expect(buy.levelsUsed).toBe(2);
@@ -135,7 +148,7 @@ describe("cross-exchange arbitrage scanner", () => {
     const base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/api/arbitrage/depth`;
     try {
       const valid = await fetch(`${base}?symbol=BTCUSDT&spotExchange=binance&futuresExchange=bybit&notionalUsd=100`);
-      const body = await valid.json() as { complete: boolean; grossSpreadBps: number; spot: { averagePrice: number } };
+      const body = (await valid.json()) as { complete: boolean; grossSpreadBps: number; spot: { averagePrice: number } };
       expect(valid.status).toBe(200);
       expect(body.complete).toBe(true);
       expect(body.spot.averagePrice).toBe(100);
@@ -144,9 +157,44 @@ describe("cross-exchange arbitrage scanner", () => {
       expect(depthFetches).toBe(2);
       expect((await fetch(`${base}?symbol=BTCUSDT&spotExchange=binance&futuresExchange=binance&notionalUsd=100`)).status).toBe(400);
       expect((await fetch(`${base}?symbol=BTCUSDT&spotExchange=binance&futuresExchange=bybit&notionalUsd=1`)).status).toBe(400);
-    } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("parses direct Binance and Bybit best-price streams and merges Bybit deltas", () => {
+    expect(parseBinanceBookTicker({ data: { s: "BTCUSDT", b: "99", B: "2", a: "100", A: "3", E: 2_000 } }, "spot")).toMatchObject({ symbol: "BTCUSDT", bid: 99, ask: 100, capturedAt: 2_000 });
+    expect(parseBinanceBookTicker({ s: "BTCUSDT", b: "99", B: "2", a: "100", A: "3", st: 2 }, "perpetual")).toBeUndefined();
+    const previous = { symbol: "BTCUSDT", bid1Price: "102", bid1Size: "4", ask1Price: "103", ask1Size: "5", fundingRate: "0.0001", nextFundingTime: "3000" };
+    expect(parseBybitTicker({ topic: "tickers.BTCUSDT", type: "delta", ts: 2_000, data: { bid1Price: "102.5" } }, "perpetual", 1, previous)).toMatchObject({ symbol: "BTCUSDT", bid: 102.5, ask: 103, fundingRate: 0.0001 });
+  });
+
+  it("credits expected funding receipts in persistent alert net edge", () => {
+    const opportunity = { ...fixtureOpportunity(), grossSpreadBps: 100, fundingRate: 0.0002 };
+    expect(effectiveNetEdgeBps(opportunity, { estimatedNonFundingCostBps: 40, holdingHours: 8 })).toBe(62);
   });
 });
+
+function fixtureOpportunity() {
+  return {
+    id: "BTCUSDT:binance:bybit",
+    symbol: "BTCUSDT",
+    spotExchange: "binance" as const,
+    futuresExchange: "bybit" as const,
+    spotBid: 99,
+    spotAsk: 100,
+    spotAskSize: 1,
+    futuresBid: 103,
+    futuresAsk: 104,
+    futuresBidSize: 1,
+    grossSpreadBps: 300,
+    estimatedTotalCostBps: 0,
+    netEdgeBps: 300,
+    topBookCapacityUsd: 100,
+    fundingRate: 0,
+    capturedAt: 1
+  };
+}
 
 function serviceFromFixtures(overrides: Partial<ReturnType<typeof fixtureSet>> = {}) {
   const fixtures = { ...fixtureSet(), ...overrides };

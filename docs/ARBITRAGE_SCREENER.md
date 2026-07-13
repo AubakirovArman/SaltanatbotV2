@@ -21,16 +21,22 @@ net edge (bp)     = gross spread - estimated total costs
 top-book capacity = min(spot ask × ask size, perpetual bid × bid size)
 ```
 
-The fee profile stores separate Binance/Bybit spot/perpetual taker rates plus a round-trip slippage
-reserve in this browser. Entry and exit are included automatically. Funding is
-shown separately and is not included because the holding duration and future rates are unknown.
+The browser fee profile stores separate Binance/Bybit spot/perpetual taker rates, a round-trip
+slippage reserve, expected holding time, annual financing/borrow rate and a fixed transfer cost.
+Entry and exit are included automatically. The current perpetual funding rate is projected over
+eight-hour periods for the configured holding time: positive funding is credited to the short leg,
+negative funding is treated as a cost. This remains an estimate; future funding and actual borrow
+rates are unknown.
 
 ## Data and failure behavior
 
-`GET /api/arbitrage` reads public Binance book tickers and premium index plus Bybit V5 spot/linear
-tickers concurrently. `/arbitrage-stream` broadcasts the shared two-second server snapshot; the
-browser reconnects with bounded backoff and uses REST as a fallback. The connection pauses in a
-hidden tab. Individual source failures
+`GET /api/arbitrage` bootstraps public Binance book tickers/premium index and Bybit V5 spot/linear
+tickers concurrently. The server then owns one direct public WebSocket per exchange/market and
+subscribes only to common symbols. It merges Binance `bookTicker` and Bybit V5 ticker updates,
+sends the Bybit application heartbeat, reconnects with exponential backoff and coalesces rapid
+ticks before `/arbitrage-stream` broadcasts them to browsers. REST refreshes every 30 seconds as a
+discovery/failure boundary rather than the former two-second polling loop. The browser connection
+pauses in a hidden tab. Individual source failures
 are visible; if a complete refresh temporarily fails, a successful snapshot may be served for at
 most 30 seconds and is clearly marked stale.
 
@@ -44,13 +50,22 @@ incomplete.
 
 Opportunity alerts fire only when a route crosses the configured net threshold. Desktop delivery
 uses browser permission. Telegram delivery is best-effort and is available only to an authenticated
-paper-trade session with an enabled notification channel. Alerts never place orders.
+paper-trade session with an enabled notification channel. An authenticated operator can also save
+up to 50 persistent server rules. Enabled rules keep the shared feed active when the browser is
+closed, enforce a cooldown, persist the last trigger and only send Telegram notifications. Alerts
+never place orders.
+
+`GET /api/arbitrage/history` reads a bounded seven-day SQLite series. While the feed is active, the
+server records the 50 best routes at most once per minute; the depth panel renders the selected
+route's last 24 hours. Old samples are pruned hourly.
 
 Paper positions are a local browser research ledger. Entry uses the depth VWAP for both legs; open
 PnL marks the spot leg to its bid and the short perpetual leg to its ask, then subtracts the estimated
-round-trip costs. These records are not an exchange account and are capped locally.
+round-trip costs. The panel reports realized/open PnL, closed win rate and average closed PnL.
+These records are not an exchange account and are capped locally. The live table renders 50 rows
+per page so high-frequency updates do not rebuild hundreds of DOM rows.
 
-Official inputs: [Binance Spot market data](https://developers.binance.com/en/docs/catalog/core-trading-spot-trading/api/rest-api/market), [Binance USD-M market data](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data), [Bybit V5 tickers](https://bybit-exchange.github.io/docs/v5/market/tickers), and [Bybit order book](https://bybit-exchange.github.io/docs/v5/market/orderbook).
+Official inputs: [Binance Spot WebSocket streams](https://developers.binance.com/en/docs/catalog/core-trading-spot-trading/api/ws-streams/~), [Binance USD-M WebSocket streams](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/ws-streams/public), [Bybit V5 connection rules](https://bybit-exchange.github.io/docs/v5/ws/connect), [Bybit V5 tickers](https://bybit-exchange.github.io/docs/v5/websocket/public/ticker), and [Bybit order book](https://bybit-exchange.github.io/docs/v5/market/orderbook).
 
 ## Risk boundary
 

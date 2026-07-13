@@ -21,14 +21,29 @@ export interface ArbitrageOpportunity {
 }
 
 export interface ArbitrageDepthLeg {
-  exchange: ArbitrageExchange; market: "spot" | "perpetual"; side: "buy" | "sell";
-  requestedNotionalUsd: number; filledNotionalUsd: number; quantity: number; averagePrice: number;
-  worstPrice: number; topPrice: number; slippageBps: number; levelsUsed: number; complete: boolean; capturedAt: number;
+  exchange: ArbitrageExchange;
+  market: "spot" | "perpetual";
+  side: "buy" | "sell";
+  requestedNotionalUsd: number;
+  filledNotionalUsd: number;
+  quantity: number;
+  averagePrice: number;
+  worstPrice: number;
+  topPrice: number;
+  slippageBps: number;
+  levelsUsed: number;
+  complete: boolean;
+  capturedAt: number;
 }
 
 export interface ArbitrageDepthResponse {
-  symbol: string; requestedNotionalUsd: number; spot: ArbitrageDepthLeg; perpetual: ArbitrageDepthLeg;
-  grossSpreadBps: number; complete: boolean; capturedAt: number;
+  symbol: string;
+  requestedNotionalUsd: number;
+  spot: ArbitrageDepthLeg;
+  perpetual: ArbitrageDepthLeg;
+  grossSpreadBps: number;
+  complete: boolean;
+  capturedAt: number;
 }
 
 export interface ArbitrageScanResponse {
@@ -40,11 +55,22 @@ export interface ArbitrageScanResponse {
   sources: Array<{ exchange: ArbitrageExchange; market: "spot" | "perpetual"; ok: boolean; message?: string }>;
 }
 
+export interface ArbitrageHistoryPoint {
+  routeId: string;
+  symbol: string;
+  spotExchange: ArbitrageExchange;
+  futuresExchange: ArbitrageExchange;
+  grossSpreadBps: number;
+  topBookCapacityUsd: number;
+  fundingRate: number;
+  ts: number;
+}
+
 export async function fetchArbitrageScan(costBps: number, signal?: AbortSignal): Promise<ArbitrageScanResponse> {
   const query = new URLSearchParams({ costBps: String(costBps), minSpreadBps: "-1000", limit: "500" });
   const response = await fetch(`/api/arbitrage?${query}`, { signal });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { error?: string };
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Arbitrage API ${response.status}`);
   }
   return parseArbitrageScan(await response.json());
@@ -53,8 +79,31 @@ export async function fetchArbitrageScan(costBps: number, signal?: AbortSignal):
 export async function fetchArbitrageDepth(row: Pick<ArbitrageOpportunity, "symbol" | "spotExchange" | "futuresExchange">, notionalUsd: number, signal?: AbortSignal): Promise<ArbitrageDepthResponse> {
   const query = new URLSearchParams({ symbol: row.symbol, spotExchange: row.spotExchange, futuresExchange: row.futuresExchange, notionalUsd: String(notionalUsd) });
   const response = await fetch(`/api/arbitrage/depth?${query}`, { signal });
-  if (!response.ok) { const body = await response.json().catch(() => ({})) as { error?: string }; throw new Error(body.error ?? `Arbitrage depth API ${response.status}`); }
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `Arbitrage depth API ${response.status}`);
+  }
   return parseArbitrageDepth(await response.json());
+}
+
+export async function fetchArbitrageHistory(routeId: string, hours = 24, signal?: AbortSignal): Promise<ArbitrageHistoryPoint[]> {
+  const query = new URLSearchParams({ routeId, hours: String(hours), limit: "500" });
+  const response = await fetch(`/api/arbitrage/history?${query}`, { signal });
+  if (!response.ok) throw new Error(`Arbitrage history API ${response.status}`);
+  const envelope = record(await response.json(), "arbitrage history response");
+  return array(envelope.points, "points", 1_000).map((value, index) => {
+    const row = record(value, `points[${index}]`);
+    return {
+      routeId: string(row.routeId, "routeId"),
+      symbol: string(row.symbol, "symbol"),
+      spotExchange: exchangeId(row.spotExchange, "spotExchange"),
+      futuresExchange: exchangeId(row.futuresExchange, "futuresExchange"),
+      grossSpreadBps: finite(row.grossSpreadBps, "grossSpreadBps"),
+      topBookCapacityUsd: finite(row.topBookCapacityUsd, "topBookCapacityUsd"),
+      fundingRate: finite(row.fundingRate, "fundingRate"),
+      ts: finite(row.ts, "ts")
+    };
+  });
 }
 
 export function createArbitrageSocket(): WebSocket {
@@ -92,12 +141,16 @@ export function parseArbitrageScan(value: unknown): ArbitrageScanResponse {
 function opportunity(value: unknown, index: number): ArbitrageOpportunity {
   const row = record(value, `opportunities[${index}]`);
   return {
-    id: string(row.id, "id"), symbol: string(row.symbol, "symbol"),
+    id: string(row.id, "id"),
+    symbol: string(row.symbol, "symbol"),
     spotExchange: exchangeId(row.spotExchange, "spotExchange"),
     futuresExchange: exchangeId(row.futuresExchange, "futuresExchange"),
     spotBid: finite(row.spotBid, "spotBid"),
-    spotAsk: finite(row.spotAsk, "spotAsk"), spotAskSize: finite(row.spotAskSize, "spotAskSize"),
-    futuresBid: finite(row.futuresBid, "futuresBid"), futuresAsk: finite(row.futuresAsk, "futuresAsk"), futuresBidSize: finite(row.futuresBidSize, "futuresBidSize"),
+    spotAsk: finite(row.spotAsk, "spotAsk"),
+    spotAskSize: finite(row.spotAskSize, "spotAskSize"),
+    futuresBid: finite(row.futuresBid, "futuresBid"),
+    futuresAsk: finite(row.futuresAsk, "futuresAsk"),
+    futuresBidSize: finite(row.futuresBidSize, "futuresBidSize"),
     grossSpreadBps: finite(row.grossSpreadBps, "grossSpreadBps"),
     estimatedTotalCostBps: finite(row.estimatedTotalCostBps, "estimatedTotalCostBps"),
     netEdgeBps: finite(row.netEdgeBps, "netEdgeBps"),
@@ -111,9 +164,13 @@ function opportunity(value: unknown, index: number): ArbitrageOpportunity {
 export function parseArbitrageDepth(value: unknown): ArbitrageDepthResponse {
   const input = record(value, "arbitrage depth response");
   return {
-    symbol: string(input.symbol, "symbol"), requestedNotionalUsd: finite(input.requestedNotionalUsd, "requestedNotionalUsd"),
-    spot: depthLeg(input.spot, "spot"), perpetual: depthLeg(input.perpetual, "perpetual"),
-    grossSpreadBps: finite(input.grossSpreadBps, "grossSpreadBps"), complete: boolean(input.complete, "complete"), capturedAt: finite(input.capturedAt, "capturedAt")
+    symbol: string(input.symbol, "symbol"),
+    requestedNotionalUsd: finite(input.requestedNotionalUsd, "requestedNotionalUsd"),
+    spot: depthLeg(input.spot, "spot"),
+    perpetual: depthLeg(input.perpetual, "perpetual"),
+    grossSpreadBps: finite(input.grossSpreadBps, "grossSpreadBps"),
+    complete: boolean(input.complete, "complete"),
+    capturedAt: finite(input.capturedAt, "capturedAt")
   };
 }
 
@@ -124,11 +181,19 @@ function depthLeg(value: unknown, label: string): ArbitrageDepthLeg {
   if (market !== "spot" && market !== "perpetual") throw new Error(`${label}.market is unsupported`);
   if (side !== "buy" && side !== "sell") throw new Error(`${label}.side is unsupported`);
   return {
-    exchange: exchangeId(row.exchange, `${label}.exchange`), market, side,
-    requestedNotionalUsd: finite(row.requestedNotionalUsd, `${label}.requestedNotionalUsd`), filledNotionalUsd: finite(row.filledNotionalUsd, `${label}.filledNotionalUsd`),
-    quantity: finite(row.quantity, `${label}.quantity`), averagePrice: finite(row.averagePrice, `${label}.averagePrice`), worstPrice: finite(row.worstPrice, `${label}.worstPrice`),
-    topPrice: finite(row.topPrice, `${label}.topPrice`), slippageBps: finite(row.slippageBps, `${label}.slippageBps`), levelsUsed: finite(row.levelsUsed, `${label}.levelsUsed`),
-    complete: boolean(row.complete, `${label}.complete`), capturedAt: finite(row.capturedAt, `${label}.capturedAt`)
+    exchange: exchangeId(row.exchange, `${label}.exchange`),
+    market,
+    side,
+    requestedNotionalUsd: finite(row.requestedNotionalUsd, `${label}.requestedNotionalUsd`),
+    filledNotionalUsd: finite(row.filledNotionalUsd, `${label}.filledNotionalUsd`),
+    quantity: finite(row.quantity, `${label}.quantity`),
+    averagePrice: finite(row.averagePrice, `${label}.averagePrice`),
+    worstPrice: finite(row.worstPrice, `${label}.worstPrice`),
+    topPrice: finite(row.topPrice, `${label}.topPrice`),
+    slippageBps: finite(row.slippageBps, `${label}.slippageBps`),
+    levelsUsed: finite(row.levelsUsed, `${label}.levelsUsed`),
+    complete: boolean(row.complete, `${label}.complete`),
+    capturedAt: finite(row.capturedAt, `${label}.capturedAt`)
   };
 }
 

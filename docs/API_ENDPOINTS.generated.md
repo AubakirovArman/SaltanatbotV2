@@ -1,6 +1,6 @@
 # Generated API endpoint index
 
-> Generated from `backend/src/server.ts` and `backend/src/trading/routes.ts`. Do not edit by hand. See [API.md](./API.md) for schemas, examples and authentication flow.
+> Generated from the backend server and modular route registrars. Do not edit by hand. See [API.md](./API.md) for schemas, examples and authentication flow.
 
 This index is a route-presence contract. A change to an Express route makes `npm run docs:check` fail until the generated reference is refreshed.
 
@@ -10,10 +10,14 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | --- | --- | --- | --- |
 | `GET` | `/api/arbitrage` | Public | `backend/src/server.ts` |
 | `GET` | `/api/arbitrage/depth` | Public | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/history` | Public | `backend/src/server.ts` |
 | `GET` | `/api/candles` | Public | `backend/src/server.ts` |
 | `GET` | `/api/catalog` | Public | `backend/src/server.ts` |
 | `GET` | `/api/health` | Public | `backend/src/server.ts` |
 | `GET` | `/api/sparklines` | Public | `backend/src/server.ts` |
+| `GET` | `/api/trade/arbitrage-alerts` | Authenticated · paper-trade | `backend/src/arbitrage/alertRoutes.ts` |
+| `POST` | `/api/trade/arbitrage-alerts` | Authenticated · paper-trade | `backend/src/arbitrage/alertRoutes.ts` |
+| `DELETE` | `/api/trade/arbitrage-alerts/:id` | Authenticated · paper-trade | `backend/src/arbitrage/alertRoutes.ts` |
 | `GET` | `/api/trade/audit` | Authenticated · admin | `backend/src/trading/routes.ts` |
 | `GET` | `/api/trade/auth` | Public | `backend/src/trading/routes.ts` |
 | `GET` | `/api/trade/bots` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
@@ -60,4 +64,4 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `/arbitrage-stream` | Public | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **40 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **44 HTTP endpoints** and **6 WebSocket endpoints**.

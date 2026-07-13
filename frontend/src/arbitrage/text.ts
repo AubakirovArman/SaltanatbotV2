@@ -44,6 +44,10 @@ const en = {
   feeProfile: "Fee profile",
   feeProfileHint: "Your taker fees per leg. The route estimate includes entry and exit.",
   slippageReserve: "Round-trip slippage reserve",
+  holdingHours: "Expected holding time (hours)",
+  annualBorrowRate: "Annual financing / borrow rate",
+  transferCost: "Fixed transfer cost",
+  costModelHint: "Net edge also estimates funding, financing and a fixed transfer cost for the selected notional.",
   alertSettings: "Opportunity alert",
   alertHint: "Fires only when a route crosses the threshold. Telegram delivery requires a paper-trade session.",
   enableAlerts: "Desktop and Telegram alerts",
@@ -73,7 +77,23 @@ const en = {
   closed: "Closed",
   paperDepthBlocked: "Paper entry was blocked because one or both books lack visible depth.",
   paperOpened: "Paper position opened for {symbol}.",
-  alertFired: "Arbitrage threshold crossed on {count} route(s)."
+  alertFired: "Arbitrage threshold crossed on {count} route(s).",
+  persistentAlerts: "Persistent Telegram rule",
+  persistentAlertHint: "Runs on the server while the browser is closed. It only sends a notification and never places orders.",
+  saveServerAlert: "Save server rule",
+  signInForPersistent: "Sign in on the Trade tab with paper-trade access to save server rules.",
+  savedRules: "Saved rules",
+  deleteRule: "Delete persistent alert rule",
+  ruleSaved: "Persistent rule saved.",
+  opportunityHistory: "24-hour opportunity history",
+  historyEmpty: "History starts accumulating once the server feed is active.",
+  previousPage: "Previous page",
+  nextPage: "Next page",
+  pageStatus: "Showing {from}–{to} of {total}",
+  paperRealized: "Realized P&L",
+  paperUnrealized: "Open P&L",
+  paperWinRate: "Closed win rate",
+  paperAverage: "Average closed P&L"
 } as const;
 
 type Key = keyof typeof en;
@@ -122,6 +142,10 @@ const ru: Record<Key, string> = {
   feeProfile: "Профиль комиссий",
   feeProfileHint: "Ваши taker-комиссии по каждой ноге. Расчёт учитывает вход и выход.",
   slippageReserve: "Запас на проскальзывание туда-обратно",
+  holdingHours: "Ожидаемое удержание (часы)",
+  annualBorrowRate: "Годовая ставка финансирования / займа",
+  transferCost: "Фиксированная стоимость перевода",
+  costModelHint: "Чистый спред также оценивает funding, финансирование и фиксированный перевод для выбранной суммы.",
   alertSettings: "Алерт возможности",
   alertHint: "Срабатывает только при пересечении порога. Для Telegram нужна paper-trade сессия.",
   enableAlerts: "Алерты на рабочий стол и в Telegram",
@@ -151,7 +175,23 @@ const ru: Record<Key, string> = {
   closed: "Закрыта",
   paperDepthBlocked: "Paper-вход заблокирован: в одном или обоих стаканах недостаточно видимой глубины.",
   paperOpened: "Paper-позиция по {symbol} открыта.",
-  alertFired: "Порог арбитража пересечён на маршрутах: {count}."
+  alertFired: "Порог арбитража пересечён на маршрутах: {count}.",
+  persistentAlerts: "Постоянное Telegram-правило",
+  persistentAlertHint: "Работает на сервере при закрытом браузере. Только отправляет уведомление и никогда не создаёт ордера.",
+  saveServerAlert: "Сохранить серверное правило",
+  signInForPersistent: "Войдите во вкладке «Торговля» с доступом paper-trade, чтобы сохранять серверные правила.",
+  savedRules: "Сохранённые правила",
+  deleteRule: "Удалить постоянное правило алерта",
+  ruleSaved: "Постоянное правило сохранено.",
+  opportunityHistory: "История возможности за 24 часа",
+  historyEmpty: "История начнёт накапливаться после запуска серверного потока.",
+  previousPage: "Предыдущая страница",
+  nextPage: "Следующая страница",
+  pageStatus: "Показано {from}–{to} из {total}",
+  paperRealized: "Реализованный P&L",
+  paperUnrealized: "P&L открытых",
+  paperWinRate: "Доля прибыльных закрытых",
+  paperAverage: "Средний P&L закрытых"
 };
 
 const kk: Record<Key, string> = {
@@ -198,6 +238,10 @@ const kk: Record<Key, string> = {
   feeProfile: "Комиссия профилі",
   feeProfileHint: "Әр аяққа арналған taker комиссиялары. Баға кіру мен шығуды қамтиды.",
   slippageReserve: "Екі бағыттағы slippage қоры",
+  holdingHours: "Күтілетін ұстау уақыты (сағат)",
+  annualBorrowRate: "Жылдық қаржыландыру / қарыз мөлшерлемесі",
+  transferCost: "Тұрақты аударым құны",
+  costModelHint: "Таза айырма таңдалған сома үшін funding, қаржыландыру және тұрақты аударым құнын да бағалайды.",
   alertSettings: "Мүмкіндік alert-і",
   alertHint: "Бағыт шекті кесіп өткенде ғана іске қосылады. Telegram үшін paper-trade сессиясы керек.",
   enableAlerts: "Жұмыс үстелі және Telegram alert-тері",
@@ -227,7 +271,23 @@ const kk: Record<Key, string> = {
   closed: "Жабық",
   paperDepthBlocked: "Бір немесе екі стаканда тереңдік жеткіліксіз болғандықтан paper кіру бұғатталды.",
   paperOpened: "{symbol} paper позициясы ашылды.",
-  alertFired: "Арбитраж шегі {count} бағытта кесілді."
+  alertFired: "Арбитраж шегі {count} бағытта кесілді.",
+  persistentAlerts: "Тұрақты Telegram ережесі",
+  persistentAlertHint: "Браузер жабық кезде серверде жұмыс істейді. Тек хабарлама жібереді және order жасамайды.",
+  saveServerAlert: "Сервер ережесін сақтау",
+  signInForPersistent: "Сервер ережелерін сақтау үшін «Сауда» қойындысында paper-trade рұқсатымен кіріңіз.",
+  savedRules: "Сақталған ережелер",
+  deleteRule: "Тұрақты alert ережесін жою",
+  ruleSaved: "Тұрақты ереже сақталды.",
+  opportunityHistory: "24 сағаттық мүмкіндік тарихы",
+  historyEmpty: "Тарих сервер ағыны іске қосылғаннан кейін жинала бастайды.",
+  previousPage: "Алдыңғы бет",
+  nextPage: "Келесі бет",
+  pageStatus: "{total} ішінен {from}–{to} көрсетілді",
+  paperRealized: "Іске асқан P&L",
+  paperUnrealized: "Ашық P&L",
+  paperWinRate: "Жабылған ұтыс үлесі",
+  paperAverage: "Жабылған орташа P&L"
 };
 
 const messages: Record<Locale, Record<Key, string>> = { en, ru, kk };

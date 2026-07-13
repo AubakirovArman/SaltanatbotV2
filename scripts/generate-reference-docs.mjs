@@ -6,17 +6,20 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const serverPath = path.join(root, "backend/src/server.ts");
 const tradingPath = path.join(root, "backend/src/trading/routes.ts");
+const arbitrageAlertRoutesPath = path.join(root, "backend/src/arbitrage/alertRoutes.ts");
 const blocksPath = path.join(root, "frontend/src/strategy/blockCatalog.ts");
 const apiDocPath = path.join(root, "docs/API_ENDPOINTS.generated.md");
 const blocksDocPath = path.join(root, "docs/BLOCK_CATALOG.generated.md");
 
 const serverSource = readFileSync(serverPath, "utf8");
 const tradingSource = readFileSync(tradingPath, "utf8");
+const arbitrageAlertRoutesSource = readFileSync(arbitrageAlertRoutesPath, "utf8");
 const blocksSource = readFileSync(blocksPath, "utf8");
 
 const endpoints = [
   ...extractRoutes(serverSource, "app", "", Number.POSITIVE_INFINITY, "Public"),
-  ...extractRoutes(tradingSource, "router", "/api/trade", tradingSource.indexOf("router.use(requireAuth)"), "Public")
+  ...extractRoutes(tradingSource, "router", "/api/trade", tradingSource.indexOf("router.use(requireAuth)"), "Public"),
+  ...extractRoutes(arbitrageAlertRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/arbitrage/alertRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" }))
 ].sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
 const sockets = [
   { path: "/stream", access: "Public", purpose: "Market candle snapshot and updates" },
@@ -32,7 +35,7 @@ for (const block of blocks) categoryCounts.set(block.category, (categoryCounts.g
 
 const apiDoc = `# Generated API endpoint index
 
-> Generated from \`backend/src/server.ts\` and \`backend/src/trading/routes.ts\`. Do not edit by hand. See [API.md](./API.md) for schemas, examples and authentication flow.
+> Generated from the backend server and modular route registrars. Do not edit by hand. See [API.md](./API.md) for schemas, examples and authentication flow.
 
 This index is a route-presence contract. A change to an Express route makes \`npm run docs:check\` fail until the generated reference is refreshed.
 
@@ -61,7 +64,10 @@ The stable block type is the serialization/compiler identifier and is intentiona
 
 | Category | Blocks |
 | --- | ---: |
-${[...categoryCounts].sort(([a], [b]) => a.localeCompare(b)).map(([category, count]) => `| ${escapeCell(category)} | ${count} |`).join("\n")}
+${[...categoryCounts]
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([category, count]) => `| ${escapeCell(category)} | ${count} |`)
+  .join("\n")}
 
 ## Blocks
 
@@ -73,7 +79,10 @@ Generated total: **${blocks.length} documented block types**.
 `;
 
 if (process.argv.includes("--check")) {
-  const stale = [[apiDocPath, apiDoc], [blocksDocPath, blocksDoc]].filter(([file, expected]) => safeRead(file) !== expected);
+  const stale = [
+    [apiDocPath, apiDoc],
+    [blocksDocPath, blocksDoc]
+  ].filter(([file, expected]) => safeRead(file) !== expected);
   if (stale.length > 0) {
     console.error(`Generated reference files are stale: ${stale.map(([file]) => path.relative(root, file)).join(", ")}`);
     process.exit(1);
@@ -85,7 +94,7 @@ if (process.argv.includes("--check")) {
   console.log(`Generated ${endpoints.length} HTTP endpoints, ${sockets.length} WebSocket endpoints and ${blocks.length} blocks.`);
 }
 
-function extractRoutes(source, receiver, prefix, publicBoundary, publicAccess) {
+function extractRoutes(source, receiver, prefix, publicBoundary, publicAccess, sourceOverride) {
   const pattern = new RegExp(`\\b${receiver}\\.(get|post|put|patch|delete)\\(\\s*"([^"]+)"`, "g");
   const routes = [];
   for (const match of source.matchAll(pattern)) {
@@ -93,18 +102,12 @@ function extractRoutes(source, receiver, prefix, publicBoundary, publicAccess) {
     const signature = source.slice(match.index, lineEnd === -1 ? undefined : lineEnd);
     const role = signature.match(/requireRole\("([^"]+)"\)/)?.[1];
     const fullPath = `${prefix}${match[2]}`;
-    const runtimeRole = new Set([
-      "POST /api/trade/bots",
-      "POST /api/trade/bots/:id/start",
-      "POST /api/trade/bots/:id/stop",
-      "POST /api/trade/bots/:id/confirm-resume",
-      "POST /api/trade/bots/:id/command"
-    ]).has(`${match[1].toUpperCase()} ${fullPath}`);
+    const runtimeRole = new Set(["POST /api/trade/bots", "POST /api/trade/bots/:id/start", "POST /api/trade/bots/:id/stop", "POST /api/trade/bots/:id/confirm-resume", "POST /api/trade/bots/:id/command"]).has(`${match[1].toUpperCase()} ${fullPath}`);
     routes.push({
       method: match[1].toUpperCase(),
       path: fullPath,
       access: match.index < publicBoundary ? publicAccess : role ? `Authenticated · ${role}` : runtimeRole ? "Authenticated · paper/live role by bot" : "Authenticated · read-only+",
-      source: prefix ? "backend/src/trading/routes.ts" : "backend/src/server.ts"
+      source: sourceOverride ?? (prefix ? "backend/src/trading/routes.ts" : "backend/src/server.ts")
     });
   }
   return routes;
@@ -113,9 +116,7 @@ function extractRoutes(source, receiver, prefix, publicBoundary, publicAccess) {
 function extractBlocks(source) {
   const value = `"((?:\\\\.|[^"\\\\])*)"`;
   const pattern = new RegExp(`^\\s{2}([a-zA-Z0-9_]+): \\{ category: ${value}, title: ${value}, body: ${value}(?:, example: ${value})? \\},?$`, "gm");
-  return [...source.matchAll(pattern)]
-    .map((match) => ({ type: match[1], category: decode(match[2]), title: decode(match[3]), body: decode(match[4]), example: match[5] ? decode(match[5]) : undefined }))
-    .sort((a, b) => a.category.localeCompare(b.category) || a.type.localeCompare(b.type));
+  return [...source.matchAll(pattern)].map((match) => ({ type: match[1], category: decode(match[2]), title: decode(match[3]), body: decode(match[4]), example: match[5] ? decode(match[5]) : undefined })).sort((a, b) => a.category.localeCompare(b.category) || a.type.localeCompare(b.type));
 }
 
 function decode(value) {

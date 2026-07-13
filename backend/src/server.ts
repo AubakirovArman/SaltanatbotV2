@@ -6,9 +6,11 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
 import { getAuthToken, isDemoMode, verifyWsToken, wasAuthTokenGeneratedThisRun } from "./auth.js";
-import { createArbitrageDepthHandler, createArbitrageHandler } from "./arbitrage/routes.js";
+import { createArbitrageDepthHandler, createArbitrageHandler, createArbitrageHistoryHandler } from "./arbitrage/routes.js";
 import { ArbitrageScannerService } from "./arbitrage/service.js";
 import { ArbitrageStreamHub } from "./arbitrage/stream.js";
+import { ArbitrageAlertService } from "./arbitrage/alerts.js";
+import { ArbitrageHistoryRecorder } from "./arbitrage/history.js";
 import { findInstrument, getCatalog, initCatalog } from "./market/catalog.js";
 import { timeframes } from "./market/timeframes.js";
 import { OrderBookHub } from "./orderbook/hub.js";
@@ -32,9 +34,13 @@ const tradeFlowWss = new WebSocketServer({ noServer: true });
 const arbitrageWss = new WebSocketServer({ noServer: true });
 const orderBookHub = new OrderBookHub();
 const tradeFlowHub = new TradeFlowHub();
-const trading = createTradingApi(provider);
+const arbitrageAlerts = new ArbitrageAlertService();
+const trading = createTradingApi(provider, arbitrageAlerts);
 const arbitrageScanner = new ArbitrageScannerService();
 const arbitrageStream = new ArbitrageStreamHub(arbitrageWss, arbitrageScanner);
+const arbitrageHistory = new ArbitrageHistoryRecorder();
+arbitrageStream.subscribe((scan) => arbitrageHistory.record(scan));
+arbitrageAlerts.attach(arbitrageStream);
 
 // CORS: same-origin needs nothing (the SPA is served by this app). Allow an
 // explicit allowlist for cross-origin dev/proxy setups via ALLOWED_ORIGINS.
@@ -96,6 +102,7 @@ app.get("/api/catalog", (_request, response) => {
 
 app.get("/api/arbitrage", createArbitrageHandler(arbitrageScanner));
 app.get("/api/arbitrage/depth", createArbitrageDepthHandler());
+app.get("/api/arbitrage/history", createArbitrageHistoryHandler());
 
 app.get("/api/candles", async (request, response) => {
   const parsed = candleQuery.safeParse(request.query);
@@ -156,12 +163,7 @@ app.get("/api/sparklines", async (request, response) => {
       const instrument = findInstrument(symbol);
       if (!instrument) return [symbol, null] as const;
       try {
-        const candles = await provider.getCandles(
-          instrument,
-          parsed.data.timeframe,
-          { limit: parsed.data.points },
-          parsed.data.exchange
-        );
+        const candles = await provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data.exchange);
         const closes = candles.map((candle) => candle.close);
         const first = closes[0];
         const last = closes.at(-1);
@@ -279,40 +281,57 @@ quoteWss.on("connection", async (socket, request) => {
     socket.close();
     return;
   }
-  const symbols = [...new Set(parsed.data.symbols.split(",").map((symbol) => symbol.trim()).filter(Boolean))].slice(0, 40);
+  const symbols = [
+    ...new Set(
+      parsed.data.symbols
+        .split(",")
+        .map((symbol) => symbol.trim())
+        .filter(Boolean)
+    )
+  ].slice(0, 40);
   const instruments = symbols.map((symbol) => findInstrument(symbol)).filter((item) => item !== undefined);
   const histories = new Map<string, Candle[]>();
   const series: Record<string, { last: number | null; changePct: number; points: number[] } | null> = {};
-  await Promise.all(instruments.map(async (instrument) => {
-    try {
-      const candles = await provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data.exchange);
-      histories.set(instrument.symbol, candles);
-      series[instrument.symbol] = sparklineSeries(candles);
-    } catch {
-      series[instrument.symbol] = null;
-    }
-  }));
+  await Promise.all(
+    instruments.map(async (instrument) => {
+      try {
+        const candles = await provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data.exchange);
+        histories.set(instrument.symbol, candles);
+        series[instrument.symbol] = sparklineSeries(candles);
+      } catch {
+        series[instrument.symbol] = null;
+      }
+    })
+  );
   send({ type: "quotes_snapshot", timeframe: parsed.data.timeframe, series, provider: provider.name, ts: Date.now() });
 
   const subscriptions: Array<{ close(): void }> = [];
-  await Promise.allSettled(instruments.map(async (instrument) => {
-    const subscription = await provider.subscribe(instrument, parsed.data.timeframe, (candle) => {
-      const current = histories.get(instrument.symbol) ?? [];
-      const last = current.at(-1);
-      const next = last?.time === candle.time ? [...current.slice(0, -1), candle] : [...current, candle];
-      const bounded = next.slice(-parsed.data.points);
-      histories.set(instrument.symbol, bounded);
-      send({
-        type: "quote",
-        symbol: instrument.symbol,
-        timeframe: parsed.data.timeframe,
-        series: sparklineSeries(bounded),
-        provider: candle.source ?? provider.name,
-        ts: Date.now()
-      });
-    }, () => undefined, parsed.data.exchange);
-    subscriptions.push(subscription);
-  }));
+  await Promise.allSettled(
+    instruments.map(async (instrument) => {
+      const subscription = await provider.subscribe(
+        instrument,
+        parsed.data.timeframe,
+        (candle) => {
+          const current = histories.get(instrument.symbol) ?? [];
+          const last = current.at(-1);
+          const next = last?.time === candle.time ? [...current.slice(0, -1), candle] : [...current, candle];
+          const bounded = next.slice(-parsed.data.points);
+          histories.set(instrument.symbol, bounded);
+          send({
+            type: "quote",
+            symbol: instrument.symbol,
+            timeframe: parsed.data.timeframe,
+            series: sparklineSeries(bounded),
+            provider: candle.source ?? provider.name,
+            ts: Date.now()
+          });
+        },
+        () => undefined,
+        parsed.data.exchange
+      );
+      subscriptions.push(subscription);
+    })
+  );
   socket.on("close", () => subscriptions.forEach((subscription) => subscription.close()));
 });
 
@@ -335,12 +354,7 @@ wss.on("connection", async (socket, request) => {
   }
 
   try {
-    const candles = await provider.getCandles(
-      instrument,
-      parsed.data.timeframe,
-      { limit: parsed.data.limit },
-      parsed.data.exchange
-    );
+    const candles = await provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.limit }, parsed.data.exchange);
     send({
       type: "snapshot",
       symbol: instrument.symbol,
@@ -399,13 +413,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const frontendDist = path.resolve(__dirname, "../../frontend/dist");
 
-app.use(express.static(frontendDist, {
-  setHeaders(response, filePath) {
-    const relative = path.relative(frontendDist, filePath);
-    response.setHeader("Cache-Control", frontendCacheControl(relative));
-    if (relative === "service-worker.js") response.setHeader("Service-Worker-Allowed", "/");
-  }
-}));
+app.use(
+  express.static(frontendDist, {
+    setHeaders(response, filePath) {
+      const relative = path.relative(frontendDist, filePath);
+      response.setHeader("Cache-Control", frontendCacheControl(relative));
+      if (relative === "service-worker.js") response.setHeader("Service-Worker-Allowed", "/");
+    }
+  })
+);
 app.get(/.*/, (_request, response) => {
   response.sendFile(path.join(frontendDist, "index.html"), { headers: { "Cache-Control": "no-cache" } });
 });
@@ -432,10 +448,7 @@ server.listen(port, host, () => {
   }
   const loopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
   if (!loopback) {
-    console.log(
-      `⚠️  Bound to ${host} (reachable off-machine). Put this behind a reverse proxy with TLS,\n` +
-        "   restrict access, and keep the access token secret. See docs/CONFIGURATION.md."
-    );
+    console.log(`⚠️  Bound to ${host} (reachable off-machine). Put this behind a reverse proxy with TLS,\n` + "   restrict access, and keep the access token secret. See docs/CONFIGURATION.md.");
   }
   // Bring back bots that were running before the last shutdown/crash.
   void trading.engine.resume();
@@ -449,6 +462,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     // Preserve desired status so running bots resume on the next start.
     trading.telegramControl.stop();
+    arbitrageAlerts.close();
     trading.engine.shutdown();
     arbitrageStream.close();
     server.close(() => process.exit(0));

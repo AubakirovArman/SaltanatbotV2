@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const TRADING_SCHEMA_VERSION = 2;
+export const TRADING_SCHEMA_VERSION = 3;
 
 interface Migration {
   version: number;
@@ -68,7 +68,7 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_order_events_order ON order_events(orderId, ts);
       CREATE INDEX IF NOT EXISTS idx_logs_bot ON logs(botId, ts);
       CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts);
-    `,
+    `
   },
   {
     version: 2,
@@ -96,8 +96,29 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_strategy_runs_bot ON strategy_runs(botId, startedAt);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_strategy_runs_active
         ON strategy_runs(botId) WHERE endedAt IS NULL;
-    `,
+    `
   },
+  {
+    version: 3,
+    name: "arbitrage_opportunity_history",
+    sql: `
+      CREATE TABLE IF NOT EXISTS arbitrage_history (
+        routeId TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        spotExchange TEXT NOT NULL,
+        futuresExchange TEXT NOT NULL,
+        grossSpreadBps REAL NOT NULL,
+        topBookCapacityUsd REAL NOT NULL,
+        fundingRate REAL NOT NULL,
+        ts INTEGER NOT NULL,
+        PRIMARY KEY (routeId, ts)
+      );
+      CREATE INDEX IF NOT EXISTS idx_arbitrage_history_route_ts
+        ON arbitrage_history(routeId, ts DESC);
+      CREATE INDEX IF NOT EXISTS idx_arbitrage_history_ts
+        ON arbitrage_history(ts);
+    `
+  }
 ];
 
 function readUserVersion(database: DatabaseSync) {
@@ -117,9 +138,7 @@ export function migrateTradingStore(database: DatabaseSync, now = Date.now): Mig
     throw new Error(`Invalid trading database schema version: ${fromVersion}`);
   }
   if (fromVersion > TRADING_SCHEMA_VERSION) {
-    throw new Error(
-      `Trading database schema v${fromVersion} is newer than supported v${TRADING_SCHEMA_VERSION}; refusing to start`,
-    );
+    throw new Error(`Trading database schema v${fromVersion} is newer than supported v${TRADING_SCHEMA_VERSION}; refusing to start`);
   }
 
   const pending = migrations.filter((migration) => migration.version > fromVersion);
@@ -135,9 +154,7 @@ export function migrateTradingStore(database: DatabaseSync, now = Date.now): Mig
         appliedAt INTEGER NOT NULL
       );
     `);
-    const record = database.prepare(
-      "INSERT OR IGNORE INTO schema_migrations (version, name, appliedAt) VALUES (?, ?, ?)",
-    );
+    const record = database.prepare("INSERT OR IGNORE INTO schema_migrations (version, name, appliedAt) VALUES (?, ?, ?)");
     for (const migration of pending) {
       database.exec(migration.sql);
       record.run(migration.version, migration.name, now());

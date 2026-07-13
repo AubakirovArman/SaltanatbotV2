@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { migrateTradingStore } from "./storeSchema.js";
 import { recordBotStatusTransition, writePositionSnapshot, type PositionSnapshotRecord, type StrategyRunRecord } from "./storeLifecycle.js";
 import type { AuditLogRecord, BotConfig, FillRecord, OrderEventRecord, OrderJournalRecord } from "./types.js";
+import type { ArbitrageOpportunity } from "../arbitrage/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../../data");
@@ -97,7 +98,8 @@ export function upsertPositionSnapshot(position: PositionSnapshotRecord) {
 }
 
 export function listPositionSnapshots(botId: string): PositionSnapshotRecord[] {
-  return db.prepare("SELECT botId, symbol, market, status, data, updatedAt FROM positions WHERE botId = ? ORDER BY updatedAt DESC")
+  return db
+    .prepare("SELECT botId, symbol, market, status, data, updatedAt FROM positions WHERE botId = ? ORDER BY updatedAt DESC")
     .all(botId)
     .map((row) => {
       const typed = row as Omit<PositionSnapshotRecord, "data" | "market" | "status"> & { market: PositionSnapshotRecord["market"]; status: PositionSnapshotRecord["status"]; data: string };
@@ -108,7 +110,8 @@ export function listPositionSnapshots(botId: string): PositionSnapshotRecord[] {
 // ---------- strategy run lifecycle ----------
 
 export function listStrategyRuns(botId: string, limit = 200): StrategyRunRecord[] {
-  return db.prepare("SELECT id, botId, strategyName, status, startedAt, endedAt, data FROM strategy_runs WHERE botId = ? ORDER BY startedAt DESC LIMIT ?")
+  return db
+    .prepare("SELECT id, botId, strategyName, status, startedAt, endedAt, data FROM strategy_runs WHERE botId = ? ORDER BY startedAt DESC LIMIT ?")
     .all(botId, limit)
     .map((row) => {
       const typed = row as Omit<StrategyRunRecord, "data" | "endedAt" | "status"> & { status: StrategyRunRecord["status"]; endedAt: number | null; data: string };
@@ -211,6 +214,43 @@ export function setSetting(key: string, value: unknown, encrypted = false) {
   const serialized = JSON.stringify(value);
   const stored = encrypted ? encrypt(serialized) : serialized;
   db.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, encrypted = excluded.encrypted").run(key, stored, encrypted ? 1 : 0);
+}
+
+// ---------- public arbitrage research history ----------
+
+export interface ArbitrageHistoryRecord {
+  routeId: string;
+  symbol: string;
+  spotExchange: "binance" | "bybit";
+  futuresExchange: "binance" | "bybit";
+  grossSpreadBps: number;
+  topBookCapacityUsd: number;
+  fundingRate: number;
+  ts: number;
+}
+
+export function insertArbitrageHistory(rows: ArbitrageOpportunity[], ts: number) {
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO arbitrage_history
+      (routeId, symbol, spotExchange, futuresExchange, grossSpreadBps, topBookCapacityUsd, fundingRate, ts)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  withStoreTransaction(() => {
+    for (const row of rows) insert.run(row.id, row.symbol, row.spotExchange, row.futuresExchange, row.grossSpreadBps, row.topBookCapacityUsd, row.fundingRate, ts);
+  });
+}
+
+export function listArbitrageHistory(routeId: string, since: number, limit = 1_000): ArbitrageHistoryRecord[] {
+  return db
+    .prepare(`
+    SELECT routeId, symbol, spotExchange, futuresExchange, grossSpreadBps, topBookCapacityUsd, fundingRate, ts
+    FROM arbitrage_history WHERE routeId = ? AND ts >= ? ORDER BY ts ASC LIMIT ?
+  `)
+    .all(routeId, since, limit) as unknown as ArbitrageHistoryRecord[];
+}
+
+export function pruneArbitrageHistory(before: number) {
+  return db.prepare("DELETE FROM arbitrage_history WHERE ts < ?").run(before).changes;
 }
 
 // ---------- encryption for API keys at rest ----------

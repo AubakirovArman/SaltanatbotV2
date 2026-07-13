@@ -32,21 +32,11 @@ describe("trading store schema migrations", () => {
       applied: [
         { version: 1, name: "initial_durable_trading_schema" },
         { version: 2, name: "durable_positions_and_strategy_runs" },
-      ],
+        { version: 3, name: "arbitrage_opportunity_history" }
+      ]
     });
-    expect(tableNames(database)).toEqual([
-      "audit_log",
-      "bots",
-      "fills",
-      "logs",
-      "order_events",
-      "orders",
-      "positions",
-      "schema_migrations",
-      "settings",
-      "strategy_runs",
-    ]);
-    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 2 });
+    expect(tableNames(database)).toEqual(["arbitrage_history", "audit_log", "bots", "fills", "logs", "order_events", "orders", "positions", "schema_migrations", "settings", "strategy_runs"]);
+    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 3 });
   });
 
   it("upgrades an unversioned legacy database without deleting existing records", () => {
@@ -61,7 +51,7 @@ describe("trading store schema migrations", () => {
     expect(database.prepare("SELECT version, name, appliedAt FROM schema_migrations ORDER BY version LIMIT 1").get()).toMatchObject({
       version: 1,
       name: "initial_durable_trading_schema",
-      appliedAt: 20,
+      appliedAt: 20
     });
   });
 
@@ -77,8 +67,11 @@ describe("trading store schema migrations", () => {
 
     expect(result).toEqual({
       fromVersion: 1,
-      toVersion: 2,
-      applied: [{ version: 2, name: "durable_positions_and_strategy_runs" }],
+      toVersion: 3,
+      applied: [
+        { version: 2, name: "durable_positions_and_strategy_runs" },
+        { version: 3, name: "arbitrage_opportunity_history" }
+      ]
     });
     expect(tableNames(database)).toEqual(expect.arrayContaining(["positions", "strategy_runs"]));
     expect(database.prepare("SELECT id FROM fills").get()).toMatchObject({ id: "fill-1" });
@@ -89,8 +82,8 @@ describe("trading store schema migrations", () => {
     migrateTradingStore(database, () => 1);
     const result = migrateTradingStore(database, () => 2);
 
-    expect(result).toEqual({ fromVersion: 2, toVersion: 2, applied: [] });
-    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 2 });
+    expect(result).toEqual({ fromVersion: 3, toVersion: 3, applied: [] });
+    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 3 });
   });
 
   it("refuses to open a database created by a newer application version", () => {

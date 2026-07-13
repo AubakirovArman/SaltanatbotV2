@@ -17,6 +17,8 @@ import { deleteBot, deleteSetting, initStore, insertAuditLog, listAuditLog, list
 import { parseStrategyIR } from "./strategy/irSchema.js";
 import type { Timeframe } from "../types.js";
 import type { AuthRole, BotConfig, ExchangeId } from "./types.js";
+import type { ArbitrageAlertService } from "../arbitrage/alerts.js";
+import { registerArbitrageAlertRoutes } from "../arbitrage/alertRoutes.js";
 
 const timeframeEnum = z.enum(timeframes as [Timeframe, ...Timeframe[]]);
 
@@ -65,9 +67,7 @@ const notifyBodySchema = z.object({
       control: z.boolean().optional()
     })
     .optional(),
-  vk: z
-    .object({ enabled: z.boolean().optional(), token: z.string().max(512).optional(), peerId: z.string().max(64).optional() })
-    .optional()
+  vk: z.object({ enabled: z.boolean().optional(), token: z.string().max(512).optional(), peerId: z.string().max(64).optional() }).optional()
 });
 
 export interface TradingApi {
@@ -78,7 +78,7 @@ export interface TradingApi {
   telegramControl: TelegramControl;
 }
 
-export function createTradingApi(provider: ProviderRouter): TradingApi {
+export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: ArbitrageAlertService): TradingApi {
   initStore();
 
   const wss = new WebSocketServer({ noServer: true });
@@ -462,14 +462,20 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
   // A threshold crossing discovered by the public screener may be forwarded only by an
   // authenticated paper-trade operator. It remains a notification and never places orders.
   router.post("/notify-arbitrage", requireRole("paper-trade"), async (req, res) => {
-    const parsed = z.object({
-      symbol: z.string().regex(/^[A-Z0-9]{2,20}USDT$/),
-      spotExchange: z.enum(["binance", "bybit"]),
-      futuresExchange: z.enum(["binance", "bybit"]),
-      netEdgeBps: z.number().finite().min(-10_000).max(10_000),
-      minimumNetEdgeBps: z.number().finite().min(-10_000).max(10_000)
-    }).refine((value) => value.spotExchange !== value.futuresExchange).safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    const parsed = z
+      .object({
+        symbol: z.string().regex(/^[A-Z0-9]{2,20}USDT$/),
+        spotExchange: z.enum(["binance", "bybit"]),
+        futuresExchange: z.enum(["binance", "bybit"]),
+        netEdgeBps: z.number().finite().min(-10_000).max(10_000),
+        minimumNetEdgeBps: z.number().finite().min(-10_000).max(10_000)
+      })
+      .refine((value) => value.spotExchange !== value.futuresExchange)
+      .safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
     const value = parsed.data;
     await notify({
       event: "signal",
@@ -479,6 +485,8 @@ export function createTradingApi(provider: ProviderRouter): TradingApi {
     });
     res.json({ ok: true });
   });
+
+  registerArbitrageAlertRoutes(router, arbitrageAlerts, requireRole("paper-trade"));
 
   return { router, wss, engine, telegramControl };
 }

@@ -7,6 +7,21 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Cross-exchange arbitrage screener
 
+- Replaced the shared two-second REST broadcast loop with four direct, server-owned public
+  Binance/Bybit spot/perpetual ticker WebSockets, REST bootstrap/discovery, Bybit heartbeat,
+  exponential reconnect, bounded payload/backpressure and coalesced browser updates.
+- Added persistent authenticated Telegram-only alert rules that continue monitoring with the tab
+  closed, persist cooldown/last-trigger state and remain completely disconnected from order paths.
+- Added a bounded seven-day SQLite opportunity history with minute sampling, hourly retention,
+  a public validated history endpoint and a 24-hour route chart in the depth panel.
+- Expanded net-cost estimates with projected funding, annual financing/borrow cost and fixed
+  transfer cost at the selected notional; added paper realized/open PnL, win rate and average PnL.
+- Paginated the high-frequency semantic table at 50 rows and isolated below-fold paper rendering to
+  keep interaction work bounded; added complete EN/RU/KK copy and parser/model/browser coverage.
+- Raised only the measured aggregate JavaScript gzip ceiling from 536 KiB to 540 KiB for the
+  lazy-loaded history chart, persistent-rule client and expanded three-locale cost/analytics copy;
+  the initial shell, individual JavaScript, CSS and HTML ceilings are unchanged. The measured build
+  is approximately 536.9 KiB gzip.
 - Added a shared read-only WebSocket stream with bounded reconnect, hidden-tab pause and REST
   fallback; one server cache feeds all connected viewers.
 - Added on-demand two-book depth analysis for a selected USD notional with VWAP, worst price,

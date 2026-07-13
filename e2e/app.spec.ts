@@ -60,16 +60,12 @@ test("installs a static offline shell without caching runtime market or trading 
       method: "POST",
       enctype: "multipart/form-data",
       params: {
-        files: [{
-          name: "research_files",
-          accept: [
-            ".pine",
-            ".strategy",
-            ".saltanat-plugin",
-            "application/vnd.saltanatbotv2.strategy+json",
-            "application/vnd.saltanatbotv2.plugin+json"
-          ]
-        }]
+        files: [
+          {
+            name: "research_files",
+            accept: [".pine", ".strategy", ".saltanat-plugin", "application/vnd.saltanatbotv2.strategy+json", "application/vnd.saltanatbotv2.plugin+json"]
+          }
+        ]
       }
     },
     shortcuts: [
@@ -132,11 +128,13 @@ test("installs a static offline shell without caching runtime market or trading 
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
 
-    const sharedDestination = await shareResearchFiles(page, [{
-      name: "offline-share.pine",
-      type: "text/plain",
-      content: ["//@version=6", 'indicator("Offline Share", overlay=false)', 'plot(close, "Close")'].join("\n")
-    }]);
+    const sharedDestination = await shareResearchFiles(page, [
+      {
+        name: "offline-share.pine",
+        type: "text/plain",
+        content: ["//@version=6", 'indicator("Offline Share", overlay=false)', 'plot(close, "Close")'].join("\n")
+      }
+    ]);
     const sharedToken = new URL(sharedDestination).searchParams.get("share");
     expect(sharedToken).toMatch(/^[0-9a-f-]{36}$/);
     const sharedReview = page.getByRole("dialog", { name: "Review files shared with SaltanatbotV2" });
@@ -296,13 +294,15 @@ test("configures and persists confirmed price-chart construction", async ({ page
   await page.getByLabel("Reversal boxes").fill("4");
   await expect(page.getByRole("img", { name: /Point & Figure.*0.50% boxes and a 4-box reversal/ })).toBeVisible();
   await expect(page.locator(".legend-symbol")).toContainText("P&F 0.50% ×4");
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:price-representation-settings:v2:chart-1:EURUSD") ?? "null"))).toMatchObject({
-    renkoBrickPercent: 0.2,
-    lineBreakDepth: 5,
-    kagiReversalPercent: 0.25,
-    pnfBoxPercent: 0.5,
-    pnfReversalBoxes: 4
-  });
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:price-representation-settings:v2:chart-1:EURUSD") ?? "null")))
+    .toMatchObject({
+      renkoBrickPercent: 0.2,
+      lineBreakDepth: 5,
+      kagiReversalPercent: 0.25,
+      pnfBoxPercent: 0.5,
+      pnfReversalBoxes: 4
+    });
   await expectNoAxeViolations(page);
   await page.keyboard.press("Escape");
   await expect(page.locator(".price-representation-control")).not.toHaveAttribute("open", "");
@@ -330,10 +330,14 @@ test("isolates price-chart construction settings by pane and symbol", async ({ p
   await secondary.getByLabel("Brick percentage").fill("0.30");
   await expect(secondary.locator('summary[aria-label="RENKO 0.30% settings"]')).toBeVisible();
   await expect(primary.locator('summary[aria-label="RENKO 0.20% settings"]')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => ({
-    primary: JSON.parse(localStorage.getItem("sbv2:price-representation-settings:v2:chart-1:BTCUSDT") ?? "null")?.renkoBrickPercent,
-    secondary: JSON.parse(localStorage.getItem("sbv2:price-representation-settings:v2:chart-2:BTCUSDT") ?? "null")?.renkoBrickPercent
-  }))).toEqual({ primary: 0.2, secondary: 0.3 });
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        primary: JSON.parse(localStorage.getItem("sbv2:price-representation-settings:v2:chart-1:BTCUSDT") ?? "null")?.renkoBrickPercent,
+        secondary: JSON.parse(localStorage.getItem("sbv2:price-representation-settings:v2:chart-2:BTCUSDT") ?? "null")?.renkoBrickPercent
+      }))
+    )
+    .toEqual({ primary: 0.2, secondary: 0.3 });
 
   await page.reload();
   const restoredPrimary = page.locator(".multi-chart-pane.primary");
@@ -405,10 +409,7 @@ test("keeps Retina canvas, pointer HUD and price axis in CSS-pixel alignment", a
     await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
 
     const canvas = page.locator(".chart-canvas-interaction");
-    await expect.poll(() => canvas.evaluate((element: HTMLCanvasElement) => Math.max(
-      Math.abs(element.width - element.clientWidth * window.devicePixelRatio),
-      Math.abs(element.height - element.clientHeight * window.devicePixelRatio)
-    ))).toBeLessThanOrEqual(1);
+    await expect.poll(() => canvas.evaluate((element: HTMLCanvasElement) => Math.max(Math.abs(element.width - element.clientWidth * window.devicePixelRatio), Math.abs(element.height - element.clientHeight * window.devicePixelRatio)))).toBeLessThanOrEqual(1);
     const density = await canvas.evaluate((element: HTMLCanvasElement) => ({
       width: element.width,
       height: element.height,
@@ -604,12 +605,21 @@ test("opens and restores four distinct markets from the keyboard layout menu", {
   for (let index = 1; index < symbols.length; index += 1) {
     const select = page.getByRole("combobox", { name: `Symbol · ${index + 1}` });
     await expect(select).toHaveValue(symbols[index]);
-    await expect(page.locator(".multi-chart-pane.secondary").nth(index - 1).locator('[data-link-field="linkSymbol"]')).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      page
+        .locator(".multi-chart-pane.secondary")
+        .nth(index - 1)
+        .locator('[data-link-field="linkSymbol"]')
+    ).toHaveAttribute("aria-pressed", "false");
   }
-  await expect.poll(() => page.evaluate(() => {
-    const session = JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null");
-    return session?.charts?.map((chart: { symbol?: string }) => chart.symbol);
-  })).toEqual(symbols);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const session = JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null");
+        return session?.charts?.map((chart: { symbol?: string }) => chart.symbol);
+      })
+    )
+    .toEqual(symbols);
 
   await page.reload();
   await expect(page.locator(".multi-chart-pane")).toHaveCount(4);
@@ -753,24 +763,34 @@ test("restores the last four-chart session after reload without a named workspac
   await compareMenu.getByRole("option", { name: /SOLUSDT/ }).click();
   await expect(second.locator(".compare-chip").filter({ hasText: "SOLUSDT" })).toBeVisible();
 
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null"))).toMatchObject({
-    version: 5,
-    preset: "grid-4",
-    charts: [
-      { id: "chart-1", symbol: "BTCUSDT" },
-      { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", timeZone: "Asia/Almaty", linkTimeframe: false, linkChartType: true, linkCrosshair: false, linkIndicators: false },
-      { id: "chart-3", symbol: "SOLUSDT", timeZone: "America/New_York" },
-      { id: "chart-4", symbol: "EURUSD" }
-    ]
-  });
-  await expect.poll(() => page.evaluate(() => {
-    const session = JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null");
-    return session?.charts?.[1]?.indicatorOverrides?.find((item: { id?: string }) => item.id === "sma-20")?.enabled;
-  })).toBe(false);
-  await expect.poll(() => page.evaluate(() => {
-    const session = JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null");
-    return session?.charts?.[1]?.compareOverlays?.map((item: { symbol?: string }) => item.symbol);
-  })).toEqual(["SOLUSDT"]);
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null")))
+    .toMatchObject({
+      version: 5,
+      preset: "grid-4",
+      charts: [
+        { id: "chart-1", symbol: "BTCUSDT" },
+        { id: "chart-2", symbol: "ETHUSDT", timeframe: "5m", timeZone: "Asia/Almaty", linkTimeframe: false, linkChartType: true, linkCrosshair: false, linkIndicators: false },
+        { id: "chart-3", symbol: "SOLUSDT", timeZone: "America/New_York" },
+        { id: "chart-4", symbol: "EURUSD" }
+      ]
+    });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const session = JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null");
+        return session?.charts?.[1]?.indicatorOverrides?.find((item: { id?: string }) => item.id === "sma-20")?.enabled;
+      })
+    )
+    .toBe(false);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const session = JSON.parse(localStorage.getItem("sbv2:last-chart-session:v1") ?? "null");
+        return session?.charts?.[1]?.compareOverlays?.map((item: { symbol?: string }) => item.symbol);
+      })
+    )
+    .toEqual(["SOLUSDT"]);
 
   await page.reload();
   const restoredPanes = page.locator(".multi-chart-pane");
@@ -914,7 +934,9 @@ test("honours reduced motion and remains operable at 200 percent text size", asy
   await page.emulateMedia({ reducedMotion: "reduce" });
   const transition = await page.getByRole("button", { name: "Toggle markets panel" }).evaluate((element) => getComputedStyle(element).transitionDuration);
   expect(Number.parseFloat(transition)).toBeLessThanOrEqual(0.00001);
-  await page.locator("html").evaluate((element) => { element.style.fontSize = "200%"; });
+  await page.locator("html").evaluate((element) => {
+    element.style.fontSize = "200%";
+  });
   await expect(page.getByLabel("Workspace mode")).toBeVisible();
   await page.getByRole("button", { name: "Chart data", exact: true }).click();
   await expect(page.getByRole("table", { name: "Latest candle" })).toBeVisible({ timeout: 20_000 });
@@ -1009,11 +1031,7 @@ test("imports a Pine indicator as an editable artifact", { tag: "@smoke" }, asyn
   await page.getByRole("button", { name: "Pine", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Import Pine Script" });
   await expect(dialog).toBeVisible();
-  await dialog.locator("textarea").fill([
-    "//@version=6",
-    'indicator("E2E SMA", overlay=true)',
-    'plot(ta.sma(close, 3), "SMA")'
-  ].join("\n"));
+  await dialog.locator("textarea").fill(["//@version=6", 'indicator("E2E SMA", overlay=true)', 'plot(ta.sma(close, 3), "SMA")'].join("\n"));
   await dialog.getByRole("button", { name: "Convert", exact: true }).click();
 
   await expect(dialog.getByText(/indicator · “E2E SMA”/i)).toBeVisible();
@@ -1028,11 +1046,7 @@ test("reviews an OS-launched Pine file before conversion and import", async ({ p
   await dispatchPwaFile(page, {
     name: "os-launch.pine",
     type: "text/plain",
-    content: [
-      "//@version=6",
-      'indicator("OS Launch EMA", overlay=true)',
-      'plot(ta.ema(close, 9), "EMA")'
-    ].join("\n")
+    content: ["//@version=6", 'indicator("OS Launch EMA", overlay=true)', 'plot(ta.ema(close, 9), "EMA")'].join("\n")
   });
 
   const launchReview = page.getByRole("dialog", { name: "Review files opened by the operating system" });
@@ -1060,11 +1074,7 @@ test("receives shared research files through the installed PWA without automatic
     {
       name: "share-target.pine",
       type: "text/plain",
-      content: [
-        "//@version=6",
-        'indicator("Shared RSI", overlay=false)',
-        'plot(ta.rsi(close, 14), "RSI")'
-      ].join("\n")
+      content: ["//@version=6", 'indicator("Shared RSI", overlay=false)', 'plot(ta.rsi(close, 14), "RSI")'].join("\n")
     },
     { name: "orders.json", type: "application/json", content: "{}" },
     { name: "oversized.pine", type: "text/plain", bytes: 1_000_001 }
@@ -1307,8 +1317,14 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   });
   await page.reload();
   await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
-  await page.locator(".strategy-library").getByRole("button", { name: /Installed plugins 1/ }).click();
-  await page.getByRole("dialog", { name: "Installed plugins" }).getByRole("button", { name: /Uninstall: E2E research pack/ }).click();
+  await page
+    .locator(".strategy-library")
+    .getByRole("button", { name: /Installed plugins 1/ })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Installed plugins" })
+    .getByRole("button", { name: /Uninstall: E2E research pack/ })
+    .click();
   const allowedRemoval = page.getByRole("dialog", { name: "Uninstall plugin" });
   await expect(allowedRemoval.getByRole("button", { name: "Remove plugin", exact: true })).toBeEnabled();
   await allowedRemoval.getByRole("button", { name: "Remove plugin", exact: true }).click();
@@ -1349,10 +1365,7 @@ test("exports selected local artifacts as a verified plugin package", { tag: "@s
 
   await dialog.getByLabel("Package name").fill("E2E local pack");
   await dialog.getByLabel("Plugin ID").fill("e2e.local-pack");
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    dialog.getByRole("button", { name: "Download plugin", exact: true }).click()
-  ]);
+  const [download] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "Download plugin", exact: true }).click()]);
   expect(download.suggestedFilename()).toBe("e2e-local-pack.saltanat-plugin");
   const path = await download.path();
   expect(path).toBeTruthy();
@@ -1459,7 +1472,11 @@ test("runs a backtest and exposes assumptions and metrics", { tag: "@smoke" }, a
   await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   await page.getByRole("navigation", { name: "Studio stages" }).getByRole("button", { name: "Backtest", exact: true }).click();
-  await page.locator(".config-row label").filter({ hasText: /^Market/ }).locator("select").selectOption("EURUSD");
+  await page
+    .locator(".config-row label")
+    .filter({ hasText: /^Market/ })
+    .locator("select")
+    .selectOption("EURUSD");
   await page.getByRole("button", { name: "Run backtest" }).click();
 
   const report = page.locator(".backtest-report");
@@ -1483,7 +1500,11 @@ test("runs several markets through one portfolio capital pool", async ({ page })
   await expect(page.locator(".portfolio-market-chip")).toContainText(["BTCUSDT", "ETHUSDT"]);
   await page.getByLabel("Max concurrent positions").fill("2");
   await page.getByLabel("Max gross exposure %").fill("100");
-  expect(await page.locator(".strategy-backtest-form").evaluate((form) => [...(form as HTMLFormElement).elements].filter((element) => !(element as HTMLInputElement).checkValidity()).map((element) => ({ name: (element as HTMLInputElement).name, value: (element as HTMLInputElement).value, message: (element as HTMLInputElement).validationMessage })))).toEqual([]);
+  expect(
+    await page
+      .locator(".strategy-backtest-form")
+      .evaluate((form) => [...(form as HTMLFormElement).elements].filter((element) => !(element as HTMLInputElement).checkValidity()).map((element) => ({ name: (element as HTMLInputElement).name, value: (element as HTMLInputElement).value, message: (element as HTMLInputElement).validationMessage })))
+  ).toEqual([]);
   await page.getByRole("button", { name: "Run backtest" }).click();
 
   const report = page.locator(".portfolio-report");
@@ -1540,11 +1561,7 @@ test("adds an imported custom indicator to the chart", async ({ page }) => {
 
   await page.getByRole("button", { name: "Pine", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Import Pine Script" });
-  await dialog.locator("textarea").fill([
-    "//@version=6",
-    'indicator("Chart E2E SMA", overlay=true)',
-    'plot(ta.sma(close, 3), "SMA")'
-  ].join("\n"));
+  await dialog.locator("textarea").fill(["//@version=6", 'indicator("Chart E2E SMA", overlay=true)', 'plot(ta.sma(close, 3), "SMA")'].join("\n"));
   await dialog.getByRole("button", { name: "Convert", exact: true }).click();
   await dialog.getByRole("button", { name: "Add 1 artifact", exact: true }).click();
 
@@ -1563,7 +1580,10 @@ test("creates, starts, journals and stops a paper bot", { tag: "@smoke" }, async
   await page.getByRole("button", { name: "Unlock" }).click();
   await expect(page.getByText("Live & paper trading", { exact: true })).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole("button", { name: /Create paper bot|New bot/ }).first().click();
+  await page
+    .getByRole("button", { name: /Create paper bot|New bot/ })
+    .first()
+    .click();
   const botName = `Paper E2E ${Date.now()}`;
   await page.getByLabel("Bot name").fill(botName);
   // Keep lifecycle E2E deterministic: EURUSD is backed by the local synthetic
@@ -1585,7 +1605,12 @@ test("creates, starts, journals and stops a paper bot", { tag: "@smoke" }, async
   await orderTable.scrollIntoViewIfNeeded();
   await expect(orderTable).toBeVisible();
   await expect(orderTable.getByRole("columnheader", { name: "Reason" })).toBeVisible();
-  await expect(orderTable.getByRole("row").filter({ hasText: /open|filled/i }).first()).toBeVisible();
+  await expect(
+    orderTable
+      .getByRole("row")
+      .filter({ hasText: /open|filled/i })
+      .first()
+  ).toBeVisible();
 
   await detail.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(detail.getByRole("button", { name: "Start", exact: true })).toBeVisible({ timeout: 15_000 });
@@ -1665,7 +1690,10 @@ test("shows Bybit UTA collateral risk and requires explicit debt confirmations",
 
 test("filters executable cross-exchange arbitrage routes without placing orders", { tag: "@smoke" }, async ({ page }) => {
   const scanFixture = {
-    updatedAt: Date.now(), stale: false, scannedSymbols: 2, estimatedTotalCostBps: 0,
+    updatedAt: Date.now(),
+    stale: false,
+    scannedSymbols: 2,
+    estimatedTotalCostBps: 0,
     sources: [
       { exchange: "binance", market: "spot", ok: true },
       { exchange: "binance", market: "perpetual", ok: true },
@@ -1673,24 +1701,81 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
       { exchange: "bybit", market: "perpetual", ok: true }
     ],
     opportunities: [
-      { id: "BTCUSDT:binance:bybit", symbol: "BTCUSDT", spotExchange: "binance", futuresExchange: "bybit", spotBid: 99900, spotAsk: 100000, spotAskSize: 1, futuresBid: 101500, futuresAsk: 101600, futuresBidSize: 0.5, grossSpreadBps: 150, estimatedTotalCostBps: 0, netEdgeBps: 150, topBookCapacityUsd: 50750, fundingRate: 0.0001, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() },
-      { id: "ETHUSDT:bybit:binance", symbol: "ETHUSDT", spotExchange: "bybit", futuresExchange: "binance", spotBid: 3999, spotAsk: 4000, spotAskSize: 0.2, futuresBid: 4020, futuresAsk: 4021, futuresBidSize: 0.2, grossSpreadBps: 50, estimatedTotalCostBps: 0, netEdgeBps: 50, topBookCapacityUsd: 800, fundingRate: -0.00005, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() }
+      {
+        id: "BTCUSDT:binance:bybit",
+        symbol: "BTCUSDT",
+        spotExchange: "binance",
+        futuresExchange: "bybit",
+        spotBid: 99900,
+        spotAsk: 100000,
+        spotAskSize: 1,
+        futuresBid: 101500,
+        futuresAsk: 101600,
+        futuresBidSize: 0.5,
+        grossSpreadBps: 150,
+        estimatedTotalCostBps: 0,
+        netEdgeBps: 150,
+        topBookCapacityUsd: 50750,
+        fundingRate: 0.0001,
+        nextFundingTime: Date.now() + 3600000,
+        capturedAt: Date.now()
+      },
+      {
+        id: "ETHUSDT:bybit:binance",
+        symbol: "ETHUSDT",
+        spotExchange: "bybit",
+        futuresExchange: "binance",
+        spotBid: 3999,
+        spotAsk: 4000,
+        spotAskSize: 0.2,
+        futuresBid: 4020,
+        futuresAsk: 4021,
+        futuresBidSize: 0.2,
+        grossSpreadBps: 50,
+        estimatedTotalCostBps: 0,
+        netEdgeBps: 50,
+        topBookCapacityUsd: 800,
+        fundingRate: -0.00005,
+        nextFundingTime: Date.now() + 3600000,
+        capturedAt: Date.now()
+      }
     ]
   };
   let markSocketRouted!: () => void;
-  const socketRouted = new Promise<void>((resolve) => { markSocketRouted = resolve; });
+  const socketRouted = new Promise<void>((resolve) => {
+    markSocketRouted = resolve;
+  });
   await page.routeWebSocket("/arbitrage-stream", () => {
     // REST owns the deterministic fixture in this journey. Keeping the routed socket open without
     // sending a second snapshot avoids racing two valid initial transports during the first click.
     markSocketRouted();
   });
   await page.route("**/api/arbitrage**", async (route) => {
-    if (new URL(route.request().url()).pathname.endsWith("/depth")) {
-      await route.fulfill({ json: {
-        symbol: "BTCUSDT", requestedNotionalUsd: 10000, grossSpreadBps: 150, complete: true, capturedAt: Date.now(),
-        spot: { exchange: "binance", market: "spot", side: "buy", requestedNotionalUsd: 10000, filledNotionalUsd: 10000, quantity: 0.1, averagePrice: 100000, worstPrice: 100000, topPrice: 100000, slippageBps: 0, levelsUsed: 1, complete: true, capturedAt: Date.now() },
-        perpetual: { exchange: "bybit", market: "perpetual", side: "sell", requestedNotionalUsd: 10000, filledNotionalUsd: 10000, quantity: 0.098522, averagePrice: 101500, worstPrice: 101500, topPrice: 101500, slippageBps: 0, levelsUsed: 1, complete: true, capturedAt: Date.now() }
-      } });
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith("/history")) {
+      await route.fulfill({
+        json: {
+          routeId: "BTCUSDT:binance:bybit",
+          points: [
+            { routeId: "BTCUSDT:binance:bybit", symbol: "BTCUSDT", spotExchange: "binance", futuresExchange: "bybit", grossSpreadBps: 120, topBookCapacityUsd: 50000, fundingRate: 0.0001, ts: Date.now() - 60000 },
+            { routeId: "BTCUSDT:binance:bybit", symbol: "BTCUSDT", spotExchange: "binance", futuresExchange: "bybit", grossSpreadBps: 150, topBookCapacityUsd: 50750, fundingRate: 0.0001, ts: Date.now() }
+          ]
+        }
+      });
+      return;
+    }
+    if (pathname.endsWith("/depth")) {
+      await route.fulfill({
+        json: {
+          symbol: "BTCUSDT",
+          requestedNotionalUsd: 10000,
+          grossSpreadBps: 150,
+          complete: true,
+          capturedAt: Date.now(),
+          spot: { exchange: "binance", market: "spot", side: "buy", requestedNotionalUsd: 10000, filledNotionalUsd: 10000, quantity: 0.1, averagePrice: 100000, worstPrice: 100000, topPrice: 100000, slippageBps: 0, levelsUsed: 1, complete: true, capturedAt: Date.now() },
+          perpetual: { exchange: "bybit", market: "perpetual", side: "sell", requestedNotionalUsd: 10000, filledNotionalUsd: 10000, quantity: 0.098522, averagePrice: 101500, worstPrice: 101500, topPrice: 101500, slippageBps: 0, levelsUsed: 1, complete: true, capturedAt: Date.now() }
+        }
+      });
       return;
     }
     await route.fulfill({ json: scanFixture });
@@ -1707,11 +1792,13 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
   await btcRow.getByRole("button", { name: "Analyze order-book depth for BTCUSDT" }).click();
   await expect(table.getByText("Depth estimate for $10,000")).toBeVisible();
   await expect(table.getByText("Both legs have enough visible depth")).toBeVisible();
+  await expect(table.getByRole("img", { name: "24-hour opportunity history" })).toBeVisible();
   await btcRow.getByRole("button", { name: "Open paper two-leg position for BTCUSDT" }).click();
   const paper = page.getByRole("region", { name: "Paper arbitrage positions" });
   await expect(paper).toContainText("BTCUSDT");
   await paper.getByRole("button", { name: "Close paper" }).click();
   await expect(paper).toContainText("Closed");
+  await expect(paper).toContainText("Closed win rate");
   await page.getByLabel("Minimum top-book capacity").fill("0");
   await page.getByLabel("Search pair").fill("ETH");
   const ethRow = table.getByRole("row").filter({ hasText: "ETHUSDT" });
@@ -1799,11 +1886,13 @@ test("reconnects the market stream without duplicating candles", async ({ page }
 });
 
 test("shows an explicit market-data unavailable state", async ({ page }) => {
-  await page.route("**/api/candles?**", (route) => route.fulfill({
-    status: 503,
-    contentType: "application/json",
-    body: JSON.stringify({ error: "Market data unavailable for BTCUSDT", unavailable: true })
-  }));
+  await page.route("**/api/candles?**", (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Market data unavailable for BTCUSDT", unavailable: true })
+    })
+  );
   await installMarketSocketMock(page, "unavailable", []);
   await page.reload();
 
@@ -1834,16 +1923,31 @@ async function installOrderBookSocketMock(page: Page) {
           this.onopen?.(new Event("open"));
           this.emit({ type: "orderbook_status", symbol: "BTCUSDT", exchange: "binance", status: "connected", message: "mock depth connected", ts: Date.now() });
           this.emit({
-            type: "orderbook", symbol: "BTCUSDT", exchange: "binance",
-            bids: [[100, 2], [99.9, 4]], asks: [[100.1, 3], [100.2, 5]],
-            sequence: 1, exchangeTs: Date.now(), ts: Date.now()
+            type: "orderbook",
+            symbol: "BTCUSDT",
+            exchange: "binance",
+            bids: [
+              [100, 2],
+              [99.9, 4]
+            ],
+            asks: [
+              [100.1, 3],
+              [100.2, 5]
+            ],
+            sequence: 1,
+            exchangeTs: Date.now(),
+            ts: Date.now()
           });
         }, 0);
       }
 
-      close() { this.readyState = MockOrderBookSocket.CLOSED; }
+      close() {
+        this.readyState = MockOrderBookSocket.CLOSED;
+      }
       send() {}
-      private emit(message: unknown) { this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(message) })); }
+      private emit(message: unknown) {
+        this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(message) }));
+      }
     }
     window.WebSocket = new Proxy(NativeWebSocket, {
       construct(Target, args) {
@@ -1878,7 +1982,10 @@ async function installTradeFlowSocketMock(page: Page) {
           this.onopen?.(new Event("open"));
           this.emit({ type: "trade_flow_status", symbol: "BTCUSDT", exchange: "binance", status: "connected", message: "mock trades connected", ts: Date.now() });
           this.emit({
-            type: "trade_flow", symbol: "BTCUSDT", exchange: "binance", ts: Date.now(),
+            type: "trade_flow",
+            symbol: "BTCUSDT",
+            exchange: "binance",
+            ts: Date.now(),
             trades: [
               { id: "buy-1", price: 100, size: 2, side: "buy", exchangeTs: Date.now() },
               { id: "sell-1", price: 100, size: 1, side: "sell", exchangeTs: Date.now() }
@@ -1887,9 +1994,13 @@ async function installTradeFlowSocketMock(page: Page) {
         }, 0);
       }
 
-      close() { this.readyState = MockTradeFlowSocket.CLOSED; }
+      close() {
+        this.readyState = MockTradeFlowSocket.CLOSED;
+      }
       send() {}
-      private emit(message: unknown) { this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(message) })); }
+      private emit(message: unknown) {
+        this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(message) }));
+      }
     }
     window.WebSocket = new Proxy(NativeWebSocket, {
       construct(Target, args) {
@@ -1905,8 +2016,44 @@ function bybitUtaFixture() {
     updatedAt: 1_780_000_000_000,
     account: { unifiedMarginStatus: 5, marginMode: "REGULAR_MARGIN", totalEquity: 50_000, totalWalletBalance: 49_000, totalMarginBalance: 49_500, totalAvailableBalance: 39_000, totalPerpUpl: 500, totalInitialMargin: 10_000, totalMaintenanceMargin: 5_000, accountImRate: 0.2, accountMmRate: 0.1 },
     assets: [
-      { coin: "BTC", equity: 1, usdValue: 49_000, walletBalance: 1, borrowAmount: 0, spotBorrow: 0, derivativesBorrow: 0, accruedInterest: 0, unrealisedPnl: 0, marginCollateral: true, collateralEnabled: true, collateralRestriction: "none", hourlyBorrowRate: 0.000001, maxBorrowingAmount: 10, availableToBorrow: 9, borrowUsageRate: 0.1, borrowable: true },
-      { coin: "USDT", equity: -100, usdValue: -100, walletBalance: 0, borrowAmount: 100, spotBorrow: 40, derivativesBorrow: 60, accruedInterest: 0.01, unrealisedPnl: 0, marginCollateral: true, collateralEnabled: true, collateralRestriction: "none", hourlyBorrowRate: 0.00001, maxBorrowingAmount: 1_000, availableToBorrow: 900, borrowUsageRate: 0.1, borrowable: true }
+      {
+        coin: "BTC",
+        equity: 1,
+        usdValue: 49_000,
+        walletBalance: 1,
+        borrowAmount: 0,
+        spotBorrow: 0,
+        derivativesBorrow: 0,
+        accruedInterest: 0,
+        unrealisedPnl: 0,
+        marginCollateral: true,
+        collateralEnabled: true,
+        collateralRestriction: "none",
+        hourlyBorrowRate: 0.000001,
+        maxBorrowingAmount: 10,
+        availableToBorrow: 9,
+        borrowUsageRate: 0.1,
+        borrowable: true
+      },
+      {
+        coin: "USDT",
+        equity: -100,
+        usdValue: -100,
+        walletBalance: 0,
+        borrowAmount: 100,
+        spotBorrow: 40,
+        derivativesBorrow: 60,
+        accruedInterest: 0.01,
+        unrealisedPnl: 0,
+        marginCollateral: true,
+        collateralEnabled: true,
+        collateralRestriction: "none",
+        hourlyBorrowRate: 0.00001,
+        maxBorrowingAmount: 1_000,
+        availableToBorrow: 900,
+        borrowUsageRate: 0.1,
+        borrowable: true
+      }
     ],
     borrowHistory: [],
     risk: { level: "warning", entryAllowed: true, reasons: [], maxBorrowUsageRate: 0.1 },
@@ -1953,10 +2100,16 @@ async function dispatchPwaFile(page: Page, input: { name: string; type: string; 
 }
 
 async function shareResearchFiles(page: Page, inputs: Array<{ name: string; type: string; content?: string; bytes?: number }>) {
-  await expect.poll(() => page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-    return Boolean(navigator.serviceWorker.controller);
-  }), { timeout: 20_000 }).toBe(true);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          await navigator.serviceWorker.ready;
+          return Boolean(navigator.serviceWorker.controller);
+        }),
+      { timeout: 20_000 }
+    )
+    .toBe(true);
   await page.evaluate(() => {
     const form = document.createElement("form");
     form.id = "pwa-share-target-test-form";
@@ -1971,15 +2124,14 @@ async function shareResearchFiles(page: Page, inputs: Array<{ name: string; type
     form.append(fileInput);
     document.body.append(form);
   });
-  await page.locator("#pwa-share-target-test-files").setInputFiles(inputs.map((input) => ({
-    name: input.name,
-    mimeType: input.type,
-    buffer: input.bytes ? Buffer.alloc(input.bytes) : Buffer.from(input.content ?? "")
-  })));
-  await Promise.all([
-    page.waitForURL((url) => url.searchParams.has("share") || url.searchParams.has("share_error"), { timeout: 20_000 }),
-    page.locator("#pwa-share-target-test-form").evaluate((form: HTMLFormElement) => form.requestSubmit())
-  ]);
+  await page.locator("#pwa-share-target-test-files").setInputFiles(
+    inputs.map((input) => ({
+      name: input.name,
+      mimeType: input.type,
+      buffer: input.bytes ? Buffer.alloc(input.bytes) : Buffer.from(input.content ?? "")
+    }))
+  );
+  await Promise.all([page.waitForURL((url) => url.searchParams.has("share") || url.searchParams.has("share_error"), { timeout: 20_000 }), page.locator("#pwa-share-target-test-form").evaluate((form: HTMLFormElement) => form.requestSubmit())]);
   return page.url();
 }
 
@@ -1999,7 +2151,7 @@ async function hasPendingSharedFiles(page: Page, token: string) {
 async function openChartAnalysis(page: Page) {
   const analysis = page.locator("details.session-liquidity-badge").first();
   await expect(analysis).toBeVisible({ timeout: 20_000 });
-  if (await analysis.getAttribute("open") === null) await analysis.locator("summary").click();
+  if ((await analysis.getAttribute("open")) === null) await analysis.locator("summary").click();
   await expect(analysis).toHaveAttribute("open", "");
 }
 

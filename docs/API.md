@@ -158,6 +158,28 @@ curl 'http://localhost:4180/api/arbitrage?costBps=30&minSpreadBps=0&limit=50'
 
 ---
 
+### `GET /api/arbitrage/depth`
+
+Walks up to 100 public order-book levels for both selected legs. Required query parameters are
+`symbol`, different `spotExchange`/`futuresExchange` values (`binance` or `bybit`) and
+`notionalUsd` (`10..1000000`). The response reports per-leg VWAP, slippage, levels used and
+fail-closed completeness. It never submits an order.
+
+### `GET /api/arbitrage/history`
+
+Returns the bounded SQLite series for one `routeId` such as `BTCUSDT:binance:bybit`. Optional
+`hours` is `1..168` (default `24`) and `limit` is `1..1000` (default `500`). Samples are recorded at
+most once per minute while the shared market feed is active and retained for seven days.
+
+### `/api/trade/arbitrage-alerts`
+
+Authenticated `paper-trade` operators can list (`GET`), create/update (`POST`) and delete
+(`DELETE /:id`) persistent Telegram-only threshold rules. Rules include a net threshold, minimum
+capacity, non-funding cost estimate, holding time, cooldown and enabled state. They never call an
+exchange order path.
+
+---
+
 ### `GET /api/candles`
 
 Fetches OHLCV candles for a single instrument.
