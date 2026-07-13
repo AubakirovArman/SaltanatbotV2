@@ -1,4 +1,4 @@
-import { Download, FileCode2, LayoutGrid, PackagePlus, Plus, ShieldAlert, Upload, WandSparkles, X } from "lucide-react";
+import { Download, FileCode2, LayoutGrid, PackageOpen, PackagePlus, Plus, ShieldAlert, Upload, WandSparkles, X } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { PineImportDialog } from "../../components/PineImportDialog";
 import type { PineImport } from "../pine";
@@ -10,6 +10,8 @@ import { strategyCategory, strategyText } from "../../i18n/strategy";
 import { StrategyWizard } from "./StrategyWizard";
 import { useModalFocus } from "../../hooks/useModalFocus";
 import { parsePluginFile, type PluginParseErrorCode, type VerifiedPlugin } from "@saltanatbotv2/plugin-core";
+import { PluginImportReviewDialog } from "./PluginImportReviewDialog";
+import { PluginExportDialog } from "./PluginExportDialog";
 
 export function StrategyLibrary({
   locale,
@@ -39,6 +41,8 @@ export function StrategyLibrary({
   const [importStatus, setImportStatus] = useState<string>();
   const [pineOpen, setPineOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [pendingPlugin, setPendingPlugin] = useState<VerifiedPlugin>();
+  const [pluginExportOpen, setPluginExportOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pluginInputRef = useRef<HTMLInputElement | null>(null);
   const pluginInputId = useId();
@@ -66,8 +70,7 @@ export function StrategyLibrary({
         setImportError(pluginError(locale, parsed.code));
         return;
       }
-      onImportPlugin(parsed);
-      setImportStatus(`${strategyText(locale, "pluginImported")}: ${parsed.manifest.name} · ${parsed.manifest.artifacts.length} ${strategyText(locale, "artifacts")}`);
+      setPendingPlugin(parsed);
     } catch {
       setImportError(strategyText(locale, "unreadableFile"));
     }
@@ -93,6 +96,9 @@ export function StrategyLibrary({
         </button>
         <button type="button" onClick={() => pluginInputRef.current?.click()} title={strategyText(locale, "importPluginHelp")}>
           <PackagePlus size={14} aria-hidden="true" /> {strategyText(locale, "plugin")}
+        </button>
+        <button type="button" onClick={() => setPluginExportOpen(true)} title={strategyText(locale, "exportPluginHelp")}>
+          <PackageOpen size={14} aria-hidden="true" /> {strategyText(locale, "buildPlugin")}
         </button>
         <button type="button" onClick={() => setPineOpen(true)} title={strategyText(locale, "convertPine")}>
           <FileCode2 size={14} aria-hidden="true" /> {strategyText(locale, "pine")}
@@ -161,6 +167,27 @@ export function StrategyLibrary({
             onUseTemplate(template);
             setGalleryOpen(false);
           }}
+        />
+      )}
+      {pendingPlugin && (
+        <PluginImportReviewDialog
+          locale={locale}
+          plugin={pendingPlugin}
+          onClose={() => setPendingPlugin(undefined)}
+          onConfirm={(plugin) => {
+            onImportPlugin(plugin);
+            setImportStatus(`${strategyText(locale, "pluginImported")}: ${plugin.manifest.name} · ${plugin.manifest.artifacts.length} ${strategyText(locale, "artifacts")}`);
+            setPendingPlugin(undefined);
+          }}
+        />
+      )}
+      {pluginExportOpen && (
+        <PluginExportDialog
+          locale={locale}
+          artifacts={artifacts}
+          activeId={activeId}
+          onClose={() => setPluginExportOpen(false)}
+          onExport={(manifest) => setImportStatus(`${strategyText(locale, "pluginExported")}: ${manifest.name}`)}
         />
       )}
     </aside>

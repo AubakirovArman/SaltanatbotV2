@@ -16,7 +16,7 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 - Versioned Strategy Studio, shared evaluator/backtest cores, reproducible reports, replay, optimizer and walk-forward.
 - Multi-symbol portfolio backtests with one shared capital pool, correlated returns and portfolio-level exposure limits.
 - Modeled portfolio TCA with reconciled commission, configured slippage, funding and per-market/exit-reason attribution.
-- Checksummed local declarative plugin packages with strict permissions, dependency graphs and no arbitrary JavaScript.
+- Checksummed local declarative plugin packages with strict permissions, automatic dependency-aware authoring, mandatory pre-import review and no arbitrary JavaScript.
 - Durable order/fill/position/run lifecycle, private streams plus polling, recovery and bot-attributed spot inventory.
 - Professional multi-chart workspaces, pane/scales, drawing management, accessible tables and responsive monitoring.
 - Per-pane IANA time-zone axes with DST-safe chart labels and versioned workspace/session persistence.

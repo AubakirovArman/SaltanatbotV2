@@ -1,6 +1,6 @@
 # Improvement implementation status
 
-Updated: 2026-07-12
+Updated: 2026-07-13
 
 Active branch: `main`
 
@@ -9,6 +9,18 @@ Source plan: [MASTER_IMPROVEMENT_PLAN.md](./MASTER_IMPROVEMENT_PLAN.md)
 This is the execution ledger. It records what is proven complete, what is active, and what remains. A checked item requires code plus the listed verification evidence.
 
 ## Completed
+
+### Plugin package review and authoring — 2026-07-13
+
+- [x] Require explicit review of identity, integrity, capabilities and contents before import mutates the library.
+- [x] Leave the library unchanged when review is cancelled with a button, backdrop or `Escape`.
+- [x] Build packages from selected local artifacts with automatic transitive dependency closure.
+- [x] Derive minimum capability permissions and deterministic package-local artifact IDs.
+- [x] Download a checksum-protected file that passes the same strict parser used by import.
+- [x] Provide typed EN/RU/KK authoring, review, validation and completion states.
+
+Verification covers dependency closure/error cases, strict encode/parse compatibility, mandatory
+review cancellation and confirmation, accessibility, browser download and parser re-verification.
 
 ### Declarative plugin foundation — 2026-07-12
 

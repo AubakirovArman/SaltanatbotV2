@@ -79,6 +79,14 @@ describe("declarative plugin envelope", () => {
       artifacts: manifest().artifacts.map((artifact, index) => index ? artifact : { ...artifact, xml: `${artifact.xml}<script>alert(1)</script>` })
     })).rejects.toThrow("invalid_artifact");
   });
+
+  it("refuses to encode a package that its own size limit would reject", async () => {
+    const largeXml = `<xml><block type="strategy_start" />${"x".repeat(1_300_000)}</xml>`;
+    await expect(encodePluginFile({
+      ...manifest(),
+      artifacts: Array.from({ length: 4 }, (_, index) => ({ ...manifest().artifacts[0], id: `large-${index}`, xml: largeXml }))
+    })).rejects.toThrow("too_large");
+  });
 });
 
 function manifest(): PluginManifest {

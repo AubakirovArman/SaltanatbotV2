@@ -142,7 +142,8 @@ Mitigations:
 - Continuous funded exchange soak/mainnet readiness is explicitly deferred and has not been proven.
 - Declarative plugin checksums prove manifest integrity, not publisher identity. Plugin packages
   cannot contain executable JavaScript or external dependencies, and import never grants network,
-  credential or exchange access; users must still review and backtest the strategy logic.
+  credential or exchange access. A mandatory manifest/capability/artifact review occurs before the
+  local library changes; users must still inspect and backtest the strategy logic.
 - Exchange/API behavior can change independently; operator monitoring and exchange-side limits remain required.
 
 ## Security verification

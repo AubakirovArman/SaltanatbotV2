@@ -109,7 +109,9 @@ export async function encodePluginFile(manifest: PluginManifest): Promise<string
     checksum: await sha256(canonicalStringify(validated.manifest)),
     manifest: validated.manifest
   };
-  return JSON.stringify(file, null, 2);
+  const encoded = JSON.stringify(file, null, 2);
+  if (new TextEncoder().encode(encoded).byteLength > PLUGIN_MAX_BYTES) throw new Error("too_large");
+  return encoded;
 }
 
 function parseManifest(value: unknown, maxSchema: number): ManifestValidationResult {

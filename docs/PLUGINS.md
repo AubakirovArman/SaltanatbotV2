@@ -54,7 +54,20 @@ publisher and manifest checksum remain in provenance.
 
 ## Creating a package
 
-Use `encodePluginFile()` from `@saltanatbotv2/plugin-core`; do not hand-maintain the checksum:
+For the built-in authoring path, open Strategy Studio and choose **Build plugin**. Fill in the
+package ID, semantic version, license and publisher metadata, then select one or more local
+indicators or strategies. The builder:
+
+- includes every transitive indicator dependency automatically;
+- remaps local artifact IDs to deterministic package-local IDs;
+- derives the minimum capabilities from the selected contents; and
+- writes the checksum-protected `.saltanat-plugin` download.
+
+The optional publisher URL must use HTTPS. The builder rejects missing/cyclic dependencies and an
+empty selection before creating a file.
+
+For automation or repository tooling, use `encodePluginFile()` from
+`@saltanatbotv2/plugin-core`; do not hand-maintain the checksum:
 
 ```ts
 import { encodePluginFile, type PluginManifest } from "@saltanatbotv2/plugin-core";
@@ -84,8 +97,16 @@ const manifest: PluginManifest = {
 const file = await encodePluginFile(manifest);
 ```
 
-Save the result with a `.saltanat-plugin` extension. In Strategy Studio choose **Plugin**, select the
-file and review the imported artifacts before validation/backtesting.
+Save the result with a `.saltanat-plugin` extension.
+
+## Reviewing and importing
+
+In Strategy Studio choose **Plugin** and select the file. A valid file opens a mandatory review
+dialog; it does not mutate the local library yet. Check the package/version, publisher, license,
+minimum application version, full checksum, requested capabilities and every artifact/dependency.
+Choose **Import reviewed plugin** only after this review. Cancelling or pressing `Escape` leaves the
+library unchanged. Imported strategies still require normal validation, backtesting and an explicit
+run action.
 
 ## Deliberately not included
 

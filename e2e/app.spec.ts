@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { encodePluginFile, type PluginManifest } from "@saltanatbotv2/plugin-core";
+import { encodePluginFile, parsePluginFile, type PluginManifest } from "@saltanatbotv2/plugin-core";
+import { readFile } from "node:fs/promises";
 import { installMarketSocketMock, mockCandleHistory, mockCandles, mockChartCandles } from "./support/marketMocks";
 
 test.beforeEach(async ({ page }) => {
@@ -930,7 +931,7 @@ test("imports a Pine indicator as an editable artifact", { tag: "@smoke" }, asyn
   await expect(page.locator(".strategy-library")).toContainText("E2E SMA");
 });
 
-test("imports a checksummed declarative plugin without executable code", async ({ page }) => {
+test("reviews a checksummed declarative plugin before importing it", async ({ page }) => {
   const workspaceModes = page.getByLabel("Workspace mode");
   await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
   const library = page.locator(".strategy-library");
@@ -957,6 +958,26 @@ test("imports a checksummed declarative plugin without executable code", async (
     buffer: Buffer.from(await encodePluginFile(plugin))
   });
 
+  const review = page.getByRole("dialog", { name: "Review plugin package" });
+  await expect(review).toBeVisible();
+  await expect(review).toContainText("E2E publisher");
+  await expect(review).toContainText("market.read");
+  await expect(review).toContainText("E2E plugin strategy");
+  await expect(review.getByText(/^[a-f0-9]{64}$/)).toBeVisible();
+  await expect(library.locator(".library-item-main").filter({ hasText: "E2E plugin overlay" })).toHaveCount(0);
+  await expectNoAxeViolations(page);
+
+  await page.keyboard.press("Escape");
+  await expect(review).toBeHidden();
+  await expect(library.locator(".library-item-main").filter({ hasText: "E2E plugin overlay" })).toHaveCount(0);
+
+  await page.getByLabel("Import plugin package").setInputFiles({
+    name: "e2e.saltanat-plugin",
+    mimeType: "application/json",
+    buffer: Buffer.from(await encodePluginFile(plugin))
+  });
+  await page.getByRole("dialog", { name: "Review plugin package" }).getByRole("button", { name: "Import reviewed plugin" }).click();
+
   await expect(library.getByRole("status")).toContainText("Plugin imported: E2E research pack · 2 artifacts");
   await expect(library).toContainText("E2E plugin overlay");
   await expect(library).toContainText("E2E plugin strategy");
@@ -966,6 +987,35 @@ test("imports a checksummed declarative plugin without executable code", async (
   await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
   await expect(page.locator(".strategy-library")).toContainText("E2E plugin overlay", { timeout: 20_000 });
   await expect(page.locator(".strategy-library")).toContainText("E2E plugin strategy");
+});
+
+test("exports selected local artifacts as a verified plugin package", async ({ page }) => {
+  await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
+  const library = page.locator(".strategy-library");
+  await expect(library).toBeVisible({ timeout: 20_000 });
+  await library.getByRole("button", { name: "Build plugin", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Export plugin package" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Package will contain", { exact: false })).toBeVisible();
+  await expectNoAxeViolations(page);
+
+  await dialog.getByLabel("Package name").fill("E2E local pack");
+  await dialog.getByLabel("Plugin ID").fill("e2e.local-pack");
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    dialog.getByRole("button", { name: "Download plugin", exact: true }).click()
+  ]);
+  expect(download.suggestedFilename()).toBe("e2e-local-pack.saltanat-plugin");
+  const path = await download.path();
+  expect(path).toBeTruthy();
+  const parsed = await parsePluginFile(await readFile(path!, "utf8"), { appVersion: "0.1.0", maxArtifactSchemaVersion: 2 });
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) return;
+  expect(parsed.manifest).toMatchObject({ id: "e2e.local-pack", name: "E2E local pack", minAppVersion: "0.1.0" });
+  expect(parsed.manifest.artifacts.length).toBeGreaterThan(0);
+  expect(parsed.manifest.permissions).toContain("market.read");
+  await expect(library.getByRole("status")).toContainText("Plugin exported: E2E local pack");
 });
 
 test("switches and persists the interface locale", { tag: "@smoke" }, async ({ page }) => {

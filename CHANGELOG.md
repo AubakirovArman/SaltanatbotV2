@@ -7,6 +7,10 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Declarative plugin foundation
 
+- Added a built-in package authoring dialog that exports selected local artifacts, closes over their transitive dependencies, assigns deterministic package-local IDs and derives minimum capability permissions.
+- Added a mandatory pre-import review of publisher metadata, license, minimum app version, full checksum, capabilities and artifact contents; cancel and `Escape` leave the library unchanged.
+- Added complete EN/RU/KK authoring/review states, accessible native modal behavior, package-builder unit coverage and production download/re-import browser verification.
+- Raised only the measured aggregate JavaScript gzip ceiling from 492 KiB to 494 KiB and CSS from 18 KiB to 19 KiB for the localized package builder and review dialogs; initial-shell and per-file JavaScript limits are unchanged.
 - Added checksummed `.saltanat-plugin` packages for local editable indicator and strategy bundles without arbitrary JavaScript or remote code loading.
 - Added strict manifest, permission, size, schema, app-version and package-local acyclic dependency validation in a reusable `@saltanatbotv2/plugin-core` workspace.
 - Plugin import remaps local IDs and dependencies, preserves publisher/version/checksum provenance and never starts a strategy or grants network, credential or exchange access.

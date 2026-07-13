@@ -171,6 +171,172 @@
 
 .plugin-safety-note svg { flex: 0 0 auto; margin-block-start: 1px; color: var(--warn); }
 
+/* Native modal dialogs keep Escape, focus containment and top-layer semantics in the browser. */
+.plugin-dialog {
+  inline-size: min(760px, calc(100vw - 24px));
+  max-block-size: min(86dvh, 760px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.plugin-dialog::backdrop {
+  background: var(--overlay);
+  backdrop-filter: blur(2px);
+}
+
+.plugin-dialog,
+.plugin-export-dialog > form {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.plugin-dialog[open],
+.plugin-export-dialog > form {
+  display: grid;
+}
+
+.plugin-export-dialog > form { max-block-size: inherit; }
+
+.plugin-dialog header,
+.plugin-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.plugin-dialog header { border-block-end: 1px solid var(--line); }
+.plugin-dialog footer { justify-content: flex-end; border-block-start: 1px solid var(--line); }
+.plugin-dialog h3,
+.plugin-dialog h4,
+.plugin-dialog p { margin: 0; }
+.plugin-dialog header p { margin-block-start: 3px; color: var(--dim); font-size: var(--fs-xs); line-height: 1.4; }
+
+.plugin-dialog button {
+  min-block-size: var(--ctl-h-sm);
+  padding-inline: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 650;
+}
+
+.plugin-dialog button:hover { border-color: var(--line); background: var(--hover); }
+.plugin-dialog button.primary { border-color: var(--accent); background: var(--accent); color: var(--bg); }
+.plugin-dialog button:disabled { cursor: wait; opacity: 0.65; }
+.plugin-dialog button.icon-button { inline-size: var(--ctl-h-sm); padding: 0; flex: 0 0 auto; }
+
+.plugin-dialog-body {
+  min-block-size: 0;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.plugin-manifest-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.plugin-manifest-grid > div,
+.plugin-dialog section,
+.plugin-details-fields,
+.plugin-artifact-picker {
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.plugin-manifest-grid dt { color: var(--dim); font-size: var(--fs-xs); }
+.plugin-manifest-grid dd { margin: 3px 0 0; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.plugin-manifest-grid .plugin-checksum { grid-column: 1 / -1; }
+.plugin-manifest-grid code { color: var(--accent); }
+.plugin-dialog section h4 { margin-block-end: 8px; font-size: var(--fs-sm); }
+.plugin-dialog section ul { margin: 0; padding-inline-start: 18px; }
+
+.plugin-artifact-review { display: grid; gap: 8px; list-style: none; padding: 0 !important; }
+.plugin-artifact-review li { display: grid; gap: 2px; padding-block-end: 8px; border-block-end: 1px solid var(--line-soft); }
+.plugin-artifact-review li:last-child { padding-block-end: 0; border-block-end: 0; }
+.plugin-artifact-review span,
+.plugin-artifact-review p { color: var(--dim); font-size: var(--fs-xs); }
+
+.plugin-trust-warning,
+.plugin-export-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+
+.plugin-trust-warning svg,
+.plugin-export-summary svg { flex: 0 0 auto; color: var(--warn); }
+.plugin-export-summary { border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: var(--accent-soft); }
+.plugin-export-summary svg { color: var(--accent); }
+.plugin-export-summary code { overflow-wrap: anywhere; color: var(--accent); }
+
+.plugin-details-fields,
+.plugin-artifact-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.plugin-details-fields legend,
+.plugin-artifact-picker legend { padding-inline: 5px; color: var(--text); font-size: var(--fs-sm); font-weight: 650; }
+.plugin-details-fields label { display: grid; gap: 5px; color: var(--muted); font-size: var(--fs-xs); }
+.plugin-details-fields input,
+.plugin-details-fields textarea {
+  min-inline-size: 0;
+  inline-size: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.plugin-details-fields textarea { min-block-size: 72px; resize: vertical; }
+.plugin-details-fields .plugin-wide-field { grid-column: 1 / -1; }
+.plugin-artifact-picker { grid-template-columns: 1fr; max-block-size: 240px; overflow: auto; }
+.plugin-artifact-picker label { display: flex; align-items: flex-start; gap: 8px; padding: 7px; border-radius: var(--radius-sm); cursor: pointer; }
+.plugin-artifact-picker label:hover { background: var(--hover); }
+.plugin-artifact-picker input { margin-block-start: 2px; accent-color: var(--accent); }
+.plugin-artifact-picker span { display: grid; gap: 2px; }
+.plugin-artifact-picker small { color: var(--dim); }
+
+@media (max-width: 560px) {
+  .plugin-manifest-grid,
+  .plugin-details-fields { grid-template-columns: 1fr; }
+  .plugin-manifest-grid .plugin-checksum,
+  .plugin-details-fields .plugin-wide-field { grid-column: auto; }
+  .plugin-dialog footer { flex-wrap: wrap; }
+}
+
 /* ---------- Template gallery modal ---------- */
 .gallery-backdrop {
   position: fixed;
