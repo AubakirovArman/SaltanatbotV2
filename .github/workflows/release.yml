@@ -87,6 +87,9 @@ jobs:
       - name: Create reproducible application archive
         run: npm run release:package -- --channel "${{ steps.release.outputs.channel }}" --version "${{ steps.release.outputs.version }}"
 
+      - name: Exercise distribution rollback drill
+        run: npm run release:rollback-drill -- --distribution ".release-staging/${{ steps.release.outputs.name }}" --output "release/${{ steps.release.outputs.name }}.rollback-drill.json"
+
       - name: Generate SPDX JSON SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -99,7 +102,7 @@ jobs:
 
       - name: Write SHA-256 checksums
         working-directory: release
-        run: sha256sum *.tar.gz *.release-info.json *.spdx.json > SHA256SUMS
+        run: sha256sum *.tar.gz *.release-info.json *.distribution-manifest.json *.rollback-drill.json *.spdx.json > SHA256SUMS
 
       - name: Sign build provenance with GitHub/Sigstore
         id: provenance

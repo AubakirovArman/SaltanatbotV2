@@ -13,7 +13,9 @@ This folder contains deterministic maintenance and release helpers invoked by ro
   sizes and enforces the reviewed limits in `performance-budgets.json`.
 - `generate-pine-compatibility.mjs`: generates and checks the Pine compatibility registry.
 - `generate-reference-docs.mjs`: generates and checks the Express endpoint index and strategy block catalog.
-- `package-release.mjs`: validates release channels and creates a deterministic, secret-free application archive plus build metadata.
+- `package-release.mjs`: validates release channels and creates a deterministic, secret-free application archive plus build metadata and a per-file SHA-256 distribution manifest.
+- `release-rollback-drill.mjs`: exercises controlled candidate corruption, fail-closed manifest verification and atomic restoration of a verified immutable slot, emitting credential-free JSON evidence.
+- `lib/distribution-manifest.mjs`: shared strict manifest writer/verifier and atomic pointer-file helper for release tooling.
 - `exchange-testnet-smoke.mjs`: explicitly armed, read-only authenticated Binance Futures Demo and Bybit Testnet release checks.
 - `runtime-data.mjs`: creates checksum-manifested online SQLite backups, verifies integrity and
   performs explicit atomic restore of `backend/data` while preserving secret file permissions.
@@ -25,6 +27,7 @@ This folder contains deterministic maintenance and release helpers invoked by ro
 - Networked scripts require an explicit opt-in guard and must reject production endpoints.
 - Secrets are read only from runtime environment variables and are never printed.
 - Release archives must exclude runtime data, databases, environment files and dependency directories.
+- Extracted release verification must reject missing, changed, extra, symbolic-link and identity-mismatched files before activation.
 
 ## Testing
 

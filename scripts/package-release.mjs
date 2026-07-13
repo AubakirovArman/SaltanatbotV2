@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { writeDistributionManifest } from "./lib/distribution-manifest.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = parseArgs(process.argv.slice(2));
@@ -50,6 +51,8 @@ copyTree("frontend/dist");
 
 writeFileSync(path.join(staging, "release-info.json"), `${JSON.stringify(metadata, null, 2)}\n`);
 writeFileSync(path.join(releaseDir, `${name}.release-info.json`), `${JSON.stringify(metadata, null, 2)}\n`);
+const distributionManifest = writeDistributionManifest(staging, metadata);
+writeFileSync(path.join(releaseDir, `${name}.distribution-manifest.json`), distributionManifest.source);
 
 const archive = path.join(releaseDir, `${name}.tar.gz`);
 execFileSync("tar", [

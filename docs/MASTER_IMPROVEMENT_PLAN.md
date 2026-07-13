@@ -247,6 +247,7 @@ release gate rather than an alpha P2 blocker.
 - [x] add `CODE_OF_CONDUCT.md`, issue forms and PR templates;
 - [x] document release channels: nightly, alpha, beta, stable;
 - [x] add signed release artifacts, checksums and SBOM;
+- [x] add per-file distribution manifests and an attested controlled-corruption/atomic-rollback drill;
 - [x] add categorized GitHub release-note automation and migration notes;
 - [x] publish threat model and explicit non-goals;
 - [x] add contributor maps for chart, Pine, strategy core, providers and execution;

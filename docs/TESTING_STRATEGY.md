@@ -258,6 +258,19 @@ allow-listed SPDX entries with preserved headers run in
 `pineGoldenAndExternalCorpus.test.ts`; unknown-license files are audit-only.
 The same suite verifies reviewed byte-level v4/v6 conversion golden hashes.
 
+## Release distribution and rollback
+
+`releaseWorkflow.test.ts` verifies channel/version policy, immutable source identity, required SBOM
+and Sigstore workflow permissions, strict extracted-file manifests and the rollback drill contract.
+Changed, extra and symbolic-link fixture files must fail closed.
+
+Every release workflow then runs the drill against the exact full staging directory used for its
+archive and SBOM. The candidate slot is activated, its frontend entry file is deliberately changed,
+manifest verification must reject it, and a same-directory atomic pointer must return to a verified
+previous slot. The credential-free JSON evidence and external distribution manifest are included in
+`SHA256SUMS` and provenance. This tests distribution mechanics; each real host still requires a
+platform-specific proxy/supervisor/persistent-volume rehearsal.
+
 ## CI tiers
 
 ### Pull request

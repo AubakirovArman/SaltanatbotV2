@@ -116,6 +116,9 @@ Mitigations:
 
 - SQLite online backup plus `quick_check`, SHA-256 manifest and symlink/extra-file rejection;
 - verified staging and rollback-safe atomic restore;
+- release archives bind every extracted file to an internal/external SHA-256 manifest; the release
+  workflow deliberately corrupts an isolated candidate, requires integrity detection and records a
+  verified atomic-slot rollback without opening runtime data;
 - transactional forward migrations with `PRAGMA user_version`;
 - databases from newer unsupported application versions are rejected.
 

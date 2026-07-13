@@ -24,6 +24,7 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 - Complete EN/RU/KK UI and user documentation, public Pages, release artifacts, SBOM, checksums and attestations.
 - Enforced TypeScript, Biome, docs, architecture, unit/integration, build, performance and Playwright gates.
 - Blank-screen-safe startup with a localized pre-React fallback, global React recovery boundary and data-preserving stale-shell refresh.
+- Attested release archives with per-file manifests and an enforced controlled-corruption/atomic-rollback drill plus EN/RU/KK incident runbooks.
 
 ## Explicitly deferred external validation
 
@@ -54,7 +55,7 @@ These are not silently marked complete and are not included in the P0/P1/P2 repo
 
 - Complete the funded exchange validation above.
 - Maintain a current manual multi-screen-reader/browser matrix in addition to automated axe checks.
-- Publish and exercise an operational incident-response/rollback drill for the deployed distribution.
+- Rehearse the delivered incident-response/rollback runbook against each real hosting platform's proxy, supervisor and persistent volumes.
 - Promote release channels only through the documented alpha → beta → stable criteria.
 
 ## See also

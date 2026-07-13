@@ -27,6 +27,7 @@
     "data:verify": "node scripts/runtime-data.mjs verify",
     "data:restore": "node scripts/runtime-data.mjs restore",
     "release:package": "node scripts/package-release.mjs",
+    "release:rollback-drill": "node scripts/release-rollback-drill.mjs",
     "perf:check": "node scripts/check-bundle-budgets.mjs",
     "pwa:check": "node scripts/check-pwa.mjs",
     "architecture:check": "node scripts/check-source-file-budgets.mjs",

@@ -10,6 +10,18 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Distribution incident-response and rollback drill — 2026-07-13
+
+- [x] Manifest every extracted release file with a sorted path, byte size and SHA-256.
+- [x] Fail closed on changed, missing, extra, symbolic-link or release-identity mismatches.
+- [x] Exercise immutable candidate/previous slots, controlled corruption detection and atomic pointer rollback.
+- [x] Verify the previous slot and untouched source distribution after rollback.
+- [x] Emit credential-free JSON evidence and include it in release checksums/attestations.
+- [x] Publish an operational EN/RU/KK runbook that separates binary, database and venue recovery.
+
+Verification covers manifest tampering, extra files, symlinks, identity binding and a complete fixture
+drill plus a full locally packaged distribution whose internal/external manifest digest matched.
+
 ### Blank-screen-safe application startup — 2026-07-13
 
 - [x] Keep a styled localized pre-React surface visible when the main application module fails.

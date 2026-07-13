@@ -5,6 +5,13 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Release incident response
+
+- Added an internal and externally published distribution manifest binding every extracted release file path and byte size to SHA-256 while rejecting missing, extra, changed and symbolic-link entries.
+- Added an enforced rollback drill that activates isolated immutable slots, injects controlled frontend corruption, requires fail-closed detection, atomically restores the verified previous slot and proves the source distribution remained unchanged.
+- Release workflows now checksum and attest the distribution manifest and credential-free rollback evidence alongside the archive, SBOM and release metadata.
+- Added complete EN/RU/KK incident-response runbooks separating binary rollback, database restore and direct exchange reconciliation.
+
 ### Startup resilience
 
 - Added a styled EN/RU/KK pre-React recovery screen that remains available when the main content-hashed module cannot load, replacing the previous empty-root failure mode.
