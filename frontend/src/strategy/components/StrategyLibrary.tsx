@@ -4,17 +4,21 @@ import { PineImportDialog } from "../../components/PineImportDialog";
 import type { PineImport } from "../pine";
 import type { StrategyArtifact, StrategyArtifactKind } from "../library";
 import { strategyTemplates, type StrategyTemplate, type TemplateCategory } from "../templates";
-import { downloadStrategyFile, parseStrategyFile, type PortableStrategyArtifact } from "../strategyFile";
+import { downloadStrategyFile, type PortableStrategyArtifact } from "../strategyFile";
 import type { Locale } from "../../i18n";
 import { strategyCategory, strategyText } from "../../i18n/strategy";
 import { StrategyWizard } from "./StrategyWizard";
 import { useModalFocus } from "../../hooks/useModalFocus";
-import { parsePluginFile, type PluginParseErrorCode, type VerifiedPlugin } from "@saltanatbotv2/plugin-core";
+import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 import { PluginImportReviewDialog } from "./PluginImportReviewDialog";
 import { PluginExportDialog } from "./PluginExportDialog";
 import { PluginCatalogDialog } from "./PluginCatalogDialog";
 import { analyzePluginImport, installedPlugins } from "../pluginCatalog";
 import { trustPluginKey } from "../pluginTrust";
+import type { PwaFileLaunchBatch } from "../../pwa/fileLaunch";
+import { useImportReviewQueue } from "../useImportReviewQueue";
+import { PwaFileLaunchDialog } from "./PwaFileLaunchDialog";
+import { StrategyFileReviewDialog } from "./StrategyFileReviewDialog";
 
 export function StrategyLibrary({
   locale,
@@ -26,7 +30,9 @@ export function StrategyLibrary({
   onImportStrategy,
   onImportPlugin,
   onUninstallPlugin,
-  onImportPineMany
+  onImportPineMany,
+  launchedBatch,
+  onLaunchedBatchConsumed
 }: {
   locale: Locale;
   artifacts: StrategyArtifact[];
@@ -38,50 +44,23 @@ export function StrategyLibrary({
   onImportPlugin: (input: VerifiedPlugin) => void;
   onUninstallPlugin: (key: string) => boolean;
   onImportPineMany: (inputs: PineImport[]) => void;
+  launchedBatch?: PwaFileLaunchBatch;
+  onLaunchedBatchConsumed?: () => void;
 }) {
   const indicators = artifacts.filter((artifact) => artifact.kind === "indicator");
   const strategies = artifacts.filter((artifact) => artifact.kind === "strategy");
   const [galleryOpen, setGalleryOpen] = useState(false);
-  const [importError, setImportError] = useState<string>();
-  const [importStatus, setImportStatus] = useState<string>();
   const [pineOpen, setPineOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [pendingPlugin, setPendingPlugin] = useState<VerifiedPlugin>();
   const [pluginExportOpen, setPluginExportOpen] = useState(false);
   const [pluginCatalogOpen, setPluginCatalogOpen] = useState(false);
+  const imports = useImportReviewQueue(locale);
+  const { importError, importStatus, pendingPlugin, pendingStrategy, pendingPine } = imports;
+  const importReviewActive = Boolean(launchedBatch || pendingPlugin || pendingStrategy || pendingPine.length);
   const installedPluginCount = installedPlugins(artifacts).length;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pluginInputRef = useRef<HTMLInputElement | null>(null);
   const pluginInputId = useId();
-
-  const importFile = async (file: File) => {
-    setImportError(undefined);
-    try {
-      const parsed = await parseStrategyFile(await file.text());
-      if (!parsed) {
-        setImportError(strategyText(locale, "invalidStrategy"));
-        return;
-      }
-      onImportStrategy(parsed);
-    } catch {
-      setImportError(strategyText(locale, "unreadableFile"));
-    }
-  };
-
-  const importPlugin = async (file: File) => {
-    setImportError(undefined);
-    setImportStatus(undefined);
-    try {
-      const parsed = await parsePluginFile(await file.text(), { appVersion: "0.1.0", maxArtifactSchemaVersion: 2 });
-      if (!parsed.ok) {
-        setImportError(pluginError(locale, parsed.code));
-        return;
-      }
-      setPendingPlugin(parsed);
-    } catch {
-      setImportError(strategyText(locale, "unreadableFile"));
-    }
-  };
 
   return (
     <aside className="strategy-library">
@@ -121,7 +100,7 @@ export function StrategyLibrary({
         hidden
         onChange={(event) => {
           const file = event.target.files?.[0];
-          if (file) void importFile(file);
+          if (file) void imports.prepareStrategyFile(file);
           event.target.value = "";
         }}
       />
@@ -136,7 +115,7 @@ export function StrategyLibrary({
         accept=".saltanat-plugin,.json,application/json"
         onChange={(event) => {
           const file = event.target.files?.[0];
-          if (file) void importPlugin(file);
+          if (file) void imports.preparePluginFile(file);
           event.target.value = "";
         }}
       />
@@ -149,7 +128,7 @@ export function StrategyLibrary({
         <LibraryGroup locale={locale} title={strategyText(locale, "indicators")} items={indicators} activeId={activeId} onSelect={onSelect} />
         <LibraryGroup locale={locale} title={strategyText(locale, "strategies")} items={strategies} activeId={activeId} onSelect={onSelect} />
       </div>
-      {pineOpen && (
+      {!importReviewActive && pineOpen && (
         <PineImportDialog
           locale={locale}
           onClose={() => setPineOpen(false)}
@@ -159,7 +138,7 @@ export function StrategyLibrary({
           }}
         />
       )}
-      {wizardOpen && (
+      {!importReviewActive && wizardOpen && (
         <StrategyWizard
           locale={locale}
           onClose={() => setWizardOpen(false)}
@@ -169,7 +148,7 @@ export function StrategyLibrary({
           }}
         />
       )}
-      {galleryOpen && (
+      {!importReviewActive && galleryOpen && (
         <TemplateGallery
           locale={locale}
           onClose={() => setGalleryOpen(false)}
@@ -179,55 +158,78 @@ export function StrategyLibrary({
           }}
         />
       )}
-      {pendingPlugin && (
+      {launchedBatch && (
+        <PwaFileLaunchDialog
+          locale={locale}
+          batch={launchedBatch}
+          onClose={() => onLaunchedBatchConsumed?.()}
+          onReview={async () => {
+            await imports.prepareLaunchedBatch(launchedBatch);
+            onLaunchedBatchConsumed?.();
+          }}
+        />
+      )}
+      {!launchedBatch && pendingPlugin && (
         <PluginImportReviewDialog
           locale={locale}
           plugin={pendingPlugin}
           analysis={analyzePluginImport(artifacts, pendingPlugin)}
-          onClose={() => setPendingPlugin(undefined)}
+          onClose={imports.shiftPlugin}
           onConfirm={(plugin, trustSigner) => {
             if (trustSigner && plugin.signature) trustPluginKey(plugin.signature.keyFingerprint, plugin.manifest.publisher.name);
             onImportPlugin(plugin);
-            setImportStatus(`${strategyText(locale, "pluginImported")}: ${plugin.manifest.name} · ${plugin.manifest.artifacts.length} ${strategyText(locale, "artifacts")}`);
-            setPendingPlugin(undefined);
+            imports.setImportStatus(`${strategyText(locale, "pluginImported")}: ${plugin.manifest.name} · ${plugin.manifest.artifacts.length} ${strategyText(locale, "artifacts")}`);
+            imports.shiftPlugin();
           }}
         />
       )}
-      {pluginExportOpen && (
+      {!launchedBatch && !pendingPlugin && pendingStrategy && (
+        <StrategyFileReviewDialog
+          locale={locale}
+          pending={pendingStrategy}
+          onClose={imports.shiftStrategy}
+          onConfirm={() => {
+            onImportStrategy(pendingStrategy.artifact);
+            imports.setImportStatus(`${strategyText(locale, "importReviewedStrategy")}: ${pendingStrategy.artifact.name}`);
+            imports.shiftStrategy();
+          }}
+        />
+      )}
+      {!launchedBatch && !pendingPlugin && !pendingStrategy && pendingPine.length > 0 && (
+        <PineImportDialog
+          key={`pwa-pine-${pendingPine.map((file) => file.name).join("-")}`}
+          locale={locale}
+          initialFiles={pendingPine}
+          onClose={imports.clearPendingPine}
+          onImportMany={(results) => {
+            imports.clearPendingPine();
+            onImportPineMany(results);
+          }}
+        />
+      )}
+      {!importReviewActive && pluginExportOpen && (
         <PluginExportDialog
           locale={locale}
           artifacts={artifacts}
           activeId={activeId}
           onClose={() => setPluginExportOpen(false)}
-          onExport={(manifest) => setImportStatus(`${strategyText(locale, "pluginExported")}: ${manifest.name}`)}
+          onExport={(manifest) => imports.setImportStatus(`${strategyText(locale, "pluginExported")}: ${manifest.name}`)}
         />
       )}
-      {pluginCatalogOpen && (
+      {!importReviewActive && pluginCatalogOpen && (
         <PluginCatalogDialog
           locale={locale}
           artifacts={artifacts}
           onClose={() => setPluginCatalogOpen(false)}
           onRemove={(key) => {
             const removed = onUninstallPlugin(key);
-            if (removed) setImportStatus(strategyText(locale, "pluginRemoved"));
+            if (removed) imports.setImportStatus(strategyText(locale, "pluginRemoved"));
             return removed;
           }}
         />
       )}
     </aside>
   );
-}
-
-function pluginError(locale: Locale, code: PluginParseErrorCode) {
-  const keys: Partial<Record<PluginParseErrorCode, Parameters<typeof strategyText>[1]>> = {
-    too_large: "pluginTooLarge",
-    checksum_mismatch: "pluginChecksumMismatch",
-    invalid_signature: "pluginSignatureInvalid",
-    incompatible_app: "pluginIncompatible",
-    unsupported_permission: "pluginPermissionRejected",
-    dependency_error: "pluginDependencyRejected"
-  };
-  return strategyText(locale, keys[code] ?? "invalidPlugin");
 }
 function LibraryGroup({
   locale,

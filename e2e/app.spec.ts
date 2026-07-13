@@ -3,6 +3,8 @@ import AxeBuilder from "@axe-core/playwright";
 import { createPluginSigningKeyPair, encodeSignedPluginFile, parsePluginFile, rotatePluginSigningKeyPair, type PluginManifest } from "@saltanatbotv2/plugin-core";
 import { readFile } from "node:fs/promises";
 import { installMarketSocketMock, mockCandleHistory, mockCandles, mockChartCandles } from "./support/marketMocks";
+import { encodeStrategyFile } from "../frontend/src/strategy/strategyFile";
+import type { StrategyArtifact } from "../frontend/src/strategy/library";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -48,6 +50,11 @@ test("installs a static offline shell without caching runtime market or trading 
     scope: "/",
     display: "standalone",
     launch_handler: { client_mode: "navigate-existing" },
+    file_handlers: [
+      { action: "/?view=strategy", accept: { "text/plain": [".pine"] }, launch_type: "single-client" },
+      { action: "/?view=strategy", accept: { "application/vnd.saltanatbotv2.strategy+json": [".strategy"] }, launch_type: "single-client" },
+      { action: "/?view=strategy", accept: { "application/vnd.saltanatbotv2.plugin+json": [".saltanat-plugin"] }, launch_type: "single-client" }
+    ],
     shortcuts: [
       { short_name: "Chart", url: "/?view=chart" },
       { short_name: "Strategy", url: "/?view=strategy" }
@@ -985,8 +992,72 @@ test("imports a Pine indicator as an editable artifact", { tag: "@smoke" }, asyn
   await expect(page.locator(".strategy-library")).toContainText("E2E SMA");
 });
 
+test("reviews an OS-launched Pine file before conversion and import", async ({ page }) => {
+  await installPwaLaunchQueue(page);
+  await dispatchPwaFile(page, {
+    name: "os-launch.pine",
+    type: "text/plain",
+    content: [
+      "//@version=6",
+      'indicator("OS Launch EMA", overlay=true)',
+      'plot(ta.ema(close, 9), "EMA")'
+    ].join("\n")
+  });
+
+  const launchReview = page.getByRole("dialog", { name: "Review files opened by the operating system" });
+  await expect(launchReview).toBeVisible({ timeout: 20_000 });
+  await expect(launchReview).toContainText("Contents have not been read yet");
+  await expect(page.locator(".strategy-library")).not.toContainText("OS Launch EMA");
+  await expectNoAxeViolations(page);
+  await launchReview.getByRole("button", { name: "Review files locally" }).click();
+
+  const pineReview = page.getByRole("dialog", { name: "Import Pine Script" });
+  await expect(pineReview).toContainText("os-launch");
+  await expect(page.locator(".strategy-library")).not.toContainText("OS Launch EMA");
+  await pineReview.getByRole("button", { name: /^Convert/ }).click();
+  await expect(pineReview.getByText(/indicator · “OS Launch EMA”/i)).toBeVisible();
+  await pineReview.getByRole("button", { name: "Add 1 artifact", exact: true }).click();
+
+  await expect(pineReview).toBeHidden();
+  await expect(page.locator(".strategy-library")).toContainText("OS Launch EMA");
+});
+
+test("checksum-reviews an OS-launched strategy before adding it", async ({ page }) => {
+  const artifact: StrategyArtifact = {
+    id: "strategy:os-launch",
+    kind: "strategy",
+    name: "OS Launch Strategy",
+    description: "PWA file-handler fixture",
+    xml: pluginXml("OS Launch Strategy"),
+    semanticVersion: "1.2.0",
+    schemaVersion: 2,
+    parameters: [],
+    dependencies: [],
+    provenance: { source: "local" },
+    createdAt: 1,
+    updatedAt: 1
+  };
+  const content = await encodeStrategyFile(artifact, 10);
+  await installPwaLaunchQueue(page);
+  await dispatchPwaFile(page, { name: "review-me.strategy", type: "application/json", content });
+
+  const launchReview = page.getByRole("dialog", { name: "Review files opened by the operating system" });
+  await expect(launchReview).toContainText("review-me.strategy", { timeout: 20_000 });
+  await launchReview.getByRole("button", { name: "Review files locally" }).click();
+  const strategyReview = page.getByRole("dialog", { name: "Review strategy file" });
+  await expect(strategyReview).toContainText("OS Launch Strategy");
+  await expect(strategyReview).toContainText("Checksum, schema and resource limits verified locally");
+  await expect(page.locator(".strategy-library .library-item-main").filter({ hasText: "OS Launch Strategy" })).toHaveCount(0);
+  await expectNoAxeViolations(page);
+  await strategyReview.getByRole("button", { name: "Import reviewed strategy" }).click();
+
+  await expect(strategyReview).toBeHidden();
+  await expect(page.locator(".strategy-library .library-item-main").filter({ hasText: "OS Launch Strategy" })).toHaveCount(1);
+});
+
 test("reviews a checksummed declarative plugin before importing it", async ({ page }) => {
   test.setTimeout(60_000);
+  await installPwaLaunchQueue(page);
   const workspaceModes = page.getByLabel("Workspace mode");
   await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
   const library = page.locator(".strategy-library");
@@ -1009,11 +1080,10 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   };
   const signer = await createPluginSigningKeyPair();
   const signedPlugin = await encodeSignedPluginFile(plugin, signer);
-  await page.getByLabel("Import plugin package").setInputFiles({
-    name: "e2e.saltanat-plugin",
-    mimeType: "application/json",
-    buffer: Buffer.from(signedPlugin)
-  });
+  await dispatchPwaFile(page, { name: "e2e.saltanat-plugin", type: "application/json", content: signedPlugin });
+  const launchReview = page.getByRole("dialog", { name: "Review files opened by the operating system" });
+  await expect(launchReview).toContainText("e2e.saltanat-plugin");
+  await launchReview.getByRole("button", { name: "Review files locally" }).click();
 
   const review = page.getByRole("dialog", { name: "Review plugin package" });
   await expect(review).toBeVisible();
@@ -1636,6 +1706,39 @@ async function installTradeFlowSocketMock(page: Page) {
 async function expectNoAxeViolations(page: Page) {
   const audit = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(audit.violations, audit.violations.map((item) => `${item.id}: ${item.help} (${item.nodes.length})`).join("\n")).toEqual([]);
+}
+
+async function installPwaLaunchQueue(page: Page) {
+  await page.addInitScript(() => {
+    type LaunchConsumer = (params: { files: Array<{ name: string; getFile(): Promise<File> }> }) => void;
+    const target = window as Window & {
+      launchQueue?: { setConsumer(next: LaunchConsumer): void };
+      __pwaLaunchReady?: boolean;
+      __dispatchPwaFile?: (input: { name: string; type: string; content: string }) => void;
+    };
+    let consumer: LaunchConsumer | undefined;
+    const launchQueue = {
+      setConsumer(next) {
+        consumer = next;
+        target.__pwaLaunchReady = true;
+      }
+    };
+    Object.defineProperty(target, "launchQueue", { configurable: true, value: launchQueue });
+    target.__dispatchPwaFile = ({ name, type, content }) => {
+      if (!consumer) throw new Error("PWA launch consumer is not ready");
+      consumer({ files: [{ name, getFile: async () => new File([content], name, { type }) }] });
+    };
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator(".brand")).toContainText("SaltanatbotV2");
+  await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __pwaLaunchReady?: boolean }).__pwaLaunchReady))).toBe(true);
+}
+
+async function dispatchPwaFile(page: Page, input: { name: string; type: string; content: string }) {
+  await page.evaluate((file) => {
+    const target = window as Window & { __dispatchPwaFile?: (value: typeof file) => void };
+    target.__dispatchPwaFile?.(file);
+  }, input);
 }
 
 async function openChartAnalysis(page: Page) {

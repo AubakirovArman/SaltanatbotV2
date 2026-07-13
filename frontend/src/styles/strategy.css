@@ -219,6 +219,7 @@
 .plugin-dialog h3,
 .plugin-dialog h4,
 .plugin-dialog p { margin: 0; }
+.plugin-dialog h2 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: var(--fs-lg); }
 .plugin-dialog header p { margin-block-start: 3px; color: var(--dim); font-size: var(--fs-xs); line-height: 1.4; }
 
 .plugin-dialog button {
@@ -274,6 +275,31 @@
 .plugin-manifest-grid code { color: var(--accent); }
 .plugin-dialog section h4 { margin-block-end: 8px; font-size: var(--fs-sm); }
 .plugin-dialog section ul { margin: 0; padding-inline-start: 18px; }
+
+.file-launch-privacy,
+.plugin-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+
+.file-launch-privacy svg { flex: 0 0 auto; color: var(--accent); }
+.plugin-warning { border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.file-launch-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.file-launch-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--panel-soft); }
+.file-launch-list li > span:first-child { min-inline-size: 0; display: grid; gap: 2px; }
+.file-launch-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-launch-list small,
+.file-launch-list li > span:last-child { color: var(--dim); font-size: var(--fs-xs); }
+.file-launch-list li > span:last-child { flex: 0 0 auto; }
+.file-launch-rejections { color: var(--warn); font-size: var(--fs-xs); }
 
 .plugin-artifact-review { display: grid; gap: 8px; list-style: none; padding: 0 !important; }
 .plugin-artifact-review li { display: grid; gap: 2px; padding-block-end: 8px; border-block-end: 1px solid var(--line-soft); }

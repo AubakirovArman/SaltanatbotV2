@@ -297,6 +297,12 @@ The manifest exposes Chart and Strategy Studio shortcuts. `/?view=strategy` open
 surface, while unknown values and `view=trade` fail closed to Chart. See
 [Offline local research](OFFLINE_RESEARCH.md) for the exact boundary and verification evidence.
 
+Installed Chromium-family desktop PWAs may also register three exact file handlers for `.pine`,
+`.strategy` and `.saltanat-plugin`. Every handler routes to the Strategy Studio review flow; generic
+JSON and trading actions are intentionally absent. This is feature-detected progressive enhancement,
+so no server flag is needed and manual file inputs remain available. See
+[PWA file handling](PWA_FILE_HANDLING.md).
+
 The HTML also contains a localized pre-React recovery surface, so a missing or stale main module
 does not produce a blank screen. **Refresh application files** unregisters only this application's
 worker and deletes only `saltanat-shell-*` Cache Storage entries; it does not clear chart, strategy,

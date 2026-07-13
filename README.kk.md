@@ -92,6 +92,7 @@ npm run build
 - [Қауіпсіздік бойынша қысқаша нұсқаулық](docs/kk/SECURITY.md)
 - [Backup және қалпына келтіру](docs/kk/BACKUP_RESTORE.md)
 - [Жергілікті офлайн зерттеу](docs/kk/OFFLINE_RESEARCH.md)
+- [PWA арқылы файлдарды қауіпсіз ашу](docs/kk/PWA_FILE_HANDLING.md)
 - [90 коммит жаңартуы](docs/kk/RELEASE_2026-07-11.md)
 - [Құжаттаманың өзектілік тізілімі](docs/DOCUMENTATION_STATUS.md)
 - [Толық ағылшын құжаттамасы](README.md#documentation)
@@ -106,6 +107,7 @@ npm run build
 - Paper mode әдепкіде қосулы; live бірнеше анық растауды қажет етеді.
 - Production нұсқасын PWA ретінде орнатып, static интерфейсті offline ашуға болады. API, quote, order book, trade және сауда command-тары cache-ке жазылмайды және reconnect-тен кейін қайталанбайды.
 - Strategy Studio-ны жоғарғы панель арқылы офлайн зерттеуге бөлек сақтауға болады; жергілікті artifact құрылғыда қалады, ал trading тек желіде орындалады.
+- Орнатылған Chromium-family desktop PWA `.pine`, `.strategy` және `.saltanat-plugin` файлдарын міндетті жергілікті тексеру арқылы ашады; қолмен импорттау барлық браузерде қалады.
 - Бұл жоба қаржылық кеңес бермейді және сауда нәтижесіне кепілдік бермейді.
 
 ## Лицензия

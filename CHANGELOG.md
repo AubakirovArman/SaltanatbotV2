@@ -5,6 +5,9 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+- Added installed-desktop PWA file handlers for exact `.pine`, `.strategy` and `.saltanat-plugin` extensions with a metadata-only outer review, bounded local reads and queued launch events. Pine still requires Convert/Add, strategies now receive checksum/schema/metadata confirmation, and plugins retain signature/permission review; no launch can run research or trading automatically.
+- Added complete EN/RU/KK file-handler copy and guides, manifest safety enforcement, feature-detection/limit/spoofing unit coverage and production Chromium review-before-mutation journeys for all three formats. Manual file inputs remain the cross-browser fallback.
+- Raised only the measured aggregate JavaScript gzip ceiling from 510 KiB to 514 KiB for the bounded launch collector, three-stage review queue and complete three-locale copy; initial-shell, per-file, CSS and HTML ceilings remain unchanged.
 - Added an optional, removable offline Strategy Studio/Blockly bundle with EN/RU/KK controls, safe PWA Chart/Strategy shortcuts, build-graph verification and a real offline Chromium restart test. Market and trading routes remain network-only.
 
 ### Release incident response

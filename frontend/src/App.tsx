@@ -32,6 +32,7 @@ import { localized, translate } from "./i18n";
 import { loadLastChartSession } from "./app/chartSession";
 import { pickDistinctMarketSymbols } from "./app/distinctMarkets";
 import { launchView } from "./app/launchView";
+import { registerPwaFileLaunch, type PwaFileLaunchBatch, type PwaLaunchWindow } from "./pwa/fileLaunch";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
@@ -58,6 +59,7 @@ export default function App() {
   const [asset, setAsset] = useState<AssetClass | "all">("all");
   const [mode, setMode] = useState<AppMode>(launchView);
   const [offlineResearchOpen, setOfflineResearchOpen] = useState(false);
+  const [launchedFiles, setLaunchedFiles] = useState<PwaFileLaunchBatch[]>([]);
   const [indicators, setIndicators] = useState(initialWorkspaceState.indicators);
   const [linkedCrosshair, setLinkedCrosshair] = useState<LinkedCrosshair>();
   const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
@@ -75,6 +77,13 @@ export default function App() {
   useEffect(() => {
     if (!isMobile || mode !== "chart") setMobilePanel(undefined);
   }, [isMobile, mode]);
+  useEffect(() => {
+    registerPwaFileLaunch(window as unknown as PwaLaunchWindow, (batch) => {
+      setLaunchedFiles((current) => [...current, batch]);
+      setMode("strategy");
+      warmStrategyLab();
+    });
+  }, []);
   const openStrategyWorkspace = useCallback(() => setMode("strategy"), []);
   const artifactLibrary = useArtifactLibrary({
     initialArtifacts: initialWorkspaceState.strategyLibrary,
@@ -402,6 +411,8 @@ export default function App() {
                 onImportPlugin={artifactLibrary.importPlugin}
                 onUninstallPlugin={artifactLibrary.uninstallPlugin}
                 onImportPineMany={artifactLibrary.importPineMany}
+                launchedBatch={launchedFiles[0]}
+                onLaunchedBatchConsumed={() => setLaunchedFiles((current) => current.slice(1))}
                 onRollbackArtifact={artifactLibrary.rollbackArtifactVersion}
                 onUpdateArtifactDependencies={artifactLibrary.updateArtifactDependencies}
                 catalog={catalog}

@@ -8,6 +8,9 @@ This folder owns browser registration for the generated production service worke
 - `frontend/vite/pwaPlugin.ts` owns the generated worker and its content-derived cache version.
 - `offlineResearch.ts` is the typed message-channel client for status/install/remove of the optional
   same-build Strategy Studio graph. Failure degrades to an unavailable state without touching local artifacts.
+- `fileLaunch.ts` is the progressive-enhancement boundary for installed desktop file launches. It
+  accepts only exact Pine/strategy/plugin extensions, bounds metadata before content reads and passes
+  immutable `File` objects into the Strategy Studio review queue; unsupported browsers use manual inputs.
 - Only the initial application shell and its same-build static dependencies are cached. API, authentication, market
   streams, trading requests and non-GET traffic must remain network-only.
 - A waiting update never calls `skipWaiting()`: the active build keeps its matching lazy chunks until

@@ -22,4 +22,5 @@ Cache ішінде тек қолданба коды сақталады. Инди
 
 **Офлайн файлдарды жою** тек қосымша статикалық cache-ті жояды; стратегия, индикатор, signing identity
 және trading data өзгермейді. Орнатылған қолданба shortcut-тары Chart немесе Strategy Studio ашады;
-Trading үшін тікелей shortcut әдейі берілмеген.
+Trading үшін тікелей shortcut әдейі берілмеген. Зерттеу файлдарын қауіпсіз жүйелік ашу
+[PWA file handling нұсқаулығында](PWA_FILE_HANDLING.md) берілген.

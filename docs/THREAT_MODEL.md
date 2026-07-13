@@ -107,6 +107,24 @@ Mitigations:
 - loops and evaluator work are bounded; unsupported live semantics fail closed;
 - generated compatibility/provenance records distinguish exact, approximate, display-only and rejected behavior.
 
+### Malicious operating-system file launches
+
+An installed PWA can become an operating-system candidate for associated file extensions. A newly
+registered handler could therefore receive an unintended, oversized, spoofed or malicious local
+file, including when the operating system chooses a default application.
+
+Mitigations:
+
+- the manifest registers only exact `.pine`, `.strategy` and `.saltanat-plugin` extensions and never
+  generic JSON or a trading action;
+- the first application dialog shows bounded metadata without reading contents and requires an
+  explicit local-review action;
+- handle and returned-file extensions must agree; launches are limited to ten files with 1/2/5 MB
+  format limits;
+- Pine requires Convert/Add, strategies require checksum/schema/metadata confirmation and plugins
+  retain signature, signer, permission and dependency review;
+- importing creates editable local artifacts only and cannot start research, bots or orders.
+
 ### Data corruption and unsafe upgrades
 
 Threats include raw copying of an active database, partial restore, tampered backup and incompatible

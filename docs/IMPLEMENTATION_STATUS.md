@@ -10,6 +10,21 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Reviewed installed-PWA file handling — 2026-07-13
+
+- [x] Register only exact `.pine`, `.strategy` and `.saltanat-plugin` desktop file handlers.
+- [x] Keep manual Strategy Studio file inputs as the complete unsupported-browser fallback.
+- [x] Show a metadata-only outer confirmation before reading file contents.
+- [x] Bound launches to ten files and format-specific 1/2/5 MB limits; reject spoofed names and generic JSON.
+- [x] Require Pine Convert/Add, checksum/schema strategy confirmation and full plugin signature/capability review.
+- [x] Queue consecutive OS launches without replacing an active review.
+- [x] Guarantee that opening a file cannot start a backtest, bot, paper session or live order.
+- [x] Publish EN/RU/KK documentation and typed interface copy.
+
+Verification covers feature detection, metadata-only collection, extension/name spoofing, size/count
+limits, unreadable handles, exact manifest policy and production Chromium launch/review/import flows
+for all three formats with axe and no library mutation before final confirmation.
+
 ### Distribution incident-response and rollback drill — 2026-07-13
 
 - [x] Manifest every extracted release file with a sorted path, byte size and SHA-256.

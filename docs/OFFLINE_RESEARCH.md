@@ -29,6 +29,8 @@ application data.
 
 Installed-app shortcuts can open either `/?view=chart` or `/?view=strategy`. Unknown values—including
 `view=trade`—fail closed to Chart; the manifest deliberately exposes no direct trading shortcut.
+The installed desktop app can also opt into reviewed local research file associations; see
+[PWA file handling](PWA_FILE_HANDLING.md).
 
 ## Verification
 

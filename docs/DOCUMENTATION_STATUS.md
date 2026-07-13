@@ -40,6 +40,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Application startup recovery](STARTUP_RECOVERY.md) | users/operators | current; production-tested | 2026-07-13 |
 | [Distribution incident response](INCIDENT_RESPONSE.md) | operators/maintainers | current; drill-tested | 2026-07-13 |
 | [Offline local research](OFFLINE_RESEARCH.md) | users/operators | current; production-tested | 2026-07-13 |
+| [PWA file handling](PWA_FILE_HANDLING.md) | users/contributors | current; production-tested | 2026-07-13 |
 
 Planning and audit documents describe research or target architecture rather than shipped behavior.
 They must be read together with `IMPLEMENTATION_STATUS.md` and must not be presented as release notes.
@@ -59,6 +60,7 @@ They must be read together with `IMPLEMENTATION_STATUS.md` and must not be prese
 | Application startup recovery | [guide](STARTUP_RECOVERY.md) | [guide](ru/STARTUP_RECOVERY.md) | [guide](kk/STARTUP_RECOVERY.md) |
 | Distribution incident response | [runbook](INCIDENT_RESPONSE.md) | [runbook](ru/INCIDENT_RESPONSE.md) | [runbook](kk/INCIDENT_RESPONSE.md) |
 | Offline local research | [guide](OFFLINE_RESEARCH.md) | [guide](ru/OFFLINE_RESEARCH.md) | [guide](kk/OFFLINE_RESEARCH.md) |
+| PWA file handling | [guide](PWA_FILE_HANDLING.md) | [guide](ru/PWA_FILE_HANDLING.md) | [guide](kk/PWA_FILE_HANDLING.md) |
 | 90-commit update | [changelog](../CHANGELOG.md) | [release notes](ru/RELEASE_2026-07-11.md) | [release notes](kk/RELEASE_2026-07-11.md) |
 
 The complete runtime UI follows the same EN/RU/KK coverage. Locale catalogs are typed against one

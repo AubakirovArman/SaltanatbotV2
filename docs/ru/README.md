@@ -15,6 +15,7 @@ API-схем и инженерных внутренних контрактов.
 - [Резервное копирование и восстановление](BACKUP_RESTORE.md)
 - [Восстановление запуска вместо пустого экрана](STARTUP_RECOVERY.md)
 - [Локальные исследования офлайн](OFFLINE_RESEARCH.md)
+- [Безопасное открытие Pine, strategy и plugin через установленное PWA](PWA_FILE_HANDLING.md)
 - [Incident response и rollback дистрибутива](INCIDENT_RESPONSE.md)
 - [Обновление за 90 коммитов](RELEASE_2026-07-11.md)
 

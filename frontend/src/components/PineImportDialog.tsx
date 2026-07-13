@@ -10,6 +10,8 @@ interface PineImportDialogProps {
   onClose: () => void;
   /** Called with every successful conversion when the user confirms the import. */
   onImportMany: (results: PineImport[]) => void;
+  /** Pre-reviewed OS-launched files. They are displayed but never auto-converted. */
+  initialFiles?: { name: string; text: string }[];
 }
 
 type Converted = { label: string; res: ReturnType<typeof importPineScript> };
@@ -28,10 +30,12 @@ const MAX_BYTES = 1_000_000;
  * result is trusted with money. Anything that can't run in a per-bar backtest=live
  * engine fails closed with a clear reason.
  */
-export function PineImportDialog({ locale, onClose, onImportMany }: PineImportDialogProps) {
+export function PineImportDialog({ locale, onClose, onImportMany, initialFiles }: PineImportDialogProps) {
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const [source, setSource] = useState("");
-  const [files, setFiles] = useState<{ name: string; text: string }[]>([]);
+  const [files, setFiles] = useState<{ name: string; text: string }[]>(() =>
+    (initialFiles ?? []).slice(0, MAX_FILES).map((file) => ({ name: file.name, text: file.text }))
+  );
   const [results, setResults] = useState<Converted[]>();
   const [readNote, setReadNote] = useState<string>();
   const fileRef = useRef<HTMLInputElement | null>(null);

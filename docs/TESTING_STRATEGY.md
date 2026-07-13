@@ -242,6 +242,12 @@ The optional research-cache scenario additionally installs the generated Strateg
 asserts that Trading View and runtime routes are absent, disables the browser network, launches
 `/?view=strategy` and requires the local editor to render while an API probe still rejects.
 
+The same build gate parses `file_handlers` and permits only exact `.pine`, `.strategy` and
+`.saltanat-plugin` contracts routed to Strategy Studio. Unit tests prove feature detection,
+metadata-only collection, count/size limits and spoof rejection. Production Chromium journeys inject
+all three launch types and require outer consent plus their existing format-specific reviews before
+the artifact library changes. Unsupported browsers continue through the ordinary file inputs.
+
 A separate EN/RU/KK production journey aborts the content-hashed main module before React can mount.
 It requires the static recovery surface to replace a blank screen after two seconds, expose native
 reload/selective-refresh controls and pass axe. Unit tests independently verify the React boundary,

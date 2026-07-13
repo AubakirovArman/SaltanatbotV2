@@ -13,6 +13,26 @@
   "theme_color": "#080d13",
   "categories": ["finance", "productivity", "utilities"],
   "prefer_related_applications": false,
+  "file_handlers": [
+    {
+      "action": "/?view=strategy",
+      "name": "Pine Script source",
+      "accept": { "text/plain": [".pine"] },
+      "launch_type": "single-client"
+    },
+    {
+      "action": "/?view=strategy",
+      "name": "SaltanatbotV2 strategy",
+      "accept": { "application/vnd.saltanatbotv2.strategy+json": [".strategy"] },
+      "launch_type": "single-client"
+    },
+    {
+      "action": "/?view=strategy",
+      "name": "SaltanatbotV2 plugin",
+      "accept": { "application/vnd.saltanatbotv2.plugin+json": [".saltanat-plugin"] },
+      "launch_type": "single-client"
+    }
+  ],
   "shortcuts": [
     {
       "name": "Open Chart",

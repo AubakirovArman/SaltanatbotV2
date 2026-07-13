@@ -16,6 +16,7 @@ EN/RU/KK тілдерінде толық типтелген; нақты API сх
 - [Backup және қалпына келтіру](BACKUP_RESTORE.md)
 - [Қолданбаны іске қосуды қалпына келтіру](STARTUP_RECOVERY.md)
 - [Жергілікті офлайн зерттеу](OFFLINE_RESEARCH.md)
+- [Орнатылған PWA арқылы Pine, strategy және plugin файлдарын қауіпсіз ашу](PWA_FILE_HANDLING.md)
 - [Distribution incident response және rollback](INCIDENT_RESPONSE.md)
 - [90 коммиттен тұратын жаңарту](RELEASE_2026-07-11.md)
 

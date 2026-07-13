@@ -19,6 +19,22 @@ if (!/<link[^>]+rel="manifest"[^>]+href="\/manifest\.webmanifest"/.test(index)) 
 const manifest = JSON.parse(readFileSync(resolve(dist, "manifest.webmanifest"), "utf8"));
 if (!manifest.name || !manifest.short_name || manifest.id !== "/" || manifest.start_url !== "/" || manifest.scope !== "/") fail("manifest identity/start scope is incomplete");
 if (manifest.display !== "standalone" || manifest.prefer_related_applications !== false) fail("manifest standalone install policy is incomplete");
+const expectedFileHandlers = new Map([
+  [".pine", "text/plain"],
+  [".strategy", "application/vnd.saltanatbotv2.strategy+json"],
+  [".saltanat-plugin", "application/vnd.saltanatbotv2.plugin+json"]
+]);
+const fileHandlers = manifest.file_handlers ?? [];
+if (fileHandlers.length !== expectedFileHandlers.size) fail("manifest file handler set is incomplete or over-broad");
+for (const handler of fileHandlers) {
+  if (handler.action !== "/?view=strategy" || handler.launch_type !== "single-client") fail("file handlers must launch the bounded Strategy review flow");
+  const acceptEntries = Object.entries(handler.accept ?? {});
+  if (acceptEntries.length !== 1) fail("each file handler must declare one narrow MIME/extension contract");
+  const [mime, extensions] = acceptEntries[0] ?? [];
+  if (!Array.isArray(extensions) || extensions.length !== 1 || expectedFileHandlers.get(extensions[0]) !== mime) fail("file handler MIME/extension contract is unsafe");
+}
+const serializedFileHandlers = JSON.stringify(fileHandlers);
+if (/trade|order/i.test(serializedFileHandlers) || serializedFileHandlers.includes('"application/json"') || serializedFileHandlers.includes('".json"')) fail("file handlers must not expose generic JSON or trading actions");
 const pngIcons = (manifest.icons ?? []).filter((icon) => icon.type === "image/png" && icon.purpose?.split(" ").includes("any"));
 const iconSizes = pngIcons.map((icon) => pngSize(resolve(dist, icon.src.replace(/^\//, ""))));
 if (!iconSizes.some(({ width, height }) => width >= 192 && height >= 192)) fail("manifest needs a PNG icon at least 192x192");
