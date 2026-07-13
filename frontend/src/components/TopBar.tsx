@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Command,
   Download,
+  HardDriveDownload,
   LayoutDashboard,
   Keyboard,
   Moon,
@@ -57,6 +58,7 @@ interface TopBarProps {
   onStrategyWarmup: () => void;
   onOpenPalette: () => void;
   onOpenShortcutSettings: () => void;
+  onOpenOfflineResearch: () => void;
   onToggleTheme: () => void;
   onToggleLocale: () => void;
   onToggleLeft: () => void;
@@ -99,6 +101,7 @@ export function TopBar({
   onStrategyWarmup,
   onOpenPalette,
   onOpenShortcutSettings,
+  onOpenOfflineResearch,
   onToggleTheme,
   onToggleLocale,
   onToggleLeft,
@@ -216,6 +219,9 @@ export function TopBar({
         </button>
         <button type="button" className="icon-button" onClick={onOpenShortcutSettings} title={shellText(locale, "keyboardShortcuts")} aria-label={shellText(locale, "keyboardShortcuts")}>
           <Keyboard size={14} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+        <button type="button" className="icon-button" onClick={onOpenOfflineResearch} title={shellText(locale, "offlineResearch")} aria-label={shellText(locale, "offlineResearch")}>
+          <HardDriveDownload size={14} strokeWidth={1.75} aria-hidden="true" />
         </button>
         <button type="button" className="icon-button" onClick={onToggleTheme} title={translate(locale, "toggleTheme")} aria-label={translate(locale, "toggleTheme")}>
           {theme === "dark" ? <Sun size={14} strokeWidth={1.75} aria-hidden="true" /> : <Moon size={14} strokeWidth={1.75} aria-hidden="true" />}

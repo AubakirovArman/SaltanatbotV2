@@ -85,6 +85,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - Exchange API keys are **encrypted at rest** with AES-256-GCM (`node:crypto`) — they are **never** sent back to the browser and never leave your machine.
 - Persistence uses Node's **built-in** `node:sqlite` — no native builds, no external database, no occupied ports.
 - The production terminal is **installable as a PWA** and can reopen its static interface offline. APIs, authentication, quotes, order books, trades and trading commands are never cached or replayed; offline does not mean fresh market data or available execution.
+- Strategy Studio can be made available offline from the top bar as an optional static research bundle; local artifacts stay on-device and trading remains network-only. See [Offline local research](docs/OFFLINE_RESEARCH.md).
 - The complete application interface is available in **English, Russian and Kazakh**. The native language control cycles EN → RU → KK and persists the selected locale with matching document metadata and regional number/date formatting.
 
 ---

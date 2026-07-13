@@ -9,6 +9,7 @@ import { PanelResizeHandle } from "./components/PanelResizeHandle";
 import { MultiChartWorkspace, type PaneMarketStream } from "./components/MultiChartWorkspace";
 import { MobilePanelDialog } from "./components/MobilePanelDialog";
 import { ShortcutSettingsDialog } from "./components/ShortcutSettingsDialog";
+import { OfflineResearchDialog } from "./components/OfflineResearchDialog";
 import type { LinkedCrosshair, LinkedTimeRange } from "./chart/types";
 import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
@@ -30,6 +31,7 @@ import type { Locale } from "./i18n";
 import { localized, translate } from "./i18n";
 import { loadLastChartSession } from "./app/chartSession";
 import { pickDistinctMarketSymbols } from "./app/distinctMarkets";
+import { launchView } from "./app/launchView";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
@@ -54,7 +56,8 @@ export default function App() {
   const [timeframe, setTimeframe] = useState<Timeframe>(initialPrimaryChart.timeframe);
   const [chartType, setChartType] = useState<ChartType>(initialPrimaryChart.chartType);
   const [asset, setAsset] = useState<AssetClass | "all">("all");
-  const [mode, setMode] = useState<AppMode>("chart");
+  const [mode, setMode] = useState<AppMode>(launchView);
+  const [offlineResearchOpen, setOfflineResearchOpen] = useState(false);
   const [indicators, setIndicators] = useState(initialWorkspaceState.indicators);
   const [linkedCrosshair, setLinkedCrosshair] = useState<LinkedCrosshair>();
   const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
@@ -254,6 +257,7 @@ export default function App() {
         onStrategyWarmup={warmStrategyLab}
         onOpenPalette={appCommands.openPalette}
         onOpenShortcutSettings={appCommands.openShortcutSettings}
+        onOpenOfflineResearch={() => setOfflineResearchOpen(true)}
         onToggleTheme={shell.toggleTheme}
         onToggleLocale={shell.toggleLocale}
         onToggleLeft={isMobile ? () => setMobilePanel((current) => current === "markets" ? undefined : "markets") : shell.toggleLeft}
@@ -425,6 +429,7 @@ export default function App() {
 
       <CommandPalette locale={locale} open={appCommands.paletteOpen} onClose={appCommands.closePalette} commands={appCommands.commands} />
       <ShortcutSettingsDialog locale={locale} open={appCommands.shortcutSettingsOpen} shortcuts={appCommands.shortcuts} onChange={appCommands.setShortcuts} onClose={appCommands.closeShortcutSettings} />
+      <OfflineResearchDialog locale={locale} open={offlineResearchOpen} onClose={() => setOfflineResearchOpen(false)} />
       <AlertToasts locale={locale} toasts={priceAlerts.toasts} decimalsFor={decimalsFor} onDismiss={priceAlerts.dismissToast} />
     </div>
   );

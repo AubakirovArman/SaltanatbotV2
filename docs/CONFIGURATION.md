@@ -281,7 +281,8 @@ secure development context. Registration is disabled in the Vite development ser
 The service worker is deliberately a static, read-only application shell:
 
 - navigations use network-first with the last verified shell as the offline fallback;
-- initial entry JavaScript/CSS and reviewed root public assets are precached under a content-derived cache name; lazy Strategy Studio/Blockly files remain on demand;
+- initial entry JavaScript/CSS and reviewed root public assets are precached under a content-derived cache name;
+- users may explicitly install or remove a separate same-build Strategy Studio/Blockly research cache; it contains static code/media only and never Trading View;
 - `/api/*`, `/stream`, `/quotes`, `/orderbook`, `/trade-flow` and `/trade-stream` always use the network;
 - POST requests, cross-origin responses and opaque responses are never cached;
 - there is no background sync, request queue or automatic trading replay.
@@ -291,6 +292,10 @@ The Express server sends `no-cache` for `index.html`, the manifest and service w
 A reverse proxy must preserve these response headers and must not add an offline cache in front of
 API or WebSocket routes. Offline installation proves only that the interface can open; it does not
 claim current prices, authenticated access or available order execution.
+
+The manifest exposes Chart and Strategy Studio shortcuts. `/?view=strategy` opens the local research
+surface, while unknown values and `view=trade` fail closed to Chart. See
+[Offline local research](OFFLINE_RESEARCH.md) for the exact boundary and verification evidence.
 
 The HTML also contains a localized pre-React recovery surface, so a missing or stale main module
 does not produce a blank screen. **Refresh application files** unregisters only this application's

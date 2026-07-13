@@ -7,11 +7,28 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "launch_handler": { "client_mode": "navigate-existing" },
   "orientation": "any",
   "background_color": "#080d13",
   "theme_color": "#080d13",
   "categories": ["finance", "productivity", "utilities"],
   "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Open Chart",
+      "short_name": "Chart",
+      "description": "Open the multi-market chart workspace.",
+      "url": "/?view=chart",
+      "icons": [{ "src": "/logo.png", "sizes": "512x512", "type": "image/png" }]
+    },
+    {
+      "name": "Open Strategy Studio",
+      "short_name": "Strategy",
+      "description": "Open local indicators, strategies and Pine research.",
+      "url": "/?view=strategy",
+      "icons": [{ "src": "/logo.png", "sizes": "512x512", "type": "image/png" }]
+    }
+  ],
   "icons": [
     {
       "src": "/logo.png",

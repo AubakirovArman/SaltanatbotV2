@@ -5,6 +5,8 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+- Added an optional, removable offline Strategy Studio/Blockly bundle with EN/RU/KK controls, safe PWA Chart/Strategy shortcuts, build-graph verification and a real offline Chromium restart test. Market and trading routes remain network-only.
+
 ### Release incident response
 
 - Added an internal and externally published distribution manifest binding every extracted release file path and byte size to SHA-256 while rejecting missing, extra, changed and symbolic-link entries.

@@ -165,6 +165,14 @@ and compile-time equality of every EN/RU/KK domain catalog.
 Offline availability means only that the static interface opens; it never claims current market
 data, authenticated trading access or deferred execution.
 
+### Optional offline Strategy Studio — 2026-07-13
+
+- [x] Derive a separate Strategy Studio dependency graph from the final production bundle.
+- [x] Install/remove it only through an explicit localized EN/RU/KK control, without delaying shell installation.
+- [x] Include Blockly media and optimizer worker while excluding Trading View and every runtime route.
+- [x] Add safe installed-app Chart/Strategy shortcuts and fail unknown/trading launch values closed to Chart.
+- [x] Verify the build graph and a real offline Strategy Studio restart in Chromium.
+
 ### Mobile chart panels — 2026-07-12
 
 - [x] Keep the mobile chart unobstructed by default instead of restoring two open desktop docks.

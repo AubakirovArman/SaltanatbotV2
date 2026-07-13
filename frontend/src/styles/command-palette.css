@@ -196,6 +196,17 @@
   padding-inline: 9px;
 }
 
+.offline-research-dialog { inline-size: min(520px, calc(100vw - 24px)); }
+.offline-research-body { display: grid; gap: 14px; padding: 18px; }
+.offline-research-body > p { margin: 0; color: var(--dim); font-size: var(--fs-xs); line-height: 1.55; }
+.offline-research-state { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel-soft); color: var(--dim); }
+.offline-research-state.installed { border-color: color-mix(in srgb, var(--up) 45%, var(--line)); color: var(--up); }
+.offline-research-state > div { display: grid; gap: 3px; }
+.offline-research-state span { color: var(--dim); font-size: var(--fs-xs); }
+.offline-research-dialog > footer button { display: inline-flex; align-items: center; gap: 6px; }
+.offline-research-dialog > footer .offline-install { border-color: var(--accent); background: var(--accent); color: var(--bg); }
+.offline-research-dialog > footer .offline-remove { color: var(--down); }
+
 .cmdk-footer span {
   display: inline-flex;
   align-items: center;

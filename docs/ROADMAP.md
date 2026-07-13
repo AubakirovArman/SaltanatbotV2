@@ -25,6 +25,7 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 - Enforced TypeScript, Biome, docs, architecture, unit/integration, build, performance and Playwright gates.
 - Blank-screen-safe startup with a localized pre-React fallback, global React recovery boundary and data-preserving stale-shell refresh.
 - Attested release archives with per-file manifests and an enforced controlled-corruption/atomic-rollback drill plus EN/RU/KK incident runbooks.
+- Optional offline Strategy Studio bundle with explicit install/remove controls and safe installed-app Chart/Strategy shortcuts.
 
 ## Explicitly deferred external validation
 
@@ -45,7 +46,7 @@ These are not silently marked complete and are not included in the P0/P1/P2 repo
 | Moderated community registry | Signed indicator/strategy discovery, publisher verification, compromise revocation and supply-chain policy beyond local dual-signed rotation | XL |
 | Optional encrypted sync | User-controlled cross-device strategies and workspace synchronization | XL |
 | Hosted read-only demo | Public deployment of the existing non-mutating demo mode | M, infrastructure |
-| PWA follow-on | The installable network-truth-safe shell is delivered; richer OS integration and optional offline local research artifacts remain | M |
+| PWA file interoperability | Optional offline research and safe launch shortcuts are delivered; reviewed OS file handlers/share targets remain | M |
 | More locale and RTL coverage | Formatting, long-string and bidirectional layout conformance | L |
 | AI-assisted strategy drafts | Optional BYO-model natural language to validated blocks/IR | M |
 | Collaboration | Opt-in review/sharing service separated from local-first core | XL |

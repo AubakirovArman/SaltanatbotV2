@@ -134,6 +134,7 @@ Mitigations:
 - non-GET, cross-origin and opaque responses are never cached;
 - no background sync or request queue exists, and worker updates do not force `skipWaiting`;
 - offline shell behavior and the empty runtime-data cache boundary are verified in production E2E.
+- optional Strategy Studio files use a separate explicit cache whose generated graph excludes Trading View and runtime endpoints; offline research never queues a command or claims complete market data.
 - a static pre-React fallback and global React boundary prevent startup failures from becoming an
   unexplained blank screen; selective recovery removes only the Saltanat worker/shell cache and
   never erases strategy, identity or trading state;

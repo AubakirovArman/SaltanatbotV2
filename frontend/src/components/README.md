@@ -9,6 +9,7 @@ This directory currently contains both reusable terminal components and large fe
   `DrawingObjectsPanel`, indicator and compare controls;
 - shell accessibility: `PanelResizeHandle`, `ShortcutSettingsDialog`, `MobilePanelDialog` and the
   semantic `ChartDataPanel` fallback;
+- `OfflineResearchDialog` explicitly installs/removes static Strategy Studio files and repeats the network-truth boundary in EN/RU/KK;
 - strategy UI: `StrategyLab`, Pine import and backtest report;
 - trading UI: `TradingView`.
 - `chartCanvas/` owns focused drawing controls, overlays, pure interaction helpers and the stable facade prop contract.

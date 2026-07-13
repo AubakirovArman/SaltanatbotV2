@@ -28,6 +28,9 @@ const worker = readFileSync(resolve(dist, "service-worker.js"), "utf8");
 const match = worker.match(/const PRECACHE = (\[[^\n]+\]);/);
 if (!match) fail("generated worker does not expose a parseable PRECACHE list");
 const precache = JSON.parse(match[1]);
+const researchMatch = worker.match(/const RESEARCH_FILES = (\[[^\n]+\]);/);
+if (!researchMatch) fail("generated worker does not expose a parseable optional research list");
+const research = JSON.parse(researchMatch[1]);
 if (!precache.includes("/")) fail("root navigation shell is not precached");
 if (precache.includes("/manifest.webmanifest") || precache.includes("/service-worker.js")) fail("update-sensitive manifest/worker must remain network-managed");
 const runtimePrefixes = ["/api/", "/stream", "/quotes", "/orderbook", "/trade-flow", "/trade-stream"];
@@ -51,7 +54,16 @@ for (const url of precache.filter((url) => url.endsWith(".js"))) {
     if (!precache.includes(dependency)) fail(`static shell dependency is not precached: ${dependency}`);
   }
 }
-if (precache.some((url) => url.includes("blockly-runtime") || url.includes("StrategyLab"))) fail("lazy Strategy Studio must not block initial shell installation");
+if (precache.some((url) => url.includes("blockly-runtime") || url.includes("StrategyLab"))) fail("optional Strategy Studio must not block initial shell installation");
+if (!research.some((url) => url.includes("StrategyLab")) || !research.some((url) => url.includes("blockly-runtime"))) fail("optional research cache does not contain Strategy Studio and Blockly");
+if (research.some((url) => precache.includes(url))) fail("optional research cache overlaps the required shell cache");
+if (!research.some((url) => url.startsWith("/blockly-media/"))) fail("optional research cache does not contain Blockly media");
+if (research.some((url) => url.includes("TradingView")) || research.some((url) => runtimePrefixes.some((prefix) => url.startsWith(prefix)))) fail("trading UI or runtime data leaked into optional research cache");
+if (!worker.includes("saltanat:offline-research:install") || !worker.includes("saltanat:offline-research:remove")) fail("optional research cache commands are missing");
+for (const url of research) {
+  const path = resolve(dist, decodeURIComponent(url.slice(1)));
+  if (!path.startsWith(`${dist}/`) || !existsSync(path) || !statSync(path).isFile()) fail(`research cache target is missing: ${url}`);
+}
 const bundles = generatedAssets.filter((path) => extname(path) === ".js").map((path) => readFileSync(path, "utf8")).join("\n");
 if (!bundles.includes("/service-worker.js") || !bundles.includes("updateViaCache")) fail("production bundle does not register the generated worker safely");
 

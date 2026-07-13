@@ -238,6 +238,10 @@ for an active controller, disables the browser network and reloads the shell. It
 fresh `/api/*` request rejects rather than resolving from the worker. This is a safety invariant:
 an offline UI must never be evidence of fresh market state or a queued trading command.
 
+The optional research-cache scenario additionally installs the generated Strategy Studio graph,
+asserts that Trading View and runtime routes are absent, disables the browser network, launches
+`/?view=strategy` and requires the local editor to render while an API probe still rejects.
+
 A separate EN/RU/KK production journey aborts the content-hashed main module before React can mount.
 It requires the static recovery surface to replace a blank screen after two seconds, expose native
 reload/selective-refresh controls and pass axe. Unit tests independently verify the React boundary,

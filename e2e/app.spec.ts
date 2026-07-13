@@ -46,7 +46,12 @@ test("installs a static offline shell without caching runtime market or trading 
     id: "/",
     start_url: "/",
     scope: "/",
-    display: "standalone"
+    display: "standalone",
+    launch_handler: { client_mode: "navigate-existing" },
+    shortcuts: [
+      { short_name: "Chart", url: "/?view=chart" },
+      { short_name: "Strategy", url: "/?view=strategy" }
+    ]
   });
 
   const workerResponse = await page.request.get("/service-worker.js");
@@ -70,6 +75,20 @@ test("installs a static offline shell without caching runtime market or trading 
   expect(cachedUrls.some((url) => url.startsWith("/assets/") && url.endsWith(".js"))).toBe(true);
   expect(cachedUrls.some((url) => ["/api/", "/stream", "/quotes", "/orderbook", "/trade-flow", "/trade-stream"].some((prefix) => url.startsWith(prefix)))).toBe(false);
 
+  await page.getByRole("button", { name: "Offline research" }).click();
+  const researchDialog = page.getByRole("dialog", { name: "Offline research" });
+  await expect(researchDialog).toBeVisible();
+  await researchDialog.getByRole("button", { name: "Make available offline" }).click();
+  await expect(researchDialog.getByRole("status")).toContainText("Ready offline", { timeout: 30_000 });
+  await researchDialog.getByRole("button", { name: "Close offline research settings" }).click();
+  const researchCachedUrls = await page.evaluate(async () => {
+    const name = (await caches.keys()).find((candidate) => candidate.startsWith("saltanat-shell-") && candidate.endsWith("-research"));
+    return name ? (await (await caches.open(name)).keys()).map((request) => new URL(request.url).pathname) : [];
+  });
+  expect(researchCachedUrls.some((url) => url.includes("StrategyLab"))).toBe(true);
+  expect(researchCachedUrls.some((url) => url.includes("blockly-runtime"))).toBe(true);
+  expect(researchCachedUrls.some((url) => url.includes("TradingView"))).toBe(false);
+
   await page.route("**/api/pwa-offline-probe", (route) => route.abort());
   await context.setOffline(true);
   try {
@@ -84,6 +103,23 @@ test("installs a static offline shell without caching runtime market or trading 
       }
     });
     expect(runtimeRequest).toBe("rejected");
+
+    await page.evaluate(() => history.replaceState(null, "", "/?view=strategy"));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
+  } finally {
+    await context.setOffline(false);
+  }
+  await page.getByRole("button", { name: "Offline research" }).click();
+  const removalDialog = page.getByRole("dialog", { name: "Offline research" });
+  await removalDialog.getByRole("button", { name: "Remove offline files" }).click();
+  await expect(removalDialog.getByRole("status")).toContainText("Not stored for offline use");
+  expect(await page.evaluate(async () => (await caches.keys()).some((name) => name.startsWith("saltanat-shell-") && name.endsWith("-research")))).toBe(false);
+  await page.evaluate(() => history.replaceState(null, "", "/?view=chart"));
+  await context.setOffline(true);
+  try {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator(".brand")).toContainText("SaltanatbotV2");
   } finally {
     await context.setOffline(false);
   }

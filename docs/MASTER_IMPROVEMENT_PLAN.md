@@ -31,7 +31,7 @@ It is not enough to resemble TradingView visually. The differentiator must be tr
 | Research | Shared evaluator/backtest cores, provenance, traces, optimizer, walk-forward and Monte Carlo | Alpha, reproducible contracts |
 | Execution | Durable lifecycle, polling/private streams, reconciliation and fail-closed protection | Experimental; live is not production-ready |
 | Security | Scoped sessions, CSRF/WS tickets, encrypted keys, audit log and verified backup/restore | Strong alpha baseline |
-| Distribution | Installable production PWA with a static offline shell and network-only runtime/trading boundary | Alpha, verified offline boundary |
+| Distribution | Installable production PWA with a static offline shell, optional Strategy Studio cache and network-only runtime/trading boundary | Alpha, verified offline boundary |
 | Tests | 700+ unit/integration/parity tests plus a 46-scenario Playwright production suite | Strong baseline, enforced in CI |
 | Documentation | Source-checked English docs and current RU/KK user guides with public Pages | Current alpha baseline |
 | Localization | Complete typed English/Russian/Kazakh UI catalogs and user documentation | Three-locale product baseline complete |
