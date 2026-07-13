@@ -22,6 +22,7 @@ API-схем и инженерных внутренних контрактов.
 - [Архитектура](../ARCHITECTURE.md)
 - [API](../API.md)
 - [Стратегии](../STRATEGIES.md)
+- [Декларативные плагины](PLUGINS.md)
 - [Trading](../TRADING.md)
 - [Конфигурация](../CONFIGURATION.md)
 - [Master improvement plan](../MASTER_IMPROVEMENT_PLAN.md)

@@ -13,6 +13,7 @@ import { PineSourceComparison } from "../strategy/components/PineSourceCompariso
 import { useStrategyResearch } from "../strategy/useStrategyResearch";
 import { useStrategyWorkspace } from "../strategy/useStrategyWorkspace";
 import type { PortableStrategyArtifact } from "../strategy/strategyFile";
+import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 
 interface StrategyLabProps {
   artifacts: StrategyArtifact[];
@@ -22,6 +23,7 @@ interface StrategyLabProps {
   onSaveArtifact: (artifact: StrategyArtifact) => void;
   onUseTemplate: (template: StrategyTemplate) => void;
   onImportStrategy: (input: PortableStrategyArtifact) => void;
+  onImportPlugin: (input: VerifiedPlugin) => void;
   onImportPineMany: (inputs: PineImport[]) => void;
   onRollbackArtifact: (id: string, version: number) => void;
   onUpdateArtifactDependencies: (id: string, dependencies: string[]) => void;
@@ -49,6 +51,7 @@ export function StrategyLab({
   onSaveArtifact,
   onUseTemplate,
   onImportStrategy,
+  onImportPlugin,
   onImportPineMany,
   onRollbackArtifact,
   onUpdateArtifactDependencies,
@@ -109,6 +112,7 @@ export function StrategyLab({
           onCreate={onCreateArtifact}
           onUseTemplate={onUseTemplate}
           onImportStrategy={onImportStrategy}
+          onImportPlugin={onImportPlugin}
           onImportPineMany={onImportPineMany}
         />
         <div className={`strategy-authoring${activeArtifact?.pine ? " has-pine-source" : ""}`}>

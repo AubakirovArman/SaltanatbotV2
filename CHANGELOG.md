@@ -5,6 +5,14 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Declarative plugin foundation
+
+- Added checksummed `.saltanat-plugin` packages for local editable indicator and strategy bundles without arbitrary JavaScript or remote code loading.
+- Added strict manifest, permission, size, schema, app-version and package-local acyclic dependency validation in a reusable `@saltanatbotv2/plugin-core` workspace.
+- Plugin import remaps local IDs and dependencies, preserves publisher/version/checksum provenance and never starts a strategy or grants network, credential or exchange access.
+- Added complete EN/RU/KK import states, a visible checksum-versus-publisher-trust warning, core/model tests and a production Chromium accessibility journey.
+- Raised only the aggregate JavaScript gzip ceiling from 488 KiB to 492 KiB for the measured strict validator, localized lazy import flow and provenance UI; initial-shell and per-file limits remain unchanged.
+
 ### Shared-capital portfolio backtests
 
 - Added a Strategy Studio portfolio mode that runs one compiled strategy across two to six selected markets over their common historical range.

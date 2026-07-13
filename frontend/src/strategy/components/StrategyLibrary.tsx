@@ -1,5 +1,5 @@
-import { Download, FileCode2, LayoutGrid, Plus, Upload, WandSparkles, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { Download, FileCode2, LayoutGrid, PackagePlus, Plus, ShieldAlert, Upload, WandSparkles, X } from "lucide-react";
+import { useId, useRef, useState } from "react";
 import { PineImportDialog } from "../../components/PineImportDialog";
 import type { PineImport } from "../pine";
 import type { StrategyArtifact, StrategyArtifactKind } from "../library";
@@ -9,6 +9,7 @@ import type { Locale } from "../../i18n";
 import { strategyCategory, strategyText } from "../../i18n/strategy";
 import { StrategyWizard } from "./StrategyWizard";
 import { useModalFocus } from "../../hooks/useModalFocus";
+import { parsePluginFile, type PluginParseErrorCode, type VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 
 export function StrategyLibrary({
   locale,
@@ -18,6 +19,7 @@ export function StrategyLibrary({
   onCreate,
   onUseTemplate,
   onImportStrategy,
+  onImportPlugin,
   onImportPineMany
 }: {
   locale: Locale;
@@ -27,15 +29,19 @@ export function StrategyLibrary({
   onCreate: (kind: StrategyArtifactKind) => void;
   onUseTemplate: (template: StrategyTemplate) => void;
   onImportStrategy: (input: PortableStrategyArtifact) => void;
+  onImportPlugin: (input: VerifiedPlugin) => void;
   onImportPineMany: (inputs: PineImport[]) => void;
 }) {
   const indicators = artifacts.filter((artifact) => artifact.kind === "indicator");
   const strategies = artifacts.filter((artifact) => artifact.kind === "strategy");
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [importError, setImportError] = useState<string>();
+  const [importStatus, setImportStatus] = useState<string>();
   const [pineOpen, setPineOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pluginInputRef = useRef<HTMLInputElement | null>(null);
+  const pluginInputId = useId();
 
   const importFile = async (file: File) => {
     setImportError(undefined);
@@ -46,6 +52,22 @@ export function StrategyLibrary({
         return;
       }
       onImportStrategy(parsed);
+    } catch {
+      setImportError(strategyText(locale, "unreadableFile"));
+    }
+  };
+
+  const importPlugin = async (file: File) => {
+    setImportError(undefined);
+    setImportStatus(undefined);
+    try {
+      const parsed = await parsePluginFile(await file.text(), { appVersion: "0.1.0", maxArtifactSchemaVersion: 2 });
+      if (!parsed.ok) {
+        setImportError(pluginError(locale, parsed.code));
+        return;
+      }
+      onImportPlugin(parsed);
+      setImportStatus(`${strategyText(locale, "pluginImported")}: ${parsed.manifest.name} · ${parsed.manifest.artifacts.length} ${strategyText(locale, "artifacts")}`);
     } catch {
       setImportError(strategyText(locale, "unreadableFile"));
     }
@@ -69,6 +91,9 @@ export function StrategyLibrary({
         <button type="button" onClick={() => fileInputRef.current?.click()} title={strategyText(locale, "importStrategy")}>
           <Upload size={14} aria-hidden="true" /> {strategyText(locale, "import")}
         </button>
+        <button type="button" onClick={() => pluginInputRef.current?.click()} title={strategyText(locale, "importPluginHelp")}>
+          <PackagePlus size={14} aria-hidden="true" /> {strategyText(locale, "plugin")}
+        </button>
         <button type="button" onClick={() => setPineOpen(true)} title={strategyText(locale, "convertPine")}>
           <FileCode2 size={14} aria-hidden="true" /> {strategyText(locale, "pine")}
         </button>
@@ -84,13 +109,30 @@ export function StrategyLibrary({
           event.target.value = "";
         }}
       />
-      {importError && (
-        <div className="import-error" role="alert">
-          {importError}
-        </div>
-      )}
-      <LibraryGroup locale={locale} title={strategyText(locale, "indicators")} items={indicators} activeId={activeId} onSelect={onSelect} />
-      <LibraryGroup locale={locale} title={strategyText(locale, "strategies")} items={strategies} activeId={activeId} onSelect={onSelect} />
+      <label className="visually-hidden" htmlFor={pluginInputId}>{strategyText(locale, "importPlugin")}</label>
+      <input
+        ref={pluginInputRef}
+        id={pluginInputId}
+        className="visually-hidden"
+        tabIndex={-1}
+        name="strategy-plugin-file"
+        type="file"
+        accept=".saltanat-plugin,.json,application/json"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void importPlugin(file);
+          event.target.value = "";
+        }}
+      />
+      <div className="strategy-library-messages">
+        <p className="plugin-safety-note"><ShieldAlert size={13} aria-hidden="true" />{strategyText(locale, "pluginSafety")}</p>
+        {importError && <div className="import-error" role="alert">{importError}</div>}
+        {importStatus && <div className="import-status" role="status">{importStatus}</div>}
+      </div>
+      <div className="strategy-library-groups">
+        <LibraryGroup locale={locale} title={strategyText(locale, "indicators")} items={indicators} activeId={activeId} onSelect={onSelect} />
+        <LibraryGroup locale={locale} title={strategyText(locale, "strategies")} items={strategies} activeId={activeId} onSelect={onSelect} />
+      </div>
       {pineOpen && (
         <PineImportDialog
           locale={locale}
@@ -123,6 +165,17 @@ export function StrategyLibrary({
       )}
     </aside>
   );
+}
+
+function pluginError(locale: Locale, code: PluginParseErrorCode) {
+  const keys: Partial<Record<PluginParseErrorCode, Parameters<typeof strategyText>[1]>> = {
+    too_large: "pluginTooLarge",
+    checksum_mismatch: "pluginChecksumMismatch",
+    incompatible_app: "pluginIncompatible",
+    unsupported_permission: "pluginPermissionRejected",
+    dependency_error: "pluginDependencyRejected"
+  };
+  return strategyText(locale, keys[code] ?? "invalidPlugin");
 }
 function LibraryGroup({
   locale,

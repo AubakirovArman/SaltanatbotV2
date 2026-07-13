@@ -42,6 +42,9 @@
   gap: 6px;
 }
 
+.strategy-library-messages { display: grid; gap: 6px; }
+.strategy-library-groups { min-block-size: 0; display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
 .strategy-library-actions button,
 .strategy-actions button {
   min-block-size: var(--ctl-h-sm);
@@ -55,6 +58,7 @@
   color: var(--muted);
   font-weight: 600;
   cursor: pointer;
+  font-size: var(--fs-xs);
 }
 
 .strategy-library-actions button:hover,
@@ -144,6 +148,28 @@
   font-size: var(--fs-xs);
   line-height: 1.35;
 }
+
+.import-status {
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--up) 40%, transparent);
+  border-radius: var(--radius);
+  background: var(--up-soft);
+  color: var(--up);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+.plugin-safety-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 0;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+.plugin-safety-note svg { flex: 0 0 auto; margin-block-start: 1px; color: var(--warn); }
 
 /* ---------- Template gallery modal ---------- */
 .gallery-backdrop {

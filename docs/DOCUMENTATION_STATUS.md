@@ -17,6 +17,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [API reference](API.md) | integrators | current, hand-maintained | 2026-07-11 |
 | [Generated endpoint index](API_ENDPOINTS.generated.md) | integrators | generated/current | 2026-07-11 |
 | [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current | 2026-07-11 |
+| [Declarative plugin contract](PLUGINS.md) | users/plugin authors | current foundation | 2026-07-12 |
 | [Trading guide](TRADING.md) | users/operators | current; live is experimental | 2026-07-11 |
 | [Configuration](CONFIGURATION.md) | operators | current | 2026-07-11 |
 | [Backup and restore](BACKUP_RESTORE.md) | operators | current; tested | 2026-07-11 |
@@ -47,6 +48,7 @@ They must be read together with `IMPLEMENTATION_STATUS.md` and must not be prese
 | Project overview / quick start | [README](../README.md) | [README](../README.ru.md) | [README](../README.kk.md) |
 | Chart and accessible data | canonical source docs | [guide](ru/CHART.md) | [guide](kk/CHART.md) |
 | Strategy Studio / Pine / backtest | [strategy reference](STRATEGIES.md) | [guide](ru/STRATEGY_STUDIO.md) | [guide](kk/STRATEGY_STUDIO.md) |
+| Declarative plugin import | [plugin contract](PLUGINS.md) | [guide](ru/PLUGINS.md) | [guide](kk/PLUGINS.md) |
 | Paper/live trading | [trading reference](TRADING.md) | [guide](ru/TRADING.md) | [guide](kk/TRADING.md) |
 | Event/execution traces | [reference](EVENT_TRACES.md) | [guide](ru/EVENT_TRACES.md) | [guide](kk/EVENT_TRACES.md) |
 | Safety summary | [security policy](../SECURITY.md) | [summary](ru/SECURITY.md) | [summary](kk/SECURITY.md) |

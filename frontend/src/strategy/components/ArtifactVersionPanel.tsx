@@ -27,6 +27,11 @@ export function ArtifactVersionPanel({ locale, artifact, artifacts, onRollback, 
         <span>{t("contentHash")} {artifact.hash ?? "—"}</span>
         <span>IR {artifact.irHash ?? "—"}</span>
         <span>{t("provenance")} {artifact.provenance?.source ?? "local"}</span>
+        {artifact.provenance?.source === "plugin" && <>
+          <span>{t("pluginPackage")} {artifact.provenance.pluginId}@{artifact.provenance.pluginVersion}</span>
+          <span>{t("publisher")} {artifact.provenance.publisher}</span>
+          <span>{t("manifestChecksum")} {artifact.provenance.manifestHash?.slice(0, 16)}…</span>
+        </>}
         {artifact.migration && <span>{t("migratedFrom")} v{artifact.migration.fromSchema}</span>}
       </div>
       <section>

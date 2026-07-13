@@ -140,6 +140,9 @@ Mitigations:
 - Self-hosting does not protect a compromised OS, browser extension, administrator or reverse proxy.
 - Local backup files are not encrypted by the application backup tool.
 - Continuous funded exchange soak/mainnet readiness is explicitly deferred and has not been proven.
+- Declarative plugin checksums prove manifest integrity, not publisher identity. Plugin packages
+  cannot contain executable JavaScript or external dependencies, and import never grants network,
+  credential or exchange access; users must still review and backtest the strategy logic.
 - Exchange/API behavior can change independently; operator monitoring and exchange-side limits remain required.
 
 ## Security verification

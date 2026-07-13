@@ -50,7 +50,16 @@ export interface StrategyArtifact {
   dependencies?: string[];
   history?: ArtifactRevision[];
   migration?: { fromSchema: number; toSchema: number; migratedAt: number };
-  provenance?: { source: "local" | "pine" | "file" | "share" | "wizard"; importedAt?: number; parentId?: string; parentHash?: string };
+  provenance?: {
+    source: "local" | "pine" | "file" | "share" | "wizard" | "plugin";
+    importedAt?: number;
+    parentId?: string;
+    parentHash?: string;
+    pluginId?: string;
+    pluginVersion?: string;
+    publisher?: string;
+    manifestHash?: string;
+  };
   createdAt: number;
   updatedAt: number;
   /** Immutable import evidence. Blockly edits do not rewrite the original Pine source. */

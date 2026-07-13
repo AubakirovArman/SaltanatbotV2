@@ -10,6 +10,18 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Declarative plugin foundation — 2026-07-12
+
+- [x] Define a strict versioned `.saltanat-plugin` JSON envelope with a complete manifest SHA-256.
+- [x] Reject unknown/executable fields, unsupported permissions, oversize packages and incompatible schemas/app versions.
+- [x] Require package-local acyclic dependencies and capability declarations matching indicator/strategy behavior.
+- [x] Remap imported artifact IDs/dependencies while retaining plugin, publisher, version and manifest provenance.
+- [x] Keep import local and non-executing; every artifact remains editable and uses the normal compiler/backtest/run gates.
+- [x] Provide typed EN/RU/KK import, safety, success and failure messaging plus a production accessibility journey.
+
+Verification covers the pure envelope validator, tamper and capability/dependency failures, batch
+artifact mapping, TypeScript workspace boundary and a real production file-input import.
+
 ### Shared-capital portfolio backtests — 2026-07-12
 
 - [x] Run one compiled strategy across two to six unique markets over their common candle range.

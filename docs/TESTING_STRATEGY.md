@@ -148,6 +148,7 @@ Every result records chart and `request.security` candle provenance. Only fully 
 - gaps receive the documented fill treatment;
 - slippage never improves a market fill;
 - commission/funding reconcile with final equity;
+- declarative plugin checksums, strict fields, capability permissions, version limits and local acyclic dependencies fail closed before library mutation;
 - leverage and quantity caps are enforced;
 - no negative/NaN quantity or price enters accounting;
 - liquidation terminates or transitions exactly as specified;

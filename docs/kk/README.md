@@ -21,6 +21,7 @@ EN/RU/KK тілдерінде толық типтелген; нақты API сх
 - [Архитектура](../ARCHITECTURE.md)
 - [API](../API.md)
 - [Стратегиялар](../STRATEGIES.md)
+- [Декларативті плагиндер](PLUGINS.md)
 - [Trading](../TRADING.md)
 - [Конфигурация](../CONFIGURATION.md)
 - [Pine үйлесімділік матрицасы](../PINE_COMPATIBILITY.generated.md)

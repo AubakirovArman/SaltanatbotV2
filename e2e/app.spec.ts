@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { encodePluginFile, type PluginManifest } from "@saltanatbotv2/plugin-core";
 import { installMarketSocketMock, mockCandleHistory, mockCandles, mockChartCandles } from "./support/marketMocks";
 
 test.beforeEach(async ({ page }) => {
@@ -929,6 +930,44 @@ test("imports a Pine indicator as an editable artifact", { tag: "@smoke" }, asyn
   await expect(page.locator(".strategy-library")).toContainText("E2E SMA");
 });
 
+test("imports a checksummed declarative plugin without executable code", async ({ page }) => {
+  const workspaceModes = page.getByLabel("Workspace mode");
+  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  const library = page.locator(".strategy-library");
+  await expect(library).toBeVisible({ timeout: 20_000 });
+  await expect(library).toContainText("A checksum proves integrity, not publisher trust");
+
+  const plugin: PluginManifest = {
+    id: "e2e.research-pack",
+    name: "E2E research pack",
+    version: "1.0.0",
+    description: "Browser import fixture.",
+    license: "MIT",
+    publisher: { name: "E2E publisher", url: "https://example.com" },
+    minAppVersion: "0.1.0",
+    permissions: ["market.read", "chart.overlay", "trade.intent"],
+    artifacts: [
+      { id: "overlay", kind: "indicator", name: "E2E plugin overlay", description: "Editable overlay", xml: pluginXml("E2E plugin overlay"), schemaVersion: 2, semanticVersion: "1.0.0", parameters: [], dependencies: [] },
+      { id: "strategy", kind: "strategy", name: "E2E plugin strategy", description: "Editable strategy", xml: pluginXml("E2E plugin strategy"), schemaVersion: 2, semanticVersion: "1.0.0", parameters: [], dependencies: ["overlay"] }
+    ]
+  };
+  await page.getByLabel("Import plugin package").setInputFiles({
+    name: "e2e.saltanat-plugin",
+    mimeType: "application/json",
+    buffer: Buffer.from(await encodePluginFile(plugin))
+  });
+
+  await expect(library.getByRole("status")).toContainText("Plugin imported: E2E research pack · 2 artifacts");
+  await expect(library).toContainText("E2E plugin overlay");
+  await expect(library).toContainText("E2E plugin strategy");
+  await expectNoAxeViolations(page);
+
+  await page.reload();
+  await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
+  await expect(page.locator(".strategy-library")).toContainText("E2E plugin overlay", { timeout: 20_000 });
+  await expect(page.locator(".strategy-library")).toContainText("E2E plugin strategy");
+});
+
 test("switches and persists the interface locale", { tag: "@smoke" }, async ({ page }) => {
   await page.getByRole("button", { name: "Switch interface language to Russian" }).click();
 
@@ -1356,4 +1395,8 @@ async function selectChartSymbol(page: Page, symbol: string) {
   await expect(palette.getByRole("button").filter({ hasText: symbol }).first()).toBeVisible({ timeout: 20_000 });
   await search.press("Enter");
   await expect(page.getByRole("button", { name: new RegExp(`Current instrument ${symbol}`, "i") })).toBeVisible();
+}
+
+function pluginXml(name: string) {
+  return `<xml xmlns="https://developers.google.com/blockly/xml"><block type="strategy_start"><field name="NAME">${name}</field></block></xml>`;
 }

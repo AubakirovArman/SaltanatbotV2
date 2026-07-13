@@ -166,6 +166,7 @@ published by the `Deploy documentation site` workflow and is also set as the rep
 | [**API reference**](docs/API.md) | Every REST endpoint and WebSocket message — params, types, and `curl` examples |
 | [**Generated endpoint index**](docs/API_ENDPOINTS.generated.md) | Route-presence and access-level index generated from Express sources |
 | [**Strategies & backtesting**](docs/STRATEGIES.md) | Building from blocks, the IR, `runBacktest` / `previewStrategy`, sharing, and live parity |
+| [**Declarative plugins**](docs/PLUGINS.md) | Checksummed local indicator/strategy packages, permissions, limits and trust boundaries |
 | [**Generated block catalog**](docs/BLOCK_CATALOG.generated.md) | Stable Blockly type identifiers and canonical trader-facing help generated from metadata |
 | [**Generated Pine compatibility**](docs/PINE_COMPATIBILITY.generated.md) | Corpus-backed exact, display-only, approximation and rejected feature matrix |
 | [**Trading & command language**](docs/TRADING.md) | The Trade tab, all 14 Antares-style actions, paper/Binance/Bybit modes, notifications |

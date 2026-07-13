@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   artifactHash,
   artifactIrHash,
+  createPluginArtifacts,
   createPineArtifacts,
   createTemplateCopy,
   dedupeArtifactName,
@@ -87,6 +88,33 @@ describe("artifact library model", () => {
       kind: "strategy",
       createdAt: 200,
       updatedAt: 200
+    });
+  });
+
+  it("imports a plugin batch with remapped local dependencies and provenance", () => {
+    const created = createPluginArtifacts({
+      id: "community.ema-pack",
+      name: "EMA pack",
+      version: "1.0.0",
+      description: "Pack",
+      license: "MIT",
+      publisher: { name: "Publisher" },
+      minAppVersion: "0.1.0",
+      permissions: ["market.read", "chart.overlay", "trade.intent"],
+      artifacts: [
+        { id: "ema", kind: "indicator", name: "Momentum", description: "EMA", xml: "<xml />", schemaVersion: 2, semanticVersion: "1.0.0", parameters: [], dependencies: [] },
+        { id: "cross", kind: "strategy", name: "Cross", description: "Cross", xml: "<xml />", schemaVersion: 2, semanticVersion: "1.0.0", parameters: [], dependencies: ["ema"] }
+      ]
+    }, "abc123", [artifact()], 300);
+
+    expect(created.map((item) => item.name)).toEqual(["Momentum (2)", "Cross"]);
+    expect(created[1].dependencies).toEqual([created[0].id]);
+    expect(created[0].provenance).toMatchObject({
+      source: "plugin",
+      pluginId: "community.ema-pack",
+      pluginVersion: "1.0.0",
+      publisher: "Publisher",
+      manifestHash: "abc123"
     });
   });
 });

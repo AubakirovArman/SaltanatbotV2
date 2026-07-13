@@ -80,6 +80,7 @@ npm run build
 - [Публичная страница проекта](https://aubakirovarman.github.io/SaltanatbotV2/)
 - [Архитектура](docs/ARCHITECTURE.md)
 - [Стратегии и backtest](docs/STRATEGIES.md)
+- [Декларативные плагины](docs/ru/PLUGINS.md)
 - [Сгенерированная матрица совместимости Pine](docs/PINE_COMPATIBILITY.generated.md)
 - [Trading](docs/TRADING.md)
 - [Конфигурация и безопасность](docs/CONFIGURATION.md)

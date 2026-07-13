@@ -3,6 +3,7 @@ import type { IndicatorConfig } from "../chart/indicatorTypes";
 import {
   createArtifactCopy,
   createPineArtifacts,
+  createPluginArtifacts,
   createTemplateCopy,
   dedupeArtifactName,
   stampArtifact,
@@ -17,6 +18,7 @@ import { clearShareHash, readSharedFromHash } from "./share";
 import { storeStrategyLibrary } from "./storage";
 import type { StrategyTemplate } from "./templates";
 import type { PortableStrategyArtifact } from "./strategyFile";
+import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 
 const ARTIFACT_INPUTS_KEY = "marketforge.artifactInputs.v1";
 
@@ -132,6 +134,15 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
     warmStrategyLab();
   };
 
+  const importPlugin = (input: VerifiedPlugin) => {
+    const now = Date.now();
+    const created = createPluginArtifacts(input.manifest, input.checksum, artifacts, now);
+    if (!created.length) return;
+    setArtifacts((current) => [...created, ...current]);
+    setActiveArtifactId(created[0].id);
+    warmStrategyLab();
+  };
+
   const rollbackArtifactVersion = (id: string, version: number) => {
     setArtifacts((current) => rollbackArtifact(current, id, version));
     setActiveArtifactId(id);
@@ -157,6 +168,7 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
     useTemplate,
     importPineMany,
     importStrategy,
+    importPlugin,
     rollbackArtifactVersion,
     updateArtifactDependencies
   };

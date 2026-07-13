@@ -2,6 +2,7 @@ import type { ArtifactRevision, StrategyArtifact, StrategyArtifactKind } from ".
 import { ARTIFACT_SCHEMA_VERSION, createNewArtifact, normalizeArtifact } from "./library";
 import type { StrategyIR } from "./ir";
 import type { StrategyTemplate } from "./templates";
+import type { PluginManifest } from "@saltanatbotv2/plugin-core";
 
 export function dedupeArtifactName(name: string, items: StrategyArtifact[]): string {
   const taken = new Set(items.map((item) => item.name));
@@ -192,3 +193,45 @@ export function createPineArtifacts(inputs: PineArtifactInput[], items: Strategy
     };
   });
 }
+
+export function createPluginArtifacts(
+  manifest: PluginManifest,
+  manifestHash: string,
+  items: StrategyArtifact[],
+  now = Date.now()
+): StrategyArtifact[] {
+  const taken = new Set(items.map((item) => item.name));
+  const ids = new Map(manifest.artifacts.map((artifact, index) => [artifact.id, `${artifact.kind}:plugin-${safeId(manifest.id)}-${safeId(artifact.id)}-${now}-${index}`]));
+  return manifest.artifacts.map((input) => {
+    let name = input.name;
+    let suffix = 2;
+    while (taken.has(name)) name = `${input.name} (${suffix++})`;
+    taken.add(name);
+    return normalizeArtifact({
+      id: ids.get(input.id)!,
+      kind: input.kind,
+      name,
+      description: input.description,
+      schemaVersion: input.schemaVersion,
+      semanticVersion: input.semanticVersion,
+      history: [],
+      dependencies: input.dependencies.map((dependency) => ids.get(dependency)!),
+      parameters: input.parameters.map((parameter) => ({ ...parameter })),
+      provenance: {
+        source: "plugin",
+        importedAt: now,
+        parentId: input.id,
+        pluginId: manifest.id,
+        pluginVersion: manifest.version,
+        publisher: manifest.publisher.name,
+        manifestHash
+      },
+      xml: input.xml,
+      code: "",
+      createdAt: now,
+      updatedAt: now
+    }, now);
+  });
+}
+
+function safeId(value: string) { return value.replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80); }
