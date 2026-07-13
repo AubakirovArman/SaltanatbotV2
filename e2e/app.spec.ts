@@ -1677,8 +1677,12 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
       { id: "ETHUSDT:bybit:binance", symbol: "ETHUSDT", spotExchange: "bybit", futuresExchange: "binance", spotBid: 3999, spotAsk: 4000, spotAskSize: 0.2, futuresBid: 4020, futuresAsk: 4021, futuresBidSize: 0.2, grossSpreadBps: 50, estimatedTotalCostBps: 0, netEdgeBps: 50, topBookCapacityUsd: 800, fundingRate: -0.00005, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() }
     ]
   };
-  await page.routeWebSocket("**/arbitrage-stream", (socket) => {
-    socket.send(JSON.stringify({ type: "arbitrage_snapshot", data: scanFixture, ts: Date.now() }));
+  let markSocketRouted!: () => void;
+  const socketRouted = new Promise<void>((resolve) => { markSocketRouted = resolve; });
+  await page.routeWebSocket("/arbitrage-stream", () => {
+    // REST owns the deterministic fixture in this journey. Keeping the routed socket open without
+    // sending a second snapshot avoids racing two valid initial transports during the first click.
+    markSocketRouted();
   });
   await page.route("**/api/arbitrage**", async (route) => {
     if (new URL(route.request().url()).pathname.endsWith("/depth")) {
@@ -1692,7 +1696,10 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
     await route.fulfill({ json: scanFixture });
   });
 
+  // Firefox requires WebSocket routes to be installed before navigation.
+  await page.goto("/");
   await page.getByLabel("Workspace mode").getByRole("button", { name: "Screener", exact: true }).click();
+  await socketRouted;
   const table = page.getByRole("table", { name: "Executable cross-exchange spot/perpetual routes" });
   const btcRow = table.getByRole("row").filter({ hasText: "BTCUSDT" });
   await expect(btcRow).toBeVisible();
