@@ -10,6 +10,20 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Installed plugin catalog and safe local uninstall — 2026-07-13
+
+- [x] Reconstruct separate local installations from persisted plugin provenance, including legacy imports.
+- [x] Persist and display package identity, publisher HTTPS link, license, compatibility, permissions and checksum.
+- [x] Show package artifacts, local modification count and repeated imports independently.
+- [x] Require destructive confirmation before removing editable artifacts, history and parameter overrides.
+- [x] Block uninstall while any external library artifact depends on package contents.
+- [x] State that independent bot/chart runtime snapshots are not stopped by library uninstall.
+- [x] Provide typed EN/RU/KK catalog, empty, legacy, blocked, warning and completion states.
+
+Verification covers grouping, repeated imports, input cleanup, dependency blockers and exact-installation
+removal in the pure model plus a production import, reload, accessible catalog, blocked uninstall,
+successful uninstall and second-reload journey.
+
 ### Plugin package review and authoring — 2026-07-13
 
 - [x] Require explicit review of identity, integrity, capabilities and contents before import mutates the library.

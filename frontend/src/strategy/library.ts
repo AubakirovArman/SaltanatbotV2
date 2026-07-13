@@ -3,6 +3,7 @@ import type { IndicatorConfig } from "../chart/indicatorTypes";
 import { starterStrategyXml } from "./starter";
 import { strategyTemplates } from "./templates";
 import type { PineConversionReport, PineDiagnostic, PineLanguageProfile, PineSourceMapEntry } from "@saltanatbotv2/pine-compiler";
+import type { PluginPermission } from "@saltanatbotv2/plugin-core";
 
 export type StrategyArtifactKind = "indicator" | "strategy";
 export const ARTIFACT_SCHEMA_VERSION = 2;
@@ -56,8 +57,13 @@ export interface StrategyArtifact {
     parentId?: string;
     parentHash?: string;
     pluginId?: string;
+    pluginName?: string;
     pluginVersion?: string;
     publisher?: string;
+    publisherUrl?: string;
+    pluginLicense?: string;
+    pluginMinAppVersion?: string;
+    pluginPermissions?: PluginPermission[];
     manifestHash?: string;
   };
   createdAt: number;

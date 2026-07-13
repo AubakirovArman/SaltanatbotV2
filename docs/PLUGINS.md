@@ -108,6 +108,23 @@ Choose **Import reviewed plugin** only after this review. Cancelling or pressing
 library unchanged. Imported strategies still require normal validation, backtesting and an explicit
 run action.
 
+## Installed package catalog
+
+Choose **Installed plugins** in Strategy Studio to inspect each local installation. The catalog
+shows package/version identity, publisher HTTPS link, license, minimum application version, install
+time, declared capabilities, full checksum, contained artifacts and how many artifacts have local
+version history. Repeated imports are retained as separate installations; packages imported before
+catalog metadata existed remain visible with unavailable fields marked explicitly.
+
+Uninstall is a destructive local-library action with a separate confirmation view. It removes that
+installation's editable artifacts, version history and saved parameter overrides. Removal is blocked
+when an artifact outside the package still depends on one of its indicators. Export a backup first
+if edited package contents must be retained.
+
+Uninstall does not stop or mutate an already running paper/live bot, and it does not clear an overlay
+already applied to a chart. Those runtime objects retain their current compiled snapshot and must be
+managed from their own surface.
+
 ## Deliberately not included
 
 The current foundation has no marketplace, remote URL install, executable hooks, third-party UI,

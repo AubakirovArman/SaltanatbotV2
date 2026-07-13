@@ -1,4 +1,4 @@
-import { Download, FileCode2, LayoutGrid, PackageOpen, PackagePlus, Plus, ShieldAlert, Upload, WandSparkles, X } from "lucide-react";
+import { Boxes, Download, FileCode2, LayoutGrid, PackageOpen, PackagePlus, Plus, ShieldAlert, Upload, WandSparkles, X } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { PineImportDialog } from "../../components/PineImportDialog";
 import type { PineImport } from "../pine";
@@ -12,6 +12,8 @@ import { useModalFocus } from "../../hooks/useModalFocus";
 import { parsePluginFile, type PluginParseErrorCode, type VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 import { PluginImportReviewDialog } from "./PluginImportReviewDialog";
 import { PluginExportDialog } from "./PluginExportDialog";
+import { PluginCatalogDialog } from "./PluginCatalogDialog";
+import { installedPlugins } from "../pluginCatalog";
 
 export function StrategyLibrary({
   locale,
@@ -22,6 +24,7 @@ export function StrategyLibrary({
   onUseTemplate,
   onImportStrategy,
   onImportPlugin,
+  onUninstallPlugin,
   onImportPineMany
 }: {
   locale: Locale;
@@ -32,6 +35,7 @@ export function StrategyLibrary({
   onUseTemplate: (template: StrategyTemplate) => void;
   onImportStrategy: (input: PortableStrategyArtifact) => void;
   onImportPlugin: (input: VerifiedPlugin) => void;
+  onUninstallPlugin: (key: string) => boolean;
   onImportPineMany: (inputs: PineImport[]) => void;
 }) {
   const indicators = artifacts.filter((artifact) => artifact.kind === "indicator");
@@ -43,6 +47,8 @@ export function StrategyLibrary({
   const [wizardOpen, setWizardOpen] = useState(false);
   const [pendingPlugin, setPendingPlugin] = useState<VerifiedPlugin>();
   const [pluginExportOpen, setPluginExportOpen] = useState(false);
+  const [pluginCatalogOpen, setPluginCatalogOpen] = useState(false);
+  const installedPluginCount = installedPlugins(artifacts).length;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pluginInputRef = useRef<HTMLInputElement | null>(null);
   const pluginInputId = useId();
@@ -102,6 +108,9 @@ export function StrategyLibrary({
         </button>
         <button type="button" onClick={() => setPineOpen(true)} title={strategyText(locale, "convertPine")}>
           <FileCode2 size={14} aria-hidden="true" /> {strategyText(locale, "pine")}
+        </button>
+        <button type="button" className="plugin-catalog-trigger" onClick={() => setPluginCatalogOpen(true)} title={strategyText(locale, "installedPluginsHelp")}>
+          <Boxes size={14} aria-hidden="true" /> {strategyText(locale, "installedPlugins")} <span>{installedPluginCount}</span>
         </button>
       </div>
       <input
@@ -188,6 +197,18 @@ export function StrategyLibrary({
           activeId={activeId}
           onClose={() => setPluginExportOpen(false)}
           onExport={(manifest) => setImportStatus(`${strategyText(locale, "pluginExported")}: ${manifest.name}`)}
+        />
+      )}
+      {pluginCatalogOpen && (
+        <PluginCatalogDialog
+          locale={locale}
+          artifacts={artifacts}
+          onClose={() => setPluginCatalogOpen(false)}
+          onRemove={(key) => {
+            const removed = onUninstallPlugin(key);
+            if (removed) setImportStatus(strategyText(locale, "pluginRemoved"));
+            return removed;
+          }}
         />
       )}
     </aside>

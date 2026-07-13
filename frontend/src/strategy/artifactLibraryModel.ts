@@ -222,8 +222,13 @@ export function createPluginArtifacts(
         importedAt: now,
         parentId: input.id,
         pluginId: manifest.id,
+        pluginName: manifest.name,
         pluginVersion: manifest.version,
         publisher: manifest.publisher.name,
+        publisherUrl: manifest.publisher.url,
+        pluginLicense: manifest.license,
+        pluginMinAppVersion: manifest.minAppVersion,
+        pluginPermissions: [...manifest.permissions],
         manifestHash
       },
       xml: input.xml,

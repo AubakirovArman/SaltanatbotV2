@@ -7,6 +7,10 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Declarative plugin foundation
 
+- Added a persistent installed-plugin catalog with package identity, publisher HTTPS link, license, app compatibility, capabilities, full checksum, artifacts, local modification count and legacy-metadata handling.
+- Added confirmed local uninstall that removes one installation, version history and saved input overrides while blocking removal when external library artifacts depend on package contents.
+- Explicitly keeps running bot and applied-chart snapshots independent from library uninstall, with EN/RU/KK warnings, pure removal-model tests, a production import/catalog/blocker/uninstall/reload journey and a reviewed Strategy Studio visual baseline.
+- Raised only the measured aggregate JavaScript gzip ceiling from 494 KiB to 497 KiB for the localized catalog, provenance metadata and dependency-safe uninstall model; initial-shell and per-file JavaScript limits are unchanged.
 - Added a built-in package authoring dialog that exports selected local artifacts, closes over their transitive dependencies, assigns deterministic package-local IDs and derives minimum capability permissions.
 - Added a mandatory pre-import review of publisher metadata, license, minimum app version, full checksum, capabilities and artifact contents; cancel and `Escape` leave the library unchanged.
 - Added complete EN/RU/KK authoring/review states, accessible native modal behavior, package-builder unit coverage and production download/re-import browser verification.

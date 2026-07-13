@@ -396,6 +396,7 @@ export default function App() {
                 onUseTemplate={artifactLibrary.useTemplate}
                 onImportStrategy={artifactLibrary.importStrategy}
                 onImportPlugin={artifactLibrary.importPlugin}
+                onUninstallPlugin={artifactLibrary.uninstallPlugin}
                 onImportPineMany={artifactLibrary.importPineMany}
                 onRollbackArtifact={artifactLibrary.rollbackArtifactVersion}
                 onUpdateArtifactDependencies={artifactLibrary.updateArtifactDependencies}

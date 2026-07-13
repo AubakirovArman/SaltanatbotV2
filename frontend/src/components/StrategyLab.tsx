@@ -24,6 +24,7 @@ interface StrategyLabProps {
   onUseTemplate: (template: StrategyTemplate) => void;
   onImportStrategy: (input: PortableStrategyArtifact) => void;
   onImportPlugin: (input: VerifiedPlugin) => void;
+  onUninstallPlugin: (key: string) => boolean;
   onImportPineMany: (inputs: PineImport[]) => void;
   onRollbackArtifact: (id: string, version: number) => void;
   onUpdateArtifactDependencies: (id: string, dependencies: string[]) => void;
@@ -52,6 +53,7 @@ export function StrategyLab({
   onUseTemplate,
   onImportStrategy,
   onImportPlugin,
+  onUninstallPlugin,
   onImportPineMany,
   onRollbackArtifact,
   onUpdateArtifactDependencies,
@@ -113,6 +115,7 @@ export function StrategyLab({
           onUseTemplate={onUseTemplate}
           onImportStrategy={onImportStrategy}
           onImportPlugin={onImportPlugin}
+          onUninstallPlugin={onUninstallPlugin}
           onImportPineMany={onImportPineMany}
         />
         <div className={`strategy-authoring${activeArtifact?.pine ? " has-pine-source" : ""}`}>

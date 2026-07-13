@@ -932,6 +932,7 @@ test("imports a Pine indicator as an editable artifact", { tag: "@smoke" }, asyn
 });
 
 test("reviews a checksummed declarative plugin before importing it", async ({ page }) => {
+  test.setTimeout(60_000);
   const workspaceModes = page.getByLabel("Workspace mode");
   await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
   const library = page.locator(".strategy-library");
@@ -983,10 +984,61 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   await expect(library).toContainText("E2E plugin strategy");
   await expectNoAxeViolations(page);
 
+  await page.evaluate(() => {
+    const key = "marketforge.strategyLibrary.v1";
+    const artifacts = JSON.parse(localStorage.getItem(key) ?? "[]") as Array<{ id: string; provenance?: { source?: string }; dependencies?: string[] }>;
+    const pluginArtifact = artifacts.find((artifact) => artifact.provenance?.source === "plugin");
+    const localArtifact = artifacts.find((artifact) => artifact.id === "strategy:price-cross-ema");
+    if (pluginArtifact && localArtifact) localArtifact.dependencies = [pluginArtifact.id];
+    localStorage.setItem(key, JSON.stringify(artifacts));
+  });
+
   await page.reload();
   await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
-  await expect(page.locator(".strategy-library")).toContainText("E2E plugin overlay", { timeout: 20_000 });
-  await expect(page.locator(".strategy-library")).toContainText("E2E plugin strategy");
+  const restoredLibrary = page.locator(".strategy-library");
+  await expect(restoredLibrary).toContainText("E2E plugin overlay", { timeout: 20_000 });
+  await expect(restoredLibrary).toContainText("E2E plugin strategy");
+
+  await restoredLibrary.getByRole("button", { name: /Installed plugins 1/ }).click();
+  const catalog = page.getByRole("dialog", { name: "Installed plugins" });
+  await expect(catalog).toContainText("E2E research pack");
+  await expect(catalog).toContainText("E2E publisher");
+  await expect(catalog).toContainText("MIT");
+  await expect(catalog).toContainText("trade.intent");
+  await expect(catalog.getByText(/^[a-f0-9]{64}$/)).toBeVisible();
+  await expectNoAxeViolations(page);
+
+  await catalog.getByRole("button", { name: /Uninstall: E2E research pack/ }).click();
+  const removal = page.getByRole("dialog", { name: "Uninstall plugin" });
+  await expect(removal).toContainText("Running paper/live bots and chart overlays are not stopped");
+  await expect(removal).toContainText("Price Cross EMA");
+  await expect(removal.getByRole("button", { name: "Remove plugin", exact: true })).toBeDisabled();
+  await expectNoAxeViolations(page);
+  await removal.getByRole("button", { name: "Back to catalog", exact: true }).click();
+  await page.getByRole("dialog", { name: "Installed plugins" }).getByRole("button", { name: "Close", exact: true }).click();
+
+  await page.evaluate(() => {
+    const key = "marketforge.strategyLibrary.v1";
+    const artifacts = JSON.parse(localStorage.getItem(key) ?? "[]") as Array<{ id: string; dependencies?: string[] }>;
+    const localArtifact = artifacts.find((artifact) => artifact.id === "strategy:price-cross-ema");
+    if (localArtifact) localArtifact.dependencies = [];
+    localStorage.setItem(key, JSON.stringify(artifacts));
+  });
+  await page.reload();
+  await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
+  await page.locator(".strategy-library").getByRole("button", { name: /Installed plugins 1/ }).click();
+  await page.getByRole("dialog", { name: "Installed plugins" }).getByRole("button", { name: /Uninstall: E2E research pack/ }).click();
+  const allowedRemoval = page.getByRole("dialog", { name: "Uninstall plugin" });
+  await expect(allowedRemoval.getByRole("button", { name: "Remove plugin", exact: true })).toBeEnabled();
+  await allowedRemoval.getByRole("button", { name: "Remove plugin", exact: true }).click();
+  await expect(page.getByText("No installed plugins", { exact: true })).toBeVisible();
+  await page.getByRole("dialog", { name: "Installed plugins" }).getByRole("button", { name: "Close", exact: true }).click();
+  await expect(restoredLibrary.getByRole("status")).toContainText("Plugin removed from the local library");
+  await expect(restoredLibrary).not.toContainText("E2E plugin overlay");
+
+  await page.reload();
+  await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
+  await expect(page.locator(".strategy-library")).not.toContainText("E2E plugin overlay", { timeout: 20_000 });
 });
 
 test("exports selected local artifacts as a verified plugin package", async ({ page }) => {

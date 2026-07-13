@@ -19,6 +19,7 @@ import { storeStrategyLibrary } from "./storage";
 import type { StrategyTemplate } from "./templates";
 import type { PortableStrategyArtifact } from "./strategyFile";
 import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
+import { analyzePluginRemoval, removeArtifactScopedValues } from "./pluginCatalog";
 
 const ARTIFACT_INPUTS_KEY = "marketforge.artifactInputs.v1";
 
@@ -154,6 +155,16 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
     saveArtifact({ ...artifact, dependencies: [...new Set(dependencies.filter((dependency) => dependency !== id))], updatedAt: Date.now() });
   };
 
+  const uninstallPlugin = (key: string) => {
+    const analysis = analyzePluginRemoval(artifacts, key);
+    if (!analysis.canRemove) return false;
+    const removedIds = new Set(analysis.removedArtifactIds);
+    setArtifacts(analysis.remainingArtifacts);
+    setInputOverrides((current) => removeArtifactScopedValues(current, analysis.removedArtifactIds));
+    if (removedIds.has(activeArtifactId)) setActiveArtifactId(analysis.remainingArtifacts[0]?.id ?? "strategy:price-cross-ema");
+    return true;
+  };
+
   return {
     artifacts,
     activeArtifactId,
@@ -169,6 +180,7 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
     importPineMany,
     importStrategy,
     importPlugin,
+    uninstallPlugin,
     rollbackArtifactVersion,
     updateArtifactDependencies
   };

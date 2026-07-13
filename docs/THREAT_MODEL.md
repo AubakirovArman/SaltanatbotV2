@@ -144,6 +144,9 @@ Mitigations:
   cannot contain executable JavaScript or external dependencies, and import never grants network,
   credential or exchange access. A mandatory manifest/capability/artifact review occurs before the
   local library changes; users must still inspect and backtest the strategy logic.
+- The installed-plugin catalog only activates validated HTTPS publisher links. Uninstall requires a
+  destructive confirmation and fails closed while external library artifacts depend on package
+  contents; it intentionally does not stop independent bot or chart runtime snapshots.
 - Exchange/API behavior can change independently; operator monitoring and exchange-side limits remain required.
 
 ## Security verification
