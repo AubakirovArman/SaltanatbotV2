@@ -7,6 +7,10 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Declarative plugin foundation
 
+- Added a bounded local signer blocklist that is mutually exclusive with trust and rejects imports when the active signer or any authenticated rotation-chain key is blocked.
+- Added reversible block/unblock controls to the installed catalog and mandatory review. Risk acknowledgements cannot bypass a block, and unblocking never silently restores trust.
+- Added strict corrupt/deduplicated/bounded store tests, rotation-chain matching, EN/RU/KK safety documentation and a production accessibility journey covering block, failed re-import and explicit recovery.
+- Raised only the measured aggregate JavaScript gzip ceiling from 506 KiB to 508 KiB for the bounded block policy, localized reversible controls and chain matching; initial-shell, per-file, CSS and HTML limits are unchanged.
 - Added backward-compatible cryptographically signed version-2 plugin envelopes using ECDSA P-256/SHA-256, strict embedded public-key validation, domain-separated signatures and full fingerprint provenance while retaining visibly unsigned version-1 imports/exports.
 - Added an explicitly created device-local signing identity whose private `CryptoKey` is non-extractable and committed to IndexedDB, plus a separate bounded fingerprint trust store with valid/trusted, valid/untrusted and unsigned review/catalog states.
 - Added opt-in trust pinning during mandatory import review, later trust/forget controls, EN/RU/KK safety and recovery limitations, tamper/malformed/mismatched-key tests and a production browser create/sign/download/reload journey.

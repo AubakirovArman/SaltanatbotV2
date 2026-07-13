@@ -158,6 +158,11 @@ Mitigations:
 - Signing-identity writes are serialized with a same-origin exclusive Web Lock and rotation rechecks
   the active IndexedDB fingerprint while holding it. Concurrent tabs therefore cannot silently fork
   the local lineage; unsupported lock environments fail identity mutations closed.
+- A bounded local blocklist can reject the active signer or any authenticated rotation-chain key.
+  Blocking removes local trust, dangerous-update acknowledgements cannot bypass it, and unblocking
+  does not silently restore trust. This is profile-local operator policy, not independently
+  authenticated or synchronized revocation; a moderated external registry remains necessary for
+  authoritative compromise recovery.
 - The installed-plugin catalog only activates validated HTTPS publisher links. Uninstall requires a
   destructive confirmation and fails closed while external library artifacts depend on package
   contents; it intentionally does not stop independent bot or chart runtime snapshots.

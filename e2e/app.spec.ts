@@ -1059,7 +1059,34 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   await expect(catalog).toContainText("Signature verified · signer trusted now");
   await expectNoAxeViolations(page);
 
-  await catalog.getByRole("button", { name: /Uninstall: E2E research pack/ }).click();
+  await catalog.getByRole("button", { name: "Block signer key", exact: true }).click();
+  await expect(catalog).toContainText("Signer key blocked locally");
+  await catalog.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByLabel("Import plugin package").setInputFiles({
+    name: "e2e-blocked.saltanat-plugin",
+    mimeType: "application/json",
+    buffer: Buffer.from(signedPlugin)
+  });
+  const blockedReview = page.getByRole("dialog", { name: "Review plugin package" });
+  const blockedImport = blockedReview.getByRole("button", { name: "Import reviewed plugin" });
+  await expect(blockedReview).toContainText("Signer key blocked locally");
+  await expect(blockedReview).toContainText(signer.keyFingerprint);
+  await expect(blockedImport).toBeDisabled();
+  await blockedReview.getByLabel("I understand this is not a normal newer-version upgrade and want a separate local installation.").check();
+  await expect(blockedImport).toBeDisabled();
+  await expectNoAxeViolations(page);
+  await blockedReview.getByRole("button", { name: `Unblock signer key: ${signer.keyFingerprint}` }).click();
+  await expect(blockedReview).toContainText("Valid signature · key not trusted");
+  await expect(blockedImport).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(blockedReview).toBeHidden();
+  await restoredLibrary.getByRole("button", { name: /Installed plugins 1/ }).click();
+  const restoredCatalog = page.getByRole("dialog", { name: "Installed plugins" });
+  await expect(restoredCatalog).toContainText("Signature verified · signer not trusted");
+  await restoredCatalog.getByRole("button", { name: "Trust signer key", exact: true }).click();
+  await expect(restoredCatalog).toContainText("Signature verified · signer trusted now");
+
+  await restoredCatalog.getByRole("button", { name: /Uninstall: E2E research pack/ }).click();
   const removal = page.getByRole("dialog", { name: "Uninstall plugin" });
   await expect(removal).toContainText("Running paper/live bots and chart overlays are not stopped");
   await expect(removal).toContainText("Price Cross EMA");

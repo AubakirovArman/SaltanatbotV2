@@ -1,10 +1,10 @@
 import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
-import { BadgeCheck, KeyRound, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { BadgeCheck, Ban, KeyRound, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
 import type { PluginImportAnalysis, PluginSignerTransition, PluginVersionTransition } from "../pluginCatalog";
-import { isPluginKeyTrusted } from "../pluginTrust";
+import { blockedPluginFingerprints, isPluginKeyTrusted, unblockPluginKey } from "../pluginTrust";
 
 export function PluginImportReviewDialog({ locale, plugin, analysis, onConfirm, onClose }: {
   locale: Locale;
@@ -21,6 +21,7 @@ export function PluginImportReviewDialog({ locale, plugin, analysis, onConfirm, 
   const [trustSigner, setTrustSigner] = useState(false);
   const [versionAcknowledged, setVersionAcknowledged] = useState(false);
   const [signerAcknowledged, setSignerAcknowledged] = useState(false);
+  const [, setBlockRevision] = useState(0);
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -29,7 +30,8 @@ export function PluginImportReviewDialog({ locale, plugin, analysis, onConfirm, 
   }, []);
   const manifest = plugin.manifest;
   const signerTrusted = plugin.signature ? isPluginKeyTrusted(plugin.signature.keyFingerprint) : false;
-  const confirmationAllowed = (!analysis.requiresVersionAcknowledgement || versionAcknowledged) && (!analysis.requiresSignerAcknowledgement || signerAcknowledged);
+  const blockedFingerprints = blockedPluginFingerprints(plugin.signature);
+  const confirmationAllowed = blockedFingerprints.length === 0 && (!analysis.requiresVersionAcknowledgement || versionAcknowledged) && (!analysis.requiresSignerAcknowledgement || signerAcknowledged);
   const riskyTransition = analysis.requiresVersionAcknowledgement || analysis.requiresSignerAcknowledgement;
   return (
     <dialog ref={dialogRef} className="plugin-dialog" aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); onClose(); }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -49,7 +51,7 @@ export function PluginImportReviewDialog({ locale, plugin, analysis, onConfirm, 
           {analysis.requiresVersionAcknowledgement && <label htmlFor={versionAcknowledgementId}><input id={versionAcknowledgementId} name="acknowledge-plugin-version-transition" type="checkbox" checked={versionAcknowledged} onChange={(event) => setVersionAcknowledged(event.target.checked)} />{t("acknowledgePluginVersionRisk")}</label>}
           {analysis.requiresSignerAcknowledgement && <label htmlFor={signerAcknowledgementId}><input id={signerAcknowledgementId} name="acknowledge-plugin-signer-transition" type="checkbox" checked={signerAcknowledged} onChange={(event) => setSignerAcknowledged(event.target.checked)} />{t("acknowledgeSignerChange")}</label>}
         </section>
-        {plugin.signature ? <div className={`plugin-signature-status ${signerTrusted ? "trusted" : "untrusted"}`}>{signerTrusted ? <BadgeCheck size={18} aria-hidden="true" /> : <KeyRound size={18} aria-hidden="true" />}<div><strong>{signerTrusted ? t("validTrustedSignature") : t("validUntrustedSignature")}</strong><p>{t("signerFingerprint")}</p><code>{plugin.signature.keyFingerprint}</code>{!signerTrusted && <label htmlFor={trustId}><input id={trustId} name="trust-plugin-signer" type="checkbox" checked={trustSigner} onChange={(event) => setTrustSigner(event.target.checked)} />{t("trustSignerAfterImport")}</label>}</div></div> : <div className="plugin-signature-status unsigned"><ShieldAlert size={18} aria-hidden="true" /><div><strong>{t("unsignedPlugin")}</strong><p>{t("unsignedPluginWarning")}</p></div></div>}
+        {plugin.signature ? blockedFingerprints.length ? <div className="plugin-signature-status blocked" role="alert"><Ban size={18} aria-hidden="true" /><div><strong>{t("signerLocallyBlocked")}</strong><p>{t("signerBlockedHelp")}</p><ul className="plugin-blocked-keys">{blockedFingerprints.map((fingerprint) => <li key={fingerprint}><code>{fingerprint}</code><button type="button" aria-label={`${t("unblockSignerKey")}: ${fingerprint}`} onClick={() => { if (unblockPluginKey(fingerprint)) setBlockRevision((value) => value + 1); }}>{t("unblockSignerKey")}</button></li>)}</ul></div></div> : <div className={`plugin-signature-status ${signerTrusted ? "trusted" : "untrusted"}`}>{signerTrusted ? <BadgeCheck size={18} aria-hidden="true" /> : <KeyRound size={18} aria-hidden="true" />}<div><strong>{signerTrusted ? t("validTrustedSignature") : t("validUntrustedSignature")}</strong><p>{t("signerFingerprint")}</p><code>{plugin.signature.keyFingerprint}</code>{!signerTrusted && <label htmlFor={trustId}><input id={trustId} name="trust-plugin-signer" type="checkbox" checked={trustSigner} onChange={(event) => setTrustSigner(event.target.checked)} />{t("trustSignerAfterImport")}</label>}</div></div> : <div className="plugin-signature-status unsigned"><ShieldAlert size={18} aria-hidden="true" /><div><strong>{t("unsignedPlugin")}</strong><p>{t("unsignedPluginWarning")}</p></div></div>}
         <section><h4>{t("requestedCapabilities")}</h4><ul>{manifest.permissions.map((permission) => <li key={permission}><code>{permission}</code></li>)}</ul></section>
         <section><h4>{t("packageContents")}</h4><ul className="plugin-artifact-review">{manifest.artifacts.map((artifact) => <li key={artifact.id}><strong>{artifact.name}</strong><span>{t(artifact.kind)} · v{artifact.semanticVersion}{artifact.dependencies.length ? ` · ${t("dependencies")} ${artifact.dependencies.length}` : ""}</span><p>{artifact.description}</p></li>)}</ul></section>
         <div className="plugin-trust-warning" role="note"><ShieldCheck size={16} aria-hidden="true" /><span>{t("pluginReviewWarning")}</span></div>

@@ -1,10 +1,10 @@
-import { BadgeCheck, Boxes, ExternalLink, KeyRound, PackageX, ShieldAlert, X } from "lucide-react";
+import { BadgeCheck, Ban, Boxes, ExternalLink, KeyRound, PackageX, ShieldAlert, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { localeTag, type Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
 import type { StrategyArtifact } from "../library";
 import { analyzePluginRemoval, installedPlugins } from "../pluginCatalog";
-import { forgetPluginKey, isPluginKeyTrusted, trustPluginKey } from "../pluginTrust";
+import { blockPluginKey, forgetPluginKey, isPluginKeyBlocked, isPluginKeyTrusted, trustPluginKey, unblockPluginKey } from "../pluginTrust";
 
 export function PluginCatalogDialog({ locale, artifacts, onRemove, onClose }: {
   locale: Locale;
@@ -72,6 +72,8 @@ export function PluginCatalogDialog({ locale, artifacts, onRemove, onClose }: {
                   const publisherUrl = safeHttpsUrl(plugin.publisherUrl);
                   const installedAt = plugin.importedAt ? new Intl.DateTimeFormat(localeTag(locale), { dateStyle: "medium", timeStyle: "short" }).format(plugin.importedAt) : t("legacyMetadata");
                   const signerTrusted = plugin.signerFingerprint ? isPluginKeyTrusted(plugin.signerFingerprint) : false;
+                  const signerBlocked = plugin.signerFingerprint ? isPluginKeyBlocked(plugin.signerFingerprint) : false;
+                  const publisherLabel = plugin.publisher || plugin.name;
                   return (
                     <li key={plugin.key}>
                       <article className="plugin-catalog-card">
@@ -83,7 +85,8 @@ export function PluginCatalogDialog({ locale, artifacts, onRemove, onClose }: {
                           <div><dt>{t("minimumAppVersion")}</dt><dd>{plugin.minAppVersion ?? t("legacyMetadata")}</dd></div>
                           <div><dt>{t("packageContents")}</dt><dd>{plugin.artifacts.length} {t("artifacts")} · {plugin.modifiedArtifacts} {t("modifiedShort")}</dd></div>
                         </dl>
-                        {plugin.signerFingerprint ? <div className={`plugin-signature-status compact ${signerTrusted ? "trusted" : "untrusted"}`}>{signerTrusted ? <BadgeCheck size={17} aria-hidden="true" /> : <KeyRound size={17} aria-hidden="true" />}<div><strong>{signerTrusted ? t("signedTrustedNow") : t("signedUntrustedNow")}</strong><p>{t("signatureVerifiedAtImport")}{plugin.signerTrustedAtImport ? ` · ${t("trustedAtImport")}` : ""}</p>{plugin.signerPreviousFingerprints?.length ? <p>{t("rotationChainVerified")}: {plugin.signerPreviousFingerprints.length}</p> : null}<code>{plugin.signerFingerprint}</code><button type="button" onClick={() => { const changed = signerTrusted ? forgetPluginKey(plugin.signerFingerprint!) : trustPluginKey(plugin.signerFingerprint!, plugin.publisher || plugin.name); if (changed) setTrustRevision((value) => value + 1); }}>{signerTrusted ? t("forgetSignerTrust") : t("trustSignerKey")}</button></div></div> : <div className="plugin-signature-status compact unsigned"><ShieldAlert size={17} aria-hidden="true" /><div><strong>{t("unsignedPlugin")}</strong><p>{t("unsignedCatalogWarning")}</p></div></div>}
+                        {plugin.signerFingerprint ? <div className={`plugin-signature-status compact ${signerBlocked ? "blocked" : signerTrusted ? "trusted" : "untrusted"}`}>{signerBlocked ? <Ban size={17} aria-hidden="true" /> : signerTrusted ? <BadgeCheck size={17} aria-hidden="true" /> : <KeyRound size={17} aria-hidden="true" />}<div><strong>{signerBlocked ? t("signerLocallyBlocked") : signerTrusted ? t("signedTrustedNow") : t("signedUntrustedNow")}</strong><p>{t("signatureVerifiedAtImport")}{plugin.signerTrustedAtImport ? ` · ${t("trustedAtImport")}` : ""}</p>{plugin.signerPreviousFingerprints?.length ? <p>{t("rotationChainVerified")}: {plugin.signerPreviousFingerprints.length}</p> : null}<code>{plugin.signerFingerprint}</code><div className="plugin-key-actions"><button type="button" onClick={() => { const changed = signerBlocked ? unblockPluginKey(plugin.signerFingerprint!) : signerTrusted ? forgetPluginKey(plugin.signerFingerprint!) : trustPluginKey(plugin.signerFingerprint!, publisherLabel); if (changed) setTrustRevision((value) => value + 1); }}>{signerBlocked ? t("unblockSignerKey") : signerTrusted ? t("forgetSignerTrust") : t("trustSignerKey")}</button>{!signerBlocked && <button type="button" className="danger-quiet" onClick={() => { if (blockPluginKey(plugin.signerFingerprint!, publisherLabel)) setTrustRevision((value) => value + 1); }}>{t("blockSignerKey")}</button>}</div></div></div> : <div className="plugin-signature-status compact unsigned"><ShieldAlert size={17} aria-hidden="true" /><div><strong>{t("unsignedPlugin")}</strong><p>{t("unsignedCatalogWarning")}</p></div></div>}
+                        {plugin.signerPreviousFingerprints?.length ? <details className="plugin-rotation-keys"><summary>{t("rotationChainKeys")}</summary><ul>{plugin.signerPreviousFingerprints.map((fingerprint) => { const blocked = isPluginKeyBlocked(fingerprint); return <li key={fingerprint}><code>{fingerprint}</code><button type="button" className={blocked ? undefined : "danger-quiet"} aria-label={`${blocked ? t("unblockSignerKey") : t("blockSignerKey")}: ${fingerprint}`} onClick={() => { const changed = blocked ? unblockPluginKey(fingerprint) : blockPluginKey(fingerprint, publisherLabel); if (changed) setTrustRevision((value) => value + 1); }}>{blocked ? t("unblockSignerKey") : t("blockSignerKey")}</button></li>; })}</ul><p>{t("localBlockNotGlobalRevocation")}</p></details> : null}
                         <div className="plugin-catalog-capabilities"><strong>{t("requestedCapabilities")}</strong>{plugin.permissions.length ? <span>{plugin.permissions.map((permission) => <code key={permission}>{permission}</code>)}</span> : <em>{t("legacyMetadata")}</em>}</div>
                         <details><summary>{t("packageContents")}</summary><ul>{plugin.artifacts.map((artifact) => <li key={artifact.id}><strong>{artifact.name}</strong><span>{t(artifact.kind)} · v{artifact.semanticVersion ?? "0.1.0"}</span></li>)}</ul></details>
                         <div className="plugin-catalog-checksum"><strong>{t("manifestChecksum")}</strong><code>{plugin.checksum}</code></div>

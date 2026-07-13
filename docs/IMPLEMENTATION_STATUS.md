@@ -10,6 +10,18 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Local plugin signer blocklist — 2026-07-13
+
+- [x] Store at most 100 strictly validated, deduplicated blocked fingerprints separately from package contents.
+- [x] Make local trust and blocking mutually exclusive; blocking removes trust and unblocking never restores it.
+- [x] Fail closed when the active signer or any authenticated rotation-chain key is blocked.
+- [x] Prevent version/signer risk acknowledgements from bypassing a blocked-key decision.
+- [x] Provide explicit reversible block/unblock controls in import review and the installed catalog.
+- [x] State in EN/RU/KK that local blocking is not independently authenticated global revocation.
+
+Verification covers corruption, bounds, deduplication, trust/block transitions and rotation-chain
+matching plus a production import/catalog/block/re-import/acknowledge/unblock/cancel journey with axe.
+
 ### Authenticated plugin signer rotation — 2026-07-13
 
 - [x] Define strict version-3 envelopes with at most eight sequential key transitions.

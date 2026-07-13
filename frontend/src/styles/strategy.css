@@ -370,8 +370,19 @@
 .plugin-signature-status.unsigned { border-color: color-mix(in srgb, var(--down) 35%, transparent); background: var(--down-soft); }
 .plugin-signature-status.unsigned > svg,
 .plugin-signature-status.unsigned strong { color: var(--down); }
+.plugin-signature-status.blocked { border-color: color-mix(in srgb, var(--down) 45%, transparent); background: var(--down-soft); }
+.plugin-signature-status.blocked > svg,
+.plugin-signature-status.blocked strong { color: var(--down); }
 .plugin-signature-status.compact { padding: 8px; }
 .plugin-signature-status.compact button { justify-self: start; margin-block-start: 3px; }
+.plugin-key-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.plugin-blocked-keys { display: grid; gap: 7px; margin: 4px 0 0; padding: 0 !important; list-style: none; }
+.plugin-blocked-keys li,
+.plugin-rotation-keys li { display: grid !important; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.plugin-blocked-keys button,
+.plugin-rotation-keys button { white-space: nowrap; }
+.plugin-rotation-keys code { overflow-wrap: anywhere; color: var(--accent); }
+.plugin-rotation-keys p { margin-block-start: 7px; color: var(--dim); font-size: var(--fs-xs); }
 .plugin-update-status { display: grid; gap: 5px; padding: 10px; border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--panel-soft); }
 .plugin-update-status.safe { border-color: color-mix(in srgb, var(--up) 38%, transparent); background: var(--up-soft); }
 .plugin-update-status.risk { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 8%, transparent); }

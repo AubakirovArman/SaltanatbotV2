@@ -162,6 +162,14 @@ but unknown key stays visibly untrusted; unsigned version-1 packages remain supp
 unsigned. The installed-package catalog preserves the verified fingerprint and trust-at-import
 provenance, and lets the user trust or forget that key locally.
 
+The catalog also lets the user block the current signer or any fingerprint retained from an
+authenticated rotation chain. Blocking immediately removes any trust pin. A later import fails
+closed when either the active signer or any verified transition key is blocked: version and signer
+risk acknowledgements cannot override it. Review lists every matching fingerprint and requires an
+explicit per-key unblock before import can continue. Unblocking does not restore trust; the
+fingerprint must be independently checked and pinned again. Both lists are bounded to 100 unique,
+strictly validated fingerprints in the current browser profile.
+
 When the same stable package ID is already installed, review compares the candidate against the
 highest installed semantic version (using import time only as a tie-breaker). It distinguishes a
 normal upgrade from a same-version content change, exact duplicate or downgrade. It separately
@@ -197,6 +205,8 @@ managed from their own surface.
 - A non-extractable browser key reduces accidental export but does not defend against a compromised
   page, malicious extension, browser/OS administrator or same-origin XSS using it as a signing oracle.
 - Local trust is browser-profile state, is not synchronized and is lost when site data is cleared.
+- The local blocklist is also browser-profile state. It is a useful immediate operator policy, not
+  a global, publisher-authenticated or synchronized revocation mechanism.
 - Key backup, recovery, independently authenticated revocation and a moderated transparency registry
   are future work beyond the delivered transition proof; a changed key without that proof is shown
   as a different untrusted fingerprint.
