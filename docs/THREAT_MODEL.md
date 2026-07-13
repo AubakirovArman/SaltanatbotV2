@@ -149,7 +149,15 @@ Mitigations:
 - The local signing private key is non-extractable and persisted as a `CryptoKey` in IndexedDB. This
   limits accidental export but does not protect against same-origin XSS, a malicious extension or a
   compromised browser/OS using the key. Clearing site data destroys the identity; key backup,
-  recovery, revocation and authenticated rotation are not yet provided.
+  recovery and independently authenticated revocation are not yet provided.
+- Explicit local rotation generates a new non-extractable key and a bounded sequential transition
+  chain signed by both old and new keys. Verification requires every intermediate dual signature and
+  the final package signer, following continuity principles rather than silently accepting a changed
+  fingerprint. This proves participation of both keys but cannot independently revoke a compromised
+  old key; compromise recovery still needs an out-of-band authenticated registry/revocation channel.
+- Signing-identity writes are serialized with a same-origin exclusive Web Lock and rotation rechecks
+  the active IndexedDB fingerprint while holding it. Concurrent tabs therefore cannot silently fork
+  the local lineage; unsupported lock environments fail identity mutations closed.
 - The installed-plugin catalog only activates validated HTTPS publisher links. Uninstall requires a
   destructive confirmation and fails closed while external library artifacts depend on package
   contents; it intentionally does not stop independent bot or chart runtime snapshots.

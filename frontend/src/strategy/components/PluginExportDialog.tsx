@@ -1,11 +1,11 @@
-import { encodePluginFile, encodeSignedPluginFile, type PluginManifest } from "@saltanatbotv2/plugin-core";
+import { encodePluginFile, encodeSignedPluginFile, PLUGIN_MAX_KEY_TRANSITIONS, type PluginManifest } from "@saltanatbotv2/plugin-core";
 import { KeyRound, PackageCheck, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type HTMLInputTypeAttribute } from "react";
 import type { Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
 import type { StrategyArtifact } from "../library";
 import { buildPluginManifest, pluginFileName, type PluginBuildError, type PluginPackageDetails } from "../pluginPackage";
-import { createAndStorePluginSigningIdentity, loadPluginSigningIdentity, type PluginSigningIdentity } from "../pluginSigningIdentity";
+import { createAndStorePluginSigningIdentity, loadPluginSigningIdentity, rotateAndStorePluginSigningIdentity, type PluginSigningIdentity } from "../pluginSigningIdentity";
 import { trustPluginKey } from "../pluginTrust";
 
 const DEFAULT_DETAILS: PluginPackageDetails = {
@@ -30,16 +30,19 @@ export function PluginExportDialog({ locale, artifacts, activeId, onExport, onCl
   const titleId = useId();
   const helpId = useId();
   const signingId = useId();
+  const rotationId = useId();
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const [details, setDetails] = useState(DEFAULT_DETAILS);
   const [selected, setSelected] = useState(() => new Set(activeId ? [activeId] : artifacts[0] ? [artifacts[0].id] : []));
-  const [error, setError] = useState<PluginBuildError | "identity_name" | "invalid_manifest" | "signing_unavailable" | "too_large" | "write_failed">();
+  const [error, setError] = useState<PluginBuildError | "identity_name" | "invalid_manifest" | "signing_unavailable" | "rotation_limit" | "too_large" | "write_failed">();
   const [busy, setBusy] = useState(false);
   const [identity, setIdentity] = useState<PluginSigningIdentity>();
   const [identityState, setIdentityState] = useState<"loading" | "missing" | "ready" | "error">("loading");
   const [identityName, setIdentityName] = useState(() => t("defaultSigningIdentityName"));
   const [signPackage, setSignPackage] = useState(true);
   const [identityBusy, setIdentityBusy] = useState(false);
+  const [rotationOpen, setRotationOpen] = useState(false);
+  const [rotationAcknowledged, setRotationAcknowledged] = useState(false);
   const result = useMemo(() => buildPluginManifest(details, artifacts, [...selected]), [artifacts, details, selected]);
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -88,6 +91,23 @@ export function PluginExportDialog({ locale, artifacts, activeId, onExport, onCl
       setIdentityBusy(false);
     }
   };
+  const rotateIdentity = async () => {
+    if (!identity || !rotationAcknowledged || identityBusy) return;
+    setError(undefined);
+    setIdentityBusy(true);
+    try {
+      const rotated = await rotateAndStorePluginSigningIdentity(identity);
+      trustPluginKey(rotated.keyFingerprint, rotated.name);
+      setIdentity(rotated);
+      setRotationOpen(false);
+      setRotationAcknowledged(false);
+      setSignPackage(true);
+    } catch (reason) {
+      setError(reason instanceof Error && reason.message === "key_rotation_limit" ? "rotation_limit" : "signing_unavailable");
+    } finally {
+      setIdentityBusy(false);
+    }
+  };
   return (
     <dialog ref={dialogRef} className="plugin-dialog plugin-export-dialog" aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <form onSubmit={(event) => void submit(event)}>
@@ -105,7 +125,19 @@ export function PluginExportDialog({ locale, artifacts, activeId, onExport, onCl
           </fieldset>
           <fieldset className="plugin-signing-fields"><legend>{t("packageSigning")}</legend>
             {identityState === "loading" && <p>{t("loadingSigningIdentity")}</p>}
-            {identityState === "ready" && identity && <><div className="plugin-signing-identity"><KeyRound size={17} aria-hidden="true" /><span><strong>{identity.name}</strong><code>{identity.keyFingerprint}</code></span></div><label className="plugin-sign-checkbox" htmlFor={signingId}><input id={signingId} name="sign-plugin-package" type="checkbox" checked={signPackage} onChange={(event) => setSignPackage(event.target.checked)} />{t("signThisPackage")}</label><p>{t("signingIdentitySafety")}</p></>}
+            {identityState === "ready" && identity && <>
+              <div className="plugin-signing-identity"><KeyRound size={17} aria-hidden="true" /><span><strong>{identity.name}</strong><code>{identity.keyFingerprint}</code><small>{t("authenticatedRotations")}: {identity.keyTransitions.length}/{PLUGIN_MAX_KEY_TRANSITIONS}</small></span></div>
+              <label className="plugin-sign-checkbox" htmlFor={signingId}><input id={signingId} name="sign-plugin-package" type="checkbox" checked={signPackage} onChange={(event) => setSignPackage(event.target.checked)} />{t("signThisPackage")}</label>
+              <p>{t("signingIdentitySafety")}</p>
+              {!rotationOpen && <button type="button" disabled={identity.keyTransitions.length >= PLUGIN_MAX_KEY_TRANSITIONS} onClick={() => { setRotationOpen(true); setRotationAcknowledged(false); setError(undefined); }}>{t("rotateSigningIdentity")}</button>}
+              {identity.keyTransitions.length >= PLUGIN_MAX_KEY_TRANSITIONS && <p>{t("signingRotationLimit")}</p>}
+              {rotationOpen && <div className="plugin-rotation-confirmation" role="note">
+                <strong>{t("rotationWarning")}</strong>
+                <p>{t("rotationProofHelp")}</p>
+                <label htmlFor={rotationId}><input id={rotationId} name="acknowledge-key-rotation" type="checkbox" checked={rotationAcknowledged} onChange={(event) => setRotationAcknowledged(event.target.checked)} />{t("acknowledgeRotation")}</label>
+                <div><button type="button" onClick={() => { setRotationOpen(false); setRotationAcknowledged(false); }}>{t("cancel")}</button><button type="button" disabled={!rotationAcknowledged || identityBusy} onClick={() => void rotateIdentity()}>{identityBusy ? t("rotatingSigningIdentity") : t("confirmKeyRotation")}</button></div>
+              </div>}
+            </>}
             {(identityState === "missing" || identityState === "error") && <><label htmlFor={`${signingId}-name`}>{t("signingIdentityName")}<input id={`${signingId}-name`} name="signing-identity-name" value={identityName} maxLength={100} onChange={(event) => { setIdentityName(event.target.value); setError(undefined); }} /></label><button type="button" disabled={identityBusy} onClick={() => void createIdentity()}>{identityBusy ? t("creatingSigningIdentity") : t("createSigningIdentity")}</button><p>{t("signingIdentityCreationWarning")}</p></>}
           </fieldset>
           <fieldset className="plugin-artifact-picker"><legend>{t("selectPackageContents")}</legend>{artifacts.map((artifact) => <label key={artifact.id}><input type="checkbox" name="plugin-artifact" value={artifact.id} checked={selected.has(artifact.id)} onChange={(event) => { setSelected((current) => { const next = new Set(current); if (event.target.checked) next.add(artifact.id); else next.delete(artifact.id); return next; }); setError(undefined); }} /><span><strong>{artifact.name}</strong><small>{t(artifact.kind)} · {artifact.dependencies?.length ?? 0} {t("dependencies").toLowerCase()}</small></span></label>)}</fieldset>
@@ -122,8 +154,8 @@ function Field({ id, label, value, onChange, type = "text", required, pattern, m
   return <label htmlFor={id}>{label}<input id={id} name={id} type={type} value={value} onChange={(event) => onChange(event.target.value)} required={required} pattern={pattern} maxLength={maxLength} aria-describedby={describedBy} autoComplete={autoComplete} /></label>;
 }
 
-function buildError(locale: Locale, error: PluginBuildError | "identity_name" | "invalid_manifest" | "signing_unavailable" | "too_large" | "write_failed") {
-  const keys = { no_artifacts: "selectAtLeastOneArtifact", missing_dependency: "pluginDependencyRejected", cyclic_dependency: "pluginDependencyRejected", identity_name: "signingIdentityNameRequired", invalid_manifest: "invalidPluginMetadata", signing_unavailable: "signingIdentityUnavailable", too_large: "pluginTooLarge", write_failed: "pluginWriteFailed" } as const;
+function buildError(locale: Locale, error: PluginBuildError | "identity_name" | "invalid_manifest" | "signing_unavailable" | "rotation_limit" | "too_large" | "write_failed") {
+  const keys = { no_artifacts: "selectAtLeastOneArtifact", missing_dependency: "pluginDependencyRejected", cyclic_dependency: "pluginDependencyRejected", identity_name: "signingIdentityNameRequired", invalid_manifest: "invalidPluginMetadata", signing_unavailable: "signingIdentityUnavailable", rotation_limit: "signingRotationLimit", too_large: "pluginTooLarge", write_failed: "pluginWriteFailed" } as const;
   return strategyText(locale, keys[error]);
 }
 

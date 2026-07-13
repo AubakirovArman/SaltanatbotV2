@@ -1,9 +1,11 @@
 export const PLUGIN_FILE_FORMAT = "saltanatbotv2.plugin" as const;
 export const PLUGIN_FILE_VERSION = 1 as const;
 export const PLUGIN_SIGNED_FILE_VERSION = 2 as const;
+export const PLUGIN_ROTATED_FILE_VERSION = 3 as const;
 export const PLUGIN_SIGNATURE_SCHEME = "ECDSA-P256-SHA256" as const;
 export const PLUGIN_MAX_BYTES = 5_000_000;
 export const PLUGIN_MAX_ARTIFACTS = 25;
+export const PLUGIN_MAX_KEY_TRANSITIONS = 8;
 
 export type PluginPermission = "market.read" | "chart.overlay" | "trade.intent" | "alert.emit";
 export type PluginArtifactKind = "indicator" | "strategy";
@@ -56,7 +58,25 @@ export interface PluginFileSignature {
   value: string;
 }
 
-export type VerifiedPluginSignature = Omit<PluginFileSignature, "value">;
+export interface PluginKeyTransition {
+  sequence: number;
+  previousKey: PluginPublicKey;
+  previousKeyFingerprint: string;
+  nextKey: PluginPublicKey;
+  nextKeyFingerprint: string;
+  previousSignature: string;
+  nextSignature: string;
+}
+
+export interface VerifiedPluginKeyTransition {
+  sequence: number;
+  previousKeyFingerprint: string;
+  nextKeyFingerprint: string;
+}
+
+export type VerifiedPluginSignature = Omit<PluginFileSignature, "value"> & {
+  keyTransitions?: VerifiedPluginKeyTransition[];
+};
 
 export interface UnsignedPluginFile {
   format: typeof PLUGIN_FILE_FORMAT;
@@ -75,7 +95,17 @@ export interface SignedPluginFile {
   manifest: PluginManifest;
 }
 
-export type PluginFile = UnsignedPluginFile | SignedPluginFile;
+export interface RotatedPluginFile {
+  format: typeof PLUGIN_FILE_FORMAT;
+  version: typeof PLUGIN_ROTATED_FILE_VERSION;
+  algorithm: "SHA-256";
+  checksum: string;
+  keyTransitions: PluginKeyTransition[];
+  signature: PluginFileSignature;
+  manifest: PluginManifest;
+}
+
+export type PluginFile = UnsignedPluginFile | SignedPluginFile | RotatedPluginFile;
 
 export type PluginParseErrorCode =
   | "too_large"
@@ -115,6 +145,7 @@ const ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const CHECKSUM = /^[a-f0-9]{64}$/;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
 const SIGNATURE_CONTEXT = "saltanatbotv2.plugin-signature.v1\n";
+const KEY_TRANSITION_CONTEXT = "saltanatbotv2.plugin-key-transition.v1\n";
 
 /** Parse a strict, checksummed declarative plugin. No executable JavaScript is accepted. */
 export async function parsePluginFile(raw: string, options: ParsePluginOptions = {}): Promise<PluginParseResult> {
@@ -127,6 +158,8 @@ export async function parsePluginFile(raw: string, options: ParsePluginOptions =
     if (!strictRecord(envelope, ["format", "version", "algorithm", "checksum", "manifest"])) return failure("invalid_envelope");
   } else if (envelope.version === PLUGIN_SIGNED_FILE_VERSION) {
     if (!strictRecord(envelope, ["format", "version", "algorithm", "checksum", "signature", "manifest"])) return failure("invalid_envelope");
+  } else if (envelope.version === PLUGIN_ROTATED_FILE_VERSION) {
+    if (!strictRecord(envelope, ["format", "version", "algorithm", "checksum", "keyTransitions", "signature", "manifest"])) return failure("invalid_envelope");
   } else {
     return failure("unsupported_version");
   }
@@ -135,8 +168,13 @@ export async function parsePluginFile(raw: string, options: ParsePluginOptions =
   if (!manifestResult.ok) return manifestResult;
   const checksum = await sha256(canonicalStringify(envelope.manifest));
   if (checksum !== envelope.checksum) return failure("checksum_mismatch");
-  const signature = envelope.version === PLUGIN_SIGNED_FILE_VERSION ? await verifySignature(envelope.signature, checksum) : undefined;
-  if (envelope.version === PLUGIN_SIGNED_FILE_VERSION && !signature) return failure("invalid_signature");
+  let signature = envelope.version === PLUGIN_SIGNED_FILE_VERSION || envelope.version === PLUGIN_ROTATED_FILE_VERSION ? await verifySignature(envelope.signature, checksum) : undefined;
+  if ((envelope.version === PLUGIN_SIGNED_FILE_VERSION || envelope.version === PLUGIN_ROTATED_FILE_VERSION) && !signature) return failure("invalid_signature");
+  if (envelope.version === PLUGIN_ROTATED_FILE_VERSION && signature) {
+    const keyTransitions = await verifyPluginKeyTransitions(envelope.keyTransitions, signature.keyFingerprint);
+    if (!keyTransitions) return failure("invalid_signature");
+    signature = { ...signature, keyTransitions };
+  }
   if (options.appVersion && compareSemver(manifestResult.manifest.minAppVersion, options.appVersion) > 0) return failure("incompatible_app");
   return { ok: true, manifest: manifestResult.manifest, checksum, signature };
 }
@@ -154,16 +192,26 @@ export async function encodePluginFile(manifest: PluginManifest): Promise<string
   return boundedEncoding(file);
 }
 
-export async function encodeSignedPluginFile(manifest: PluginManifest, signer: { publicKey: PluginPublicKey; privateKey: CryptoKey }): Promise<string> {
+export async function encodeSignedPluginFile(manifest: PluginManifest, signer: { publicKey: PluginPublicKey; privateKey: CryptoKey; keyTransitions?: PluginKeyTransition[] }): Promise<string> {
   const validated = parseManifest(manifest, Number.MAX_SAFE_INTEGER);
   if (!validated.ok) throw new Error(validated.code);
   const publicKey = pluginPublicKey(signer.publicKey);
   const checksum = await sha256(canonicalStringify(validated.manifest));
   const keyFingerprint = await pluginKeyFingerprint(publicKey);
+  const keyTransitions = signer.keyTransitions ?? [];
+  if (keyTransitions.length && !await verifyPluginKeyTransitions(keyTransitions, keyFingerprint)) throw new Error("invalid_signature");
   const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, signer.privateKey, signaturePayload(checksum));
   const fileSignature: PluginFileSignature = { scheme: PLUGIN_SIGNATURE_SCHEME, key: publicKey, keyFingerprint, value: base64UrlEncode(new Uint8Array(signature)) };
   if (!await verifySignature(fileSignature, checksum)) throw new Error("invalid_signature");
-  const file: SignedPluginFile = {
+  const file: SignedPluginFile | RotatedPluginFile = keyTransitions.length ? {
+    format: PLUGIN_FILE_FORMAT,
+    version: PLUGIN_ROTATED_FILE_VERSION,
+    algorithm: "SHA-256",
+    checksum,
+    keyTransitions,
+    signature: fileSignature,
+    manifest: validated.manifest
+  } : {
     format: PLUGIN_FILE_FORMAT,
     version: PLUGIN_SIGNED_FILE_VERSION,
     algorithm: "SHA-256",
@@ -174,16 +222,77 @@ export async function encodeSignedPluginFile(manifest: PluginManifest, signer: {
   return boundedEncoding(file);
 }
 
-export async function createPluginSigningKeyPair(): Promise<{ publicKey: PluginPublicKey; privateKey: CryptoKey; keyFingerprint: string }> {
+export async function createPluginSigningKeyPair(): Promise<{ publicKey: PluginPublicKey; privateKey: CryptoKey; keyFingerprint: string; keyTransitions: PluginKeyTransition[] }> {
   const generated = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
   const publicKey = pluginPublicKeyFromJwk(await crypto.subtle.exportKey("jwk", generated.publicKey));
   const privateJwk = await crypto.subtle.exportKey("jwk", generated.privateKey);
   const privateKey = await crypto.subtle.importKey("jwk", privateJwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
-  return { publicKey, privateKey, keyFingerprint: await pluginKeyFingerprint(publicKey) };
+  return { publicKey, privateKey, keyFingerprint: await pluginKeyFingerprint(publicKey), keyTransitions: [] };
+}
+
+export async function rotatePluginSigningKeyPair(current: { publicKey: PluginPublicKey; privateKey: CryptoKey; keyTransitions?: PluginKeyTransition[] }): Promise<{ publicKey: PluginPublicKey; privateKey: CryptoKey; keyFingerprint: string; keyTransitions: PluginKeyTransition[] }> {
+  const previousKey = pluginPublicKey(current.publicKey);
+  const previousKeyFingerprint = await pluginKeyFingerprint(previousKey);
+  const existing = current.keyTransitions ?? [];
+  if (existing.length) {
+    if (!await verifyPluginKeyTransitions(existing, previousKeyFingerprint)) throw new Error("invalid_signature");
+    if (existing.length >= PLUGIN_MAX_KEY_TRANSITIONS) throw new Error("key_rotation_limit");
+  }
+  const generated = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const nextKey = pluginPublicKeyFromJwk(await crypto.subtle.exportKey("jwk", generated.publicKey));
+  const nextKeyFingerprint = await pluginKeyFingerprint(nextKey);
+  const sequence = existing.length + 1;
+  const payload = keyTransitionPayload({ sequence, previousKey, previousKeyFingerprint, nextKey, nextKeyFingerprint });
+  const previousSignature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, current.privateKey, payload);
+  const nextSignature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, generated.privateKey, payload);
+  const transition: PluginKeyTransition = {
+    sequence,
+    previousKey,
+    previousKeyFingerprint,
+    nextKey,
+    nextKeyFingerprint,
+    previousSignature: base64UrlEncode(new Uint8Array(previousSignature)),
+    nextSignature: base64UrlEncode(new Uint8Array(nextSignature))
+  };
+  const keyTransitions = [...existing, transition];
+  if (!await verifyPluginKeyTransitions(keyTransitions, nextKeyFingerprint)) throw new Error("invalid_signature");
+  const privateJwk = await crypto.subtle.exportKey("jwk", generated.privateKey);
+  const privateKey = await crypto.subtle.importKey("jwk", privateJwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  return { publicKey: nextKey, privateKey, keyFingerprint: nextKeyFingerprint, keyTransitions };
 }
 
 export async function pluginKeyFingerprint(key: PluginPublicKey): Promise<string> {
   return sha256(canonicalStringify(pluginPublicKey(key)));
+}
+
+export async function verifyPluginKeyTransitions(value: unknown, expectedFinalFingerprint: string): Promise<VerifiedPluginKeyTransition[] | undefined> {
+  try {
+    if (!Array.isArray(value) || value.length < 1 || value.length > PLUGIN_MAX_KEY_TRANSITIONS || !CHECKSUM.test(expectedFinalFingerprint)) return;
+    const verified: VerifiedPluginKeyTransition[] = [];
+    const fingerprints = new Set<string>();
+    let expectedPreviousFingerprint: string | undefined;
+    for (let index = 0; index < value.length; index += 1) {
+      const entry = value[index];
+      if (!strictRecord(entry, ["sequence", "previousKey", "previousKeyFingerprint", "nextKey", "nextKeyFingerprint", "previousSignature", "nextSignature"])) return;
+      if (entry.sequence !== index + 1 || typeof entry.previousKeyFingerprint !== "string" || !CHECKSUM.test(entry.previousKeyFingerprint) || typeof entry.nextKeyFingerprint !== "string" || !CHECKSUM.test(entry.nextKeyFingerprint)) return;
+      if (typeof entry.previousSignature !== "string" || typeof entry.nextSignature !== "string" || !BASE64URL.test(entry.previousSignature) || !BASE64URL.test(entry.nextSignature)) return;
+      const previousKey = pluginPublicKey(entry.previousKey);
+      const nextKey = pluginPublicKey(entry.nextKey);
+      if (await pluginKeyFingerprint(previousKey) !== entry.previousKeyFingerprint || await pluginKeyFingerprint(nextKey) !== entry.nextKeyFingerprint) return;
+      if (entry.previousKeyFingerprint === entry.nextKeyFingerprint || expectedPreviousFingerprint && entry.previousKeyFingerprint !== expectedPreviousFingerprint) return;
+      if (index === 0) fingerprints.add(entry.previousKeyFingerprint);
+      if (fingerprints.has(entry.nextKeyFingerprint)) return;
+      fingerprints.add(entry.nextKeyFingerprint);
+      const payload = keyTransitionPayload({ sequence: entry.sequence, previousKey, previousKeyFingerprint: entry.previousKeyFingerprint, nextKey, nextKeyFingerprint: entry.nextKeyFingerprint });
+      if (!await verifyRawSignature(previousKey, entry.previousSignature, payload) || !await verifyRawSignature(nextKey, entry.nextSignature, payload)) return;
+      verified.push({ sequence: entry.sequence, previousKeyFingerprint: entry.previousKeyFingerprint, nextKeyFingerprint: entry.nextKeyFingerprint });
+      expectedPreviousFingerprint = entry.nextKeyFingerprint;
+    }
+    if (expectedPreviousFingerprint !== expectedFinalFingerprint) return;
+    return verified;
+  } catch {
+    return;
+  }
 }
 
 async function verifySignature(value: unknown, checksum: string): Promise<VerifiedPluginSignature | undefined> {
@@ -192,14 +301,18 @@ async function verifySignature(value: unknown, checksum: string): Promise<Verifi
     if (value.scheme !== PLUGIN_SIGNATURE_SCHEME || typeof value.keyFingerprint !== "string" || !CHECKSUM.test(value.keyFingerprint) || typeof value.value !== "string" || !BASE64URL.test(value.value)) return;
     const key = pluginPublicKey(value.key);
     if (await pluginKeyFingerprint(key) !== value.keyFingerprint) return;
-    const signature = base64UrlDecode(value.value);
-    if (signature.byteLength !== 64) return;
-    const cryptoKey = await crypto.subtle.importKey("jwk", { ...key, ext: true, key_ops: ["verify"] }, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
-    if (!await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, cryptoKey, signature, signaturePayload(checksum))) return;
+    if (!await verifyRawSignature(key, value.value, signaturePayload(checksum))) return;
     return { scheme: PLUGIN_SIGNATURE_SCHEME, key, keyFingerprint: value.keyFingerprint };
   } catch {
     return;
   }
+}
+
+async function verifyRawSignature(key: PluginPublicKey, value: string, payload: Uint8Array<ArrayBuffer>) {
+  const signature = base64UrlDecode(value);
+  if (signature.byteLength !== 64) return false;
+  const cryptoKey = await crypto.subtle.importKey("jwk", { ...key, ext: true, key_ops: ["verify"] }, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+  return crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, cryptoKey, signature, payload);
 }
 
 function pluginPublicKey(value: unknown): PluginPublicKey {
@@ -221,6 +334,10 @@ function signaturePayload(checksum: string) {
   return new TextEncoder().encode(`${SIGNATURE_CONTEXT}${checksum}`);
 }
 
+function keyTransitionPayload(value: { sequence: number; previousKey: PluginPublicKey; previousKeyFingerprint: string; nextKey: PluginPublicKey; nextKeyFingerprint: string }) {
+  return new TextEncoder().encode(`${KEY_TRANSITION_CONTEXT}${canonicalStringify(value)}`);
+}
+
 function boundedEncoding(file: PluginFile) {
   const encoded = JSON.stringify(file, null, 2);
   if (new TextEncoder().encode(encoded).byteLength > PLUGIN_MAX_BYTES) throw new Error("too_large");
@@ -235,7 +352,10 @@ function base64UrlEncode(value: Uint8Array) {
 
 function base64UrlDecode(value: string) {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+  const binary = atob(padded);
+  const decoded = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) decoded[index] = binary.charCodeAt(index);
+  return decoded;
 }
 
 function parseManifest(value: unknown, maxSchema: number): ManifestValidationResult {

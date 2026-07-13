@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { createPluginSigningKeyPair, encodeSignedPluginFile, parsePluginFile, type PluginManifest } from "@saltanatbotv2/plugin-core";
+import { createPluginSigningKeyPair, encodeSignedPluginFile, parsePluginFile, rotatePluginSigningKeyPair, type PluginManifest } from "@saltanatbotv2/plugin-core";
 import { readFile } from "node:fs/promises";
 import { installMarketSocketMock, mockCandleHistory, mockCandles, mockChartCandles } from "./support/marketMocks";
 
@@ -1005,6 +1005,22 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   await expect(restoredLibrary).toContainText("E2E plugin overlay", { timeout: 20_000 });
   await expect(restoredLibrary).toContainText("E2E plugin strategy");
 
+  const authenticatedSigner = await rotatePluginSigningKeyPair(signer);
+  const authenticatedUpdate = await encodeSignedPluginFile({ ...plugin, version: "1.1.0" }, authenticatedSigner);
+  await page.getByLabel("Import plugin package").setInputFiles({
+    name: "e2e-authenticated-update.saltanat-plugin",
+    mimeType: "application/json",
+    buffer: Buffer.from(authenticatedUpdate)
+  });
+  const authenticatedReview = page.getByRole("dialog", { name: "Review plugin package" });
+  await expect(authenticatedReview).toContainText("Newer package version detected");
+  await expect(authenticatedReview).toContainText("Authenticated key rotation · old and new keys both signed the transition chain.");
+  await expect(authenticatedReview.getByLabel("I verified this signer transition independently and accept the new package identity.")).toHaveCount(0);
+  await expect(authenticatedReview.getByRole("button", { name: "Import reviewed plugin" })).toBeEnabled();
+  await expectNoAxeViolations(page);
+  await page.keyboard.press("Escape");
+  await expect(authenticatedReview).toBeHidden();
+
   const replacementSigner = await createPluginSigningKeyPair();
   const riskyReplacement = await encodeSignedPluginFile({ ...plugin, version: "0.9.0" }, replacementSigner);
   await page.getByLabel("Import plugin package").setInputFiles({
@@ -1089,6 +1105,16 @@ test("exports selected local artifacts as a verified plugin package", { tag: "@s
   await dialog.getByRole("button", { name: "Create signing identity", exact: true }).click();
   await expect(dialog.getByLabel("Sign this package with the local identity")).toBeChecked();
   await expect(dialog.locator(".plugin-signing-identity code")).toHaveText(/^[a-f0-9]{64}$/);
+  const originalFingerprint = await dialog.locator(".plugin-signing-identity code").innerText();
+  await expect(dialog).toContainText("Authenticated key rotations: 0/8");
+  await dialog.getByRole("button", { name: "Rotate signing key", exact: true }).click();
+  const confirmRotation = dialog.getByRole("button", { name: "Rotate key now", exact: true });
+  await expect(confirmRotation).toBeDisabled();
+  await dialog.getByLabel("I understand the old private key cannot be recovered after this rotation.").check();
+  await expect(confirmRotation).toBeEnabled();
+  await confirmRotation.click();
+  await expect(dialog).toContainText("Authenticated key rotations: 1/8");
+  await expect(dialog.locator(".plugin-signing-identity code")).not.toHaveText(originalFingerprint);
   await expectNoAxeViolations(page);
 
   await dialog.getByLabel("Package name").fill("E2E local pack");
@@ -1108,11 +1134,14 @@ test("exports selected local artifacts as a verified plugin package", { tag: "@s
   expect(parsed.manifest.permissions).toContain("market.read");
   expect(parsed.signature?.scheme).toBe("ECDSA-P256-SHA256");
   expect(parsed.signature?.keyFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  expect(parsed.signature?.keyTransitions).toHaveLength(1);
+  expect(parsed.signature?.keyTransitions?.[0]).toMatchObject({ sequence: 1, previousKeyFingerprint: originalFingerprint, nextKeyFingerprint: parsed.signature?.keyFingerprint });
   await expect(library.getByRole("status")).toContainText("Plugin exported: E2E local pack");
 
   await library.getByRole("button", { name: "Build plugin", exact: true }).click();
   const restoredIdentity = page.getByRole("dialog", { name: "Export plugin package" });
   await expect(restoredIdentity.locator(".plugin-signing-identity code")).toHaveText(parsed.signature!.keyFingerprint);
+  await expect(restoredIdentity).toContainText("Authenticated key rotations: 1/8");
   await restoredIdentity.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 

@@ -10,6 +10,20 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Authenticated plugin signer rotation — 2026-07-13
+
+- [x] Define strict version-3 envelopes with at most eight sequential key transitions.
+- [x] Require old-key and new-key ECDSA signatures over every domain-separated transition statement.
+- [x] Reject missing/reordered steps, repeated keys, altered proofs and chains whose endpoint differs from the package signer.
+- [x] Rotate the device-local identity only after destructive confirmation and atomically persist the new non-extractable key plus proof chain.
+- [x] Serialize identity mutations with a same-origin exclusive Web Lock and reject stale-fingerprint rotation attempts.
+- [x] Recognize verified continuity from any installed chain key without silently trusting the new fingerprint.
+- [x] Preserve rotation provenance in installed artifacts/catalog and document compromise-recovery limitations in EN/RU/KK.
+
+Verification covers one- and two-step rotation, dual-signature tampering, missing intermediates,
+mismatched private keys, strict v2/v3 fields, update classification and production browser
+create/rotate/export/parse/IndexedDB-reload plus authenticated-update review.
+
 ### Plugin update and signer-continuity review — 2026-07-13
 
 - [x] Compare repeated package IDs against their highest installed semantic version.

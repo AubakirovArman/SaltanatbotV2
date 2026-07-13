@@ -14,6 +14,7 @@ export interface InstalledPlugin {
   checksum: string;
   signatureScheme?: "ECDSA-P256-SHA256";
   signerFingerprint?: string;
+  signerPreviousFingerprints?: string[];
   signerTrustedAtImport?: boolean;
   importedAt: number;
   artifacts: StrategyArtifact[];
@@ -29,7 +30,7 @@ export interface PluginRemovalAnalysis {
 }
 
 export type PluginVersionTransition = "new" | "upgrade" | "same_version" | "downgrade" | "duplicate";
-export type PluginSignerTransition = "new_signed" | "new_unsigned" | "same" | "changed" | "introduced" | "removed" | "unsigned";
+export type PluginSignerTransition = "new_signed" | "new_unsigned" | "same" | "rotated" | "changed" | "introduced" | "removed" | "unsigned";
 
 export interface PluginImportAnalysis {
   reference?: InstalledPlugin;
@@ -66,6 +67,9 @@ export function installedPlugins(artifacts: StrategyArtifact[]): InstalledPlugin
       checksum: provenance.manifestHash!,
       signatureScheme: provenance.pluginSignatureScheme,
       signerFingerprint: provenance.pluginSignerFingerprint,
+      signerPreviousFingerprints: Array.isArray(provenance.pluginSignerPreviousFingerprints)
+        ? provenance.pluginSignerPreviousFingerprints.filter((fingerprint) => /^[a-f0-9]{64}$/.test(fingerprint)).slice(0, 8)
+        : undefined,
       signerTrustedAtImport: provenance.pluginSignerTrustedAtImport,
       importedAt: provenance.importedAt ?? 0,
       artifacts: [...members].sort((left, right) => compareText(left.name, right.name)),
@@ -108,7 +112,7 @@ export function analyzePluginImport(artifacts: StrategyArtifact[], plugin: Verif
   const previousSigner = reference.signerFingerprint;
   const nextSigner = plugin.signature?.keyFingerprint;
   const signerTransition: PluginSignerTransition = previousSigner
-    ? nextSigner ? previousSigner === nextSigner ? "same" : "changed" : "removed"
+    ? nextSigner ? previousSigner === nextSigner ? "same" : plugin.signature?.keyTransitions?.some((transition) => transition.previousKeyFingerprint === previousSigner) ? "rotated" : "changed" : "removed"
     : nextSigner ? "introduced" : "unsigned";
   return {
     reference,

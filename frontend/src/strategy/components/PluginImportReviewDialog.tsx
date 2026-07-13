@@ -65,6 +65,6 @@ function versionTransitionKey(transition: PluginVersionTransition) {
 }
 
 function signerTransitionKey(transition: PluginSignerTransition) {
-  const keys = { new_signed: "newPluginInstallation", new_unsigned: "newPluginInstallation", same: "pluginSignerSame", changed: "pluginSignerChanged", introduced: "pluginSignatureIntroduced", removed: "pluginSignatureRemoved", unsigned: "pluginRemainsUnsigned" } as const;
+  const keys = { new_signed: "newPluginInstallation", new_unsigned: "newPluginInstallation", same: "pluginSignerSame", rotated: "authenticatedSignerRotation", changed: "pluginSignerChanged", introduced: "pluginSignatureIntroduced", removed: "pluginSignatureRemoved", unsigned: "pluginRemainsUnsigned" } as const;
   return keys[transition];
 }

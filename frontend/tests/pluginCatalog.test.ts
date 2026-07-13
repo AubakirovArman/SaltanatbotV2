@@ -8,7 +8,7 @@ describe("installed plugin catalog", () => {
     const artifacts = [pluginArtifact("indicator:a", "Alpha"), pluginArtifact("strategy:b", "Beta", { dependencies: ["indicator:a"], history: [{ version: 1 } as never] })];
     const catalog = installedPlugins(artifacts);
     expect(catalog).toHaveLength(1);
-    expect(catalog[0]).toMatchObject({ id: "community.pack", name: "Community pack", version: "1.2.0", publisher: "Publisher", license: "MIT", permissions: ["market.read", "chart.overlay", "trade.intent"], signatureScheme: "ECDSA-P256-SHA256", signerFingerprint: "f".repeat(64), signerTrustedAtImport: true, modifiedArtifacts: 1 });
+    expect(catalog[0]).toMatchObject({ id: "community.pack", name: "Community pack", version: "1.2.0", publisher: "Publisher", license: "MIT", permissions: ["market.read", "chart.overlay", "trade.intent"], signatureScheme: "ECDSA-P256-SHA256", signerFingerprint: "f".repeat(64), signerPreviousFingerprints: ["e".repeat(64)], signerTrustedAtImport: true, modifiedArtifacts: 1 });
     expect(catalog[0].artifacts.map((artifact) => artifact.name)).toEqual(["Alpha", "Beta"]);
   });
 
@@ -27,6 +27,11 @@ describe("installed plugin catalog", () => {
   it("requires explicit acknowledgement for downgrade and signer replacement", () => {
     const analysis = analyzePluginImport([pluginArtifact("indicator:a", "Alpha")], verifiedPlugin({ version: "1.1.0", fingerprint: "e".repeat(64) }));
     expect(analysis).toMatchObject({ versionTransition: "downgrade", signerTransition: "changed", requiresVersionAcknowledgement: true, requiresSignerAcknowledgement: true });
+  });
+
+  it("accepts a verified rotation chain from the installed signer without a signer acknowledgement", () => {
+    const analysis = analyzePluginImport([pluginArtifact("indicator:a", "Alpha")], verifiedPlugin({ version: "1.3.0", fingerprint: "e".repeat(64), previousFingerprint: "f".repeat(64) }));
+    expect(analysis).toMatchObject({ versionTransition: "upgrade", signerTransition: "rotated", requiresVersionAcknowledgement: false, requiresSignerAcknowledgement: false });
   });
 
   it("distinguishes exact duplicates, unsigned removal and first installs", () => {
@@ -74,6 +79,7 @@ function pluginArtifact(id: string, name: string, overrides: Partial<StrategyArt
       pluginPermissions: ["market.read", "chart.overlay", "trade.intent"],
       pluginSignatureScheme: "ECDSA-P256-SHA256",
       pluginSignerFingerprint: "f".repeat(64),
+      pluginSignerPreviousFingerprints: ["e".repeat(64)],
       pluginSignerTrustedAtImport: true,
       manifestHash: "a".repeat(64)
     },
@@ -85,7 +91,7 @@ function artifact(id: string, name: string, overrides: Partial<StrategyArtifact>
   return { id, kind: id.startsWith("indicator:") ? "indicator" : "strategy", name, description: "Test", xml: '<xml><block type="strategy_start" /></xml>', createdAt: 1, updatedAt: 1, ...overrides };
 }
 
-function verifiedPlugin(options: { version?: string; checksum?: string; fingerprint?: string; signature?: boolean } = {}): VerifiedPlugin {
+function verifiedPlugin(options: { version?: string; checksum?: string; fingerprint?: string; previousFingerprint?: string; signature?: boolean } = {}): VerifiedPlugin {
   const fingerprint = options.fingerprint ?? "f".repeat(64);
   return {
     checksum: options.checksum ?? "b".repeat(64),
@@ -100,6 +106,6 @@ function verifiedPlugin(options: { version?: string; checksum?: string; fingerpr
       permissions: ["market.read", "chart.overlay"],
       artifacts: [{ id: "overlay", kind: "indicator", name: "Overlay", description: "Test", xml: '<xml><block type="strategy_start" /></xml>', schemaVersion: 2, semanticVersion: "1.0.0", parameters: [], dependencies: [] }]
     },
-    signature: options.signature === false ? undefined : { scheme: "ECDSA-P256-SHA256", key: { kty: "EC", crv: "P-256", x: "x", y: "y" }, keyFingerprint: fingerprint }
+    signature: options.signature === false ? undefined : { scheme: "ECDSA-P256-SHA256", key: { kty: "EC", crv: "P-256", x: "x", y: "y" }, keyFingerprint: fingerprint, keyTransitions: options.previousFingerprint ? [{ sequence: 1, previousKeyFingerprint: options.previousFingerprint, nextKeyFingerprint: fingerprint }] : undefined }
   };
 }

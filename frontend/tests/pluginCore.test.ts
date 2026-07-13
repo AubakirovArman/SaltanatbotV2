@@ -4,8 +4,10 @@ import {
   encodePluginFile,
   encodeSignedPluginFile,
   parsePluginFile,
+  rotatePluginSigningKeyPair,
   type PluginFile,
   type PluginManifest,
+  type RotatedPluginFile,
   type SignedPluginFile
 } from "@saltanatbotv2/plugin-core";
 
@@ -122,6 +124,64 @@ describe("declarative plugin envelope", () => {
     const signed = JSON.parse(await encodeSignedPluginFile(manifest(), signer)) as SignedPluginFile & { signature?: SignedPluginFile["signature"] };
     signed.signature = undefined;
     expect(await parsePluginFile(JSON.stringify(signed))).toEqual({ ok: false, code: "invalid_envelope" });
+  });
+
+  it("round-trips a dual-signed key rotation chain in strict v3", async () => {
+    const original = await createPluginSigningKeyPair();
+    const rotated = await rotatePluginSigningKeyPair(original);
+    expect(rotated.privateKey.extractable).toBe(false);
+    expect(rotated.keyFingerprint).not.toBe(original.keyFingerprint);
+    const encoded = await encodeSignedPluginFile({ ...manifest(), version: "1.3.0" }, rotated);
+    const file = JSON.parse(encoded) as RotatedPluginFile;
+    expect(file.version).toBe(3);
+    expect(file.keyTransitions).toHaveLength(1);
+    expect(file.keyTransitions[0]).toMatchObject({ sequence: 1, previousKeyFingerprint: original.keyFingerprint, nextKeyFingerprint: rotated.keyFingerprint });
+    const result = await parsePluginFile(encoded);
+    expect(result).toMatchObject({ ok: true, signature: { keyFingerprint: rotated.keyFingerprint, keyTransitions: [{ sequence: 1, previousKeyFingerprint: original.keyFingerprint, nextKeyFingerprint: rotated.keyFingerprint }] } });
+  });
+
+  it("verifies every intermediate transition and both signatures", async () => {
+    const original = await createPluginSigningKeyPair();
+    const first = await rotatePluginSigningKeyPair(original);
+    const second = await rotatePluginSigningKeyPair(first);
+    const encoded = await encodeSignedPluginFile({ ...manifest(), version: "1.4.0" }, second);
+    const result = await parsePluginFile(encoded);
+    expect(result).toMatchObject({ ok: true, signature: { keyFingerprint: second.keyFingerprint, keyTransitions: [{ sequence: 1 }, { sequence: 2 }] } });
+
+    const tampered = JSON.parse(encoded) as RotatedPluginFile;
+    tampered.keyTransitions[0].nextSignature = `${tampered.keyTransitions[0].nextSignature[0] === "A" ? "B" : "A"}${tampered.keyTransitions[0].nextSignature.slice(1)}`;
+    expect(await parsePluginFile(JSON.stringify(tampered))).toEqual({ ok: false, code: "invalid_signature" });
+
+    const missingIntermediate = JSON.parse(encoded) as RotatedPluginFile;
+    missingIntermediate.keyTransitions.shift();
+    expect(await parsePluginFile(JSON.stringify(missingIntermediate))).toEqual({ ok: false, code: "invalid_signature" });
+
+    const endpointMismatch = JSON.parse(encoded) as RotatedPluginFile;
+    const originalEnvelope = JSON.parse(await encodeSignedPluginFile({ ...manifest(), version: "1.4.0" }, original)) as SignedPluginFile;
+    endpointMismatch.signature = originalEnvelope.signature;
+    expect(await parsePluginFile(JSON.stringify(endpointMismatch))).toEqual({ ok: false, code: "invalid_signature" });
+  });
+
+  it("rejects rotation with a mismatched previous private key and strict version fields", async () => {
+    const original = await createPluginSigningKeyPair();
+    const other = await createPluginSigningKeyPair();
+    await expect(rotatePluginSigningKeyPair({ publicKey: original.publicKey, privateKey: other.privateKey })).rejects.toThrow("invalid_signature");
+
+    const rotated = await rotatePluginSigningKeyPair(original);
+    const v3 = JSON.parse(await encodeSignedPluginFile(manifest(), rotated)) as RotatedPluginFile & { keyTransitions?: RotatedPluginFile["keyTransitions"] };
+    v3.keyTransitions = undefined;
+    expect(await parsePluginFile(JSON.stringify(v3))).toEqual({ ok: false, code: "invalid_envelope" });
+
+    const v2 = JSON.parse(await encodeSignedPluginFile(manifest(), original)) as SignedPluginFile & { keyTransitions?: RotatedPluginFile["keyTransitions"] };
+    v2.keyTransitions = rotated.keyTransitions;
+    expect(await parsePluginFile(JSON.stringify(v2))).toEqual({ ok: false, code: "invalid_envelope" });
+  });
+
+  it("caps complete key history at eight authenticated transitions", async () => {
+    let signer = await createPluginSigningKeyPair();
+    for (let index = 0; index < 8; index += 1) signer = await rotatePluginSigningKeyPair(signer);
+    expect(signer.keyTransitions).toHaveLength(8);
+    await expect(rotatePluginSigningKeyPair(signer)).rejects.toThrow("key_rotation_limit");
   });
 });
 

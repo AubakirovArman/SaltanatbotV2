@@ -233,6 +233,7 @@ export function createPluginArtifacts(
         pluginPermissions: [...manifest.permissions],
         pluginSignatureScheme: signature?.scheme,
         pluginSignerFingerprint: signature?.keyFingerprint,
+        pluginSignerPreviousFingerprints: signature?.keyTransitions?.map((transition) => transition.previousKeyFingerprint),
         pluginSignerTrustedAtImport: signature ? signerTrustedAtImport : undefined,
         manifestHash
       },

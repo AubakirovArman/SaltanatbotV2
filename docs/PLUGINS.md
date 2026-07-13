@@ -56,6 +56,14 @@ The signature covers a domain-separated representation of the manifest checksum.
 added signature fields; version 2 requires the exact supported scheme, a valid P-256 public key,
 matching fingerprint and signature. Unknown envelope/signature fields fail closed.
 
+After an authenticated key rotation, the package uses envelope version `3` and adds a
+`keyTransitions` array. Each transition contains a one-based sequence number, the previous and next
+public keys/fingerprints, and two ECDSA signatures over the same domain-separated canonical
+transition statement: one from the previous private key and one from the next private key. The
+parser requires an unbroken chain starting at sequence 1, rejects repeated keys, verifies both
+signatures at every step and requires the final fingerprint to equal the package signer. The chain
+is capped at eight transitions to bound file size and verification work.
+
 The manifest requires `id`, `name`, semantic `version`, `description`, `license`, `publisher`,
 `minAppVersion`, `permissions` and `artifacts`. Supported permissions are:
 
@@ -93,6 +101,15 @@ in the package or localStorage. Clearing site data loses this identity permanent
 will appear under a different fingerprint. This release intentionally has no private-key export,
 recovery or silent rotation path. An unsigned version-1 export remains available by clearing the
 signing checkbox.
+
+**Rotate signing key** performs an explicit destructive transition. The browser generates a new
+P-256 pair, asks both current and new private keys to sign the transition, commits the new
+non-extractable key and complete proof chain to IndexedDB, then discards the old private key. A
+confirmation checkbox states that the old key cannot be recovered. Future exports automatically use
+version 3 and include the proof chain; the identity panel shows the bounded rotation count.
+Identity creation, rotation and deletion acquire one same-origin exclusive Web Lock before changing
+IndexedDB. Rotation re-reads the active fingerprint while holding that lock, so two tabs cannot
+silently fork or overwrite the identity. Browsers without Web Locks fail the write action closed.
 
 The optional publisher URL must use HTTPS. The builder rejects missing/cyclic dependencies and an
 empty selection before creating a file.
@@ -152,7 +169,9 @@ compares signer continuity and detects a changed key, a newly introduced signatu
 previous signature. A downgrade/duplicate/same-version replacement and every unproven signer
 transition require separate explicit acknowledgements before import is enabled. The candidate still
 becomes a separate local installation, so existing editable artifacts and runtime snapshots are not
-silently overwritten. A changed key is never treated as authenticated rotation in this release.
+silently overwritten. A changed key is treated as authenticated rotation only when the already
+cryptographically verified chain contains the installed reference fingerprint and reaches the new
+package signer. The new fingerprint is not silently pinned as trusted.
 
 ## Installed package catalog
 
@@ -178,8 +197,12 @@ managed from their own surface.
 - A non-extractable browser key reduces accidental export but does not defend against a compromised
   page, malicious extension, browser/OS administrator or same-origin XSS using it as a signing oracle.
 - Local trust is browser-profile state, is not synchronized and is lost when site data is cleared.
-- Key backup, recovery, revocation, rotation statements and a moderated transparency registry are
-  future work; a changed key is shown as a different untrusted fingerprint.
+- Key backup, recovery, independently authenticated revocation and a moderated transparency registry
+  are future work beyond the delivered transition proof; a changed key without that proof is shown
+  as a different untrusted fingerprint.
+- Dual-signed rotation proves that both keys participated. It cannot safely revoke a compromised old
+  key by itself: an attacker controlling that key could also authorize a transition. Compromise
+  recovery still requires an independently authenticated revocation/registry channel.
 
 The implementation follows the Web Crypto ECDSA and `CryptoKey` storage model. Fingerprint checking
 is deliberately separate from signature validity, following the established release-verification
@@ -188,6 +211,8 @@ practice that a fingerprint must be obtained independently:
 - [W3C Web Cryptography API](https://www.w3.org/TR/WebCryptoAPI/)
 - [W3C Web Cryptography Level 2 — CryptoKey serialization](https://www.w3.org/TR/webcrypto-2/)
 - [Apache release verification guidance](https://www.apache.org/info/verification)
+- [The Update Framework — root-key continuity and dual-signed migration](https://theupdateframework.github.io/specification/latest/)
+- [W3C Web Locks API — same-origin exclusive coordination](https://www.w3.org/TR/web-locks/)
 
 ## Deliberately not included
 
