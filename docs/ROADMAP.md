@@ -16,7 +16,7 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 - Versioned Strategy Studio, shared evaluator/backtest cores, reproducible reports, replay, optimizer and walk-forward.
 - Multi-symbol portfolio backtests with one shared capital pool, correlated returns and portfolio-level exposure limits.
 - Modeled portfolio TCA with reconciled commission, configured slippage, funding and per-market/exit-reason attribution.
-- Checksummed local declarative plugin packages with strict permissions, automatic dependency-aware authoring, mandatory pre-import review, an installed-package catalog, dependency-safe uninstall and no arbitrary JavaScript.
+- Checksummed and optionally ECDSA-signed local declarative plugin packages with strict permissions, device-local author identity, explicit fingerprint trust, automatic dependency-aware authoring, mandatory pre-import review, an installed-package catalog, dependency-safe uninstall and no arbitrary JavaScript.
 - Durable order/fill/position/run lifecycle, private streams plus polling, recovery and bot-attributed spot inventory.
 - Professional multi-chart workspaces, pane/scales, drawing management, accessible tables and responsive monitoring.
 - Per-pane IANA time-zone axes with DST-safe chart labels and versioned workspace/session persistence.
@@ -40,7 +40,7 @@ These are not silently marked complete and are not included in the P0/P1/P2 repo
 | Additional exchange adapters | Conformance-tested OKX and later KuCoin/MEXC data/execution adapters | L |
 | Order-book and derivatives data | Depth, tape, funding, open interest and licensed advanced feeds | L–XL |
 | Plugin capability expansion | Additional reviewed declarative extension points beyond editable indicator/strategy packages | L–XL |
-| Signed community packages | Moderated indicator/strategy sharing with permissions and supply-chain policy | XL |
+| Moderated community registry | Signed indicator/strategy discovery, publisher verification, revocation, rotation and supply-chain policy | XL |
 | Optional encrypted sync | User-controlled cross-device strategies and workspace synchronization | XL |
 | Hosted read-only demo | Public deployment of the existing non-mutating demo mode | M, infrastructure |
 | PWA follow-on | The installable network-truth-safe shell is delivered; richer OS integration and optional offline local research artifacts remain | M |

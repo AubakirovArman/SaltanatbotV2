@@ -7,6 +7,10 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ### Declarative plugin foundation
 
+- Added backward-compatible cryptographically signed version-2 plugin envelopes using ECDSA P-256/SHA-256, strict embedded public-key validation, domain-separated signatures and full fingerprint provenance while retaining visibly unsigned version-1 imports/exports.
+- Added an explicitly created device-local signing identity whose private `CryptoKey` is non-extractable and committed to IndexedDB, plus a separate bounded fingerprint trust store with valid/trusted, valid/untrusted and unsigned review/catalog states.
+- Added opt-in trust pinning during mandatory import review, later trust/forget controls, EN/RU/KK safety and recovery limitations, tamper/malformed/mismatched-key tests and a production browser create/sign/download/reload journey.
+- Raised only the measured aggregate JavaScript gzip ceiling from 497 KiB to 502 KiB and CSS from 19 KiB to 20 KiB for WebCrypto signing, IndexedDB identity storage, bounded trust controls and localized signature UI; initial-shell and per-file JavaScript limits are unchanged.
 - Added a persistent installed-plugin catalog with package identity, publisher HTTPS link, license, app compatibility, capabilities, full checksum, artifacts, local modification count and legacy-metadata handling.
 - Added confirmed local uninstall that removes one installation, version history and saved input overrides while blocking removal when external library artifacts depend on package contents.
 - Explicitly keeps running bot and applied-chart snapshots independent from library uninstall, with EN/RU/KK warnings, pure removal-model tests, a production import/catalog/blocker/uninstall/reload journey and a reviewed Strategy Studio visual baseline.

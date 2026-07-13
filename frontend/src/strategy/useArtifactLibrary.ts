@@ -20,6 +20,7 @@ import type { StrategyTemplate } from "./templates";
 import type { PortableStrategyArtifact } from "./strategyFile";
 import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 import { analyzePluginRemoval, removeArtifactScopedValues } from "./pluginCatalog";
+import { isPluginKeyTrusted } from "./pluginTrust";
 
 const ARTIFACT_INPUTS_KEY = "marketforge.artifactInputs.v1";
 
@@ -137,7 +138,7 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
 
   const importPlugin = (input: VerifiedPlugin) => {
     const now = Date.now();
-    const created = createPluginArtifacts(input.manifest, input.checksum, artifacts, now);
+    const created = createPluginArtifacts(input.manifest, input.checksum, artifacts, now, input.signature, input.signature ? isPluginKeyTrusted(input.signature.keyFingerprint) : false);
     if (!created.length) return;
     setArtifacts((current) => [...created, ...current]);
     setActiveArtifactId(created[0].id);

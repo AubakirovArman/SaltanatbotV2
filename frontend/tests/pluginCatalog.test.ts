@@ -7,7 +7,7 @@ describe("installed plugin catalog", () => {
     const artifacts = [pluginArtifact("indicator:a", "Alpha"), pluginArtifact("strategy:b", "Beta", { dependencies: ["indicator:a"], history: [{ version: 1 } as never] })];
     const catalog = installedPlugins(artifacts);
     expect(catalog).toHaveLength(1);
-    expect(catalog[0]).toMatchObject({ id: "community.pack", name: "Community pack", version: "1.2.0", publisher: "Publisher", license: "MIT", permissions: ["market.read", "chart.overlay", "trade.intent"], modifiedArtifacts: 1 });
+    expect(catalog[0]).toMatchObject({ id: "community.pack", name: "Community pack", version: "1.2.0", publisher: "Publisher", license: "MIT", permissions: ["market.read", "chart.overlay", "trade.intent"], signatureScheme: "ECDSA-P256-SHA256", signerFingerprint: "f".repeat(64), signerTrustedAtImport: true, modifiedArtifacts: 1 });
     expect(catalog[0].artifacts.map((artifact) => artifact.name)).toEqual(["Alpha", "Beta"]);
   });
 
@@ -53,6 +53,9 @@ function pluginArtifact(id: string, name: string, overrides: Partial<StrategyArt
       pluginLicense: "MIT",
       pluginMinAppVersion: "0.1.0",
       pluginPermissions: ["market.read", "chart.overlay", "trade.intent"],
+      pluginSignatureScheme: "ECDSA-P256-SHA256",
+      pluginSignerFingerprint: "f".repeat(64),
+      pluginSignerTrustedAtImport: true,
       manifestHash: "a".repeat(64)
     },
     ...overrides

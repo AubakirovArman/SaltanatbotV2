@@ -140,10 +140,16 @@ Mitigations:
 - Self-hosting does not protect a compromised OS, browser extension, administrator or reverse proxy.
 - Local backup files are not encrypted by the application backup tool.
 - Continuous funded exchange soak/mainnet readiness is explicitly deferred and has not been proven.
-- Declarative plugin checksums prove manifest integrity, not publisher identity. Plugin packages
-  cannot contain executable JavaScript or external dependencies, and import never grants network,
-  credential or exchange access. A mandatory manifest/capability/artifact review occurs before the
-  local library changes; users must still inspect and backtest the strategy logic.
+- Declarative plugin checksums prove manifest integrity. Signed version-2 envelopes additionally
+  prove continuity of an ECDSA P-256 key, not the human or organization behind it. Fingerprint trust
+  is an explicit, separate local pin that users must verify through an independent channel. Plugin
+  packages cannot contain executable JavaScript or external dependencies, and import never grants
+  network, credential or exchange access. A mandatory manifest/capability/artifact/signature review
+  occurs before the local library changes; users must still inspect and backtest the strategy logic.
+- The local signing private key is non-extractable and persisted as a `CryptoKey` in IndexedDB. This
+  limits accidental export but does not protect against same-origin XSS, a malicious extension or a
+  compromised browser/OS using the key. Clearing site data destroys the identity; key backup,
+  recovery, revocation and authenticated rotation are not yet provided.
 - The installed-plugin catalog only activates validated HTTPS publisher links. Uninstall requires a
   destructive confirmation and fails closed while external library artifacts depend on package
   contents; it intentionally does not stop independent bot or chart runtime snapshots.

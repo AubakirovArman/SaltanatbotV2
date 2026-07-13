@@ -1,5 +1,7 @@
 export const PLUGIN_FILE_FORMAT = "saltanatbotv2.plugin" as const;
 export const PLUGIN_FILE_VERSION = 1 as const;
+export const PLUGIN_SIGNED_FILE_VERSION = 2 as const;
+export const PLUGIN_SIGNATURE_SCHEME = "ECDSA-P256-SHA256" as const;
 export const PLUGIN_MAX_BYTES = 5_000_000;
 export const PLUGIN_MAX_ARTIFACTS = 25;
 
@@ -40,7 +42,23 @@ export interface PluginManifest {
   artifacts: PluginArtifact[];
 }
 
-export interface PluginFile {
+export interface PluginPublicKey {
+  kty: "EC";
+  crv: "P-256";
+  x: string;
+  y: string;
+}
+
+export interface PluginFileSignature {
+  scheme: typeof PLUGIN_SIGNATURE_SCHEME;
+  key: PluginPublicKey;
+  keyFingerprint: string;
+  value: string;
+}
+
+export type VerifiedPluginSignature = Omit<PluginFileSignature, "value">;
+
+export interface UnsignedPluginFile {
   format: typeof PLUGIN_FILE_FORMAT;
   version: typeof PLUGIN_FILE_VERSION;
   algorithm: "SHA-256";
@@ -48,12 +66,24 @@ export interface PluginFile {
   manifest: PluginManifest;
 }
 
+export interface SignedPluginFile {
+  format: typeof PLUGIN_FILE_FORMAT;
+  version: typeof PLUGIN_SIGNED_FILE_VERSION;
+  algorithm: "SHA-256";
+  checksum: string;
+  signature: PluginFileSignature;
+  manifest: PluginManifest;
+}
+
+export type PluginFile = UnsignedPluginFile | SignedPluginFile;
+
 export type PluginParseErrorCode =
   | "too_large"
   | "invalid_json"
   | "invalid_envelope"
   | "unsupported_version"
   | "checksum_mismatch"
+  | "invalid_signature"
   | "invalid_manifest"
   | "unsupported_permission"
   | "invalid_artifact"
@@ -63,6 +93,7 @@ export type PluginParseErrorCode =
 export interface VerifiedPlugin {
   manifest: PluginManifest;
   checksum: string;
+  signature?: VerifiedPluginSignature;
 }
 
 export type PluginParseResult =
@@ -82,21 +113,32 @@ const PERMISSIONS = new Set<PluginPermission>(["market.read", "chart.overlay", "
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const CHECKSUM = /^[a-f0-9]{64}$/;
+const BASE64URL = /^[A-Za-z0-9_-]+$/;
+const SIGNATURE_CONTEXT = "saltanatbotv2.plugin-signature.v1\n";
 
 /** Parse a strict, checksummed declarative plugin. No executable JavaScript is accepted. */
 export async function parsePluginFile(raw: string, options: ParsePluginOptions = {}): Promise<PluginParseResult> {
   if (new TextEncoder().encode(raw).byteLength > PLUGIN_MAX_BYTES) return failure("too_large");
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return failure("invalid_json"); }
-  if (!strictRecord(parsed, ["format", "version", "algorithm", "checksum", "manifest"])) return failure("invalid_envelope");
-  if (parsed.format !== PLUGIN_FILE_FORMAT || parsed.algorithm !== "SHA-256" || typeof parsed.checksum !== "string" || !CHECKSUM.test(parsed.checksum)) return failure("invalid_envelope");
-  if (parsed.version !== PLUGIN_FILE_VERSION) return failure("unsupported_version");
-  const manifestResult = parseManifest(parsed.manifest, options.maxArtifactSchemaVersion ?? 2);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return failure("invalid_envelope");
+  const envelope = parsed as Record<string, unknown>;
+  if (envelope.version === PLUGIN_FILE_VERSION) {
+    if (!strictRecord(envelope, ["format", "version", "algorithm", "checksum", "manifest"])) return failure("invalid_envelope");
+  } else if (envelope.version === PLUGIN_SIGNED_FILE_VERSION) {
+    if (!strictRecord(envelope, ["format", "version", "algorithm", "checksum", "signature", "manifest"])) return failure("invalid_envelope");
+  } else {
+    return failure("unsupported_version");
+  }
+  if (envelope.format !== PLUGIN_FILE_FORMAT || envelope.algorithm !== "SHA-256" || typeof envelope.checksum !== "string" || !CHECKSUM.test(envelope.checksum)) return failure("invalid_envelope");
+  const manifestResult = parseManifest(envelope.manifest, options.maxArtifactSchemaVersion ?? 2);
   if (!manifestResult.ok) return manifestResult;
-  const checksum = await sha256(canonicalStringify(parsed.manifest));
-  if (checksum !== parsed.checksum) return failure("checksum_mismatch");
+  const checksum = await sha256(canonicalStringify(envelope.manifest));
+  if (checksum !== envelope.checksum) return failure("checksum_mismatch");
+  const signature = envelope.version === PLUGIN_SIGNED_FILE_VERSION ? await verifySignature(envelope.signature, checksum) : undefined;
+  if (envelope.version === PLUGIN_SIGNED_FILE_VERSION && !signature) return failure("invalid_signature");
   if (options.appVersion && compareSemver(manifestResult.manifest.minAppVersion, options.appVersion) > 0) return failure("incompatible_app");
-  return { ok: true, manifest: manifestResult.manifest, checksum };
+  return { ok: true, manifest: manifestResult.manifest, checksum, signature };
 }
 
 export async function encodePluginFile(manifest: PluginManifest): Promise<string> {
@@ -109,9 +151,91 @@ export async function encodePluginFile(manifest: PluginManifest): Promise<string
     checksum: await sha256(canonicalStringify(validated.manifest)),
     manifest: validated.manifest
   };
+  return boundedEncoding(file);
+}
+
+export async function encodeSignedPluginFile(manifest: PluginManifest, signer: { publicKey: PluginPublicKey; privateKey: CryptoKey }): Promise<string> {
+  const validated = parseManifest(manifest, Number.MAX_SAFE_INTEGER);
+  if (!validated.ok) throw new Error(validated.code);
+  const publicKey = pluginPublicKey(signer.publicKey);
+  const checksum = await sha256(canonicalStringify(validated.manifest));
+  const keyFingerprint = await pluginKeyFingerprint(publicKey);
+  const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, signer.privateKey, signaturePayload(checksum));
+  const fileSignature: PluginFileSignature = { scheme: PLUGIN_SIGNATURE_SCHEME, key: publicKey, keyFingerprint, value: base64UrlEncode(new Uint8Array(signature)) };
+  if (!await verifySignature(fileSignature, checksum)) throw new Error("invalid_signature");
+  const file: SignedPluginFile = {
+    format: PLUGIN_FILE_FORMAT,
+    version: PLUGIN_SIGNED_FILE_VERSION,
+    algorithm: "SHA-256",
+    checksum,
+    signature: fileSignature,
+    manifest: validated.manifest
+  };
+  return boundedEncoding(file);
+}
+
+export async function createPluginSigningKeyPair(): Promise<{ publicKey: PluginPublicKey; privateKey: CryptoKey; keyFingerprint: string }> {
+  const generated = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const publicKey = pluginPublicKeyFromJwk(await crypto.subtle.exportKey("jwk", generated.publicKey));
+  const privateJwk = await crypto.subtle.exportKey("jwk", generated.privateKey);
+  const privateKey = await crypto.subtle.importKey("jwk", privateJwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  return { publicKey, privateKey, keyFingerprint: await pluginKeyFingerprint(publicKey) };
+}
+
+export async function pluginKeyFingerprint(key: PluginPublicKey): Promise<string> {
+  return sha256(canonicalStringify(pluginPublicKey(key)));
+}
+
+async function verifySignature(value: unknown, checksum: string): Promise<VerifiedPluginSignature | undefined> {
+  try {
+    if (!strictRecord(value, ["scheme", "key", "keyFingerprint", "value"])) return;
+    if (value.scheme !== PLUGIN_SIGNATURE_SCHEME || typeof value.keyFingerprint !== "string" || !CHECKSUM.test(value.keyFingerprint) || typeof value.value !== "string" || !BASE64URL.test(value.value)) return;
+    const key = pluginPublicKey(value.key);
+    if (await pluginKeyFingerprint(key) !== value.keyFingerprint) return;
+    const signature = base64UrlDecode(value.value);
+    if (signature.byteLength !== 64) return;
+    const cryptoKey = await crypto.subtle.importKey("jwk", { ...key, ext: true, key_ops: ["verify"] }, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    if (!await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, cryptoKey, signature, signaturePayload(checksum))) return;
+    return { scheme: PLUGIN_SIGNATURE_SCHEME, key, keyFingerprint: value.keyFingerprint };
+  } catch {
+    return;
+  }
+}
+
+function pluginPublicKey(value: unknown): PluginPublicKey {
+  if (!strictRecord(value, ["kty", "crv", "x", "y"]) || value.kty !== "EC" || value.crv !== "P-256" || typeof value.x !== "string" || typeof value.y !== "string") throw new Error("invalid_signature");
+  return validatedPluginPublicKey(value.x, value.y);
+}
+
+function pluginPublicKeyFromJwk(value: JsonWebKey) {
+  if (value.kty !== "EC" || value.crv !== "P-256" || typeof value.x !== "string" || typeof value.y !== "string") throw new Error("invalid_signature");
+  return validatedPluginPublicKey(value.x, value.y);
+}
+
+function validatedPluginPublicKey(x: string, y: string): PluginPublicKey {
+  if (!BASE64URL.test(x) || !BASE64URL.test(y) || base64UrlDecode(x).byteLength !== 32 || base64UrlDecode(y).byteLength !== 32) throw new Error("invalid_signature");
+  return { kty: "EC", crv: "P-256", x, y };
+}
+
+function signaturePayload(checksum: string) {
+  return new TextEncoder().encode(`${SIGNATURE_CONTEXT}${checksum}`);
+}
+
+function boundedEncoding(file: PluginFile) {
   const encoded = JSON.stringify(file, null, 2);
   if (new TextEncoder().encode(encoded).byteLength > PLUGIN_MAX_BYTES) throw new Error("too_large");
   return encoded;
+}
+
+function base64UrlEncode(value: Uint8Array) {
+  let binary = "";
+  for (const byte of value) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value: string) {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
 }
 
 function parseManifest(value: unknown, maxSchema: number): ManifestValidationResult {

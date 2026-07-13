@@ -64,6 +64,9 @@ export interface StrategyArtifact {
     pluginLicense?: string;
     pluginMinAppVersion?: string;
     pluginPermissions?: PluginPermission[];
+    pluginSignatureScheme?: "ECDSA-P256-SHA256";
+    pluginSignerFingerprint?: string;
+    pluginSignerTrustedAtImport?: boolean;
     manifestHash?: string;
   };
   createdAt: number;

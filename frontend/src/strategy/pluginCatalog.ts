@@ -12,6 +12,9 @@ export interface InstalledPlugin {
   minAppVersion?: string;
   permissions: PluginPermission[];
   checksum: string;
+  signatureScheme?: "ECDSA-P256-SHA256";
+  signerFingerprint?: string;
+  signerTrustedAtImport?: boolean;
   importedAt: number;
   artifacts: StrategyArtifact[];
   modifiedArtifacts: number;
@@ -49,6 +52,9 @@ export function installedPlugins(artifacts: StrategyArtifact[]): InstalledPlugin
       minAppVersion: provenance.pluginMinAppVersion,
       permissions: provenance.pluginPermissions ? [...provenance.pluginPermissions] : [],
       checksum: provenance.manifestHash!,
+      signatureScheme: provenance.pluginSignatureScheme,
+      signerFingerprint: provenance.pluginSignerFingerprint,
+      signerTrustedAtImport: provenance.pluginSignerTrustedAtImport,
       importedAt: provenance.importedAt ?? 0,
       artifacts: [...members].sort((left, right) => compareText(left.name, right.name)),
       modifiedArtifacts: members.filter((artifact) => (artifact.history?.length ?? 0) > 0).length

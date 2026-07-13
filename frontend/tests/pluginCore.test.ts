@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  createPluginSigningKeyPair,
   encodePluginFile,
+  encodeSignedPluginFile,
   parsePluginFile,
   type PluginFile,
-  type PluginManifest
+  type PluginManifest,
+  type SignedPluginFile
 } from "@saltanatbotv2/plugin-core";
 
 describe("declarative plugin envelope", () => {
@@ -86,6 +89,39 @@ describe("declarative plugin envelope", () => {
       ...manifest(),
       artifacts: Array.from({ length: 4 }, (_, index) => ({ ...manifest().artifacts[0], id: `large-${index}`, xml: largeXml }))
     })).rejects.toThrow("too_large");
+  });
+
+  it("round-trips a signed v2 package with a non-extractable signing key", async () => {
+    const signer = await createPluginSigningKeyPair();
+    expect(signer.privateKey.extractable).toBe(false);
+    expect(signer.keyFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    const result = await parsePluginFile(await encodeSignedPluginFile(manifest(), signer));
+    expect(result).toMatchObject({ ok: true, signature: { scheme: "ECDSA-P256-SHA256", keyFingerprint: signer.keyFingerprint } });
+  });
+
+  it("rejects signature tampering, malformed keys and mismatched key pairs", async () => {
+    const signer = await createPluginSigningKeyPair();
+    const file = JSON.parse(await encodeSignedPluginFile(manifest(), signer)) as SignedPluginFile;
+    file.signature.value = `${file.signature.value[0] === "A" ? "B" : "A"}${file.signature.value.slice(1)}`;
+    expect(await parsePluginFile(JSON.stringify(file))).toEqual({ ok: false, code: "invalid_signature" });
+
+    const malformed = JSON.parse(await encodeSignedPluginFile(manifest(), signer)) as SignedPluginFile;
+    malformed.signature.key.x = "not-a-p256-coordinate";
+    expect(await parsePluginFile(JSON.stringify(malformed))).toEqual({ ok: false, code: "invalid_signature" });
+
+    const other = await createPluginSigningKeyPair();
+    await expect(encodeSignedPluginFile(manifest(), { publicKey: signer.publicKey, privateKey: other.privateKey })).rejects.toThrow("invalid_signature");
+  });
+
+  it("keeps unsigned v1 strict and requires the signature field for v2", async () => {
+    const unsigned = JSON.parse(await encodePluginFile(manifest())) as Record<string, unknown>;
+    unsigned.signature = {};
+    expect(await parsePluginFile(JSON.stringify(unsigned))).toEqual({ ok: false, code: "invalid_envelope" });
+
+    const signer = await createPluginSigningKeyPair();
+    const signed = JSON.parse(await encodeSignedPluginFile(manifest(), signer)) as SignedPluginFile & { signature?: SignedPluginFile["signature"] };
+    signed.signature = undefined;
+    expect(await parsePluginFile(JSON.stringify(signed))).toEqual({ ok: false, code: "invalid_envelope" });
   });
 });
 

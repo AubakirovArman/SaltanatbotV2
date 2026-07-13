@@ -1,17 +1,20 @@
 import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
-import { ShieldCheck, X } from "lucide-react";
-import { useEffect, useId, useRef } from "react";
+import { BadgeCheck, KeyRound, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
+import { isPluginKeyTrusted } from "../pluginTrust";
 
 export function PluginImportReviewDialog({ locale, plugin, onConfirm, onClose }: {
   locale: Locale;
   plugin: VerifiedPlugin;
-  onConfirm: (plugin: VerifiedPlugin) => void;
+  onConfirm: (plugin: VerifiedPlugin, trustSigner: boolean) => void;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const trustId = useId();
+  const [trustSigner, setTrustSigner] = useState(false);
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -19,6 +22,7 @@ export function PluginImportReviewDialog({ locale, plugin, onConfirm, onClose }:
     return () => { if (dialog?.open) dialog.close(); };
   }, []);
   const manifest = plugin.manifest;
+  const signerTrusted = plugin.signature ? isPluginKeyTrusted(plugin.signature.keyFingerprint) : false;
   return (
     <dialog ref={dialogRef} className="plugin-dialog" aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); onClose(); }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <header><div><h3 id={titleId}>{t("reviewPlugin")}</h3><p>{t("reviewPluginHelp")}</p></div><button type="button" className="icon-button" autoFocus onClick={onClose} aria-label={t("closePluginReview")}><X size={16} aria-hidden="true" /></button></header>
@@ -30,11 +34,12 @@ export function PluginImportReviewDialog({ locale, plugin, onConfirm, onClose }:
           <div><dt>{t("minimumAppVersion")}</dt><dd>{manifest.minAppVersion}</dd></div>
           <div className="plugin-checksum"><dt>{t("manifestChecksum")}</dt><dd><code>{plugin.checksum}</code></dd></div>
         </dl>
+        {plugin.signature ? <div className={`plugin-signature-status ${signerTrusted ? "trusted" : "untrusted"}`}>{signerTrusted ? <BadgeCheck size={18} aria-hidden="true" /> : <KeyRound size={18} aria-hidden="true" />}<div><strong>{signerTrusted ? t("validTrustedSignature") : t("validUntrustedSignature")}</strong><p>{t("signerFingerprint")}</p><code>{plugin.signature.keyFingerprint}</code>{!signerTrusted && <label htmlFor={trustId}><input id={trustId} name="trust-plugin-signer" type="checkbox" checked={trustSigner} onChange={(event) => setTrustSigner(event.target.checked)} />{t("trustSignerAfterImport")}</label>}</div></div> : <div className="plugin-signature-status unsigned"><ShieldAlert size={18} aria-hidden="true" /><div><strong>{t("unsignedPlugin")}</strong><p>{t("unsignedPluginWarning")}</p></div></div>}
         <section><h4>{t("requestedCapabilities")}</h4><ul>{manifest.permissions.map((permission) => <li key={permission}><code>{permission}</code></li>)}</ul></section>
         <section><h4>{t("packageContents")}</h4><ul className="plugin-artifact-review">{manifest.artifacts.map((artifact) => <li key={artifact.id}><strong>{artifact.name}</strong><span>{t(artifact.kind)} · v{artifact.semanticVersion}{artifact.dependencies.length ? ` · ${t("dependencies")} ${artifact.dependencies.length}` : ""}</span><p>{artifact.description}</p></li>)}</ul></section>
         <div className="plugin-trust-warning" role="note"><ShieldCheck size={16} aria-hidden="true" /><span>{t("pluginReviewWarning")}</span></div>
       </div>
-      <footer><button type="button" onClick={onClose}>{t("cancel")}</button><button type="button" className="primary" onClick={() => onConfirm(plugin)}>{t("importReviewedPlugin")}</button></footer>
+      <footer><button type="button" onClick={onClose}>{t("cancel")}</button><button type="button" className="primary" onClick={() => onConfirm(plugin, trustSigner)}>{t("importReviewedPlugin")}</button></footer>
     </dialog>
   );
 }

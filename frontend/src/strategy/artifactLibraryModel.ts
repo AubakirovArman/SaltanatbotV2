@@ -2,7 +2,7 @@ import type { ArtifactRevision, StrategyArtifact, StrategyArtifactKind } from ".
 import { ARTIFACT_SCHEMA_VERSION, createNewArtifact, normalizeArtifact } from "./library";
 import type { StrategyIR } from "./ir";
 import type { StrategyTemplate } from "./templates";
-import type { PluginManifest } from "@saltanatbotv2/plugin-core";
+import type { PluginManifest, VerifiedPluginSignature } from "@saltanatbotv2/plugin-core";
 
 export function dedupeArtifactName(name: string, items: StrategyArtifact[]): string {
   const taken = new Set(items.map((item) => item.name));
@@ -198,7 +198,9 @@ export function createPluginArtifacts(
   manifest: PluginManifest,
   manifestHash: string,
   items: StrategyArtifact[],
-  now = Date.now()
+  now = Date.now(),
+  signature?: VerifiedPluginSignature,
+  signerTrustedAtImport = false
 ): StrategyArtifact[] {
   const taken = new Set(items.map((item) => item.name));
   const ids = new Map(manifest.artifacts.map((artifact, index) => [artifact.id, `${artifact.kind}:plugin-${safeId(manifest.id)}-${safeId(artifact.id)}-${now}-${index}`]));
@@ -229,6 +231,9 @@ export function createPluginArtifacts(
         pluginLicense: manifest.license,
         pluginMinAppVersion: manifest.minAppVersion,
         pluginPermissions: [...manifest.permissions],
+        pluginSignatureScheme: signature?.scheme,
+        pluginSignerFingerprint: signature?.keyFingerprint,
+        pluginSignerTrustedAtImport: signature ? signerTrustedAtImport : undefined,
         manifestHash
       },
       xml: input.xml,

@@ -1,9 +1,10 @@
-import { Boxes, ExternalLink, PackageX, ShieldAlert, X } from "lucide-react";
+import { BadgeCheck, Boxes, ExternalLink, KeyRound, PackageX, ShieldAlert, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { localeTag, type Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
 import type { StrategyArtifact } from "../library";
 import { analyzePluginRemoval, installedPlugins } from "../pluginCatalog";
+import { forgetPluginKey, isPluginKeyTrusted, trustPluginKey } from "../pluginTrust";
 
 export function PluginCatalogDialog({ locale, artifacts, onRemove, onClose }: {
   locale: Locale;
@@ -17,6 +18,7 @@ export function PluginCatalogDialog({ locale, artifacts, onRemove, onClose }: {
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const plugins = useMemo(() => installedPlugins(artifacts), [artifacts]);
   const [pendingKey, setPendingKey] = useState<string>();
+  const [, setTrustRevision] = useState(0);
   const removal = pendingKey ? analyzePluginRemoval(artifacts, pendingKey) : undefined;
   const pending = removal?.installation;
 
@@ -69,6 +71,7 @@ export function PluginCatalogDialog({ locale, artifacts, onRemove, onClose }: {
                 {plugins.map((plugin) => {
                   const publisherUrl = safeHttpsUrl(plugin.publisherUrl);
                   const installedAt = plugin.importedAt ? new Intl.DateTimeFormat(localeTag(locale), { dateStyle: "medium", timeStyle: "short" }).format(plugin.importedAt) : t("legacyMetadata");
+                  const signerTrusted = plugin.signerFingerprint ? isPluginKeyTrusted(plugin.signerFingerprint) : false;
                   return (
                     <li key={plugin.key}>
                       <article className="plugin-catalog-card">
@@ -80,6 +83,7 @@ export function PluginCatalogDialog({ locale, artifacts, onRemove, onClose }: {
                           <div><dt>{t("minimumAppVersion")}</dt><dd>{plugin.minAppVersion ?? t("legacyMetadata")}</dd></div>
                           <div><dt>{t("packageContents")}</dt><dd>{plugin.artifacts.length} {t("artifacts")} · {plugin.modifiedArtifacts} {t("modifiedShort")}</dd></div>
                         </dl>
+                        {plugin.signerFingerprint ? <div className={`plugin-signature-status compact ${signerTrusted ? "trusted" : "untrusted"}`}>{signerTrusted ? <BadgeCheck size={17} aria-hidden="true" /> : <KeyRound size={17} aria-hidden="true" />}<div><strong>{signerTrusted ? t("signedTrustedNow") : t("signedUntrustedNow")}</strong><p>{t("signatureVerifiedAtImport")}{plugin.signerTrustedAtImport ? ` · ${t("trustedAtImport")}` : ""}</p><code>{plugin.signerFingerprint}</code><button type="button" onClick={() => { const changed = signerTrusted ? forgetPluginKey(plugin.signerFingerprint!) : trustPluginKey(plugin.signerFingerprint!, plugin.publisher || plugin.name); if (changed) setTrustRevision((value) => value + 1); }}>{signerTrusted ? t("forgetSignerTrust") : t("trustSignerKey")}</button></div></div> : <div className="plugin-signature-status compact unsigned"><ShieldAlert size={17} aria-hidden="true" /><div><strong>{t("unsignedPlugin")}</strong><p>{t("unsignedCatalogWarning")}</p></div></div>}
                         <div className="plugin-catalog-capabilities"><strong>{t("requestedCapabilities")}</strong>{plugin.permissions.length ? <span>{plugin.permissions.map((permission) => <code key={permission}>{permission}</code>)}</span> : <em>{t("legacyMetadata")}</em>}</div>
                         <details><summary>{t("packageContents")}</summary><ul>{plugin.artifacts.map((artifact) => <li key={artifact.id}><strong>{artifact.name}</strong><span>{t(artifact.kind)} · v{artifact.semanticVersion ?? "0.1.0"}</span></li>)}</ul></details>
                         <div className="plugin-catalog-checksum"><strong>{t("manifestChecksum")}</strong><code>{plugin.checksum}</code></div>

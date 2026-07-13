@@ -10,6 +10,19 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Signed plugin identity and local trust — 2026-07-13
+
+- [x] Add a strict signed envelope version while preserving visibly unsigned version-1 compatibility.
+- [x] Verify ECDSA P-256/SHA-256 signatures, canonical embedded keys and SHA-256 fingerprints before app compatibility or library mutation.
+- [x] Create the signing identity only after explicit user action and persist its private key as a non-extractable IndexedDB `CryptoKey`.
+- [x] Keep bounded fingerprint trust pins separate from package contents and require explicit trust or forget actions.
+- [x] Preserve signature scheme, fingerprint and trust-at-import provenance in installed artifacts and the package catalog.
+- [x] Document identity, trust, loss, XSS and future rotation/recovery boundaries in English, Russian and Kazakh.
+
+Verification covers signed round trips, signature/manifest tampering, malformed keys, mismatched key
+pairs, strict v1/v2 fields, trust-store corruption/deduplication and a production create, sign,
+download, parse, IndexedDB reload, trust, forget and re-trust journey.
+
 ### Installed plugin catalog and safe local uninstall — 2026-07-13
 
 - [x] Reconstruct separate local installations from persisted plugin provenance, including legacy imports.

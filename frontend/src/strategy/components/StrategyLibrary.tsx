@@ -14,6 +14,7 @@ import { PluginImportReviewDialog } from "./PluginImportReviewDialog";
 import { PluginExportDialog } from "./PluginExportDialog";
 import { PluginCatalogDialog } from "./PluginCatalogDialog";
 import { installedPlugins } from "../pluginCatalog";
+import { trustPluginKey } from "../pluginTrust";
 
 export function StrategyLibrary({
   locale,
@@ -183,7 +184,8 @@ export function StrategyLibrary({
           locale={locale}
           plugin={pendingPlugin}
           onClose={() => setPendingPlugin(undefined)}
-          onConfirm={(plugin) => {
+          onConfirm={(plugin, trustSigner) => {
+            if (trustSigner && plugin.signature) trustPluginKey(plugin.signature.keyFingerprint, plugin.manifest.publisher.name);
             onImportPlugin(plugin);
             setImportStatus(`${strategyText(locale, "pluginImported")}: ${plugin.manifest.name} · ${plugin.manifest.artifacts.length} ${strategyText(locale, "artifacts")}`);
             setPendingPlugin(undefined);
@@ -219,6 +221,7 @@ function pluginError(locale: Locale, code: PluginParseErrorCode) {
   const keys: Partial<Record<PluginParseErrorCode, Parameters<typeof strategyText>[1]>> = {
     too_large: "pluginTooLarge",
     checksum_mismatch: "pluginChecksumMismatch",
+    invalid_signature: "pluginSignatureInvalid",
     incompatible_app: "pluginIncompatible",
     unsupported_permission: "pluginPermissionRejected",
     dependency_error: "pluginDependencyRejected"

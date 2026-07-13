@@ -105,7 +105,7 @@ describe("artifact library model", () => {
         { id: "ema", kind: "indicator", name: "Momentum", description: "EMA", xml: "<xml />", schemaVersion: 2, semanticVersion: "1.0.0", parameters: [], dependencies: [] },
         { id: "cross", kind: "strategy", name: "Cross", description: "Cross", xml: "<xml />", schemaVersion: 2, semanticVersion: "1.0.0", parameters: [], dependencies: ["ema"] }
       ]
-    }, "abc123", [artifact()], 300);
+    }, "abc123", [artifact()], 300, { scheme: "ECDSA-P256-SHA256", key: { kty: "EC", crv: "P-256", x: "x", y: "y" }, keyFingerprint: "f".repeat(64) }, true);
 
     expect(created.map((item) => item.name)).toEqual(["Momentum (2)", "Cross"]);
     expect(created[1].dependencies).toEqual([created[0].id]);
@@ -114,6 +114,9 @@ describe("artifact library model", () => {
       pluginId: "community.ema-pack",
       pluginVersion: "1.0.0",
       publisher: "Publisher",
+      pluginSignatureScheme: "ECDSA-P256-SHA256",
+      pluginSignerFingerprint: "f".repeat(64),
+      pluginSignerTrustedAtImport: true,
       manifestHash: "abc123"
     });
   });

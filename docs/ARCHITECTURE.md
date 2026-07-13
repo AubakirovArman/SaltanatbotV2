@@ -15,7 +15,7 @@ The repository is a private npm workspace root that owns two applications and in
 | Strategy core | `@saltanatbotv2/strategy-core` | `packages/strategy-core/` | Canonical IR types, version and shared runtime primitives |
 | Backtest core | `@saltanatbotv2/backtest-core` | `packages/backtest-core/` | Broker, portfolio, warm-up, metrics, provenance and traces |
 | Execution core | `@saltanatbotv2/execution-core` | `packages/execution-core/` | Canonical sizing, slippage, protection and durable order-state rules |
-| Plugin core | `@saltanatbotv2/plugin-core` | `packages/plugin-core/` | Strict declarative plugin envelope, permissions, integrity and dependency validation |
+| Plugin core | `@saltanatbotv2/plugin-core` | `packages/plugin-core/` | Strict declarative envelope, permissions, integrity, ECDSA signatures and dependency validation |
 | Pine compiler | `@saltanatbotv2/pine-compiler` | `packages/pine-compiler/` | Lexer, parser, semantic analysis, lowering and diagnostics |
 | Test fixtures | `@saltanatbotv2/test-fixtures` | `packages/test-fixtures/` | Deterministic candles and scripted Fetch responses for all tiers |
 
@@ -192,7 +192,10 @@ Strategies are not stored as executable code — they compile to a typed **inter
 Declarative `.saltanat-plugin` files are validated by `packages/plugin-core` before they can mutate
 the local artifact library. The package rejects unknown fields, executable-code fields, invalid
 permissions, incompatible versions and external/cyclic dependencies, then verifies SHA-256 over the
-complete canonical manifest. Imported artifacts still compile through the same Strategy IR path;
+complete canonical manifest. Signed version-2 files additionally verify an embedded P-256 key and
+domain-separated ECDSA signature. The frontend stores a device-local non-extractable signing key in
+IndexedDB and independent fingerprint trust pins in bounded localStorage. Imported artifacts still
+compile through the same Strategy IR path;
 the plugin envelope cannot load code, access credentials or call an exchange directly.
 
 This is what lets a strategy backtested in the browser be executed identically on the server for live trading. The IR is a small algebra of numeric expressions, boolean expressions, and statements:

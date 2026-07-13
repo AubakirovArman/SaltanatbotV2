@@ -1,10 +1,12 @@
-import { encodePluginFile, type PluginManifest } from "@saltanatbotv2/plugin-core";
-import { PackageCheck, X } from "lucide-react";
+import { encodePluginFile, encodeSignedPluginFile, type PluginManifest } from "@saltanatbotv2/plugin-core";
+import { KeyRound, PackageCheck, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type HTMLInputTypeAttribute } from "react";
 import type { Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
 import type { StrategyArtifact } from "../library";
 import { buildPluginManifest, pluginFileName, type PluginBuildError, type PluginPackageDetails } from "../pluginPackage";
+import { createAndStorePluginSigningIdentity, loadPluginSigningIdentity, type PluginSigningIdentity } from "../pluginSigningIdentity";
+import { trustPluginKey } from "../pluginTrust";
 
 const DEFAULT_DETAILS: PluginPackageDetails = {
   id: "local.research-pack",
@@ -27,16 +29,28 @@ export function PluginExportDialog({ locale, artifacts, activeId, onExport, onCl
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const helpId = useId();
+  const signingId = useId();
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const [details, setDetails] = useState(DEFAULT_DETAILS);
   const [selected, setSelected] = useState(() => new Set(activeId ? [activeId] : artifacts[0] ? [artifacts[0].id] : []));
-  const [error, setError] = useState<PluginBuildError | "invalid_manifest" | "too_large" | "write_failed">();
+  const [error, setError] = useState<PluginBuildError | "identity_name" | "invalid_manifest" | "signing_unavailable" | "too_large" | "write_failed">();
   const [busy, setBusy] = useState(false);
+  const [identity, setIdentity] = useState<PluginSigningIdentity>();
+  const [identityState, setIdentityState] = useState<"loading" | "missing" | "ready" | "error">("loading");
+  const [identityName, setIdentityName] = useState(() => t("defaultSigningIdentityName"));
+  const [signPackage, setSignPackage] = useState(true);
+  const [identityBusy, setIdentityBusy] = useState(false);
   const result = useMemo(() => buildPluginManifest(details, artifacts, [...selected]), [artifacts, details, selected]);
   useEffect(() => {
     const dialog = dialogRef.current;
     dialog?.showModal();
-    return () => { if (dialog?.open) dialog.close(); };
+    let active = true;
+    void loadPluginSigningIdentity().then((stored) => {
+      if (!active) return;
+      setIdentity(stored);
+      setIdentityState(stored ? "ready" : "missing");
+    }).catch(() => { if (active) setIdentityState("error"); });
+    return () => { active = false; if (dialog?.open) dialog.close(); };
   }, []);
   const update = (key: keyof PluginPackageDetails, value: string) => { setDetails((current) => ({ ...current, [key]: value })); setError(undefined); };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -47,7 +61,7 @@ export function PluginExportDialog({ locale, artifacts, activeId, onExport, onCl
     if (!built.ok) { setError(built.code); return; }
     setBusy(true);
     try {
-      const json = await encodePluginFile(built.manifest);
+      const json = identity && signPackage ? await encodeSignedPluginFile(built.manifest, identity) : await encodePluginFile(built.manifest);
       download(json, pluginFileName(built.manifest.name));
       onExport(built.manifest);
       onClose();
@@ -55,6 +69,23 @@ export function PluginExportDialog({ locale, artifacts, activeId, onExport, onCl
       setError(reason instanceof Error && reason.message === "too_large" ? "too_large" : reason instanceof Error && reason.message === "invalid_manifest" ? "invalid_manifest" : "write_failed");
     } finally {
       setBusy(false);
+    }
+  };
+  const createIdentity = async () => {
+    setError(undefined);
+    if (!identityName.trim()) { setError("identity_name"); return; }
+    setIdentityBusy(true);
+    try {
+      const created = await createAndStorePluginSigningIdentity(identityName);
+      trustPluginKey(created.keyFingerprint, created.name);
+      setIdentity(created);
+      setIdentityState("ready");
+      setSignPackage(true);
+    } catch {
+      setIdentityState("error");
+      setError("signing_unavailable");
+    } finally {
+      setIdentityBusy(false);
     }
   };
   return (
@@ -72,6 +103,11 @@ export function PluginExportDialog({ locale, artifacts, activeId, onExport, onCl
             <Field id="plugin-publisher-url" label={t("publisherUrl")} value={details.publisherUrl ?? ""} onChange={(value) => update("publisherUrl", value)} type="url" maxLength={500} />
             <label className="plugin-wide-field" htmlFor="plugin-description">{t("description")}<textarea id="plugin-description" name="plugin-description" value={details.description} onChange={(event) => update("description", event.target.value)} maxLength={1_000} /></label>
           </fieldset>
+          <fieldset className="plugin-signing-fields"><legend>{t("packageSigning")}</legend>
+            {identityState === "loading" && <p>{t("loadingSigningIdentity")}</p>}
+            {identityState === "ready" && identity && <><div className="plugin-signing-identity"><KeyRound size={17} aria-hidden="true" /><span><strong>{identity.name}</strong><code>{identity.keyFingerprint}</code></span></div><label className="plugin-sign-checkbox" htmlFor={signingId}><input id={signingId} name="sign-plugin-package" type="checkbox" checked={signPackage} onChange={(event) => setSignPackage(event.target.checked)} />{t("signThisPackage")}</label><p>{t("signingIdentitySafety")}</p></>}
+            {(identityState === "missing" || identityState === "error") && <><label htmlFor={`${signingId}-name`}>{t("signingIdentityName")}<input id={`${signingId}-name`} name="signing-identity-name" value={identityName} maxLength={100} onChange={(event) => { setIdentityName(event.target.value); setError(undefined); }} /></label><button type="button" disabled={identityBusy} onClick={() => void createIdentity()}>{identityBusy ? t("creatingSigningIdentity") : t("createSigningIdentity")}</button><p>{t("signingIdentityCreationWarning")}</p></>}
+          </fieldset>
           <fieldset className="plugin-artifact-picker"><legend>{t("selectPackageContents")}</legend>{artifacts.map((artifact) => <label key={artifact.id}><input type="checkbox" name="plugin-artifact" value={artifact.id} checked={selected.has(artifact.id)} onChange={(event) => { setSelected((current) => { const next = new Set(current); if (event.target.checked) next.add(artifact.id); else next.delete(artifact.id); return next; }); setError(undefined); }} /><span><strong>{artifact.name}</strong><small>{t(artifact.kind)} · {artifact.dependencies?.length ?? 0} {t("dependencies").toLowerCase()}</small></span></label>)}</fieldset>
           {result.ok && <div className="plugin-export-summary"><PackageCheck size={16} aria-hidden="true" /><span>{t("packageWillContain")} <strong>{result.includedIds.length}</strong> {t("artifacts")}. {result.autoIncludedIds.length > 0 && `${result.autoIncludedIds.length} ${t("dependenciesAutoIncluded")}`}<br />{t("requestedCapabilities")}: <code>{result.manifest.permissions.join(" · ")}</code></span></div>}
           {error && <div className="import-error" role="alert">{buildError(locale, error)}</div>}
@@ -86,8 +122,8 @@ function Field({ id, label, value, onChange, type = "text", required, pattern, m
   return <label htmlFor={id}>{label}<input id={id} name={id} type={type} value={value} onChange={(event) => onChange(event.target.value)} required={required} pattern={pattern} maxLength={maxLength} aria-describedby={describedBy} autoComplete={autoComplete} /></label>;
 }
 
-function buildError(locale: Locale, error: PluginBuildError | "invalid_manifest" | "too_large" | "write_failed") {
-  const keys = { no_artifacts: "selectAtLeastOneArtifact", missing_dependency: "pluginDependencyRejected", cyclic_dependency: "pluginDependencyRejected", invalid_manifest: "invalidPluginMetadata", too_large: "pluginTooLarge", write_failed: "pluginWriteFailed" } as const;
+function buildError(locale: Locale, error: PluginBuildError | "identity_name" | "invalid_manifest" | "signing_unavailable" | "too_large" | "write_failed") {
+  const keys = { no_artifacts: "selectAtLeastOneArtifact", missing_dependency: "pluginDependencyRejected", cyclic_dependency: "pluginDependencyRejected", identity_name: "signingIdentityNameRequired", invalid_manifest: "invalidPluginMetadata", signing_unavailable: "signingIdentityUnavailable", too_large: "pluginTooLarge", write_failed: "pluginWriteFailed" } as const;
   return strategyText(locale, keys[error]);
 }
 

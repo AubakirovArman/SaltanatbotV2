@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { encodePluginFile, parsePluginFile, type PluginManifest } from "@saltanatbotv2/plugin-core";
+import { createPluginSigningKeyPair, encodeSignedPluginFile, parsePluginFile, type PluginManifest } from "@saltanatbotv2/plugin-core";
 import { readFile } from "node:fs/promises";
 import { installMarketSocketMock, mockCandleHistory, mockCandles, mockChartCandles } from "./support/marketMocks";
 
@@ -953,10 +953,12 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
       { id: "strategy", kind: "strategy", name: "E2E plugin strategy", description: "Editable strategy", xml: pluginXml("E2E plugin strategy"), schemaVersion: 2, semanticVersion: "1.0.0", parameters: [], dependencies: ["overlay"] }
     ]
   };
+  const signer = await createPluginSigningKeyPair();
+  const signedPlugin = await encodeSignedPluginFile(plugin, signer);
   await page.getByLabel("Import plugin package").setInputFiles({
     name: "e2e.saltanat-plugin",
     mimeType: "application/json",
-    buffer: Buffer.from(await encodePluginFile(plugin))
+    buffer: Buffer.from(signedPlugin)
   });
 
   const review = page.getByRole("dialog", { name: "Review plugin package" });
@@ -964,7 +966,9 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   await expect(review).toContainText("E2E publisher");
   await expect(review).toContainText("market.read");
   await expect(review).toContainText("E2E plugin strategy");
-  await expect(review.getByText(/^[a-f0-9]{64}$/)).toBeVisible();
+  await expect(review).toContainText("Valid signature · key not trusted");
+  await expect(review.getByText(signer.keyFingerprint, { exact: true })).toBeVisible();
+  await expect(review.locator(".plugin-checksum code")).toHaveText(/^[a-f0-9]{64}$/);
   await expect(library.locator(".library-item-main").filter({ hasText: "E2E plugin overlay" })).toHaveCount(0);
   await expectNoAxeViolations(page);
 
@@ -975,9 +979,11 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   await page.getByLabel("Import plugin package").setInputFiles({
     name: "e2e.saltanat-plugin",
     mimeType: "application/json",
-    buffer: Buffer.from(await encodePluginFile(plugin))
+    buffer: Buffer.from(signedPlugin)
   });
-  await page.getByRole("dialog", { name: "Review plugin package" }).getByRole("button", { name: "Import reviewed plugin" }).click();
+  const confirmedReview = page.getByRole("dialog", { name: "Review plugin package" });
+  await confirmedReview.getByLabel("Trust this fingerprint for the named publisher after import").check();
+  await confirmedReview.getByRole("button", { name: "Import reviewed plugin" }).click();
 
   await expect(library.getByRole("status")).toContainText("Plugin imported: E2E research pack · 2 artifacts");
   await expect(library).toContainText("E2E plugin overlay");
@@ -1005,7 +1011,14 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   await expect(catalog).toContainText("E2E publisher");
   await expect(catalog).toContainText("MIT");
   await expect(catalog).toContainText("trade.intent");
-  await expect(catalog.getByText(/^[a-f0-9]{64}$/)).toBeVisible();
+  await expect(catalog).toContainText("Signature verified · signer trusted now");
+  await expect(catalog).toContainText("trusted at import");
+  await expect(catalog.getByText(signer.keyFingerprint, { exact: true })).toBeVisible();
+  await expect(catalog.locator(".plugin-catalog-checksum code")).toHaveText(/^[a-f0-9]{64}$/);
+  await catalog.getByRole("button", { name: "Forget signer trust", exact: true }).click();
+  await expect(catalog).toContainText("Signature verified · signer not trusted");
+  await catalog.getByRole("button", { name: "Trust signer key", exact: true }).click();
+  await expect(catalog).toContainText("Signature verified · signer trusted now");
   await expectNoAxeViolations(page);
 
   await catalog.getByRole("button", { name: /Uninstall: E2E research pack/ }).click();
@@ -1041,7 +1054,7 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   await expect(page.locator(".strategy-library")).not.toContainText("E2E plugin overlay", { timeout: 20_000 });
 });
 
-test("exports selected local artifacts as a verified plugin package", async ({ page }) => {
+test("exports selected local artifacts as a verified plugin package", { tag: "@smoke" }, async ({ page }) => {
   await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
   const library = page.locator(".strategy-library");
   await expect(library).toBeVisible({ timeout: 20_000 });
@@ -1050,6 +1063,10 @@ test("exports selected local artifacts as a verified plugin package", async ({ p
   const dialog = page.getByRole("dialog", { name: "Export plugin package" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Package will contain", { exact: false })).toBeVisible();
+  await dialog.getByLabel("Local signing identity name").fill("E2E local signer");
+  await dialog.getByRole("button", { name: "Create signing identity", exact: true }).click();
+  await expect(dialog.getByLabel("Sign this package with the local identity")).toBeChecked();
+  await expect(dialog.locator(".plugin-signing-identity code")).toHaveText(/^[a-f0-9]{64}$/);
   await expectNoAxeViolations(page);
 
   await dialog.getByLabel("Package name").fill("E2E local pack");
@@ -1067,7 +1084,14 @@ test("exports selected local artifacts as a verified plugin package", async ({ p
   expect(parsed.manifest).toMatchObject({ id: "e2e.local-pack", name: "E2E local pack", minAppVersion: "0.1.0" });
   expect(parsed.manifest.artifacts.length).toBeGreaterThan(0);
   expect(parsed.manifest.permissions).toContain("market.read");
+  expect(parsed.signature?.scheme).toBe("ECDSA-P256-SHA256");
+  expect(parsed.signature?.keyFingerprint).toMatch(/^[a-f0-9]{64}$/);
   await expect(library.getByRole("status")).toContainText("Plugin exported: E2E local pack");
+
+  await library.getByRole("button", { name: "Build plugin", exact: true }).click();
+  const restoredIdentity = page.getByRole("dialog", { name: "Export plugin package" });
+  await expect(restoredIdentity.locator(".plugin-signing-identity code")).toHaveText(parsed.signature!.keyFingerprint);
+  await restoredIdentity.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
 test("switches and persists the interface locale", { tag: "@smoke" }, async ({ page }) => {
