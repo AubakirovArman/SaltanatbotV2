@@ -1664,6 +1664,22 @@ test("shows Bybit UTA collateral risk and requires explicit debt confirmations",
 });
 
 test("filters executable cross-exchange arbitrage routes without placing orders", { tag: "@smoke" }, async ({ page }) => {
+  const scanFixture = {
+    updatedAt: Date.now(), stale: false, scannedSymbols: 2, estimatedTotalCostBps: 0,
+    sources: [
+      { exchange: "binance", market: "spot", ok: true },
+      { exchange: "binance", market: "perpetual", ok: true },
+      { exchange: "bybit", market: "spot", ok: true },
+      { exchange: "bybit", market: "perpetual", ok: true }
+    ],
+    opportunities: [
+      { id: "BTCUSDT:binance:bybit", symbol: "BTCUSDT", spotExchange: "binance", futuresExchange: "bybit", spotBid: 99900, spotAsk: 100000, spotAskSize: 1, futuresBid: 101500, futuresAsk: 101600, futuresBidSize: 0.5, grossSpreadBps: 150, estimatedTotalCostBps: 0, netEdgeBps: 150, topBookCapacityUsd: 50750, fundingRate: 0.0001, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() },
+      { id: "ETHUSDT:bybit:binance", symbol: "ETHUSDT", spotExchange: "bybit", futuresExchange: "binance", spotBid: 3999, spotAsk: 4000, spotAskSize: 0.2, futuresBid: 4020, futuresAsk: 4021, futuresBidSize: 0.2, grossSpreadBps: 50, estimatedTotalCostBps: 0, netEdgeBps: 50, topBookCapacityUsd: 800, fundingRate: -0.00005, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() }
+    ]
+  };
+  await page.routeWebSocket("**/arbitrage-stream", (socket) => {
+    socket.send(JSON.stringify({ type: "arbitrage_snapshot", data: scanFixture, ts: Date.now() }));
+  });
   await page.route("**/api/arbitrage**", async (route) => {
     if (new URL(route.request().url()).pathname.endsWith("/depth")) {
       await route.fulfill({ json: {
@@ -1673,19 +1689,7 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
       } });
       return;
     }
-    await route.fulfill({ json: {
-      updatedAt: Date.now(), stale: false, scannedSymbols: 2, estimatedTotalCostBps: 30,
-      sources: [
-        { exchange: "binance", market: "spot", ok: true },
-        { exchange: "binance", market: "perpetual", ok: true },
-        { exchange: "bybit", market: "spot", ok: true },
-        { exchange: "bybit", market: "perpetual", ok: true }
-      ],
-      opportunities: [
-        { id: "BTCUSDT:binance:bybit", symbol: "BTCUSDT", spotExchange: "binance", futuresExchange: "bybit", spotBid: 99900, spotAsk: 100000, spotAskSize: 1, futuresBid: 101500, futuresAsk: 101600, futuresBidSize: 0.5, grossSpreadBps: 150, estimatedTotalCostBps: 30, netEdgeBps: 120, topBookCapacityUsd: 50750, fundingRate: 0.0001, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() },
-        { id: "ETHUSDT:bybit:binance", symbol: "ETHUSDT", spotExchange: "bybit", futuresExchange: "binance", spotBid: 3999, spotAsk: 4000, spotAskSize: 0.2, futuresBid: 4020, futuresAsk: 4021, futuresBidSize: 0.2, grossSpreadBps: 50, estimatedTotalCostBps: 30, netEdgeBps: 20, topBookCapacityUsd: 800, fundingRate: -0.00005, nextFundingTime: Date.now() + 3600000, capturedAt: Date.now() }
-      ]
-    } });
+    await route.fulfill({ json: scanFixture });
   });
 
   await page.getByLabel("Workspace mode").getByRole("button", { name: "Screener", exact: true }).click();
