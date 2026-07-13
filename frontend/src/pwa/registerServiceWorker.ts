@@ -1,6 +1,12 @@
+import { clearApplicationShellFiles } from "../app/startupRecovery";
+
 /** Register the generated same-origin worker only for production builds. */
 export function registerServiceWorker() {
-  if (import.meta.env.DEV || !("serviceWorker" in navigator)) return;
+  if (import.meta.env.DEV) {
+    void clearApplicationShellFiles();
+    return;
+  }
+  if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
     const register = () => {
       void navigator.serviceWorker.register("/service-worker.js", {

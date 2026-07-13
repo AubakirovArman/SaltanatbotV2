@@ -2,8 +2,9 @@
 
 This folder owns browser registration for the generated production service worker.
 
-- Registration is disabled in Vite development and never blocks React startup. A first install is
-  deferred for five seconds; already controlled clients check for updates immediately.
+- Registration is disabled in Vite development and never blocks React startup. Development startup
+  proactively unregisters a stale Saltanat production worker and deletes only its shell cache. A
+  first production install is deferred for five seconds; already controlled clients check for updates immediately.
 - `frontend/vite/pwaPlugin.ts` owns the generated worker and its content-derived cache version.
 - Only the initial application shell and its same-build static dependencies are cached. API, authentication, market
   streams, trading requests and non-GET traffic must remain network-only.

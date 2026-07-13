@@ -292,6 +292,11 @@ A reverse proxy must preserve these response headers and must not add an offline
 API or WebSocket routes. Offline installation proves only that the interface can open; it does not
 claim current prices, authenticated access or available order execution.
 
+The HTML also contains a localized pre-React recovery surface, so a missing or stale main module
+does not produce a blank screen. **Refresh application files** unregisters only this application's
+worker and deletes only `saltanat-shell-*` Cache Storage entries; it does not clear chart, strategy,
+identity or trading data. See [Application startup recovery](STARTUP_RECOVERY.md).
+
 ### Example: run behind a process manager
 
 Because `npm start` is a plain long-lived Node process, any supervisor works. For example, with a bound loopback host so a reverse proxy fronts it:

@@ -10,6 +10,18 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Blank-screen-safe application startup — 2026-07-13
+
+- [x] Keep a styled localized pre-React surface visible when the main application module fails.
+- [x] Catch React render and lazy-module failures with a global accessible recovery boundary.
+- [x] Offer retry, ordinary reload and selective application-file refresh without clearing user data.
+- [x] Remove only the Saltanat worker and `saltanat-shell-*` caches, including stale workers in Vite development.
+- [x] Limit automatic dynamic-import recovery to one attempt per tab and clear the marker after healthy startup.
+- [x] Document operations and safety behavior in EN/RU/KK.
+
+Verification covers error classification, loop prevention, selective cleanup and localized boundary
+retry plus a production main-bundle failure with semantic recovery controls and axe.
+
 ### Local plugin signer blocklist — 2026-07-13
 
 - [x] Store at most 100 strictly validated, deduplicated blocked fingerprints separately from package contents.

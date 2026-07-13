@@ -37,6 +37,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Contributor map](CONTRIBUTOR_MAP.md) | contributors | current | 2026-07-11 |
 | [Asset provenance policy](ASSET_POLICY.md) | contributors | current | 2026-07-11 |
 | [Migration notes](MIGRATIONS.md) | operators/contributors | current | 2026-07-12 |
+| [Application startup recovery](STARTUP_RECOVERY.md) | users/operators | current; production-tested | 2026-07-13 |
 
 Planning and audit documents describe research or target architecture rather than shipped behavior.
 They must be read together with `IMPLEMENTATION_STATUS.md` and must not be presented as release notes.
@@ -53,6 +54,7 @@ They must be read together with `IMPLEMENTATION_STATUS.md` and must not be prese
 | Event/execution traces | [reference](EVENT_TRACES.md) | [guide](ru/EVENT_TRACES.md) | [guide](kk/EVENT_TRACES.md) |
 | Safety summary | [security policy](../SECURITY.md) | [summary](ru/SECURITY.md) | [summary](kk/SECURITY.md) |
 | Backup and recovery | [operator guide](BACKUP_RESTORE.md) | [guide](ru/BACKUP_RESTORE.md) | [guide](kk/BACKUP_RESTORE.md) |
+| Application startup recovery | [guide](STARTUP_RECOVERY.md) | [guide](ru/STARTUP_RECOVERY.md) | [guide](kk/STARTUP_RECOVERY.md) |
 | 90-commit update | [changelog](../CHANGELOG.md) | [release notes](ru/RELEASE_2026-07-11.md) | [release notes](kk/RELEASE_2026-07-11.md) |
 
 The complete runtime UI follows the same EN/RU/KK coverage. Locale catalogs are typed against one

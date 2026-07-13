@@ -1,0 +1,69 @@
+:root {
+  color-scheme: dark light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #080d13;
+  color: #e7edf5;
+}
+
+[data-theme="light"] { background: #f4f7fa; color: #17202b; }
+
+body { margin: 0; }
+
+.startup-recovery {
+  min-block-size: 100dvh;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 4vw, 3rem);
+  background: radial-gradient(circle at 50% 20%, rgb(29 78 102 / 24%), transparent 45%), #080d13;
+  color: #e7edf5;
+}
+
+[data-theme="light"] .startup-recovery { background: radial-gradient(circle at 50% 20%, rgb(30 132 180 / 14%), transparent 45%), #f4f7fa; color: #17202b; }
+
+.startup-recovery-card {
+  inline-size: min(100%, 38rem);
+  box-sizing: border-box;
+  padding: clamp(1.5rem, 5vw, 2.5rem);
+  border: 1px solid #263648;
+  border-radius: 1rem;
+  background: rgb(14 22 31 / 96%);
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 30%);
+  text-align: center;
+}
+
+[data-theme="light"] .startup-recovery-card { border-color: #cbd6e2; background: rgb(255 255 255 / 96%); box-shadow: 0 1.5rem 4rem rgb(28 48 67 / 15%); }
+
+.startup-recovery-card img { display: block; margin: 0 auto 0.75rem; border-radius: 0.75rem; }
+.startup-recovery-kicker { margin: 0; color: #61d5ff; font-size: 0.75rem; font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; }
+.startup-recovery h1 { margin: 0.45rem 0 0.75rem; font-size: clamp(1.35rem, 4vw, 2rem); line-height: 1.2; }
+.startup-recovery p { max-inline-size: 60ch; margin: 0.5rem auto; line-height: 1.55; }
+.startup-recovery-note { color: #a9b8c8; }
+[data-theme="light"] .startup-recovery-note { color: #526273; }
+.startup-recovery-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.65rem; margin-block: 1.4rem 1rem; }
+.startup-recovery-actions[hidden] { display: none; }
+.startup-recovery button,
+.startup-recovery a {
+  min-block-size: 2.75rem;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 1rem;
+  border: 1px solid #3c5268;
+  border-radius: 0.5rem;
+  background: #162330;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: none;
+}
+.startup-recovery button.primary { border-color: #48c7f4; background: #48c7f4; color: #071018; }
+[data-theme="light"] .startup-recovery button:not(.primary),
+[data-theme="light"] .startup-recovery a { border-color: #9cadbd; background: #f4f7fa; }
+.startup-recovery :is(button, a):focus-visible { outline: 3px solid #f5c451; outline-offset: 3px; }
+.startup-recovery-footnote { color: #8495a7; font-size: 0.8rem; }
+.startup-boot { opacity: 0; animation: startup-reveal 0.01s 0.4s forwards; }
+@keyframes startup-reveal { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .startup-boot { animation-delay: 0s; } }

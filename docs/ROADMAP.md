@@ -23,6 +23,7 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 - Scoped session security, encrypted keys, audit logs, verified backup/restore and fail-closed demo mode.
 - Complete EN/RU/KK UI and user documentation, public Pages, release artifacts, SBOM, checksums and attestations.
 - Enforced TypeScript, Biome, docs, architecture, unit/integration, build, performance and Playwright gates.
+- Blank-screen-safe startup with a localized pre-React fallback, global React recovery boundary and data-preserving stale-shell refresh.
 
 ## Explicitly deferred external validation
 

@@ -5,6 +5,14 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Startup resilience
+
+- Added a styled EN/RU/KK pre-React recovery screen that remains available when the main content-hashed module cannot load, replacing the previous empty-root failure mode.
+- Added a global React error boundary for render and lazy-workspace failures with native retry, reload and selective application-file refresh controls.
+- Selective refresh unregisters only the SaltanatbotV2 worker and deletes only `saltanat-shell-*` caches; it never clears charts, strategies, signing identities, exchange settings or trading records.
+- Added one-shot automatic recovery for recognized chunk/dynamic-import failures, proactive stale-worker cleanup in Vite development, unit coverage and a production main-bundle failure/axe journey.
+- Raised only the measured aggregate JavaScript gzip ceiling from 508 KiB to 510 KiB for the recovery boundary, selective cache policy and three-locale runtime copy; per-file, CSS and HTML limits remain unchanged.
+
 ### Declarative plugin foundation
 
 - Added a bounded local signer blocklist that is mutually exclusive with trust and rejects imports when the active signer or any authenticated rotation-chain key is blocked.

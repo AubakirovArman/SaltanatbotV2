@@ -9,6 +9,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="SaltanatbotV2" />
     <script src="/theme-init.js"></script>
+    <link rel="stylesheet" href="/startup-fallback.css" />
+    <script src="/startup-fallback.js" defer></script>
     <meta name="application-name" content="SaltanatbotV2" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
@@ -17,7 +19,22 @@
     <title>SaltanatbotV2</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main id="startup-recovery" class="startup-recovery startup-boot" role="status" aria-labelledby="startup-title">
+        <div class="startup-recovery-card">
+          <img src="/logo.svg" width="52" height="52" alt="" />
+          <p class="startup-recovery-kicker">SaltanatbotV2</p>
+          <h1 id="startup-title">Starting SaltanatbotV2…</h1>
+          <p id="startup-help">Loading the chart, saved workspace and market connections.</p>
+          <div id="startup-actions" class="startup-recovery-actions" hidden>
+            <button id="startup-reload" class="primary" type="button">Reload page</button>
+            <button id="startup-refresh" type="button">Refresh application files</button>
+          </div>
+          <p id="startup-footnote" class="startup-recovery-footnote">Refreshing removes only SaltanatbotV2 offline shell files and its service-worker registration.</p>
+          <noscript><p>JavaScript is required to run the application.</p><a href="/">Reload page</a></noscript>
+        </div>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

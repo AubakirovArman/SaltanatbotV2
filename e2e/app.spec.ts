@@ -15,6 +15,24 @@ test("loads the terminal and exposes the chart semantically", { tag: "@smoke" },
   await expect(page.getByRole("button", { name: "Toggle markets panel" })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("shows localized recovery controls when the application module cannot load", { tag: "@smoke" }, async ({ page }) => {
+  const applicationScript = await page.locator('script[type="module"][src*="/assets/"]').getAttribute("src");
+  expect(applicationScript).toBeTruthy();
+  await page.evaluate(() => localStorage.setItem("sbv2:locale", "ru"));
+  await page.route(new URL(applicationScript!, page.url()).href, (route) => route.abort());
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+
+  const recovery = page.locator("#startup-recovery");
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toHaveAttribute("role", "alert", { timeout: 5_000 });
+  await expect(recovery.getByRole("heading", { level: 1 })).toHaveText("Запуск занимает больше времени, чем ожидалось");
+  await expect(recovery).toContainText("Сохранённые данные приложения не удалены");
+  await expect(recovery.getByRole("button", { name: "Перезагрузить страницу" })).toBeVisible();
+  await expect(recovery.getByRole("button", { name: "Обновить файлы приложения" })).toBeVisible();
+  await expectNoAxeViolations(page);
+});
+
 test("installs a static offline shell without caching runtime market or trading data", async ({ page, context, browserName }) => {
   test.skip(browserName !== "chromium", "The required push gate verifies service-worker behavior in Chromium.");
   test.setTimeout(60_000);
