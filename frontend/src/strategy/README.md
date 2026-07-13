@@ -32,18 +32,20 @@ Pine source -> pine converter -> Blockly XML -> same flow
 - `useStrategyWorkspace.ts` owns Blockly injection, artifact loading, preview debounce, autosave and teardown.
 - `useArtifactLibrary.ts` owns artifact selection, persistence, shared-link remixing, template/Pine imports and linked-indicator synchronization; `artifactLibraryModel.ts` owns deterministic naming, hashes and versions.
 - `strategyFile.ts` owns checksum-verified schema-v2 portable files and explicit legacy migration.
-- `useImportReviewQueue.ts` owns bounded manual/PWA file parsing and the format-specific review queues;
-  parsing never mutates the artifact library.
+- `useImportReviewQueue.ts` owns bounded manual/PWA file parsing after root-shell consent and the
+  format-specific review queues; parsing never mutates the artifact library.
 - `dependencyGraph.ts` owns missing/cycle validation; `wizard.ts` emits ordinary editable XML.
 - `blocklyTheme.ts` owns the dark/light Blockly theme definitions.
 - Storage and sharing are adapters around versioned artifacts.
 - `components/StrategyLibrary.tsx` owns artifact browsing/import/export and template/Pine entry flows.
-- `components/PwaFileLaunchDialog.tsx` owns the metadata-only OS-launch consent, while
-  `components/StrategyFileReviewDialog.tsx` owns checksum-verified strategy metadata confirmation.
+- `../pwa/PwaFileLaunchDialog.tsx` owns metadata-only OS open/share consent before this lazy domain
+  loads, while `components/StrategyFileReviewDialog.tsx` owns checksum-verified strategy metadata
+  confirmation.
 - `components/OptimizePanel.tsx` owns optimizer controls/results; `optimization/model.ts` owns sweep-state construction.
 - `components/StrategyExecutionPanel.tsx` owns backtest configuration, execution actions, diagnostics and report/preview presentation.
 - `components/ArtifactVersionPanel.tsx` owns dependency, history, diff and rollback controls; `components/StrategyWizard.tsx` owns the guided creation dialog.
-- `../i18n/strategy.ts` owns typed English/Russian Strategy Studio messages and dynamic category/objective labels; Pine/IR identifiers remain unchanged.
+- `../i18n/strategy.ts` owns typed EN/RU/KK Strategy Studio messages; `../i18n/pwa.ts` owns the lean
+  root-shell open/share review catalog. Pine/IR identifiers remain unchanged.
 
 ## Testing
 

@@ -33,6 +33,25 @@
       "launch_type": "single-client"
     }
   ],
+  "share_target": {
+    "action": "/share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        {
+          "name": "research_files",
+          "accept": [
+            ".pine",
+            ".strategy",
+            ".saltanat-plugin",
+            "application/vnd.saltanatbotv2.strategy+json",
+            "application/vnd.saltanatbotv2.plugin+json"
+          ]
+        }
+      ]
+    }
+  },
   "shortcuts": [
     {
       "name": "Open Chart",

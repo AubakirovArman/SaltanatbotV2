@@ -8,6 +8,9 @@ facade and contains its imports, optimizer worker and Blockly media without Trad
 delays initial installation and is populated only after an explicit service-worker message.
 
 The worker deliberately has no `skipWaiting`, background sync, API caching or cross-origin caching.
-Do not broaden `NETWORK_ONLY_PREFIXES` into a runtime data strategy: trading and market truth must
-always come from the network and remain visibly unavailable offline. Navigation responses are not
-written back at runtime: the install-time root shell stays version-aligned with its active worker.
+The exact same-origin `/share-target` multipart POST is the only local non-GET exception: it accepts
+only reviewed research extensions, stores at most five expiring IndexedDB batches and redirects with
+an opaque UUID. It never queues or replays the request to a server. Do not broaden that exception or
+`NETWORK_ONLY_PREFIXES`: trading and market truth must always come from the network and remain visibly
+unavailable offline. Navigation responses are not written back at runtime, so the install-time root
+shell stays version-aligned with its active worker.

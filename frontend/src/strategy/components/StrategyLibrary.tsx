@@ -1,5 +1,5 @@
 import { Boxes, Download, FileCode2, LayoutGrid, PackageOpen, PackagePlus, Plus, ShieldAlert, Upload, WandSparkles, X } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { PineImportDialog } from "../../components/PineImportDialog";
 import type { PineImport } from "../pine";
 import type { StrategyArtifact, StrategyArtifactKind } from "../library";
@@ -17,7 +17,6 @@ import { analyzePluginImport, installedPlugins } from "../pluginCatalog";
 import { trustPluginKey } from "../pluginTrust";
 import type { PwaFileLaunchBatch } from "../../pwa/fileLaunch";
 import { useImportReviewQueue } from "../useImportReviewQueue";
-import { PwaFileLaunchDialog } from "./PwaFileLaunchDialog";
 import { StrategyFileReviewDialog } from "./StrategyFileReviewDialog";
 
 export function StrategyLibrary({
@@ -60,7 +59,14 @@ export function StrategyLibrary({
   const installedPluginCount = installedPlugins(artifacts).length;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pluginInputRef = useRef<HTMLInputElement | null>(null);
+  const preparingBatchId = useRef<number>();
   const pluginInputId = useId();
+
+  useEffect(() => {
+    if (!launchedBatch || preparingBatchId.current === launchedBatch.id) return;
+    preparingBatchId.current = launchedBatch.id;
+    void imports.prepareLaunchedBatch(launchedBatch).finally(() => onLaunchedBatchConsumed?.());
+  }, [launchedBatch?.id]);
 
   return (
     <aside className="strategy-library">
@@ -155,17 +161,6 @@ export function StrategyLibrary({
           onUse={(template) => {
             onUseTemplate(template);
             setGalleryOpen(false);
-          }}
-        />
-      )}
-      {launchedBatch && (
-        <PwaFileLaunchDialog
-          locale={locale}
-          batch={launchedBatch}
-          onClose={() => onLaunchedBatchConsumed?.()}
-          onReview={async () => {
-            await imports.prepareLaunchedBatch(launchedBatch);
-            onLaunchedBatchConsumed?.();
           }}
         />
       )}

@@ -10,6 +10,21 @@ This is the execution ledger. It records what is proven complete, what is active
 
 ## Completed
 
+### Reviewed installed-PWA Share Target — 2026-07-13
+
+- [x] Register one file-only Share Target for exact Pine, strategy and plugin formats.
+- [x] Exclude title, text, URL, generic JSON, trading data and order actions from the manifest.
+- [x] Intercept only the exact same-origin multipart POST while all runtime/trading POST remains network-only.
+- [x] Keep at most five opaque temporary batches for 24 hours with count, total and per-format bounds.
+- [x] Show the metadata-only review in the root shell before Strategy Studio loads or contents are read.
+- [x] Delete temporary data after Cancel or normal review hand-off and fail closed on invalid/expired records.
+- [x] Reuse Pine Convert/Add, strategy checksum/schema and plugin signature/capability reviews.
+- [x] Publish typed EN/RU/KK interface copy and documentation.
+
+Verification covers strict URL tokens and worker messaging, no early content reads, generated
+manifest/worker policy, a real production multipart share with unsupported/oversized files, record
+deletion, axe and offline receive/cancel while runtime requests remain unavailable.
+
 ### Reviewed installed-PWA file handling — 2026-07-13
 
 - [x] Register only exact `.pine`, `.strategy` and `.saltanat-plugin` desktop file handlers.

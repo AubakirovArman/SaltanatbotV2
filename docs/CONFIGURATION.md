@@ -284,7 +284,10 @@ The service worker is deliberately a static, read-only application shell:
 - initial entry JavaScript/CSS and reviewed root public assets are precached under a content-derived cache name;
 - users may explicitly install or remove a separate same-build Strategy Studio/Blockly research cache; it contains static code/media only and never Trading View;
 - `/api/*`, `/stream`, `/quotes`, `/orderbook`, `/trade-flow` and `/trade-stream` always use the network;
-- POST requests, cross-origin responses and opaque responses are never cached;
+- all POST requests except the exact file-only `/share-target` hand-off remain network-only;
+- `/share-target` is parsed locally by the worker into bounded expiring IndexedDB state and returns a
+  303 shell redirect; it is never cached, forwarded, background-synced or replayed;
+- cross-origin and opaque responses are never cached;
 - there is no background sync, request queue or automatic trading replay.
 
 The Express server sends `no-cache` for `index.html`, the manifest and service worker, one-year
@@ -301,7 +304,12 @@ Installed Chromium-family desktop PWAs may also register three exact file handle
 `.strategy` and `.saltanat-plugin`. Every handler routes to the Strategy Studio review flow; generic
 JSON and trading actions are intentionally absent. This is feature-detected progressive enhancement,
 so no server flag is needed and manual file inputs remain available. See
-[PWA file handling](PWA_FILE_HANDLING.md).
+[PWA file opening and sharing](PWA_FILE_HANDLING.md).
+
+The same manifest exposes one file-only Web Share Target at `/share-target`. It accepts no title,
+text or URL, uses ten-file and 1/2/5 MB per-format limits, caps accepted bytes at 10 MB and retains at
+most five opaque batches for 24 hours. The root shell reads only metadata until consent; Cancel or
+successful hand-off deletes the record. This is a browser-local PWA action, not an Express API route.
 
 The HTML also contains a localized pre-React recovery surface, so a missing or stale main module
 does not produce a blank screen. **Refresh application files** unregisters only this application's

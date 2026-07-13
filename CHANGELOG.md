@@ -5,6 +5,19 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+- Added a file-only installed-PWA Web Share Target for exact `.pine`, `.strategy` and
+  `.saltanat-plugin` files. A generated same-origin service-worker hand-off stores at most five
+  opaque, 24-hour batches and exposes only a UUID to the root shell; title, text, URL, generic JSON,
+  trading data and order actions are excluded.
+- Shared files now receive the same metadata-only root review and existing Pine/strategy/plugin
+  confirmations as desktop file opens. Cancel and successful hand-off delete temporary records, and
+  no share can load Strategy Studio, read contents, run research or trade before explicit consent.
+- Added complete EN/RU/KK Share Target copy and guides, strict token/message/expiry unit coverage,
+  generated-manifest enforcement and production Chromium multipart, deletion, accessibility and
+  offline receive/cancel journeys.
+- Raised only the measured aggregate JavaScript gzip ceiling from 514 KiB to 518 KiB for the bounded
+  Share Target client, root review catalog and temporary worker protocol; initial-shell per-file,
+  CSS and HTML ceilings remain unchanged. The measured build is approximately 515.4 KiB gzip.
 - Added installed-desktop PWA file handlers for exact `.pine`, `.strategy` and `.saltanat-plugin` extensions with a metadata-only outer review, bounded local reads and queued launch events. Pine still requires Convert/Add, strategies now receive checksum/schema/metadata confirmation, and plugins retain signature/permission review; no launch can run research or trading automatically.
 - Added complete EN/RU/KK file-handler copy and guides, manifest safety enforcement, feature-detection/limit/spoofing unit coverage and production Chromium review-before-mutation journeys for all three formats. Manual file inputs remain the cross-browser fallback.
 - Raised only the measured aggregate JavaScript gzip ceiling from 510 KiB to 514 KiB for the bounded launch collector, three-stage review queue and complete three-locale copy; initial-shell, per-file, CSS and HTML ceilings remain unchanged.

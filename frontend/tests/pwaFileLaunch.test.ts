@@ -25,7 +25,7 @@ describe("installed PWA file launches", () => {
     Object.defineProperty(file, "text", { value: text });
     const batch = await collectPwaLaunchFiles([{ name: file.name, getFile: async () => file }]);
 
-    expect(batch.files).toEqual([{ kind: "pine", name: "local.pine", file }]);
+    expect(batch).toMatchObject({ source: "file_handler", files: [{ kind: "pine", name: "local.pine", file }] });
     expect(batch.rejected).toEqual([]);
     expect(text).not.toHaveBeenCalled();
   });

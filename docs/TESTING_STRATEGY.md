@@ -248,6 +248,14 @@ metadata-only collection, count/size limits and spoof rejection. Production Chro
 all three launch types and require outer consent plus their existing format-specific reviews before
 the artifact library changes. Unsupported browsers continue through the ordinary file inputs.
 
+The gate also requires one file-only Share Target with its exact multipart action, field and accept
+list, plus a generated worker containing bounded, expiring IndexedDB storage, 303 hand-off and discard
+protocol. Unit tests require one strict UUID, bounded messaging, metadata-only collection, URL cleanup
+and fail-closed invalid/expired records. Production Chromium submits a native multipart form through
+the real worker, mixes accepted, unsupported and oversized files, verifies no Strategy Studio load or
+library mutation before consent, then proves record deletion and the normal Pine Convert/Add flow.
+The offline shell journey receives and cancels a share while a fresh API request still rejects.
+
 A separate EN/RU/KK production journey aborts the content-hashed main module before React can mount.
 It requires the static recovery surface to replace a blank screen after two seconds, expose native
 reload/selective-refresh controls and pass axe. Unit tests independently verify the React boundary,

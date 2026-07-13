@@ -297,7 +297,7 @@
 .file-launch-list li > span:first-child { min-inline-size: 0; display: grid; gap: 2px; }
 .file-launch-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-launch-list small,
-.file-launch-list li > span:last-child { color: var(--dim); font-size: var(--fs-xs); }
+.file-launch-list li > span:last-child { color: var(--muted); font-size: var(--fs-xs); }
 .file-launch-list li > span:last-child { flex: 0 0 auto; }
 .file-launch-rejections { color: var(--warn); font-size: var(--fs-xs); }
 

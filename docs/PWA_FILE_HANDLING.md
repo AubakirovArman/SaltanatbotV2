@@ -1,7 +1,7 @@
-# PWA file handling
+# PWA file opening and sharing
 
-An installed desktop PWA can register SaltanatbotV2 as an optional operating-system handler for
-three narrow research formats:
+An installed SaltanatbotV2 PWA can receive three narrow local-research formats either by opening a
+registered file or by choosing the application in the operating system's **Share** sheet:
 
 | Extension | Purpose | Maximum size |
 | --- | --- | ---: |
@@ -9,48 +9,65 @@ three narrow research formats:
 | `.strategy` | Checksummed editable strategy/indicator artifact | 2 MB |
 | `.saltanat-plugin` | Declarative plugin package | 5 MB |
 
-The browser and operating system decide whether to expose this integration and may ask for explicit
-permission. It is currently progressive enhancement for installed Chromium-family desktop PWAs.
-Firefox, Safari, non-installed tabs and unsupported systems retain the complete manual **Pine**,
-**Import** and **Plugin** file-input flows in Strategy Studio.
+Both integrations are progressive enhancement for installed Chromium-family PWAs. Browser and
+operating-system support varies and may require permission or reinstallation after a manifest
+change. Firefox, Safari, non-installed tabs and unsupported systems retain the complete manual
+**Pine**, **Import** and **Plugin** file inputs in Strategy Studio.
 
 ## Review-before-import contract
 
-Opening a registered file switches to Strategy Studio and shows an outer review with the exact file
-name, type and size. At this point SaltanatbotV2 has obtained the browser `File` objects but has not
-read their contents. Cancelling discards the launch.
+The root application shell first shows only the file name, declared type and size. It does not load
+Strategy Studio or read the file contents before **Review files locally**. Cancelling discards the
+launch or share.
 
-After **Review files locally**:
+After that outer review:
 
-- Pine text is loaded into the existing converter, but conversion still requires **Convert** and no
-  artifact is added until **Add**;
-- a `.strategy` envelope is parsed, resource-bounded and checksum-verified, then its name, artifact
-  type, schema, semantic version and dependency count are shown in a second confirmation dialog;
-- a plugin is parsed and routed through the existing checksum, signature, signer continuity,
-  permission, dependency and package-content review before import.
+- Pine text is loaded into the existing converter, but still requires **Convert** and **Add**;
+- a `.strategy` envelope is resource-bounded and checksum/schema verified, then receives a second
+  metadata confirmation;
+- a plugin keeps the existing checksum, signature, signer-continuity, permission, dependency and
+  package-content review.
 
-No opened file starts a backtest, bot, paper session or live order. Contents remain local and are not
-sent to the backend or an exchange. Exact extension matching rejects generic `.json`, double
-extensions and handler/file-name mismatches. One OS launch accepts at most ten files; unreadable,
-unsupported and oversized entries fail closed and remain unimported.
+No opened or shared file starts a backtest, bot, paper session or live order. Contents stay in the
+browser and are not sent to the backend or an exchange. Exact extension matching rejects generic
+`.json`, double extensions and handler/name mismatches. A batch accepts at most ten files.
 
-## Manifest and lifecycle
+## Operating-system file handlers
 
-`frontend/public/manifest.webmanifest` declares three separate `file_handlers`, all scoped to
-`/?view=strategy` with `single-client` launch behavior. Different handler types cannot be silently
-combined into one manifest handler, and the application queues consecutive launch events instead of
-overwriting an active review. Browser support is feature-detected through `window.launchQueue`; no
-polyfill or user-agent sniffing is used.
+`frontend/public/manifest.webmanifest` declares three separate `file_handlers`, scoped to
+`/?view=strategy` with `single-client` launch behavior. Consecutive launches are queued rather than
+overwriting an active review. Support is feature-detected through `window.launchQueue`; there is no
+user-agent sniffing or polyfill.
 
-After a release changes `file_handlers`, an installed browser may refresh the association or ask for
-permission again. Reinstalling the PWA is the reliable troubleshooting step when an operating-system
-file association has not refreshed.
+## Operating-system Share Target
+
+The manifest declares one file-only `share_target`. It deliberately does not accept title, text,
+URL, generic JSON, trading data or order actions. The browser posts `multipart/form-data` to the exact
+same-origin `/share-target` action. The production service worker handles only that POST locally;
+all other POST and runtime/trading requests remain network-only and are never cached or replayed.
+
+Accepted `File` objects and bounded rejection metadata are stored temporarily in a dedicated browser
+IndexedDB so the POST can redirect to the application shell. The redirect carries one opaque UUID,
+never a file name or contents. Storage is limited to five pending batches, expires after 24 hours and
+is deleted after Cancel or after the outer review hands files to the normal format-specific flow.
+Expired or unavailable records fail closed.
+
+The Share Target limits are ten files, 10 MB total accepted bytes, the 1/2/5 MB per-format limits
+above and a best-effort 12 MB request guard. Names are control-character stripped and truncated
+before display. A rejected file is never parsed.
+
+The cached root shell can receive and cancel a share while offline. Completing import offline also
+requires the optional same-build Strategy Studio bundle. If that bundle is unavailable, the opaque
+record remains retryable until cancellation, successful hand-off, bounded pruning or expiry.
 
 ## Verification
 
-- `npm run pwa:check` enforces the three exact MIME/extension pairs, Strategy-only action and absence
-  of generic JSON or trading handlers.
+- `npm run pwa:check` enforces exact file-handler and Share Target manifest contracts, the bounded
+  service-worker hand-off, expiration and the absence of generic JSON/trading handlers.
 - `frontend/tests/pwaFileLaunch.test.ts` covers feature detection, metadata-only collection, limits,
-  spoofing, unreadable handles and unsupported extensions.
-- Chromium production E2E injects launch events for all three formats and proves that library state
-  remains unchanged until the format-specific confirmation succeeds.
+  spoofing and unreadable handles.
+- `frontend/tests/pwaShareTarget.test.ts` covers strict tokens, worker messaging, URL cleanup,
+  discard and fail-closed records without reading file contents.
+- Production Chromium E2E submits a real multipart form through the generated service worker,
+  verifies supported/rejected files, outer consent, deletion and the normal Pine import. The offline
+  journey proves the cached shell can receive and cancel a share without caching runtime data.

@@ -37,7 +37,7 @@ test("shows localized recovery controls when the application module cannot load"
 
 test("installs a static offline shell without caching runtime market or trading data", async ({ page, context, browserName }) => {
   test.skip(browserName !== "chromium", "The required push gate verifies service-worker behavior in Chromium.");
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
 
   const manifestHref = await page.locator('link[rel="manifest"]').getAttribute("href");
   expect(manifestHref).toBe("/manifest.webmanifest");
@@ -55,6 +55,23 @@ test("installs a static offline shell without caching runtime market or trading 
       { action: "/?view=strategy", accept: { "application/vnd.saltanatbotv2.strategy+json": [".strategy"] }, launch_type: "single-client" },
       { action: "/?view=strategy", accept: { "application/vnd.saltanatbotv2.plugin+json": [".saltanat-plugin"] }, launch_type: "single-client" }
     ],
+    share_target: {
+      action: "/share-target",
+      method: "POST",
+      enctype: "multipart/form-data",
+      params: {
+        files: [{
+          name: "research_files",
+          accept: [
+            ".pine",
+            ".strategy",
+            ".saltanat-plugin",
+            "application/vnd.saltanatbotv2.strategy+json",
+            "application/vnd.saltanatbotv2.plugin+json"
+          ]
+        }]
+      }
+    },
     shortcuts: [
       { short_name: "Chart", url: "/?view=chart" },
       { short_name: "Strategy", url: "/?view=strategy" }
@@ -114,6 +131,20 @@ test("installs a static offline shell without caching runtime market or trading 
     await page.evaluate(() => history.replaceState(null, "", "/?view=strategy"));
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
+
+    const sharedDestination = await shareResearchFiles(page, [{
+      name: "offline-share.pine",
+      type: "text/plain",
+      content: ["//@version=6", 'indicator("Offline Share", overlay=false)', 'plot(close, "Close")'].join("\n")
+    }]);
+    const sharedToken = new URL(sharedDestination).searchParams.get("share");
+    expect(sharedToken).toMatch(/^[0-9a-f-]{36}$/);
+    const sharedReview = page.getByRole("dialog", { name: "Review files shared with SaltanatbotV2" });
+    await expect(sharedReview).toContainText("offline-share.pine", { timeout: 20_000 });
+    await expect(page.locator(".strategy-lab")).toHaveCount(0);
+    await sharedReview.getByRole("button", { name: "Cancel" }).click();
+    await expect(sharedReview).toBeHidden();
+    await expect.poll(() => hasPendingSharedFiles(page, sharedToken!)).toBe(false);
   } finally {
     await context.setOffline(false);
   }
@@ -1007,7 +1038,7 @@ test("reviews an OS-launched Pine file before conversion and import", async ({ p
   const launchReview = page.getByRole("dialog", { name: "Review files opened by the operating system" });
   await expect(launchReview).toBeVisible({ timeout: 20_000 });
   await expect(launchReview).toContainText("Contents have not been read yet");
-  await expect(page.locator(".strategy-library")).not.toContainText("OS Launch EMA");
+  await expect(page.locator(".strategy-lab")).toHaveCount(0);
   await expectNoAxeViolations(page);
   await launchReview.getByRole("button", { name: "Review files locally" }).click();
 
@@ -1020,6 +1051,54 @@ test("reviews an OS-launched Pine file before conversion and import", async ({ p
 
   await expect(pineReview).toBeHidden();
   await expect(page.locator(".strategy-library")).toContainText("OS Launch EMA");
+});
+
+test("receives shared research files through the installed PWA without automatic import", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Web Share Target is exercised through the production service worker in Chromium.");
+  test.setTimeout(90_000);
+  const destination = await shareResearchFiles(page, [
+    {
+      name: "share-target.pine",
+      type: "text/plain",
+      content: [
+        "//@version=6",
+        'indicator("Shared RSI", overlay=false)',
+        'plot(ta.rsi(close, 14), "RSI")'
+      ].join("\n")
+    },
+    { name: "orders.json", type: "application/json", content: "{}" },
+    { name: "oversized.pine", type: "text/plain", bytes: 1_000_001 }
+  ]);
+  const token = new URL(destination).searchParams.get("share");
+  expect(token).toMatch(/^[0-9a-f-]{36}$/);
+
+  await page.goto(destination);
+
+  const review = page.getByRole("dialog", { name: "Review files shared with SaltanatbotV2" });
+  await expect(review).toBeVisible({ timeout: 20_000 });
+  await expect(review).toContainText("share-target.pine");
+  await expect(review).toContainText("orders.json");
+  await expect(review).toContainText("Unsupported file extension");
+  await expect(review).toContainText("oversized.pine");
+  await expect(review).toContainText("File exceeds its bounded safety limit");
+  await expect(review).toContainText("temporarily on this device");
+  await expect(page.getByLabel("Workspace mode").getByRole("button", { name: "Chart", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".strategy-lab")).toHaveCount(0);
+  await expectNoAxeViolations(page);
+
+  await review.getByRole("button", { name: "Review files locally" }).click();
+
+  const pineReview = page.getByRole("dialog", { name: "Import Pine Script" });
+  await expect(pineReview).toContainText("share-target", { timeout: 20_000 });
+  await expect(page.locator(".strategy-library")).not.toContainText("Shared RSI");
+  await expect.poll(() => new URL(page.url()).searchParams.has("share")).toBe(false);
+  await expect.poll(() => hasPendingSharedFiles(page, token!)).toBe(false);
+  await pineReview.getByRole("button", { name: /^Convert/ }).click();
+  await expect(pineReview.getByText(/indicator · “Shared RSI”/i)).toBeVisible();
+  await pineReview.getByRole("button", { name: "Add 1 artifact", exact: true }).click();
+
+  await expect(pineReview).toBeHidden();
+  await expect(page.locator(".strategy-library")).toContainText("Shared RSI");
 });
 
 test("checksum-reviews an OS-launched strategy before adding it", async ({ page }) => {
@@ -1739,6 +1818,50 @@ async function dispatchPwaFile(page: Page, input: { name: string; type: string; 
     const target = window as Window & { __dispatchPwaFile?: (value: typeof file) => void };
     target.__dispatchPwaFile?.(file);
   }, input);
+}
+
+async function shareResearchFiles(page: Page, inputs: Array<{ name: string; type: string; content?: string; bytes?: number }>) {
+  await expect.poll(() => page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    return Boolean(navigator.serviceWorker.controller);
+  }), { timeout: 20_000 }).toBe(true);
+  await page.evaluate(() => {
+    const form = document.createElement("form");
+    form.id = "pwa-share-target-test-form";
+    form.action = "/share-target";
+    form.method = "POST";
+    form.enctype = "multipart/form-data";
+    const fileInput = document.createElement("input");
+    fileInput.id = "pwa-share-target-test-files";
+    fileInput.type = "file";
+    fileInput.name = "research_files";
+    fileInput.multiple = true;
+    form.append(fileInput);
+    document.body.append(form);
+  });
+  await page.locator("#pwa-share-target-test-files").setInputFiles(inputs.map((input) => ({
+    name: input.name,
+    mimeType: input.type,
+    buffer: input.bytes ? Buffer.alloc(input.bytes) : Buffer.from(input.content ?? "")
+  })));
+  await Promise.all([
+    page.waitForURL((url) => url.searchParams.has("share") || url.searchParams.has("share_error"), { timeout: 20_000 }),
+    page.locator("#pwa-share-target-test-form").evaluate((form: HTMLFormElement) => form.requestSubmit())
+  ]);
+  return page.url();
+}
+
+async function hasPendingSharedFiles(page: Page, token: string) {
+  return page.evaluate(async (shareToken) => {
+    const registration = await navigator.serviceWorker.ready;
+    const worker = navigator.serviceWorker.controller ?? registration.active;
+    if (!worker) return false;
+    return new Promise<boolean>((resolve) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (event) => resolve(event.data?.ok === true);
+      worker.postMessage({ type: "saltanat:share-target:load", token: shareToken }, [channel.port2]);
+    });
+  }, token);
 }
 
 async function openChartAnalysis(page: Page) {

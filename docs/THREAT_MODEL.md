@@ -125,6 +125,25 @@ Mitigations:
   retain signature, signer, permission and dependency review;
 - importing creates editable local artifacts only and cannot start research, bots or orders.
 
+### Malicious or stale operating-system shares
+
+A Share Target POST can contain excessive multipart data, misleading names, unsupported content or
+a stale/replayed redirect token. Persisting incoming files without bounds could also exhaust browser
+storage or expose sensitive names/content through URL history.
+
+Mitigations:
+
+- the manifest accepts only one file field and exact Pine/strategy/plugin formats; title, text, URL,
+  generic JSON, trading data and order actions are absent;
+- the worker intercepts only the exact same-origin `/share-target` POST, applies ten-file, 10 MB total,
+  best-effort 12 MB request and 1/2/5 MB per-format limits, and sanitizes displayed names;
+- records use opaque UUIDv4 tokens with no file metadata in the URL, live in a separate IndexedDB,
+  expire after 24 hours and are pruned to five pending batches;
+- invalid, missing and expired tokens fail closed; Cancel and successful review hand-off delete the
+  record, and rejected files are never parsed;
+- the root shell shows metadata before Strategy Studio loads or content is read; the normal Pine,
+  strategy and plugin confirmations remain mandatory and cannot start research or trading.
+
 ### Data corruption and unsafe upgrades
 
 Threats include raw copying of an active database, partial restore, tampered backup and incompatible
@@ -149,7 +168,8 @@ Mitigations:
 
 - the service worker caches only the static same-origin application shell and reviewed assets;
 - API, authentication, quote, order-book, trade-flow and private trading endpoints are network-only;
-- non-GET, cross-origin and opaque responses are never cached;
+- non-GET requests remain network-only except the exact file-only Share Target hand-off, which is
+  stored temporarily and never cached, forwarded, replayed or interpreted as a trading request;
 - no background sync or request queue exists, and worker updates do not force `skipWaiting`;
 - offline shell behavior and the empty runtime-data cache boundary are verified in production E2E.
 - optional Strategy Studio files use a separate explicit cache whose generated graph excludes Trading View and runtime endpoints; offline research never queues a command or claims complete market data.

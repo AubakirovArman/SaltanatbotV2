@@ -29,12 +29,15 @@ application data.
 
 Installed-app shortcuts can open either `/?view=chart` or `/?view=strategy`. Unknown values—including
 `view=trade`—fail closed to Chart; the manifest deliberately exposes no direct trading shortcut.
-The installed desktop app can also opt into reviewed local research file associations; see
-[PWA file handling](PWA_FILE_HANDLING.md).
+The installed app can also opt into reviewed local research file associations and a file-only Share
+Target. The cached root shell can receive and cancel a shared file offline; completing import also
+requires this optional same-build Strategy Studio graph. See
+[PWA file opening and sharing](PWA_FILE_HANDLING.md).
 
 ## Verification
 
 `npm run pwa:check` verifies that the research graph contains Strategy Studio, Blockly, its worker and
 media, excludes Trading View and every runtime route, and points only at emitted same-origin files.
 The Chromium E2E installs the optional cache, disables the network, reopens `/?view=strategy`, confirms
-the editor renders, and independently proves an API probe still rejects.
+the editor renders, receives and cancels a Share Target POST, and independently proves an API probe
+still rejects.

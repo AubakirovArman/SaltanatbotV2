@@ -1,8 +1,8 @@
 import { FileCheck2, ShieldCheck, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { localeTag, type Locale } from "../../i18n";
-import { strategyText } from "../../i18n/strategy";
-import type { PwaFileLaunchBatch, PwaLaunchFileKind, PwaLaunchRejectionReason } from "../../pwa/fileLaunch";
+import { localeTag, type Locale } from "../i18n";
+import { pwaText, type PwaMessageKey } from "../i18n/pwa";
+import type { PwaFileLaunchBatch, PwaLaunchFileKind, PwaLaunchRejectionReason } from "./fileLaunch";
 
 export function PwaFileLaunchDialog({
   locale,
@@ -13,13 +13,14 @@ export function PwaFileLaunchDialog({
   locale: Locale;
   batch: PwaFileLaunchBatch;
   onClose: () => void;
-  onReview: () => Promise<void>;
+  onReview: () => Promise<void> | void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
-  const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
+  const t = (key: PwaMessageKey) => pwaText(locale, key);
   const [busy, setBusy] = useState(false);
+  const shared = batch.source === "share_target";
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -41,14 +42,14 @@ export function PwaFileLaunchDialog({
       }}
     >
       <header>
-        <h2 id={titleId}><FileCheck2 size={18} aria-hidden="true" /> {t("openedFilesTitle")}</h2>
-        <button type="button" className="icon-button" onClick={onClose} aria-label={t("closeOpenedFiles")}>
+        <h2 id={titleId}><FileCheck2 size={18} aria-hidden="true" /> {t(shared ? "sharedFilesTitle" : "openedFilesTitle")}</h2>
+        <button type="button" className="icon-button" onClick={onClose} aria-label={t(shared ? "closeSharedFiles" : "closeOpenedFiles")}>
           <X size={16} aria-hidden="true" />
         </button>
       </header>
       <div className="plugin-dialog-body">
-        <p id={descriptionId}>{t("openedFilesHelp")}</p>
-        <p className="file-launch-privacy"><ShieldCheck size={16} aria-hidden="true" /> {t("openedFilesPrivacy")}</p>
+        <p id={descriptionId}>{t(shared ? "sharedFilesHelp" : "openedFilesHelp")}</p>
+        <p className="file-launch-privacy"><ShieldCheck size={16} aria-hidden="true" /> {t(shared ? "sharedFilesPrivacy" : "openedFilesPrivacy")}</p>
         {batch.files.length > 0 && (
           <ul className="file-launch-list">
             {batch.files.map(({ file, kind, name }, index) => (
@@ -61,7 +62,7 @@ export function PwaFileLaunchDialog({
         )}
         {batch.rejected.length > 0 && (
           <section className="file-launch-rejections" aria-labelledby={`${titleId}-rejected`}>
-            <h3 id={`${titleId}-rejected`}>{t("openedFilesRejected")}</h3>
+            <h3 id={`${titleId}-rejected`}>{t("filesRejected")}</h3>
             <ul>
               {batch.rejected.map((item, index) => (
                 <li key={`${item.name ?? item.reason}-${index}`}>
@@ -80,27 +81,28 @@ export function PwaFileLaunchDialog({
           disabled={!batch.files.length || busy}
           onClick={() => {
             setBusy(true);
-            void onReview().finally(() => setBusy(false));
+            void Promise.resolve(onReview()).finally(() => setBusy(false));
           }}
         >
-          {t(busy ? "reviewingOpenedFiles" : "reviewOpenedFiles")}
+          {t(busy ? "reviewing" : "review")}
         </button>
       </footer>
     </dialog>
   );
 }
 
-function kindLabel(t: (key: Parameters<typeof strategyText>[1]) => string, kind: PwaLaunchFileKind) {
-  const keys = { pine: "openedFilePine", strategy: "openedFileStrategy", plugin: "openedFilePlugin" } as const;
+function kindLabel(t: (key: PwaMessageKey) => string, kind: PwaLaunchFileKind) {
+  const keys = { pine: "pine", strategy: "strategy", plugin: "plugin" } as const;
   return t(keys[kind]);
 }
 
-function rejectionLabel(t: (key: Parameters<typeof strategyText>[1]) => string, reason: PwaLaunchRejectionReason) {
+function rejectionLabel(t: (key: PwaMessageKey) => string, reason: PwaLaunchRejectionReason) {
   const keys = {
-    too_many: "openedFileTooMany",
-    unsupported: "openedFileUnsupported",
-    too_large: "openedFileTooLarge",
-    unreadable: "openedFileUnreadable"
+    too_many: "tooMany",
+    unsupported: "unsupported",
+    too_large: "tooLarge",
+    unreadable: "unreadable",
+    expired: "sharedFilesExpired"
   } as const;
   return t(keys[reason]);
 }

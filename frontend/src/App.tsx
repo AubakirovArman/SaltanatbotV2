@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useChartArtifactOverlay } from "./chart/useChartArtifactOverlay";
 import { AlertToasts } from "./components/AlertToasts";
 import { ChartCanvas } from "./components/ChartCanvas";
@@ -32,11 +32,20 @@ import { localized, translate } from "./i18n";
 import { loadLastChartSession } from "./app/chartSession";
 import { pickDistinctMarketSymbols } from "./app/distinctMarkets";
 import { launchView } from "./app/launchView";
-import { registerPwaFileLaunch, type PwaFileLaunchBatch, type PwaLaunchWindow } from "./pwa/fileLaunch";
+import { createPwaFileLaunchBatch, registerPwaFileLaunch, type PwaFileLaunchBatch, type PwaLaunchWindow } from "./pwa/fileLaunch";
+import { PwaFileLaunchDialog } from "./pwa/PwaFileLaunchDialog";
+import { clearPwaShareTargetLaunch, discardPwaShareTarget, loadPwaShareTarget, parsePwaShareTargetLaunch } from "./pwa/shareTarget";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
 const initialWorkspaceState = loadInitialWorkspaceState();
+
+interface QueuedPwaLaunch {
+  batch: PwaFileLaunchBatch;
+  approved: boolean;
+  shareToken?: string;
+  clearShareLaunch?: boolean;
+}
 
 const fallbackInstrument: Instrument = {
   symbol: "BTCUSDT",
@@ -59,7 +68,8 @@ export default function App() {
   const [asset, setAsset] = useState<AssetClass | "all">("all");
   const [mode, setMode] = useState<AppMode>(launchView);
   const [offlineResearchOpen, setOfflineResearchOpen] = useState(false);
-  const [launchedFiles, setLaunchedFiles] = useState<PwaFileLaunchBatch[]>([]);
+  const [launchedFiles, setLaunchedFiles] = useState<QueuedPwaLaunch[]>([]);
+  const shareTargetLoadStarted = useRef(false);
   const [indicators, setIndicators] = useState(initialWorkspaceState.indicators);
   const [linkedCrosshair, setLinkedCrosshair] = useState<LinkedCrosshair>();
   const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
@@ -79,11 +89,40 @@ export default function App() {
   }, [isMobile, mode]);
   useEffect(() => {
     registerPwaFileLaunch(window as unknown as PwaLaunchWindow, (batch) => {
-      setLaunchedFiles((current) => [...current, batch]);
-      setMode("strategy");
-      warmStrategyLab();
+      setLaunchedFiles((current) => [...current, { batch, approved: false }]);
     });
   }, []);
+  useEffect(() => {
+    if (shareTargetLoadStarted.current) return;
+    const launch = parsePwaShareTargetLaunch();
+    if (launch.kind === "none") return;
+    shareTargetLoadStarted.current = true;
+    if (launch.kind === "error") {
+      setLaunchedFiles((current) => [...current, {
+        batch: createPwaFileLaunchBatch("share_target", [], [{ reason: "expired" }]),
+        approved: false,
+        clearShareLaunch: true
+      }]);
+      return;
+    }
+    void loadPwaShareTarget(launch.token).then((batch) => {
+      setLaunchedFiles((current) => [...current, { batch, approved: false, shareToken: launch.token, clearShareLaunch: true }]);
+    });
+  }, []);
+  const consumeLaunchedFiles = useCallback(() => {
+    const current = launchedFiles[0];
+    if (!current) return;
+    if (current.shareToken) void discardPwaShareTarget(current.shareToken);
+    if (current.clearShareLaunch) clearPwaShareTargetLaunch();
+    setLaunchedFiles((queue) => queue[0]?.batch.id === current.batch.id ? queue.slice(1) : queue);
+  }, [launchedFiles]);
+  const approveLaunchedFiles = useCallback(() => {
+    const current = launchedFiles[0];
+    if (!current) return;
+    setLaunchedFiles((queue) => queue.map((item, index) => index === 0 ? { ...item, approved: true } : item));
+    setMode("strategy");
+    warmStrategyLab();
+  }, [launchedFiles]);
   const openStrategyWorkspace = useCallback(() => setMode("strategy"), []);
   const artifactLibrary = useArtifactLibrary({
     initialArtifacts: initialWorkspaceState.strategyLibrary,
@@ -411,8 +450,8 @@ export default function App() {
                 onImportPlugin={artifactLibrary.importPlugin}
                 onUninstallPlugin={artifactLibrary.uninstallPlugin}
                 onImportPineMany={artifactLibrary.importPineMany}
-                launchedBatch={launchedFiles[0]}
-                onLaunchedBatchConsumed={() => setLaunchedFiles((current) => current.slice(1))}
+                launchedBatch={launchedFiles[0]?.approved ? launchedFiles[0].batch : undefined}
+                onLaunchedBatchConsumed={consumeLaunchedFiles}
                 onRollbackArtifact={artifactLibrary.rollbackArtifactVersion}
                 onUpdateArtifactDependencies={artifactLibrary.updateArtifactDependencies}
                 catalog={catalog}
@@ -441,6 +480,14 @@ export default function App() {
       <CommandPalette locale={locale} open={appCommands.paletteOpen} onClose={appCommands.closePalette} commands={appCommands.commands} />
       <ShortcutSettingsDialog locale={locale} open={appCommands.shortcutSettingsOpen} shortcuts={appCommands.shortcuts} onChange={appCommands.setShortcuts} onClose={appCommands.closeShortcutSettings} />
       <OfflineResearchDialog locale={locale} open={offlineResearchOpen} onClose={() => setOfflineResearchOpen(false)} />
+      {launchedFiles[0] && !launchedFiles[0].approved && (
+        <PwaFileLaunchDialog
+          locale={locale}
+          batch={launchedFiles[0].batch}
+          onClose={consumeLaunchedFiles}
+          onReview={approveLaunchedFiles}
+        />
+      )}
       <AlertToasts locale={locale} toasts={priceAlerts.toasts} decimalsFor={decimalsFor} onDismiss={priceAlerts.dismissToast} />
     </div>
   );

@@ -1,6 +1,10 @@
+import { PWA_SHARE_TARGET } from "./shareTargetContract";
+
 export type PwaLaunchFileKind = "pine" | "strategy" | "plugin";
 
-export type PwaLaunchRejectionReason = "too_many" | "unsupported" | "too_large" | "unreadable";
+export type PwaLaunchSource = "file_handler" | "share_target";
+
+export type PwaLaunchRejectionReason = "too_many" | "unsupported" | "too_large" | "unreadable" | "expired";
 
 export interface PwaLaunchFile {
   file: File;
@@ -15,6 +19,7 @@ export interface PwaLaunchRejection {
 
 export interface PwaFileLaunchBatch {
   id: number;
+  source: PwaLaunchSource;
   files: PwaLaunchFile[];
   rejected: PwaLaunchRejection[];
 }
@@ -37,12 +42,8 @@ export interface PwaLaunchWindow {
   launchQueue?: PwaLaunchQueue;
 }
 
-const MAX_FILES_PER_LAUNCH = 10;
-const MAX_FILE_BYTES: Record<PwaLaunchFileKind, number> = {
-  pine: 1_000_000,
-  strategy: 2_000_000,
-  plugin: 5_000_000
-};
+const MAX_FILES_PER_LAUNCH = PWA_SHARE_TARGET.maxFiles;
+const MAX_FILE_BYTES: Record<PwaLaunchFileKind, number> = PWA_SHARE_TARGET.fileLimits;
 
 let nextBatchId = 1;
 
@@ -71,7 +72,7 @@ export function registerPwaFileLaunch(
  * Reads only File metadata/handles. Contents are deliberately left unread until the
  * user confirms the in-app review step in Strategy Studio.
  */
-export async function collectPwaLaunchFiles(handles: readonly PwaFileHandle[]): Promise<PwaFileLaunchBatch> {
+export async function collectPwaLaunchFiles(handles: readonly PwaFileHandle[], source: PwaLaunchSource = "file_handler"): Promise<PwaFileLaunchBatch> {
   const acceptedHandles = handles.slice(0, MAX_FILES_PER_LAUNCH);
   const rejected: PwaLaunchRejection[] = [];
   if (handles.length > acceptedHandles.length) {
@@ -79,11 +80,11 @@ export async function collectPwaLaunchFiles(handles: readonly PwaFileHandle[]): 
   }
 
   const settled = await Promise.allSettled(acceptedHandles.map(async (handle) => {
-    const handleName = safeFileName(handle.name);
+    const handleName = safePwaFileName(handle.name);
     const expectedKind = classifyPwaLaunchFile(handleName);
     if (!expectedKind) return { rejection: { name: handleName, reason: "unsupported" } as PwaLaunchRejection };
     const file = await handle.getFile();
-    const name = safeFileName(file.name || handleName);
+    const name = safePwaFileName(file.name || handleName);
     const kind = classifyPwaLaunchFile(name);
     if (!kind || kind !== expectedKind) return { rejection: { name, reason: "unsupported" } as PwaLaunchRejection };
     if (file.size > MAX_FILE_BYTES[kind]) return { rejection: { name, reason: "too_large" } as PwaLaunchRejection };
@@ -94,7 +95,7 @@ export async function collectPwaLaunchFiles(handles: readonly PwaFileHandle[]): 
   for (let index = 0; index < settled.length; index += 1) {
     const result = settled[index];
     if (result.status === "rejected") {
-      rejected.push({ name: safeFileName(acceptedHandles[index]?.name), reason: "unreadable" });
+      rejected.push({ name: safePwaFileName(acceptedHandles[index]?.name), reason: "unreadable" });
     } else if (result.value.file) {
       files.push(result.value.file);
     } else {
@@ -102,7 +103,11 @@ export async function collectPwaLaunchFiles(handles: readonly PwaFileHandle[]): 
     }
   }
 
-  return { id: nextBatchId++, files, rejected };
+  return createPwaFileLaunchBatch(source, files, rejected);
+}
+
+export function createPwaFileLaunchBatch(source: PwaLaunchSource, files: PwaLaunchFile[], rejected: PwaLaunchRejection[]): PwaFileLaunchBatch {
+  return { id: nextBatchId++, source, files, rejected };
 }
 
 export function classifyPwaLaunchFile(name?: string): PwaLaunchFileKind | undefined {
@@ -117,7 +122,7 @@ export function pwaLaunchFileLimit(kind: PwaLaunchFileKind): number {
   return MAX_FILE_BYTES[kind];
 }
 
-function safeFileName(name?: string): string | undefined {
+export function safePwaFileName(name?: string): string | undefined {
   if (!name) return undefined;
   const normalized = Array.from(name)
     .filter((character) => character.codePointAt(0)! >= 32 && character.codePointAt(0) !== 127)

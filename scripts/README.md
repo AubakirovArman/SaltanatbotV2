@@ -11,6 +11,8 @@ This folder contains deterministic maintenance and release helpers invoked by ro
   metadata, semantic main/skip navigation and baseline focus/reduced-motion CSS requirements.
 - `check-bundle-budgets.mjs`: measures production frontend HTML, CSS and JavaScript using raw/gzip
   sizes and enforces the reviewed limits in `performance-budgets.json`.
+- `check-pwa.mjs`: validates the emitted shell/research graphs, exact desktop file handlers and the
+  bounded file-only Share Target/worker contract while rejecting runtime caching or trading actions.
 - `generate-pine-compatibility.mjs`: generates and checks the Pine compatibility registry.
 - `generate-reference-docs.mjs`: generates and checks the Express endpoint index and strategy block catalog.
 - `package-release.mjs`: validates release channels and creates a deterministic, secret-free application archive plus build metadata and a per-file SHA-256 distribution manifest.

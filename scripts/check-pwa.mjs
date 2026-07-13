@@ -35,6 +35,21 @@ for (const handler of fileHandlers) {
 }
 const serializedFileHandlers = JSON.stringify(fileHandlers);
 if (/trade|order/i.test(serializedFileHandlers) || serializedFileHandlers.includes('"application/json"') || serializedFileHandlers.includes('".json"')) fail("file handlers must not expose generic JSON or trading actions");
+const shareTarget = manifest.share_target;
+if (shareTarget?.action !== "/share-target" || shareTarget.method !== "POST" || shareTarget.enctype !== "multipart/form-data") fail("share target must use the bounded same-origin multipart POST endpoint");
+if (Object.keys(shareTarget.params ?? {}).some((key) => key !== "files")) fail("share target must not collect title, text or URL fields");
+const shareBuckets = shareTarget.params?.files ?? [];
+if (shareBuckets.length !== 1 || shareBuckets[0]?.name !== "research_files") fail("share target must expose one bounded research-file field");
+const expectedShareAccept = [
+  ".pine",
+  ".strategy",
+  ".saltanat-plugin",
+  "application/vnd.saltanatbotv2.strategy+json",
+  "application/vnd.saltanatbotv2.plugin+json"
+];
+if (JSON.stringify(shareBuckets[0]?.accept) !== JSON.stringify(expectedShareAccept)) fail("share target accept list is incomplete or over-broad");
+const serializedShareTarget = JSON.stringify(shareTarget);
+if (/trade|order/i.test(serializedShareTarget) || serializedShareTarget.includes('"application/json"') || serializedShareTarget.includes('"text/plain"') || serializedShareTarget.includes('".json"')) fail("share target must not expose generic text/JSON or trading actions");
 const pngIcons = (manifest.icons ?? []).filter((icon) => icon.type === "image/png" && icon.purpose?.split(" ").includes("any"));
 const iconSizes = pngIcons.map((icon) => pngSize(resolve(dist, icon.src.replace(/^\//, ""))));
 if (!iconSizes.some(({ width, height }) => width >= 192 && height >= 192)) fail("manifest needs a PNG icon at least 192x192");
@@ -52,6 +67,9 @@ if (precache.includes("/manifest.webmanifest") || precache.includes("/service-wo
 const runtimePrefixes = ["/api/", "/stream", "/quotes", "/orderbook", "/trade-flow", "/trade-stream"];
 if (precache.some((url) => runtimePrefixes.some((prefix) => url.startsWith(prefix)))) fail("runtime API or stream leaked into precache");
 if (!worker.includes('request.method !== "GET"') || runtimePrefixes.some((prefix) => !worker.includes(JSON.stringify(prefix)))) fail("network-only request guards are missing");
+if (!worker.includes('request.method === "POST"') || !worker.includes('url.pathname === SHARE_TARGET.action') || !worker.includes("request.formData()")) fail("bounded share-target POST interception is missing");
+if (!worker.includes("indexedDB.open(SHARE_TARGET.database") || !worker.includes("SHARE_TARGET.maxPendingBatches") || !worker.includes("SHARE_TARGET.retentionMs")) fail("share-target storage is not bounded or expiring");
+if (!worker.includes('Response.redirect(target.href, 303)') || !worker.includes('SHARE_TARGET.messagePrefix + "discard"')) fail("share-target review handoff or discard protocol is missing");
 if (worker.includes("skipWaiting") || /\b(?:sync|periodicsync)\b/i.test(worker)) fail("worker must not skip waiting or queue background sync");
 if (worker.includes('cache.put("/"') || worker.includes("response.clone()")) fail("navigation responses must not be buffered into the active shell cache");
 
