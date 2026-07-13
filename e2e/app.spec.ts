@@ -1376,6 +1376,7 @@ test("exports selected local artifacts as a verified plugin package", { tag: "@s
 });
 
 test("switches and persists the interface locale", { tag: "@smoke" }, async ({ page }) => {
+  await expect(page.locator(".locale-toggle")).toHaveText("EN");
   await page.getByRole("button", { name: "Switch interface language to Russian" }).click();
 
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
@@ -1385,6 +1386,7 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
   await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
   await expect(workspaceModes.getByRole("button", { name: "Стратегия", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Переключить язык интерфейса на казахский" })).toBeVisible();
+  await expect(page.locator(".locale-toggle")).toHaveText("RU");
   await expect(page.getByRole("button", { name: "Данные графика", exact: true })).toBeVisible();
   await expect(page.getByText("Рынки", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Статистика свечи")).toBeVisible();
@@ -1418,6 +1420,7 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
   await expect(page).toHaveTitle("Сауда · SaltanatbotV2");
   await expect(page.getByRole("heading", { name: "Сауда жабық" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Интерфейс тілін ағылшын тіліне ауыстыру" })).toBeVisible();
+  await expect(page.locator(".locale-toggle")).toHaveText("KK");
   await expect.poll(() => page.evaluate(() => localStorage.getItem("sbv2:locale"))).toBe("kk");
 
   await page.reload();

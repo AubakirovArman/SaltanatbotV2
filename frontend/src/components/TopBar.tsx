@@ -19,7 +19,7 @@ import {
   Workflow
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { localeNames, nextLocale, translate, type Locale } from "../i18n";
+import { nextLocale, translate, type Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
 import type { CatalogResponse, ChartType, Instrument, Timeframe } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
@@ -230,10 +230,10 @@ export function TopBar({
           type="button"
           className="icon-button locale-toggle"
           onClick={onToggleLocale}
-          title={localeNames[targetLocale]}
+          title={translate(locale, targetLocale === "ru" ? "switchToRussian" : targetLocale === "kk" ? "switchToKazakh" : "switchToEnglish")}
           aria-label={translate(locale, targetLocale === "ru" ? "switchToRussian" : targetLocale === "kk" ? "switchToKazakh" : "switchToEnglish")}
         >
-          {targetLocale.toUpperCase()}
+          {locale.toUpperCase()}
         </button>
         <div className={`status-pill ${connection}`} title={`${shellText(locale, "feedStatus")}: ${connection}`} role="status">
           <i aria-hidden="true" />
