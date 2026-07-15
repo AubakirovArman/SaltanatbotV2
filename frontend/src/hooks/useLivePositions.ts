@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../auth/AuthRoot";
 import type { ChartLivePosition } from "../chart/types";
 import { getLive, getToken, listBots } from "../trading/tradeClient";
 
@@ -8,10 +9,12 @@ import { getLive, getToken, listBots } from "../trading/tradeClient";
  * doesn't hit the authenticated trade API for nothing.
  */
 export function useLivePositions(symbol: string): ChartLivePosition[] {
+  const accountAuth = useAuth();
   const [positions, setPositions] = useState<ChartLivePosition[]>([]);
 
   useEffect(() => {
-    if (!getToken()) {
+    const canReadTrading = accountAuth.authRequired ? accountAuth.tradingAvailable : Boolean(getToken());
+    if (!canReadTrading) {
       setPositions([]);
       return;
     }
@@ -38,7 +41,7 @@ export function useLivePositions(symbol: string): ChartLivePosition[] {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [symbol]);
+  }, [accountAuth.authRequired, accountAuth.tradingAvailable, symbol]);
 
   return positions;
 }

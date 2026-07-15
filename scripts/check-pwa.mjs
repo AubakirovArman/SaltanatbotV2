@@ -97,6 +97,7 @@ for (const url of precache.filter((url) => url.endsWith(".js"))) {
     if (!precache.includes(dependency)) fail(`static shell dependency is not precached: ${dependency}`);
   }
 }
+if (!precache.some((url) => url.includes("ApplicationRoot"))) fail("the lazy authentication/application root is not precached for offline shell reloads");
 if (precache.some((url) => url.includes("blockly-runtime") || url.includes("StrategyLab"))) fail("optional Strategy Studio must not block initial shell installation");
 if (!research.some((url) => url.includes("StrategyLab")) || !research.some((url) => url.includes("blockly-runtime"))) fail("optional research cache does not contain Strategy Studio and Blockly");
 if (research.some((url) => precache.includes(url))) fail("optional research cache overlaps the required shell cache");

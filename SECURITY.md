@@ -12,7 +12,8 @@ If private reporting is unavailable, open a public issue requesting a private co
 
 ## Secrets and trading safety
 
-- Never attach `backend/data/`, `.env`, `.secret`, `.authtoken`, SQLite files or exchange credentials.
+- Never attach `backend/data/`, `.secrets/`, `.env`, `.secret`, PostgreSQL dumps, SQLite files or exchange credentials. `.authtoken` is a retired legacy artifact and must also stay private if an old installation still has one.
+- Change the generated bootstrap-admin password immediately. New registrations remain pending until an administrator activates them; disabling an account revokes its sessions.
 - Use exchange keys without withdrawal permission and restrict them by IP where possible.
 - Reproduce trading defects in `DEMO_MODE=1`, paper mode or an exchange testnet.
 - Rotate every secret that may have entered logs, screenshots, commits or issue attachments.

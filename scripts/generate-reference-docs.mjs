@@ -13,6 +13,10 @@ const researchAlertRoutesPath = path.join(root, "backend/src/arbitrage/researchA
 const paperMultiLegRoutesPath = path.join(root, "backend/src/arbitrage/paperMultiLeg/routes.ts");
 const publicVenueRoutesPath = path.join(root, "backend/src/venues/publicRoutes.ts");
 const orderBookMlResearchRoutesPath = path.join(root, "backend/src/orderbook/ml/researchRoutes.ts");
+const identityServerRoutesPath = path.join(root, "backend/src/identity/serverRoutes.ts");
+const identityRoutesPath = path.join(root, "backend/src/identity/routes.ts");
+const workspaceRoutesPath = path.join(root, "backend/src/workspaces/routes.ts");
+const computeJobRoutesPath = path.join(root, "backend/src/jobs/routes.ts");
 const blocksPath = path.join(root, "frontend/src/strategy/blockCatalog.ts");
 const apiDocPath = path.join(root, "docs/API_ENDPOINTS.generated.md");
 const blocksDocPath = path.join(root, "docs/BLOCK_CATALOG.generated.md");
@@ -26,25 +30,39 @@ const researchAlertRoutesSource = readFileSync(researchAlertRoutesPath, "utf8");
 const paperMultiLegRoutesSource = readFileSync(paperMultiLegRoutesPath, "utf8");
 const publicVenueRoutesSource = readFileSync(publicVenueRoutesPath, "utf8");
 const orderBookMlResearchRoutesSource = readFileSync(orderBookMlResearchRoutesPath, "utf8");
+const identityServerRoutesSource = readFileSync(identityServerRoutesPath, "utf8");
+const identityRoutesSource = readFileSync(identityRoutesPath, "utf8");
+const workspaceRoutesSource = readFileSync(workspaceRoutesPath, "utf8");
+const computeJobRoutesSource = readFileSync(computeJobRoutesPath, "utf8");
 const blocksSource = readFileSync(blocksPath, "utf8");
 
-const endpoints = [
-  ...extractRoutes(serverSource, "app", "", Number.POSITIVE_INFINITY, "Public"),
+const endpoints = uniqueEndpoints([
+  ...extractRoutes(serverSource, "app", "", Number.POSITIVE_INFINITY, "Authenticated account"),
+  ...extractRoutes(identityServerRoutesSource, "app", "", Number.POSITIVE_INFINITY, "Public", "backend/src/identity/serverRoutes.ts"),
+  ...extractRoutes(identityRoutesSource, "auth", "/api/auth", 0, "Public", "backend/src/identity/routes.ts").map((endpoint) => ({
+    ...endpoint,
+    access: new Set(["/api/auth/config", "/api/auth/register", "/api/auth/login"]).has(endpoint.path)
+      ? "Public"
+      : "Authenticated account"
+  })),
+  ...extractRoutes(identityRoutesSource, "admin", "/api/admin", 0, "Public", "backend/src/identity/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin" })),
+  ...extractRoutes(workspaceRoutesSource, "router", "/api/workspaces", 0, "Public", "backend/src/workspaces/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped" })),
+  ...extractRoutes(computeJobRoutesSource, "router", "/api/jobs", 0, "Public", "backend/src/jobs/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped" })),
   ...extractRoutes(tradingSource, "router", "/api/trade", tradingSource.indexOf("router.use(requireAuth)"), "Public"),
   ...extractRoutes(tradingAccountRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/tradingAccountRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin" })),
   ...extractRoutes(emergencyStopRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/emergencyStopRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · live-trade" })),
   ...extractRoutes(arbitrageAlertRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/arbitrage/alertRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" })),
   ...extractRoutes(researchAlertRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/arbitrage/researchAlerts/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" })),
   ...extractRoutes(paperMultiLegRoutesSource, "router", "/api/trade/paper-multi-leg", 0, "Public", "backend/src/arbitrage/paperMultiLeg/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" })),
-  ...extractRoutes(publicVenueRoutesSource, "router", "/api/market-data", Number.POSITIVE_INFINITY, "Public · read-only", "backend/src/venues/publicRoutes.ts"),
+  ...extractRoutes(publicVenueRoutesSource, "router", "/api/market-data", Number.POSITIVE_INFINITY, "Authenticated account · public-market read-only", "backend/src/venues/publicRoutes.ts"),
   ...extractRoutes(orderBookMlResearchRoutesSource, "router", "/api/orderbook-ml/research", 0, "Public", "backend/src/orderbook/ml/researchRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin · research-only" }))
-].sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+]).sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
 const sockets = [
-  { path: "/stream", access: "Public", purpose: "Market candle snapshot and updates" },
-  { path: "/quotes", access: "Public", purpose: "Multiplexed watchlist quote snapshots and updates" },
-  { path: "/orderbook", access: "Public", purpose: "Shared Binance/Bybit order-book snapshots and status" },
-  { path: "/trade-flow", access: "Public", purpose: "Shared Binance/Bybit aggressor-trade batches and status" },
-  { path: "/arbitrage-stream", access: "Public", purpose: "Shared read-only cross-exchange arbitrage snapshots" },
+  { path: "/stream", access: "Authenticated account", purpose: "Market candle snapshot and updates" },
+  { path: "/quotes", access: "Authenticated account", purpose: "Multiplexed watchlist quote snapshots and updates" },
+  { path: "/orderbook", access: "Authenticated account", purpose: "Shared Binance/Bybit order-book snapshots and status" },
+  { path: "/trade-flow", access: "Authenticated account", purpose: "Shared Binance/Bybit aggressor-trade batches and status" },
+  { path: "/arbitrage-stream", access: "Authenticated account", purpose: "Shared read-only cross-exchange arbitrage snapshots" },
   { path: "/trade-stream", access: "One-time authenticated WebSocket ticket", purpose: "Bot, order, fill and runtime updates" }
 ];
 const blocks = extractBlocks(blocksSource);
@@ -119,7 +137,7 @@ function extractRoutes(source, receiver, prefix, publicBoundary, publicAccess, s
     const lineEnd = source.indexOf("\n", match.index);
     const signature = source.slice(match.index, lineEnd === -1 ? undefined : lineEnd);
     const role = signature.match(/requireRole\("([^"]+)"\)/)?.[1];
-    const fullPath = `${prefix}${match[2]}`;
+    const fullPath = joinRoute(prefix, match[2]);
     const runtimeRole = new Set(["POST /api/trade/bots", "POST /api/trade/bots/:id/start", "POST /api/trade/bots/:id/stop", "POST /api/trade/bots/:id/confirm-resume", "POST /api/trade/bots/:id/command"]).has(`${match[1].toUpperCase()} ${fullPath}`);
     routes.push({
       method: match[1].toUpperCase(),
@@ -129,6 +147,21 @@ function extractRoutes(source, receiver, prefix, publicBoundary, publicAccess, s
     });
   }
   return routes;
+}
+
+function joinRoute(prefix, route) {
+  if (!prefix) return route;
+  return route === "/" ? prefix : `${prefix}${route}`;
+}
+
+function uniqueEndpoints(values) {
+  const byRoute = new Map();
+  for (const endpoint of values) {
+    const key = `${endpoint.method} ${endpoint.path}`;
+    const existing = byRoute.get(key);
+    if (!existing || existing.source === "backend/src/identity/serverRoutes.ts") byRoute.set(key, endpoint);
+  }
+  return [...byRoute.values()];
 }
 
 function extractBlocks(source) {

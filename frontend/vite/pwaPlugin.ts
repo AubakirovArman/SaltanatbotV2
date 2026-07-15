@@ -78,7 +78,8 @@ function initialShellOutputs(bundle: Parameters<NonNullable<Plugin["generateBund
     if (output.type === "chunk") for (const imported of chunkDependencies(output, false)) visit(imported);
   };
   for (const output of Object.values(bundle)) {
-    if (output.type === "chunk" && output.isEntry) visit(output.fileName);
+    if (output.type !== "chunk") continue;
+    if (output.isEntry || output.facadeModuleId?.endsWith("/auth/ApplicationRoot.tsx")) visit(output.fileName);
   }
   return [...files].sort();
 }

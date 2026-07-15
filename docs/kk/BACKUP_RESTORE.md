@@ -1,10 +1,15 @@
 # Backup және қалпына келтіру
 
-Тексерілген күні: 2026-07-11.
+Тексерілген күні: 2026-07-15.
 
 Runtime деректері `backend/data/` ішінде сақталады. Жарамды backup `trading.db` және `.secret`
 файлдарын бірге сақтауы тиіс: бастапқы `.secret` болмаса, шифрланған API кілттері ашылмайды.
-`candles.db` және `.authtoken` бар болса, автоматты түрде қосылады.
+`candles.db` бар болса қосылады. Жаңа backup ескірген `.authtoken` файлын қоспайды, бірақ ескі
+manifest оны әлі тексере алады.
+
+Accounts, sessions, workspaces және research queue PostgreSQL ішінде орналасады және бөлек
+`pg_dump -Fc saltanatbotv2 > saltanatbotv2.dump` арқылы сақталады. Толық recovery үшін PostgreSQL
+dump және бастапқы `.secret` бар SQLite backup екеуі де керек.
 
 > Backup құпия материалды қамтиды. Оны commit жасамаңыз, issue-ге қоспаңыз және сенімсіз cloud-қа
 > жүктемеңіз. Құрал integrity-ді тексереді, бірақ backup-ты шифрламайды.

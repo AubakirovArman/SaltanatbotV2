@@ -48,7 +48,7 @@ SaltanatbotV2 — ранняя alpha-версия самостоятельной
 - paper trading и экспериментальные Binance/Bybit live adapters;
 - передача basis/triangular/native-spread и совместимых continuous-кандидатов из Скринера в Автоматизацию как `market-opportunity-v1` research card с ногами, экономикой, evidence и blockers; это не исполняемый order plan, live всегда заблокирован, а точный paper multi-leg plan остаётся отдельным короткоживущим артефактом;
 - admin-only Order-book ML research принимает загруженные реконструированные sequence-verified aggregate L2 snapshots, строит leakage-controlled dataset и обучает прозрачный ridge baseline; сессии ephemeral/in-memory, личности участников и calibrated probability не определяются, paper/live orders недоступны;
-- локальная SQLite, шифрование API-ключей и журнал действий.
+- отдельная PostgreSQL для пользователей, сессий, рабочих пространств и очереди исследований; существующая SQLite с роботами и зашифрованными API-ключами сохраняется без автоматического разрушительного переноса.
 
 > Импорт Pine пока не означает полную совместимость с TradingView. Приложение показывает ошибки и предупреждения об аппроксимациях. Результат необходимо проверять на графике и в paper-режиме.
 
@@ -56,26 +56,38 @@ SaltanatbotV2 — ранняя alpha-версия самостоятельной
 
 ## Быстрый старт
 
-Требуется Node.js 24+.
+Рекомендуются Docker Engine и Compose. Для установки без Docker нужны Node.js 24+, npm и
+отдельная PostgreSQL.
 
 ```bash
 git clone https://github.com/AubakirovArman/SaltanatbotV2.git
 cd SaltanatbotV2
+mkdir -p .secrets
+umask 077
+openssl rand -base64 48 > .secrets/postgres_password
+docker compose up -d --build
+docker compose exec saltanatbotv2 \
+  node backend/dist/cli/bootstrapAdmin.js --login ваш-логин-администратора
+```
+
+Команда создания администратора один раз показывает временный пароль. После первого входа его
+необходимо заменить. Обычная регистрация создаёт неактивную учётную запись; администратор включает
+её из панели аккаунта. PostgreSQL проекта доступна только на `127.0.0.1:55434` и не затрагивает
+другие PostgreSQL или существующие SQLite.
+
+В режиме разработки сначала запустите базу, затем приложение:
+
+```bash
+docker compose up -d postgres
 npm install
+export AUTH_MODE=database PGPASSWORD_FILE="$PWD/.secrets/postgres_password"
 npm run dev
 ```
 
-В режиме разработки:
+Адреса разработки:
 
 - frontend: `http://localhost:4180`;
 - backend/API: `http://localhost:4181`.
-
-Production-сборка:
-
-```bash
-npm run build
-npm start
-```
 
 Основная навигация и стабильные пользовательские сценарии доступны на английском, русском и
 казахском языках. Кнопка языка в верхней панели переключает EN → RU → KK и сохраняет выбор после
@@ -110,6 +122,8 @@ npm run build
 - [Сгенерированная матрица совместимости Pine](docs/PINE_COMPATIBILITY.generated.md)
 - [Trading](docs/TRADING.md)
 - [Конфигурация и безопасность](docs/CONFIGURATION.md)
+- [Самостоятельная установка с авторизацией](docs/SELF_HOSTING.md)
+- [Архитектура и лимиты для первых 100 пользователей](docs/CAPACITY_100_USERS.md)
 - [Резервное копирование и восстановление](docs/ru/BACKUP_RESTORE.md)
 - [Локальные исследования офлайн](docs/ru/OFFLINE_RESEARCH.md)
 - [Безопасное открытие и системное «Поделиться» через PWA](docs/ru/PWA_FILE_HANDLING.md)
@@ -129,9 +143,10 @@ npm run build
 
 ## Безопасность
 
-- Никогда не публикуйте `backend/data/`, `.env`, API-ключи и access token.
+- Никогда не публикуйте `backend/data/`, `.secrets/`, `.env`, дампы PostgreSQL и API-ключи.
 - Используйте API-ключи без разрешения на вывод средств.
-- Для внешнего доступа обязательны HTTPS, firewall и сильный `AUTH_TOKEN`.
+- Для внешнего доступа обязательны HTTPS и firewall. Пароль первого администратора меняется сразу;
+  новые учётные записи остаются неактивными до ручного одобрения.
 - Paper mode включён по умолчанию; live требует нескольких явных подтверждений.
 - Арбитражный скринер не размещает ордера: continuous entry basis и оценки комиссии — только
   сравнение публичных цен входа; отдельно моделируемый paper-результат также исследовательский, а

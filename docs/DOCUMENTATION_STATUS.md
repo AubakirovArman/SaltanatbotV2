@@ -1,6 +1,6 @@
 # Documentation status
 
-Last full repository documentation audit: **2026-07-14**
+Last full repository documentation audit: **2026-07-15**
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -22,6 +22,8 @@ their source contracts, and user-facing claims were compared with the current im
 | [Declarative plugin contract](PLUGINS.md) | users/plugin authors | current foundation | 2026-07-12 |
 | [Trading guide](TRADING.md) | users/operators | current; Binance spot disabled, Bybit spot experimental | 2026-07-14 |
 | [Configuration](CONFIGURATION.md) | operators | current | 2026-07-14 |
+| [Self-hosting with account authentication](SELF_HOSTING.md) | operators/forks | current; Docker and direct-host paths | 2026-07-15 |
+| [Capacity plan for 100 users](CAPACITY_100_USERS.md) | operators/maintainers | current measured baseline and safe scaling boundary | 2026-07-15 |
 | [Backup and restore](BACKUP_RESTORE.md) | operators | current; tested | 2026-07-11 |
 | [Pine coverage](PINE_COVERAGE.md) | users/contributors | current | 2026-07-11 |
 | [Exchange capabilities](EXCHANGE_CAPABILITIES.md) | operators/users | current; live remains experimental | 2026-07-14 |
@@ -77,6 +79,7 @@ They must be read together with `IMPLEMENTATION_STATUS.md` and must not be prese
 | Event/execution traces | [reference](EVENT_TRACES.md) | [guide](ru/EVENT_TRACES.md) | [guide](kk/EVENT_TRACES.md) |
 | Safety summary | [security policy](../SECURITY.md) | [summary](ru/SECURITY.md) | [summary](kk/SECURITY.md) |
 | Backup and recovery | [operator guide](BACKUP_RESTORE.md) | [guide](ru/BACKUP_RESTORE.md) | [guide](kk/BACKUP_RESTORE.md) |
+| Self-host installation/account approval | [operator guide](SELF_HOSTING.md) | [README summary](../README.ru.md) | [README summary](../README.kk.md) |
 | Application startup recovery | [guide](STARTUP_RECOVERY.md) | [guide](ru/STARTUP_RECOVERY.md) | [guide](kk/STARTUP_RECOVERY.md) |
 | Distribution incident response | [runbook](INCIDENT_RESPONSE.md) | [runbook](ru/INCIDENT_RESPONSE.md) | [runbook](kk/INCIDENT_RESPONSE.md) |
 | Offline local research | [guide](OFFLINE_RESEARCH.md) | [guide](ru/OFFLINE_RESEARCH.md) | [guide](kk/OFFLINE_RESEARCH.md) |

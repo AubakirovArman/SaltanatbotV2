@@ -1,0 +1,290 @@
+import { createStrategyRuntime, evaluateStrategyBar, MAX_OPS_PER_BAR, runStrategyInit, traceBarIntents, atr as atrSeries } from "@saltanatbotv2/strategy-core";
+import { assembleBacktestReport, createStrategyFingerprint } from "./report.js";
+import { DEFAULT_BACKTEST_CONFIG } from "./types.js";
+import { medianDelta } from "./metrics.js";
+import { applySlippage, stopHit, targetHit, unrealized } from "./broker.js";
+import { closeBacktestPosition, openBacktestPosition } from "./portfolio.js";
+import { estimateWarmupBars } from "./warmup.js";
+import { buildEvaluationContext, createVariableTraceCollector } from "./reporting.js";
+export const DEFAULT_CONFIG = DEFAULT_BACKTEST_CONFIG;
+export function runBacktest(ir, candles, config = DEFAULT_CONFIG, securityData = undefined, context = undefined) {
+    // Merge caller config over defaults so new optional fields always have a value.
+    const cfg = { ...DEFAULT_CONFIG, ...config };
+    const nextOpen = cfg.fillTiming !== "same_close";
+    const rt = {
+        ...createStrategyRuntime(ir, candles, { securityData }),
+        atr14: candles.length ? atrSeries(candles, 14) : [],
+    };
+    runStrategyInit(ir, rt);
+    const trades = [];
+    const equityCurve = [];
+    const markers = [];
+    const signals = [];
+    const alerts = [];
+    const warnings = [];
+    const eventTrace = [];
+    const executionEvents = [];
+    let equity = config.initialCapital;
+    let position = null;
+    let sizing = { mode: "equity_pct", value: 100 };
+    let barsInMarket = 0;
+    let liquidated = false;
+    let fundingPaid = 0;
+    let budgetWarned = false;
+    const variableTrace = createVariableTraceCollector(rt.n);
+    // Bar duration (ms) inferred from the candle spacing — the same value used to
+    // annualise Sharpe. Funding is pro-rated to this bar length: a rate quoted per
+    // 8h applies over `barMs / 8h` of that period each bar a position is open.
+    const EIGHT_HOURS_MS = 8 * 3600 * 1000;
+    const barMs = rt.n > 1 ? medianDelta(candles) : 60_000;
+    const fundingBarFraction = (cfg.fundingRatePctPer8h / 100) * (barMs / EIGHT_HOURS_MS);
+    // Warm-up: indicators are NaN until enough history accrues. Metrics/equity are
+    // only measured from `warmup` onward so the flat opening bars don't dilute
+    // Sharpe / time-in-market / drawdown denominators.
+    const warmup = Math.min(rt.n, estimateWarmupBars(ir));
+    const closePosition = (index, price, reason) => {
+        if (!position)
+            return;
+        const closing = position;
+        const equityBefore = equity;
+        const closed = closeBacktestPosition({
+            position: closing,
+            index,
+            time: candles[index].time,
+            price,
+            reason,
+            commissionPct: config.commissionPct
+        });
+        equity += closed.equityDelta;
+        executionEvents.push({
+            kind: "position_closed",
+            barIndex: index,
+            barTime: candles[index].time,
+            direction: closing.dir,
+            price,
+            qty: closing.qty,
+            reason,
+            pnl: closed.trade.pnl,
+            equityBefore,
+            equityAfter: equity
+        });
+        trades.push(closed.trade);
+        markers.push(closed.marker);
+        position = null;
+    };
+    // Pending signal fill carried to the next bar's open (next_open timing).
+    let pendingEntry = null;
+    let pendingExit = false;
+    // Returns the opened position (or null if the entry was skipped/rejected).
+    const openPosition = (dir, fill, index, stopI, targetI, trailI, size) => {
+        const opened = openBacktestPosition({
+            direction: dir,
+            fill,
+            index,
+            time: candles[index].time,
+            stop: stopI,
+            target: targetI,
+            trail: trailI,
+            size,
+            atr: rt.atr14[index] || 0,
+            equity,
+            config: cfg
+        });
+        if (opened.warning) {
+            warnings.push({ time: candles[index].time, message: opened.warning });
+            executionEvents.push({ kind: "warning", barIndex: index, barTime: candles[index].time, code: "position_size_adjusted" });
+        }
+        if (opened.marker)
+            markers.push(opened.marker);
+        if (opened.position) {
+            executionEvents.push({
+                kind: "position_opened",
+                barIndex: index,
+                barTime: candles[index].time,
+                direction: opened.position.dir,
+                price: opened.position.entryPrice,
+                qty: opened.position.qty,
+                equity,
+                stopPrice: opened.position.stopPrice ?? null,
+                targetPrice: opened.position.targetPrice ?? null
+            });
+        }
+        else {
+            executionEvents.push({ kind: "entry_rejected", barIndex: index, barTime: candles[index].time, direction: dir, reason: "invalid_size" });
+        }
+        return opened.position ?? null;
+    };
+    for (let i = 0; i < rt.n; i += 1) {
+        const candle = candles[i];
+        // 0. Fill any signal intent carried from the previous bar at THIS bar's open
+        //    (next_open timing — mirrors the live engine acting only after a close).
+        if (nextOpen) {
+            if (position && pendingExit) {
+                closePosition(i, applySlippage(candle.open, position.dir, false, cfg), "signal");
+            }
+            pendingExit = false;
+            if (!position && pendingEntry) {
+                const fill = applySlippage(candle.open, pendingEntry.dir, true, cfg);
+                position = openPosition(pendingEntry.dir, fill, i, pendingEntry.stop, pendingEntry.target, pendingEntry.trail, pendingEntry.size);
+            }
+            pendingEntry = null;
+        }
+        // 1. Intrabar stop / target from the entry bar onward.
+        //    Intrabar assumption: we have NO path knowledge within a bar. We assume
+        //    the STOP is reached before the TARGET (pessimistic), and we test the
+        //    stop as it stood at BAR OPEN — the trail only ratchets forward for the
+        //    NEXT bar, avoiding the look-ahead of ratcheting on this bar's high/low
+        //    and then testing this bar's low/high against the tightened stop.
+        if (position && i >= position.entryIndex) {
+            if (position.stopPrice !== undefined && stopHit(position, candle)) {
+                // Gap-aware: if price gaps through the stop, the real fill is the open,
+                // not the stop level. Stops are MARKET orders → apply slippage.
+                const raw = position.dir === "long" ? Math.min(candle.open, position.stopPrice) : Math.max(candle.open, position.stopPrice);
+                closePosition(i, applySlippage(raw, position.dir, false, cfg), "stop");
+            }
+            else if (position && position.targetPrice !== undefined && targetHit(position, candle)) {
+                // Targets are LIMIT orders → fill at the limit, but gap-aware in the
+                // favourable direction (a gap through the limit fills at the better open).
+                const raw = position.dir === "long" ? Math.max(candle.open, position.targetPrice) : Math.min(candle.open, position.targetPrice);
+                closePosition(i, raw, "target");
+            }
+            // Ratchet the trailing stop from THIS bar's extreme for use on the NEXT bar.
+            if (position && position.trail) {
+                const atr = rt.atr14[i] || 0;
+                if (position.dir === "long") {
+                    const candidate = position.trail.mode === "percent"
+                        ? candle.high * (1 - position.trail.value / 100)
+                        : candle.high - atr * position.trail.value;
+                    position.stopPrice = Math.max(position.stopPrice ?? -Infinity, candidate);
+                }
+                else {
+                    const candidate = position.trail.mode === "percent"
+                        ? candle.low * (1 + position.trail.value / 100)
+                        : candle.low + atr * position.trail.value;
+                    position.stopPrice = Math.min(position.stopPrice ?? Infinity, candidate);
+                }
+            }
+        }
+        // 1b. Track MAE / MFE and simulate liquidation against intrabar extremes.
+        if (position) {
+            const worstPrice = position.dir === "long" ? candle.low : candle.high;
+            const bestPrice = position.dir === "long" ? candle.high : candle.low;
+            const worst = unrealized(position, worstPrice);
+            const best = unrealized(position, bestPrice);
+            position.maeAbs = Math.min(position.maeAbs, worst);
+            position.mfeAbs = Math.max(position.mfeAbs, best);
+            // Liquidation: if realised equity + worst-case unrealised is wiped out,
+            // force-close at the point equity hits zero and stop trading.
+            if (equity + worst <= 0) {
+                warnings.push({ time: candle.time, message: "Account liquidated — equity reached zero." });
+                executionEvents.push({ kind: "warning", barIndex: i, barTime: candle.time, code: "liquidated" });
+                closePosition(i, worstPrice, "liquidation");
+                liquidated = true;
+            }
+        }
+        // 2. Evaluate the strategy body to gather intents for this bar.
+        const ctx = buildEvaluationContext(position, candle.close, i, trades, equity, candle.time);
+        const intents = liquidated
+            ? { exit: false, alerts: [], markers: [] }
+            : evaluateStrategyBar(ir, i, rt, ctx);
+        eventTrace.push(intents.trace ?? traceBarIntents(intents, i, candle.time));
+        if (intents.budgetExceeded && !budgetWarned) {
+            warnings.push({ time: candle.time, message: `A loop hit the per-bar execution budget (${MAX_OPS_PER_BAR}) and was truncated.` });
+            executionEvents.push({ kind: "warning", barIndex: i, barTime: candle.time, code: "execution_budget_exceeded" });
+            budgetWarned = true;
+        }
+        variableTrace.capture(i, candle.time, rt.vars);
+        if (intents.size)
+            sizing = intents.size;
+        for (const alert of intents.alerts)
+            alerts.push({ time: candle.time, message: alert.message });
+        for (const marker of intents.markers) {
+            signals.push({
+                time: candle.time,
+                price: marker.dir === "up" ? candle.low : candle.high,
+                kind: marker.dir === "up" ? "buy" : "sell",
+                label: marker.label || undefined
+            });
+        }
+        if (!liquidated) {
+            if (nextOpen) {
+                // Carry intent; it fills at the NEXT bar's open (or is dropped at end of data).
+                if (position && intents.exit) {
+                    pendingExit = true;
+                    executionEvents.push({ kind: "fill_scheduled", barIndex: i, barTime: candle.time, action: "exit", direction: position.dir });
+                }
+                if (!position && intents.entry && !pendingExit) {
+                    const dir = intents.entry;
+                    if (dir === "short" && !cfg.allowShort) {
+                        executionEvents.push({ kind: "entry_rejected", barIndex: i, barTime: candle.time, direction: dir, reason: "short_disabled" });
+                    }
+                    else {
+                        pendingEntry = { dir, stop: intents.stop, target: intents.target, trail: intents.trail, size: sizing };
+                        executionEvents.push({ kind: "fill_scheduled", barIndex: i, barTime: candle.time, action: "entry", direction: dir });
+                    }
+                }
+            }
+            else {
+                // Legacy same-close timing: fill on this bar's close.
+                if (position && intents.exit) {
+                    closePosition(i, applySlippage(candle.close, position.dir, false, cfg), "signal");
+                }
+                if (!position && intents.entry) {
+                    const dir = intents.entry;
+                    if (dir === "short" && !cfg.allowShort) {
+                        executionEvents.push({ kind: "entry_rejected", barIndex: i, barTime: candle.time, direction: dir, reason: "short_disabled" });
+                    }
+                    else {
+                        const fill = applySlippage(candle.close, dir, true, cfg);
+                        position = openPosition(dir, fill, i, intents.stop, intents.target, intents.trail, sizing);
+                    }
+                }
+            }
+        }
+        if (position) {
+            barsInMarket += 1;
+            // Accrue funding / borrow cost for holding this bar, charged against the
+            // position's notional at the bar close and deducted from realised equity.
+            if (fundingBarFraction !== 0) {
+                const cost = position.qty * candle.close * fundingBarFraction;
+                if (Number.isFinite(cost) && cost !== 0) {
+                    equity -= cost;
+                    fundingPaid += cost;
+                    executionEvents.push({ kind: "funding_charged", barIndex: i, barTime: candle.time, amount: cost, equityAfter: equity });
+                }
+            }
+        }
+        equityCurve.push({ time: candle.time, equity: equity + unrealized(position, candle.close) });
+    }
+    if (pendingEntry && rt.n > 0) {
+        executionEvents.push({ kind: "fill_dropped", barIndex: rt.n - 1, barTime: candles[rt.n - 1].time, action: "entry", reason: "end_of_data" });
+    }
+    if (pendingExit && rt.n > 0) {
+        executionEvents.push({ kind: "fill_dropped", barIndex: rt.n - 1, barTime: candles[rt.n - 1].time, action: "exit", reason: "end_of_data" });
+    }
+    // Close any open position at the last bar for reporting (slippage on the forced close).
+    if (position && rt.n > 0) {
+        closePosition(rt.n - 1, applySlippage(candles[rt.n - 1].close, position.dir, false, cfg), "close");
+        equityCurve[equityCurve.length - 1] = { time: candles[rt.n - 1].time, equity };
+    }
+    return assembleBacktestReport({
+        name: ir.name,
+        candles,
+        config: cfg,
+        trades,
+        equityCurve,
+        markers,
+        signals,
+        alerts,
+        warnings,
+        varTrace: variableTrace.result(),
+        eventTrace,
+        executionEvents,
+        warmupBars: warmup,
+        barsInMarket,
+        liquidated,
+        fundingPaid,
+        securityData,
+        context: { ...context, strategyHash: context?.strategyHash ?? createStrategyFingerprint(ir) }
+    });
+}

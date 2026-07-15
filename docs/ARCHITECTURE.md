@@ -48,11 +48,16 @@ Application and shared-package workspaces are ESM (`"type": "module"`) and TypeS
 
 ## Backend (`@saltanatbotv2/backend`)
 
-The backend is an Express 5 application fronted by a Node `http` server so that HTTP and WebSocket traffic share a single port. It depends only on `cors`, `express`, `ws`, and `zod` at runtime — market-data providers and persistence use built-in Node modules rather than third-party SDKs.
+The backend is an Express 5 application fronted by a Node `http` server so that HTTP and WebSocket
+traffic share one port. Runtime dependencies include `pg`, `cors`, `express`, `ws` and `zod`; market
+providers and legacy trading persistence continue to use built-in Node modules rather than exchange
+SDKs.
 
 Key pieces wired up in `backend/src/server.ts`:
 
-- **HTTP + WebSocket on one port** — `createServer(app)` plus separate no-server WebSocket hubs. The upgrade handler dispatches `/stream`, `/quotes`, `/orderbook`, `/trade-flow`, `/arbitrage-stream` and authenticated `/trade-stream`; every unknown path is destroyed.
+- **HTTP + WebSocket on one port** — `createServer(app)` plus separate no-server WebSocket hubs. In
+  database mode every application REST/WS route requires an active account; `/trade-stream` also
+  consumes a session-bound one-time ticket. Every unknown upgrade path is destroyed.
 - **REST endpoints** — health/catalog/instruments/venue capabilities, candles/sparklines, bounded
   read-only public venue data, basis/triangular/native-spread/pairwise arbitrage research and the
   authenticated trading router mounted at `/api/trade`.
@@ -67,7 +72,16 @@ Key pieces wired up in `backend/src/server.ts`:
 
 ### Persistence and secrets
 
-The trading tier persists to disk using Node's **built-in** `node:sqlite` (`DatabaseSync`) in `backend/src/trading/store.ts` — there is no external database driver. Exchange API credentials are encrypted at rest with `node:crypto` using **AES-256-GCM**: `createCipheriv("aes-256-gcm", …)` / `createDecipheriv("aes-256-gcm", …)`, with the 32-byte key derived via `scryptSync`. Identifiers throughout the engine use `randomUUID()` from `node:crypto`.
+PostgreSQL stores users, Argon2id password hashes, revocable sessions, one-use WebSocket tickets,
+authentication audit events, owner-scoped workspace revisions and durable research jobs. Checked-in
+migrations run atomically under an advisory lock and refuse checksum drift.
+
+The legacy trading tier still uses built-in **`node:sqlite`** (`DatabaseSync`) in
+`backend/src/trading/store.ts`. Exchange credentials are AES-256-GCM encrypted with a key derived by
+`scryptSync`. These stores are deliberately not dual-written or auto-migrated: active bots must not
+be duplicated. Until bots/accounts/events gain owner IDs, only the application administrator gets an
+effective trading role. CPU-heavy backtests are claimed from PostgreSQL and run by a separate
+supervisor in bounded worker threads; the API process never executes them synchronously.
 
 ### Backend source tree
 
@@ -75,6 +89,11 @@ The trading tier persists to disk using Node's **built-in** `node:sqlite` (`Data
 backend/src/
 ├── server.ts                 # Express app, WS upgrade routing, static SPA hosting
 ├── types.ts                  # Instrument, Candle, StreamMessage, CatalogResponse
+├── database/                 # pg configuration, pool and checksum-locked migrations
+├── identity/                 # registration, sessions, roles, admin approval and audit
+├── workspaces/               # owner-scoped documents, revisions and optimistic updates
+├── jobs/                     # durable research queue, leases, quotas and API
+├── workers/                  # isolated backtest supervisor/task entry points
 ├── market/
 │   ├── catalog.ts            # Instrument catalog + findInstrument/getCatalog
 │   ├── instrumentRegistry.ts # Normalized identities, filters, contracts and capabilities
@@ -341,7 +360,7 @@ The frontend backtest facade delegates trading bars to the reusable `strategy-co
 REST and purpose-specific WebSocket hubs connect the SPA to the backend over the same origin/port:
 
 - **REST** (`fetch`) for catalog, candle windows, sparklines, arbitrage scan/depth/history and authenticated trading operations. Requests are same-origin relative paths (`/api/...`).
-- **Public WebSocket** hubs at `/stream`, `/quotes`, `/orderbook`, `/trade-flow` and `/arbitrage-stream` for their distinct bounded data shapes.
+- **Account-authenticated browser WebSocket** hubs at `/stream`, `/quotes`, `/orderbook`, `/trade-flow` and `/arbitrage-stream`; their payloads come from credential-free public market feeds but the hosted application no longer exposes them anonymously.
 - **Authenticated WebSocket** at `/trade-stream`, opened only with a one-use ticket for account/order state. Every URL uses `wss` when the page is served over HTTPS.
 
 ### End-to-end diagram

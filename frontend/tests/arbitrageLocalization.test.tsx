@@ -15,6 +15,15 @@ import { forkGuideText } from "../src/arbitrage/forkGuideText";
 import { ScannerModeNav } from "../src/arbitrage/ScannerModeNav";
 import { FundingCurveWorkbench } from "../src/arbitrage/FundingCurveWorkbench";
 import { fundingCurveText } from "../src/arbitrage/fundingCurveText";
+import { AuthContext, type AuthContextValue } from "../src/auth/AuthRoot";
+
+const legacyAuth: AuthContextValue = {
+  authRequired: false,
+  openAccount: () => undefined,
+  refreshSession: async () => undefined,
+  tradingRoleAssignmentsEnabled: false,
+  tradingAvailable: false
+};
 
 describe("arbitrage screener localization", () => {
   beforeEach(() => {
@@ -81,7 +90,11 @@ describe("arbitrage screener localization", () => {
     ["ru", ["Binance — спот", "Binance — бессрочный фьючерс", "Bybit — спот", "Bybit — бессрочный фьючерс"]],
     ["kk", ["Binance — спот", "Binance — мерзімсіз фьючерс", "Bybit — спот", "Bybit — мерзімсіз фьючерс"]]
   ] as const)("renders %s fee controls without known English labels", (locale, expectedLabels) => {
-    const html = renderToStaticMarkup(<ArbitrageControls locale={locale} profile={DEFAULT_FEE_PROFILE} onProfile={() => {}} alertEnabled={false} onAlertEnabled={() => {}} alertThresholdBps={50} onAlertThreshold={() => {}} notionalUsd={10_000} onNotional={() => {}} minimumCapacityUsd={1_000} />);
+    const html = renderToStaticMarkup(
+      <AuthContext.Provider value={legacyAuth}>
+        <ArbitrageControls locale={locale} profile={DEFAULT_FEE_PROFILE} onProfile={() => {}} alertEnabled={false} onAlertEnabled={() => {}} alertThresholdBps={50} onAlertThreshold={() => {}} notionalUsd={10_000} onNotional={() => {}} minimumCapacityUsd={1_000} />
+      </AuthContext.Provider>
+    );
 
     for (const label of expectedLabels) expect(html).toContain(label);
     expect(html).not.toContain("Binance spot");

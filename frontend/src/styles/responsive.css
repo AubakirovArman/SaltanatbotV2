@@ -204,11 +204,6 @@
     text-overflow: ellipsis;
   }
 
-  .chart-indicator-overlay,
-  .compare-control {
-    max-inline-size: calc(100% - 16px);
-  }
-
   .indicator-strip,
   .compare-strip {
     flex-wrap: nowrap;
@@ -229,4 +224,6 @@
 @media (max-width: 760px) and (pointer: coarse) {
   .topbar :is(button, select) { min-block-size: 44px; }
   .topbar .icon-button { min-inline-size: 44px; }
+  .indicator-chip button,
+  .volume-profile-chip button { min-inline-size: 24px; min-block-size: 24px; }
 }

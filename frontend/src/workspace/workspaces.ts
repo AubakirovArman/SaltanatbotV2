@@ -6,6 +6,7 @@ import type { ChartType, DataExchange, DataMarketType, PriceType, Timeframe } fr
 import { DEFAULT_CHART_TIME_ZONE, LEGACY_CHART_TIME_ZONE, normalizeChartTimeZone, type ChartTimeZone } from "../chart/timeAxis";
 
 const WORKSPACES_KEY = "sbv2:workspaces";
+const WORKSPACES_CLAIM_KEY = `${WORKSPACES_KEY}:legacy-owner`;
 export const WORKSPACE_SCHEMA_VERSION = 7;
 export const WORKSPACE_FILE_FORMAT = "saltanatbotv2.workspace";
 export const WORKSPACE_FILE_VERSION = 1;
@@ -97,9 +98,16 @@ const defaultLayout: WorkspaceLayout = {
   panelsSwapped: false
 };
 
-export function loadWorkspaces(): Workspace[] {
+export function loadWorkspaces(ownerId?: string): Workspace[] {
+  if (ownerId === "") return [];
+  const key = ownerId ? `${WORKSPACES_KEY}:${ownerId}` : WORKSPACES_KEY;
+  if (ownerId) claimLegacyWorkspaces(ownerId, key);
+  return readWorkspaces(key);
+}
+
+function readWorkspaces(key: string): Workspace[] {
   try {
-    const raw = window.localStorage.getItem(WORKSPACES_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -109,11 +117,22 @@ export function loadWorkspaces(): Workspace[] {
   }
 }
 
-export function saveWorkspaces(workspaces: Workspace[]) {
+export function saveWorkspaces(workspaces: Workspace[], ownerId?: string) {
+  if (ownerId === "") return;
   try {
-    window.localStorage.setItem(WORKSPACES_KEY, JSON.stringify(workspaces));
+    window.localStorage.setItem(ownerId ? `${WORKSPACES_KEY}:${ownerId}` : WORKSPACES_KEY, JSON.stringify(workspaces));
   } catch {
     // Storage can be unavailable in private contexts; runtime state still works.
+  }
+}
+
+function claimLegacyWorkspaces(ownerId: string, scopedKey: string): void {
+  try {
+    if (localStorage.getItem(WORKSPACES_CLAIM_KEY) === null) localStorage.setItem(WORKSPACES_CLAIM_KEY, ownerId);
+    if (localStorage.getItem(WORKSPACES_CLAIM_KEY) !== ownerId || localStorage.getItem(scopedKey) !== null) return;
+    localStorage.setItem(scopedKey, JSON.stringify(readWorkspaces(WORKSPACES_KEY)));
+  } catch {
+    // A failed claim is retried only for the same owner and never exposed to a second account.
   }
 }
 
@@ -222,7 +241,7 @@ function snapshotFromContext(context: WorkspaceContext, revision: number, savedA
   };
 }
 
-function normalizeWorkspace(value: unknown): Workspace | undefined {
+export function normalizeWorkspace(value: unknown): Workspace | undefined {
   if (!value || typeof value !== "object") return undefined;
   const item = value as Partial<Workspace>;
   if (typeof item.id !== "string" || typeof item.name !== "string" || typeof item.symbol !== "string") return undefined;

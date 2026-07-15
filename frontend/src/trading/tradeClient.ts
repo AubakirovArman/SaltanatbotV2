@@ -1,5 +1,6 @@
 import type { StrategyIR } from "../strategy/ir";
 import type { Timeframe } from "../types";
+import { getCsrfToken as getAccountCsrfToken } from "../auth/client";
 import { accountTelemetrySearch, parseAccountTelemetrySnapshot, type AccountTelemetryQuery, type AccountTelemetrySnapshot } from "./accountTelemetry";
 
 export type ExchangeId = "paper" | "binance" | "bybit";
@@ -302,14 +303,12 @@ export function setToken(token: string) {
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getStoredBearerToken();
-  const csrfToken = getCsrfToken();
+  const csrfToken = getAccountCsrfToken() ?? getLegacyCsrfToken();
   const res = await fetch(BASE + path, {
     ...init,
     credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
       ...(init?.headers ?? {})
     }
@@ -331,10 +330,10 @@ export interface AuthState {
   csrfToken?: string;
 }
 
-/** Verify a token (defaults to the stored one) against the backend. */
-export async function checkAuth(token?: string): Promise<AuthState> {
+/** Verify the current trading permission; token login is a legacy/demo-only path. */
+export async function checkAuth(token?: string, allowLegacyToken = true): Promise<AuthState> {
   if (token?.trim()) return createSession(token.trim());
-  const legacy = getStoredBearerToken();
+  const legacy = allowLegacyToken ? getStoredBearerToken() : "";
   if (legacy) return createSession(legacy);
   const res = await fetch(`${BASE}/auth`, { credentials: "same-origin" });
   if (res.status === 401) throw new AuthError();
@@ -433,7 +432,7 @@ function setSession(csrfToken: string) {
   }
 }
 
-function getCsrfToken(): string {
+function getLegacyCsrfToken(): string {
   try {
     return sessionStorage.getItem(CSRF_KEY) ?? "";
   } catch {

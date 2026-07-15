@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { runBacktest as runBacktestCore } from "@saltanatbotv2/backtest-core";
 import { type BacktestConfig, DEFAULT_CONFIG, previewStrategy, runBacktest } from "../src/strategy/backtest";
 import { runBacktest as runBacktestExecution } from "../src/strategy/backtest/execution";
 import { previewStrategy as previewStrategyModule } from "../src/strategy/backtest/preview";
@@ -72,6 +73,7 @@ const noFriction: BacktestConfig = {
 describe("backtest determinism", () => {
   it("keeps the stable facade wired to the execution module", () => {
     expect(runBacktest).toBe(runBacktestExecution);
+    expect(runBacktestExecution).toBe(runBacktestCore);
   });
 
   it("produces byte-identical results for the same (ir, candles, config) twice", () => {

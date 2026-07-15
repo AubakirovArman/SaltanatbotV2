@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
-import { getAuthToken, isDemoMode, verifyWsToken, wasAuthTokenGeneratedThisRun } from "./auth.js";
+import { isDemoMode, verifyAppWsSession, verifyTradeWsRequest } from "./auth.js";
 import { createArbitrageDepthHandler, createArbitrageHandler, createArbitrageHistoryHandler } from "./arbitrage/routes.js";
 import { ArbitrageScannerService } from "./arbitrage/service.js";
 import { ArbitrageStreamHub } from "./arbitrage/stream.js";
@@ -39,11 +39,18 @@ import { createTradingApi } from "./trading/routes.js";
 import { TradeFlowHub } from "./tradeflow/hub.js";
 import type { Candle, OrderBookStreamMessage, QuoteStreamMessage, StreamMessage, Timeframe, TradeFlowStreamMessage } from "./types.js";
 import { createPublicVenueRouter, publicVenueAdapters } from "./venues/index.js";
+import { initializeIdentityRuntime } from "./identity/runtime.js";
+import { registerIdentityServerRoutes } from "./identity/serverRoutes.js";
+import { apiErrorHandler } from "./http/apiErrorHandler.js";
+import { installGracefulShutdown } from "./http/gracefulShutdown.js";
+import { SingleFlightGate } from "./http/singleFlightGate.js";
 
 const port = Number(process.env.PORT ?? 4180);
 // Fail safe: bind to loopback unless the operator explicitly opts into a wider bind.
 const host = process.env.HOST ?? "127.0.0.1";
+const identityRuntime = await initializeIdentityRuntime();
 const provider = new ProviderRouter();
+const marketDataGate = new SingleFlightGate(24, 128);
 const app = express();
 configureTrustedProxy(app);
 const server = createServer(app);
@@ -85,6 +92,11 @@ const allowedOrigins = new Set(
     .map((o) => o.trim())
     .filter(Boolean)
 );
+function websocketOriginAllowed(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin) return true;
+  try { return new URL(origin).host === host || allowedOrigins.has(origin); }
+  catch { return false; }
+}
 const corsOptions: cors.CorsOptions = {
   origin(origin, callback) {
     // Non-browser / same-origin requests send no Origin header — always allow.
@@ -126,15 +138,11 @@ const orderBookQuery = z.object({
 app.use(cors(corsOptions));
 app.disable("x-powered-by");
 app.use(securityHeaders);
-app.use(express.json({ limit: "1mb" }));
-// The trading API holds exchange keys and can place real orders. Its router
-// exposes only /session publicly; every other route is gated inside routes.ts.
+
+registerIdentityServerRoutes(app, identityRuntime);
+app.use("/api", express.json({ limit: "1mb" }));
 app.use("/api/trade", trading.router);
 app.use("/api/orderbook-ml/research", createOrderBookMlResearchRouter());
-
-app.get("/api/health", (_request, response) => {
-  response.json({ ok: true, service: "saltanatbotv2-backend", ts: Date.now() });
-});
 
 app.get("/api/catalog", (_request, response) => {
   response.json(getCatalog());
@@ -177,20 +185,21 @@ app.get("/api/candles", async (request, response) => {
 
   let candles: Candle[];
   try {
-    candles = await provider.getCandles(
-      instrument,
-      parsed.data.timeframe,
-      {
-        limit: parsed.data.limit,
-        endTime: parsed.data.endTime,
-        startTime: parsed.data.startTime
-      },
-      {
-        exchange: parsed.data.exchange,
-        marketType: parsed.data.marketType,
-        priceType: parsed.data.priceType
-      }
-    );
+    candles = await marketDataGate.run(JSON.stringify(["candles", instrument.symbol, parsed.data]), () =>
+      provider.getCandles(
+        instrument,
+        parsed.data.timeframe,
+        {
+          limit: parsed.data.limit,
+          endTime: parsed.data.endTime,
+          startTime: parsed.data.startTime
+        },
+        {
+          exchange: parsed.data.exchange,
+          marketType: parsed.data.marketType,
+          priceType: parsed.data.priceType
+        }
+      ));
   } catch (error) {
     response.status(503).json({
       error: error instanceof Error ? error.message : "Market data unavailable",
@@ -225,7 +234,8 @@ app.get("/api/sparklines", async (request, response) => {
       const instrument = findInstrument(symbol);
       if (!instrument) return [symbol, null] as const;
       try {
-        const candles = await provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data.exchange);
+        const candles = await marketDataGate.run(JSON.stringify(["spark", instrument.symbol, parsed.data]), () =>
+          provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data.exchange));
         const closes = candles.map((candle) => candle.close);
         const first = closes[0];
         const last = closes.at(-1);
@@ -241,33 +251,52 @@ app.get("/api/sparklines", async (request, response) => {
 });
 
 server.on("upgrade", (request, socket, head) => {
+  if (!websocketOriginAllowed(request.headers.origin, request.headers.host)) {
+    socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+    socket.destroy();
+    return;
+  }
   const url = new URL(request.url ?? "", `http://${request.headers.host}`);
-  if (url.pathname === "/stream") {
-    // Public market-data stream (read-only candles). No secrets exposed here.
-    wss.handleUpgrade(request, socket, head, (client) => wss.emit("connection", client, request));
-  } else if (url.pathname === "/quotes") {
-    // One browser connection multiplexes the watchlist's read-only quote feeds.
-    quoteWss.handleUpgrade(request, socket, head, (client) => quoteWss.emit("connection", client, request));
-  } else if (url.pathname === "/orderbook") {
-    // Public read-only depth snapshots; one shared upstream serves all viewers.
-    orderBookWss.handleUpgrade(request, socket, head, (client) => orderBookWss.emit("connection", client, request));
-  } else if (url.pathname === "/trade-flow") {
-    // Public read-only exchange prints; one shared upstream serves all viewers.
-    tradeFlowWss.handleUpgrade(request, socket, head, (client) => tradeFlowWss.emit("connection", client, request));
-  } else if (url.pathname === "/arbitrage-stream") {
-    // Public read-only cross-venue snapshots; no account data or order path.
-    arbitrageWss.handleUpgrade(request, socket, head, (client) => arbitrageWss.emit("connection", client, request));
-  } else if (url.pathname === "/trade-stream") {
-    // Trade events can reveal positions/PnL — require the access token.
-    if (!verifyWsToken(url, request.headers["sec-websocket-protocol"])) {
+  if (url.pathname === "/trade-stream") {
+    // Trade events reveal positions/PnL. Authenticate a one-use, session-bound
+    // ticket before handing the socket to the global admin-only trading engine.
+    socket.pause();
+    void verifyTradeWsRequest(request.headers["sec-websocket-protocol"])
+      .then((principal) => {
+        if (!principal) {
+          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+        Object.assign(request, { authPrincipal: typeof principal === "object" ? principal : undefined });
+        trading.wss.handleUpgrade(request, socket, head, (client) => trading.wss.emit("connection", client, request));
+        socket.resume();
+      })
+      .catch(() => {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+      });
+    return;
+  }
+  const target = url.pathname === "/stream" ? wss
+    : url.pathname === "/quotes" ? quoteWss
+      : url.pathname === "/orderbook" ? orderBookWss
+        : url.pathname === "/trade-flow" ? tradeFlowWss
+          : url.pathname === "/arbitrage-stream" ? arbitrageWss : undefined;
+  if (!target) {
+    socket.destroy();
+    return;
+  }
+  socket.pause();
+  void verifyAppWsSession(request.headers.cookie).then((allowed) => {
+    if (!allowed) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
       return;
     }
-    trading.wss.handleUpgrade(request, socket, head, (client) => trading.wss.emit("connection", client, request));
-  } else {
-    socket.destroy();
-  }
+    target.handleUpgrade(request, socket, head, (client) => target.emit("connection", client, request));
+    socket.resume();
+  }).catch(() => socket.destroy());
 });
 
 tradeFlowWss.on("connection", (socket, request) => {
@@ -336,7 +365,9 @@ quoteWss.on("connection", async (socket, request) => {
   const url = new URL(request.url ?? "", `http://${request.headers.host}`);
   const parsed = sparklineQuery.safeParse(Object.fromEntries(url.searchParams));
   const send = (message: QuoteStreamMessage) => {
-    if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
+    if (socket.readyState !== socket.OPEN) return;
+    if (socket.bufferedAmount > 512 * 1024) return socket.close(1013, "Quote client is too slow");
+    socket.send(JSON.stringify(message));
   };
   if (!parsed.success) {
     send({ type: "error", message: "Invalid quote stream query", ts: Date.now() });
@@ -357,7 +388,8 @@ quoteWss.on("connection", async (socket, request) => {
   await Promise.all(
     instruments.map(async (instrument) => {
       try {
-        const candles = await provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data.exchange);
+        const candles = await marketDataGate.run(JSON.stringify(["quote", instrument.symbol, parsed.data]), () =>
+          provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data.exchange));
         histories.set(instrument.symbol, candles);
         series[instrument.symbol] = sparklineSeries(candles);
       } catch {
@@ -400,7 +432,11 @@ quoteWss.on("connection", async (socket, request) => {
 wss.on("connection", async (socket, request) => {
   const url = new URL(request.url ?? "", `http://${request.headers.host}`);
   const parsed = candleQuery.safeParse(Object.fromEntries(url.searchParams));
-  const send = (message: StreamMessage) => socket.send(JSON.stringify(message));
+  const send = (message: StreamMessage) => {
+    if (socket.readyState !== socket.OPEN) return;
+    if (socket.bufferedAmount > 512 * 1024) return socket.close(1013, "Market client is too slow");
+    socket.send(JSON.stringify(message));
+  };
 
   if (!parsed.success) {
     send({ type: "error", message: "Invalid stream query", ts: Date.now() });
@@ -416,16 +452,17 @@ wss.on("connection", async (socket, request) => {
   }
 
   try {
-    const candles = await provider.getCandles(
-      instrument,
-      parsed.data.timeframe,
-      { limit: parsed.data.limit },
-      {
-        exchange: parsed.data.exchange,
-        marketType: parsed.data.marketType,
-        priceType: parsed.data.priceType
-      }
-    );
+    const candles = await marketDataGate.run(JSON.stringify(["stream", instrument.symbol, parsed.data]), () =>
+      provider.getCandles(
+        instrument,
+        parsed.data.timeframe,
+        { limit: parsed.data.limit },
+        {
+          exchange: parsed.data.exchange,
+          marketType: parsed.data.marketType,
+          priceType: parsed.data.priceType
+        }
+      ));
     send({
       type: "snapshot",
       symbol: instrument.symbol,
@@ -488,6 +525,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const frontendDist = path.resolve(__dirname, "../../frontend/dist");
 
+app.use(apiErrorHandler);
+
 app.use(
   express.static(frontendDist, {
     setHeaders(response, filePath) {
@@ -512,18 +551,9 @@ server.listen(port, host, () => {
   if (isDemoMode()) {
     console.log("⚠️  DEMO_MODE is ON — exchange keys and live trading are disabled.");
   }
-  // Ensure the token exists and surface it to the operator on first run.
-  const token = getAuthToken();
-  if (wasAuthTokenGeneratedThisRun()) {
-    console.log("");
-    console.log("🔑 Trading API access token (needed to log in to the Trade tab):");
-    console.log(`      ${token}`);
-    console.log("   Stored in backend/data/.authtoken · override with the AUTH_TOKEN env var.");
-    console.log("");
-  }
   const loopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
   if (!loopback) {
-    console.log(`⚠️  Bound to ${host} (reachable off-machine). Put this behind a reverse proxy with TLS,\n` + "   restrict access, and keep the access token secret. See docs/CONFIGURATION.md.");
+    console.log(`⚠️  Bound to ${host} (reachable off-machine). Put this behind a reverse proxy with TLS,\n` + "   restrict access, and keep account/database secrets private. See docs/CONFIGURATION.md.");
   }
   // Bring back bots that were running before the last shutdown/crash.
   void trading.engine.resume();
@@ -537,8 +567,8 @@ server.listen(port, host, () => {
   if (continuousRouteSetup.error) console.log(`Continuous route allowlist disabled: ${continuousRouteSetup.error}`);
 });
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => {
+installGracefulShutdown(server, {
+  quiesce() {
     // Preserve desired status so running bots resume on the next start.
     trading.telegramControl.stop();
     researchAlerts.close();
@@ -550,9 +580,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     continuousRouteRuntime.close();
     continuousPublicFeeds.close();
     venueClockCalibration.stop();
-    server.close(() => process.exit(0));
-  });
-}
+  },
+  closeResources: () => identityRuntime.close()
+});
 
 function continuousRouteConfigurationFromEnvironment() {
   try {

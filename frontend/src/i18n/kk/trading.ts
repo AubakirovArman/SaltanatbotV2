@@ -5,6 +5,8 @@ export const kkTrading: Record<TradingMessageKey, string> = {
   accessPrompt: "Paper және live боттарды басқару үшін әкімші access token-ін енгізіңіз. Жалпы графиктер ашық қалады; token тексерілгенше сауда басқару элементтері құлыптаулы болады.",
   accessToken: "Access token",
   invalidToken: "Access token жарамсыз.",
+  permissionPrompt: "Тіркелгі белсенді, бірақ саудаға рұқсат берілмеген. Әкімшіден тиісті рөлді қосуды сұраңыз.",
+  accountAccess: "Тіркелгі параметрлерін ашу",
   checkingAccess: "Кіру рұқсаты тексерілуде…",
   unlock: "Құлыпты ашу",
   checking: "Тексерілуде…",

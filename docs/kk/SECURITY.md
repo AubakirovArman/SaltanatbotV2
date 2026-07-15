@@ -1,9 +1,9 @@
 # Қауіпсіздік бойынша қысқаша нұсқаулық
 
 - Осалдықты public issue-де жарияламаңыз; [SECURITY.md](../../SECURITY.md) арнасын қолданыңыз.
-- `.env`, `backend/data/`, access token және exchange API кілттерін commit жасамаңыз.
+- `.env`, `.secrets/`, PostgreSQL dump, `backend/data/`, session cookie және exchange API кілттерін commit жасамаңыз.
 - Қаражат шығаруға рұқсаты жоқ бөлек API кілтін және IP allowlist пайдаланыңыз.
-- External access үшін HTTPS reverse proxy, firewall және күшті `AUTH_TOKEN` міндетті.
+- External access үшін HTTPS reverse proxy, firewall, қауіпсіз admin password және private database secret міндетті.
 - Paper әдепкі режим; live эксперименттік және бірнеше растауды қажет етеді.
 - Emergency stop-тан кейін де биржадағы positions/orders күйін тікелей тексеріңіз.
 

@@ -2,7 +2,7 @@
 
 SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote/order-book/trade-flow/arbitrage streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and six WebSocket endpoints are exposed at `/stream`, `/quotes`, `/orderbook`, `/trade-flow`, `/arbitrage-stream` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
 
-Public market catalog, candle, sparkline and WebSocket payloads have canonical TypeScript contracts
+Market catalog, candle, sparkline and WebSocket payloads have canonical TypeScript contracts
 plus fail-closed runtime parsers in `packages/contracts`. The frontend validates untrusted JSON at
 the transport edge before updating state; malformed or unknown stream messages produce an explicit
 connection error instead of being trusted through a type assertion.
@@ -16,29 +16,61 @@ The generated [API endpoint index](./API_ENDPOINTS.generated.md) is the route-pr
   runtime parsers. `/arbitrage-stream` accepts no query parameters. Invalid HTTP input normally
   returns `400`; invalid WebSocket input receives a typed error and closes.
 
-## Trading auth
+## Account authentication
 
-Public market data endpoints are open. Trading endpoints are closed.
+Database mode protects all application REST and WebSocket routes except `/api/health`, `/api/ready`
+and the registration/login bootstrap surface. Static assets remain available so the SPA can render
+the login screen. The curl/WebSocket examples below assume that the caller already has the session
+cookie returned by login; browser WebSocket handshakes must also have a same-origin or explicitly
+allowed `Origin`.
 
-Browser flow:
+1. `POST /api/auth/register` with `{ "login", "password" }` returns `202`; the account is pending.
+2. An administrator calls `POST /api/admin/users/:id/activate` (the bundled account panel does this).
+3. `POST /api/auth/login` sets HttpOnly `sbv2_session` and readable SameSite `sbv2_csrf` cookies and
+   returns the user plus CSRF value.
+4. Unsafe requests copy the CSRF cookie into `X-CSRF-Token`.
+5. Market WebSockets use the active same-origin session cookie. `/trade-stream` additionally requires
+   a one-time ticket from `POST /api/trade/ws-ticket` as
+   `sbv2.ticket.<base64url(ticket)>`.
 
-1. `POST /api/trade/session` with `{ "token": "<AUTH_TOKEN>" }`.
-2. Server sets an HttpOnly `sbv2_session` cookie and returns `{ role, csrfToken }`.
-3. Send `X-CSRF-Token: <csrfToken>` on mutating `/api/trade/*` requests.
-4. Before connecting to `/trade-stream`, call `POST /api/trade/ws-ticket` and pass the returned one-time ticket as websocket subprotocol `sbv2.ticket.<base64url(ticket)>`.
+Identity endpoints:
 
-Bearer `Authorization: Bearer <AUTH_TOKEN>` is still accepted for scripts and local automation, but the bundled frontend does not persist the admin token in web storage.
-
-Roles are hierarchical:
-
-| Role | Token | Can do |
+| Method/path | Access | Result |
 | --- | --- | --- |
-| `read-only` | `AUTH_READONLY_TOKEN` | View bots, live state, fills, logs, order journal, portfolio, and trade stream. |
-| `paper-trade` | `AUTH_PAPER_TRADE_TOKEN` | Read-only plus create/start/stop/command paper bots and deliver price alerts. |
-| `live-trade` | `AUTH_LIVE_TRADE_TOKEN` | Paper permissions plus start/stop/command live bots after admin arming. |
-| `admin` | `AUTH_TOKEN` | Full access: keys, notification config, live arming, deletion, reset-state, audit log. |
+| `GET /api/auth/config` | Public | Auth mode and registration availability |
+| `POST /api/auth/register` | Public, rate-limited | Pending account |
+| `POST /api/auth/login` | Public, rate-limited | Active session; pending/disabled accounts fail |
+| `GET /api/auth/me` | Session | Current user and permissions |
+| `POST /api/auth/logout` | Session + CSRF | Revokes current session |
+| `POST /api/auth/change-password` | Session + CSRF | Changes Argon2id hash and revokes all sessions |
+| `GET /api/admin/users` | Admin | Users, optionally filtered by status |
+| `POST /api/admin/users/:id/activate` | Admin + CSRF | Activates pending/disabled user |
+| `POST /api/admin/users/:id/disable` | Admin + CSRF | Disables user and revokes sessions |
+| `PATCH /api/admin/users/:id/permissions` | Admin + CSRF | Changes application/trading roles |
 
-Every mutating trade API call is written to `audit_log` with the session role, status code, target, and redacted request data. View recent events with `GET /api/trade/audit?limit=200` as admin.
+`appRole` is `user` or `admin`. `tradingRole` is `none`, `read-only`, `paper-trade` or
+`live-trade`. New registrations always receive `user + none`. In the current migration release only
+the administrator receives effective trading access because legacy bots, credentials and trade
+events are not owner-scoped yet. The server rejects non-admin trading grants unless the explicit
+unsafe migration flag is enabled.
+
+Every auth state change enters PostgreSQL `audit_events`; every mutating legacy trade call also enters
+the redacted SQLite `audit_log`. Token/bearer login exists only in explicit `AUTH_MODE=legacy` test or
+private-demo compatibility mode and is not a production API contract.
+
+### Workspaces and research jobs
+
+`/api/workspaces` is owner-scoped. Create a document with `clientId`, `name`, `schemaVersion` and a
+JSON-object `payload`. Updates and deletes include the last `revision`; stale writes return `409` plus
+the current document. `GET /api/workspaces/:id/revisions` returns at most 20 snapshots and
+`POST /api/workspaces/:id/rollback` creates a new revision from an older snapshot.
+
+`POST /api/jobs` accepts a bounded `kind: "backtest"` strategy/candle/config payload and returns
+`202` with a durable job. `GET /api/jobs`, `GET /api/jobs/:id` and
+`POST /api/jobs/:id/cancel` are owner-scoped. States are
+`queued/running/completed/failed/cancelled`. One user may have five active jobs and one running job;
+identical payloads are deduplicated. A separate research worker claims jobs by lease and stores a
+bounded result with metrics, trades and a downsampled equity curve.
 
 ## Shared types
 
@@ -789,7 +821,7 @@ The first `quotes_snapshot` message contains a nullable series map. Each subsequ
 
 ---
 
-## Public order-book WebSocket: `/orderbook`
+## Public-market order-book WebSocket: `/orderbook`
 
 Streams bounded real depth snapshots for a crypto symbol. Query parameters are `symbol` and `exchange=binance|bybit`.
 
@@ -831,7 +863,7 @@ All variants are bounded and validated by `parseOrderBookStreamMessage`. Status 
 
 ---
 
-## Public trade-flow WebSocket: `/trade-flow`
+## Public-market trade-flow WebSocket: `/trade-flow`
 
 Streams real public exchange prints for a crypto symbol. Query parameters are `symbol` and `exchange=binance|bybit`.
 
@@ -1388,7 +1420,9 @@ curl -X POST http://localhost:4180/api/trade/notify/test
 
 ## Trading WebSocket: `/trade-stream`
 
-A broadcast-only WebSocket that pushes every `TradeEvent` emitted by the trading engine to all connected clients. It takes no query parameters and rejects token-in-URL auth. Browser clients first request a short-lived one-time ticket:
+An administrator-only WebSocket that pushes `TradeEvent` values from the current global legacy
+engine. It takes no query parameters and rejects token-in-URL auth. Browser clients first request a
+short-lived one-time ticket:
 
 ```
 POST /api/trade/ws-ticket
@@ -1405,14 +1439,8 @@ ws://localhost:4180/trade-stream
 Sec-WebSocket-Protocol: sbv2.ticket.<base64url(ticket)>
 ```
 
-Each message is a JSON-serialized `TradeEvent` produced by the engine (fills, order updates, log lines, and status changes for running bots). Clients are tracked server-side and removed automatically on socket close or error.
-
-```bash
-# Script fallback using the admin token subprotocol still works.
-TOKEN="<AUTH_TOKEN>"
-PROTO="sbv2.auth.$(printf '%s' "$TOKEN" | base64 | tr '+/' '-_' | tr -d '=')"
-websocat -H "Sec-WebSocket-Protocol: $PROTO" ws://localhost:4180/trade-stream
-```
+Each message is a JSON-serialized `TradeEvent` produced by the engine (fills, order updates, log
+lines and status changes). Token subprotocol and bearer fallbacks are disabled in database mode.
 
 ---
 

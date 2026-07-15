@@ -2,6 +2,7 @@ import { GitFork, LayoutDashboard, Plus, Search, Settings2 } from "lucide-react"
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { MarketOpportunityEnvelope } from "@saltanatbotv2/arbitrage-sdk";
 import { MARKET_OPPORTUNITY_HANDOFF_EVENT, consumeMarketOpportunityHandoff, type MarketOpportunityHandoffRecord } from "../arbitrage/marketOpportunityHandoff";
+import { useAuth } from "../auth/AuthRoot";
 import type { Locale } from "../i18n";
 import { automationText } from "../i18n/automation";
 import { tradingTerm, tradingText } from "../i18n/trading";
@@ -51,6 +52,7 @@ type CenterView = { kind: "portfolio" } | { kind: "bot"; id: string } | { kind: 
 type SocketHealth = "connecting" | "connected" | "degraded";
 
 export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 }: TradingViewProps) {
+  const accountAuth = useAuth();
   const [bots, setBots] = useState<TradingBot[]>([]);
   const [view, setView] = useState<CenterView>({ kind: "portfolio" });
   const [live, setLive] = useState<Record<string, LiveState>>({});
@@ -88,13 +90,19 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
     }
   }, []);
 
-  // Verify the stored access token before showing the trading surface.
+  // Database sessions use account permissions; token login remains demo-only.
   useEffect(() => {
-    checkAuth()
+    if (accountAuth.authRequired && !accountAuth.tradingAvailable) {
+      setAuth(null);
+      setAuthChecked(true);
+      return;
+    }
+    setAuthChecked(false);
+    checkAuth(undefined, !accountAuth.authRequired)
       .then((state) => setAuth(state))
       .catch(() => setAuth(null))
       .finally(() => setAuthChecked(true));
-  }, []);
+  }, [accountAuth.authRequired, accountAuth.tradingAvailable]);
 
   const authed = !!auth?.ok;
   const canUsePaperMultiLeg = auth?.role === "paper-trade" || auth?.role === "live-trade" || auth?.role === "admin";
@@ -277,6 +285,19 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
     );
   }
   if (!authed) {
+    if (accountAuth.authRequired) {
+      return (
+        <section className="trading trade-gate-wrap">
+          <div className="trade-gate">
+            <h2>{tradingText(locale, "tradingLocked")}</h2>
+            <p>{tradingText(locale, "permissionPrompt")}</p>
+            <button type="button" className="run-button" onClick={accountAuth.openAccount}>
+              {tradingText(locale, "accountAccess")}
+            </button>
+          </div>
+        </section>
+      );
+    }
     return (
       <section className="trading trade-gate-wrap">
         <TradeTokenGate

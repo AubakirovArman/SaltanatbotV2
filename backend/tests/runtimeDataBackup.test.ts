@@ -49,7 +49,7 @@ describe("runtime data backup and restore", () => {
     seedRuntimeData(dataDir);
 
     expect(run("backup", "--data-dir", dataDir, "--output", backupDir)).toContain("created and verified");
-    expect(run("verify", backupDir)).toContain("verified (5 files)");
+    expect(run("verify", backupDir)).toContain("verified (4 files)");
 
     const manifest = JSON.parse(readFileSync(path.resolve(backupDir, "backup-manifest.json"), "utf8"));
     expect(manifest.format).toBe("saltanatbotv2-runtime-backup");
@@ -57,12 +57,29 @@ describe("runtime data backup and restore", () => {
       sqliteUserVersion: 0,
     });
     expect(manifest.files.map((entry: { name: string }) => entry.name)).toEqual([
-      ".authtoken",
       ".secret",
       "arbitrage-paper-multi-leg.sqlite",
       "candles.db",
       "trading.db",
     ]);
+    expect(() => readFileSync(path.resolve(backupDir, ".authtoken"), "utf8")).toThrow();
+  });
+
+  it("normalizes WAL databases into portable single-file backups", () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    const backupDir = path.resolve(workspace, "backup");
+    seedRuntimeData(dataDir);
+    const databasePath = path.resolve(dataDir, "arbitrage-paper-multi-leg.sqlite");
+    const writer = new DatabaseSync(databasePath);
+    writer.exec("PRAGMA journal_mode=WAL");
+    writer.prepare("INSERT INTO runs (runId, status) VALUES (?, ?)").run("wal-row", "completed");
+
+    expect(run("backup", "--data-dir", dataDir, "--output", backupDir)).toContain("created and verified");
+    writer.close();
+    expect(run("verify", backupDir)).toContain("verified (4 files)");
+    expect(() => readFileSync(`${path.resolve(backupDir, "arbitrage-paper-multi-leg.sqlite")}-shm`)).toThrow();
+    expect(() => readFileSync(`${path.resolve(backupDir, "arbitrage-paper-multi-leg.sqlite")}-wal`)).toThrow();
   });
 
   it("restores atomically and refuses to overwrite runtime state without force", () => {

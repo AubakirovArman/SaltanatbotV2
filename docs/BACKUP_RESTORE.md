@@ -3,10 +3,11 @@
 Audience: self-hosted operators
 Last verified: 2026-07-11
 
-SaltanatbotV2 stores trading state and encrypted credentials under `backend/data/`. A usable backup
-must keep `trading.db` and `.secret` together. The optional candle cache (`candles.db`), bounded
-multi-leg paper journal (`arbitrage-paper-multi-leg.sqlite`) and generated access token
-(`.authtoken`) are included when present at their default paths.
+SaltanatbotV2 uses two independent persistence layers. PostgreSQL stores users, hashed passwords,
+sessions, workspaces and research jobs. Trading state and encrypted credentials remain under
+`backend/data/`. A complete recovery point needs a PostgreSQL dump plus an SQLite runtime backup;
+`trading.db` and `.secret` must always stay together. The optional candle cache (`candles.db`) and
+bounded multi-leg paper journal (`arbitrage-paper-multi-leg.sqlite`) are included at default paths.
 
 > A runtime backup contains sensitive material. The database stores exchange credentials encrypted,
 > but `.secret` is the root needed to decrypt them. Protect the backup as if it contained plaintext
@@ -26,7 +27,7 @@ The output directory must not already exist and must be outside `backend/data/`.
 - `trading.db` (required);
 - `candles.db` (when present);
 - `arbitrage-paper-multi-leg.sqlite` (when present at the default data path);
-- `.secret` and `.authtoken` (when present);
+- `.secret`;
 - `backup-manifest.json` with format version, sizes and SHA-256 checksums.
 
 Database entries also record SQLite `user_version`, allowing verification to detect unexpected
@@ -34,6 +35,32 @@ schema-version drift in addition to byte-level changes.
 
 All copied files and the manifest are written with owner-only `0600` permissions; the backup
 directory is created as `0700`.
+
+An old `.authtoken` remains accepted when verifying/restoring a pre-account-auth backup, but new
+backups no longer copy it. Delete the retired file after confirming database account login works.
+
+## Back up PostgreSQL
+
+Create a custom-format dump near the SQLite backup. For Compose:
+
+```bash
+umask 077
+docker compose exec -T postgres \
+  pg_dump -U saltanatbotv2 -d saltanatbotv2 --format=custom \
+  > ../saltanat-backups/2026-07-15.postgres.dump
+```
+
+For a direct installation, run the matching `pg_dump` major version with the same `PGHOST`,
+`PGPORT`, `PGDATABASE`, `PGUSER` and `PGPASSWORD_FILE` used by the service. Verify it without changing
+the live database:
+
+```bash
+pg_restore --list ../saltanat-backups/2026-07-15.postgres.dump >/dev/null
+```
+
+Keep the PostgreSQL dump and SQLite backup generation together. They are not a transaction across
+both engines, so record the time and stop all research/job mutations when an exact coordinated
+recovery point is required. Live trading must remain disarmed during a full recovery.
 
 For a non-default Docker volume mount or a recovery drill, specify the source explicitly:
 
@@ -58,15 +85,24 @@ known-good snapshot.
 
 ## Restore
 
-1. Stop SaltanatbotV2. Restore must never run against an active server.
-2. Verify the selected backup.
-3. Restore into the runtime location with the explicit replacement flag.
-4. Start the application in paper mode and inspect bots, settings, journals and market history.
+1. Stop the API and research worker. Restore must never run against an active server.
+2. Verify both the PostgreSQL dump and SQLite backup.
+3. Restore PostgreSQL into an empty replacement database, then restore the SQLite directory with the
+   explicit replacement flag.
+4. Start one API instance in paper mode and inspect users, workspaces, jobs, bots and journals.
 5. Keep live trading disarmed until reconciliation and exchange state have been checked.
 
 ```bash
 npm run data:verify -- ../saltanat-backups/2026-07-11
 npm run data:restore -- ../saltanat-backups/2026-07-11 --force
+```
+
+Example PostgreSQL restore into a prepared empty database:
+
+```bash
+pg_restore --exit-on-error --clean --if-exists \
+  --host 127.0.0.1 --port 55434 --username saltanatbotv2 \
+  --dbname saltanatbotv2 ../saltanat-backups/2026-07-15.postgres.dump
 ```
 
 Restore validates the complete backup before touching the target, builds a verified staging

@@ -1,0 +1,251 @@
+.auth-gate {
+  position: relative;
+  isolation: isolate;
+  min-block-size: 100%;
+  block-size: 100%;
+  overflow: auto;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.auth-language {
+  position: absolute;
+  inset-block-start: 1.5rem;
+  inset-inline-end: 1.7rem;
+}
+
+.auth-language select,
+.auth-field input,
+.auth-permission-grid select {
+  border: 1px solid var(--line);
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.auth-language select {
+  min-block-size: 2.35rem;
+  padding-inline: 0.75rem 2rem;
+  border-radius: var(--radius);
+}
+
+.auth-page-content {
+  display: grid;
+  place-items: center;
+  min-block-size: 100%;
+  padding: 6rem 1.25rem 2.5rem;
+}
+
+.auth-card,
+.auth-state-card {
+  inline-size: min(100%, 34rem);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--panel);
+}
+
+.auth-card {
+  padding: clamp(1.4rem, 4vw, 2.2rem);
+}
+
+.auth-state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  padding: clamp(2rem, 7vw, 3.5rem) clamp(1.4rem, 5vw, 3rem);
+  text-align: center;
+}
+
+.auth-state-card h1,
+.auth-card h1 {
+  margin: 0;
+  font-size: clamp(1.45rem, 4vw, 1.85rem);
+}
+
+.auth-state-card > p,
+.auth-card-help {
+  max-inline-size: 58ch;
+  margin: 0;
+  color: var(--muted);
+}
+
+.auth-eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--accent);
+}
+
+.auth-card-help {
+  margin-block: 1.2rem 1.35rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.auth-field > label,
+.auth-permission-grid label > span {
+  font-weight: 650;
+}
+
+.auth-field-hint {
+  color: var(--muted);
+}
+
+.auth-field input {
+  inline-size: 100%;
+  min-block-size: 3.25rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.65rem;
+  font-size: 1rem;
+}
+
+.auth-password-control {
+  position: relative;
+  display: block;
+}
+
+.auth-password-control input {
+  padding-inline-end: 3.5rem;
+}
+
+.auth-password-toggle {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0.25rem;
+  display: grid;
+  place-items: center;
+  inline-size: 3rem;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.auth-gate button,
+.auth-account-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-block-size: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: var(--panel-soft);
+  cursor: pointer;
+}
+
+.auth-primary-button {
+  border-color: var(--accent-line);
+  color: #061018;
+  background: var(--accent);
+  font-weight: 750;
+}
+
+.auth-danger-button {
+  color: var(--down);
+}
+
+.auth-activate-button {
+  color: var(--up);
+}
+
+.auth-gate :disabled,
+.auth-account-dialog :disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.auth-switch-view {
+  margin: 1.3rem 0 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.auth-switch-view button {
+  padding: 0;
+  border: 0;
+  color: var(--accent);
+  background: transparent;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+
+.auth-form-error,
+.auth-notice {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.85rem;
+  border-inline-start: 3px solid currentColor;
+}
+
+.auth-form .auth-form-error,
+.auth-user-card .auth-form-error {
+  margin: 0;
+}
+
+.auth-form-error {
+  color: var(--down);
+  background: var(--down-soft);
+}
+
+.auth-pending-login {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.auth-pending-login dd {
+  margin: 0;
+}
+
+.auth-spinner {
+  inline-size: 2.3rem;
+  block-size: 2.3rem;
+  border: 3px solid var(--line);
+  border-block-start-color: var(--accent);
+  border-radius: 50%;
+  animation: auth-spin 700ms linear infinite;
+}
+
+.auth-app-loading {
+  display: grid;
+  place-items: center;
+  block-size: 100%;
+  background: var(--bg);
+}
+
+@keyframes auth-spin {
+  to { transform: rotate(1turn); }
+}
+
+@media (max-width: 700px) {
+  .auth-language {
+    inset-block-start: 1rem;
+    inset-inline-end: 1rem;
+  }
+
+  .auth-page-content {
+    place-items: start center;
+    padding-block-start: 5.5rem;
+  }
+
+  .auth-card,
+  .auth-state-card {
+    border-radius: 0.85rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-spinner {
+    animation: none;
+    opacity: 0.65;
+  }
+}

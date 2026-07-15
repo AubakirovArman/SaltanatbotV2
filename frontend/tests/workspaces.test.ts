@@ -76,6 +76,17 @@ describe("versioned chart workspaces", () => {
     expect(loadWorkspaces()[0]).toMatchObject({ chartType: "linebreak", charts: [{ chartType: "linebreak" }] });
   });
 
+  it("claims legacy local data once and keeps database-auth owners isolated", () => {
+    const legacy = captureWorkspace("Legacy", context, 100);
+    saveWorkspaces([legacy]);
+
+    expect(loadWorkspaces("user-a")).toMatchObject([{ name: "Legacy" }]);
+    saveWorkspaces([{ ...legacy, name: "Private A" }], "user-a");
+    expect(loadWorkspaces("user-a")).toMatchObject([{ name: "Private A" }]);
+    expect(loadWorkspaces("user-b")).toEqual([]);
+    expect(loadWorkspaces()).toMatchObject([{ name: "Legacy" }]);
+  });
+
   it("versions, exports and restores independent pane indicator settings", async () => {
     const charts: WorkspaceChart[] = [
       { id: "chart-1", symbol: "BTCUSDT", timeframe: "1h", chartType: "candles", timeZone: "UTC", linkChartType: true, linkSymbol: true, linkTimeframe: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true },

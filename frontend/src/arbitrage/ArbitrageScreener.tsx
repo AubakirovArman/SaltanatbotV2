@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowRight, RefreshCw, Search, ShieldAlert } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { localeTag, type Locale } from "../i18n";
+import { useAuth } from "../auth/AuthRoot";
 import { ensureNotificationPermission, playAlertBeep, showSystemNotification } from "../market/alerts";
 import { getToken, notifyArbitrageAlert } from "../trading/tradeClient";
 import { ArbitrageControls } from "./ArbitrageControls";
@@ -118,6 +119,7 @@ export function ArbitrageScreener(props: Props) {
 }
 
 function BasisScreener({ locale, onOpenChart }: Props) {
+  const accountAuth = useAuth();
   const { scan, connection, error, refresh, clockHealth, clockError, refreshClock } = useArbitrageStream();
   const [search, setSearch] = useState("");
   const [minEdge, setMinEdge] = useState(0);
@@ -200,13 +202,13 @@ function BasisScreener({ locale, onOpenChart }: Props) {
         }),
         `arb-${row.id}`
       );
-      if (getToken())
+      if (accountAuth.authRequired ? accountAuth.tradingAvailable : Boolean(getToken()))
         void notifyArbitrageAlert({ symbol: row.symbol, spotExchange: row.spotExchange, futuresExchange: row.futuresExchange, netEdgeBps: edge, minimumNetEdgeBps: alertConfig.thresholdBps }).catch(() => {
           setNotice(alertDeliveryText(locale, "immediateFailed"));
         });
     }
     setNotice(arbitrageText(locale, "alertFired", { count: String(fired.length) }));
-  }, [alertConfig, locale, minCapacity, notionalUsd, profile, scan]);
+  }, [accountAuth.authRequired, accountAuth.tradingAvailable, alertConfig, locale, minCapacity, notionalUsd, profile, scan]);
 
   const analyzeDepth = useCallback(
     async (row: ArbitrageOpportunity) => {

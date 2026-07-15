@@ -64,7 +64,7 @@
     "mexc": "MEXC"
   },
   "generatedEndpoints": {
-    "http": 93,
+    "http": 115,
     "websocket": 6
   }
 }

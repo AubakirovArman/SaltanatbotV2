@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "../auth/AuthRoot";
 import {
   alertCrossed,
   ensureNotificationPermission,
@@ -34,6 +35,7 @@ function makeId() {
  * and fires a notification + beep + in-app toast when an alert crosses its threshold.
  */
 export function usePriceAlerts(prices: Record<string, number>, decimalsFor: (symbol: string) => number) {
+  const accountAuth = useAuth();
   const [alerts, setAlerts] = useState<PriceAlert[]>(() => loadAlerts());
   const [toasts, setToasts] = useState<AlertToast[]>([]);
   const decimalsRef = useRef(decimalsFor);
@@ -99,13 +101,13 @@ export function usePriceAlerts(prices: Record<string, number>, decimalsFor: (sym
       setToasts((current) => [...current, ...fired]);
       // Best-effort server delivery (Telegram) so a fired alert reaches the operator
       // even with the tab closed — only when a trade token is present.
-      if (getToken()) {
+      if (accountAuth.authRequired ? accountAuth.tradingAvailable : Boolean(getToken())) {
         for (const toast of fired) {
           void notifyAlert({ symbol: toast.symbol, price: toast.price, direction: toast.direction, hitPrice: toast.hitPrice }).catch(() => undefined);
         }
       }
     }
-  }, [prices]);
+  }, [accountAuth.authRequired, accountAuth.tradingAvailable, prices]);
 
   const activeCount = useMemo(() => alerts.filter((alert) => !alert.triggered).length, [alerts]);
 

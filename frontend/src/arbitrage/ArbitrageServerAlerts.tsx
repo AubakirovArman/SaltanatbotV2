@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../auth/AuthRoot";
 import type { Locale } from "../i18n";
 import { deleteArbitrageAlertRule, getArbitrageAlertState, getToken, saveArbitrageAlertRule, type ArbitrageAlertDelivery, type ArbitrageAlertRule } from "../trading/tradeClient";
 import type { ArbitrageFeeProfile } from "./fees";
@@ -16,7 +17,8 @@ interface Props {
 }
 
 export function ArbitrageServerAlerts({ locale, profile, notionalUsd, thresholdBps, minimumCapacityUsd }: Props) {
-  const authenticated = !!getToken();
+  const accountAuth = useAuth();
+  const authenticated = accountAuth.authRequired ? accountAuth.tradingAvailable : Boolean(getToken());
   const [rules, setRules] = useState<ArbitrageAlertRule[]>([]);
   const [deliveries, setDeliveries] = useState<ArbitrageAlertDelivery[]>([]);
   const [status, setStatus] = useState<string>();

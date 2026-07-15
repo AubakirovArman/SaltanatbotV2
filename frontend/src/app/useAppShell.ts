@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { AuthContext } from "../auth/AuthRoot";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import type { CompareOverlayConfig } from "../chart/types";
 import { loadLocale, localeDirection, nextLocale, storeLocale, type Locale } from "../i18n";
@@ -17,6 +18,7 @@ import {
   type ChartLayoutPreset,
   type WorkspaceChart
 } from "../workspace/workspaces";
+import { createWorkspaceRemoteSync, mergeWorkspaceUpdates, type WorkspaceRemoteSync } from "../workspace/remoteSync";
 import {
   asCompareChartType,
   DEFAULT_COMPARE_DOWN,
@@ -49,13 +51,15 @@ interface UseAppShellOptions {
 }
 
 export function useAppShell(options: UseAppShellOptions) {
+  const auth = useContext(AuthContext);
+  const workspaceOwner = auth?.authRequired ? auth.user?.id ?? "" : undefined;
   const [initialChartSession] = useState(() => options.initialChartSession ?? loadLastChartSession({ symbol: options.symbol, timeframe: options.timeframe, chartType: options.chartType }));
   const [cryptoExchange, setCryptoExchange] = useState<DataExchange>(loadCryptoExchange);
   const [theme, setTheme] = useState<AppTheme>(loadTheme);
   const [locale, setLocale] = useState<Locale>(loadLocale);
   const [leftOpen, setLeftOpen] = useState(() => readPanel("mf:panel:left", true));
   const [rightOpen, setRightOpen] = useState(() => readPanel("mf:panel:right", true));
-  const [workspaces, setWorkspaces] = useState(loadWorkspaces);
+  const [workspaces, setWorkspaces] = useState(() => loadWorkspaces(workspaceOwner));
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>();
   const [layoutPreset, setLayoutPresetState] = useState<ChartLayoutPreset>(initialChartSession.preset);
   const [charts, setCharts] = useState<WorkspaceChart[]>(initialChartSession.charts);
@@ -64,8 +68,29 @@ export function useAppShell(options: UseAppShellOptions) {
   const [rightSize, setRightSize] = useState(280);
   const [panelsSwapped, setPanelsSwapped] = useState(false);
   const [compareOverlays, setCompareOverlays] = useState<CompareOverlayConfig[]>(() => loadCompare(options.timeframe, options.chartType));
+  const workspaceSync = useRef<WorkspaceRemoteSync>();
+  const workspacesRef = useRef(workspaces);
+  workspacesRef.current = workspaces;
 
-  useEffect(() => saveWorkspaces(workspaces), [workspaces]);
+  useEffect(() => {
+    saveWorkspaces(workspaces, workspaceOwner);
+    workspaceSync.current?.update(workspaces);
+  }, [workspaceOwner, workspaces]);
+  useEffect(() => {
+    if (!auth?.authRequired || !auth.user) return;
+    const sync = createWorkspaceRemoteSync((incoming) => {
+      setWorkspaces((current) => mergeWorkspaceUpdates(current, incoming));
+    });
+    workspaceSync.current = sync;
+    void sync.start(workspacesRef.current);
+    const retry = () => sync.retry();
+    window.addEventListener("online", retry);
+    return () => {
+      window.removeEventListener("online", retry);
+      sync.dispose();
+      if (workspaceSync.current === sync) workspaceSync.current = undefined;
+    };
+  }, [auth?.authRequired, auth?.user?.id]);
   useEffect(() => { try { localStorage.setItem("mf:cryptoExchange", cryptoExchange); } catch { /* noop */ } }, [cryptoExchange]);
   useEffect(() => writePanel("mf:panel:left", leftOpen), [leftOpen]);
   useEffect(() => writePanel("mf:panel:right", rightOpen), [rightOpen]);
@@ -189,6 +214,7 @@ export function useAppShell(options: UseAppShellOptions) {
   }, [options.setChartType, options.setIndicators, options.setMode, options.setSymbol, options.setTimeframe, workspaces]);
 
   const deleteWorkspace = useCallback((id: string) => {
+    workspaceSync.current?.remove(id);
     setWorkspaces((current) => current.filter((item) => item.id !== id));
     setActiveWorkspaceId((current) => current === id ? undefined : current);
   }, []);

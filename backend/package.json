@@ -7,14 +7,18 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "worker:start": "node dist/workers/researchWorker.js",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "admin:bootstrap": "tsx src/cli/bootstrapAdmin.ts"
   },
   "dependencies": {
+    "@saltanatbotv2/backtest-core": "^0.1.0",
     "@saltanatbotv2/contracts": "0.1.0",
     "@saltanatbotv2/execution-core": "0.1.0",
     "@saltanatbotv2/strategy-core": "0.1.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "pg": "^8.22.0",
     "ws": "^8.18.3",
     "zod": "^3.25.76"
   },
@@ -22,6 +26,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.10",
+    "@types/pg": "^8.20.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"

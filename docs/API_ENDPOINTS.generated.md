@@ -8,34 +8,48 @@ This index is a route-presence contract. A change to an Express route makes `npm
 
 | Method | Path | Access | Source |
 | --- | --- | --- | --- |
-| `GET` | `/api/arbitrage` | Public | `backend/src/server.ts` |
-| `GET` | `/api/arbitrage/clock-health` | Public | `backend/src/server.ts` |
-| `GET` | `/api/arbitrage/continuous-feed-health` | Public | `backend/src/server.ts` |
-| `GET` | `/api/arbitrage/depth` | Public | `backend/src/server.ts` |
-| `POST` | `/api/arbitrage/funding-curve` | Public | `backend/src/server.ts` |
-| `GET` | `/api/arbitrage/funding-curve/universe` | Public | `backend/src/server.ts` |
-| `GET` | `/api/arbitrage/history` | Public | `backend/src/server.ts` |
-| `GET` | `/api/arbitrage/lifecycle` | Public | `backend/src/server.ts` |
-| `POST` | `/api/arbitrage/n-leg/evaluate` | Public | `backend/src/server.ts` |
-| `GET` | `/api/arbitrage/native-spreads` | Public | `backend/src/server.ts` |
-| `POST` | `/api/arbitrage/options-parity/evaluate` | Public | `backend/src/server.ts` |
-| `POST` | `/api/arbitrage/pairwise/evaluate` | Public | `backend/src/server.ts` |
-| `POST` | `/api/arbitrage/route-families/evaluate` | Public | `backend/src/server.ts` |
-| `GET` | `/api/arbitrage/route-families/live` | Public | `backend/src/server.ts` |
-| `GET` | `/api/arbitrage/triangular` | Public | `backend/src/server.ts` |
-| `POST` | `/api/arbitrage/triangular/verify-depth` | Public | `backend/src/server.ts` |
-| `GET` | `/api/candles` | Public | `backend/src/server.ts` |
-| `GET` | `/api/catalog` | Public | `backend/src/server.ts` |
-| `GET` | `/api/health` | Public | `backend/src/server.ts` |
-| `GET` | `/api/instruments` | Public | `backend/src/server.ts` |
-| `GET` | `/api/market-data/:venue/depth` | Public · read-only | `backend/src/venues/publicRoutes.ts` |
-| `GET` | `/api/market-data/:venue/funding` | Public · read-only | `backend/src/venues/publicRoutes.ts` |
-| `GET` | `/api/market-data/:venue/instruments` | Public · read-only | `backend/src/venues/publicRoutes.ts` |
-| `GET` | `/api/market-data/:venue/ticker` | Public · read-only | `backend/src/venues/publicRoutes.ts` |
-| `GET` | `/api/market-data/:venue/tickers` | Public · read-only | `backend/src/venues/publicRoutes.ts` |
-| `GET` | `/api/market-data/health/upstreams` | Public · read-only | `backend/src/venues/publicRoutes.ts` |
-| `POST` | `/api/network-identity/preflight` | Public | `backend/src/server.ts` |
-| `GET` | `/api/network-identity/registry` | Public | `backend/src/server.ts` |
+| `GET` | `/api/admin/users` | Authenticated · admin | `backend/src/identity/routes.ts` |
+| `POST` | `/api/admin/users/:id/activate` | Authenticated · admin | `backend/src/identity/routes.ts` |
+| `POST` | `/api/admin/users/:id/disable` | Authenticated · admin | `backend/src/identity/routes.ts` |
+| `PATCH` | `/api/admin/users/:id/permissions` | Authenticated · admin | `backend/src/identity/routes.ts` |
+| `GET` | `/api/arbitrage` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/clock-health` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/continuous-feed-health` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/depth` | Authenticated account | `backend/src/server.ts` |
+| `POST` | `/api/arbitrage/funding-curve` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/funding-curve/universe` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/history` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/lifecycle` | Authenticated account | `backend/src/server.ts` |
+| `POST` | `/api/arbitrage/n-leg/evaluate` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/native-spreads` | Authenticated account | `backend/src/server.ts` |
+| `POST` | `/api/arbitrage/options-parity/evaluate` | Authenticated account | `backend/src/server.ts` |
+| `POST` | `/api/arbitrage/pairwise/evaluate` | Authenticated account | `backend/src/server.ts` |
+| `POST` | `/api/arbitrage/route-families/evaluate` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/route-families/live` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/arbitrage/triangular` | Authenticated account | `backend/src/server.ts` |
+| `POST` | `/api/arbitrage/triangular/verify-depth` | Authenticated account | `backend/src/server.ts` |
+| `POST` | `/api/auth/change-password` | Authenticated account | `backend/src/identity/routes.ts` |
+| `GET` | `/api/auth/config` | Public | `backend/src/identity/routes.ts` |
+| `POST` | `/api/auth/login` | Public | `backend/src/identity/routes.ts` |
+| `POST` | `/api/auth/logout` | Authenticated account | `backend/src/identity/routes.ts` |
+| `GET` | `/api/auth/me` | Authenticated account | `backend/src/identity/routes.ts` |
+| `POST` | `/api/auth/register` | Public | `backend/src/identity/routes.ts` |
+| `GET` | `/api/candles` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/catalog` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/health` | Public | `backend/src/identity/serverRoutes.ts` |
+| `GET` | `/api/instruments` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/jobs` | Authenticated · owner-scoped | `backend/src/jobs/routes.ts` |
+| `POST` | `/api/jobs` | Authenticated · owner-scoped | `backend/src/jobs/routes.ts` |
+| `GET` | `/api/jobs/:id` | Authenticated · owner-scoped | `backend/src/jobs/routes.ts` |
+| `POST` | `/api/jobs/:id/cancel` | Authenticated · owner-scoped | `backend/src/jobs/routes.ts` |
+| `GET` | `/api/market-data/:venue/depth` | Authenticated account · public-market read-only | `backend/src/venues/publicRoutes.ts` |
+| `GET` | `/api/market-data/:venue/funding` | Authenticated account · public-market read-only | `backend/src/venues/publicRoutes.ts` |
+| `GET` | `/api/market-data/:venue/instruments` | Authenticated account · public-market read-only | `backend/src/venues/publicRoutes.ts` |
+| `GET` | `/api/market-data/:venue/ticker` | Authenticated account · public-market read-only | `backend/src/venues/publicRoutes.ts` |
+| `GET` | `/api/market-data/:venue/tickers` | Authenticated account · public-market read-only | `backend/src/venues/publicRoutes.ts` |
+| `GET` | `/api/market-data/health/upstreams` | Authenticated account · public-market read-only | `backend/src/venues/publicRoutes.ts` |
+| `POST` | `/api/network-identity/preflight` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/network-identity/registry` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/orderbook-ml/research/health` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
 | `GET` | `/api/orderbook-ml/research/sessions` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
 | `POST` | `/api/orderbook-ml/research/sessions` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
@@ -46,7 +60,8 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `POST` | `/api/orderbook-ml/research/sessions/:sessionId/predictions` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
 | `POST` | `/api/orderbook-ml/research/sessions/:sessionId/snapshots` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
 | `GET` | `/api/orderbook-ml/research/status` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
-| `GET` | `/api/sparklines` | Public | `backend/src/server.ts` |
+| `GET` | `/api/ready` | Public | `backend/src/identity/serverRoutes.ts` |
+| `GET` | `/api/sparklines` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/trade/account-telemetry` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
 | `GET` | `/api/trade/accounts` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
 | `POST` | `/api/trade/accounts` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
@@ -100,17 +115,24 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `GET` | `/api/trade/settings` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/settings` | Authenticated · admin | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/ws-ticket` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
-| `GET` | `/api/venues` | Public | `backend/src/server.ts` |
+| `GET` | `/api/venues` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/workspaces` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `POST` | `/api/workspaces` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `DELETE` | `/api/workspaces/:id` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `GET` | `/api/workspaces/:id` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `PUT` | `/api/workspaces/:id` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `GET` | `/api/workspaces/:id/revisions` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `POST` | `/api/workspaces/:id/rollback` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
 
 ## WebSocket endpoints
 
 | Path | Access | Purpose |
 | --- | --- | --- |
-| `/stream` | Public | Market candle snapshot and updates |
-| `/quotes` | Public | Multiplexed watchlist quote snapshots and updates |
-| `/orderbook` | Public | Shared Binance/Bybit order-book snapshots and status |
-| `/trade-flow` | Public | Shared Binance/Bybit aggressor-trade batches and status |
-| `/arbitrage-stream` | Public | Shared read-only cross-exchange arbitrage snapshots |
+| `/stream` | Authenticated account | Market candle snapshot and updates |
+| `/quotes` | Authenticated account | Multiplexed watchlist quote snapshots and updates |
+| `/orderbook` | Authenticated account | Shared Binance/Bybit order-book snapshots and status |
+| `/trade-flow` | Authenticated account | Shared Binance/Bybit aggressor-trade batches and status |
+| `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **93 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **115 HTTP endpoints** and **6 WebSocket endpoints**.

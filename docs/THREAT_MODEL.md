@@ -10,7 +10,7 @@ It is not a claim that the application is production- or mainnet-ready.
 
 ## Security objectives
 
-- Keep exchange credentials and local access tokens confidential.
+- Keep account/database secrets, session cookies and exchange credentials confidential.
 - Prevent unauthorized state-changing trading actions.
 - Make order submission, ambiguous outcomes and reconciliation auditable.
 - Fail closed when market data, protection, exchange state or authorization cannot be proven.

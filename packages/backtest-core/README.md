@@ -7,6 +7,8 @@ Runtime-neutral historical trading primitives shared independently of the React 
 - backtest configuration, trades, equity points, metrics and report contracts;
 - slippage, stop/target resolution and hit detection;
 - position sizing, leverage/quantity guardrails and open/close accounting;
+- the canonical StrategyIR historical execution loop, including signal timing,
+  fills, position lifecycle, funding and liquidation;
 - chronological multi-symbol candidate replay through one mark-to-market capital pool, with concurrent/gross/position allocation limits, per-market contribution and correlation analytics;
 - historical tail-loss/concentration analytics and deterministic bounded moving-block portfolio bootstrap;
 - exhaustive StrategyIR warm-up analysis;

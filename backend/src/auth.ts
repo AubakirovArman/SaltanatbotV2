@@ -4,6 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { NextFunction, Request, Response } from "express";
 import type { AuthRole } from "./trading/types.js";
+import { csrfFromRequest, principalFromRequest, readCookie, requestNeedsCsrf, sessionCookieName } from "./identity/http.js";
+import { IdentityError, type IdentityService } from "./identity/service.js";
+import type { IdentityPrincipal } from "./identity/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../data");
@@ -25,9 +28,22 @@ interface AuthSession {
 
 const sessions = new Map<string, AuthSession>();
 const wsTickets = new Map<string, number>();
+let databaseIdentity: IdentityService | undefined;
+
+export function configureIdentityAuth(service: IdentityService | undefined): void {
+  databaseIdentity = service;
+}
+
+export function getIdentityAuth(): IdentityService | undefined {
+  return databaseIdentity;
+}
+
+export function isDatabaseAuthMode(): boolean {
+  return databaseIdentity !== undefined || process.env.AUTH_MODE === "database";
+}
 
 /**
- * The access token that guards the trading API. Precedence:
+ * Legacy/demo access token. Database-auth production never calls this path. Precedence:
  *   1. process.env.AUTH_TOKEN (operator-supplied, never persisted)
  *   2. backend/data/.authtoken (auto-generated on first run, git-ignored)
  * The token is required for every /api/trade route and the /trade-stream socket.
@@ -81,6 +97,7 @@ export function verifyToken(candidate: string | undefined | null): boolean {
 }
 
 export function roleForToken(candidate: string | undefined | null): AuthRole | undefined {
+  if (isDatabaseAuthMode()) return undefined;
   if (!candidate) return undefined;
   const candidates: Array<[AuthRole, string | undefined]> = [
     ["admin", getAuthToken()],
@@ -134,7 +151,8 @@ export function createAuthSession(res: Response, role: AuthRole): { csrfToken: s
   return { csrfToken: session.csrfToken, role: session.role, expiresAt: session.expiresAt };
 }
 
-export function clearAuthSession(req: Request, res: Response): void {
+export function clearAuthSession(req: Request, res: Response): void | Promise<void> {
+  if (databaseIdentity) return clearDatabaseSession(databaseIdentity, req, res);
   const sessionId = readCookie(req.headers.cookie, sessionCookie);
   if (sessionId) sessions.delete(sessionId);
   res.setHeader("Set-Cookie", formatSessionCookie("", 0));
@@ -152,8 +170,24 @@ export function issueWsTicket(): { ticket: string; expiresAt: number } {
   return { ticket, expiresAt };
 }
 
+export async function issueWsTicketForRequest(req: Request, res: Response): Promise<{ ticket: string; expiresAt: number }> {
+  if (!databaseIdentity) return issueWsTicket();
+  const principal = res.locals.authPrincipal as IdentityPrincipal | undefined;
+  if (!principal) throw new IdentityError(401, "not_authenticated", "Authentication is required.");
+  const issued = await databaseIdentity.issueWsTicket(principal);
+  return { ticket: issued.ticket, expiresAt: issued.expiresAt.getTime() };
+}
+
 /** Express middleware: 401 unless a valid token is presented. */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  if (databaseIdentity) {
+    void requireDatabaseAuth(databaseIdentity, req, res, next, true);
+    return;
+  }
+  if (process.env.AUTH_MODE === "database") {
+    res.status(503).json({ error: "Authentication database is unavailable.", code: "auth_unavailable" });
+    return;
+  }
   const bearerRole = roleForToken(extractToken(req));
   if (bearerRole) {
     res.locals.authMode = "bearer";
@@ -176,6 +210,19 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   res.status(401).json({ error: "Unauthorized — a valid access token is required." });
 }
 
+/** Require an active application account. Trading permission is checked separately. */
+export function requireAppAuth(req: Request, res: Response, next: NextFunction): void {
+  if (!isDatabaseAuthMode()) {
+    next();
+    return;
+  }
+  if (!databaseIdentity) {
+    res.status(503).json({ error: "Authentication database is unavailable.", code: "auth_unavailable" });
+    return;
+  }
+  void requireDatabaseAuth(databaseIdentity, req, res, next, false);
+}
+
 /** Validate a one-time websocket ticket, with bearer subprotocol as a legacy API fallback. */
 export function verifyWsToken(url: URL, protocolHeader?: unknown): boolean {
   void url;
@@ -184,6 +231,66 @@ export function verifyWsToken(url: URL, protocolHeader?: unknown): boolean {
   const protocolToken = extractWsProtocolValue(protocolHeader, "sbv2.auth.");
   if (protocolToken && roleForToken(protocolToken)) return true;
   return false;
+}
+
+export async function verifyTradeWsRequest(protocolHeader?: unknown): Promise<IdentityPrincipal | boolean> {
+  if (!databaseIdentity) return verifyWsToken(new URL("http://localhost/trade-stream"), protocolHeader);
+  const ticket = extractWsProtocolValue(protocolHeader, "sbv2.ticket.");
+  if (!ticket) return false;
+  return (await databaseIdentity.consumeWsTicket(ticket)) ?? false;
+}
+
+export async function verifyAppWsSession(cookieHeader?: string): Promise<boolean> {
+  if (!databaseIdentity) return process.env.AUTH_MODE !== "database";
+  const token = readCookie(cookieHeader, sessionCookieName);
+  const principal = await databaseIdentity.authenticate(token);
+  return Boolean(principal && !principal.user.mustChangePassword);
+}
+
+async function requireDatabaseAuth(
+  service: IdentityService,
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  requireTradingRole: boolean
+): Promise<void> {
+  try {
+    const principal = await principalFromRequest(service, req);
+    if (!principal) {
+      res.status(401).json({ error: "Authentication is required.", code: "not_authenticated" });
+      return;
+    }
+    if (principal.user.mustChangePassword) {
+      res.status(403).json({ error: "Change the temporary password before using the application.", code: "password_change_required" });
+      return;
+    }
+    if (requestNeedsCsrf(req) && !service.verifyCsrf(principal, csrfFromRequest(req))) {
+      res.status(403).json({ error: "Missing or invalid CSRF token.", code: "invalid_csrf" });
+      return;
+    }
+    if (requireTradingRole && !principal.effectiveTradingRole) {
+      res.status(403).json({ error: "Trading access has not been granted.", code: "trading_not_allowed" });
+      return;
+    }
+    res.locals.authMode = "database";
+    res.locals.authPrincipal = principal;
+    res.locals.authUserId = principal.user.id;
+    res.locals.appRole = principal.user.appRole;
+    res.locals.tradingRole = principal.user.tradingRole;
+    res.locals.authRole = principal.effectiveTradingRole;
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function clearDatabaseSession(service: IdentityService, req: Request, res: Response): Promise<void> {
+  const principal = await principalFromRequest(service, req);
+  await service.logout(principal);
+  const secure = process.env.COOKIE_SECURE === "1" || process.env.COOKIE_SECURE === "true";
+  const attributes = `SameSite=Strict; Path=/; Max-Age=0${secure ? "; Secure" : ""}`;
+  res.append("Set-Cookie", `${sessionCookieName}=; HttpOnly; ${attributes}`);
+  res.append("Set-Cookie", `sbv2_csrf=; ${attributes}`);
 }
 
 function constantTimeEqual(candidate: string, expected: string | undefined): boolean {
@@ -252,16 +359,4 @@ function formatSessionCookie(value: string, maxAge: number): string {
   const attrs = [`${sessionCookie}=${value}`, "HttpOnly", "SameSite=Strict", "Path=/", `Max-Age=${maxAge}`];
   if (process.env.COOKIE_SECURE === "1" || process.env.COOKIE_SECURE === "true") attrs.push("Secure");
   return attrs.join("; ");
-}
-
-function readCookie(header: string | undefined, name: string): string | undefined {
-  if (!header) return undefined;
-  for (const part of header.split(";")) {
-    const index = part.indexOf("=");
-    if (index === -1) continue;
-    const key = part.slice(0, index).trim();
-    if (key !== name) continue;
-    return decodeURIComponent(part.slice(index + 1).trim());
-  }
-  return undefined;
 }

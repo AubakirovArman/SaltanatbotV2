@@ -1091,6 +1091,7 @@ test("offers a keyboard-operable tabular alternative to the canvas chart", async
 });
 
 test("command palette is keyboard-operable and switches symbols", async ({ page }) => {
+  await expect(page.getByRole("button", { name: "Open command palette" })).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press("Control+k");
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await expect(palette).toBeVisible();
@@ -1584,13 +1585,7 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
 });
 
 test("saves and restores a named chart workspace", async ({ page }) => {
-  await page.keyboard.press("Control+k");
-  const palette = page.getByRole("dialog", { name: "Command palette" });
-  const search = palette.getByPlaceholder("Search symbols, timeframes, chart types, actions...");
-  await search.fill("EURUSD");
-  await expect(palette.getByRole("button").filter({ hasText: "EURUSD" }).first()).toBeVisible({ timeout: 20_000 });
-  await search.press("Enter");
-  await expect(page.getByRole("button", { name: /Current instrument EURUSD/i })).toBeVisible();
+  await selectChartSymbol(page, "EURUSD");
 
   page.once("dialog", async (dialog) => dialog.accept("EUR research"));
   await page.getByRole("button", { name: "Saved workspaces" }).click();
@@ -2303,10 +2298,25 @@ test("uses exclusive mobile market and instrument sheets without covering the ch
   await expect(page.getByRole("dialog", { name: "Current instrument" })).toBeHidden();
   const stageBox = await page.locator(".chart-stage").boundingBox();
   const analysisBox = await page.locator(".session-liquidity-badge").boundingBox();
+  const indicatorOverlay = page.locator(".chart-indicator-overlay");
+  const indicatorBox = await indicatorOverlay.boundingBox();
+  const priceAxis = page.getByRole("slider", { name: /Price axis scale/i });
+  const priceAxisBox = await priceAxis.boundingBox();
   expect(stageBox).not.toBeNull();
   expect(analysisBox).not.toBeNull();
+  expect(indicatorBox).not.toBeNull();
+  expect(priceAxisBox).not.toBeNull();
   expect(analysisBox!.x).toBeGreaterThanOrEqual(stageBox!.x);
   expect(analysisBox!.x + analysisBox!.width).toBeLessThanOrEqual(stageBox!.x + stageBox!.width);
+  expect(indicatorBox!.x + indicatorBox!.width).toBeLessThanOrEqual(priceAxisBox!.x + 1);
+  await indicatorOverlay.locator(".indicator-strip").evaluate((strip) => { strip.scrollLeft = strip.scrollWidth; });
+  const hideRsi = indicatorOverlay.getByRole("button", { name: "Hide RSI" });
+  await expect(hideRsi).toBeVisible();
+  const hideRsiBox = await hideRsi.boundingBox();
+  expect(hideRsiBox).not.toBeNull();
+  expect(hideRsiBox!.x + hideRsiBox!.width).toBeLessThanOrEqual(priceAxisBox!.x + 1);
+  await hideRsi.click();
+  await expect(indicatorOverlay.getByRole("button", { name: "Show RSI" })).toBeVisible();
 
   await marketsTrigger.click();
   const markets = page.getByRole("dialog", { name: "Markets" });
@@ -2710,6 +2720,7 @@ async function openChartAnalysis(page: Page) {
 }
 
 async function selectChartSymbol(page: Page, symbol: string) {
+  await expect(page.getByRole("button", { name: "Open command palette" })).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press("Control+k");
   const palette = page.getByRole("dialog", { name: "Command palette" });
   const search = palette.getByPlaceholder("Search symbols, timeframes, chart types, actions...");

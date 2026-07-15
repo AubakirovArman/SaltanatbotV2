@@ -53,13 +53,17 @@ SaltanatbotV2 — сауда идеяларын зерттеуге және ав
 
 ## Жылдам бастау
 
-Node.js 24+ қажет.
+Docker Engine және Compose ұсынылады. Docker-сыз орнатуға Node.js 24+, npm және бөлек PostgreSQL қажет.
 
 ```bash
 git clone https://github.com/AubakirovArman/SaltanatbotV2.git
 cd SaltanatbotV2
-npm install
-npm run dev
+mkdir -p .secrets
+umask 077
+openssl rand -base64 48 > .secrets/postgres_password
+docker compose up -d --build
+docker compose exec saltanatbotv2 \
+  node backend/dist/cli/bootstrapAdmin.js --login admin-login
 ```
 
 Әзірлеу режимі:
@@ -67,11 +71,17 @@ npm run dev
 - frontend: `http://localhost:4180`;
 - backend/API: `http://localhost:4181`.
 
-Production құрастыру:
+Тіркелген account әкімші іске қосқанға дейін белсенді емес. Алғашқы admin командасы temporary
+password-ті бір рет көрсетеді; бірінші login-нен кейін оны ауыстыру міндетті. Жобаның PostgreSQL-і
+`127.0.0.1:55434` адресінде бөлек жұмыс істейді және бұрынғы SQLite файлдарына тимейді.
+
+Hot-reload әзірлеу:
 
 ```bash
-npm run build
-npm start
+docker compose up -d postgres
+npm install
+export AUTH_MODE=database PGPASSWORD_FILE="$PWD/.secrets/postgres_password"
+npm run dev
 ```
 
 Негізгі navigation мен тұрақты user journeys ағылшын, орыс және қазақ тілдерінде қолжетімді.
@@ -79,7 +89,7 @@ npm start
 сақтайды; нақты API schemas мен ішкі developer documentation canonical English күйінде қалады.
 
 Production backend әдепкіде тек `127.0.0.1:4180` мекенжайында қолжетімді. Сыртқы қолжетімділік
-үшін TLS reverse proxy, firewall және күшті `AUTH_TOKEN` пайдаланыңыз.
+үшін TLS reverse proxy және firewall пайдаланыңыз.
 
 ## Тексеру
 
@@ -108,6 +118,8 @@ npm run build
 - [Оқиғалар мен орындалу трассалары](docs/kk/EVENT_TRACES.md)
 - [Қауіпсіздік бойынша қысқаша нұсқаулық](docs/kk/SECURITY.md)
 - [Backup және қалпына келтіру](docs/kk/BACKUP_RESTORE.md)
+- [Account authentication бар self-host орнату](docs/SELF_HOSTING.md)
+- [Алғашқы 100 user capacity жоспары](docs/CAPACITY_100_USERS.md)
 - [Жергілікті офлайн зерттеу](docs/kk/OFFLINE_RESEARCH.md)
 - [PWA арқылы файлдарды қауіпсіз ашу және бөлісу](docs/kk/PWA_FILE_HANDLING.md)
 - [90 коммит жаңартуы](docs/kk/RELEASE_2026-07-11.md)
@@ -118,9 +130,9 @@ npm run build
 
 ## Қауіпсіздік
 
-- `backend/data/`, `.env`, API кілттері мен access token-ді жарияламаңыз.
+- `backend/data/`, `.secrets/`, `.env`, PostgreSQL dump және API кілттерін жарияламаңыз.
 - Қаражат шығаруға рұқсаты жоқ бөлек API кілтін қолданыңыз.
-- Сыртқы қолжетімділікке HTTPS, firewall және күшті `AUTH_TOKEN` міндетті.
+- Сыртқы қолжетімділікке HTTPS және firewall міндетті; жаңа account тек admin approval-дан кейін ашылады.
 - Paper mode әдепкіде қосулы; live бірнеше анық растауды қажет етеді.
 - Арбитраж скринері order орналастырмайды: continuous entry basis пен fee estimate тек public entry
   бағаларын салыстырады; бөлек модельденетін paper нәтижесі де зерттеу үшін, ал әртүрлі биржа

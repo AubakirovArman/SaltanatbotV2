@@ -35,6 +35,12 @@ export default defineConfig({
         codeSplitting: {
           groups: [
             {
+              name: "lucide-icons",
+              test: /node_modules[\\/]lucide-react[\\/]/,
+              priority: 5,
+              minSize: 0
+            },
+            {
               name: "blockly-runtime",
               test: /node_modules[\\/]blockly[\\/]/,
               priority: 10,

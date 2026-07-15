@@ -483,7 +483,7 @@ Verification:
 ### Runtime backup and recovery — 2026-07-11
 
 - [x] Create consistent online SQLite snapshots instead of copying active database files directly.
-- [x] Preserve `trading.db`, optional `candles.db`, `.secret` and `.authtoken` with owner-only modes.
+- [x] Preserve `trading.db`, optional `candles.db` and `.secret` with owner-only modes; accept legacy backup manifests that already contain retired `.authtoken`.
 - [x] Generate a versioned SHA-256 manifest and reject missing, extra, symlinked or modified files.
 - [x] Run SQLite `PRAGMA quick_check` before backup, after backup and before restore.
 - [x] Refuse accidental overwrite and use a verified staging directory plus rollback-safe atomic swap.
@@ -580,7 +580,7 @@ Verification at commit:
 
 - [x] Persist named chart workspaces through reload.
 - [x] Run a real browser backtest and verify assumptions/metrics.
-- [x] Verify invalid and valid Trade access tokens.
+- [x] Verify invalid and valid Trade access tokens in explicit legacy/demo compatibility mode.
 - [x] Convert Trade token entry to a semantic accessible form.
 
 Verification:

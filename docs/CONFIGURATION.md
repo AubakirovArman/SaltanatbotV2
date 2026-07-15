@@ -1,6 +1,9 @@
 # Configuration & deployment
 
-SaltanatbotV2 is configured mostly at runtime through the app itself. The backend reads a small set of environment variables for listen/auth/session behavior; everything sensitive — exchange API keys, Telegram/VK notification credentials — is entered in the UI, encrypted with AES-256-GCM, and persisted in a local SQLite database. This guide covers the environment variables, where runtime state lives, how to configure secrets through the app, the at-rest encryption scheme, a production deployment recipe, and a hardening checklist for exposing the server publicly.
+SaltanatbotV2 is configured mostly at runtime through the app itself. PostgreSQL stores accounts,
+revocable sessions, workspaces and research jobs; the pre-existing SQLite store continues to hold
+legacy robots and AES-256-GCM-encrypted exchange/notification credentials. This split preserves
+existing trading state while making authentication and user-owned research durable.
 
 ## Environment variables
 
@@ -10,43 +13,49 @@ The backend reads these environment variables in `backend/src/server.ts` / `back
 | ----------------- | ------------- | --------------------------------------------------------------------------------------- |
 | `PORT`            | `4180`        | TCP port the HTTP + WebSocket server listens on.                                        |
 | `HOST`            | `127.0.0.1`   | Interface the server binds to. Loopback by default (fail-safe). Set `0.0.0.0` to expose. |
-| `AUTH_TOKEN`      | *(auto)*      | Admin token used to unlock the Trade tab. Browser login exchanges it for an HttpOnly session cookie. |
-| `AUTH_READONLY_TOKEN` | *(unset)* | Optional token for read-only trade visibility. Cannot mutate bots/settings. |
-| `AUTH_PAPER_TRADE_TOKEN` | *(unset)* | Optional token that can manage paper bots and price-alert delivery, but cannot create/start live bots. |
-| `AUTH_LIVE_TRADE_TOKEN` | *(unset)* | Optional token that can start/stop/command live bots once live trading is armed. Admin still controls keys/settings. |
+| `AUTH_MODE` | `database` | `database` enables account login. `legacy` is an explicit compatibility mode for hermetic tests/private demos only. |
+| `AUTH_REGISTRATION_ENABLED` | `1` | Set `0` to hide/disable new registration. Registrations are pending until admin approval. |
 | `AUTH_SESSION_TTL_MS` | `43200000` | HttpOnly browser session TTL (default 12 hours). |
 | `AUTH_WS_TICKET_TTL_MS` | `30000` | One-time `/trade-stream` ticket TTL. |
+| `AUTH_ENABLE_SHARED_TRADING_ROLES` | *(off)* | Unsafe migration flag. Keep off until every legacy bot/account/event is owner-scoped. |
 | `COOKIE_SECURE`   | *(off)*       | Set to `1` behind HTTPS so session cookies are marked `Secure`. |
+| `DATABASE_URL` | *(unset)* | PostgreSQL URL. Takes precedence over individual `PG*` parameters and cannot be combined with `PGPASSWORD_FILE`. |
+| `PGHOST` / `PGPORT` | `127.0.0.1` / `55434` | Isolated project PostgreSQL address. Compose uses `postgres:5432` internally. |
+| `PGDATABASE` / `PGUSER` | `saltanatbotv2` | Dedicated database and role. |
+| `PGPASSWORD_FILE` | *(unset)* | Preferred absolute regular file containing the database password. |
+| `PGPOOL_MAX` | `12` | Maximum API PostgreSQL connections. |
 | `DEMO_MODE`       | *(off)*       | `1`/`true` disables exchange keys and live trading — paper only. For public demos.       |
 | `ENABLE_LIVE_SPOT` | *(off)* | `1`/`true` permits experimental Bybit spot after the normal live gates. It does not enable Binance spot, which remains disabled until authenticated spot execution accounting exists. |
-| `ALLOWED_ORIGINS` | dev localhost | Comma-separated CORS allowlist for cross-origin browser access. Same-origin always works. |
+| `ALLOWED_ORIGINS` | dev localhost | Comma-separated HTTP CORS and WebSocket `Origin` allowlist for cross-origin browser access. Same-origin always works. |
 | `TRUST_PROXY` | *(unset)* | Explicit Express trusted-proxy IP/CIDR/name list (for example `loopback`). Only trusted proxies may establish HTTPS through `X-Forwarded-Proto`. |
 | `ALLOW_INSECURE_TRADING_MUTATIONS` | *(off)* | Dangerous development override for key storage and live/account mutations over public HTTP. Never enable on a public or production host. |
 | `PAPER_MULTI_LEG_DB_PATH` | `backend/data/arbitrage-paper-multi-leg.sqlite` | Optional path for the bounded append-only multi-leg paper journal. A custom path must be included in the operator's backup policy. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_FILE` | *(unset)* | Preferred absolute path to one bounded, regular, non-symlinked UTF-8 public-feed allowlist. Mutually exclusive with the inline JSON variable. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_JSON` | *(unset)* | Optional bounded public-feed allowlist for continuous multi-venue research discovery; exact reviewed identity and fee metadata only, never credentials. |
 
-To run on a different port, exposed on all interfaces, with a fixed token:
+To run on a different application port after configuring PostgreSQL:
 
 ```bash
-PORT=8080 HOST=0.0.0.0 AUTH_TOKEN="your-long-random-secret" npm start
+PORT=8080 HOST=127.0.0.1 AUTH_MODE=database npm start
 ```
 
-On first run (no `AUTH_TOKEN` set) the server prints the generated token — you need it to log in to the **Trade** tab:
+Create the first administrator once. The generated password is shown once and the first login forces
+a password change:
 
 ```
-SaltanatbotV2 backend listening on http://127.0.0.1:4180
-
-🔑 Trading API access token (needed to log in to the Trade tab):
-      qN7x2Lp9wR4tKv8mZ3bYc6Hs1Fd0Ea5   ← example only; yours will differ
-   Stored in backend/data/.authtoken · override with the AUTH_TOKEN env var.
+npm --workspace backend run admin:bootstrap -- --login your-admin-login
 ```
 
 If you bind to a non-loopback address, the server prints a warning to put it behind a reverse proxy with TLS (see [Security hardening](#security-hardening)).
 
-> **Public market data is open; the trading API is not.** `/api/candles`, `/api/sparklines`, `/api/catalog` and the `/stream` market socket need no token (they only serve public candles). The browser exchanges `AUTH_TOKEN` at `POST /api/trade/session` for an HttpOnly `sbv2_session` cookie and a CSRF token; mutating trade requests require `X-CSRF-Token`. `/trade-stream` uses a short-lived one-time ticket from `POST /api/trade/ws-ticket`. Exchange keys and notification tokens are still entered in the UI and stored encrypted — never in environment variables.
+> **Database mode protects the application API and market WebSockets.** `POST /api/auth/login`
+> creates an HttpOnly `sbv2_session` plus a readable SameSite CSRF cookie; unsafe requests must copy
+> that CSRF value into `X-CSRF-Token`. `/trade-stream` additionally uses a short-lived, session-bound,
+> one-time ticket. Exchange keys and notification tokens remain encrypted in SQLite and are never
+> placed in PostgreSQL or returned to the browser.
 
-> **`.env` is git-ignored** (with a committed `.env.example` allowed). Secrets belong in the encrypted store or `AUTH_TOKEN`, not committed files.
+> **`.env` and `.secrets/` are git-ignored.** Database passwords, dumps and runtime data must never
+> be committed. See [Self-hosting](./SELF_HOSTING.md) for Docker and direct-host recipes.
 
 ### Continuous multi-venue research allowlist
 
@@ -416,12 +425,17 @@ Point your process manager (systemd, pm2, Docker, etc.) at this command, ensure 
 
 ## Security hardening
 
-The backend now defaults to the safe posture: it binds to `127.0.0.1`, the trading API requires an access token, CORS is an allowlist (foreign origins get no `Access-Control-Allow-Origin`), and the bundled SPA is served with CSP / browser hardening headers. Live trading is disarmed by default. Still, before putting this server on the public internet, work through the checklist below.
+The backend defaults to a safe posture: it binds to `127.0.0.1`, database-mode APIs and WebSockets
+require an active account, CORS is an allowlist, and the bundled SPA uses CSP/browser hardening
+headers. Live trading is disarmed by default. Before exposing the server, complete this checklist.
 
-- [ ] **Terminate TLS at a reverse proxy.** Keep the app bound to loopback (`HOST=127.0.0.1`, the default), set `TRUST_PROXY` to that proxy only, and place nginx / Caddy / Traefik in front to handle HTTPS and all HTTP/WebSocket routes. Direct public HTTP remains usable for charts and paper testing, but key storage and risk-increasing live mutations return `426 SECURE_TRADING_ORIGIN_REQUIRED`.
+- [ ] **Terminate TLS at a reverse proxy.** Keep the app bound to loopback (`HOST=127.0.0.1`, the default), set `TRUST_PROXY` to that proxy only, and place nginx / Caddy / Traefik in front to handle HTTPS and all HTTP/WebSocket routes. Never enter an account password over public HTTP; key storage and risk-increasing live mutations also return `426 SECURE_TRADING_ORIGIN_REQUIRED` without a trustworthy origin.
 - [ ] **Restrict network exposure with a firewall.** Only expose the proxy's `443` (and optionally `80` for redirect). Do not expose the backend's `4180` directly; block it at the host firewall / security group.
-- [ ] **Keep the access token secret.** The browser only uses it to create an HttpOnly session, but it is still the admin credential. Set a long random `AUTH_TOKEN` in production (don't rely on the auto-generated `backend/data/.authtoken` if you ship the data dir around), and never paste it into cross-origin sites. A defense-in-depth auth layer at the proxy is still welcome.
-- [ ] **Use scoped tokens where possible.** Give observers `AUTH_READONLY_TOKEN`, paper operators `AUTH_PAPER_TRADE_TOKEN`, and reserve `AUTH_TOKEN` for admin operations such as keys, live arming, deletion, and notification config.
+- [ ] **Protect account and database credentials.** Change the one-time administrator password,
+  keep the PostgreSQL password file owner-only, review pending registrations, and disable departed
+  users. Never expose a dump, cookie or CSRF value in logs/screenshots.
+- [ ] **Keep legacy trading administrator-only.** Do not set `AUTH_ENABLE_SHARED_TRADING_ROLES` until
+  bots, account keys and REST/WebSocket events have owner filtering and a verified migration.
 - [ ] **Set `COOKIE_SECURE=1` behind HTTPS.** Local plain HTTP cannot use Secure cookies, so this is operator-controlled. For a public TLS deployment, enable it.
 - [ ] **Set `ALLOWED_ORIGINS` if the API is reached cross-origin.** Same-origin (the bundled SPA) needs nothing. Leave it unset for the default same-origin deployment.
 - [ ] **Never commit `backend/data/`.** It contains `.secret` (the encryption key seed) and `trading.db` (encrypted API keys and tokens). It is gitignored — keep it that way, and treat backups of it as secret material.

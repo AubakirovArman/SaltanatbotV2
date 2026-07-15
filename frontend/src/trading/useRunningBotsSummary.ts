@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "../auth/AuthRoot";
 import { RUNNING_BOTS_CHANGED_EVENT, TRADING_SESSION_CHANGED_EVENT } from "./sessionEvents";
 import { checkAuth, listBots } from "./tradeClient";
 
@@ -15,6 +16,7 @@ export interface RunningBotsSummary {
  * first, so the protected bot list is requested only for an active session.
  */
 export function useRunningBotsSummary(): RunningBotsSummary {
+  const accountAuth = useAuth();
   const [count, setCount] = useState<number>();
   const [status, setStatus] = useState<RunningBotsSummaryStatus>("loading");
   const mounted = useRef(true);
@@ -25,7 +27,14 @@ export function useRunningBotsSummary(): RunningBotsSummary {
     inFlight.current = true;
     void Promise.resolve()
       .then(async () => {
-        const auth = await checkAuth();
+        if (accountAuth.authRequired && !accountAuth.tradingAvailable) {
+          if (mounted.current) {
+            setCount(undefined);
+            setStatus("locked");
+          }
+          return;
+        }
+        const auth = await checkAuth(undefined, !accountAuth.authRequired);
         if (!mounted.current) return;
         if (!auth.ok) {
           setCount(undefined);
@@ -44,7 +53,7 @@ export function useRunningBotsSummary(): RunningBotsSummary {
       .finally(() => {
         inFlight.current = false;
       });
-  }, []);
+  }, [accountAuth.authRequired, accountAuth.tradingAvailable]);
 
   useEffect(() => {
     mounted.current = true;

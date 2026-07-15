@@ -3,7 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { z } from "zod";
-import { clearAuthSession, createAuthSession, isDemoMode, issueWsTicket, requireAuth, roleAllows, roleForToken } from "../auth.js";
+import { clearAuthSession, createAuthSession, isDatabaseAuthMode, isDemoMode, issueWsTicketForRequest, requireAuth, roleAllows, roleForToken } from "../auth.js";
 import { timeframes } from "../market/timeframes.js";
 import type { ProviderRouter } from "../providers/router.js";
 import { TradingEngine } from "./engine.js";
@@ -129,6 +129,10 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
   const paperMultiLeg = options.paperMultiLeg === false ? undefined : (options.paperMultiLeg ?? (process.env.NODE_ENV === "test" ? undefined : getPaperMultiLegRuntime()));
 
   router.post("/session", (req, res) => {
+    if (isDatabaseAuthMode()) {
+      res.status(404).json({ error: "Token login is disabled. Use /api/auth/login.", code: "token_login_disabled" });
+      return;
+    }
     const parsed = sessionBodySchema.safeParse(req.body);
     const role = parsed.success ? roleForToken(parsed.data.token) : undefined;
     if (!parsed.success || !role) {
@@ -154,13 +158,17 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
   router.use(requireAuth);
   router.use(auditTradingMutation);
 
-  router.delete("/session", (req, res) => {
-    clearAuthSession(req, res);
+  router.delete("/session", async (req, res) => {
+    await clearAuthSession(req, res);
     res.json({ ok: true });
   });
 
-  router.post("/ws-ticket", (_req, res) => {
-    res.json(issueWsTicket());
+  router.post("/ws-ticket", async (req, res, next) => {
+    try {
+      res.json(await issueWsTicketForRequest(req, res));
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get("/settings", (req, res) => {

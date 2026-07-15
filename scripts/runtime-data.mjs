@@ -19,8 +19,11 @@ import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const defaultDataDir = resolve(root, "backend/data");
 const databaseNames = ["trading.db", "candles.db", "arbitrage-paper-multi-leg.sqlite"];
-const sensitiveNames = [".secret", ".authtoken"];
-const allowedNames = new Set([...databaseNames, ...sensitiveNames]);
+const sensitiveNames = [".secret"];
+// Kept only so backups created by pre-account-auth releases still verify and
+// restore. New backups never copy the retired token file.
+const legacySensitiveNames = [".authtoken"];
+const allowedNames = new Set([...databaseNames, ...sensitiveNames, ...legacySensitiveNames]);
 const manifestName = "backup-manifest.json";
 const formatName = "saltanatbotv2-runtime-backup";
 const formatVersion = 1;
@@ -44,7 +47,23 @@ function assertRegularFile(path, label) {
   return stat;
 }
 
-function assertSqliteIntegrity(path) {
+function removeSqliteSidecars(path) {
+  rmSync(`${path}-wal`, { force: true });
+  rmSync(`${path}-shm`, { force: true });
+}
+
+function normalizePortableSqlite(path) {
+  const handle = new DatabaseSync(path);
+  try {
+    handle.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    handle.exec("PRAGMA journal_mode=DELETE");
+  } finally {
+    handle.close();
+  }
+  removeSqliteSidecars(path);
+}
+
+function assertSqliteIntegrity(path, cleanupSidecars = false) {
   const handle = new DatabaseSync(path, { readOnly: true });
   try {
     const rows = handle.prepare("PRAGMA quick_check").all();
@@ -56,6 +75,7 @@ function assertSqliteIntegrity(path) {
     return Number(versionRow?.user_version ?? 0);
   } finally {
     handle.close();
+    if (cleanupSidecars) removeSqliteSidecars(path);
   }
 }
 
@@ -88,7 +108,7 @@ export function verifyRuntimeBackup(backupDirectory) {
     if (stat.size !== entry.size) fail(`Backup file size mismatch: ${entry.name}`);
     if (sha256(file) !== entry.sha256) fail(`Backup checksum mismatch: ${entry.name}`);
     if (databaseNames.includes(entry.name)) {
-      const userVersion = assertSqliteIntegrity(file);
+      const userVersion = assertSqliteIntegrity(file, true);
       if (entry.sqliteUserVersion !== undefined && entry.sqliteUserVersion !== userVersion) {
         fail(`Backup SQLite schema version mismatch: ${entry.name}`);
       }
@@ -130,8 +150,9 @@ export async function createRuntimeBackup({ dataDirectory = defaultDataDir, outp
       } finally {
         handle.close();
       }
+      normalizePortableSqlite(destination);
       chmodSync(destination, 0o600);
-      const sqliteUserVersion = assertSqliteIntegrity(destination);
+      const sqliteUserVersion = assertSqliteIntegrity(destination, true);
       const stat = statSync(destination);
       files.push({ name, size: stat.size, sha256: sha256(destination), mode: "0600", sqliteUserVersion });
     }
@@ -203,7 +224,7 @@ export function restoreRuntimeBackup({ backupDirectory, dataDirectory = defaultD
     });
     for (const name of databaseNames) {
       const database = resolve(stagingDir, name);
-      if (existsSync(database)) assertSqliteIntegrity(database);
+      if (existsSync(database)) assertSqliteIntegrity(database, true);
     }
 
     if (targetExists) renameSync(dataDir, previousDir);

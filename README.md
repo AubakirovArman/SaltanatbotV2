@@ -94,7 +94,7 @@ Telegram/VK delivery still require outbound network requests to the services you
 
 ### 🔒 Local-first & secure
 - Exchange API keys are **encrypted at rest** with AES-256-GCM (`node:crypto`) and are never sent back to the browser. The self-hosted backend uses them only to sign the outbound exchange requests you explicitly enable.
-- Persistence uses Node's **built-in** `node:sqlite` — no native builds, no external database, no occupied ports.
+- PostgreSQL stores accounts, revocable sessions, named workspaces and durable research jobs; the existing built-in **`node:sqlite`** stores keep legacy trading state, encrypted exchange settings and candle/paper journals without an automatic destructive migration.
 - The production terminal is **installable as a PWA** and can reopen its static interface offline. APIs, authentication, quotes, order books, trades and trading commands are never cached or replayed; offline does not mean fresh market data or available execution.
 - Strategy Studio can be made available offline from the top bar as an optional static research bundle; local artifacts stay on-device and trading remains network-only. See [Offline local research](docs/OFFLINE_RESEARCH.md).
 - Installed Chromium-family PWAs can open or receive shared `.pine`, `.strategy` and `.saltanat-plugin` files through a mandatory local review flow; manual import remains available everywhere else. See [PWA file opening and sharing](docs/PWA_FILE_HANDLING.md).
@@ -114,7 +114,7 @@ Telegram/VK delivery still require outbound network requests to the services you
 | Layer | Stack |
 | --- | --- |
 | **Frontend** | React 18 · Vite 8 · TypeScript · Blockly · a custom canvas chart engine · `lucide-react` |
-| **Backend** | Node 24 · Express 5 · `ws` (WebSocket) · `zod` · built-in `node:sqlite` & `node:crypto` |
+| **Backend** | Node 24 · Express 5 · PostgreSQL 17 · `ws` · `zod` · built-in `node:sqlite` & `node:crypto` |
 | **Market data** | Binance & Bybit public REST + WebSocket · synthetic generator |
 | **Tooling** | npm workspaces monorepo · TypeScript ESM (NodeNext) · Playwright |
 
@@ -122,47 +122,55 @@ Telegram/VK delivery still require outbound network requests to the services you
 
 ## Quick start
 
-**Prerequisites:** [Node.js **24+**](https://nodejs.org) and npm.
+**Recommended prerequisites:** Docker Engine and the Compose plugin. A direct host install uses
+[Node.js **24+**](https://nodejs.org), npm and PostgreSQL.
 
 ```bash
 # 1. Clone
 git clone https://github.com/AubakirovArman/SaltanatbotV2.git
 cd SaltanatbotV2
 
-# 2. Install all application and shared workspaces
-npm install
+# 2. Create the local database secret (git-ignored, owner-only)
+mkdir -p .secrets
+umask 077
+openssl rand -base64 48 > .secrets/postgres_password
 
-# 3a. Develop — backend (tsx watch) + frontend (Vite) with hot reload
-npm run dev
-#    frontend → http://localhost:4180   backend/API → http://localhost:4181
+# 3. Build and start the app, PostgreSQL and the bounded research worker
+docker compose up -d --build
 
-# 3b. …or build & run production (backend serves the built frontend on one port)
-npm run build
-npm start
-#    open → http://localhost:4180
+# 4. Create the first administrator; the generated password is shown once
+docker compose exec saltanatbotv2 \
+  node backend/dist/cli/bootstrapAdmin.js --login your-admin-login
+#    open → http://localhost:4180 and change that password immediately
 ```
 
-Configure the host/port/token with environment variables (defaults shown):
+Registration creates an inactive account. An administrator activates it from the account panel.
+Passwords are stored as Argon2id hashes, browser sessions use an HttpOnly cookie plus CSRF, and
+disabling an account revokes its sessions. The isolated project database is exposed only on
+`127.0.0.1:55434`; set `POSTGRES_HOST_PORT` if that port is occupied.
+
+For development with hot reload, start only PostgreSQL, export the absolute password-file path, then
+run the workspaces:
 
 ```bash
-PORT=4180 HOST=127.0.0.1 npm start        # loopback by default; set HOST=0.0.0.0 to expose
+docker compose up -d postgres
+npm install
+export AUTH_MODE=database PGPASSWORD_FILE="$PWD/.secrets/postgres_password"
+npm run dev
+# frontend → http://localhost:4180   backend/API → http://localhost:4181
 ```
 
-> **First run creates `backend/data/`** — an AES key (`.secret`), an access token (`.authtoken`),
-> and a SQLite database (`trading.db`). The backend **prints the access token** on first start; you
-> enter it once to unlock the Trade tab (or set your own via `AUTH_TOKEN`). All of `backend/data/` is
-> **git-ignored** and must never be committed. For a paper-only public demo, run with `DEMO_MODE=1`.
-> See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+> Existing `backend/data/trading.db`, candle data and encrypted keys are left untouched. The current
+> shared Trade/Robots state is administrator-only until every bot, account and event path has an
+> owner. Do not start two API processes against that SQLite file. See the complete
+> [self-hosting guide](docs/SELF_HOSTING.md).
 
 ### …or with Docker
 
 ```bash
-# Builds the application workspaces and runs the backend (which serves the SPA) on :4180.
-# backend/data (DB + secrets) is a persistent named volume.
-docker compose up --build          # open → http://localhost:4180
+# See the Quick start above; volumes persist PostgreSQL and legacy SQLite state.
+docker compose up -d --build
 ```
-
-The access token is printed in the container logs (`docker compose logs`), or set `AUTH_TOKEN` in your environment first. Pass `DEMO_MODE=1` for a paper-only public demo.
 
 **Tests & CI:** `npm test` (Vitest — command parser, paper engine, backtest honesty, evaluator parity), `npm run lint`, `npm run check`, the complete production-build Chromium suite (`npm run test:e2e`), tagged Firefox critical journeys (`npm run test:e2e:firefox-smoke`) and four deterministic visual baselines (`npm run test:visual`) run in [CI](.github/workflows/ci.yml) on every push and pull request. The scheduled and release-tagged [browser matrix](.github/workflows/browser-matrix.yml) runs all production journeys on Chromium, Firefox and WebKit. Failed browser runs retain their Playwright report, trace, screenshots and video. Authenticated exchange release checks are isolated in the manually dispatched, protected [testnet smoke workflow](.github/workflows/exchange-testnet-smoke.yml).
 
@@ -187,6 +195,8 @@ published by the `Deploy documentation site` workflow and is also set as the rep
 | [**Network identity**](docs/NETWORK_IDENTITY.md) | Synthetic-only reviewed identity/transfer-proof contract; no real network mapping or transfer execution claim |
 | [**Trading & command language**](docs/TRADING.md) | The Trade tab, all 14 Antares-style actions, paper/Binance/Bybit modes, notifications |
 | [**Configuration & deployment**](docs/CONFIGURATION.md) | Env vars, runtime data, exchange keys, encryption, production & hardening checklist |
+| [**Self-hosting with accounts**](docs/SELF_HOSTING.md) | Clone, PostgreSQL secret, first admin, pending-user approval, updates and storage boundaries |
+| [**Capacity for 100 users**](docs/CAPACITY_100_USERS.md) | Measured host headroom, queue/worker limits, monitoring and safe scaling order |
 | [**Backup & restore**](docs/BACKUP_RESTORE.md) | Verified online SQLite snapshots, checksums, atomic restore and recovery drills |
 | [**Release policy & verification**](docs/RELEASING.md) | Nightly/alpha/beta/stable channels, SBOM, SHA-256 and Sigstore attestation verification |
 | [**Roadmap**](docs/ROADMAP.md) | What has shipped and what's next |
@@ -211,7 +221,7 @@ published by the `Deploy documentation site` workflow and is also set as the rep
 
 ```text
 SaltanatbotV2/
-├── backend/                 # @saltanatbotv2/backend — Express + ws + node:sqlite
+├── backend/                 # Express/ws API, PostgreSQL identity/jobs, legacy node:sqlite trading
 │   └── src/
 │       ├── server.ts        # HTTP + WebSocket on one port, static SPA hosting
 │       ├── market/          # instrument catalog + timeframe/interval maps
@@ -233,10 +243,10 @@ SaltanatbotV2/
 
 ## Security & responsible use
 
-- **The trading API requires an access token.** On first run the backend prints an admin token (also saved to `backend/data/.authtoken`, or set your own with `AUTH_TOKEN`) — you enter it once to unlock the **Trade** tab. The browser exchanges it for an HttpOnly session cookie, mutating trade requests use CSRF, and the trade socket uses one-time tickets. Optional scoped tokens (`AUTH_READONLY_TOKEN`, `AUTH_PAPER_TRADE_TOKEN`, `AUTH_LIVE_TRADE_TOKEN`) enable lower-privilege access. Mutating trade calls are audit-logged with secrets redacted. Public market-data/chart endpoints stay open. Foreign browser origins are blocked by a CORS allowlist.
+- **The application requires an activated account.** Registration is pending until an administrator approves it. The browser receives an HttpOnly, SameSite session cookie; mutations require CSRF and the trade socket uses a session-bound one-time ticket. Token login remains only as an explicit legacy test/demo mode. Database mode protects application REST and market WebSockets; foreign browser origins are also constrained by the CORS allowlist.
 - **Binds to `127.0.0.1` by default.** Set `HOST=0.0.0.0` deliberately, and only behind a **reverse proxy with TLS** + firewall. See the hardening checklist in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 - **Live trading is disarmed and double-confirmed.** Paper mode is the default; live orders need a global arm toggle **and** a per-bot confirmation, and there's a one-click **kill switch**. Run `DEMO_MODE=1` for a paper-only public demo. Per-bot caps (max notional, max daily loss) act as circuit breakers.
-- **Your keys stay yours.** Exchange API keys are AES-256-GCM encrypted on disk and never returned to the browser. **Never commit `backend/data/`** (enforced by `.gitignore`) — it holds your encryption key, token, and database. Use trade-only keys without withdrawal permission.
+- **Your keys stay yours.** Exchange API keys are AES-256-GCM encrypted on disk and never returned to the browser. **Never commit `backend/data/`, `.secrets/` or a PostgreSQL dump.** Use trade-only keys without withdrawal permission.
 
 > ⚠️ **Disclaimer.** SaltanatbotV2 is provided as-is for research and educational purposes. Trading cryptocurrencies carries substantial risk. Nothing here is financial advice — you are solely responsible for any orders placed with your keys. Test on paper first.
 

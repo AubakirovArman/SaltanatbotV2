@@ -14,7 +14,7 @@ describe("generated API and block references", () => {
     const api = readFileSync(path.join(root, "docs/API_ENDPOINTS.generated.md"), "utf8");
     const blocks = readFileSync(path.join(root, "docs/BLOCK_CATALOG.generated.md"), "utf8");
 
-    expect(api).toContain("`GET` | `/api/candles` | Public");
+    expect(api).toContain("`GET` | `/api/candles` | Authenticated account");
     expect(api).toContain("`POST` | `/api/trade/kill` | Authenticated · live-trade");
     expect(api).toContain("`/trade-stream` | One-time authenticated WebSocket ticket");
     expect(blocks).toContain("`strategy_start`");
