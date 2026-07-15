@@ -6,6 +6,10 @@
   overflow: hidden;
 }
 
+.strategy-mobile-tabs {
+  display: none;
+}
+
 .visually-hidden:where(:not(:focus-within, :active)) {
   position: absolute !important;
   inline-size: 1px !important;
@@ -2665,4 +2669,96 @@
   gap: 5px;
   color: #f7c948;
   opacity: 0.95;
+}
+
+/* Strategy CSS is loaded with the lazy Strategy Studio chunk. Keep responsive
+   overrides here so chunk order cannot restore the desktop three-column grid. */
+@media (max-width: 1280px) {
+  .strategy-grid {
+    grid-template-columns: minmax(180px, 208px) minmax(0, 1fr) minmax(256px, 292px);
+  }
+}
+
+@media (max-width: 760px) {
+  .strategy-lab {
+    inline-size: 100%;
+    min-inline-size: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .strategy-mobile-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    min-inline-size: 0;
+    padding: 4px 8px;
+    border-block-end: 1px solid var(--line);
+    background: var(--panel);
+  }
+
+  .strategy-mobile-tabs button {
+    min-inline-size: 0;
+    min-block-size: 44px;
+    padding-inline: 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--muted);
+    font-size: var(--fs-xs);
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .strategy-mobile-tabs button:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+
+  .strategy-mobile-tabs button.is-active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .strategy-grid {
+    inline-size: 100%;
+    min-inline-size: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .strategy-grid > :is(.strategy-library, .strategy-authoring, .code-preview) {
+    display: none;
+  }
+
+  .strategy-grid[data-mobile-pane="library"] > .strategy-library,
+  .strategy-grid[data-mobile-pane="editor"] > .strategy-authoring {
+    display: grid;
+  }
+
+  .strategy-grid[data-mobile-pane="parameters"] > .code-preview {
+    display: flex;
+  }
+
+  .strategy-library,
+  .code-preview {
+    inline-size: 100%;
+    min-inline-size: 0;
+    border-inline: 0;
+    border-block: 0;
+  }
+
+  .strategy-authoring.has-pine-source {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(10rem, 0.42fr) minmax(12rem, 1fr);
+    overflow-y: auto;
+  }
+
+  .pine-source-comparison {
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--line);
+  }
 }

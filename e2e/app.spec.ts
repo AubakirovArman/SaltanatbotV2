@@ -2338,6 +2338,59 @@ test("uses exclusive mobile market and instrument sheets without covering the ch
   await expect(page.getByRole("img", { name: /ETHUSDT candles chart on 1m/i })).toBeVisible();
 });
 
+test("keeps every mobile Strategy Studio pane full-width and operable", { tag: "@smoke" }, async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+
+  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
+  await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
+  const paneTabs = page.getByRole("navigation", { name: "Strategy Studio panels" });
+  const libraryTab = paneTabs.getByRole("button", { name: "Library", exact: true });
+  const editorTab = paneTabs.getByRole("button", { name: "Editor", exact: true });
+  const parametersTab = paneTabs.getByRole("button", { name: "Parameters", exact: true });
+  const grid = page.locator(".strategy-grid");
+
+  const expectPaneFits = async (selector: string) => {
+    await expect
+      .poll(() =>
+        page.locator(selector).evaluate((pane) => {
+          const paneRect = pane.getBoundingClientRect();
+          const gridElement = pane.closest(".strategy-grid");
+          if (!gridElement) return false;
+          const gridRect = gridElement.getBoundingClientRect();
+          return gridElement.scrollWidth <= gridElement.clientWidth + 1 && paneRect.width > 0 && paneRect.height > 0 && paneRect.left >= gridRect.left - 1 && paneRect.right <= gridRect.right + 1;
+        })
+      )
+      .toBe(true);
+  };
+
+  await expect(editorTab).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".strategy-authoring")).toBeVisible();
+  await expect(page.locator(".strategy-library")).toBeHidden();
+  await expect(page.locator(".code-preview")).toBeHidden();
+  await expect(page.locator(".blocklySvg")).toBeVisible({ timeout: 20_000 });
+  await expectPaneFits(".strategy-authoring");
+
+  await libraryTab.click();
+  await expect(libraryTab).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".strategy-library")).toBeVisible();
+  await expect(page.locator(".strategy-authoring")).toBeHidden();
+  await expectPaneFits(".strategy-library");
+
+  await parametersTab.click();
+  await expect(parametersTab).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".code-preview")).toBeVisible();
+  await expect(page.locator(".strategy-library")).toBeHidden();
+  await expectPaneFits(".code-preview");
+  await expectNoAxeViolations(page);
+
+  await editorTab.click();
+  await expect(page.locator(".blocklySvg")).toBeVisible({ timeout: 20_000 });
+  await expectPaneFits(".strategy-authoring");
+  expect(await grid.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+});
+
 test("reconnects the market stream without duplicating candles", async ({ page }) => {
   const candles = mockCandles();
   await mockCandleHistory(page, candles);

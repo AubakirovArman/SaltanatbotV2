@@ -1,8 +1,4 @@
 @media (max-width: 1280px) {
-  .strategy-grid {
-    grid-template-columns: minmax(180px, 208px) minmax(0, 1fr) minmax(256px, 292px);
-  }
-
   .brand strong {
     display: none;
   }
@@ -144,25 +140,6 @@
 
   .multi-chart-grid.grid-4 {
     --mobile-chart-count: 4;
-  }
-
-  .strategy-grid {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(124px, 20dvh) minmax(0, 1fr) minmax(180px, 28dvh);
-  }
-
-  .blockly-host {
-    min-block-size: 0;
-  }
-
-  .strategy-library {
-    border-inline-end: 0;
-    border-block-end: 1px solid var(--line);
-  }
-
-  .code-preview {
-    border-inline-start: 0;
-    border-block-start: 1px solid var(--line);
   }
 
   .brand strong,

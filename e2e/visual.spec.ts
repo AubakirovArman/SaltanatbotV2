@@ -87,6 +87,15 @@ test("strategy studio workspace", async ({ page }) => {
   await capture(page, "strategy-studio-dark.png");
 });
 
+test("mobile strategy studio workspace", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
+  await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("navigation", { name: "Strategy Studio panels" }).getByRole("button", { name: "Editor", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".blocklySvg")).toBeVisible({ timeout: 20_000 });
+  await capture(page, "strategy-studio-mobile-dark.png");
+});
+
 async function capture(page: Page, name: string) {
   await page.evaluate(async () => {
     await document.fonts.ready;

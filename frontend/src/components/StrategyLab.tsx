@@ -43,6 +43,8 @@ interface StrategyLabProps {
   onOpenTrading?: () => void;
 }
 
+type MobileStrategyPane = "library" | "editor" | "parameters";
+
 export function StrategyLab({
   artifacts,
   activeArtifactId,
@@ -79,6 +81,7 @@ export function StrategyLab({
     onApplyResult
   });
   const [shareState, setShareState] = useState<"idle" | "copied">("idle");
+  const [mobilePane, setMobilePane] = useState<MobileStrategyPane>("editor");
   const instrument = catalog?.instruments.find((item) => item.symbol === research.symbol);
   const errors = [...new Set([...workspace.compileErrors, ...research.errors])];
   const diagnostics = [...workspace.compileDiagnostics, ...research.errors.filter((message) => !workspace.compileErrors.includes(message)).map((message) => ({ severity: "error" as const, message }))];
@@ -103,18 +106,47 @@ export function StrategyLab({
 
   return (
     <section className="strategy-lab">
-      <div className="strategy-grid">
+      <nav className="strategy-mobile-tabs" aria-label={strategyText(locale, "mobileStudioPanels")}>
+        <button type="button" className={mobilePane === "library" ? "is-active" : undefined} aria-pressed={mobilePane === "library"} onClick={() => setMobilePane("library")}>
+          {strategyText(locale, "mobileStudioLibrary")}
+        </button>
+        <button type="button" className={mobilePane === "editor" ? "is-active" : undefined} aria-pressed={mobilePane === "editor"} onClick={() => setMobilePane("editor")}>
+          {strategyText(locale, "mobileStudioEditor")}
+        </button>
+        <button type="button" className={mobilePane === "parameters" ? "is-active" : undefined} aria-pressed={mobilePane === "parameters"} onClick={() => setMobilePane("parameters")}>
+          {strategyText(locale, "mobileStudioParameters")}
+        </button>
+      </nav>
+      <div className="strategy-grid" data-mobile-pane={mobilePane}>
         <StrategyLibrary
           locale={locale}
           artifacts={artifacts}
           activeId={activeArtifact?.id}
-          onSelect={onSelectArtifact}
-          onCreate={onCreateArtifact}
-          onUseTemplate={onUseTemplate}
-          onImportStrategy={onImportStrategy}
-          onImportPlugin={onImportPlugin}
+          onSelect={(id) => {
+            onSelectArtifact(id);
+            setMobilePane("editor");
+          }}
+          onCreate={(kind) => {
+            onCreateArtifact(kind);
+            setMobilePane("editor");
+          }}
+          onUseTemplate={(template) => {
+            onUseTemplate(template);
+            setMobilePane("editor");
+          }}
+          onImportStrategy={(input) => {
+            onImportStrategy(input);
+            setMobilePane("editor");
+          }}
+          onImportPlugin={(input) => {
+            onImportPlugin(input);
+            setMobilePane("editor");
+          }}
           onUninstallPlugin={onUninstallPlugin}
-          onImportPineMany={onImportPineMany}
+          onImportPineMany={(inputs) => {
+            onImportPineMany(inputs);
+            setMobilePane("editor");
+          }}
           launchedBatch={launchedBatch}
           onLaunchedBatchConsumed={onLaunchedBatchConsumed}
         />
