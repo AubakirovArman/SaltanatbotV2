@@ -20,7 +20,7 @@ import { TradeFootprintLayer } from "./chartCanvas/TradeFootprintLayer";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
 import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
-import { clampIndex, moveDrawing, nextPriceMode, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
+import { clampIndex, moveDrawing, nextPriceMode, pointerPoint, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
 import { useChartTouchNavigation, useChartWheelNavigation } from "./chartCanvas/useChartNavigation";
 import { useLinkedTimeRange } from "./chartCanvas/useLinkedTimeRange";
@@ -30,7 +30,7 @@ import { QuickMeasureSummary } from "./chartCanvas/QuickMeasureSummary";
 import { StrategyChip } from "./chartCanvas/StrategyChip";
 import { usePersistentDrawings } from "./chartCanvas/usePersistentDrawings";
 import { TimeZoneControl } from "./chartCanvas/TimeZoneControl";
-import { useVolumeProfileSource } from "./chartCanvas/useVolumeProfileSource";
+import { useVolumeProfileIndicator } from "./chartCanvas/useVolumeProfileIndicator";
 import { normalizeChartTimeZone } from "../chart/timeAxis";
 
 const MAX_COMPARE = 3;
@@ -100,8 +100,6 @@ export function ChartCanvas({
   const [magnet, setMagnet] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; id?: string; price?: number }>();
   const [showVolume, setShowVolume] = useState(true);
-  const [volumeProfileAdded, setVolumeProfileAdded] = useState(false);
-  const [showVolumeProfile, setShowVolumeProfile] = useState(false);
   const [showOrderBookHeatmap, setShowOrderBookHeatmap] = useState(false);
   const [showTradeFootprint, setShowTradeFootprint] = useState(false);
   const [showArtifactSettings, setShowArtifactSettings] = useState(false);
@@ -131,7 +129,7 @@ export function ChartCanvas({
   const orderBookAvailable = instrument.assetClass === "crypto" && instrument.provider === "binance" && dataMarketType === "spot";
   const heatmapRenderKey = `${latest?.time ?? 0}:${candles.length}:${view.zoom}:${view.offset}:${view.priceMode}:${view.priceZoom}`;
   const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange, displayCandles, dataMarketType, dataPriceType);
-  const volumeProfileSource = useVolumeProfileSource({ enabled: showVolumeProfile, symbol: instrument.symbol, chartTimeframe: timeframe, visibleRange: visibleProfileRange, exchange: dataExchange, marketType: dataMarketType, priceType: dataPriceType });
+  const volumeProfileIndicator = useVolumeProfileIndicator({ symbol: instrument.symbol, chartTimeframe: timeframe, visibleRange: visibleProfileRange, exchange: dataExchange, marketType: dataMarketType, priceType: dataPriceType });
   drawingsRef.current = drawings;
 
   useEffect(() => setShowArtifactSettings(false), [activeArtifactId]);
@@ -248,9 +246,9 @@ export function ChartCanvas({
     alerts: chartAlerts,
     livePositions,
     showVolume,
-    showVolumeProfile,
-    volumeProfileCandles: volumeProfileSource.profileCandles,
-    volumeProfileTimeframe: volumeProfileSource.source === "chart" ? undefined : volumeProfileSource.source, volumeProfileRange: volumeProfileSource.range,
+    showVolumeProfile: volumeProfileIndicator.visible,
+    volumeProfileCandles: volumeProfileIndicator.source.profileCandles,
+    volumeProfileTimeframe: volumeProfileIndicator.source.source === "chart" ? undefined : volumeProfileIndicator.source.source, volumeProfileRange: volumeProfileIndicator.source.range,
     sessionLiquidity: sessionLiquidity.enabled ? sessionLiquidity.snapshot : undefined,
     marketSessions: sessionLiquidity.marketSessions,
     marketStructure: sessionLiquidity.marketStructure,
@@ -297,14 +295,6 @@ export function ChartCanvas({
     }));
   }, [displayCandles, chartId, linkedCrosshair]);
 
-  const devicePoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top
-    };
-  };
-
   const cyclePriceMode = () => setView((current) => ({ ...current, priceMode: nextPriceMode(current.priceMode) }));
 
   const legendCandle = (hoverIndex !== undefined ? displayCandles[hoverIndex] : undefined) ?? displayCandles.at(-1) ?? latest;
@@ -347,33 +337,10 @@ export function ChartCanvas({
           trades={trades?.length ?? 0}
         />}
         {showArtifactSettings && strategyInputs && onStrategyInputChange && <ArtifactInputPanel locale={locale} inputs={strategyInputs} onChange={onStrategyInputChange} onClose={() => setShowArtifactSettings(false)} />}
-        {showIndicatorControls && (
-          <ChartIndicatorOverlay
-            locale={locale}
-            indicators={indicators}
-            onChange={onIndicatorsChange}
-            onEditLogic={onEditIndicatorLogic}
-            customIndicators={customIndicators}
-            strategies={strategies}
-            activeArtifactId={activeArtifactId}
-            onAddArtifact={onAddArtifact}
-            volumeProfile={{
-              added: volumeProfileAdded,
-              visible: showVolumeProfile,
-              chartTimeframe: timeframe,
-              state: volumeProfileSource,
-              onAdd: () => {
-                setVolumeProfileAdded(true);
-                setShowVolumeProfile(true);
-              },
-              onVisibleChange: setShowVolumeProfile,
-              onRemove: () => {
-                setVolumeProfileAdded(false);
-                setShowVolumeProfile(false);
-              }
-            }}
-          />
-        )}
+        {showIndicatorControls && <ChartIndicatorOverlay
+          locale={locale} indicators={indicators} onChange={onIndicatorsChange} onEditLogic={onEditIndicatorLogic}
+          customIndicators={customIndicators} strategies={strategies} activeArtifactId={activeArtifactId} onAddArtifact={onAddArtifact} volumeProfile={volumeProfileIndicator.control}
+        />}
         {onAddCompare && onUpdateCompare && onRemoveCompare && (
           <CompareControl
             locale={locale}
@@ -406,7 +373,7 @@ export function ChartCanvas({
         >
           {Math.round(view.zoom * 100)}%
         </button>
-        <VolumeProfileBadge visible={showVolumeProfile} profile={volumeProfile} decimals={instrument.decimals} locale={locale} />
+        <VolumeProfileBadge visible={volumeProfileIndicator.visible} profile={volumeProfile} decimals={instrument.decimals} locale={locale} />
         <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={chartTypeAriaLabel(locale, chartType, instrument.symbol, timeframe, priceRepresentation.settings)} aria-describedby={chartDataSummaryId} />
         <OrderBookHeatmapLayer
           enabled={showOrderBookHeatmap && orderBookAvailable}
@@ -433,7 +400,7 @@ export function ChartCanvas({
             event.currentTarget.setPointerCapture(event.pointerId);
             const viewport = viewportRef.current;
             if (!viewport) return;
-            const { x, y } = devicePoint(event);
+            const { x, y } = pointerPoint(event);
 
             if (tool !== "cursor") {
               const anchor = snapDrawingAnchor(tool, viewport, displayCandles, x, y, magnet);
@@ -477,7 +444,7 @@ export function ChartCanvas({
             // offset/zoom state race at the minimum and maximum boundaries.
             if (event.pointerType === "touch" && touchGestureActiveRef.current) return;
             const viewport = viewportRef.current;
-            const { x, y } = devicePoint(event);
+            const { x, y } = pointerPoint(event);
             if (viewport) setHoverIndex(clampIndex(Math.round(viewport.xToIndex(x)), displayCandles.length));
             if (viewport && onLinkedCrosshairChange) {
               const index = clampIndex(Math.round(viewport.xToIndex(x)), displayCandles.length);

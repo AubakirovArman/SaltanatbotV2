@@ -40,6 +40,11 @@ export function clampIndex(index: number, length: number) {
   return Math.max(0, Math.min(length - 1, index));
 }
 
+export function pointerPoint(event: { clientX: number; clientY: number; currentTarget: HTMLCanvasElement }) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
 export function nextPriceMode(current: PriceMode): PriceMode {
   const modes: PriceMode[] = ["linear", "log", "percent"];
   return modes[(modes.indexOf(current) + 1) % modes.length];
