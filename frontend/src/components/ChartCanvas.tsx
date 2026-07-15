@@ -30,7 +30,6 @@ import { QuickMeasureSummary } from "./chartCanvas/QuickMeasureSummary";
 import { StrategyChip } from "./chartCanvas/StrategyChip";
 import { usePersistentDrawings } from "./chartCanvas/usePersistentDrawings";
 import { TimeZoneControl } from "./chartCanvas/TimeZoneControl";
-import { VolumeProfileSourceControl } from "./chartCanvas/VolumeProfileSourceControl";
 import { useVolumeProfileSource } from "./chartCanvas/useVolumeProfileSource";
 import { normalizeChartTimeZone } from "../chart/timeAxis";
 
@@ -101,7 +100,8 @@ export function ChartCanvas({
   const [magnet, setMagnet] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; id?: string; price?: number }>();
   const [showVolume, setShowVolume] = useState(true);
-  const [showVolumeProfile, setShowVolumeProfile] = useState(true);
+  const [volumeProfileAdded, setVolumeProfileAdded] = useState(false);
+  const [showVolumeProfile, setShowVolumeProfile] = useState(false);
   const [showOrderBookHeatmap, setShowOrderBookHeatmap] = useState(false);
   const [showTradeFootprint, setShowTradeFootprint] = useState(false);
   const [showArtifactSettings, setShowArtifactSettings] = useState(false);
@@ -316,7 +316,6 @@ export function ChartCanvas({
         tool={tool}
         magnet={magnet}
         showVolume={showVolume}
-        showVolumeProfile={showVolumeProfile}
         showOrderBookHeatmap={showOrderBookHeatmap && orderBookAvailable}
         showTradeFootprint={showTradeFootprint && orderBookAvailable}
         orderBookAvailable={orderBookAvailable}
@@ -325,7 +324,6 @@ export function ChartCanvas({
         onTool={setTool}
         onToggleMagnet={() => setMagnet((value) => !value)}
         onToggleVolume={() => setShowVolume((value) => !value)}
-        onToggleVolumeProfile={() => setShowVolumeProfile((value) => !value)}
         onToggleOrderBookHeatmap={() => setShowOrderBookHeatmap((value) => !value)}
         onToggleTradeFootprint={() => setShowTradeFootprint((value) => !value)}
         onToggleObjects={() => setShowDrawingObjects((value) => !value)}
@@ -349,7 +347,33 @@ export function ChartCanvas({
           trades={trades?.length ?? 0}
         />}
         {showArtifactSettings && strategyInputs && onStrategyInputChange && <ArtifactInputPanel locale={locale} inputs={strategyInputs} onChange={onStrategyInputChange} onClose={() => setShowArtifactSettings(false)} />}
-        {showIndicatorControls && <ChartIndicatorOverlay locale={locale} indicators={indicators} onChange={onIndicatorsChange} onEditLogic={onEditIndicatorLogic} customIndicators={customIndicators} strategies={strategies} activeArtifactId={activeArtifactId} onAddArtifact={onAddArtifact} />}
+        {showIndicatorControls && (
+          <ChartIndicatorOverlay
+            locale={locale}
+            indicators={indicators}
+            onChange={onIndicatorsChange}
+            onEditLogic={onEditIndicatorLogic}
+            customIndicators={customIndicators}
+            strategies={strategies}
+            activeArtifactId={activeArtifactId}
+            onAddArtifact={onAddArtifact}
+            volumeProfile={{
+              added: volumeProfileAdded,
+              visible: showVolumeProfile,
+              chartTimeframe: timeframe,
+              state: volumeProfileSource,
+              onAdd: () => {
+                setVolumeProfileAdded(true);
+                setShowVolumeProfile(true);
+              },
+              onVisibleChange: setShowVolumeProfile,
+              onRemove: () => {
+                setVolumeProfileAdded(false);
+                setShowVolumeProfile(false);
+              }
+            }}
+          />
+        )}
         {onAddCompare && onUpdateCompare && onRemoveCompare && (
           <CompareControl
             locale={locale}
@@ -382,7 +406,6 @@ export function ChartCanvas({
         >
           {Math.round(view.zoom * 100)}%
         </button>
-        <VolumeProfileSourceControl locale={locale} chartTimeframe={timeframe} enabled={showVolumeProfile} onEnabledChange={setShowVolumeProfile} state={volumeProfileSource} />
         <VolumeProfileBadge visible={showVolumeProfile} profile={volumeProfile} decimals={instrument.decimals} locale={locale} />
         <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={chartTypeAriaLabel(locale, chartType, instrument.symbol, timeframe, priceRepresentation.settings)} aria-describedby={chartDataSummaryId} />
         <OrderBookHeatmapLayer

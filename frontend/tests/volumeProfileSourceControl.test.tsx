@@ -15,13 +15,14 @@ describe("volume profile source control", () => {
       <VolumeProfileSourceControl
         locale={locale}
         chartTimeframe="1h"
-        enabled
-        onEnabledChange={() => {}}
+        onClose={() => {}}
         state={{ source: "chart", setSource: () => {}, timeframe: "1h", status: "ready", candles: [], profileCandles: undefined }}
       />
     );
     for (const text of expected[locale]) expect(html).toContain(text);
-    expect(html).toContain('type="checkbox"');
+    expect(html).toContain('role="dialog"');
+    expect(html).not.toContain('type="checkbox"');
+    expect(html).toMatch(/<button[^>]*aria-label="[^"]+"/);
     expect(html).toMatch(/<label[^>]*for="[^"]+"/);
     expect(html).toMatch(/<select[^>]*aria-describedby="[^"]+"/);
     expect(html).toContain('aria-live="polite"');

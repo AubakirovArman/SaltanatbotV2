@@ -165,16 +165,27 @@ test("installs a static offline shell without caching runtime market or trading 
   }
 });
 
-test("toggles the visible-range volume profile accessibly", async ({ page }) => {
+test("adds, configures and removes the visible-range volume profile accessibly", async ({ page }) => {
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
-  const toggle = page.getByRole("button", { name: "Toggle visible-range volume profile" });
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".volume-profile-badge")).toHaveCount(0);
+
+  await page.locator(".indicator-add").click();
+  await page.getByRole("menuitem", { name: /Volume Profile/i }).click();
+
+  const settings = page.getByRole("dialog", { name: "Volume Profile settings" });
+  await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Close indicator editor" }).click();
+  await expect(settings).toBeHidden();
   await expect(page.locator(".volume-profile-badge")).toContainText("POC", { timeout: 20_000 });
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  await page.getByRole("button", { name: "Hide Volume Profile" }).click();
   await expect(page.locator(".volume-profile-badge")).toBeHidden();
-  await toggle.click();
+  await page.getByRole("button", { name: "Show Volume Profile" }).click();
   await expect(page.locator(".volume-profile-badge")).toBeVisible();
+
+  await page.getByRole("button", { name: "Remove Volume Profile" }).click();
+  await expect(page.getByRole("button", { name: "Remove Volume Profile" })).toHaveCount(0);
+  await expect(page.locator(".volume-profile-badge")).toHaveCount(0);
 });
 
 test("shows and toggles the semantic UTC session liquidity map", async ({ page }) => {

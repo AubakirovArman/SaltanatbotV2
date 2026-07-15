@@ -1,52 +1,50 @@
+import { X } from "lucide-react";
 import { useId } from "react";
 import { VOLUME_PROFILE_TIMEFRAMES, type VolumeProfileSource, type VolumeProfileSourceIssue } from "../../chart/volumeProfileSource";
 import { chartText, type ChartMessageKey } from "../../i18n/chart";
 import type { Locale } from "../../i18n";
+import { shellText } from "../../i18n/shell";
 import type { Timeframe } from "../../types";
 import type { VolumeProfileSourceState } from "./useVolumeProfileSource";
 
 export function VolumeProfileSourceControl({
   locale,
   chartTimeframe,
-  enabled,
-  onEnabledChange,
+  onClose,
   state
 }: {
   locale: Locale;
   chartTimeframe: Timeframe;
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
+  onClose: () => void;
   state: VolumeProfileSourceState;
 }) {
   const selectId = useId();
   const statusId = useId();
   const message = statusMessage(locale, chartTimeframe, state);
   return (
-    <div className="volume-profile-source-control" data-state={state.status}>
-      <label className="volume-profile-toggle">
-        <input type="checkbox" checked={enabled} onChange={(event) => onEnabledChange(event.currentTarget.checked)} />
-        <span>{chartText(locale, "volumeProfile")}</span>
+    <div className="indicator-editor volume-profile-source-control" data-state={state.status} role="dialog" aria-label={`${chartText(locale, "volumeProfile")} ${shellText(locale, "settings")}`}>
+      <div className="indicator-editor-head">
+        <strong>{chartText(locale, "volumeProfile")}</strong>
+        <button type="button" aria-label={shellText(locale, "closeIndicatorEditor")} onClick={onClose}>
+          <X size={14} aria-hidden="true" />
+        </button>
+      </div>
+      <label className="volume-profile-source-field" htmlFor={selectId}>
+        <span>{chartText(locale, "volumeProfileSource")}</span>
+        <select
+          id={selectId}
+          name="volume-profile-source"
+          value={state.source}
+          aria-describedby={statusId}
+          onChange={(event) => state.setSource(event.currentTarget.value as VolumeProfileSource)}
+        >
+          <option value="chart">{chartText(locale, "volumeProfileAsChart")} ({chartTimeframe})</option>
+          {VOLUME_PROFILE_TIMEFRAMES.map((timeframe) => <option key={timeframe} value={timeframe}>{timeframe}</option>)}
+        </select>
       </label>
-      {enabled && (
-        <>
-          <label className="volume-profile-source-field" htmlFor={selectId}>
-            <span>{chartText(locale, "volumeProfileSource")}</span>
-            <select
-              id={selectId}
-              name="volume-profile-source"
-              value={state.source}
-              aria-describedby={statusId}
-              onChange={(event) => state.setSource(event.currentTarget.value as VolumeProfileSource)}
-            >
-              <option value="chart">{chartText(locale, "volumeProfileAsChart")} ({chartTimeframe})</option>
-              {VOLUME_PROFILE_TIMEFRAMES.map((timeframe) => <option key={timeframe} value={timeframe}>{timeframe}</option>)}
-            </select>
-          </label>
-          <output id={statusId} className="volume-profile-source-status" aria-live="polite">
-            {message}
-          </output>
-        </>
-      )}
+      <output id={statusId} className="volume-profile-source-status" aria-live="polite">
+        {message}
+      </output>
     </div>
   );
 }

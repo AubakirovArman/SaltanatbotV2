@@ -1,43 +1,15 @@
 .volume-profile-source-control {
-  position: absolute;
-  z-index: 8;
-  inset-block-start: 42px;
-  inset-inline-end: 82px;
-  display: grid;
-  gap: 6px;
-  inline-size: min(13rem, calc(100% - 96px));
-  padding: 7px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--chart-bg) 94%, transparent);
-  box-shadow: var(--shadow-pop);
+  gap: 10px;
+  inline-size: min(340px, calc(100dvw - 32px));
   color: var(--muted);
   font-size: var(--fs-xs);
 }
 
-.volume-profile-toggle,
 .volume-profile-source-field {
   display: flex;
   align-items: center;
-  gap: 7px;
-}
-
-.volume-profile-toggle {
-  min-block-size: 24px;
-  color: var(--text);
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.volume-profile-toggle input {
-  margin: 0;
-  accent-color: var(--accent);
-}
-
-.volume-profile-source-field {
   justify-content: space-between;
-  border-block-start: 1px solid var(--line-soft);
-  padding-block-start: 6px;
+  gap: 10px;
 }
 
 .volume-profile-source-field > span {
@@ -46,17 +18,17 @@
 }
 
 .volume-profile-source-field select {
-  min-block-size: 28px;
-  min-inline-size: 5.5rem;
+  min-block-size: 32px;
+  min-inline-size: 7.5rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding-inline: 6px;
+  padding-inline: 8px;
   background: var(--surface);
   color: var(--text);
   font: 600 var(--fs-xs) var(--font-mono);
 }
 
-.volume-profile-source-control :is(input, select):focus-visible {
+.volume-profile-source-control select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -72,12 +44,7 @@
   color: var(--down);
 }
 
-.volume-profile-source-control + .volume-profile-badge {
-  inset-block-start: 151px;
-}
-
 @media (pointer: coarse) {
-  .volume-profile-toggle,
   .volume-profile-source-field select {
     min-block-size: 48px;
     font-size: 1rem;
@@ -86,12 +53,10 @@
 
 @media (max-width: 720px) {
   .volume-profile-source-control {
-    inset-block-start: 36px;
-    inset-inline-end: 76px;
-    inline-size: min(12rem, calc(100% - 84px));
+    inline-size: min(340px, calc(100dvw - 32px));
   }
 
-  .volume-profile-source-control + .volume-profile-badge {
+  .volume-profile-badge {
     display: none;
   }
 }

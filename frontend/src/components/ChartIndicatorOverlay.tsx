@@ -1,5 +1,5 @@
-import { Code2, Eye, EyeOff, Pencil, Plus, Trash2, Workflow, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { BarChart3, Code2, Eye, EyeOff, Pencil, Plus, Trash2, Workflow, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { indicatorLogicPreview, indicatorSummary } from "../chart/indicatorLogic";
 import type {
   BollingerConfig,
@@ -9,12 +9,26 @@ import type {
   StochasticConfig
 } from "../chart/indicatorTypes";
 import type { Locale } from "../i18n";
+import { chartText } from "../i18n/chart";
 import { shellText } from "../i18n/shell";
+import type { Timeframe } from "../types";
+import { VolumeProfileSourceControl } from "./chartCanvas/VolumeProfileSourceControl";
+import type { VolumeProfileSourceState } from "./chartCanvas/useVolumeProfileSource";
 
 export interface StrategyMenuItem {
   id: string;
   name: string;
   description: string;
+}
+
+export interface VolumeProfileIndicatorControl {
+  added: boolean;
+  visible: boolean;
+  chartTimeframe: Timeframe;
+  state: VolumeProfileSourceState;
+  onAdd: () => void;
+  onVisibleChange: (visible: boolean) => void;
+  onRemove: () => void;
 }
 
 interface ChartIndicatorOverlayProps {
@@ -26,6 +40,7 @@ interface ChartIndicatorOverlayProps {
   strategies?: StrategyMenuItem[];
   activeArtifactId?: string;
   onAddArtifact?: (id: string) => void;
+  volumeProfile?: VolumeProfileIndicatorControl;
 }
 
 export function ChartIndicatorOverlay({
@@ -36,17 +51,47 @@ export function ChartIndicatorOverlay({
   customIndicators = [],
   strategies = [],
   activeArtifactId,
-  onAddArtifact
+  onAddArtifact,
+  volumeProfile
 }: ChartIndicatorOverlayProps) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string>();
+  const [editingVolumeProfile, setEditingVolumeProfile] = useState(false);
   const active = indicators.filter((indicator) => indicator.enabled);
   const available = indicators.filter((indicator) => !indicator.enabled);
   const editing = useMemo(
     () => indicators.find((indicator) => indicator.id === editingId),
     [editingId, indicators]
   );
+
+  useEffect(() => {
+    if (!adding && !editingId && !editingVolumeProfile) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !overlayRef.current?.contains(event.target)) {
+        setAdding(false);
+        setEditingId(undefined);
+        setEditingVolumeProfile(false);
+      }
+    };
+    const dismissWithKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setAdding(false);
+      setEditingId(undefined);
+      setEditingVolumeProfile(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", dismissWithKeyboard);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", dismissWithKeyboard);
+    };
+  }, [adding, editingId, editingVolumeProfile]);
+
+  useEffect(() => {
+    if (!volumeProfile?.added) setEditingVolumeProfile(false);
+  }, [volumeProfile?.added]);
 
   const update = (id: string, patch: Partial<IndicatorConfig>) => {
     onChange(indicators.map((indicator) => (
@@ -57,18 +102,23 @@ export function ChartIndicatorOverlay({
   const addIndicator = (id: string) => {
     update(id, { enabled: true, visible: true });
     setAdding(false);
+    setEditingVolumeProfile(false);
     setEditingId(id);
   };
 
   return (
-    <div className="chart-indicator-overlay">
+    <div className="chart-indicator-overlay" ref={overlayRef}>
       <div className="indicator-strip">
         <button
           type="button"
           className="indicator-add"
           aria-expanded={adding}
           aria-haspopup="menu"
-          onClick={() => setAdding((value) => !value)}
+          onClick={() => {
+            setAdding((value) => !value);
+            setEditingId(undefined);
+            setEditingVolumeProfile(false);
+          }}
         >
           <Plus size={14} aria-hidden="true" />
           {t("addIndicator")}
@@ -80,7 +130,11 @@ export function ChartIndicatorOverlay({
             key={indicator.id}
             indicator={indicator}
             editing={indicator.id === editingId}
-            onEdit={() => setEditingId(indicator.id === editingId ? undefined : indicator.id)}
+            onEdit={() => {
+              setAdding(false);
+              setEditingVolumeProfile(false);
+              setEditingId(indicator.id === editingId ? undefined : indicator.id);
+            }}
             onRemove={() => {
               update(indicator.id, { enabled: false, visible: true });
               if (editingId === indicator.id) setEditingId(undefined);
@@ -88,6 +142,22 @@ export function ChartIndicatorOverlay({
             onToggleVisible={() => update(indicator.id, { visible: indicator.visible === false })}
           />
         ))}
+        {volumeProfile?.added && (
+          <VolumeProfileChip
+            locale={locale}
+            control={volumeProfile}
+            editing={editingVolumeProfile}
+            onEdit={() => {
+              setAdding(false);
+              setEditingId(undefined);
+              setEditingVolumeProfile((value) => !value);
+            }}
+            onRemove={() => {
+              setEditingVolumeProfile(false);
+              volumeProfile.onRemove();
+            }}
+          />
+        )}
       </div>
 
       {adding && (
@@ -100,7 +170,23 @@ export function ChartIndicatorOverlay({
               <small>{indicatorSummary(indicator)}</small>
             </button>
           ))}
-          {available.length === 0 && <p>{t("allIndicatorsAdded")}</p>}
+          {volumeProfile && !volumeProfile.added && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                volumeProfile.onAdd();
+                setAdding(false);
+                setEditingId(undefined);
+                setEditingVolumeProfile(true);
+              }}
+            >
+              <span className="volume-profile-menu-dot" />
+              <strong>{chartText(locale, "volumeProfile")}</strong>
+              <small>{volumeProfileSummary(locale, volumeProfile)}</small>
+            </button>
+          )}
+          {available.length === 0 && (!volumeProfile || volumeProfile.added) && <p>{t("allIndicatorsAdded")}</p>}
 
           {onAddArtifact && customIndicators.length > 0 && (
             <>
@@ -151,8 +237,54 @@ export function ChartIndicatorOverlay({
           onEditLogic={() => onEditLogic(editing)}
         />
       )}
+      {editingVolumeProfile && volumeProfile?.added && (
+        <VolumeProfileSourceControl
+          locale={locale}
+          chartTimeframe={volumeProfile.chartTimeframe}
+          onClose={() => setEditingVolumeProfile(false)}
+          state={volumeProfile.state}
+        />
+      )}
     </div>
   );
+}
+
+function VolumeProfileChip({
+  locale,
+  control,
+  editing,
+  onEdit,
+  onRemove
+}: {
+  locale: Locale;
+  control: VolumeProfileIndicatorControl;
+  editing: boolean;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  const label = chartText(locale, "volumeProfile");
+  return (
+    <div className={`indicator-chip volume-profile-chip ${control.visible ? "" : "muted"} ${editing ? "editing" : ""}`}>
+      <BarChart3 size={13} aria-hidden="true" />
+      <strong>{label}</strong>
+      <small>{volumeProfileSummary(locale, control)}</small>
+      <button type="button" aria-label={`${shellText(locale, control.visible ? "hide" : "show")} ${label}`} onClick={() => control.onVisibleChange(!control.visible)}>
+        {control.visible ? <Eye size={13} aria-hidden="true" /> : <EyeOff size={13} aria-hidden="true" />}
+      </button>
+      <button type="button" aria-expanded={editing} aria-label={`${shellText(locale, "edit")} ${label}`} onClick={onEdit}>
+        <Pencil size={13} aria-hidden="true" />
+      </button>
+      <button type="button" aria-label={`${shellText(locale, "remove")} ${label}`} onClick={onRemove}>
+        <Trash2 size={13} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function volumeProfileSummary(locale: Locale, control: VolumeProfileIndicatorControl): string {
+  return control.state.source === "chart"
+    ? `${chartText(locale, "volumeProfileAsChart")} · ${control.chartTimeframe}`
+    : control.state.source;
 }
 
 function IndicatorChip({

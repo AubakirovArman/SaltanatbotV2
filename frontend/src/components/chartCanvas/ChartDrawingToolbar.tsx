@@ -1,4 +1,4 @@
-import { Activity, Anchor as AnchorIcon, BarChart3, BookOpen, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, TrendingDown, TrendingUp, Trash2 } from "lucide-react";
+import { Activity, Anchor as AnchorIcon, BookOpen, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, TrendingDown, TrendingUp, Trash2 } from "lucide-react";
 import type { DrawingTool } from "../../chart/drawings";
 import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
@@ -8,7 +8,6 @@ export function ChartDrawingToolbar({
   tool,
   magnet,
   showVolume,
-  showVolumeProfile,
   showOrderBookHeatmap,
   showTradeFootprint,
   orderBookAvailable,
@@ -17,7 +16,6 @@ export function ChartDrawingToolbar({
   onTool,
   onToggleMagnet,
   onToggleVolume,
-  onToggleVolumeProfile,
   onToggleOrderBookHeatmap,
   onToggleTradeFootprint,
   onToggleObjects,
@@ -27,7 +25,6 @@ export function ChartDrawingToolbar({
   tool: DrawingTool;
   magnet: boolean;
   showVolume: boolean;
-  showVolumeProfile: boolean;
   showOrderBookHeatmap: boolean;
   showTradeFootprint: boolean;
   orderBookAvailable: boolean;
@@ -36,7 +33,6 @@ export function ChartDrawingToolbar({
   onTool: (tool: DrawingTool) => void;
   onToggleMagnet: () => void;
   onToggleVolume: () => void;
-  onToggleVolumeProfile: () => void;
   onToggleOrderBookHeatmap: () => void;
   onToggleTradeFootprint: () => void;
   onToggleObjects: () => void;
@@ -91,9 +87,6 @@ export function ChartDrawingToolbar({
       <span className="rail-spacer" aria-hidden="true" />
       <Tool active={showVolume} label={t("toggleVolume")} onClick={onToggleVolume}>
         <Scaling size={15} aria-hidden="true" />
-      </Tool>
-      <Tool active={showVolumeProfile} label={t("toggleVolumeProfile")} onClick={onToggleVolumeProfile}>
-        <BarChart3 size={15} aria-hidden="true" />
       </Tool>
       <Tool active={showOrderBookHeatmap} disabled={!orderBookAvailable} label={orderBookAvailable ? t("toggleOrderBookHeatmap") : t("depthUnavailable")} onClick={onToggleOrderBookHeatmap}>
         <BookOpen size={15} aria-hidden="true" />

@@ -90,6 +90,15 @@
   border-radius: 50%;
 }
 
+.volume-profile-chip > svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.volume-profile-menu-dot {
+  background: var(--accent);
+}
+
 .indicator-chip button,
 .indicator-editor-head button {
   display: inline-grid;
