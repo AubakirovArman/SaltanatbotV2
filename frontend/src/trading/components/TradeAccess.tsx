@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { Locale } from "../../i18n";
 import { tradingText } from "../../i18n/trading";
 import { checkAuth, setToken, type AuthState } from "../tradeClient";
+import { notifyTradingSessionChanged } from "../sessionEvents";
 
 export function TradeTokenGate({ locale, onAuthed }: { locale: Locale; onAuthed: (state: AuthState) => void }) {
   const [token, setInput] = useState("");
@@ -16,6 +17,7 @@ export function TradeTokenGate({ locale, onAuthed }: { locale: Locale; onAuthed:
     try {
       const state = await checkAuth(token.trim());
       setToken(token.trim());
+      notifyTradingSessionChanged();
       onAuthed(state);
     } catch {
       setError(tradingText(locale, "invalidToken"));

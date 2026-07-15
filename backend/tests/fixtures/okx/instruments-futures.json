@@ -1,0 +1,22 @@
+{
+  "code": "0",
+  "msg": "",
+  "data": [
+    {
+      "instType": "FUTURES",
+      "instId": "BTC-USDT-260925",
+      "instFamily": "BTC-USDT",
+      "uly": "BTC-USDT",
+      "settleCcy": "USDT",
+      "ctVal": "0.01",
+      "ctMult": "1",
+      "ctValCcy": "BTC",
+      "ctType": "linear",
+      "tickSz": "0.1",
+      "lotSz": "1",
+      "minSz": "1",
+      "expTime": "1790294400000",
+      "state": "live"
+    }
+  ]
+}

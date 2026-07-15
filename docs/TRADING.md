@@ -4,6 +4,27 @@ The Trade tab drives every SaltanatbotV2 bot through a single, exchange-agnostic
 
 ---
 
+## Workspace, robots center and account metadata
+
+The top-level browser navigation treats chart-based observation as **Monitoring**, strategy/bot work
+as **Automation**, and market discovery as the read-only **Screener**. Automation is split into
+**Strategies** and **Robots**. The global **Running** control reports the authenticated running-bot
+count and opens the robots/portfolio center without requiring the operator to find a particular bot
+first.
+
+The center combines the state the trading backend can actually prove: live exchange-account and
+isolated paper-bot balance/equity, realized P&L, positions, open orders and associated bots. It has a
+literal empty state when nothing is active. Margin and borrowing are displayed as unavailable when
+the portfolio response does not contain them; the protected Bybit UTA telemetry described in
+[section 4.3](#43-bybit-uta-cross-collateral-and-manual-debt) remains a separate settings workflow.
+
+Admins can create, rename, enable, disable and remove non-secret Binance/Bybit entries in the
+trading-account registry and label them as **own** or **managed**. Mutations require HTTPS or
+localhost, and an account bound to a bot cannot be disabled or deleted. This registry is currently
+organizational metadata, not credential isolation: SaltanatbotV2 still stores one encrypted API-key
+set per exchange. Additional account rows cannot authenticate or execute live orders independently,
+and the registry itself supplies no margin or borrowing data.
+
 ## 1. The command language
 
 Manual commands are entered on the Trade tab and executed against a running bot via `TradingEngine.manualCommand()`, which calls `parseMessageSet()` and runs the resulting steps in order.
@@ -70,7 +91,7 @@ Delay directives are handled per step by `parseStep()`. They set the step's `del
 The engine caps any single delay at **10 000 ms** (`Math.min(step.delayMs, 10_000)`). A typical manual reversal uses a pause to let margin free up between closing and re-opening:
 
 ```text
-mktype=futures;symbol=ETHUSDT;side=buy;type=market;closepro=100;reduceonly!::pause=500;mktype=futures;symbol=ETHUSDT;side=sell;type=market;openpro=100;lev=2
+mktype=futures;symbol=ETHUSDT;side=buy;type=market;closepro=100;reduceonly!::pause=500;mktype=futures;symbol=ETHUSDT;side=sell;type=market;qty=0.05;lev=2
 ```
 
 ### 1.5 Action aliases and shorthands
@@ -103,11 +124,11 @@ For most actions, a bare `action=SYMBOL` form sets `symbol` (upper-cased) unless
 | `openorders` | `openorders` | Place a resting **limit** entry plus reduce-only protective stop/TP that act once it fills. `type` is forced to `limit`. |
 | `spreadentry` | `spreadentry` | Open one market slice immediately, then place `spreadcount - 1` limit orders spread across `spreadperc` % of a base price. |
 | `chporders` | `chporders` | Replace SL/TP of an **existing** position without closing it. Changing the stop clears existing stop orders; changing TP clears existing TP orders. |
-| `turnover` (`reverse`) | `turnover` | Reverse the position: close the current side and open the opposite. Errors on a same-direction position unless `ignoreside` is set. |
+| `turnover` (`reverse`) | `turnover` | Paper/reference action that reverses the position: close the current side and open the opposite. Live execution is disabled until both child actions have independent durable lifecycles. |
 | `cancelorder` | `cancel` | Cancel resting orders by selector `by` ∈ {`symbol`, `side`, `type`, `id`, `all`}. Defaults to `id` when an id is supplied, else `symbol`. |
 | `cancelall` (`cancelallorders`) | `cancelall` | Cancel all resting orders (for `symbol` if given, otherwise the whole book). Positions are untouched. |
 | `cancelorphans` | `cancelorphans` | Cancel protective SL/TP orders left with no open position. `includelimit!` also cancels resting `limit` orders. No-op while a position is open. |
-| `replaceorder` | `replace` | Modify a resting order matched by `orderid` or `clientid` (side/price/qty/trgprice). With `upsert!`, creates the order if not found. |
+| `replaceorder` | `replace` | Paper/reference action that modifies a resting order matched by `orderid` or `clientid` (side/price/qty/trgprice). With `upsert!`, creates the order if not found. Live execution is disabled until cancel/new child actions have independent durable lifecycles. |
 | `get` | `get` | Read data: `PRICE`/`SYMPRICE`, `OPENPOS`/`POSITIONS`, `ORDERS`, `DUALSIDE`/`POSITIONMODE`, else account balance/equity (`BALANCE`). |
 | `set` | `set` | Set an account/position parameter: `LEVERAGE`, `DUALSIDE` (hedge mode), `ISOLATEDMARGIN`. |
 
@@ -176,28 +197,167 @@ When a bot's `exchange` is `paper`, `TradingEngine.buildAdapter()` constructs a 
 | `stop_market` / `stop_limit` | sell-stop: price ≤ trigger; buy-stop: price ≥ trigger. |
 | `tp_market` / `tp_limit` | sell-TP: price ≥ trigger; buy-TP: price ≤ trigger. |
 
-Limit and `*_limit` orders fill at their stored `price`; market and `*_market` conditionals fill at the tick price. The engine holds a **single one-way position per symbol**: an opposing fill reduces or closes it (realising PnL net of fees), and once a position is fully closed, any remaining reduce-only protective orders are dropped from the book.
+Without an executable-depth source, limit and `*_limit` orders use their stored `price`; market and
+`*_market` conditionals use the tick plus the configured adverse slippage. When a verified executable
+quote is supplied, both entries and exits require enough reported quantity and use that quote's price;
+invalid or insufficient liquidity leaves the order unfilled. The engine holds a **single one-way
+position per symbol**: an opposing fill reduces or closes it (realising PnL net of fees), and once a
+position is fully closed, any remaining reduce-only protective orders are dropped from the book.
 
-The full paper state — `balance`, `position`, `orders`, `leverage`, `isolated`, `dualSide` — is serialised via `getState()`/`setState()` and persisted to the `paper:<botId>` setting after every fill, so a bot resumes exactly where it left off.
+### 3.2 Durable event ledger and funding
 
-### 3.2 Quantity resolution
+Paper state is reconstructed from the per-bot, append-only `paper_events` ledger. It records account
+initialization, order upserts/cancellations, fills, fees, realized-PnL cash movements, position changes,
+funding settlements and account settings. Sequence gaps, conflicting event IDs/sequences/idempotency
+keys, unknown event types and unverified funding fail closed. Exact redelivery of the same event is a
+no-op. The durable append happens before the in-memory transition becomes authoritative; a storage
+failure rolls the simulated command back.
+
+Funding changes paper cash only through `applyFundingSettlement()` with a verified settlement ID,
+symbol, rate, mark price, timestamp and source. Replaying the same settlement ID is idempotent. The
+simulator does **not** infer funding from a current rate, elapsed time or missing venue data, so it
+cannot invent a credit. Positive funding is paid by longs and received by shorts; a negative rate
+reverses that direction.
+
+For backward compatibility, a bot with no ledger imports its old `paper:<botId>` snapshot once. As
+soon as events exist, recovery always uses the ledger; the compatibility snapshot is not an alternate
+source of truth.
+
+### 3.3 Multi-leg paper recovery journal
+
+Operators with the `paper-trade` role can open **Multi-leg paper journal** in the Trade sidebar.
+Paste the exact, unexpired `paper-multi-leg-plan-v1` JSON produced by an N-leg or route-family
+research engine and keep the generated idempotency key for retries of that same plan. The panel
+shows restart-recovery state, recent runs, terminal status and every append-only original fill,
+compensation decision, reverse fill and terminal event. It is available in English, Russian and
+Kazakh and pauses its ten-second refresh loop while the browser tab is hidden.
+
+This workflow is separate from bot paper trading. It accepts no exchange keys, sends no private
+request and can never place a live order. A `manual-review-required` result means the deterministic
+compensation scenario left an exact unresolved paper quantity; it is not an instruction to send a
+real order.
+
+Supported Screener rows now have a one-click **research handoff** to Automation. It transfers a
+strict, short-lived `market-opportunity-v1` envelope and opens a card with legs, economics, source
+evidence and explicit blockers. The envelope always blocks live execution and is **not** the exact
+`paper-multi-leg-plan-v1` required by this journal. A research card may open the journal only when its
+paper boundary says a verified plan is possible; the operator must still supply the separate exact,
+unexpired plan JSON before a simulation can start. Clicking the Screener action alone therefore
+cannot submit a paper or live order.
+
+### 3.4 Quantity resolution
 
 `resolveQty()` picks the first source present, in priority order: `qty` → `quqty` (÷ price, × leverage if `levforqty`) → `openpro`/`depopro` (% of balance × leverage ÷ price) → `closepro` (% of the open position).
+
+That priority describes paper/general command resolution. Every **risk-increasing live** order must
+already contain an explicit positive base `qty` before preflight; `quqty`, `openpro` and `depopro`
+cannot be used to create live exposure. Live exits and cancellation are subject to the narrower
+action allowlist below; a risk limit never converts an unsupported compound command into a safe one.
 
 ---
 
 ## 4. Live execution — Binance & Bybit
 
-Setting a bot's `exchange` to `binance` or `bybit` builds a live adapter with the stored keys (`keys:binance` / `keys:bybit`). If no keys are stored, the adapter is constructed with empty strings and any signed call throws `"… API keys are not set"` — public price reads still work, but nothing can trade.
+Setting a bot's `exchange` to `binance` or `bybit` selects a live adapter with the stored keys
+(`keys:binance` / `keys:bybit`). Binance USDⓈ-M and Bybit linear remain experimental. Bybit spot is
+also experimental and requires `ENABLE_LIVE_SPOT`; Binance live spot is disabled until the project
+has authenticated spot execution accounting. If no keys are stored, signed calls fail with
+`"… API keys are not set"` — public price reads still work, but nothing can trade.
 
-Live spot is fail-closed by default and requires the explicit `ENABLE_LIVE_SPOT` override. The engine
-tracks bot-attributed quantity, weighted average, base/quote fee assets and remaining quantity from
-deduplicated confirmed fills. Automated and manual bot closes use only that attributed quantity,
-never the account-wide base balance. A restart restores the inventory but pauses the bot until the
-operator verifies the exchange balance and confirms resume. Paper and futures testnet validation
-should still be completed first; live spot remains experimental.
+Live bots are fail-closed unless `maxPositionQuote`, `maxOrderQuote`, `maxDailyLossQuote` and
+`maxOpenOrders` are all positive; leverage is the bot's maximum permitted leverage. The server
+validates these values on save and again at every start/resume. Immediately before a live adapter
+receives a risk-increasing order, it checks daily realized loss, order notional, projected position,
+leverage and the resulting open-order count. The decision is bound to the bot's exact symbol/market
+and a just-received venue price; a command-supplied market price cannot reduce measured risk. Existing
+non-reduce resting orders reserve position capacity, and concurrent strategy/manual submissions are
+serialized through the exact exchange+market+symbol execution lock. Live starts use a separate
+exchange+symbol lock, so two concurrent start requests cannot pass collision/reconciliation checks
+together even when they request different markets. Futures leverage must be acknowledged or
+reconciled before entry; an ambiguous or mismatched result fails closed. Every risk-increasing live
+order requires an explicit positive base `qty`; an unmeasurable quantity and unsupported live action
+are rejected.
+Only venue-enforced futures reduce-only orders bypass entry caps.
 
-Every mutating live request is journaled before network I/O. A definitive HTTP/API rejection becomes `rejected`; a network failure or HTTP 5xx during POST/DELETE is ambiguous and becomes `unknown`, because the venue may have accepted the request. The engine never blindly resubmits that order. Authenticated Binance USDⓈ-M and Bybit private streams are the primary order-state source; bounded signed REST polling runs every 30 seconds only while the stream is unavailable. Disconnect and reconnect edges force an immediate REST gap reconciliation. Poll and stream snapshots enter through one identity-aware ingest boundary: reconnect replays are idempotent, conflicting venue IDs are rejected, cumulative filled quantity cannot decrease, and accepted/partial/terminal state cannot regress.
+The manual live-action allowlist is intentionally narrower than the paper command language. Exact
+`neworder`/`open` submissions pass the full risk and durable-lifecycle checks; `close`, `cancelall` and
+the read-only `get` action are also allowed. `get` executes as a read and deliberately creates no
+durable order-journal row. Live `replace`, `turnover`, `openorders`, `spreadentry`, single-order
+`cancel`, `cancelorphans`, account-wide `flatten`, `set` and `chporders` fail closed until their venue
+semantics and every child mutation have an independently reconcilable lifecycle. Account-wide cancel
+and flatten remain available only through the dedicated audited emergency-stop workflow described
+below, not by disguising them as a manual bot command.
+
+Spot exposure uses only this bot's confirmed attributed inventory plus durable journal reservations.
+Reservations remain active for accepted, partially filled and even venue-filled orders until their
+executions have been committed to local accounting. Cancelled/expired rows retain only an unaccounted
+partial fill, while legacy `replaced` rows conservatively retain their entry quantity until accounting
+proves it. Pending spot buys reserve exposure, while pending spot sells reserve attributed quantity so
+concurrent closes cannot sell the same inventory twice.
+
+Futures exposure sums every exact-symbol position leg, including hedge mode, and compares that venue
+total with the durable gross quantity committed by confirmed fills. Preflight uses the larger value,
+so a lagging `positions()` response cannot erase newly accounted exposure. If one venue order matches
+one journal reservation, quantity and price are merged by conservative maximum rather than added or
+trusted independently. Multiple identity matches, duplicate matches, a side mismatch or a
+risk-increasing/reduce-only conflict fail closed.
+
+Only one live bot may own an exchange+symbol at a time, even when the bots select different spot and
+futures markets. The `override` start field cannot bypass a live collision; the existing bot must be
+stopped and its state reconciled first.
+
+If a venue has already accepted an entry but rejects or fails to acknowledge the requested SL/TP,
+the accepted entry is not rewritten as a rejected order. The bot keeps managed-position state,
+pauses, and retains the durable entry reservation. A best-effort reduce-only emergency close uses a
+distinct `…-safety` client identity and must return its own venue order ID. Its acceptance is reported
+separately and both entry/close executions must still reach authenticated accounting; a missing ID or
+failed close is surfaced explicitly as a possible unprotected-position incident.
+
+Exchange-key storage and every risk-increasing live/account mutation require HTTPS or a direct
+localhost socket. `X-Forwarded-Proto` is honoured only when the operator configured `TRUST_PROXY`.
+Paper trading is not subject to this transport gate.
+
+### Account-level emergency stop
+
+`POST /api/trade/kill` is a durable, idempotent workflow rather than a UI-only bot stop. It first
+disarms live trading and atomically changes the execution gate to `stopping`, so strategies and
+manual commands cannot submit another live order. It then stops all bot runtimes, enumerates every
+open order on each configured/running Binance and Bybit spot/futures account, cancels by symbol, and
+polls the account again. Success is returned only when reconciliation proves that no open order
+remains. `GET /api/trade/kill` exposes the persisted operation and per-account result.
+
+The default button deliberately **leaves positions open**. The separate flatten action requires both
+an explicit UI confirmation and `confirmFlatten=FLATTEN_ALL_LIVE_POSITIONS`; it enumerates futures
+positions, submits 100% reduce-only market closes, and verifies that every position is flat. It never
+sells spot holdings. Each request should carry a UUID `operationId`: retrying the same UUID returns
+the same persisted result without repeating exchange actions. An interrupted `stopping` operation is
+restored as `partial_failure`; unresolved orders, positions, adapter errors, or bot-stop failures also
+produce `partial_failure` (HTTP 207), never a false success. Live trading cannot be re-armed until a
+new retry reaches `terminal` with `ok=true`.
+
+Bybit live spot is fail-closed by default and requires the explicit `ENABLE_LIVE_SPOT` override. The
+engine tracks bot-attributed quantity, weighted average, base/quote fee assets and remaining quantity
+from deduplicated confirmed v5 executions. Automated and manual bot closes use only that attributed
+quantity, never the account-wide base balance. A restart restores inventory but pauses the bot until
+the operator verifies the exchange balance and confirms resume. Binance live spot remains disabled
+until authenticated spot execution accounting exists.
+Paper and futures testnet validation should still be completed first; Bybit live spot remains
+experimental.
+
+No live path is presented as mainnet-ready. The continuous funded 7–14-day Binance/Bybit exchange
+soak is explicitly excluded from the current verified scope.
+
+Every mutating live request is journaled before network I/O. A definitive HTTP/API rejection becomes `rejected`; a network/HTTP 5xx failure, or an unreadable, truncated, malformed or identity-free HTTP 2xx response during POST/DELETE, is ambiguous and becomes `unknown`, because the venue may have accepted the request. The engine preserves the reservation and never blindly resubmits that mutation. Authenticated Binance USDⓈ-M and Bybit v5 private streams are the primary order-state source; the Bybit `order` + `execution` topics cover enabled spot and linear trading. Bounded signed REST polling runs every 30 seconds only while the stream is unavailable. Disconnect and reconnect edges force an immediate REST gap reconciliation. Poll and stream snapshots enter through one identity-aware ingest boundary: reconnect replays are idempotent, crossed or conflicting client/venue IDs are rejected without rebinding, cumulative filled quantity cannot decrease, and accepted/partial/terminal state cannot regress. A venue terminal status does not release reserved risk until the corresponding execution has been committed to accounting; if REST polling or reconnect reconciliation reaches a terminal state without that execution evidence, the bot is paused for operator reconciliation.
+
+While a bot is running, its in-memory configuration is the authorization identity for update, start,
+stop, resume and command routes. `POST /bots` rejects an update to that ID with `409`, so persisted
+paper configuration cannot replace a live runtime identity. Safe stop/delete first blocks new order
+producers, closes feeds and drains command, market-event and order critical sections. A later manual
+live start performs signed order reconciliation when durable state or journal evidence already exists.
+
+An accepted live close is handled by the same proof boundary: HTTP/order acknowledgement alone does
+not clear the bot's managed position. Managed state stays intact and the bot is paused until an
+authenticated execution is committed; only then can local state become flat.
 
 Trading schema v2 durably stores orders, order events, confirmed fills, the latest position/manual-action
 snapshot and logical strategy runs. Protected entries additionally record the execution lifecycle from
@@ -205,28 +365,56 @@ snapshot and logical strategy runs. Protected entries additionally record the ex
 order IDs. Bybit supplies the entry ID and a typed `exchange_ack` for its position-level
 `trading-stop` endpoint, which does not return individual protective-order IDs.
 
+Before a protected futures entry performs exchange I/O, the journal also receives separate,
+deterministically named reduce-only child intents for the stop (`…-sl`), every take-profit
+(`…-tp1`, `…-tp2`, …) and a possible emergency close (`…-safety`). These rows are operator-visible
+close lifecycles, not duplicate entries. When no emergency close is needed, its pre-written safety row
+ends as rejected with an explicit “not required” result. Binance child rows can retain their venue
+order IDs. Bybit position-level `trading-stop` can be confirmed without any correlatable child order
+ID, so the local SL/TP rows remain accepted with that limitation stated in their message; the local
+deterministic ID must not be mistaken for a venue order ID. Missing or unmatched protection/execution
+evidence remains fail-closed and requires operator reconciliation.
+
 Trade executions additionally persist the venue execution ID, incremental
 quantity/price, actual commission amount and asset, and venue realized PnL.
 Duplicate execution IDs after reconnect do not create a second fill. The fill
 journal displays both fee amount and asset.
 
-Binance renews its 60-minute listenKey every 50 minutes and rotates it after expiry. Bybit authenticates with HMAC-SHA256, subscribes to both `order` and `execution`, and sends a heartbeat every 20 seconds. Both transports use capped reconnect backoff and are closed during bot stop or server shutdown. Live spot remains explicitly armed and inventory-constrained; a missing confirmed fill prevents automated close rather than falling back to an unrelated account balance.
+Binance USDⓈ-M renews its 60-minute listenKey every 50 minutes and rotates it after expiry. It is
+not spot execution accounting. Bybit authenticates with HMAC-SHA256, subscribes to both `order` and
+`execution` for enabled spot/linear bots, and sends a heartbeat every 20 seconds. Both transports use
+capped reconnect backoff and are closed during bot stop or server shutdown. Bybit live spot remains
+explicitly armed and inventory-constrained; a missing confirmed execution prevents automated close
+rather than falling back to an unrelated account balance.
 
-Before a live bot resumes after process restart, the engine sequentially queries signed order status for every `intent`, `unknown`, `accepted`, and `partially_filled` journal row. A matching open order is only a fallback proof for ordinary order placement; it cannot prove that an interrupted cancel or replace command completed. Missing, conflicting, regressing, or action-ambiguous evidence leaves the existing durable state intact, records crash-left intent as `unknown`, and pauses trading for operator review. Terminal journal rows are never queried or rewritten.
+Before a live bot resumes after process restart, the engine sequentially queries signed order status for every `intent`, `unknown`, `accepted`, and `partially_filled` journal row. A matching open order is only a fallback proof for ordinary order placement; it cannot prove that an interrupted cancel or legacy replace command completed. Missing, conflicting, regressing, or action-ambiguous evidence leaves the existing durable state intact, records crash-left intent as `unknown`, and pauses trading for operator review. Already-terminal journal rows are not blindly queried or rewritten, but any unaccounted terminal execution remains reserved and blocks or pauses automation.
 
 ### 4.1 Binance (`exchange/binance.ts`)
 
-- **Markets:** Spot (`api.binance.com`) and USDT-M Futures (`fapi.binance.com`).
+- **Markets:** signed REST code exists for Spot (`api.binance.com`) and USDⓈ-M Futures
+  (`fapi.binance.com`), but live Spot submission is disabled until authenticated spot execution
+  accounting exists. Only USDⓈ-M is available as an experimental live path.
 - **Signing:** every private call goes through `signed()`, which builds a query string with `timestamp` and `recvWindow=5000`, computes an **HMAC-SHA256** signature with the API secret, appends it as `signature`, and sends the API key in the `X-MBX-APIKEY` header.
-- **Orders:** market by default; `limit` sends price + TIF; conditional types send `stopPrice`. On futures, `openposition`/entry can also attach a `STOP_MARKET` (`closePosition`) and `TAKE_PROFIT_MARKET` reduce-only orders. `close`/`flatten` read the live position and market-close the requested `closepro` %.
-- **Set:** on futures, `LEVERAGE`, `ISOLATEDMARGIN` (`marginType`), and `DUALSIDE` (`positionSide/dual`) are applied; on spot, `set` is ignored.
+- **Orders:** market by default; `limit` sends price + TIF; conditional types send `stopPrice`. On
+  futures, `openposition`/entry can also attach a `STOP_MARKET` (`closePosition`) and
+  `TAKE_PROFIT_MARKET` reduce-only orders. The adapter can resolve `close`/`flatten` from the live
+  position, but the common manual live preflight permits exact `close` and blocks `flatten`; account
+  flatten uses the emergency-stop workflow. The presence of Spot REST methods does not enable live
+  Spot trading.
+- **Set:** adapter methods exist for futures `LEVERAGE`, `ISOLATEDMARGIN` (`marginType`) and
+  `DUALSIDE` (`positionSide/dual`), but the common manual live preflight currently blocks `set`.
 
 ### 4.2 Bybit (`exchange/bybit.ts`)
 
 - **Markets:** v5 unified API. `linear` category for USDT futures, `spot` for spot.
 - **Signing:** execution and account operations share `exchange/bybitClient.ts`; it builds an **HMAC-SHA256** signature over `timestamp + apiKey + recvWindow + payload` (query string for GET, JSON body for POST) and sends `X-BAPI-API-KEY`, `X-BAPI-TIMESTAMP`, `X-BAPI-RECV-WINDOW`, and `X-BAPI-SIGN` headers with `recvWindow=5000`. A non-zero `retCode` is raised as an error.
-- **Orders:** `Market`/`Limit`, with `triggerPrice` + `triggerDirection` for conditionals. `close`/`flatten`/`turnover` read the live position first; `cancel*` uses `order/cancel-all`.
-- **Set:** on futures, `LEVERAGE` (`set-leverage`), `ISOLATEDMARGIN` (`switch-isolated`), and `DUALSIDE` (`switch-mode`); ignored on spot.
+- **Orders:** `Market`/`Limit`, with `triggerPrice` + `triggerDirection` for conditionals. Futures
+  adapter code can resolve `close`/`flatten` from the live position, but manual live preflight permits
+  exact `close`, blocks `flatten`, `replace` and `turnover`, and permits only `cancelall` from the
+  cancel family. Account flatten uses the emergency-stop workflow.
+- **Set:** adapter methods exist for futures `LEVERAGE` (`set-leverage`), `ISOLATEDMARGIN`
+  (`switch-isolated`) and `DUALSIDE` (`switch-mode`), but the common manual live preflight currently
+  blocks `set`.
 
 ### 4.3 Bybit UTA cross collateral and manual debt
 
@@ -242,7 +430,7 @@ A Bybit futures bot only enters this mode when **Use Bybit UTA cross collateral*
 
 ### 4.4 The strategy-driven path
 
-Beyond manual commands, a running strategy emits entry/exit intents on each closed bar (`onClosedBar()`). Paper entries and live entries with trailing protection keep stop/target management inside the engine (`onTick()`). Live futures entries with fixed stop or target request exchange-side protection so it survives a process/network failure. The adapter must explicitly confirm every requested protection order; otherwise it performs a best-effort emergency close and returns a failed result. Position sizing follows the bot's `sizeMode` when the strategy does not specify a size.
+Beyond manual commands, a running strategy emits entry/exit intents on each closed bar (`onClosedBar()`). Paper entries and live entries with trailing protection keep stop/target management inside the engine (`onTick()`). Live futures entries with fixed stop or target request exchange-side protection so it survives a process/network failure. The adapter must explicitly confirm every requested protection order. If protection fails after the entry acknowledgement, the accepted entry remains managed and reserved, the bot pauses, and the separately identified best-effort emergency close is reported without pretending the entry was rejected. Position sizing follows the bot's `sizeMode` when the strategy does not specify a size.
 
 ---
 
@@ -294,7 +482,7 @@ mktype=spot;symbol=XRPUSDT;side=buy;type=market;qty=20
 **Open a futures long with attached stop and two take-profits, one command:**
 
 ```text
-action=openposition;mktype=futures;symbol=ETHUSDT;side=BUY;openpro=25;lev=5;levforqty!;stop=3%;tp=[3200,50%][3400,50%]
+action=openposition;mktype=futures;symbol=ETHUSDT;side=BUY;qty=0.05;lev=5;stop=3%;tp=[3200,50%][3400,50%]
 ```
 
 **Resting conditional take-profit (reduce-only), fills on a future tick:**
@@ -318,7 +506,7 @@ action=chporders;mktype=futures;symbol=ADAUSDT;stop=0.48;tp=[0.55,50%][0.60,50%]
 **Manual reversal with a chained pause (close → wait 500 ms → open opposite):**
 
 ```text
-mktype=futures;symbol=ETHUSDT;side=buy;type=market;closepro=100;reduceonly!::pause=500;mktype=futures;symbol=ETHUSDT;side=sell;type=market;openpro=100;lev=2
+mktype=futures;symbol=ETHUSDT;side=buy;type=market;closepro=100;reduceonly!::pause=500;mktype=futures;symbol=ETHUSDT;side=sell;type=market;qty=0.05;lev=2
 ```
 
 **Read balance on spot, then price on futures, in one message set:**

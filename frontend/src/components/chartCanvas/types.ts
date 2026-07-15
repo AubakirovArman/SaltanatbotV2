@@ -2,7 +2,7 @@ import type { ChartLivePosition, ChartMarker, ChartPlot, ChartShapes, ChartTable
 import type { IndicatorConfig } from "../../chart/indicatorTypes";
 import type { PriceAlert } from "../../market/alerts";
 import type { Locale } from "../../i18n";
-import type { Candle, ChartType, DataExchange, Instrument, Timeframe } from "../../types";
+import type { Candle, ChartType, DataExchange, DataMarketType, Instrument, PriceType, Timeframe } from "../../types";
 import type { ChartTimeZone } from "../../chart/timeAxis";
 import type { StrategyMenuItem } from "../ChartIndicatorOverlay";
 import type { CompareCandidate } from "../CompareControl";
@@ -16,6 +16,8 @@ export interface ChartCanvasProps {
   timeZone?: ChartTimeZone;
   onTimeZoneChange?: (timeZone: ChartTimeZone) => void;
   dataExchange: DataExchange;
+  dataMarketType?: DataMarketType;
+  dataPriceType?: PriceType;
   indicators: IndicatorConfig[];
   onIndicatorsChange: (indicators: IndicatorConfig[]) => void;
   onEditIndicatorLogic: (indicator: IndicatorConfig) => void;

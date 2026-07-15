@@ -7,7 +7,8 @@ export {
   type ShapeOverlays,
   type ShapeRay,
   type ShapeVLine,
-  type StrategyPreview
+  type StrategyPreview,
+  type StrategyPreviewOptions
 } from "./backtest/preview";
 export type {
   BacktestConfig,

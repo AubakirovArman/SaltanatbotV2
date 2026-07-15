@@ -51,8 +51,7 @@ function researchOutputs(bundle: Parameters<NonNullable<Plugin["generateBundle"]
     if (!output || output.fileName.endsWith(".map")) return;
     files.add(fileName);
     if (output.type === "chunk") {
-      const dynamicImports = output.isEntry ? [] : output.dynamicImports;
-      for (const dependency of [...output.imports, ...dynamicImports, ...(output.referencedFiles ?? [])]) visit(dependency);
+      for (const dependency of chunkDependencies(output, !output.isEntry)) visit(dependency);
     }
   };
   for (const root of roots) visit(root.fileName);
@@ -76,13 +75,19 @@ function initialShellOutputs(bundle: Parameters<NonNullable<Plugin["generateBund
     const output = bundle[fileName];
     if (!output || output.fileName.endsWith(".map")) return;
     files.add(fileName);
-    if (output.type === "chunk") for (const imported of output.imports) visit(imported);
+    if (output.type === "chunk") for (const imported of chunkDependencies(output, false)) visit(imported);
   };
   for (const output of Object.values(bundle)) {
     if (output.type === "chunk" && output.isEntry) visit(output.fileName);
-    if (output.type === "asset" && output.fileName.endsWith(".css")) files.add(output.fileName);
   }
   return [...files].sort();
+}
+
+function chunkDependencies(output: Extract<Parameters<NonNullable<Plugin["generateBundle"]>>[1][string], { type: "chunk" }>, includeDynamicImports: boolean): string[] {
+  const metadata = output as typeof output & {
+    viteMetadata?: { importedCss?: ReadonlySet<string>; importedAssets?: ReadonlySet<string> };
+  };
+  return [...new Set([...output.imports, ...(includeDynamicImports ? output.dynamicImports : []), ...(output.referencedFiles ?? []), ...(metadata.viteMetadata?.importedCss ?? []), ...(metadata.viteMetadata?.importedAssets ?? [])])];
 }
 
 function walkFiles(root: string) {

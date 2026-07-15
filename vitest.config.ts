@@ -11,13 +11,19 @@ import { defineConfig } from "vitest/config";
  * when the `.js` file does not exist on disk. The frontend uses bare `.ts`
  * imports and needs no special handling.
  *
- * Tests are deliberately restricted to PURE modules — nothing here imports a
- * module that opens the SQLite DB (store.ts / initStore) or touches the network.
+ * Tests are restricted to the dedicated backend/frontend test suites plus
+ * co-located frontend source tests. Generated output and installed dependencies
+ * are excluded explicitly.
  */
 export default defineConfig({
   test: {
-    // Only pick up our dedicated test folders, never production src.
-    include: ["backend/tests/**/*.test.ts", "frontend/tests/**/*.test.{ts,tsx}"],
+    include: [
+      "backend/tests/**/*.test.ts",
+      "frontend/tests/**/*.test.{ts,tsx}",
+      "frontend/src/**/*.test.{ts,tsx}",
+      "packages/arbitrage-sdk/**/*.test.ts",
+    ],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/generated/**"],
     environment: "node",
     globals: false,
     // Keep runs hermetic and fast; no DB/network setup is ever performed.

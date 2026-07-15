@@ -1,0 +1,69 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { RUNNING_BOTS_CHANGED_EVENT, TRADING_SESSION_CHANGED_EVENT } from "./sessionEvents";
+import { checkAuth, listBots } from "./tradeClient";
+
+export type RunningBotsSummaryStatus = "loading" | "ready" | "locked" | "error";
+
+export interface RunningBotsSummary {
+  count?: number;
+  status: RunningBotsSummaryStatus;
+  refresh: () => void;
+}
+
+/**
+ * Keeps the globally visible robot count current. The public auth probe runs
+ * first, so the protected bot list is requested only for an active session.
+ */
+export function useRunningBotsSummary(): RunningBotsSummary {
+  const [count, setCount] = useState<number>();
+  const [status, setStatus] = useState<RunningBotsSummaryStatus>("loading");
+  const mounted = useRef(true);
+  const inFlight = useRef(false);
+
+  const refresh = useCallback(() => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    void Promise.resolve()
+      .then(async () => {
+        const auth = await checkAuth();
+        if (!mounted.current) return;
+        if (!auth.ok) {
+          setCount(undefined);
+          setStatus("locked");
+          return;
+        }
+        const bots = await listBots();
+        if (!mounted.current) return;
+        setCount(bots.filter((bot) => bot.status === "running").length);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (!mounted.current) return;
+        setStatus("error");
+      })
+      .finally(() => {
+        inFlight.current = false;
+      });
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    refresh();
+    const onRefresh = () => refresh();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) refresh();
+    }, 15_000);
+    window.addEventListener("focus", onRefresh);
+    window.addEventListener(TRADING_SESSION_CHANGED_EVENT, onRefresh);
+    window.addEventListener(RUNNING_BOTS_CHANGED_EVENT, onRefresh);
+    return () => {
+      mounted.current = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onRefresh);
+      window.removeEventListener(TRADING_SESSION_CHANGED_EVENT, onRefresh);
+      window.removeEventListener(RUNNING_BOTS_CHANGED_EVENT, onRefresh);
+    };
+  }, [refresh]);
+
+  return { count, status, refresh };
+}

@@ -1,9 +1,14 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, extname, resolve } from "node:path";
+import { dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { publishedFrontendFiles } from "./lib/frontend-publication.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const dist = resolve(root, "frontend/dist");
+const configuredDist = process.env.FRONTEND_DIST_DIR;
+const dist = configuredDist ? resolve(process.cwd(), configuredDist) : resolve(root, "frontend/dist");
+const activeFiles = configuredDist
+  ? undefined
+  : publishedFrontendFiles({ frontendDirectory: resolve(root, "frontend"), liveDirectory: dist });
 const fail = (message) => {
   console.error(`PWA verification failed: ${message}`);
   process.exit(1);
@@ -78,7 +83,11 @@ for (const url of precache) {
   const path = resolve(dist, decodeURIComponent(url.slice(1)));
   if (!path.startsWith(`${dist}/`) || !existsSync(path) || !statSync(path).isFile()) fail(`precache target is missing: ${url}`);
 }
-const generatedAssets = walk(resolve(dist, "assets")).filter((path) => [".js", ".css"].includes(extname(path)));
+const generatedAssets = walk(resolve(dist, "assets")).filter(
+  (path) =>
+    [".js", ".css"].includes(extname(path)) &&
+    (!activeFiles || activeFiles.has(relative(dist, path).split(sep).join("/")))
+);
 const indexShellUrls = [...index.matchAll(/(?:src|href)="(\/(?:assets\/[^"?]+|theme-init\.js|logo\.(?:svg|png)))"/g)].map((match) => match[1]);
 for (const url of indexShellUrls) if (!precache.includes(url)) fail(`initial index resource is not precached: ${url}`);
 for (const url of precache.filter((url) => url.endsWith(".js"))) {

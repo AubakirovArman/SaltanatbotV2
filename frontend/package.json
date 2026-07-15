@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node ../scripts/check-pwa.mjs",
+    "build": "tsc -b && node ../scripts/build-frontend.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "check": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@saltanatbotv2/arbitrage-sdk": "0.1.0",
     "@saltanatbotv2/backtest-core": "0.1.0",
     "@saltanatbotv2/contracts": "0.1.0",
     "@saltanatbotv2/pine-compiler": "0.1.0",

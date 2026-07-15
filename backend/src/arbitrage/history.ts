@@ -12,11 +12,17 @@ export class ArbitrageHistoryRecorder {
   record(scan: ArbitrageScanResponse, now = Date.now()) {
     if (now - this.lastSample < SAMPLE_MS) return;
     this.lastSample = now;
-    const rows = scan.opportunities.filter((row) => Number.isFinite(row.grossSpreadBps) && Number.isFinite(row.topBookCapacityUsd)).slice(0, 50);
+    const rows = scan.opportunities
+      .filter((row) => row.dataQuality === "fresh" && routeSourcesHealthy(scan, row) && Number.isFinite(row.grossSpreadBps) && Number.isFinite(row.topBookCapacityUsd))
+      .slice(0, 50);
     if (rows.length) insertArbitrageHistory(rows, now);
     if (now - this.lastPrune >= 60 * 60_000) {
       this.lastPrune = now;
       pruneArbitrageHistory(now - RETENTION_MS);
     }
   }
+}
+
+function routeSourcesHealthy(scan: ArbitrageScanResponse, row: ArbitrageScanResponse["opportunities"][number]) {
+  return scan.sources.some((source) => source.exchange === row.spotExchange && source.market === "spot" && source.ok) && scan.sources.some((source) => source.exchange === row.futuresExchange && source.market === "perpetual" && source.ok);
 }

@@ -75,11 +75,11 @@ describe("private order stream payload normalization", () => {
       T: 500,
       o: {
         i: 42, c: "client-42", X: "PARTIALLY_FILLED", x: "TRADE", q: "2", z: "0.75", ap: "101.5",
-        t: 9001, l: "0.25", L: "102", n: "0.0102", N: "USDT", rp: "1.5", S: "SELL", T: 499
+        s: "BTCUSDT", t: 9001, l: "0.25", L: "102", n: "0.0102", N: "USDT", rp: "1.5", S: "SELL", T: 499
       }
     })).toMatchObject({
       execution: {
-        id: "binance:9001", qty: 0.25, price: 102, fee: 0.0102, feeAsset: "USDT",
+        id: "binance:BTCUSDT:9001", qty: 0.25, price: 102, fee: 0.0102, feeAsset: "USDT",
         realizedPnl: 1.5, side: "sell", ts: 499
       }
     });

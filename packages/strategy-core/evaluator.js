@@ -1,4 +1,6 @@
-import { alignSecuritySeries, getSecurityCandles } from "./securityData.js";
+import { alignSecuritySeries } from "./securityData.js";
+import { assertSecurityDependenciesResolved, resolveSecurityCandles } from "./securityRuntime.js";
+export { UnresolvedSecuritySeriesError } from "./securityRuntime.js";
 import { almaSeries, atr as atrSeries, bollingerBand, cci, change as changeSeries, correlationSeries, cmoSeries, cogSeries, dmiSeries, ema, extremeBars, highest, kcSeries, linregSeries, lowest, macdLine, mfiSeries, percentRankSeries, priceAt, roc, rsi, sarSeries, sma, sourceSeries, stdev, stochK, supertrendSeries, tsiSeries, valueWhen, vwapSeries, vwma, williamsR, wma } from "./ta.js";
 import { traceBarIntents } from "./trace.js";
 /** Hard shared per-bar execution budget for backtest, preview and live. */
@@ -25,6 +27,8 @@ export function evaluateBar(ir, candles, index, vars, ctx, securityData) {
 /** Create a reusable runtime for preview/backtest. Live callers may use
  * `evaluateBar()` when their candle buffer changes on every invocation. */
 export function createStrategyRuntime(ir, candles, options = {}) {
+    const unresolvedSecurityPolicy = options.unresolvedSecurityPolicy ?? "error";
+    assertSecurityDependenciesResolved(ir, options.securityData, unresolvedSecurityPolicy);
     return {
         candles,
         n: candles.length,
@@ -36,6 +40,7 @@ export function createStrategyRuntime(ir, candles, options = {}) {
         budgetHit: false,
         ctx: options.ctx ?? {},
         securityData: options.securityData,
+        unresolvedSecurityPolicy,
         explanations: new Map(),
         explanationsTruncated: false
     };
@@ -573,8 +578,8 @@ function computeSeries(expr, rt) {
     }
 }
 function securitySeries(expr, rt) {
-    const external = getSecurityCandles(rt.securityData, expr.symbol, expr.timeframe);
-    if (!external?.length)
+    const external = resolveSecurityCandles(rt.securityData, expr.symbol, expr.timeframe, rt.unresolvedSecurityPolicy);
+    if (!external)
         return getSeries(expr.source, rt);
     const child = {
         ...rt,

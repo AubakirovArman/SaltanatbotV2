@@ -6,6 +6,7 @@ import type { ChartTimeZone } from "./timeAxis";
 import type { AnchoredVwapSeries } from "./anchoredVwap";
 import type { MarketSessionRange } from "./marketSessions";
 import type { MarketStructureSnapshot } from "./marketStructure";
+import type { VisibleTimeRange, VolumeProfileTimeframe } from "./volumeProfileSource";
 
 export interface PlotArea {
   left: number;
@@ -120,6 +121,10 @@ export interface DrawChartOptions {
   showVolume?: boolean;
   /** Visible-range volume-at-price overlay. */
   showVolumeProfile?: boolean;
+  /** Explicit source candles for volume-at-price; an empty array suppresses stale/partial profiles. */
+  volumeProfileCandles?: Candle[];
+  volumeProfileTimeframe?: VolumeProfileTimeframe;
+  volumeProfileRange?: VisibleTimeRange;
   /** UTC session VWAP, previous-day levels and confirmed sweep context. */
   sessionLiquidity?: SessionLiquiditySnapshot;
   /** Prepared drawing-study points, kept out of Canvas renderers. */
@@ -134,6 +139,8 @@ export interface DrawChartOptions {
   baseSymbol?: string;
   /** Called with the viewport built for this frame, for pointer math. */
   onViewport?: (viewport: Viewport) => void;
+  /** Visible real-time span used by independently loaded chart studies. */
+  onVisibleTimeRange?: (range?: VisibleTimeRange) => void;
   /** Called with the compare legend (symbol · %change · color) each frame. */
   onCompareLegend?: (entries: CompareLegendSnapshot[]) => void;
   /** Called with the visible-range profile summary for an accessible DOM legend. */

@@ -7,7 +7,7 @@ import { escapeXml } from "./xml";
 
 /** Stable StrategyIR → editable Blockly XML facade. */
 export function irToBlocklyXml(ir: StrategyIR): string {
-  const context = createContext(new Map(ir.inputs.map((input) => [input.name, input.value])));
+  const context = createContext(new Map(ir.inputs.map((input) => [input.name, input])));
   const init = context.chain(ir.init ?? []);
   const rules = context.chain(ir.body);
   return `<xml xmlns="https://developers.google.com/blockly/xml">
@@ -18,10 +18,10 @@ export function irToBlocklyXml(ir: StrategyIR): string {
 </xml>`;
 }
 
-function createContext(defaults: ReadonlyMap<string, number>): BlocklySerializationContext {
+function createContext(inputs: BlocklySerializationContext["inputs"]): BlocklySerializationContext {
   const context = {} as BlocklySerializationContext;
   Object.assign(context, {
-    defaults,
+    inputs,
     num: (expr: Parameters<BlocklySerializationContext["num"]>[0]) => serializeNumeric(expr, context),
     bool: (expr: Parameters<BlocklySerializationContext["bool"]>[0]) => serializeBoolean(expr, context),
     chain: (statements: Parameters<BlocklySerializationContext["chain"]>[0]) => serializeStatements(statements, context)

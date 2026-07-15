@@ -1,0 +1,48 @@
+name: Credential-free public feed canary
+
+on:
+  schedule:
+    - cron: "43 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: public-feed-canary
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: six-venue public connectivity evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Prepare evidence directory
+        run: mkdir -p artifacts
+
+      - name: Observe public books and required funding signals
+        env:
+          PUBLIC_FEED_CANARY_TIMEOUT_MS: "30000"
+        run: npm run --silent test:public-feed-canary > artifacts/public-feed-canary.json
+
+      - name: Upload public canary evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-feed-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/public-feed-canary.json
+          if-no-files-found: error
+          retention-days: 30

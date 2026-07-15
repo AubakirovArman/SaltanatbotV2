@@ -7,6 +7,23 @@ export function hasRecordedExecution(events: readonly OrderEventRecord[], execut
   );
 }
 
+/** Terminal aggregate venue state is not execution proof until every fill is durably accounted. */
+export function isTerminalUnaccountedExecution(record: OrderJournalRecord): boolean {
+  if (record.status === "intent" || record.status === "accepted" || record.status === "partially_filled" || record.status === "unknown") return false;
+  if (record.filledQty === undefined) return record.status === "filled" || record.status === "replaced";
+  if (!Number.isFinite(record.filledQty) || record.filledQty < 0) {
+    throw new Error(`Order ${record.id} has an invalid venue filled quantity`);
+  }
+  const accounted = record.accountedFilledQty ?? 0;
+  if (!Number.isFinite(accounted) || accounted < 0 || accounted > record.filledQty + Number.EPSILON) {
+    throw new Error(`Order ${record.id} has an invalid accounted execution quantity`);
+  }
+  if ((record.status === "filled" || record.status === "replaced") && record.filledQty <= 0) {
+    throw new Error(`Order ${record.id} is terminal-filled without a positive venue execution quantity`);
+  }
+  return record.filledQty > accounted + Number.EPSILON;
+}
+
 export function fillFromExchangeExecution(
   record: OrderJournalRecord,
   snapshot: ExchangeOrderSnapshot

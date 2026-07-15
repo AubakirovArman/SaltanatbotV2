@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { writeDistributionManifest } from "./lib/distribution-manifest.mjs";
+import { withPublishedFrontendFiles } from "./lib/frontend-publication.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = parseArgs(process.argv.slice(2));
@@ -47,7 +48,7 @@ copyTree("docs");
 copyTree("packages");
 copyFiles(["backend/package.json", "frontend/package.json"]);
 copyTree("backend/dist");
-copyTree("frontend/dist");
+copyPublishedFrontend();
 
 writeFileSync(path.join(staging, "release-info.json"), `${JSON.stringify(metadata, null, 2)}\n`);
 writeFileSync(path.join(releaseDir, `${name}.release-info.json`), `${JSON.stringify(metadata, null, 2)}\n`);
@@ -83,6 +84,22 @@ function copyTree(relative) {
   cpSync(path.join(root, relative), path.join(staging, relative), {
     recursive: true,
     filter: (source) => !/(?:^|\/)(?:node_modules|data|dist)(?:\/|$)/.test(path.relative(path.join(root, relative), source)) || source === path.join(root, relative, "dist")
+  });
+}
+
+function copyPublishedFrontend() {
+  const frontend = path.join(root, "frontend");
+  const sourceRoot = path.join(frontend, "dist");
+  withPublishedFrontendFiles({ frontendDirectory: frontend, liveDirectory: sourceRoot }, (files) => {
+    if (!files) {
+      copyTree("frontend/dist");
+      return;
+    }
+    for (const relative of [...files].sort()) {
+      const destination = path.join(staging, "frontend/dist", relative);
+      mkdirSync(path.dirname(destination), { recursive: true });
+      cpSync(path.join(sourceRoot, relative), destination);
+    }
   });
 }
 

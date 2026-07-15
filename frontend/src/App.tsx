@@ -22,20 +22,23 @@ import { useSparklines } from "./hooks/useSparklines";
 import { loadStrategyLab, warmStrategyLab } from "./strategy/loadStrategyLab";
 import { loadTradingView } from "./trading/loadTradingView";
 import { loadArbitrageScreener } from "./arbitrage/loadArbitrageScreener";
+import { MARKET_OPPORTUNITY_HANDOFF_EVENT } from "./arbitrage/marketOpportunityHandoffEvent";
 import { loadInitialWorkspaceState } from "./strategy/storage";
 import { useArtifactLibrary } from "./strategy/useArtifactLibrary";
 import type { AssetClass, ChartType, Instrument, Timeframe } from "./types";
 import { useAppShell, type AppMode } from "./app/useAppShell";
 import { useAppCommands } from "./app/useAppCommands";
 import { shellText } from "./i18n/shell";
+import { automationText } from "./i18n/automation";
 import type { Locale } from "./i18n";
-import { localized, translate } from "./i18n";
+import { localized } from "./i18n";
 import { loadLastChartSession } from "./app/chartSession";
 import { pickDistinctMarketSymbols } from "./app/distinctMarkets";
 import { launchView } from "./app/launchView";
 import { createPwaFileLaunchBatch, registerPwaFileLaunch, type PwaFileLaunchBatch, type PwaLaunchWindow } from "./pwa/fileLaunch";
 import { PwaFileLaunchDialog } from "./pwa/PwaFileLaunchDialog";
 import { clearPwaShareTargetLaunch, discardPwaShareTarget, loadPwaShareTarget, parsePwaShareTargetLaunch } from "./pwa/shareTarget";
+import { useRunningBotsSummary } from "./trading/useRunningBotsSummary";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
@@ -69,6 +72,7 @@ export default function App() {
   const [chartType, setChartType] = useState<ChartType>(initialPrimaryChart.chartType);
   const [asset, setAsset] = useState<AssetClass | "all">("all");
   const [mode, setMode] = useState<AppMode>(launchView);
+  const [robotsCenterRequest, setRobotsCenterRequest] = useState(0);
   const [offlineResearchOpen, setOfflineResearchOpen] = useState(false);
   const [launchedFiles, setLaunchedFiles] = useState<QueuedPwaLaunch[]>([]);
   const shareTargetLoadStarted = useRef(false);
@@ -77,6 +81,7 @@ export default function App() {
   const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
   const [paneStreams, setPaneStreams] = useState<Record<string, PaneMarketStream>>({});
   const [mobilePanel, setMobilePanel] = useState<"markets" | "instrument">();
+  const runningBotsSummary = useRunningBotsSummary();
   const shell = useAppShell({
     symbol, setSymbol, timeframe, setTimeframe, chartType, setChartType,
     setMode, indicators, setIndicators, initialChartSession
@@ -84,11 +89,30 @@ export default function App() {
   const { cryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, workspaces, activeWorkspaceId, compareOverlays } = shell;
   const isMobile = useMediaQuery("(max-width: 760px)");
   useEffect(() => {
-    document.title = `${translate(locale, mode)} · SaltanatbotV2`;
+    const workspace = mode === "chart"
+      ? automationText(locale, "monitoring")
+      : mode === "screener"
+        ? automationText(locale, "screener")
+        : `${automationText(locale, "automation")} · ${automationText(locale, mode === "strategy" ? "strategies" : "robots")}`;
+    document.title = `${workspace} · SaltanatbotV2`;
   }, [locale, mode]);
   useEffect(() => {
     if (!isMobile || mode !== "chart") setMobilePanel(undefined);
   }, [isMobile, mode]);
+  useEffect(() => {
+    let active = true;
+    const openOpportunity = () => setMode("trade");
+    window.addEventListener(MARKET_OPPORTUNITY_HANDOFF_EVENT, openOpportunity);
+    void import("./arbitrage/marketOpportunityHandoff")
+      .then(({ readMarketOpportunityHandoff }) => {
+        if (active && readMarketOpportunityHandoff()) openOpportunity();
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      window.removeEventListener(MARKET_OPPORTUNITY_HANDOFF_EVENT, openOpportunity);
+    };
+  }, []);
   useEffect(() => {
     registerPwaFileLaunch(window as unknown as PwaLaunchWindow, (batch) => {
       setLaunchedFiles((current) => [...current, { batch, approved: false }]);
@@ -133,8 +157,15 @@ export default function App() {
   });
   const strategyLibrary = artifactLibrary.artifacts;
   const activeArtifactId = artifactLibrary.activeArtifactId;
-  const stream = useMarketStream(symbol, timeframe, cryptoExchange);
+  const primaryChart = shell.charts[0];
+  const primaryExchange = primaryChart?.exchange ?? cryptoExchange;
+  const primaryMarketType = primaryChart?.marketType ?? "spot";
+  const primaryPriceType = primaryExchange === "bybit" ? "last" : primaryChart?.priceType ?? "last";
+  const stream = useMarketStream(symbol, timeframe, primaryExchange, { marketType: primaryMarketType, priceType: primaryPriceType });
   const activeChart = shell.activeChart ?? shell.charts[0];
+  const activeExchange = activeChart?.exchange ?? cryptoExchange;
+  const activeMarketType = activeChart?.marketType ?? "spot";
+  const activePriceType = activeExchange === "bybit" ? "last" : activeChart?.priceType ?? "last";
   const activeInstrument = catalog?.instruments.find((item) => item.symbol === activeChart?.symbol) ?? {
     ...fallbackInstrument,
     symbol: activeChart?.symbol ?? fallbackInstrument.symbol,
@@ -156,11 +187,11 @@ export default function App() {
   const secondaryStream = paneStreams[activeChart?.id ?? ""];
   const activeStream = activeIsPrimary
     ? stream
-    : secondaryStream?.symbol === activeChart?.symbol && secondaryStream.timeframe === activeChart?.timeframe
+    : secondaryStream?.symbol === activeChart?.symbol && secondaryStream.timeframe === activeChart?.timeframe && secondaryStream.exchange === activeExchange && secondaryStream.marketType === activeMarketType && secondaryStream.priceType === activePriceType
       ? secondaryStream
       : undefined;
   const activeCandles = activeStream?.candles ?? [];
-  const compareState = useCompareSeries(compareOverlays, cryptoExchange);
+  const compareState = useCompareSeries(compareOverlays, primaryExchange);
   const showChart = useCallback((nextSymbol: string, nextTimeframe: Timeframe) => {
     setSymbol(nextSymbol);
     setTimeframe(nextTimeframe);
@@ -173,7 +204,7 @@ export default function App() {
     symbol,
     timeframe,
     candles: stream.candles,
-    exchange: cryptoExchange,
+    exchange: primaryExchange,
     showChart
   });
 
@@ -244,13 +275,16 @@ export default function App() {
       selectedAsset={asset}
       latest={activeCandles.at(-1)}
       sparklines={sparklines}
-      cryptoExchange={cryptoExchange}
+      cryptoExchange={activeExchange}
       onSelectSymbol={(nextSymbol) => {
         setActiveSymbol(nextSymbol);
         if (isMobile) setMobilePanel(undefined);
       }}
       onSelectAsset={setAsset}
-      onSelectExchange={shell.setCryptoExchange}
+      onSelectExchange={(nextExchange) => {
+        shell.setCryptoExchange(nextExchange);
+        shell.updateActiveChart({ exchange: nextExchange, priceType: "last" });
+      }}
     />
   );
   const statsPanel = (
@@ -265,6 +299,8 @@ export default function App() {
       gapCount={activeStream?.gapCount}
       missingBars={activeStream?.missingBars}
       fallbackActive={activeStream?.fallbackActive}
+      marketType={activeMarketType}
+      priceType={activePriceType}
       alerts={priceAlerts.alerts}
       onAddAlert={priceAlerts.addAlert}
       onRemoveAlert={priceAlerts.removeAlert}
@@ -273,6 +309,10 @@ export default function App() {
   );
   const actualLeftOpen = shell.panelsSwapped ? rightOpen : leftOpen;
   const actualRightOpen = shell.panelsSwapped ? leftOpen : rightOpen;
+  const openRobotsCenter = useCallback(() => {
+    setRobotsCenterRequest((request) => request + 1);
+    setMode("trade");
+  }, []);
 
   return (
     <div className="terminal-shell">
@@ -287,6 +327,8 @@ export default function App() {
         locale={locale}
         leftOpen={isMobile ? mobilePanel === "markets" : leftOpen}
         rightOpen={isMobile ? mobilePanel === "instrument" : rightOpen}
+        runningBotsCount={runningBotsSummary.count}
+        runningBotsStatus={runningBotsSummary.status}
         mobilePanels={isMobile}
         panelsSwapped={shell.panelsSwapped}
         workspaces={workspaces}
@@ -304,6 +346,7 @@ export default function App() {
         onTimeframeChange={setActiveTimeframe}
         onChartTypeChange={setActiveChartType}
         onModeChange={setMode}
+        onOpenRobotsCenter={openRobotsCenter}
         onStrategyWarmup={warmStrategyLab}
         onOpenPalette={appCommands.openPalette}
         onOpenShortcutSettings={appCommands.openShortcutSettings}
@@ -386,7 +429,9 @@ export default function App() {
               locale={locale}
               timeZone={shell.charts[0]?.timeZone}
               onTimeZoneChange={(timeZone) => shell.updateChart(shell.charts[0]?.id ?? "chart-1", { timeZone })}
-              dataExchange={cryptoExchange}
+              dataExchange={primaryExchange}
+              dataMarketType={primaryMarketType}
+              dataPriceType={primaryPriceType}
               indicators={indicators}
               onIndicatorsChange={setIndicators}
               onEditIndicatorLogic={artifactLibrary.selectIndicatorLogic}
@@ -436,12 +481,16 @@ export default function App() {
           )}
           {mode === "trade" && (
             <Suspense fallback={<StrategyLoading locale={locale} />}>
-              <TradingView strategies={strategyLibrary} catalog={catalog} locale={locale} />
+              <TradingView strategies={strategyLibrary} catalog={catalog} locale={locale} portfolioRequest={robotsCenterRequest} />
             </Suspense>
           )}
           {mode === "screener" && (
             <Suspense fallback={<StrategyLoading locale={locale} />}>
-              <ArbitrageScreener locale={locale} onOpenChart={(nextSymbol) => { setSymbol(nextSymbol); setMode("chart"); }} />
+              <ArbitrageScreener locale={locale} onOpenChart={(target) => {
+                shell.updateActiveChart({ symbol: target.symbol, exchange: target.exchange, marketType: target.marketType, priceType: target.priceType });
+                shell.setCryptoExchange(target.exchange);
+                setMode("chart");
+              }} />
             </Suspense>
           )}
           {mode === "strategy" && (

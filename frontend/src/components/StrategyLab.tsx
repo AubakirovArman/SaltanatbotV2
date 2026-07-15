@@ -15,6 +15,7 @@ import { useStrategyWorkspace } from "../strategy/useStrategyWorkspace";
 import type { PortableStrategyArtifact } from "../strategy/strategyFile";
 import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 import type { PwaFileLaunchBatch } from "../pwa/fileLaunch";
+import "../styles/strategy.css";
 
 interface StrategyLabProps {
   artifacts: StrategyArtifact[];
@@ -37,12 +38,7 @@ interface StrategyLabProps {
   exchange?: DataExchange;
   theme?: "dark" | "light";
   locale: Locale;
-  onApplyResult?: (
-    result: BacktestResult,
-    symbol: string,
-    timeframe: Timeframe,
-    visuals?: { plots: PlotSeries[]; shapes: ShapeOverlays }
-  ) => void;
+  onApplyResult?: (result: BacktestResult, symbol: string, timeframe: Timeframe, visuals: { plots: PlotSeries[]; shapes: ShapeOverlays } | undefined, exchange: DataExchange) => void;
   onShowOnChart?: (symbol: string, timeframe: Timeframe) => void;
   onOpenTrading?: () => void;
 }
@@ -85,10 +81,7 @@ export function StrategyLab({
   const [shareState, setShareState] = useState<"idle" | "copied">("idle");
   const instrument = catalog?.instruments.find((item) => item.symbol === research.symbol);
   const errors = [...new Set([...workspace.compileErrors, ...research.errors])];
-  const diagnostics = [
-    ...workspace.compileDiagnostics,
-    ...research.errors.filter((message) => !workspace.compileErrors.includes(message)).map((message) => ({ severity: "error" as const, message }))
-  ];
+  const diagnostics = [...workspace.compileDiagnostics, ...research.errors.filter((message) => !workspace.compileErrors.includes(message)).map((message) => ({ severity: "error" as const, message }))];
 
   useEffect(() => {
     research.clearResult();
@@ -172,6 +165,7 @@ export function StrategyLab({
           optSpec={research.optSpec}
           onOptSpecChange={research.setOptSpec}
           onOptimize={() => void research.optimize()}
+          onCancelOptimize={research.cancelOptimization}
           optProgress={research.optProgress}
           walkForwardOn={research.walkForwardOn}
           onToggleWalkForward={research.setWalkForwardOn}
@@ -180,6 +174,12 @@ export function StrategyLab({
           walkForwardMode={research.walkForwardMode}
           onWalkForwardModeChange={research.setWalkForwardMode}
           optimizeResult={research.optimizeResult}
+          optimizationMode={research.optimizationMode}
+          onOptimizationModeChange={research.setOptimizationMode}
+          geneticConfig={research.geneticConfig}
+          onGeneticConfigChange={research.setGeneticConfig}
+          geneticResult={research.geneticResult}
+          geneticProgress={research.geneticProgress}
           walkForwardResult={research.walkForwardResult}
           onApplyCombo={research.applyCombo}
           errors={errors}

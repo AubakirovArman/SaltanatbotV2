@@ -1,0 +1,4 @@
+{
+  "channel": "activeAssetCtx",
+  "data": { "coin": "BTC", "ctx": { "dayNtlVlm": "1000000", "prevDayPx": "98", "markPx": "100.5", "midPx": "100.5", "funding": "0.000012", "openInterest": "500", "oraclePx": "100.4" } }
+}

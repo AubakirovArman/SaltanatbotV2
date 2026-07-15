@@ -47,6 +47,11 @@ describe("findLiveCollision", () => {
     expect(findLiveCollision(bot({ id: "b", exchange: "binance", symbol: "BTCUSDT" }), running)).toBeUndefined();
   });
 
+  it("does not collide across explicitly different account ids", () => {
+    const running = [bot({ id: "a", exchange: "binance", accountId: "account-a", symbol: "BTCUSDT" })];
+    expect(findLiveCollision(bot({ id: "b", exchange: "binance", accountId: "account-b", symbol: "BTCUSDT" }), running)).toBeUndefined();
+  });
+
   it("ignores the bot itself (restart on same id)", () => {
     const running = [bot({ id: "a", exchange: "binance", symbol: "BTCUSDT" })];
     expect(findLiveCollision(bot({ id: "a", exchange: "binance", symbol: "BTCUSDT" }), running)).toBeUndefined();

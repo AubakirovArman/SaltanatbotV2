@@ -50,7 +50,7 @@ function harness() {
 }
 
 describe("startup order reconciliation", () => {
-  it("uses signed status to advance accepted and partial orders to terminal states", async () => {
+  it("updates aggregate terminal state but keeps fills unresolved without execution accounting", async () => {
     const h = harness();
     const accepted = record("1", "accepted");
     const partial = record("2", "partially_filled");
@@ -68,9 +68,38 @@ describe("startup order reconciliation", () => {
 
     const result = await reconcileStartupOrders([partial, accepted], [], adapter, h.lifecycle);
 
-    expect(result).toMatchObject({ checked: 2, resolved: 2, updated: 2, unresolved: [] });
+    expect(result).toMatchObject({ checked: 2, resolved: 0, updated: 2 });
+    expect(result.unresolved).toHaveLength(2);
+    expect(result.unresolved.map((issue) => issue.message).join(" ")).toMatch(/execution evidence/);
     expect(h.records.map((value) => value.status)).toEqual(["filled", "cancelled"]);
     expect(adapter.orderStatus).toHaveBeenNthCalledWith(1, "BTCUSDT", expect.objectContaining({ orderId: "venue-1" }));
+  });
+
+  it("keeps a reduce-only close unresolved until its authenticated fill is accounted", async () => {
+    const h = harness();
+    const close = {
+      ...record("20", "accepted"),
+      action: "close" as const,
+      side: "sell" as const,
+      reduceOnly: true
+    };
+    const adapter = {
+      orderStatus: vi.fn(async () => ({
+        id: close.exchangeOrderId ?? "",
+        clientId: close.clientId,
+        status: "filled" as const,
+        qty: 1,
+        filledQty: 1,
+        avgFillPrice: 100,
+        updatedAt: 50
+      }))
+    };
+
+    const result = await reconcileStartupOrders([close], [], adapter, h.lifecycle);
+
+    expect(result.unresolved).toHaveLength(1);
+    expect(result.unresolved[0].message).toMatch(/execution evidence/i);
+    expect(h.records.at(-1)).toMatchObject({ action: "close", status: "filled", filledQty: 1 });
   });
 
   it("falls back to open orders and preserves a known partial fill", async () => {
@@ -98,12 +127,15 @@ describe("startup order reconciliation", () => {
     expect(h.records[0]).toMatchObject({ status: "unknown", message: expect.stringMatching(/operator review/i) });
   });
 
-  it("does not query terminal rows and isolates a signed-query failure", async () => {
+  it("skips fully accounted terminal rows and isolates a signed-query failure", async () => {
     const h = harness();
     const failed = record("6", "unknown");
     const adapter = { orderStatus: vi.fn(async () => { throw new Error("rate limited"); }) };
 
-    const result = await reconcileStartupOrders([record("7", "filled"), failed], [], adapter, h.lifecycle);
+    const result = await reconcileStartupOrders([
+      { ...record("7", "filled"), filledQty: 1, accountedFilledQty: 1 },
+      failed
+    ], [], adapter, h.lifecycle);
 
     expect(result.checked).toBe(1);
     expect(result.unresolved).toHaveLength(1);

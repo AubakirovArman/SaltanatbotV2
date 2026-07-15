@@ -213,7 +213,7 @@ export const ruShell = {
   shortPosition: "Шорт-позиция",
   measure: "Измерение (Δ цены / % / свечи)",
   magnet: "Магнит (привязка к цене)",
-  toggleVolume: "Показать или скрыть объём",
+  toggleVolume: "Объём на свечах",
   toggleVolumeProfile: "Показать или скрыть профиль объёма видимого диапазона",
   volumeProfileEstimate: "Оценка по диапазонам OHLCV-свечей",
   pointOfControl: "POC",

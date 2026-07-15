@@ -3,6 +3,104 @@ export type AssetClass = "crypto" | "forex" | "stock" | "index";
 export type Timeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "1d" | "1w" | "1M";
 export type ChartType = "candles" | "hollow" | "heikin" | "bars" | "line" | "step" | "area" | "baseline" | "renko" | "linebreak" | "kagi" | "pnf";
 export type DataExchange = "binance" | "bybit";
+export type DataMarketType = "spot" | "linear" | "inverse";
+export type PriceType = "last" | "mark" | "index";
+/** Route used by chart candle transports. Kept separate from generic venue taxonomy. */
+export interface ChartDataRoute {
+    exchange: DataExchange;
+    marketType: DataMarketType;
+    priceType: PriceType;
+}
+/** Extensible venue/instrument contract used by scanners and future adapters. */
+export type VenueId = string;
+export type VenueMarketType = "spot" | "margin" | "perpetual" | "future" | "option" | "native-spread";
+/** Market scope with a periodic funding-settlement contract in the public facade. */
+export type VenueFundingMarketType = "perpetual";
+export type VenuePriceType = "last" | "mark" | "index";
+export type ContractDirection = "linear" | "inverse" | "quanto";
+export type VenueQuantityUnit = "base" | "quote" | "contract";
+export interface VenueDynamicPriceRules {
+    staticTickSize: false;
+    maxSignificantFigures: number;
+    maxDecimals: number;
+    integerPricesAlwaysAllowed: boolean;
+}
+export interface MarketRouteRef {
+    venue: VenueId;
+    marketType: VenueMarketType;
+    symbol: string;
+    priceType: VenuePriceType;
+}
+export interface RegistryInstrument {
+    /** Stable internal identifier: venue:market:native-symbol. */
+    id: string;
+    /** Venue-native asset identifier. This value alone is not cross-venue identity proof. */
+    assetId: string;
+    /**
+     * Reviewed canonical economic identity shared across venues. Omitted unless an explicit
+     * identity mapping exists; consumers must fail closed when cross-venue identity matters.
+     */
+    economicAssetId?: string;
+    venue: VenueId;
+    venueSymbol: string;
+    baseAsset: string;
+    quoteAsset: string;
+    settleAsset: string;
+    marketType: VenueMarketType;
+    contractDirection?: ContractDirection;
+    /** Effective base/value units represented by one derivative contract. */
+    contractMultiplier: number;
+    /** Native venue contract value before any additional multiplier. */
+    contractValue?: number;
+    contractValueCurrency?: string;
+    /** Unit used by venue quantityStep/minimumQuantity and public depth sizes. */
+    quantityUnit?: VenueQuantityUnit;
+    underlying?: string;
+    instrumentFamily?: string;
+    /** Positive static increment, or zero only when dynamic priceRules are supplied. */
+    tickSize: number;
+    priceRules?: VenueDynamicPriceRules;
+    quantityStep: number;
+    minimumQuantity: number;
+    minimumNotional: number;
+    status: "trading" | "prelaunch" | "settling" | "closed";
+    fundingIntervalMinutes?: number;
+    expiryTime?: number;
+    strikePrice?: number;
+    optionType?: "call" | "put";
+}
+export interface VenueCapabilityManifest {
+    venue: VenueId;
+    publicData: boolean;
+    spot: boolean;
+    margin: boolean;
+    perpetual: boolean;
+    datedFuture: boolean;
+    option: boolean;
+    nativeSpread: boolean;
+    topBook: boolean;
+    depth: boolean;
+    publicTrades: boolean;
+    funding: boolean;
+    borrow: boolean;
+    depositWithdrawal: boolean;
+    privateExecution: boolean;
+    demoEnvironment: boolean;
+    /**
+     * Product/operation-specific application scope. Missing combinations are unsupported.
+     * The legacy booleans above are conservative discovery summaries and must never be
+     * used to authorize account mutations.
+     */
+    scopes?: VenueCapabilityScope[];
+}
+export type VenueCapabilityProduct = VenueMarketType | "account";
+export type VenueCapabilityOperation = "public-data" | "private-execution" | "borrow" | "deposit-withdrawal";
+export type VenueCapabilityStatus = "implemented" | "experimental" | "manual-only";
+export interface VenueCapabilityScope {
+    product: VenueCapabilityProduct;
+    operation: VenueCapabilityOperation;
+    status: VenueCapabilityStatus;
+}
 export interface Instrument {
     symbol: string;
     displayName: string;

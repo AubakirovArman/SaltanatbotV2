@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { readBoundedText } from "../http/boundedResponse.js";
 import type { Candle, Instrument, Timeframe } from "../types.js";
 import { bybitIntervals, timeframeMs } from "../market/timeframes.js";
 import { fetchWithRetry } from "./http.js";
@@ -19,6 +20,8 @@ interface BybitKlineMessage {
   }>;
 }
 
+const MAX_CANDLE_PAYLOAD_BYTES = 4 * 1024 * 1024;
+
 /** Public Bybit v5 market data (spot/linear/inverse klines REST + WS). No API keys needed. */
 export class BybitProvider implements MarketProvider {
   readonly name = "Bybit public";
@@ -38,7 +41,8 @@ export class BybitProvider implements MarketProvider {
 
     const response = await fetchWithRetry(url);
     if (!response.ok) throw new Error(`Bybit HTTP ${response.status}`);
-    const payload = (await response.json()) as { retCode: number; retMsg: string; result?: { list?: BybitKline[] } };
+    const body = await readBoundedText(response, MAX_CANDLE_PAYLOAD_BYTES, () => new Error("Bybit candle response is too large"));
+    const payload = JSON.parse(body) as { retCode: number; retMsg: string; result?: { list?: BybitKline[] } };
     if (payload.retCode !== 0) throw new Error(`Bybit: ${payload.retMsg}`);
     const list = payload.result?.list ?? [];
     // Bybit returns newest-first; reverse to ascending time.
@@ -78,7 +82,7 @@ export class BybitProvider implements MarketProvider {
     };
 
     const connect = () => {
-      socket = new WebSocket(`wss://stream.bybit.com/v5/public/${category}`);
+      socket = new WebSocket(`wss://stream.bybit.com/v5/public/${category}`, { maxPayload: 2 * 1024 * 1024 });
       socket.on("open", () => {
         const reconnected = attempts > 0;
         attempts = 0;

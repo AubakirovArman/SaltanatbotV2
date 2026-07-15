@@ -19,9 +19,11 @@ The backend composes public market data, authenticated trading APIs, WebSocket s
 
 - Loopback is the default bind.
 - Trade mutations require role authorization and CSRF in browser sessions.
+- API-key storage and risk-increasing live/account mutations require TLS, a direct loopback socket or the explicit development override; proxy headers are trusted only through `TRUST_PROXY`.
 - WebSocket trade access uses short-lived one-use tickets.
 - Secrets are encrypted at rest and redacted from audit data.
 - Shutdown preserves resumable desired bot state and closes subscriptions.
+- Non-paper bots require positive position/order/daily-loss/open-order caps and pass a server-side preflight immediately before live execution.
 
 ## Tests
 

@@ -1,0 +1,16 @@
+{
+  "channel": "l2_data",
+  "timestamp": "2026-07-14T12:00:00.210000Z",
+  "sequence_num": 1,
+  "events": [
+    {
+      "type": "update",
+      "product_id": "BTC-USD",
+      "updates": [
+        { "side": "bid", "event_time": "2026-07-14T12:00:00.200000Z", "price_level": "100", "new_quantity": "0" },
+        { "side": "bid", "event_time": "2026-07-14T12:00:00.205000Z", "price_level": "100.5", "new_quantity": "6" },
+        { "side": "offer", "event_time": "2026-07-14T12:00:00.205000Z", "price_level": "101", "new_quantity": "7" }
+      ]
+    }
+  ]
+}

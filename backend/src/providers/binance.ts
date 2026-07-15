@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { readBoundedText } from "../http/boundedResponse.js";
 import type { Candle, Instrument, Timeframe } from "../types.js";
 import { binanceIntervals, timeframeMs } from "../market/timeframes.js";
 import { fetchWithRetry } from "./http.js";
@@ -33,6 +34,8 @@ interface BinanceStreamMessage {
   };
 }
 
+const MAX_CANDLE_PAYLOAD_BYTES = 4 * 1024 * 1024;
+
 export class BinanceProvider implements MarketProvider {
   readonly name = "Binance public";
 
@@ -57,7 +60,8 @@ export class BinanceProvider implements MarketProvider {
     if (!response.ok) {
       throw new Error(`Binance HTTP ${response.status}`);
     }
-    const payload = (await response.json()) as BinanceKline[];
+    const body = await readBoundedText(response, MAX_CANDLE_PAYLOAD_BYTES, () => new Error("Binance candle response is too large"));
+    const payload = JSON.parse(body) as BinanceKline[];
     return payload.map((item) => this.fromKline(item, timeframe));
   }
 
@@ -98,7 +102,7 @@ export class BinanceProvider implements MarketProvider {
     };
 
     const connect = () => {
-      socket = new WebSocket(url);
+      socket = new WebSocket(url, { maxPayload: 2 * 1024 * 1024 });
       socket.on("open", () => {
         const reconnected = attempts > 0;
         attempts = 0;

@@ -1,3 +1,4 @@
+import { getSecurityDataEvidence, getSecuritySeriesStore } from "@saltanatbotv2/strategy-core";
 function classify(source) {
     const name = source?.trim();
     if (!name)
@@ -25,18 +26,19 @@ export function buildBacktestDataProvenance(chartCandles, securityData) {
     const counts = new Map();
     collect(chartCandles, "chart", counts);
     let securityBars = 0;
-    if (securityData instanceof Map) {
-        for (const candles of securityData.values()) {
-            securityBars += candles.length;
-            collect(candles, "security", counts);
-        }
+    const securityStore = getSecuritySeriesStore(securityData);
+    const seenSecuritySeries = new Set();
+    const securitySeries = securityStore instanceof Map
+        ? securityStore.values()
+        : Object.values(securityStore ?? {});
+    for (const candles of securitySeries) {
+        if (seenSecuritySeries.has(candles))
+            continue;
+        seenSecuritySeries.add(candles);
+        securityBars += candles.length;
+        collect(candles, "security", counts);
     }
-    else if (securityData) {
-        for (const candles of Object.values(securityData)) {
-            securityBars += candles.length;
-            collect(candles, "security", counts);
-        }
-    }
+    const securityRequests = snapshotSecurityEvidence(getSecurityDataEvidence(securityData));
     const sources = [...counts.values()].sort((a, b) => a.scope.localeCompare(b.scope) || a.source.localeCompare(b.source) || a.kind.localeCompare(b.kind));
     const fallbackBars = sources
         .filter((source) => source.kind === "fallback" || source.kind === "synthetic")
@@ -64,6 +66,17 @@ export function buildBacktestDataProvenance(chartCandles, securityData) {
         securityBars,
         fallbackBars,
         unknownBars,
-        performanceClaimsValid: status === "real"
+        ...(securityRequests ? { securityRequests } : {}),
+        performanceClaimsValid: status === "real" && (securityRequests?.unresolved.length ?? 0) === 0
+    };
+}
+function snapshotSecurityEvidence(evidence) {
+    if (!evidence)
+        return undefined;
+    return {
+        version: 1,
+        requested: evidence.requested.map((request) => ({ ...request })),
+        resolved: evidence.resolved.map((request) => ({ ...request, keys: [...request.keys] })),
+        unresolved: evidence.unresolved.map((request) => ({ ...request }))
     };
 }

@@ -46,26 +46,67 @@ export function isTelegramControlEnabled(config: TelegramConfig = getNotifyConfi
 
 export type NotifyEvent = "start" | "stop" | "open" | "close" | "error" | "signal";
 
-interface NotifyPayload {
+export interface NotifyPayload {
   event: NotifyEvent;
   bot: string;
   symbol?: string;
   text: string;
 }
 
-/** Fire notifications to all enabled channels. Failures are swallowed (logged by caller). */
+export interface NotifyDeliveryReport {
+  attemptedChannels: Array<"telegram" | "vk">;
+  deliveredChannels: Array<"telegram" | "vk">;
+  failures: Array<{ channel: "telegram" | "vk"; message: string }>;
+}
+
+export class NotificationDeliveryError extends Error {
+  constructor(
+    message: string,
+    readonly report: NotifyDeliveryReport
+  ) {
+    super(message);
+    this.name = "NotificationDeliveryError";
+  }
+}
+
+/** Best-effort compatibility path used by bot lifecycle notifications. */
 export async function notify(payload: NotifyPayload): Promise<void> {
+  await dispatchNotification(payload);
+}
+
+/**
+ * Checked delivery for durable outboxes. It rejects when no channel is
+ * configured or any enabled channel fails, allowing the caller to persist a
+ * retry instead of treating Promise.allSettled() as successful delivery.
+ */
+export async function notifyChecked(payload: NotifyPayload): Promise<NotifyDeliveryReport> {
+  const report = await dispatchNotification(payload);
+  if (report.attemptedChannels.length === 0) throw new NotificationDeliveryError("No enabled notification channel is configured", report);
+  if (report.failures.length > 0) {
+    throw new NotificationDeliveryError(`Notification delivery failed: ${report.failures.map((failure) => `${failure.channel}: ${failure.message}`).join("; ")}`, report);
+  }
+  return report;
+}
+
+async function dispatchNotification(payload: NotifyPayload): Promise<NotifyDeliveryReport> {
   const config = getNotifyConfig();
   const icon = ICONS[payload.event];
   const message = `${icon} <b>${escapeHtml(payload.bot)}</b>${payload.symbol ? ` · ${escapeHtml(payload.symbol)}` : ""}\n${escapeHtml(payload.text)}`;
-  const jobs: Promise<unknown>[] = [];
+  const jobs: Array<{ channel: "telegram" | "vk"; promise: Promise<unknown> }> = [];
   if (config.telegram.enabled && config.telegram.token && config.telegram.chatId) {
-    jobs.push(enqueueTelegram(config.telegram, message));
+    jobs.push({ channel: "telegram", promise: enqueueTelegram(config.telegram, message) });
   }
   if (config.vk.enabled && config.vk.token && config.vk.peerId) {
-    jobs.push(sendVk(config.vk, stripHtml(message)));
+    jobs.push({ channel: "vk", promise: sendVk(config.vk, stripHtml(message)) });
   }
-  await Promise.allSettled(jobs);
+  const settled = await Promise.allSettled(jobs.map((job) => job.promise));
+  const report: NotifyDeliveryReport = { attemptedChannels: jobs.map((job) => job.channel), deliveredChannels: [], failures: [] };
+  settled.forEach((result, index) => {
+    const channel = jobs[index]!.channel;
+    if (result.status === "fulfilled") report.deliveredChannels.push(channel);
+    else report.failures.push({ channel, message: errorMessage(result.reason) });
+  });
+  return report;
 }
 
 const ICONS: Record<NotifyEvent, string> = {
@@ -101,7 +142,7 @@ function enqueueTelegram(config: TelegramConfig, text: string): Promise<void> {
     // Backlog full — drop this message but remember we did, so the next one that
     // gets through can report the flood instead of failing silently.
     chatDropped.set(chatId, (chatDropped.get(chatId) ?? 0) + 1);
-    return Promise.resolve();
+    return Promise.reject(new Error(`Telegram queue for chat ${chatId} is full`));
   }
   chatPending.set(chatId, pending + 1);
   const prev = chatQueues.get(chatId) ?? Promise.resolve();
@@ -142,6 +183,8 @@ async function sendTelegram(config: TelegramConfig, text: string, attempt = 0) {
     return sendTelegram(config, text, attempt + 1);
   }
   if (!res.ok) throw new Error(`Telegram HTTP ${res.status}`);
+  const body = (await res.json().catch(() => undefined)) as { ok?: boolean; description?: string } | undefined;
+  if (body?.ok === false) throw new Error(`Telegram API: ${body.description ?? "request rejected"}`);
 }
 
 async function sendVk(config: VkConfig, text: string) {
@@ -154,12 +197,14 @@ async function sendVk(config: VkConfig, text: string) {
   });
   const res = await fetch(`https://api.vk.com/method/messages.send?${params}`, { method: "POST" });
   if (!res.ok) throw new Error(`VK HTTP ${res.status}`);
+  const body = (await res.json().catch(() => undefined)) as { error?: { error_code?: number; error_msg?: string } } | undefined;
+  if (body?.error) throw new Error(`VK API ${body.error.error_code ?? "error"}: ${body.error.error_msg ?? "request rejected"}`);
 }
 
 /** Send a test message to verify configuration. */
 export async function testNotify(): Promise<{ ok: boolean; message: string }> {
   try {
-    await notify({ event: "signal", bot: "SaltanatbotV2", text: "Test notification — channel is working." });
+    await notifyChecked({ event: "signal", bot: "SaltanatbotV2", text: "Test notification — channel is working." });
     return { ok: true, message: "Sent" };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Failed" };
@@ -172,4 +217,8 @@ function escapeHtml(text: string): string {
 
 function stripHtml(text: string): string {
   return text.replace(/<[^>]+>/g, "");
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }

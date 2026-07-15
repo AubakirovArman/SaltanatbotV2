@@ -1,0 +1,5 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": { "code": 10028, "message": "too_many_requests", "data": { "reason": "rate_limit" } }
+}

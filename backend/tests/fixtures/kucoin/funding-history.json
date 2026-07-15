@@ -1,0 +1,7 @@
+{
+  "code": "200000",
+  "data": [
+    {"symbol": "XBTUSDTM", "fundingRate": 0.00021, "timepoint": 1783965600000},
+    {"symbol": "XBTUSDTM", "fundingRate": 0.000347, "timepoint": 1783994400000}
+  ]
+}

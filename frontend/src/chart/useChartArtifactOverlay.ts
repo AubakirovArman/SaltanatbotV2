@@ -14,6 +14,7 @@ export interface StrategyChartOverlay {
   tables?: ChartTable[];
   inputs?: { name: string; value: number }[];
   summary?: string;
+  exchange: DataExchange;
   symbol: string;
   timeframe: Timeframe;
 }
@@ -64,41 +65,40 @@ export function useChartArtifactOverlay(options: UseChartArtifactOverlayOptions)
     requestId.current += 1;
   }, [options.symbol, options.timeframe, options.exchange]);
 
-  const activeOverlay = useMemo(() =>
-    overlay?.symbol === options.symbol && overlay.timeframe === options.timeframe ? overlay : undefined,
-  [overlay, options.symbol, options.timeframe]);
+  const activeOverlay = useMemo(() => (overlay?.symbol === options.symbol && overlay.timeframe === options.timeframe && overlay.exchange === options.exchange ? overlay : undefined), [overlay, options.exchange, options.symbol, options.timeframe]);
 
-  const addArtifact = useCallback(async (id: string, explicitOverrides?: Record<string, number>) => {
-    const artifact = options.artifacts.find((item) => item.id === id);
-    if (!artifact) return;
-    const currentRequest = ++requestId.current;
-    const built = await (options.buildOverlay ?? buildArtifactOverlay)({
-      artifact,
-      overrides: explicitOverrides ?? options.inputOverrides[id] ?? {},
-      symbol: options.symbol,
-      timeframe: options.timeframe,
-      candles: options.candles,
-      exchange: options.exchange
-    });
-    if (!built || !mounted.current || currentRequest !== requestId.current) return;
-    setOverlay(built.overlay);
-    setFocusTime(built.focusTime);
-  }, [options.artifacts, options.buildOverlay, options.candles, options.exchange, options.inputOverrides, options.symbol, options.timeframe]);
+  const addArtifact = useCallback(
+    async (id: string, explicitOverrides?: Record<string, number>) => {
+      const artifact = options.artifacts.find((item) => item.id === id);
+      if (!artifact) return;
+      const currentRequest = ++requestId.current;
+      const built = await (options.buildOverlay ?? buildArtifactOverlay)({
+        artifact,
+        overrides: explicitOverrides ?? options.inputOverrides[id] ?? {},
+        symbol: options.symbol,
+        timeframe: options.timeframe,
+        candles: options.candles,
+        exchange: options.exchange
+      });
+      if (!built || !mounted.current || currentRequest !== requestId.current) return;
+      setOverlay(built.overlay);
+      setFocusTime(built.focusTime);
+    },
+    [options.artifacts, options.buildOverlay, options.candles, options.exchange, options.inputOverrides, options.symbol, options.timeframe]
+  );
 
-  const updateInput = useCallback((name: string, value: number) => {
-    const id = activeOverlay?.id;
-    if (!id) return;
-    const next = { ...(options.inputOverrides[id] ?? {}), [name]: value };
-    options.setInputOverrides((current) => ({ ...current, [id]: next }));
-    void addArtifact(id, next);
-  }, [activeOverlay?.id, addArtifact, options.inputOverrides, options.setInputOverrides]);
+  const updateInput = useCallback(
+    (name: string, value: number) => {
+      const id = activeOverlay?.id;
+      if (!id) return;
+      const next = { ...(options.inputOverrides[id] ?? {}), [name]: value };
+      options.setInputOverrides((current) => ({ ...current, [id]: next }));
+      void addArtifact(id, next);
+    },
+    [activeOverlay?.id, addArtifact, options.inputOverrides, options.setInputOverrides]
+  );
 
-  const applyBacktestResult = useCallback((
-    result: BacktestResult,
-    resultSymbol: string,
-    resultTimeframe: Timeframe,
-    visuals?: { plots?: ChartPlot[]; shapes?: ChartShapes }
-  ) => {
+  const applyBacktestResult = useCallback((result: BacktestResult, resultSymbol: string, resultTimeframe: Timeframe, visuals: { plots?: ChartPlot[]; shapes?: ChartShapes } | undefined, resultExchange: DataExchange) => {
     requestId.current += 1;
     setOverlay({
       name: result.name,
@@ -106,19 +106,20 @@ export function useChartArtifactOverlay(options: UseChartArtifactOverlayOptions)
       trades: result.trades,
       plots: visuals?.plots,
       shapes: visuals?.shapes,
+      exchange: resultExchange,
       symbol: resultSymbol,
       timeframe: resultTimeframe
     });
   }, []);
 
-  const showOnChart = useCallback((resultSymbol: string, resultTimeframe: Timeframe) => {
-    options.showChart(resultSymbol, resultTimeframe);
-    const times = [
-      ...(overlay?.signals ?? []).map((marker) => marker.time),
-      ...(overlay?.trades ?? []).map((trade) => trade.exitTime)
-    ];
-    setFocusTime(times.length ? Math.max(...times) : Date.now());
-  }, [options.showChart, overlay]);
+  const showOnChart = useCallback(
+    (resultSymbol: string, resultTimeframe: Timeframe) => {
+      options.showChart(resultSymbol, resultTimeframe);
+      const times = [...(overlay?.signals ?? []).map((marker) => marker.time), ...(overlay?.trades ?? []).map((trade) => trade.exitTime)];
+      setFocusTime(times.length ? Math.max(...times) : Date.now());
+    },
+    [options.showChart, overlay]
+  );
 
   const clear = useCallback(() => {
     requestId.current += 1;
@@ -129,12 +130,7 @@ export function useChartArtifactOverlay(options: UseChartArtifactOverlayOptions)
 }
 
 export async function buildArtifactOverlay(request: BuildOverlayRequest): Promise<BuiltArtifactOverlay | undefined> {
-  const [{ compileXmlToIr }, backtest, { loadSecurityDataForIr }, cycles] = await Promise.all([
-    import("../strategy/compileArtifact"),
-    import("../strategy/backtest"),
-    import("../strategy/securityLoader"),
-    import("../strategy/pine/cyclesAnalysisPreview")
-  ]);
+  const [{ compileXmlToIr }, backtest, { loadSecurityDataForIr }, cycles] = await Promise.all([import("../strategy/compileArtifact"), import("../strategy/backtest"), import("../strategy/securityLoader"), import("../strategy/pine/cyclesAnalysisPreview")]);
   const compiled = compileXmlToIr(request.artifact.xml);
   if (!compiled.ir) return undefined;
   const compatibleIr = cycles.withCyclesAnalysisInputs(compiled.ir);
@@ -151,8 +147,7 @@ export async function buildArtifactOverlay(request: BuildOverlayRequest): Promis
     chartCandles: request.candles,
     exchange: request.exchange
   });
-  const preview = cycles.previewCyclesAnalysis(ir, request.candles) ??
-    backtest.previewStrategy(ir, request.candles, securityData);
+  const preview = cycles.previewCyclesAnalysis(ir, request.candles) ?? backtest.previewStrategy(ir, request.candles, securityData);
   const result = backtest.runBacktest(ir, request.candles, backtest.DEFAULT_CONFIG, securityData);
   const times = [...preview.signals.map((signal) => signal.time), ...result.trades.map((trade) => trade.exitTime)];
   return {
@@ -166,6 +161,7 @@ export async function buildArtifactOverlay(request: BuildOverlayRequest): Promis
       signals: preview.signals,
       trades: result.trades,
       summary: "summary" in preview ? preview.summary : undefined,
+      exchange: request.exchange,
       symbol: request.symbol,
       timeframe: request.timeframe
     },

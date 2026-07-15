@@ -1,0 +1,15 @@
+{
+  "feed": "book_snapshot",
+  "product_id": "PI_XBTUSD",
+  "timestamp": 1784030400100,
+  "seq": 1000,
+  "tickSize": null,
+  "bids": [
+    { "price": 100, "qty": 3000 },
+    { "price": 99, "qty": 2000 }
+  ],
+  "asks": [
+    { "price": 101, "qty": 4000 },
+    { "price": 102, "qty": 5000 }
+  ]
+}

@@ -2,7 +2,7 @@ import { Bell, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import type { PriceAlert } from "../market/alerts";
 import type { NewAlertInput } from "../hooks/usePriceAlerts";
-import type { Candle, Instrument } from "../types";
+import type { Candle, DataMarketType, Instrument, PriceType } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
 import { localeTag, type Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
@@ -18,6 +18,8 @@ interface StatsPanelProps {
   gapCount?: number;
   missingBars?: number;
   fallbackActive?: boolean;
+  marketType?: DataMarketType;
+  priceType?: PriceType;
   alerts: PriceAlert[];
   onAddAlert: (input: NewAlertInput) => void;
   onRemoveAlert: (id: string) => void;
@@ -35,6 +37,8 @@ export function StatsPanel({
   gapCount = 0,
   missingBars = 0,
   fallbackActive = false,
+  marketType = "spot",
+  priceType = "last",
   alerts,
   onAddAlert,
   onRemoveAlert,
@@ -99,7 +103,7 @@ export function StatsPanel({
         </div>
         <div className="feed-list">
           <FeedRow label={t("provider")} value={provider} />
-          <FeedRow label={t("marketType")} value={instrument.assetClass === "crypto" ? t("spotMarket") : instrument.assetClass} />
+          <FeedRow label={t("marketType")} value={instrument.assetClass === "crypto" ? `${marketType === "spot" ? t("spotMarket") : marketType} · ${priceType}` : instrument.assetClass} />
           <FeedRow label={t("latency")} value={latencyMs !== undefined ? `${latencyMs} ms` : "…"} num />
           <FeedRow label={t("candles")} value={String(candles.length)} num />
           <FeedRow label={t("dataGaps")} value={gapCount ? `${gapCount} (${missingBars} ${t("missingBars")})` : t("noDataGaps")} num />

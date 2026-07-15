@@ -130,9 +130,9 @@ These are **structural** limits of a per-bar scalar IR, not missing polish:
 | `request.security` / other-timeframe / external data | Not available to a single-symbol per-bar engine |
 | `ta.pivothigh/pivotlow`, look-ahead offsets | Confirm using *future* bars — impossible live |
 | Arrays / matrices / maps, `for…in` collections | Unbounded state the scalar IR can't hold |
-| Drawing objects (`label.*`, `line.*`, `box.*`, `table.*`, `polyline`) | Display-only, no trading effect |
+| Drawing-object behavior beyond the documented display-only approximations (`table.*`, `polyline`, dynamic object mutation/reads) | No trading effect and no exact object-runtime model |
 | `str.*`, user types, string-typed logic | The IR is numeric/boolean only |
-| `barstate.*`, `bar_index`, `timenow`, `time`, `varip` history, `math.random` | Non-deterministic or engine-internal |
+| `barstate.*`, `timenow`, `time`, `varip` history, `math.random` | Non-deterministic or engine-internal; `bar_index` is supported separately with the loaded-history relativity warning above |
 | Recursion & stateful user functions | Can't inline without hoisting persistent state |
 | `ta.kcw, ta.correlation, ta.mode, ta.percentile_*, ta.rci, ta.range` | No matching IR primitive yet |
 | Trigonometry (`math.sin/cos/tan/…`) | No trig primitive in the engine |

@@ -1,0 +1,5 @@
+{
+  "jsonrpc": "2.0",
+  "method": "subscription",
+  "params": { "channel": "book.BTC-PERPETUAL.100ms", "data": { "type": "snapshot", "timestamp": 1784000000000, "instrument_name": "BTC-PERPETUAL", "change_id": 400, "bids": [["new", 100, 3000], ["new", 99, 2000]], "asks": [["new", 101, 4000], ["new", 102, 5000]] } }
+}

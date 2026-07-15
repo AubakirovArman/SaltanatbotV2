@@ -25,7 +25,7 @@ All scripts below are defined in the root `package.json` and delegate to the wor
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Runs backend on `4181` and frontend on `4180` via `concurrently`. Vite proxies API and WebSocket traffic to the backend. |
+| `npm run dev` | Runs backend on `4181` and frontend on `4180` via `concurrently`. Vite proxies `/api` and all six WebSocket paths to the backend. |
 | `npm run build` | `npm --workspaces run build` — compiles the backend with `tsc` (emitting to `backend/dist`) and builds the frontend with `tsc -b && vite build`. |
 | `npm run check` | `npm --workspaces run check` — type-checks both workspaces with no emit (`tsc --noEmit` on the backend, `tsc -b --noEmit` on the frontend). |
 | `npm run docs:check` | Validates tracked Markdown links/commands and proves generated Pine, API and block references are current. |

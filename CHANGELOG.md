@@ -5,8 +5,209 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
 
 ## Unreleased
 
+### Chart interaction
+
+- Hardened mobile two-finger chart navigation at the 40% zoom-out boundary. Native pinch frames no
+  longer race the ordinary React pan handler, and every queued React state updater retains an
+  immutable snapshot of its gesture even when coalesced `pointerup` frames clear the live gesture in
+  the same browser task. Invalid touch geometry cannot propagate `NaN` into rendering, repeated
+  boundary moves reuse the current view, pointer capture fails safely and the remaining finger
+  resumes pan after a pinch. Mobile Chromium regressions cover both real CDP multi-touch and a
+  synchronous coalesced move/up sequence, proving no recovery screen, page error, console error,
+  navigation or reload across repeated pinch-out cycles.
+
+### Runtime reliability
+
+- Made frontend production publication atomic. A build now writes and verifies an isolated staging
+  generation, then publishes hashed assets, `index.html` and finally `service-worker.js` under an
+  exclusive lock while retaining the previous generation for rollback. The live server can no
+  longer observe an empty or partially cleared `frontend/dist`; deterministic failure tests and
+  874 continuous root/module probes during a real build completed without an unreadable shell.
+- Bounded continuous public-feed work under live market bursts. Discovery now coalesces ordinary
+  and urgent frames on a monotonic clock, listener failures are isolated, repeated statuses are
+  deduplicated, KuCoin/MEXC validate every sequence while materializing deep books at a bounded
+  cadence, and competing half-open circuit probes receive a future retry deadline instead of a
+  one-millisecond reconnect loop. The reviewed 17-stream research run reduced average process CPU
+  from approximately one full core to 30.5%, kept RSS stable within 3 MiB after warm-up, returned
+  100/100 health checks and preserved fail-closed degraded-source handling.
+
+### Documentation integrity
+
+- Added a deterministic semantic documentation guard for the six rendered scanner modes, nine
+  registered credential-free public adapters, nine continuous protocol-factory venues and generated
+  API totals. The source-backed JSON contract and canonical English rows now fail `docs:check` on
+  capability drift without using a permissive Markdown/TypeScript parser or opening network sockets.
+
 ### Cross-exchange arbitrage screener
 
+- Added a bounded file-backed operator allowlist for continuous public research feeds. Deployments
+  can point `ARBITRAGE_CONTINUOUS_ROUTES_FILE` at the reviewed repository configuration instead of
+  shell-escaping a large JSON value; conflicting sources, relative/symlinked/non-regular files,
+  malformed UTF-8, oversize payloads and central-identity drift all fail closed.
+- Added a server-owned Funding Curve universe endpoint and strict SDK/browser boundary. The
+  selector now exposes only fresh verified trading perpetuals supported by the service's actual
+  public funding adapters, rather than inferring support from generic venue capabilities. Catalog
+  validity, source degradation, loading/error/empty/partial states and the permanent read-only,
+  credential-free, non-executable boundary are independently validated.
+- Replaced pre-economic continuous-route truncation with complete bounded evaluation: at most 24
+  instruments produce at most 552 ordered candidates, all are evaluated, and only then are up to
+  500 rows published by net entry quote value, basis, capacity, continuity and freshness. Evaluated
+  and published status totals are now distinct, strict SDK fields; adversarial tests prove a better
+  late-ID route or a real-capacity route cannot be hidden by family/ID order or percentage alone.
+- Centralized reviewed BTC/ETH economic identity in an exact versioned catalog. Registry output is
+  scrubbed of adapter assertions before catalog application, unknown/wrapped/expiry instruments
+  fail closed, and continuous environment configuration must exactly match catalog identity and
+  evidence instead of creating its own cross-venue equivalence.
+- Connected MEXC Spot and linear-USDT Futures to the bounded, operator-allowlisted continuous
+  research hub. Spot binary frames now go directly to an exact public Protobuf wire decoder that
+  rejects every other wrapper oneof body; Futures explicitly requests unmerged JSON with
+  `compress: false` before enforcing exact `version + 1`. Both use governed REST bootstraps but do
+  not publish a REST-only seed as WebSocket continuity. A real advancing delta, positive safe
+  version and current reconnect generation are mandatory; SDK parsing recognizes both proof names.
+  This is credential-free, non-executable research and has no private/order path; the later public
+  canary observation is connectivity evidence only.
+- Moved the scanner stylesheet behind its existing lazy route, reducing production startup CSS
+  from 26.2 KiB to 20.9 KiB gzip. Replaced the misleading bundle gate that treated every lazy
+  workspace as startup cost with separate enforced ceilings for the initial static graph, each
+  directly reachable lazy-route graph, every emitted chunk, and the complete distributable JS/CSS
+  set. The reviewed build measures 161.4 KiB initial JS, a 328.5 KiB largest incremental lazy route,
+  a 198.2 KiB largest chunk and 674.7 KiB across all independently loaded feature chunks.
+- Expanded the daily/manual credential-free public-feed canary to one reviewed target for all nine
+  generic continuous venues. Its bounded schema-v3 JSON artifact records required/observed book and
+  funding evidence, route-ready versus research-only integrity, exact continuity protocol,
+  public/test environment and explicit `credentialsUsed: false`, `executionAttempted: false`,
+  `soakClaimed: false` and `mainnetReadinessClaimed: false` boundaries. The 2026-07-14 local run
+  passed OKX, Gate, Hyperliquid, Deribit public testnet, Coinbase, dYdX, KuCoin and MEXC; Kraken
+  remained a truthful host TLS-egress failure. Live observations exposed and now have deterministic
+  regression coverage for KuCoin binary-marked JSON with bounded fatal UTF-8 decoding, Coinbase's
+  connection-global sequence across L2/control/heartbeat envelopes, and the MEXC snapshot/delta
+  bootstrap race closed by delta-triggered single-flight REST buffering. The earlier Coinbase
+  4.8 MiB/43k-update snapshot also remains protected by isolated 8 MiB/60k hard bounds without
+  increasing retained depth. One successful observation is not a soak or execution-readiness proof.
+- Added server-owned market-only entry evidence for continuous route families. Fresh
+  sequence/checksum-verified current-generation top books expose matched maximum visible capacity
+  and quote-value difference/basis before and after operator-environment public taker
+  quote-equivalent fee estimates through the strict SDK and EN/RU/KK UI. Fee asset and exposure
+  impact remain unverified; ordered long/short identity source/version/as-of/valid-until and all
+  derived arithmetic fail closed. Runtime/discovery coverage now distinguishes complete/current
+  data, retained prior discovery and exact refresh reasons without turning first or later refresh
+  failure into success. Lifecycle skips market-data-blocked zero-evidence rows, preserves real
+  failure/stale/truncation coverage and keeps every observation non-actionable. The result remains
+  projected, entry-only, read-only, non-executable and strategy-blocked.
+- Added a reviewed cross-venue economic-asset identity boundary (initially BTC/ETH): equal ticker
+  strings no longer prove that two venue instruments are the same asset, and unknown mappings fail
+  closed instead of producing a route. Same-venue discovery remains broader through a separate
+  strict venue-native registry identity and never exports that native ID as a global identity.
+- Made the public pairwise research evaluator require an exact canonical economic-asset match with
+  caller-supplied reviewed source/version provenance and deterministic age/expiry boundaries;
+  malformed, unreviewed, future, stale, expired and same-ticker/different-asset inputs now fail
+  closed, and the SDK validates the same non-executable wire disclosure.
+- Preserved independent exchange/receive times through scanner, depth, alerts and SDK contracts;
+  cached books keep their original age, stale/skewed/unverified rows cannot alert or enter/exit paper,
+  and one failed unrelated source no longer blocks an otherwise fresh route.
+- Made normalized registry snapshots verified-only by default; retained stale rows require explicit
+  `includeStale=true`, and registry/capability responses plus the public SDK expose the same checked,
+  fresh/stale-cache/quarantined source provenance, including coherent non-zero age for earlier
+  concurrently completed fresh sources.
+- Hardened SDK runtime parsing so basis source/count/timing/economic fields, native-spread exchange
+  age and pairwise timestamp/notional/cost/PnL identities are recomputed instead of trusting derived
+  response values.
+- Closed live-risk command bypasses: exact bot symbol/market and fresh venue pricing are mandatory,
+  spot cannot spoof `reduceOnly`, unsupported actions cannot fall through to an entry, resting orders
+  and unresolved spot buys reserve position capacity, hedge legs are summed instead of netted,
+  concurrent submissions are serialized, and Binance/Bybit futures entry stops before order creation
+  unless requested leverage is acknowledged or exactly reconciled.
+- Disabled Binance live spot until authenticated spot execution accounting exists. Bybit spot remains
+  Experimental behind `ENABLE_LIVE_SPOT` and uses the v5 `order` + `execution` topics. Live
+  `replace` and `turnover` now fail closed on every market until each child action has an independent
+  durable lifecycle.
+- Required an explicit positive base `qty` on every risk-increasing live order. Durable reservations
+  now retain capacity for accepted, partially filled and venue-filled-but-not-accounted journal rows,
+  while pending spot sells reserve attributed inventory against concurrent closes.
+- Extended the reservation boundary to unaccounted partial fills on cancelled/expired orders and
+  legacy replaced-order executions. Futures risk now uses the conservative maximum of venue positions
+  and a durable gross-exposure shadow ledger, preventing a fast follow-up order from exploiting REST
+  position lag.
+- Reconciled matched venue/local orders by conservative maximum quantity and price instead of adding
+  or trusting either copy; ambiguous identity collisions fail closed. Live bot collisions cannot be
+  bypassed with the start override, and a terminal REST status without authenticated execution
+  accounting pauses the bot after polling or reconnect.
+- Treat an unreadable, truncated, malformed or identity-free HTTP 2xx body after any authenticated
+  Binance/Bybit mutation as an ambiguous accepted-or-not outcome. Its durable intent remains
+  `unknown`, its reservation stays held and automation pauses instead of retrying the mutation.
+  Authenticated order/execution events with crossed or conflicting client/venue IDs now fail closed
+  without rebinding the durable identity or committing a fill.
+- Made the actual running bot configuration authoritative for route roles and secure-origin checks.
+  A running ID cannot be overwritten through `POST /bots`; stop/delete quiesces producers and drains
+  command/event/order locks, while a manual live restart performs signed reconciliation before it can
+  submit another order.
+- Serialized live starts by exchange+symbol so simultaneous starts cannot race collision or
+  reconciliation. If protection fails after the venue accepted an entry, the accepted entry,
+  managed state and reservation are retained and paused instead of being mislabeled as rejected.
+  The best-effort reduce-only emergency close has a distinct `…-safety` client identity and its own
+  venue order acknowledgement or explicit failure.
+- Kept managed-position state after an accepted live close and paused automation until an
+  authenticated execution is committed; an HTTP/order acknowledgement alone can no longer mark the
+  local position flat.
+- Kept live execution explicitly non-mainnet-ready: the funded 7–14-day Binance/Bybit soak remains
+  excluded from the verified P0–P2 scope.
+- Bound depth analysis to exact current instrument metadata before any book request, added stable
+  route/position identity binding for paper open/close, and introduced reference-counted cancellation
+  plus a global unique-book concurrency ceiling with explicit `503` backpressure.
+- Added an on-demand, bounded sequence-verified L2 path for Binance Spot/USD-M and Bybit Spot/Linear.
+  Binance Spot bridges diff depth at `lastUpdateId + 1`, USD-M enforces `pu`, and Bybit resets from
+  its V5 WebSocket snapshot before contiguous `u` deltas. Gap, malformed/crossed data, overflow or
+  reconnect immediately invalidates the prior book; REST depth is now an explicit unverified
+  research fallback and cannot produce a complete paper analysis.
+- Added a selected-route triangular L2 verifier across three bounded Binance/Bybit Spot books. It
+  rechecks snapshot/delta continuity and connection generations around exact fee, lot-step, depth,
+  VWAP and residual simulation; the HTTP, SDK and localized browser result remain read-only and
+  permanently non-executable.
+- Added a public `funding-curve-v1` API/strict SDK and a lazy EN/RU/KK Funding scenarios workspace.
+  It builds bounded point-in-time discrete settlement curves and additive stress scenarios only for
+  fresh instruments with verified schedules and exact reviewed economic identity; it does not turn
+  cumulative rates into a trading return or invent intervals for continuous/inferred sources.
+- Added a collapsible EN/RU/KK fork guide beside the scanner modes, mapping double/pairwise,
+  triple/triangular, intra-exchange and bounded multi-leg wording to the actual route shapes and
+  their depth, fee, atomicity, capital and recovery limits.
+- Mounted the account-aware research-alert policy/outbox runtime and protected EN/RU/KK operator UI
+  behind the `paper-trade` session boundary. Policies and delivery/retry evidence are operational,
+  but engine-owned candidate/economics producers are deliberately not connected yet, so this
+  surface alone cannot emit a research notification and can never place an order.
+- Added a versioned reviewed network-identity registry plus pure transfer preflight/arrival-proof
+  evaluators that distinguish economic assets, canonical networks and native/token/wrapped
+  representations while requiring fresh status, limits, fees, confirmations and timing evidence.
+  A server-owned atomic snapshot now publishes exact, expiring Binance/Bybit BTC/ETH/USDT/USDC
+  identity mappings through bounded read-only HTTP and strict SDK contracts. Public preflight pins
+  evaluation to server time and rejects caller registry/time fields; wrapped, unknown, ambiguous,
+  expired and removed mappings fail closed. Dynamic transfer capabilities remain absent, so no
+  mapping claims transfer readiness and there are no credentials or transfer operations.
+- Added streamed byte limits for public upstream adapters and SDK responses so chunked bodies are
+  cancelled before an oversized payload is fully buffered; exchange WebSocket clients and inbound
+  application sockets now also enforce explicit message ceilings.
+- Corrected triangular REST freshness/cancellation, native-spread sort preselection and lot-step
+  rounding; triangular results now disclose their venue-wide top-book-only limitation explicitly.
+- Expanded basis discovery to all four same/cross-venue Binance/Bybit routes, directional triangular
+  cycles and read-only Bybit native spread books; added a bounded non-executable pairwise evaluator.
+- Added credential-free OKX, Gate.io, Hyperliquid and Deribit public adapters behind one allowlisted
+  market-data API, plus a generated runtime-validating TypeScript SDK with no credential/order API.
+- Made Deribit and Hyperliquid bulk executable-ticker operations fail explicitly instead of
+  amplifying one anonymous request into a per-instrument upstream fan-out; exact ticker/depth remains
+  available.
+- Versioned arbitrage replay at schema v4 with canonical economic IDs, point-in-time constraint
+  epochs and half-open settlement-time funding through the actual close. Legacy v1-v3 remain
+  exploratory and are rejected by verified historical basis backtests. Replay retains immutable
+  manifests/provenance digests, enforces absolute snapshot-output caps and indexes due positions
+  instead of scanning the complete route universe on every depth event.
+- Hardened non-executable research contracts: Deribit options parity rejects settlement/valuation
+  mismatches without expiry FX, while native-spread SDK rows retain complete contracts and reject
+  incoherent grids, timing, capacity/count and read-only risk-flag semantics. Dependency-indexed
+  10,000-route recomputation and bounded slow-client behavior remain covered separately.
+- Replaced snapshot paper records with a bounded append-only event ledger, deterministic migration
+  and replay, manual-confirmed funding events, matched entry depth and matched exit-depth VWAP;
+  stale/skewed books and unverified lot precision now fail closed.
+- Replaced per-alert best-effort delivery with a durable at-least-once outbox, per-rule/route crossing,
+  retry/restart/cancellation state and visible queued/sending/retrying/delivered/failed/cancelled status.
 - Replaced the shared two-second REST broadcast loop with four direct, server-owned public
   Binance/Bybit spot/perpetual ticker WebSockets, REST bootstrap/discovery, Bybit heartbeat,
   exponential reconnect, bounded payload/backpressure and coalesced browser updates.
@@ -18,6 +219,14 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
   transfer cost at the selected notional; added paper realized/open PnL, win rate and average PnL.
 - Paginated the high-frequency semantic table at 50 rows and isolated below-fold paper rendering to
   keep interaction work bounded; added complete EN/RU/KK copy and parser/model/browser coverage.
+- Added a dedicated 390×844, 200%-text RU/KK scanner journey covering keyboard mode changes,
+  semantic table names, contained horizontal scrolling and axe; mobile icon-only workspace buttons
+  now retain localized accessible names instead of becoming anonymous to screen readers.
+- Raised the measured aggregate JavaScript gzip ceiling from 540 KiB to 568 KiB and CSS from
+  22 KiB to 24 KiB for the triangular/native-spread workspaces, strict paper event ledger,
+  multi-engine analysis copy and mobile accessibility states. Initial-shell, per-file JavaScript and
+  HTML ceilings are unchanged; the current production build measures approximately 564.4 KiB of
+  aggregate JavaScript and 22.9 KiB of CSS gzip.
 - Raised only the measured aggregate JavaScript gzip ceiling from 536 KiB to 540 KiB for the
   lazy-loaded history chart, persistent-rule client and expanded three-locale cost/analytics copy;
   the initial shell, individual JavaScript, CSS and HTML ceilings are unchanged. The measured build
@@ -28,10 +237,10 @@ Keep a Changelog–style structure and uses semantic versioning for tagged relea
   levels consumed, slippage and fail-closed liquidity completeness.
 - Added persistent route-specific Binance/Bybit spot/perpetual taker fee profiles and a separate
   round-trip slippage reserve.
-- Added threshold-crossing desktop alerts and authenticated best-effort Telegram forwarding with
-  cooldown-by-crossing semantics and no order path.
-- Added local two-leg paper positions whose entry uses depth VWAP and whose PnL marks spot to bid
-  and short perpetual to ask, including estimated round-trip costs.
+- Added threshold-crossing desktop alerts and authenticated durable remote delivery with
+  cooldown-by-route semantics and no order path.
+- Added local two-leg paper positions whose entry uses depth VWAP, open PnL marks executable
+  top-book quotes and realized PnL uses matched exit-book VWAP, including estimated round-trip costs.
 - Added complete EN/RU/KK UI and guide coverage plus unit/API tests for depth walking, transport,
   fee calculation and paper accounting.
 - Raised only the measured aggregate JavaScript gzip ceiling from 532 KiB to 536 KiB for the

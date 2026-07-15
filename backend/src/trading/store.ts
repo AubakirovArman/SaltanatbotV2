@@ -4,9 +4,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrateTradingStore } from "./storeSchema.js";
+import { appendPaperLedgerEventsTo, listPaperLedgerEventsFrom } from "./paperLedgerStore.js";
+import type { PaperLedgerEvent } from "./paperLedger.js";
 import { recordBotStatusTransition, writePositionSnapshot, type PositionSnapshotRecord, type StrategyRunRecord } from "./storeLifecycle.js";
-import type { AuditLogRecord, BotConfig, FillRecord, OrderEventRecord, OrderJournalRecord } from "./types.js";
+import type { AuditLogRecord, BotConfig, FillRecord, OrderEventRecord, OrderJournalRecord, TradingAccount, TradingAccountExchange } from "./types.js";
 import type { ArbitrageOpportunity } from "../arbitrage/types.js";
+import { botTradingAccountId, legacyTradingAccountId, withResolvedBotAccountId } from "./tradingAccounts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../../data");
@@ -30,19 +33,121 @@ export function listBots(): BotConfig[] {
   return db
     .prepare("SELECT config FROM bots ORDER BY updatedAt DESC")
     .all()
-    .map((row) => JSON.parse((row as { config: string }).config) as BotConfig);
+    .map((row) => withResolvedBotAccountId(JSON.parse((row as { config: string }).config) as BotConfig));
 }
 
 export function upsertBot(bot: BotConfig) {
+  const normalized = withResolvedBotAccountId(bot);
   db.exec("BEGIN IMMEDIATE");
   try {
-    const previous = db.prepare("SELECT config FROM bots WHERE id = ?").get(bot.id) as { config: string } | undefined;
+    const previous = db.prepare("SELECT config FROM bots WHERE id = ?").get(normalized.id) as { config: string } | undefined;
     const previousStatus = previous ? (JSON.parse(previous.config) as BotConfig).status : undefined;
-    db.prepare("INSERT INTO bots (id, config, updatedAt) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET config = excluded.config, updatedAt = excluded.updatedAt").run(bot.id, JSON.stringify(bot), bot.updatedAt);
-    recordBotStatusTransition(db, bot, previousStatus);
+    db.prepare("INSERT INTO bots (id, config, updatedAt) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET config = excluded.config, updatedAt = excluded.updatedAt").run(normalized.id, JSON.stringify(normalized), normalized.updatedAt);
+    recordBotStatusTransition(db, normalized, previousStatus);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+// ---------- trading account metadata (credentials remain in legacy settings) ----------
+
+type TradingAccountRow = Omit<TradingAccount, "enabled"> & { enabled: number };
+
+function accountFromRow(row: TradingAccountRow): TradingAccount {
+  return { ...row, enabled: row.enabled === 1 };
+}
+
+export function listTradingAccounts(): TradingAccount[] {
+  return listTradingAccountsFrom(db);
+}
+
+export function listTradingAccountsFrom(database: DatabaseSync): TradingAccount[] {
+  return (database.prepare(`
+    SELECT id, label, exchange, ownership, enabled, createdAt, updatedAt
+    FROM trading_accounts ORDER BY updatedAt DESC, id ASC
+  `).all() as unknown as TradingAccountRow[]).map(accountFromRow);
+}
+
+export function getTradingAccount(id: string): TradingAccount | undefined {
+  return getTradingAccountFrom(db, id);
+}
+
+export function getTradingAccountFrom(database: DatabaseSync, id: string): TradingAccount | undefined {
+  const row = database.prepare(`
+    SELECT id, label, exchange, ownership, enabled, createdAt, updatedAt
+    FROM trading_accounts WHERE id = ?
+  `).get(id) as TradingAccountRow | undefined;
+  return row ? accountFromRow(row) : undefined;
+}
+
+export function insertTradingAccount(account: TradingAccount): void {
+  insertTradingAccountInto(db, account);
+}
+
+export function insertTradingAccountInto(database: DatabaseSync, account: TradingAccount): void {
+  database.prepare(`
+    INSERT INTO trading_accounts (id, label, exchange, ownership, enabled, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(account.id, account.label, account.exchange, account.ownership, account.enabled ? 1 : 0, account.createdAt, account.updatedAt);
+}
+
+export function updateTradingAccount(account: TradingAccount): boolean {
+  return updateTradingAccountIn(db, account);
+}
+
+export function updateTradingAccountIn(database: DatabaseSync, account: TradingAccount): boolean {
+  return database.prepare(`
+    UPDATE trading_accounts
+    SET label = ?, ownership = ?, enabled = ?, updatedAt = ?
+    WHERE id = ? AND exchange = ?
+  `).run(account.label, account.ownership, account.enabled ? 1 : 0, account.updatedAt, account.id, account.exchange).changes > 0;
+}
+
+export function ensureLegacyTradingAccount(exchange: TradingAccountExchange, now = Date.now()): TradingAccount {
+  const id = legacyTradingAccountId(exchange);
+  const existing = getTradingAccount(id);
+  if (existing) return existing;
+  const account: TradingAccount = {
+    id,
+    label: `${exchange === "binance" ? "Binance" : "Bybit"} default (shared legacy credentials)`,
+    exchange,
+    ownership: "own",
+    enabled: true,
+    createdAt: now,
+    updatedAt: now
+  };
+  db.prepare(`
+    INSERT OR IGNORE INTO trading_accounts (id, label, exchange, ownership, enabled, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, 1, ?, ?)
+  `).run(account.id, account.label, account.exchange, account.ownership, account.createdAt, account.updatedAt);
+  return getTradingAccount(id) ?? account;
+}
+
+export class TradingAccountInUseError extends Error {
+  constructor(readonly accountId: string, readonly botIds: readonly string[]) {
+    super(`Trading account ${accountId} is used by ${botIds.length} bot(s).`);
+  }
+}
+
+export function deleteTradingAccount(id: string): boolean {
+  return deleteTradingAccountFrom(db, id);
+}
+
+export function deleteTradingAccountFrom(database: DatabaseSync, id: string): boolean {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const botIds = (database.prepare("SELECT config FROM bots").all() as Array<{ config: string }>)
+      .map((row) => withResolvedBotAccountId(JSON.parse(row.config) as BotConfig))
+      .filter((bot) => botTradingAccountId(bot) === id)
+      .map((bot) => bot.id);
+    if (botIds.length > 0) throw new TradingAccountInUseError(id, botIds);
+    const deleted = database.prepare("DELETE FROM trading_accounts WHERE id = ?").run(id).changes > 0;
+    database.exec("COMMIT");
+    return deleted;
+  } catch (error) {
+    database.exec("ROLLBACK");
     throw error;
   }
 }
@@ -55,9 +160,11 @@ export function deleteBot(id: string) {
   db.prepare("DELETE FROM logs WHERE botId = ?").run(id);
   db.prepare("DELETE FROM positions WHERE botId = ?").run(id);
   db.prepare("DELETE FROM strategy_runs WHERE botId = ?").run(id);
+  db.prepare("DELETE FROM paper_events WHERE botId = ?").run(id);
   // Drop this bot's persisted paper-sim and durable strategy state.
   db.prepare("DELETE FROM settings WHERE key = ? OR key = ?").run(`paper:${id}`, `state:${id}`);
   db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`inventory:${id}:%`);
+  db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`futures-exposure:${id}:%`);
 }
 
 /** Remove a single setting (e.g. resetting a bot's durable strategy state). */
@@ -73,13 +180,18 @@ export function insertFill(fill: FillRecord) {
 
 /** Keep a fill and its durable order event all-or-nothing across process crashes. */
 export function withStoreTransaction<T>(operation: () => T): T {
-  db.exec("BEGIN IMMEDIATE");
+  return withDatabaseTransaction(db, operation);
+}
+
+/** Exported for an in-memory rollback proof without opening the runtime DB. */
+export function withDatabaseTransaction<T>(database: Pick<DatabaseSync, "exec">, operation: () => T): T {
+  database.exec("BEGIN IMMEDIATE");
   try {
     const result = operation();
-    db.exec("COMMIT");
+    database.exec("COMMIT");
     return result;
   } catch (error) {
-    db.exec("ROLLBACK");
+    database.exec("ROLLBACK");
     throw error;
   }
 }
@@ -89,6 +201,16 @@ export function listFills(botId: string, limit = 200): FillRecord[] {
     .prepare("SELECT data FROM fills WHERE botId = ? ORDER BY ts DESC LIMIT ?")
     .all(botId, limit)
     .map((row) => JSON.parse((row as { data: string }).data) as FillRecord);
+}
+
+// ---------- append-only paper-trading ledger ----------
+
+export function appendPaperLedgerEvents(events: readonly PaperLedgerEvent[]): number {
+  return appendPaperLedgerEventsTo(db, events);
+}
+
+export function listPaperLedgerEvents(botId: string): PaperLedgerEvent[] {
+  return listPaperLedgerEventsFrom(db, botId);
 }
 
 // ---------- durable position snapshots ----------
@@ -139,6 +261,148 @@ export function insertOrderEvent(event: OrderEventRecord) {
 export function listOrderJournal(botId: string, limit = 200): OrderJournalRecord[] {
   return db
     .prepare("SELECT data FROM orders WHERE botId = ? ORDER BY updatedAt DESC LIMIT ?")
+    .all(botId, limit)
+    .map((row) => JSON.parse((row as { data: string }).data) as OrderJournalRecord);
+}
+
+export function getOrderJournal(id: string): OrderJournalRecord | undefined {
+  const row = db.prepare("SELECT data FROM orders WHERE id = ?").get(id) as { data: string } | undefined;
+  return row ? JSON.parse(row.data) as OrderJournalRecord : undefined;
+}
+
+/**
+ * Orders that can still reserve live exposure. A terminal `filled` order stays
+ * visible until its execution quantity has crossed the local accounting
+ * boundary; an order-status acknowledgement alone is not enough to release it.
+ */
+export const RISK_ORDER_JOURNAL_SQL = `
+      SELECT data
+      FROM orders
+      WHERE botId = ?
+        AND json_extract(data, '$.action') IN ('neworder', 'open', 'openorders', 'spreadentry', 'turnover', 'replace')
+        AND (
+          status IN ('intent', 'accepted', 'partially_filled', 'unknown')
+          OR (
+            status IN ('filled', 'replaced')
+            AND (
+              json_type(data, '$.qty') IS NULL
+              OR json_type(data, '$.qty') NOT IN ('integer', 'real')
+              OR CAST(json_extract(data, '$.qty') AS REAL) <= 0
+              OR json_type(data, '$.accountedFilledQty') IS NULL
+              OR json_type(data, '$.accountedFilledQty') NOT IN ('integer', 'real')
+              OR CAST(json_extract(data, '$.accountedFilledQty') AS REAL) < 0
+              OR CAST(json_extract(data, '$.accountedFilledQty') AS REAL) != CAST(json_extract(data, '$.qty') AS REAL)
+            )
+          )
+          OR (
+            status IN ('cancelled', 'expired')
+            AND (
+              json_type(data, '$.qty') IS NULL
+              OR json_type(data, '$.qty') NOT IN ('integer', 'real')
+              OR CAST(json_extract(data, '$.qty') AS REAL) <= 0
+              OR json_type(data, '$.filledQty') IS NULL
+              OR json_type(data, '$.filledQty') NOT IN ('integer', 'real')
+              OR CAST(json_extract(data, '$.filledQty') AS REAL) < 0
+              OR CAST(json_extract(data, '$.filledQty') AS REAL) > CAST(json_extract(data, '$.qty') AS REAL)
+              OR (
+                CAST(json_extract(data, '$.filledQty') AS REAL) > 0
+                AND (
+                  json_type(data, '$.accountedFilledQty') IS NULL
+                  OR json_type(data, '$.accountedFilledQty') NOT IN ('integer', 'real')
+                  OR CAST(json_extract(data, '$.accountedFilledQty') AS REAL) != CAST(json_extract(data, '$.filledQty') AS REAL)
+                )
+              )
+              OR (
+                CAST(json_extract(data, '$.filledQty') AS REAL) = 0
+                AND json_type(data, '$.accountedFilledQty') IN ('integer', 'real')
+                AND CAST(json_extract(data, '$.accountedFilledQty') AS REAL) != 0
+              )
+            )
+          )
+          OR (
+            status = 'rejected'
+            AND (
+              json_type(data, '$.qty') IS NULL
+              OR json_type(data, '$.qty') NOT IN ('integer', 'real')
+              OR CAST(json_extract(data, '$.qty') AS REAL) <= 0
+              OR (
+                json_type(data, '$.filledQty') IS NOT NULL
+                AND (
+                  json_type(data, '$.filledQty') NOT IN ('integer', 'real')
+                  OR CAST(json_extract(data, '$.filledQty') AS REAL) < 0
+                  OR CAST(json_extract(data, '$.filledQty') AS REAL) > CAST(json_extract(data, '$.qty') AS REAL)
+                  OR (
+                    CAST(json_extract(data, '$.filledQty') AS REAL) > 0
+                    AND (
+                      json_type(data, '$.accountedFilledQty') IS NULL
+                      OR json_type(data, '$.accountedFilledQty') NOT IN ('integer', 'real')
+                      OR CAST(json_extract(data, '$.accountedFilledQty') AS REAL) != CAST(json_extract(data, '$.filledQty') AS REAL)
+                    )
+                  )
+                )
+              )
+              OR (
+                json_type(data, '$.filledQty') IS NULL
+                AND json_type(data, '$.accountedFilledQty') IS NOT NULL
+                AND (
+                  json_type(data, '$.accountedFilledQty') NOT IN ('integer', 'real')
+                  OR CAST(json_extract(data, '$.accountedFilledQty') AS REAL) != 0
+                )
+              )
+            )
+          )
+        )
+      ORDER BY updatedAt DESC
+      LIMIT ?
+    `;
+
+export function listRiskOrderJournal(botId: string, limit = 1_001): OrderJournalRecord[] {
+  return db
+    .prepare(RISK_ORDER_JOURNAL_SQL)
+    .all(botId, limit)
+    .map((row) => JSON.parse((row as { data: string }).data) as OrderJournalRecord);
+}
+
+/**
+ * Bounded recovery set for every command whose acknowledgement or execution is
+ * still unresolved. Unlike the exposure-only risk query, this includes
+ * reduce-only closes and protection children.
+ */
+export const EXECUTION_RECONCILIATION_JOURNAL_SQL = `
+      SELECT data
+      FROM orders
+      WHERE botId = ?
+        AND (
+          status IN ('intent', 'accepted', 'partially_filled', 'unknown')
+          OR (
+            status IN ('filled', 'replaced')
+            AND (
+              json_type(data, '$.filledQty') IS NULL
+              OR json_type(data, '$.filledQty') NOT IN ('integer', 'real')
+              OR CAST(json_extract(data, '$.filledQty') AS REAL) <= 0
+              OR json_type(data, '$.accountedFilledQty') IS NULL
+              OR json_type(data, '$.accountedFilledQty') NOT IN ('integer', 'real')
+              OR CAST(json_extract(data, '$.accountedFilledQty') AS REAL) != CAST(json_extract(data, '$.filledQty') AS REAL)
+            )
+          )
+          OR (
+            status IN ('cancelled', 'expired', 'rejected')
+            AND json_type(data, '$.filledQty') IN ('integer', 'real')
+            AND CAST(json_extract(data, '$.filledQty') AS REAL) > 0
+            AND (
+              json_type(data, '$.accountedFilledQty') IS NULL
+              OR json_type(data, '$.accountedFilledQty') NOT IN ('integer', 'real')
+              OR CAST(json_extract(data, '$.accountedFilledQty') AS REAL) != CAST(json_extract(data, '$.filledQty') AS REAL)
+            )
+          )
+        )
+      ORDER BY updatedAt DESC
+      LIMIT ?
+    `;
+
+export function listExecutionReconciliationJournal(botId: string, limit = 1_001): OrderJournalRecord[] {
+  return db
+    .prepare(EXECUTION_RECONCILIATION_JOURNAL_SQL)
     .all(botId, limit)
     .map((row) => JSON.parse((row as { data: string }).data) as OrderJournalRecord);
 }

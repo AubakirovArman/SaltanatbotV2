@@ -118,7 +118,7 @@ export const HELP_TEXT = [
   "/resume &lt;name&gt; — resume a bot paused after a restart",
   "/logs &lt;name&gt; — recent log lines",
   "/mute &lt;name&gt; · /unmute &lt;name&gt; — silence/unsilence a bot's alerts",
-  "/kill — stop everything and disarm live trading"
+  "/kill — disarm, stop bots and cancel account orders (positions stay open)"
 ].join("\n");
 
 export function escapeHtml(text: string): string {

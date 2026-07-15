@@ -1,0 +1,6 @@
+{
+  "time_ms": 1784000000123,
+  "channel": "futures.tickers",
+  "event": "update",
+  "result": [{ "contract": "BTC_USDT", "funding_rate": "-0.000015", "funding_rate_indicative": "-0.00001", "t": 1784000000123 }]
+}

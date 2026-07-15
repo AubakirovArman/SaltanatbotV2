@@ -28,11 +28,20 @@ SaltanatbotV2 — сауда идеяларын зерттеуге және ав
 - әр pane exchange UTC, browser local time немесе таңдалған IANA zone-ды бөлек көрсетеді; axis, crosshair, OHLC table және legend DST-ті бірдей есептейді, ал таңдау session мен workspace-та сақталады;
 - stacked imbalance, potential absorption, CVD spike және large print үшін жергілікті сақталатын in-chart alert-тер, optional sound және desktop notification;
 - Binance және Bybit үшін REST тарихы мен WebSocket жаңартулары;
+- read-only arbitrage workspace: Binance/Bybit strict venue-native basis және reviewed BTC/ETH cross-venue basis, directional top-book triangular cycle simulation,
+  Bybit native spread, matched depth, durable alert және event-sourced paper ledger;
+- operator allowlist ішіндегі OKX/Gate/Hyperliquid/Deribit/Kraken/Coinbase/dYdX/KuCoin/MEXC continuous public feed-тері
+  тек fail-closed entry quote value/basis пен public taker fee-дің quote-equivalent бағасын көрсетеді,
+  trading return көрсетпейді; identity provenance, refresh coverage және арифметика тексеріледі, әр
+  route strategy-blocked және non-actionable күйінде қалады;
+- credential/order API-сыз custom research үшін public TypeScript SDK, барлық тоғыз generic venue-дің
+  bounded adapter-лері және pure options-parity engine;
 - индикаторлар мен стратегияларға арналған Blockly визуалды құрастырушысы;
 - Pine Script v4–v6 қолдау көрсетілетін бөлігін өңделетін блоктарға импорттау;
 - `eval` және пайдаланушы JavaScript-ын орындамайтын қауіпсіз JSON IR;
 - `next_open`, комиссия, slippage, funding, gap-aware stop/target және liquidation бар backtest;
 - optimizer, walk-forward және Monte Carlo зерттеулері;
+- seed, mutation, crossover және elitism бар bounded генетикалық параметр оптимизаторы: train/validation рейтингі бекітілген соң тек №1 кандидат қол тимеген final test-тен өтеді, ал өткен мәндер дәл research scope-пен Blockly-ге жазылады;
 - paper trading және эксперименттік Binance/Bybit live adapter-лері;
 - жергілікті SQLite, API кілттерін шифрлау және әрекеттер журналы.
 
@@ -65,8 +74,9 @@ npm run build
 npm start
 ```
 
-Қолданба интерфейсі ағылшын, орыс және қазақ тілдерінде толық қолжетімді. Жоғарғы панельдегі тіл
-батырмасы EN → RU → KK ретімен ауысады және таңдалған тілді reload-тан кейін сақтайды.
+Негізгі navigation мен тұрақты user journeys ағылшын, орыс және қазақ тілдерінде қолжетімді.
+Жоғарғы панельдегі тіл батырмасы EN → RU → KK ретімен ауысады және таңдалған тілді reload-тан кейін
+сақтайды; нақты API schemas мен ішкі developer documentation canonical English күйінде қалады.
 
 Production backend әдепкіде тек `127.0.0.1:4180` мекенжайында қолжетімді. Сыртқы қолжетімділік
 үшін TLS reverse proxy, firewall және күшті `AUTH_TOKEN` пайдаланыңыз.
@@ -87,7 +97,13 @@ npm run build
 - [График және қолжетімді кестелік деректер](docs/kk/CHART.md)
 - [Strategy Studio, Pine Script және backtest](docs/kk/STRATEGY_STUDIO.md)
 - [Декларативті плагиндер](docs/kk/PLUGINS.md)
-- [Биржааралық арбитраж скринері](docs/kk/ARBITRAGE_SCREENER.md)
+- [Арбитраж скринері: triangular L2, funding сценарийлері, бағыт түрлері және continuous entry basis](docs/kk/ARBITRAGE_SCREENER.md)
+- [Арбитраждың канондық taxonomy құжаты](docs/kk/ARBITRAGE_TAXONOMY.md)
+- [Қорғалған зерттеу ескертулері](docs/kk/RESEARCH_ALERTS.md)
+- [Желі сәйкестігі және аударым үйлесімділігі](docs/kk/NETWORK_IDENTITY.md)
+- [Скринер математикасы және болжамдары](docs/ARBITRAGE_MATH_AND_ASSUMPTIONS.md)
+- [Current және planned exchange матрицасы](docs/VENUE_CAPABILITIES.md)
+- [Арбитраж market data сапасы](docs/MARKET_DATA_QUALITY.md)
 - [Paper/live trading](docs/kk/TRADING.md)
 - [Оқиғалар мен орындалу трассалары](docs/kk/EVENT_TRACES.md)
 - [Қауіпсіздік бойынша қысқаша нұсқаулық](docs/kk/SECURITY.md)
@@ -106,6 +122,9 @@ npm run build
 - Қаражат шығаруға рұқсаты жоқ бөлек API кілтін қолданыңыз.
 - Сыртқы қолжетімділікке HTTPS, firewall және күшті `AUTH_TOKEN` міндетті.
 - Paper mode әдепкіде қосулы; live бірнеше анық растауды қажет етеді.
+- Арбитраж скринері order орналастырмайды: continuous entry basis пен fee estimate тек public entry
+  бағаларын салыстырады; бөлек модельденетін paper нәтижесі де зерттеу үшін, ал әртүрлі биржа
+  quote-тары атомдық емес.
 - Production нұсқасын PWA ретінде орнатып, static интерфейсті offline ашуға болады. API, quote, order book, trade және сауда command-тары cache-ке жазылмайды және reconnect-тен кейін қайталанбайды.
 - Strategy Studio-ны жоғарғы панель арқылы офлайн зерттеуге бөлек сақтауға болады; жергілікті artifact құрылғыда қалады, ал trading тек желіде орындалады.
 - Орнатылған Chromium-family PWA `.pine`, `.strategy` және `.saltanat-plugin` файлдарын ашады немесе жүйелік «Бөлісу» арқылы тек міндетті жергілікті тексеруден кейін қабылдайды; қолмен импорттау барлық браузерде қалады.

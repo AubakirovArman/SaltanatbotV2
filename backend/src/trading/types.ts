@@ -2,6 +2,10 @@ import type { Timeframe } from "../types.js";
 import type { StrategyIR } from "./strategy/ir.js";
 
 export type ExchangeId = "paper" | "binance" | "bybit";
+export type TradingAccountExchange = Exclude<ExchangeId, "paper">;
+export type TradingAccountOwnership = "own" | "managed";
+export type TradingAccountRuntimeStatus = "ready" | "credentials_missing" | "metadata_only" | "disabled";
+export type TradingAccountCredentialStatus = "configured" | "missing" | "unsupported";
 export type MarketType = "spot" | "futures";
 export type Side = "buy" | "sell";
 export type BotStatus = "stopped" | "running" | "error";
@@ -58,6 +62,8 @@ export interface PendingOrder {
 
 export interface BotConfig {
   id: string;
+  /** Durable account binding. Legacy configs resolve to the venue default. */
+  accountId?: string;
   name: string;
   strategyName: string;
   ir: StrategyIR;
@@ -73,9 +79,11 @@ export interface BotConfig {
   bybitCrossCollateral?: boolean;
   /** Notify on signals that don't open trades (marker blocks). */
   notifyMarkers: boolean;
-  /** Live risk caps (quote currency). 0/undefined = unlimited. */
+  /** Live risk caps (quote currency). Mandatory and >0 for non-paper bots. */
   maxPositionQuote?: number;
+  maxOrderQuote?: number;
   maxDailyLossQuote?: number;
+  maxOpenOrders?: number;
   status: BotStatus;
   createdAt: number;
   updatedAt: number;
@@ -87,6 +95,10 @@ export interface PositionState {
   qty: number;
   entryPrice: number;
   leverage: number;
+  /** Exchange reports a distinct long/short leg instead of one-way mode. */
+  hedged?: boolean;
+  /** Bybit positionIdx (1 = long leg, 2 = short leg; 0/undefined = one-way). */
+  positionIndex?: number;
   stopPrice?: number;
   targetPrice?: number;
   openedAt: number;
@@ -130,6 +142,8 @@ export type ExecutionLifecycleStatus =
 export interface OrderJournalRecord {
   id: string;
   botId: string;
+  /** Account identity at submission time; absent only on legacy journal rows. */
+  accountId?: string;
   exchange: ExchangeId;
   market: MarketType;
   symbol: string;
@@ -137,6 +151,8 @@ export interface OrderJournalRecord {
   side?: Side;
   type: OrderType;
   qty?: number;
+  price?: number;
+  trgPrice?: number;
   reduceOnly?: boolean;
   reason: string;
   clientId?: string;
@@ -145,7 +161,11 @@ export interface OrderJournalRecord {
   executionStatus?: ExecutionLifecycleStatus;
   message?: string;
   filledQty?: number;
+  /** Fill quantity already committed to the local inventory/position accounting boundary. */
+  accountedFilledQty?: number;
   avgFillPrice?: number;
+  /** Maximum exchange order slots reserved until the entry outcome is observable. */
+  reservedOpenOrderCount?: number;
   barTime?: number;
   ts: number;
   updatedAt: number;
@@ -235,6 +255,7 @@ export interface ExecOrder {
   orderId?: string;
   by?: "symbol" | "side" | "type" | "id" | "all";
   positionSide?: PositionSide;
+  positionIndex?: number;
   dualSide?: boolean;
   isolated?: boolean;
   ignoreSide?: boolean;
@@ -244,6 +265,12 @@ export interface ExecOrder {
   clearStage?: boolean;
   stop?: StopSpec;
   takeProfits?: TpLevel[];
+  /** Internal deterministic identities assigned before live protection I/O. */
+  protectionClientIds?: {
+    stop?: string;
+    takeProfits?: string[];
+    safetyClose?: string;
+  };
   spreadPerc?: number;
   spreadCount?: number;
   getValue?: string;
@@ -263,6 +290,13 @@ export interface ExecResult {
     entryOrderId?: string;
     stopOrderIds?: string[];
     takeProfitOrderIds?: string[];
+    /** Emergency reduce-only close submitted after protection setup failed. */
+    safetyCloseAttempted?: boolean;
+    safetyCloseConfirmed?: boolean;
+    safetyCloseOrderId?: string;
+    safetyCloseClientId?: string;
+    /** Protection orders whose cancellation could not be proven. */
+    orphanProtectionOrderIds?: string[];
     verification?: "order_ids" | "exchange_ack";
   };
   /** Resting order accepted by an adapter; used to correlate later fills. */
@@ -293,17 +327,24 @@ export interface PrivateOrderSubscription {
 }
 
 /** One exchange account's aggregated live state (deduped across bots). */
+export type PortfolioResourceCoverage = "account-wide" | "bot-symbols-only" | "unavailable";
+
 export interface PortfolioExchange {
-  /** Adapter id + market, e.g. "binance:futures". Also the dedupe key. */
+  /** Account id + market. Also the dedupe key. */
   id: string;
+  accountId: string;
   exchange: ExchangeId;
   market: MarketType;
   equity: number;
   balance: number;
   currency: string;
   positions: PositionState[];
+  /** Whether positions cover the whole account or only the running bots' symbols. */
+  positionsCoverage: PortfolioResourceCoverage;
   openOrders: PendingOrder[];
-  /** Present when the account/position/orders read failed for this exchange. */
+  /** Whether open orders cover the whole account or only the running bots' symbols. */
+  openOrdersCoverage: PortfolioResourceCoverage;
+  /** Present when the account balance/equity read failed for this exchange. */
   error?: string;
 }
 
@@ -320,9 +361,13 @@ export interface PortfolioSummary {
 export interface ExchangeAdapter {
   readonly id: ExchangeId;
   readonly market: MarketType;
+  /** Durable account identity when the adapter is account-backed. */
+  readonly accountId?: string;
   price(symbol: string): Promise<number>;
   account(): Promise<AccountState>;
   position(symbol: string): Promise<PositionState | null>;
+  /** Every currently open derivative position on this account/market. */
+  positions?(): Promise<PositionState[]>;
   execute(order: ExecOrder): Promise<ExecResult>;
   /** Resting orders (paper/futures). */
   orders?(symbol?: string): Promise<PendingOrder[]>;
@@ -335,4 +380,31 @@ export interface ExchangeAdapter {
   ): Promise<PrivateOrderSubscription>;
   /** Feed a live price so resting orders can trigger (paper). */
   onPrice?(symbol: string, price: number): FillRecord[];
+}
+
+/** Durable, non-secret metadata for a connected or planned live account. */
+export interface TradingAccount {
+  id: string;
+  label: string;
+  exchange: TradingAccountExchange;
+  ownership: TradingAccountOwnership;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** API projection that states the current single-credential limitation. */
+export interface TradingAccountCapabilityView extends TradingAccount {
+  status: TradingAccountRuntimeStatus;
+  credential: {
+    mode: "legacy_exchange_shared" | "unsupported";
+    status: TradingAccountCredentialStatus;
+    isolated: false;
+  };
+  capabilities: {
+    liveExecution: boolean;
+    credentialIsolation: false;
+    multipleCredentialAccounts: false;
+  };
+  botIds: string[];
 }

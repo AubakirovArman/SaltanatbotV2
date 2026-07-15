@@ -31,6 +31,9 @@ playwright-report/
 blob-report/
 release/
 .release-staging/
+frontend/.dist-staging/
+frontend/.dist-publication.json
+frontend/.dist-publication.lock
 
 # ── Internal dev artifacts (kept local, not published) ────────
 audits/

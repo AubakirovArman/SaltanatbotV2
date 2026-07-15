@@ -1,6 +1,7 @@
 # SaltanatbotV2 master improvement plan
 
-Status: P0/P1/P2 delivered; funded exchange soak explicitly deferred
+Status: broad product baseline delivered; scanner P0/P1/P2 integration ledger remains active;
+funded exchange soak explicitly deferred
 Created: 2026-07-11  
 Product stage: early alpha
 
@@ -32,9 +33,9 @@ It is not enough to resemble TradingView visually. The differentiator must be tr
 | Execution | Durable lifecycle, polling/private streams, reconciliation and fail-closed protection | Experimental; live is not production-ready |
 | Security | Scoped sessions, CSRF/WS tickets, encrypted keys, audit log and verified backup/restore | Strong alpha baseline |
 | Distribution | Installable production PWA with a static offline shell, optional Strategy Studio cache and network-only runtime/trading boundary | Alpha, verified offline boundary |
-| Tests | 700+ unit/integration/parity tests plus a 46-scenario Playwright production suite | Strong baseline, enforced in CI |
+| Tests | 700+ unit/integration/parity tests plus a 57-scenario Playwright Chromium production suite | Strong baseline, enforced in CI |
 | Documentation | Source-checked English docs and current RU/KK user guides with public Pages | Current alpha baseline |
-| Localization | Complete typed English/Russian/Kazakh UI catalogs and user documentation | Three-locale product baseline complete |
+| Localization | Typed English/Russian/Kazakh catalogs and guides for core stable user journeys; exact internal references remain canonical English | Three-locale core product baseline |
 
 ## Guiding engineering rules
 
@@ -47,14 +48,16 @@ It is not enough to resemble TradingView visually. The differentiator must be tr
 - Accessibility, keyboard operation and reduced motion are release criteria, not optional polish.
 - Performance work is measured with budgets and traces rather than inferred from file size alone.
 
-## Completed P0/P1/P2 scope decision
+## Broad baseline and active scanner expansion
 
-All Priority 0, 1 and 2 repository work is delivered except **Mainnet readiness and the continuous
-7–14-day Binance/Bybit testnet soak**. The owner has explicitly deferred that epic because funded
-testnet/mainnet validation is not currently available. No release note or UI may imply that this
-external soak was completed. Deterministic fake-exchange, failure-injection and offline recovery
-tests remained in scope and are part of the enforced release gate. The external soak is not silently
-reclassified as complete and live trading remains Experimental.
+The broad baseline described by this master plan is delivered. The newer, scanner-specific P0/P1/P2
+integration ledger remains active in [P0_P1_P2_EXECUTION_PLAN.md](./P0_P1_P2_EXECUTION_PLAN.md), so
+this document must not be read as claiming that every continuous discovery, economics, history,
+alert or paper-handoff gap is closed. **Mainnet readiness and the continuous 7–14-day Binance/Bybit
+testnet soak** remain explicitly excluded because funded validation is not currently available. No
+release note or UI may imply that the external soak was completed. Deterministic fake-exchange,
+failure-injection and offline recovery tests remain part of the enforced release gate, and live
+trading remains Experimental.
 
 ## Priority 0: establish a trustworthy baseline
 
@@ -314,7 +317,7 @@ No milestone is complete merely because it builds.
 
 ### Milestone E: open-source beta
 
-- [x] complete English/Russian product and EN/RU/KK user-documentation coverage;
+- [x] cover core stable product journeys and operator guidance in EN/RU/KK, with exact internal contracts canonical in English;
 - [x] meet accessibility and performance budgets;
 - [x] publish contributor/security/release policies;
 - [x] implement reproducible signed release packaging for configured channels.

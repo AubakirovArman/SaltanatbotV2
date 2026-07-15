@@ -2,9 +2,7 @@
 @import "./styles/terminal.css";
 @import "./styles/market-panels.css";
 @import "./styles/chart-panel.css";
+@import "./styles/volume-profile-source.css";
 @import "./styles/indicator-settings.css";
-@import "./styles/strategy.css";
-@import "./styles/trading.css";
-@import "./styles/arbitrage.css";
 @import "./styles/command-palette.css";
 @import "./styles/responsive.css";

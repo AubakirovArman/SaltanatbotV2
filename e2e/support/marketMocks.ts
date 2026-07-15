@@ -15,7 +15,9 @@ export function mockChartCandles() {
     low: 99 + index * 0.1,
     close: 100.5 + index * 0.1,
     volume: 10 + index,
-    source: "mock"
+    // This deterministic browser fixture is deliberately not real exchange
+    // history; provenance-sensitive backtests must keep warning about it.
+    source: "synthetic"
   }));
 }
 

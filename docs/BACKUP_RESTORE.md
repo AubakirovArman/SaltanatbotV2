@@ -4,8 +4,9 @@ Audience: self-hosted operators
 Last verified: 2026-07-11
 
 SaltanatbotV2 stores trading state and encrypted credentials under `backend/data/`. A usable backup
-must keep `trading.db` and `.secret` together. The optional candle cache (`candles.db`) and generated
-access token (`.authtoken`) are included when present.
+must keep `trading.db` and `.secret` together. The optional candle cache (`candles.db`), bounded
+multi-leg paper journal (`arbitrage-paper-multi-leg.sqlite`) and generated access token
+(`.authtoken`) are included when present at their default paths.
 
 > A runtime backup contains sensitive material. The database stores exchange credentials encrypted,
 > but `.secret` is the root needed to decrypt them. Protect the backup as if it contained plaintext
@@ -24,6 +25,7 @@ The output directory must not already exist and must be outside `backend/data/`.
 
 - `trading.db` (required);
 - `candles.db` (when present);
+- `arbitrage-paper-multi-leg.sqlite` (when present at the default data path);
 - `.secret` and `.authtoken` (when present);
 - `backup-manifest.json` with format version, sizes and SHA-256 checksums.
 
@@ -38,6 +40,9 @@ For a non-default Docker volume mount or a recovery drill, specify the source ex
 ```bash
 npm run data:backup -- --data-dir /srv/saltanat/data --output /srv/backups/saltanat-001
 ```
+
+If `PAPER_MULTI_LEG_DB_PATH` points outside that data directory, the backup command cannot discover
+it; include that custom SQLite file in a separate trusted online-backup policy.
 
 ## Verify a backup
 

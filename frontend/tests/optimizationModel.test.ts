@@ -11,6 +11,18 @@ const ir: StrategyIR = {
   body: []
 };
 
+const extendedIr: StrategyIR = {
+  name: "Extended optimization model",
+  inputs: Array.from({ length: 14 }, (_, index) => ({
+    name: `parameter_${index + 1}`,
+    value: index + 1,
+    min: 0,
+    max: 20,
+    step: 1
+  })),
+  body: []
+};
+
 describe("optimization model", () => {
   it("builds bounded default axes from strategy inputs", () => {
     const state = initOptSpec(ir);
@@ -31,5 +43,14 @@ describe("optimization model", () => {
     const state = initOptSpec(ir);
     state.axes[1] = { ...state.axes[1], enabled: false };
     expect(buildSpec(state).params.map((parameter) => parameter.name)).toEqual(["fast"]);
+  });
+
+  it("keeps the grid cap by default and permits a bounded genetic axis limit", () => {
+    const state = initOptSpec(extendedIr);
+    state.axes = state.axes.map((axis) => ({ ...axis, enabled: true }));
+
+    expect(buildSpec(state).params).toHaveLength(3);
+    expect(buildSpec(state, 12).params).toHaveLength(12);
+    expect(buildSpec(state, 999).params).toHaveLength(14);
   });
 });

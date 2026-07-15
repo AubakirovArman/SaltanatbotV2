@@ -1,6 +1,6 @@
 # HTTP & WebSocket API reference
 
-SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote/order-book/trade-flow streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and five WebSocket endpoints are exposed at `/stream`, `/quotes`, `/orderbook`, `/trade-flow` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
+SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote/order-book/trade-flow/arbitrage streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and six WebSocket endpoints are exposed at `/stream`, `/quotes`, `/orderbook`, `/trade-flow`, `/arbitrage-stream` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
 
 Public market catalog, candle, sparkline and WebSocket payloads have canonical TypeScript contracts
 plus fail-closed runtime parsers in `packages/contracts`. The frontend validates untrusted JSON at
@@ -11,7 +11,10 @@ The generated [API endpoint index](./API_ENDPOINTS.generated.md) is the route-pr
 
 - Base URL (default): `http://localhost:4180`
 - Content type: `application/json`
-- Validation: query parameters on `/api/candles`, `/api/sparklines`, `/api/arbitrage`, `/stream`, `/quotes`, `/orderbook` and `/trade-flow` are validated with [zod](https://zod.dev); invalid HTTP input returns `400`, while invalid WebSocket input receives a typed error and closes.
+- Validation: public route inputs are bounded and validated at their transport boundary; most HTTP
+  schemas use [zod](https://zod.dev), while shared response/stream contracts also have fail-closed
+  runtime parsers. `/arbitrage-stream` accepts no query parameters. Invalid HTTP input normally
+  returns `400`; invalid WebSocket input receives a typed error and closes.
 
 ## Trading auth
 
@@ -144,13 +147,88 @@ curl http://localhost:4180/api/catalog
 
 ---
 
+### `GET /api/instruments` and `GET /api/venues`
+
+`/api/instruments` returns the cached normalized registry assembled from Binance, Bybit and the
+registered public venue adapters (currently OKX, Gate.io, Hyperliquid, Deribit, Kraken, Coinbase,
+dYdX, KuCoin and MEXC). Optional filters are
+`venue`, `marketType`, `symbol`, `assetId`, `status` and `limit` (`1..2000`). Only freshly verified
+rows are returned by default; `includeStale=true` explicitly includes retained stale catalog rows.
+Its response envelope is `updatedAt`, `checkedAt`, `stale`, `includeStale`, `total`, `truncated`,
+`instruments`, `sourceErrors` and `sourceStates`. `/api/venues` returns `updatedAt`, `checkedAt`,
+`stale`, `capabilities`, `sourceErrors` and `sourceStates`. Every source state contains `source`,
+`status` (`fresh`, `stale-cache` or `quarantined`) and `checkedAt`, with optional `receivedAt`,
+`ageMs` and `message`. Fresh and stale-cache states include coherent receipt age:
+`receivedAt <= checkedAt` and `ageMs = checkedAt - receivedAt`. A fresh source can therefore have
+non-zero age when an earlier concurrent request finishes before the final registry check; it has no
+error message. Capability booleans are conservative public-discovery summaries and must never be
+used to authorize an account mutation. Binance/Bybit additionally expose `scopes` records keyed by
+`product + operation + status`: missing combinations are unsupported, `experimental` is not a
+production-readiness claim, and `manual-only` cannot be invoked by a strategy. The current scoped
+private paths are experimental Binance perpetual plus experimental Bybit spot/perpetual; Bybit UTA
+borrow is manual-only. Deposit/withdrawal is unsupported. None of these records proves account
+entitlement or regional eligibility.
+
+### `GET /api/market-data/:venue/*`
+
+The public adapter facade currently allowlists `okx`, `gate`, `hyperliquid`, `deribit`, `kraken`,
+`coinbase`, `dydx`, `kucoin` and `mexc`. It never accepts credentials and every response
+contains `readOnly: true`.
+
+| Suffix | Required query | Result |
+| --- | --- | --- |
+| `/instruments` | `marketType`; optional `status`, `assetId`, `limit=1..5000` | normalized metadata plus rejected-row quarantine |
+| `/tickers` | `marketType`; optional `limit=1..5000` | bounded executable top books; unsupported all-market feeds fail closed |
+| `/ticker` | `marketType`, exact `instrumentId` | one executable top book |
+| `/depth` | `marketType`, exact `instrumentId`; optional `limit=1..400` | complete REST/L2 snapshot with native quantity unit |
+| `/funding` | `marketType=perpetual`, exact scope-matching `instrumentId`; optional `historyLimit=1..1000` | scope-preserving current estimate, verified schedule state and bounded history |
+
+`GET /api/market-data/health/upstreams` is a separate `no-store`, read-only operational snapshot.
+It returns each named public REST source's concurrency budget/usage, queue-free overload rejects,
+circuit/cooldown state, success/failure/abort counters and aggregate latency. It contains no request
+payloads, credentials, account state or order data.
+
+Individual venues may enforce a smaller bound or reject a market type. Typed upstream failures map
+to `400`, `429`, `499`, `502`, `503` or `504`; `499` means the caller disconnected/cancelled before the
+adapter completed, `503` with `Retry-After` means the bounded process-wide upstream pool/source is
+full or its failure circuit is cooling down,
+and an unknown venue is `404`. Semantically identical in-flight requests share one upstream call
+while each HTTP client retains independent cancellation. The funding facade currently supports
+periodic funding only for the `perpetual` scope; spot, margin, dated future, option and native-spread
+stable IDs fail before adapter I/O. The transport-safe public TypeScript client is in
+`packages/arbitrage-sdk`.
+
+dYdX is intentionally exposed only as Indexer research data: its books are marked
+`canonical: false`, `executable: false` and `executionStatus: research-only`. Registration in the
+shared catalog and public facade does not make an Indexer observation safe for route execution and
+does not add wallet, signing, private account or order methods.
+
+---
+
 ### `GET /api/arbitrage`
 
-Returns credential-free Binance/Bybit cross-exchange spot/perpetual routes using executable best
-ask/bid prices. Query parameters: `costBps` (`0..1000`, default `30`), `minSpreadBps`
-(`-10000..10000`, default `-1000`) and `limit` (`1..500`, default `250`). The response contains
-source health, stale status, scanned-symbol count and opportunities sorted by estimated net edge.
-This endpoint is read-only and never places orders. See the [screener guide](ARBITRAGE_SCREENER.md).
+Returns credential-free Binance/Bybit same- and cross-venue spot/perpetual research candidates using
+observed best ask/bid prices. Query parameters include `costBps` (`0..1000`), `minSpreadBps`,
+`minCapacityUsd`, `sort` (`expected-profit`, `net-edge` or `capacity`) and `limit` (`1..2000`).
+Filtering happens before truncation; the response discloses totals and source/freshness state. This
+endpoint is read-only and never places orders. Every row declares `identityScope`: `venue-native`
+for strictly matched same-venue registry instruments or `cross-venue-reviewed` for the current
+BTC/ETH canonical allowlist. Per-leg exchange/receive timestamps remain independent. See the
+[screener guide](ARBITRAGE_SCREENER.md).
+
+Every row includes `spotReceivedAt` and `futuresReceivedAt`; `spotExchangeTs` and
+`futuresExchangeTs` are omitted when the venue payload has no timestamp. The required
+`spotExchangeTimestampVerified` and
+`futuresExchangeTimestampVerified` booleans distinguish a real venue timestamp from a local receive
+time. When both venue timestamps are present, `clockCorrection.modelVersion: "venue-clock-v1"`
+contains each venue's calibrated offset/age interval plus conservative minimum/maximum possible
+cross-leg skew. `quoteAgeMs` and `legSkewMs` are recomputed from the upper uncertainty bounds and
+the immutable receive timeline; local receipt is never copied into a venue timestamp. A degraded,
+expired or unavailable calibration makes the row `unverified`. Missing venue time leaves the row
+visible as a lower-ranked `unverified` discovery candidate, but alerts, history and paper/live gates
+reject it. The envelope also exposes `identityCoverage`: a complete proof requires fresh Binance
+spot/derivatives/funding and Bybit spot/linear registry sources. Missing, cached or quarantined
+identity sources fail lifecycle absence semantics closed.
 
 ```bash
 curl 'http://localhost:4180/api/arbitrage?costBps=30&minSpreadBps=0&limit=50'
@@ -160,10 +238,29 @@ curl 'http://localhost:4180/api/arbitrage?costBps=30&minSpreadBps=0&limit=50'
 
 ### `GET /api/arbitrage/depth`
 
-Walks up to 100 public order-book levels for both selected legs. Required query parameters are
-`symbol`, different `spotExchange`/`futuresExchange` values (`binance` or `bybit`) and
-`notionalUsd` (`10..1000000`). The response reports per-leg VWAP, slippage, levels used and
-fail-closed completeness. It never submits an order.
+Walks bounded public order-book levels for both selected legs. Required query parameters are
+`symbol`, `spotExchange`/`futuresExchange` (`binance` or `bybit`, equal or different) and
+`notionalUsd` (`10..1000000`). `direction=entry` is the default. `direction=exit` additionally
+requires the exact open `quantity` and walks spot bids plus perpetual asks. The response reports one
+matched base quantity, venue-step rounding, residual delta, independent per-book receive/exchange
+timing, required reconstructed sequence provenance, per-leg VWAP/slippage, levels used, verified instrument
+status/settlement/minimum-quantity/minimum-notional constraints and fail-closed completeness. It
+never submits an order. `timing.exchangeTimestampsVerified` is true only when both books contain
+venue-provided timestamps; `timing.sequenceContinuityVerified` is true only when both books passed
+their venue-specific snapshot/delta lifecycle. Each leg exposes `source` and `sequenceVerified`.
+Freshness and `receiveSkewMs` still use local receipt time. REST-only fallback books remain
+`source: rest-snapshot`, unverified and cannot make `complete` true.
+
+The response binds the calculation to `identityScope`, `assetId`, optional `economicAssetId`,
+`spotInstrumentId` and `futuresInstrumentId`. It also exposes `quantityStepSource`,
+`precisionVerified` and `constraints.{metadataVerified,minimumsSatisfied,verified,failures}`. The
+public handler rejects missing or incoherent instrument metadata before requesting either book, so
+a `200` response uses `quantityStepSource: "instrument"` with `precisionVerified: true`; venue
+minimums may still make `constraints.minimumsSatisfied` and `complete` false. Browser entry and exit
+requests additionally bind the symbol, venues, market types, sides, stable IDs and identity to the
+selected route or open paper position. Shared book work is reference-counted: one disconnected
+subscriber does not cancel another, the last subscriber does cancel upstream work, and excess
+unique-book concurrency returns `503` with `Retry-After: 1`.
 
 ### `GET /api/arbitrage/history`
 
@@ -171,12 +268,278 @@ Returns the bounded SQLite series for one `routeId` such as `BTCUSDT:binance:byb
 `hours` is `1..168` (default `24`) and `limit` is `1..1000` (default `500`). Samples are recorded at
 most once per minute while the shared market feed is active and retained for seven days.
 
+### `GET /api/arbitrage/clock-health`
+
+Returns credential-free Binance, Bybit, OKX, Deribit, Kraken, Coinbase, Gate, KuCoin and MEXC
+server-clock calibration health from their official public time routes. Each probe preserves the
+full RTT-derived offset interval instead of assuming symmetric network latency. A source reports
+`calibrated`, `degraded`, `expired` or `unavailable`, sample/consistency counts, sample expiry,
+observed RTT, offset bounds/midpoint, uncertainty, rejected-probe count and a bounded diagnostic
+message. The envelope is `stale` whenever any required source is not both reachable and calibrated.
+Kraken and Coinbase expose one-second-resolution server timestamps, so a tight uncertainty policy
+may correctly leave them degraded. Hyperliquid and dYdX are not assigned a synthesized venue clock.
+
+Probe work is coalesced and responses are size/time bounded. Slow or malformed probes cannot replace
+a valid sample, and local receive time is never presented as venue time. This endpoint is public,
+read-only and contains no account data. The same calibrated intervals now drive basis ranking,
+WebSocket refreshes, server alert freshness, continuous cross-venue entry economics and Funding
+Curve cross-venue comparability. Any clock uncertainty outside policy fails closed; the feature
+remains research-only and does not imply execution permission.
+
+### `GET /api/arbitrage/lifecycle`
+
+Returns the bounded, read-only lifecycle state for basis, triangular, native-spread and pairwise
+research candidates. Optional filters are `universeId`, `routeId`, `kind`, `status`, `actionable`,
+`routeOffset=0..100000`, `routeLimit=1..500`, `afterSequence` and `eventLimit=0..500`. Routes move
+through `first-seen`, `confirmed`, `decaying` and `expired` with hysteresis, distinct-observation
+confirmation, evidence freshness and complete-universe absence rules. Events are newest first and
+can be read incrementally by sequence.
+
+The response always fixes `schemaVersion: 1`, `readOnly: true` and
+`executionPermission: false`. Basis coverage is actionable only when all four market-data sources
+and the five-source instrument-identity proof are complete, non-stale and non-truncated. The
+runtime is bounded in memory and exposes sanitized accepted/rejected snapshot diagnostics; it has
+no credential, notification or order dependency.
+
+### `GET /api/arbitrage/triangular`
+
+Simulates bounded three-leg spot cycles on Binance or Bybit from one directional venue-wide REST
+top-book level per market. It applies fee and step rounding after each leg and reports conserved
+quantity, top-book capacity, dust, timestamps and `top-book-only`/`rest-snapshot` risk flags. The
+underlying pure engine accepts multi-level depth, but this public route does not fetch it and makes no
+full-depth execution claim. It is research-only and has no order path.
+
+Query bounds are exact: `venue=binance|bybit` (default `binance`), `startAsset` is an uppercase
+`2..20`-character asset ID (default `USDT`), `startQuantity=10..10000000` (default `1000`),
+`takerFeeBps=0..1000` (default `10`), `minimumNetReturnBps=-1000..10000` (default `0`) and
+`limit=1..250` (default `50`).
+
+### `POST /api/arbitrage/triangular/verify-depth`
+
+Performs the second stage for one selected Binance/Bybit spot triangle. The strict body contains
+`venue`, `startAsset`, `startQuantity`, `takerFeeBps`, `minimumNetReturnBps` and exactly three
+distinct `symbols` copied from a discovery row. The server obtains all three books from the bounded
+on-demand L2 hub, requires snapshot/delta sequence reconstruction and a current connection-
+generation lease, then re-runs fee, lot/minimum, multi-level depth, freshness and leg-skew checks.
+
+The response fixes `schemaVersion: 1`, `readOnly: true`, `researchOnly: true`,
+`executable: false`, `execution: "none"` and `marketDataMode: "sequence-verified-depth"`. It exposes
+each book's symbol, sequence, connection generation, exchange/receive time and retained depth plus
+either depth-verified simulations or explicit rejection evidence. A sequence-verified route is a
+stronger paper-research candidate, not private-order permission or an atomic-fill guarantee. A
+generation change during evaluation returns `409` and publishes no stale proof. Unknown/incomplete
+metadata returns `422`; overload or unavailable streams return `503`. The public SDK method is
+`verifyTriangularDepth()` and contains no credential or order API.
+
+### `GET /api/arbitrage/native-spreads`
+
+Returns read-only Bybit venue-native combination instruments and order books for `FundingRateArb`,
+`CarryTrade`, `FutureSpread` and `PerpBasis`. Optional filters include contract/base coin, minimum
+quantity, sort and bounded candidate/result limits. `executionModel` describes venue-matched
+multi-leg semantics; it is not a promise of a fill and the endpoint cannot submit orders. Each row
+retains the complete venue instrument contract (`status`, price/quantity bounds, tick/lot steps,
+launch/delivery times and both typed legs) together with order-book provenance (`sequence`, exchange,
+matching-engine and receive timestamps). Strict clients reject non-trading or duplicate-leg rows,
+crossed/off-grid/out-of-bounds prices, capacity that is not the step-floored two-sided minimum,
+incoherent age/count fields and any drift from the fixed read-only risk-flag set.
+
+Exact optional query bounds are `contractType=FundingRateArb|CarryTrade|FutureSpread|PerpBasis`, an
+uppercase `baseCoin` of `1..20` characters, `minimumQuantity=0..1000000000` (default `0`),
+`sort=capacity|tightness|freshness` (default `capacity`), `maxCandidates=1..50` (default `20`) and
+`limit=1..50` (default `20`). The response-level coverage disclosure is `venue`, `marketDataMode`,
+`executionModel`, `readOnly`, `updatedAt`, `totalInstruments`, `eligibleInstruments`,
+`scannedInstruments`, `healthyBooks`, `totalOpportunities`, `truncated`, `candidateTruncated`,
+`sourceErrors` and `opportunities`.
+
+### `POST /api/arbitrage/pairwise/evaluate`
+
+Evaluates exactly two caller-supplied normalized instruments/books and one bounded route. Supported
+families are prefunded spot-spot, perpetual-perpetual, reverse cash-and-carry, spot-dated-future,
+perpetual-future, calendar spread and dated-futures spread. Required capital, inventory, borrow,
+funding, convergence, delivery and timestamp
+assumptions are explicit and fail closed. Each instrument must also include a lowercase
+`economicAssetId` in `namespace:value` form and caller-supplied `economicIdentity` review metadata:
+`status: "reviewed"`, non-empty source/version, `asOf` and `validUntil`. The two IDs must match
+exactly. By default the review is usable only until the earlier of `validUntil` and
+`asOf + 30 days`; `maxEconomicIdentityAgeMs` can tighten or relax that boundary within the bounded
+request schema. Beyond-tolerance future, stale, expired, malformed, unreviewed and mismatched identities fail
+closed. Successful provenance repeats the effective boundary and labels its authority
+`caller-supplied`; syntax/freshness validation is not a server endorsement of the caller's review.
+The response always contains `engine: "pairwise-v1"` and `executable: false`; this is a
+deterministic research evaluator, not a live discovery/order API.
+
+### `POST /api/arbitrage/options-parity/evaluate`
+
+Runs the pure European options-parity evaluator over caller-supplied metadata and complete visible
+depth. A request contains one complete call/put series, an optional complete second strike for box
+spreads, one underlying instrument/book, target base quantity, optional `evaluatedAt`, and explicit
+timestamped rates, settlement policy, premium FX, per-option/underlying fees, verified short-option
+capacity and optional verified underlying borrow. Expiry is taken only from exact instrument
+metadata. Settlement must be European, automatic and held to expiry; settlement and valuation
+assets must currently be equal because settlement FX is not modelled.
+
+The boundary accepts at most 400 levels per book side, eight entries per assumption map and 4–64
+pairing iterations. Output is bounded to 16 candidates and 64 rejections. Unknown fields are
+rejected, so credentials and order-shaped payloads are not part of the contract. Responses are
+`no-store` and always fix `engine: "options-parity-v1"`, `readOnly: true`, `researchOnly: true`,
+`edgeKind: "research-simulation"`, `executable: false` and `assumptionContract.execution: "none"`.
+Supported research shapes are put-call parity, conversion, reversal, long/short box and synthetic
+forward. The endpoint never reads an account or sends an order. See the
+[Deribit/options research guide](DERIBIT_OPTIONS_RESEARCH.md) for exact units and assumptions.
+
+### `POST /api/arbitrage/n-leg/evaluate`
+
+Discovers and simulates simple four-to-eight-leg spot conversion cycles over caller-supplied exact
+market metadata and complete sequence-verified depth snapshots. Accounting nodes are exact
+`(venue, assetId, unitId)` tuples; each side declares its fee schedule, tier and fee asset. The
+engine propagates conserved quantities through visible depth, lot/minimum rules and fees, retaining
+rounding dust instead of counting it as profit.
+
+The request is bounded to 80 markets/books, 200 levels per book side, 100 cycles and 100,000 graph
+and depth-walk steps. Unknown fields, credentials, duplicate books and unverified/incomplete depth
+fail closed. The response discloses graph work/truncation, metadata rejections, one outcome per
+cycle, residuals, fee aggregates and ordered provenance. It is `no-store` and permanently fixes
+`engine: "n-leg-v1"`, `readOnly: true`, `researchOnly: true`, `executable: false` and
+`execution: "none"`. The generated SDK `nLeg()` method revalidates the envelope, identities,
+quantity chain, timestamps, arithmetic and provenance. This endpoint neither discovers live venue
+books nor submits a multi-order route.
+
+### `GET /api/arbitrage/funding-curve/universe`
+
+Returns the server-owned selection universe for Funding Curve. It intersects the current fresh,
+verified, trading perpetual registry with the actual credential-free adapters implemented by
+`FundingCurveService`; the browser does not infer support by joining `/api/instruments` and
+`/api/venues`. The bounded response includes supported venues, source degradation, exact
+instrument rows and the version/as-of/valid-until of the central reviewed economic-identity
+catalog. Unsupported Binance/Bybit selections therefore cannot be offered merely because their
+general venue manifests advertise funding.
+
+The endpoint is public and `Cache-Control: public, max-age=60`, but permanently
+`readOnly: true`, `researchOnly: true`, `executable: false`. Its Zod and generated SDK contracts
+reject credentials, unknown fields, invalid counts, unsupported venue rows and an identity catalog
+that is not valid at the registry snapshot time.
+
+### `POST /api/arbitrage/funding-curve`
+
+Builds a bounded point-in-time funding curve for one to eight explicitly selected perpetual
+instruments through the credential-free public venue adapters. The request supplies a minute
+horizon, a history bound, freshness/future-skew bounds, optional
+`maxCrossVenueClockSkewMs=0..60000` (default `2000`) and one to nine additive per-settlement stress
+scenarios. The response exposes verified discrete settlements, current/next estimates, normalized
+history, source provenance and per-scenario cumulative rates.
+
+Each successful curve labels freshness as either a calibrated corrected-local venue-time interval
+or an explicit non-comparable local-receipt fallback. The top-level `crossVenueClock` is eligible
+only when every curve from two or more successful venues is calibrated and their worst possible
+interval skew is within the requested limit. Otherwise it reports `clock-not-calibrated` or
+`skew-exceeded`; strict SDK arithmetic validation and the browser both fail closed on that blocker.
+
+The contract is permanently `readOnly: true`, `researchOnly: true`, `executable: false`. It accepts
+no notional, balances, keys or order fields and does not turn cumulative rates into P&L without an
+explicit price/capital path. Unverified intervals, stale/future observations and identity/unit
+mismatches are returned as fail-closed per-instrument rejections. Current exact projection scope is
+limited to public adapters that provide a verified discrete schedule; continuous or inferred
+schedule boundaries remain rejected.
+
+### `POST /api/arbitrage/route-families/evaluate`
+
+Deterministically discovers compatible ordered routes and evaluates exact caller-scoped assumptions
+for `cross-venue-spot-spot`, `reverse-cash-and-carry`, `perpetual-perpetual-funding`,
+`spot-dated-future`, `calendar-spread` and `perpetual-future`. It accepts at most 120 normalized
+instruments, 120 books, 500 assumption scopes and `maxRoutes=1..500` (default `200`) inside the
+global 1 MiB JSON body limit. Candidate generation requires exact reviewed economic identity,
+common quote/settlement assets and a supported base-equivalent quantity model.
+
+Every route needs an exact `(family, longInstrumentId, shortInstrumentId)` scope. Capital,
+inventory, borrow and funding are keyed by exact instrument ID; convergence, rebalance and delivery
+are route-scoped. Missing or duplicate assumptions fail closed. No wildcard/default assumptions,
+credentials or order fields are accepted. The response contains `engine: "route-families-v1"`,
+`executionStatus: "research-only"`, `executable: false`, deterministic candidates, evaluated
+opportunities, rejections, rejected instruments, total compatible count and honest truncation.
+
+### `GET /api/arbitrage/route-families/live`
+
+Returns the process-owned continuous public-feed discovery snapshot selected by the operator through
+exactly one of `ARBITRAGE_CONTINUOUS_ROUTES_FILE` or `ARBITRAGE_CONTINUOUS_ROUTES_JSON`. The file
+form requires an absolute path and the bounded loader rejects symlinks, non-regular/oversized files,
+malformed UTF-8 and simultaneous inline configuration. Operator rows must exactly match the central
+reviewed economic-identity catalog; configuration cannot create or override an asset equivalence.
+The checked-in `config/continuous-routes.research.json` is an implemented reviewed allowlist, but it
+is not loaded automatically: its presence and deterministic loader tests do not prove that a running
+deployment activated subscriptions. The endpoint is public, read-only and `Cache-Control: no-store`;
+there is deliberately no browser mutation endpoint. When the allowlist is absent it returns
+`state: "disabled"`, empty active/source arrays and starts no upstream subscriptions.
+
+The envelope fixes `schemaVersion: 1`, `engine: "continuous-route-runtime-v1"`,
+`configurationSource: "operator-environment"`, `executionStatus: "research-only"`,
+`readOnly: true` and `executable: false`. It reports configured/active IDs, failed-closed instruments,
+source connection state, sequence-ready books, top books, funding observations and compatible route
+families. Hyperliquid atomic block snapshots remain visible research evidence but never enter the
+sequence-ready book set. Candidates do not include account capital, borrow, transfer, convergence or
+order feasibility and are not execution signals.
+
+Cross-venue `market-only` economics require calibrated corrected-local intervals for both public
+book sources. Missing, degraded, expired, future, stale or worst-case-skewed clock evidence produces
+a typed market-data blocker and no economics row. Same-venue evaluation may use an explicitly
+labelled local-receipt fallback, which is never advertised as cross-venue comparable. The generated
+SDK recomputes the interval arithmetic and rejects forged clock provenance.
+
+Continuous discovery proves a hard input bound of 24 instruments, enumerates the complete compatible
+ordered universe (at most `24 × 23 = 552` rows), evaluates every row, and only then publishes up to
+500 results. Useful rows rank by fee-adjusted entry quote-value difference, then basis, visible
+capacity, continuity quality and freshness. The summary distinguishes complete-universe evaluated
+counts from bounded published counts, so publication truncation cannot silently hide a better route
+or masquerade as complete evaluation.
+
+The generated public SDK exposes this endpoint as `continuousRoutes()`. Its parser validates the
+safety envelope, allowlist/active identity, candidate references, sequence provenance and bounded
+arrays, then returns a top-book/source-health view rather than transferring full depth to callers.
+
+### `GET /api/arbitrage/continuous-feed-health`
+
+Returns the bounded no-store `continuous-feed-health-v1` snapshot from the shared continuous public-
+feed hub. The envelope fixes `readOnly: true`, `dataScope: "public-market-data"`,
+`credentialsRequired: false`, `secretsIncluded: false`, `executionStatus: "not-supported"` and
+`executable: false`. It reports aggregate `idle`, `healthy`, `degraded` or `unhealthy` state and at
+most 128 operator-configured sources with feed state, reconnect generation/count, latest receive,
+available book/top-book/funding evidence and protocol continuity.
+
+`bookContinuityReady` means only that a live book has a fresh sequence/checksum proof from the
+current connection generation. It does not mean a compatible route exists and proves no fees,
+balances, borrow, transfer, private account, simultaneous fill or execution permission. With no
+activated allowlist the valid response is `idle` with no sources; that is observability, not evidence
+that the checked-in allowlist is running.
+
+The generated public SDK exposes `continuousFeedHealth()` and strictly recomputes aggregate counts,
+health, freshness, generation and continuity relationships. The Live routes browser view polls both
+continuous endpoints every five seconds only while visible and renders the diagnostics in EN/RU/KK.
+Those engine/runtime/browser and deterministic contract layers remain separate from the dated
+credential-free public canary, authenticated private evidence, soak and production readiness.
+
 ### `/api/trade/arbitrage-alerts`
 
 Authenticated `paper-trade` operators can list (`GET`), create/update (`POST`) and delete
-(`DELETE /:id`) persistent Telegram-only threshold rules. Rules include a net threshold, minimum
-capacity, non-funding cost estimate, holding time, cooldown and enabled state. They never call an
-exchange order path.
+(`DELETE /:id`) persistent notification-only threshold rules. Rules include a net threshold,
+minimum capacity, non-funding cost estimate, holding time, cooldown and enabled state. The `GET`
+response keeps the existing `rules` array and adds a `deliveries` array with durable outbox status.
+`GET /api/trade/arbitrage-alerts/deliveries?limit=100` returns the same bounded delivery view. Status
+is one of `queued`, `sending`, `retrying`, `delivered`, `failed` or `cancelled`; failed attempts expose
+their last error and next retry time. These endpoints never call an exchange order path.
+
+### `/api/trade/arbitrage-alerts/research`
+
+Authenticated `paper-trade` sessions can list, create/update and delete bounded notification-only
+policies shared across basis, pairwise, triangular, native-spread, options-parity and N-leg research
+families. Mutation requests pass the existing session CSRF and audit middleware. Policies require
+minimum evidence quality, observation/economics/identity age, conservative net profit, net edge,
+capacity, optional maximum risk capital and cooldown. `GET /deliveries?limit=1..500` exposes the
+bounded durable outbox without notification payloads.
+
+The runtime starts and stops with the server and fixes `researchOnly: true` and
+`executionPermission: false`. It accepts snapshots only from server-owned adapters—there is no HTTP
+ingest route. Current API mounting provides policy/outbox operation; each engine still needs a
+point-in-time account-economics producer before that family can trigger a real notification. No
+policy can place an exchange order.
 
 ---
 
@@ -189,11 +552,13 @@ Fetches OHLCV candles for a single instrument.
 | Param | Type | Required | Default | Constraints |
 | --- | --- | --- | --- | --- |
 | `symbol` | `string` | yes | — | min length 1; resolved case-insensitively against the catalog |
-| `timeframe` | enum | no | `1m` | one of `1m,5m,15m,1h,4h,1d` |
+| `timeframe` | enum | no | `1m` | one of `1m,5m,15m,30m,1h,2h,4h,1d,1w,1M` |
 | `limit` | integer | no | `320` | min `10`, max `1000` |
 | `endTime` | integer | no | — | positive; ms epoch upper bound |
 | `startTime` | integer | no | — | positive; ms epoch lower bound |
 | `exchange` | enum | no | `binance` | `binance` or `bybit` |
+| `marketType` | enum | no | `spot` | `spot`, `linear` or `inverse` |
+| `priceType` | enum | no | `last` | `last`, `mark` or `index`; mark/index require a compatible derivatives market |
 
 The `exchange` parameter selects which crypto exchange (Binance or Bybit) supplies the candles for crypto symbols.
 
@@ -248,7 +613,7 @@ Returns compact close-price series for one or more symbols, suitable for sparkli
 | Param | Type | Required | Default | Constraints |
 | --- | --- | --- | --- | --- |
 | `symbols` | `string` | yes | — | min length 1; comma-separated list, trimmed, blanks dropped, capped at 40 symbols |
-| `timeframe` | enum | no | `1h` | one of `1m,5m,15m,1h,4h,1d` |
+| `timeframe` | enum | no | `1h` | one of `1m,5m,15m,30m,1h,2h,4h,1d,1w,1M` |
 | `points` | integer | no | `32` | min `2`, max `120` |
 | `exchange` | enum | no | `binance` | `binance` or `bybit` |
 
@@ -294,7 +659,11 @@ curl "http://localhost:4180/api/sparklines?symbols=BTCUSDT,ETHUSDT&timeframe=1h&
 
 ## Market WebSocket: `/stream`
 
-Streams an initial snapshot followed by live candle and status updates for a single instrument. Connect with the same query parameters as `GET /api/candles` (validated by the identical schema): `symbol`, `timeframe`, `limit`, `endTime`, `startTime`, `exchange`.
+Streams an initial snapshot followed by live candle and status updates for a single instrument.
+Connect with the same validated schema as `GET /api/candles`: `symbol`, `timeframe`, `limit`,
+`endTime`, `startTime`, `exchange`, `marketType` and `priceType`. A venue may reject a derivative
+combination it cannot stream (for example, a non-`last` WebSocket price type) instead of silently
+substituting another series.
 
 ```
 ws://localhost:4180/stream?symbol=BTCUSDT&timeframe=1m&exchange=binance
@@ -494,6 +863,48 @@ For Binance, `m=true` means the buyer was the maker and is normalized to an aggr
 
 All trading endpoints are mounted under `/api/trade`. A bot's `status` field in responses is computed live from the engine (`running` when the engine reports the bot as running, otherwise `stopped`).
 
+Live execution remains experimental and disarmed by default. Binance live spot is disabled until an
+authenticated spot execution-accounting stream exists. Bybit spot is experimental behind
+`ENABLE_LIVE_SPOT` and uses the v5 `order` + `execution` topics. This API is not a mainnet-readiness
+claim; the funded 7–14-day exchange soak is explicitly outside the current verified scope.
+
+All live `replace` and `turnover` commands are rejected until every child cancel/close/new action has
+an independent durable lifecycle. Reservations also retain unaccounted partial fills from
+cancelled/expired rows and conservatively retain legacy replaced entries. Futures preflight uses the
+larger of exact-symbol venue gross position quantity and the durable fill-accounted shadow quantity.
+When one venue order matches one local reservation, price and quantity use a conservative maximum;
+identity conflicts fail closed. A terminal REST status without authenticated execution accounting
+pauses the bot after polling/reconnect reconciliation.
+
+### `/api/trade/paper-multi-leg/*`
+
+This authenticated `paper-trade`-role surface runs deterministic failure/recovery scenarios for an
+already validated two-leg route-family or four-to-eight-leg N-leg research plan. It is paper-only:
+every successful envelope contains `safety.executionMode: "paper-only"`, `liveOrders: false`,
+`privateRequests: false` and `credentialsAccepted: false`. The module imports no private exchange
+adapter and is intentionally absent from the public arbitrage SDK.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/trade/paper-multi-leg/runs` | Validate and run one short-lived plan to a deterministic terminal state. Requires session CSRF and an `Idempotency-Key` header (`8..160` safe characters). |
+| `GET` | `/api/trade/paper-multi-leg/runs?limit=50` | List up to 100 recent bounded summaries; never returns the idempotency key. |
+| `GET` | `/api/trade/paper-multi-leg/runs/:runId` | Read the exact state and append-only event sequence for one run. |
+| `GET` | `/api/trade/paper-multi-leg/recovery` | Read process restart-recovery state, recovered-run count and bounded timestamps. |
+
+The `POST` body is exactly `{ "plan": PaperMultiLegPlan }`; unknown fields and credentials are
+rejected and the parsed request is capped at 64 KiB. Plans use schema
+`paper-multi-leg-plan-v1`, expire within five minutes, require source evidence no older than 60
+seconds, and carry explicit original/compensation fill ratios rather than claiming exchange fills.
+Execution stops on the first incomplete original leg and attempts reverse compensation in reverse
+leg order. Terminal status is `completed`, `compensated`, `aborted-no-exposure`, or
+`manual-review-required` with exact unresolved paper quantities.
+
+All responses are `Cache-Control: no-store`. Reusing an idempotency key with the same plan returns
+the existing run; reusing it with a different plan is `409`. Expired evidence is `410`, capacity is
+`507`, malformed/unknown input is `400`, and an unknown run is `404`. The default journal is
+`backend/data/arbitrage-paper-multi-leg.sqlite`; startup verifies hashes, contiguous sequence,
+monotonic timestamps and every deterministic transition before completing unfinished runs.
+
 ### `BotConfig`
 
 The core object accepted and returned by the bot endpoints.
@@ -507,10 +918,14 @@ The core object accepted and returned by the bot endpoints.
 | `symbol` | `string` | Upper-cased on save (required) |
 | `timeframe` | `Timeframe` | Required |
 | `exchange` | `"paper" \| "binance" \| "bybit"` | Defaults to `paper` |
-| `market` | `"spot" \| "futures"` | `spot` only when explicitly `"spot"`, otherwise `futures` |
+| `market` | `"spot" \| "futures"` | `spot` only when explicitly `"spot"`, otherwise `futures`; Binance live spot is disabled and Bybit spot is experimental behind `ENABLE_LIVE_SPOT` |
 | `sizeMode` | `"quote" \| "base" \| "equity_pct" \| "risk_pct"` | Defaults to `quote` |
 | `sizeValue` | `number` | Defaults to `100` |
 | `leverage` | `number` | Floored at `1` |
+| `maxPositionQuote` | `number` | Required and positive for live bots |
+| `maxOrderQuote` | `number` | Required and positive for live bots; cannot exceed `maxPositionQuote` |
+| `maxDailyLossQuote` | `number` | Required and positive for live bots |
+| `maxOpenOrders` | `integer` | Required and positive for live bots |
 | `notifyMarkers` | `boolean` | Defaults to `false` |
 | `status` | `"stopped" \| "running" \| "error"` | Live-computed in responses |
 | `createdAt` | `number` | ms epoch; preserved across updates |
@@ -549,11 +964,15 @@ Creates or upserts a bot. The request body is a partial `BotConfig`. If `id` mat
 | `name` | `string` | `strategyName` or `"Bot"` |
 | `strategyName` | `string` | `"Strategy"` |
 | `exchange` | `"paper" \| "binance" \| "bybit"` | `paper` |
-| `market` | `"spot" \| "futures"` | `futures` |
+| `market` | `"spot" \| "futures"` | `futures`; Binance live spot is rejected and Bybit spot requires `ENABLE_LIVE_SPOT` |
 | `sizeMode` | `"quote" \| "base" \| "equity_pct" \| "risk_pct"` | `quote` |
 | `sizeValue` | `number` | `100` |
 | `leverage` | `number` | `1` (floored at 1) |
 | `notifyMarkers` | `boolean` | `false` |
+| `maxPositionQuote` | positive `number` | Required for live; omitted for paper |
+| `maxOrderQuote` | positive `number` | Required for live; must not exceed position cap |
+| `maxDailyLossQuote` | positive `number` | Required for live |
+| `maxOpenOrders` | positive `integer` | Required for live |
 
 **Response `200`**
 
@@ -595,6 +1014,9 @@ curl -X DELETE http://localhost:4180/api/trade/bots/<bot-id>
 
 Starts the bot's strategy engine.
 
+Only one live bot may own an exchange+symbol at a time, including across spot/futures. A request body
+`override: true` cannot bypass this live collision; stop and reconcile the existing bot first.
+
 **Response `200`**
 
 ```json
@@ -606,7 +1028,8 @@ Starts the bot's strategy engine.
 | Status | Body | When |
 | --- | --- | --- |
 | `404` | `{ "error": "Bot not found" }` | No bot with that id |
-| `400` | `{ "error": "<reason>" }` | Engine failed to start (message from the thrown error, or `"Failed to start"`) |
+| `400` | `{ "error": "<reason>" }` | Validation/start failed, including disabled Binance live spot, an unarmed Bybit spot bot or another fail-closed readiness error |
+| `426` | `{ "code": "SECURE_TRADING_ORIGIN_REQUIRED", "error": "…" }` | Live start was attempted over untrusted public HTTP |
 
 ```bash
 curl -X POST http://localhost:4180/api/trade/bots/<bot-id>/start
@@ -630,9 +1053,38 @@ curl -X POST http://localhost:4180/api/trade/bots/<bot-id>/stop
 
 ---
 
+### `GET /api/trade/kill` and `POST /api/trade/kill`
+
+The authenticated `live-trade` emergency endpoint persists a global operation, blocks new live
+orders, stops bot runtimes, cancels all account orders and reconciles the exchange state. `GET`
+returns the current `idle`, `stopping`, `terminal` or `partial_failure` status.
+
+```json
+{
+  "operationId": "b2188e5e-18b5-4e64-9c08-2376454bfaee",
+  "flatten": false
+}
+```
+
+`flatten` defaults to `false`, so positions stay open. Closing all futures positions additionally
+requires `"confirmFlatten": "FLATTEN_ALL_LIVE_POSITIONS"`; closes are reduce-only market orders and
+spot holdings are never sold. The response contains `botsStopped`, top-level `errors`, and one
+account result per exchange/market with the initial and remaining orders/positions. A confirmed
+result is `200` with `phase="terminal"` and `ok=true`; unresolved work is `207` with
+`phase="partial_failure"` and `ok=false`. Reusing an `operationId` returns its stored result without
+submitting the exchange actions twice. A different ID while an operation is running returns `409`,
+and missing flatten confirmation returns `428`.
+
+---
+
 ### `POST /api/trade/bots/:id/command`
 
-Runs a manual command string against the bot's exchange adapter (e.g. an order instruction).
+Runs a manual command string against the bot's exchange adapter (e.g. an order instruction). Every
+risk-increasing live command must contain an explicit positive base `qty`. Quote quantity,
+`openpro`, `depopro` and other balance/percentage sizing remain available to paper/general command
+resolution but cannot create live exposure. Risk-reducing close and cancel commands are exempt. Live
+`replace` and `turnover` are rejected on every market until their child actions have independent
+durable lifecycles.
 
 **Body**
 
@@ -662,7 +1114,7 @@ Runs a manual command string against the bot's exchange adapter (e.g. an order i
 ```bash
 curl -X POST http://localhost:4180/api/trade/bots/<bot-id>/command \
   -H "Content-Type: application/json" \
-  -d '{"command":"open buy 100"}'
+  -d '{"command":"action=openposition;mktype=futures;symbol=BTCUSDT;side=buy;type=market;qty=0.001"}'
 ```
 
 ---
@@ -751,6 +1203,52 @@ curl http://localhost:4180/api/trade/bots/<bot-id>/orders
 
 ---
 
+### `GET /api/network-identity/registry`
+
+Returns the bounded, server-owned `network-identity-registry-v1` snapshot. The
+current reviewed allowlist contains exact Binance/Bybit identities for BTC and
+ETH native mainnets plus official USDT/USDC Ethereum contracts. The envelope is
+always `readOnly: true` and `executable: false`; `evaluatedAt` and `validity`
+(`current`/`stale`, reason, aggregate `asOf`, `validUntil`, `remainingMs`) expose
+whether every evidence row is valid at the server clock. No query parameters,
+credentials, addresses or transfer operations are accepted.
+
+The static snapshot deliberately has no `transferCapabilities`: dynamic deposit/withdraw status,
+fees, limits and confirmation requirements must come from a future fresh capability source, and no
+arrival observer exists. An identity row therefore does not prove a usable transfer route.
+
+```bash
+curl http://localhost:4180/api/network-identity/registry
+```
+
+### `POST /api/network-identity/preflight`
+
+Runs a strict, read-only `network-transfer-compatibility-v1` evaluation against
+one captured server snapshot. The body contains `schemaVersion`,
+`registryVersion`, `routeId`, `assetId`, decimal `amount`, exact source/destination
+venue network codes, and evidence/clock/arrival limits. It intentionally does
+**not** accept `evaluatedAt`, registry data or mappings; evaluation time is pinned
+to the server clock, so a caller cannot backdate a request into an expired review
+window. Invalid bodies return `400`; valid but incompatible routes return `200`
+with fail-closed reasons. Every result has `executable: false` and
+`arrivalProofRequired: true`.
+
+`maximumArrivalMs` is a caller requirement, not observed transfer telemetry. This endpoint neither
+submits a withdrawal nor watches a chain/deposit account; until dynamic transfer capabilities and an
+arrival observer are implemented, preflight proves only compatibility with the static reviewed
+identity snapshot.
+
+```bash
+curl -X POST http://localhost:4180/api/network-identity/preflight \
+  -H 'Content-Type: application/json' \
+  -d '{"schemaVersion":1,"registryVersion":"network-identity-2026-07-14.v1","routeId":"route:binance-bybit-btc","assetId":"asset:bitcoin","amount":"1","source":{"venue":"binance","withdrawalNetworkCode":"BTC"},"destination":{"venue":"bybit","depositNetworkCode":"BTC"},"maximumEvidenceAgeMs":2592000000,"maximumFutureClockSkewMs":1000,"maximumArrivalMs":86400000}'
+```
+
+Both routes are available through the strict public arbitrage SDK as
+`networkIdentityRegistry()` and `networkTransferPreflight()`.
+
+---
+
 ### `GET /api/trade/keys`
 
 Reports whether API keys are stored for each exchange. Keys themselves are never returned.
@@ -763,6 +1261,35 @@ Reports whether API keys are stored for each exchange. Keys themselves are never
 
 ```bash
 curl http://localhost:4180/api/trade/keys
+```
+
+---
+
+### `GET /api/trade/account-telemetry`
+
+Returns protected, read-only Binance/Bybit economics evidence for the current configured accounts:
+signed Spot/perpetual fee rates, Binance USDⓈ-M tier/BNB-burn state, current borrow capacity/rate,
+deposit/withdraw network state and public stablecoin-FX provenance. The route requires an
+authenticated `admin` session, never accepts or returns credentials, and sends
+`Cache-Control: private, no-store`.
+
+Bounded query parameters:
+
+| Field | Default | Limit |
+| --- | --- | --- |
+| `venues` | `binance,bybit` | Binance and/or Bybit |
+| `symbols` | `BTCUSDT,ETHUSDT` | 1–2 symbols |
+| `assets` | `BTC,USDT,USDC` | 1–4 assets |
+| `stableAssets` | `USDC` | 1–3 non-USDT assets |
+
+The `readiness` object is deliberately fail-closed: future fee assets and non-recallable borrow are
+not proven by these venue endpoints, so `feeAssets`, `borrowRecall` and `executable` remain false.
+Evidence expires after 30 seconds and is never served from a stale-success fallback. See
+[Account economics telemetry](ACCOUNT_TELEMETRY.md) for field semantics, limits and official venue
+references.
+
+```bash
+curl 'http://localhost:4180/api/trade/account-telemetry?symbols=BTCUSDT,ETHUSDT&assets=BTC,USDT,USDC&stableAssets=USDC'
 ```
 
 ---

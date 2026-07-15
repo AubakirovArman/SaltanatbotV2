@@ -7,13 +7,17 @@ import { encodeStrategyFile } from "../frontend/src/strategy/strategyFile";
 import type { StrategyArtifact } from "../frontend/src/strategy/library";
 
 test.beforeEach(async ({ page }) => {
+  // Keep ordinary chart journeys independent from public exchange availability.
+  // Scenarios that exercise provider errors/reconnects install a more specific
+  // route and reload the document explicitly.
+  await mockCandleHistory(page, mockChartCandles());
   await page.goto("/");
 });
 
 test("loads the terminal and exposes the chart semantically", { tag: "@smoke" }, async ({ page }) => {
   await expect(page.locator(".brand")).toContainText("SaltanatbotV2");
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("status")).toBeVisible();
+  await expect(page.getByRole("status", { name: /Feed:/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Toggle markets panel" })).toHaveAttribute("aria-pressed", "true");
 });
 
@@ -349,6 +353,10 @@ test("isolates price-chart construction settings by pane and symbol", async ({ p
 
 test("keeps mouse and trackpad chart zoom controlled and resettable", { tag: "@smoke" }, async ({ page }) => {
   test.slow();
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await navigateToCurrentAppAndWaitForWorkspace(page);
   const canvas = page.locator(".chart-canvas-interaction");
   await expect(canvas).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
@@ -392,6 +400,117 @@ test("keeps a two-finger touch gesture inside the chart and zooms around its mid
     expect(await reset.getAttribute("aria-label")).toMatch(/\((1[1-9][0-9]|[2-4][0-9]{2})%\)/);
   }).toPass({ timeout: 10_000 });
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+});
+
+test("keeps repeated mobile pinch-out stable at the minimum chart zoom", async ({ browser, browserName, baseURL }) => {
+  test.skip(browserName !== "chromium", "CDP multi-touch injection is Chromium-specific; pure gesture math is engine-independent.");
+  test.slow();
+  const context = await browser.newContext({
+    baseURL,
+    viewport: { width: 390, height: 844 },
+    screen: { width: 390, height: 844 },
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true
+  });
+  const page = await context.newPage();
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  let mainFrameNavigations = 0;
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) mainFrameNavigations += 1;
+  });
+
+  try {
+    const candles = mockChartCandles();
+    await mockCandleHistory(page, candles);
+    await installMarketSocketMock(page, "stable", candles);
+    await page.goto("/");
+    const canvas = page.locator(".chart-canvas-interaction");
+    await expect(canvas).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+    const navigationsAfterStartup = mainFrameNavigations;
+    const client = await page.context().newCDPSession(page);
+    await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const box = await canvas.boundingBox();
+      expect(box).not.toBeNull();
+      const y = box!.y + box!.height * 0.52;
+      const center = box!.x + box!.width * 0.5;
+      const point = (x: number, id: number) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 });
+      await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point(center - 90, 1)] });
+      await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point(center - 90, 1), point(center + 90, 2)] });
+      for (const distance of [140, 100, 70, 40, 20, 8, 2, 1]) {
+        await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [point(center - distance / 2, 1), point(center + distance / 2, 2)] });
+      }
+      await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    }
+
+    await canvas.evaluate(async (element) => {
+      const canvas = element as HTMLCanvasElement;
+      const prototype = HTMLCanvasElement.prototype;
+      const originalSet = prototype.setPointerCapture;
+      const originalHas = prototype.hasPointerCapture;
+      const originalRelease = prototype.releasePointerCapture;
+
+      // Synthetic PointerEvents are absent from Chromium's active-pointer
+      // table. Stub capture only so move/up frames can be delivered in one JS
+      // task, reproducing coalesced mobile hardware input deterministically.
+      prototype.setPointerCapture = () => {};
+      prototype.hasPointerCapture = () => true;
+      prototype.releasePointerCapture = () => {};
+
+      try {
+        const rect = canvas.getBoundingClientRect();
+        const center = rect.left + rect.width / 2;
+        const y = rect.top + rect.height * 0.52;
+        const fire = (type: string, pointerId: number, x: number, isPrimary: boolean) => {
+          canvas.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              pointerType: "touch",
+              pointerId,
+              isPrimary,
+              button: 0,
+              buttons: type === "pointerup" ? 0 : 1,
+              clientX: x,
+              clientY: y
+            })
+          );
+        };
+
+        fire("pointerdown", 101, center - 90, true);
+        fire("pointerdown", 102, center + 90, false);
+        for (const distance of [140, 80, 40, 8, 2, 1]) {
+          fire("pointermove", 101, center - distance / 2, true);
+          fire("pointermove", 102, center + distance / 2, false);
+        }
+        // Both ups remain in this task so React cannot flush every queued move
+        // before the touch controller clears the mutable live gesture.
+        fire("pointerup", 101, center, true);
+        fire("pointerup", 102, center, false);
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      } finally {
+        prototype.setPointerCapture = originalSet;
+        prototype.hasPointerCapture = originalHas;
+        prototype.releasePointerCapture = originalRelease;
+      }
+    });
+
+    await expect(page.getByRole("button", { name: "Reset chart zoom (40%)" })).toBeVisible();
+    await expect(page.locator(".startup-recovery")).toHaveCount(0);
+    expect(mainFrameNavigations).toBe(navigationsAfterStartup);
+    expect(pageErrors).toEqual([]);
+    expect(consoleErrors.filter((message) => !message.includes("favicon"))).toEqual([]);
+  } finally {
+    await context.close();
+  }
 });
 
 test("keeps Retina canvas, pointer HUD and price axis in CSS-pixel alignment", async ({ browser, browserName, baseURL }) => {
@@ -446,7 +565,7 @@ test("scales the price axis independently with wheel, drag and keyboard", async 
   const candles = mockChartCandles();
   await mockCandleHistory(page, candles);
   await installMarketSocketMock(page, "stable", candles);
-  await page.reload();
+  await navigateToCurrentAppAndWaitForWorkspace(page);
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   const axis = page.getByRole("slider", { name: "Price axis scale" });
   const timeZoom = page.getByRole("button", { name: "Reset chart zoom (100%)" });
@@ -831,6 +950,10 @@ test("restores the last four-chart session after reload without a named workspac
 });
 
 test("isolates and restores drawings for identical symbols in separate panes", async ({ page }) => {
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await page.reload();
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   await page.getByRole("button", { name: "Chart layout" }).click();
   await page.getByRole("menuitemradio", { name: "Vertical split" }).click();
@@ -921,11 +1044,11 @@ test("renders a mocked live footprint and trade delta accessibly", async ({ page
 test("passes automated WCAG A/AA audits on chart, strategy and trading surfaces", { tag: "@smoke" }, async ({ page }) => {
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
   await expectNoAxeViolations(page);
-  const modes = page.getByLabel("Workspace mode");
-  await modes.getByRole("button", { name: "Strategy", exact: true }).click();
+  const modes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await modes.getByRole("button", { name: "Strategies", exact: true }).click();
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   await expectNoAxeViolations(page);
-  await modes.getByRole("button", { name: "Trade", exact: true }).click();
+  await modes.getByRole("button", { name: "Robots", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Trading is locked" })).toBeVisible();
   await expectNoAxeViolations(page);
 });
@@ -937,7 +1060,7 @@ test("honours reduced motion and remains operable at 200 percent text size", asy
   await page.locator("html").evaluate((element) => {
     element.style.fontSize = "200%";
   });
-  await expect(page.getByLabel("Workspace mode")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Primary workspaces" })).toBeVisible();
   await page.getByRole("button", { name: "Chart data", exact: true }).click();
   await expect(page.getByRole("table", { name: "Latest candle" })).toBeVisible({ timeout: 20_000 });
 });
@@ -972,12 +1095,12 @@ test("command palette is keyboard-operable and switches symbols", async ({ page 
 });
 
 test("opens the lazy Strategy workspace without losing the shell", async ({ page }) => {
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
 
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
-  await expect(workspaceModes.getByRole("button", { name: "Chart", exact: true })).toHaveAttribute("aria-pressed", "false");
-  await expect(workspaceModes.getByRole("button", { name: "Strategy", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(workspaceModes.getByRole("button", { name: "Monitoring", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(workspaceModes.getByRole("button", { name: "Strategies", exact: true })).toHaveAttribute("aria-pressed", "true");
   const stages = page.getByRole("navigation", { name: "Studio stages" });
   await expect(stages.getByRole("button", { name: "Build", exact: true })).toHaveAttribute("aria-pressed", "true");
   await stages.getByRole("button", { name: "Learn", exact: true }).click();
@@ -985,8 +1108,8 @@ test("opens the lazy Strategy workspace without losing the shell", async ({ page
 });
 
 test("creates an ordinary editable strategy with the guided wizard", async ({ page }) => {
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
 
   await page.getByRole("button", { name: "Wizard", exact: true }).click();
@@ -1024,8 +1147,8 @@ test("persists the selected theme across reload", async ({ page }) => {
 });
 
 test("imports a Pine indicator as an editable artifact", { tag: "@smoke" }, async ({ page }) => {
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
 
   await page.getByRole("button", { name: "Pine", exact: true }).click();
@@ -1092,7 +1215,7 @@ test("receives shared research files through the installed PWA without automatic
   await expect(review).toContainText("oversized.pine");
   await expect(review).toContainText("File exceeds its bounded safety limit");
   await expect(review).toContainText("temporarily on this device");
-  await expect(page.getByLabel("Workspace mode").getByRole("button", { name: "Chart", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Monitoring", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".strategy-lab")).toHaveCount(0);
   await expectNoAxeViolations(page);
 
@@ -1147,8 +1270,8 @@ test("checksum-reviews an OS-launched strategy before adding it", async ({ page 
 test("reviews a checksummed declarative plugin before importing it", async ({ page }) => {
   test.setTimeout(60_000);
   await installPwaLaunchQueue(page);
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
   const library = page.locator(".strategy-library");
   await expect(library).toBeVisible({ timeout: 20_000 });
   await expect(library).toContainText("A checksum proves integrity, not publisher trust");
@@ -1212,8 +1335,8 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
     localStorage.setItem(key, JSON.stringify(artifacts));
   });
 
-  await page.reload();
-  await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
+  await navigateToCurrentAppAndWaitForWorkspace(page);
+  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
   const restoredLibrary = page.locator(".strategy-library");
   await expect(restoredLibrary).toContainText("E2E plugin overlay", { timeout: 20_000 });
   await expect(restoredLibrary).toContainText("E2E plugin strategy");
@@ -1315,8 +1438,8 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
     if (localArtifact) localArtifact.dependencies = [];
     localStorage.setItem(key, JSON.stringify(artifacts));
   });
-  await page.reload();
-  await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
+  await navigateToCurrentAppAndWaitForWorkspace(page);
+  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
   await page
     .locator(".strategy-library")
     .getByRole("button", { name: /Installed plugins 1/ })
@@ -1333,13 +1456,13 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   await expect(restoredLibrary.getByRole("status")).toContainText("Plugin removed from the local library");
   await expect(restoredLibrary).not.toContainText("E2E plugin overlay");
 
-  await page.reload();
-  await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
+  await navigateToCurrentAppAndWaitForWorkspace(page);
+  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
   await expect(page.locator(".strategy-library")).not.toContainText("E2E plugin overlay", { timeout: 20_000 });
 });
 
 test("exports selected local artifacts as a verified plugin package", { tag: "@smoke" }, async ({ page }) => {
-  await page.getByLabel("Workspace mode").getByRole("button", { name: "Strategy", exact: true }).click();
+  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
   const library = page.locator(".strategy-library");
   await expect(library).toBeVisible({ timeout: 20_000 });
   await library.getByRole("button", { name: "Build plugin", exact: true }).click();
@@ -1394,10 +1517,10 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
 
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
-  await expect(page).toHaveTitle("График · SaltanatbotV2");
-  const workspaceModes = page.locator(".mode-tabs");
-  await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
-  await expect(workspaceModes.getByRole("button", { name: "Стратегия", exact: true })).toBeVisible();
+  await expect(page).toHaveTitle("Мониторинг · SaltanatbotV2");
+  const workspaceModes = page.locator(".workspace-navigation");
+  await expect(workspaceModes.getByRole("button", { name: "Мониторинг", exact: true })).toBeVisible();
+  await expect(workspaceModes.getByRole("button", { name: "Стратегии", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Переключить язык интерфейса на казахский" })).toBeVisible();
   await expect(page.locator(".locale-toggle")).toHaveText("RU");
   await expect(page.getByRole("button", { name: "Данные графика", exact: true })).toBeVisible();
@@ -1412,8 +1535,8 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
   await expect(localizedPalette.getByPlaceholder("Поиск символов, интервалов, типов графика и действий…")).toBeFocused();
   await page.keyboard.press("Escape");
 
-  await workspaceModes.getByRole("button", { name: "Стратегия", exact: true }).click();
-  await expect(page).toHaveTitle("Стратегия · SaltanatbotV2");
+  await workspaceModes.getByRole("button", { name: "Стратегии", exact: true }).click();
+  await expect(page).toHaveTitle("Автоматизация · Стратегии · SaltanatbotV2");
   await page.getByRole("navigation", { name: "Этапы Студии" }).getByRole("button", { name: "Бэктест", exact: true }).click();
   await expect(page.getByRole("button", { name: "Запустить бэктест", exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("button", { name: "Галерея", exact: true })).toBeVisible();
@@ -1424,13 +1547,13 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
 
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
-  await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
-  await workspaceModes.getByRole("button", { name: "Торговля", exact: true }).click();
+  await expect(workspaceModes.getByRole("button", { name: "Мониторинг", exact: true })).toBeVisible();
+  await workspaceModes.getByRole("button", { name: "Роботы", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Торговля заблокирована" })).toBeVisible();
   await page.getByRole("button", { name: "Переключить язык интерфейса на казахский" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "kk");
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
-  await expect(page).toHaveTitle("Сауда · SaltanatbotV2");
+  await expect(page).toHaveTitle("Автоматтандыру · Роботтар · SaltanatbotV2");
   await expect(page.getByRole("heading", { name: "Сауда жабық" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Интерфейс тілін ағылшын тіліне ауыстыру" })).toBeVisible();
   await expect(page.locator(".locale-toggle")).toHaveText("KK");
@@ -1438,12 +1561,12 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
 
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "kk");
-  await expect(page).toHaveTitle("График · SaltanatbotV2");
-  await expect(workspaceModes.getByRole("button", { name: "График", exact: true })).toBeVisible();
-  await workspaceModes.getByRole("button", { name: "Сауда", exact: true }).click();
+  await expect(page).toHaveTitle("Мониторинг · SaltanatbotV2");
+  await expect(workspaceModes.getByRole("button", { name: "Мониторинг", exact: true })).toBeVisible();
+  await workspaceModes.getByRole("button", { name: "Роботтар", exact: true }).click();
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
-  await page.getByRole("button", { name: "Құлыпты ашу" }).click();
-  await page.getByRole("button", { name: "Параметрлер" }).click();
+  await page.getByRole("button", { name: "Құлыпты ашу", exact: true }).click();
+  await page.getByRole("button", { name: "Параметрлер", exact: true }).click();
   await expect(page.getByText("Demo режимі қосулы — тек paper сауда қолжетімді.")).toBeVisible();
   await expect(page.getByRole("button", { name: "binance кілттерін сақтау" })).toBeVisible();
   await expect(page.getByLabel("Бот token-і")).toBeVisible();
@@ -1468,8 +1591,8 @@ test("saves and restores a named chart workspace", async ({ page }) => {
 });
 
 test("runs a backtest and exposes assumptions and metrics", { tag: "@smoke" }, async ({ page }) => {
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   await page.getByRole("navigation", { name: "Studio stages" }).getByRole("button", { name: "Backtest", exact: true }).click();
   await page
@@ -1484,14 +1607,14 @@ test("runs a backtest and exposes assumptions and metrics", { tag: "@smoke" }, a
   await expect(report).toContainText("Net profit");
   await expect(report).toContainText(/next-open fills/i);
   await expect(report).toContainText(/Data fallback/i);
-  await expect(report.getByRole("alert")).toContainText(/Performance claims are not valid/i);
+  await expect(report.getByRole("alert").filter({ hasText: /Performance claims are not valid/i })).toBeVisible();
   await expect(report).toContainText("Trades");
 });
 
 test("runs several markets through one portfolio capital pool", async ({ page }) => {
   await mockCandleHistory(page, mockChartCandles());
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   await page.getByRole("navigation", { name: "Studio stages" }).getByRole("button", { name: "Backtest", exact: true }).click();
 
@@ -1526,18 +1649,18 @@ test("runs several markets through one portfolio capital pool", async ({ page })
 });
 
 test("keeps trading locked for a bad token and opens an authenticated session", { tag: "@smoke" }, async ({ page }) => {
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Robots", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Trading is locked" })).toBeVisible();
 
   const token = page.getByLabel("Access token");
   await token.fill("invalid-token");
-  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Invalid access token");
 
   await token.fill("e2e-local-admin-token");
-  await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByText("Live & paper trading", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Running robots" })).toBeVisible({ timeout: 15_000 });
 });
 
 test("configures and persists a built-in indicator", async ({ page }) => {
@@ -1555,8 +1678,8 @@ test("configures and persists a built-in indicator", async ({ page }) => {
 });
 
 test("adds an imported custom indicator to the chart", async ({ page }) => {
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Strategy", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
 
   await page.getByRole("button", { name: "Pine", exact: true }).click();
@@ -1565,7 +1688,7 @@ test("adds an imported custom indicator to the chart", async ({ page }) => {
   await dialog.getByRole("button", { name: "Convert", exact: true }).click();
   await dialog.getByRole("button", { name: "Add 1 artifact", exact: true }).click();
 
-  await workspaceModes.getByRole("button", { name: "Chart", exact: true }).click();
+  await workspaceModes.getByRole("button", { name: "Monitoring", exact: true }).click();
   await page.getByRole("button", { name: "ADD", exact: true }).click();
   await page.getByRole("menuitem").filter({ hasText: "Chart E2E SMA" }).click();
 
@@ -1574,11 +1697,11 @@ test("adds an imported custom indicator to the chart", async ({ page }) => {
 });
 
 test("creates, starts, journals and stops a paper bot", { tag: "@smoke" }, async ({ page }) => {
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Robots", exact: true }).click();
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
-  await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByText("Live & paper trading", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Running robots" })).toBeVisible({ timeout: 15_000 });
 
   await page
     .getByRole("button", { name: /Create paper bot|New bot/ })
@@ -1597,7 +1720,7 @@ test("creates, starts, journals and stops a paper bot", { tag: "@smoke" }, async
   await detail.getByRole("button", { name: "Start", exact: true }).click();
   await expect(detail.getByRole("button", { name: "Stop", exact: true })).toBeVisible({ timeout: 15_000 });
 
-  const command = detail.getByPlaceholder("action=openposition;side=buy;openpro=25;lev=5");
+  const command = detail.getByRole("textbox", { name: "Bot command" });
   await command.fill("action=openposition;symbol=EURUSD;side=buy;qty=0.001;lev=1");
   await command.press("Enter");
   await expect(detail.locator("#order-journal-title")).toBeVisible({ timeout: 15_000 });
@@ -1618,11 +1741,11 @@ test("creates, starts, journals and stops a paper bot", { tag: "@smoke" }, async
 });
 
 test("exposes safe demo trading settings and labeled secret forms", async ({ page }) => {
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Robots", exact: true }).click();
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
-  await page.getByRole("button", { name: "Unlock" }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
 
   await expect(page.getByText("Running in demo mode — only paper trading is available.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save binance keys" })).toBeVisible();
@@ -1631,11 +1754,93 @@ test("exposes safe demo trading settings and labeled secret forms", async ({ pag
   await expect(page.getByLabel("Chat ID")).toHaveAttribute("inputmode", "numeric");
 });
 
+test("shows protected account economics as read-only admin evidence", async ({ page }) => {
+  let requestedUrl = "";
+  await page.route("**/api/trade/settings", async (route) => {
+    if (route.request().method() === "GET") await route.fulfill({ json: { ok: true, demo: false, liveTradingEnabled: false, secureTradingOrigin: true, role: "admin" } });
+    else await route.continue();
+  });
+  await page.route("**/api/trade/keys", async (route) => {
+    if (route.request().method() === "GET") await route.fulfill({ json: { binance: true, bybit: true } });
+    else await route.continue();
+  });
+  await page.route("**/api/trade/account-telemetry?**", async (route) => {
+    requestedUrl = route.request().url();
+    await route.fulfill({ json: accountTelemetryFixture() });
+  });
+
+  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Robots", exact: true }).click();
+  await page.getByLabel("Access token").fill("e2e-local-admin-token");
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+
+  const panel = page.locator(".account-telemetry");
+  await expect(panel.getByText("Account economics evidence", { exact: true })).toBeVisible();
+  await expect(panel).toContainText("executable is always false");
+  await panel.getByRole("button", { name: "Refresh evidence" }).click();
+  await expect(panel.getByRole("table", { name: "Account fee rates" })).toContainText("BTCUSDT");
+  await expect(panel.getByRole("table", { name: "Borrow capacity and current rate" })).toContainText("Recall guarantee unavailable");
+  await expect(panel.getByRole("table", { name: "Deposit / withdrawal networks" })).toContainText("BTC · BTC");
+  await expect(panel.getByRole("table", { name: "Stablecoin bid / ask" })).toContainText("USDCUSDT");
+  expect(requestedUrl).toContain("symbols=BTCUSDT%2CETHUSDT");
+  await expectNoAxeViolations(page);
+});
+
+test("confirms account emergency stop and requires a separate flatten confirmation", async ({ page }) => {
+  const mutations: Array<Record<string, unknown>> = [];
+  await page.route("**/api/trade/settings", async (route) => {
+    if (route.request().method() === "GET") await route.fulfill({ json: { demo: false, liveTradingEnabled: true, secureTradingOrigin: true } });
+    else await route.continue();
+  });
+  await page.route("**/api/trade/keys", async (route) => {
+    if (route.request().method() === "GET") await route.fulfill({ json: { binance: false, bybit: false } });
+    else await route.continue();
+  });
+  await page.route("**/api/trade/kill", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      await route.fulfill({ json: { phase: "idle", ok: true, flattenRequested: false, botsStopped: 0, accounts: [], errors: [] } });
+      return;
+    }
+    const body = request.postDataJSON() as Record<string, unknown>;
+    mutations.push(body);
+    await route.fulfill({
+      json: {
+        operationId: body.operationId,
+        phase: "terminal",
+        ok: true,
+        flattenRequested: body.flatten,
+        startedAt: 1,
+        completedAt: 2,
+        botsStopped: 2,
+        accounts: [],
+        errors: []
+      }
+    });
+  });
+
+  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Robots", exact: true }).click();
+  await page.getByLabel("Access token").fill("e2e-local-admin-token");
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Stop bots + cancel orders" }).click();
+  await expect(page.getByText("Emergency stop confirmed", { exact: true })).toBeVisible();
+  expect(mutations[0]).toMatchObject({ flatten: false });
+  expect(mutations[0]?.operationId).toMatch(/^[0-9a-f-]{36}$/);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Stop + cancel + flatten positions" }).click();
+  await expect.poll(() => mutations.length).toBe(2);
+  expect(mutations[1]).toMatchObject({ flatten: true, confirmFlatten: "FLATTEN_ALL_LIVE_POSITIONS" });
+});
+
 test("shows Bybit UTA collateral risk and requires explicit debt confirmations", { tag: "@smoke" }, async ({ page }) => {
   const mutations: Array<{ url: string; body: Record<string, unknown> }> = [];
   const snapshot = bybitUtaFixture();
   await page.route("**/api/trade/settings", async (route) => {
-    if (route.request().method() === "GET") await route.fulfill({ json: { demo: false, liveTradingEnabled: true } });
+    if (route.request().method() === "GET") await route.fulfill({ json: { demo: false, liveTradingEnabled: true, secureTradingOrigin: true } });
     else await route.continue();
   });
   await page.route("**/api/trade/keys", async (route) => {
@@ -1652,11 +1857,11 @@ test("shows Bybit UTA collateral risk and requires explicit debt confirmations",
     await route.fulfill({ json: { ok: true, status: "success", snapshot } });
   });
 
-  const workspaceModes = page.getByLabel("Workspace mode");
-  await workspaceModes.getByRole("button", { name: "Trade", exact: true }).click();
+  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
+  await workspaceModes.getByRole("button", { name: "Robots", exact: true }).click();
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
-  await page.getByRole("button", { name: "Unlock" }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
 
   const panel = page.locator(".uta-panel");
   await expect(panel.getByText("Bybit UTA collateral & debt", { exact: true })).toBeVisible();
@@ -1686,11 +1891,19 @@ test("shows Bybit UTA collateral risk and requires explicit debt confirmations",
   await botForm.locator('select[name="market"]').selectOption("futures");
   await expect(page.getByLabel("Use Bybit UTA cross collateral")).toBeVisible();
   await expect(page.getByText(/require a Unified Trading Account/i)).toBeVisible();
+  await expect(botForm.getByLabel("Max position")).toHaveValue("1000");
+  await expect(botForm.getByLabel("Max order")).toHaveValue("250");
+  await expect(botForm.getByLabel("Max daily loss")).toHaveValue("100");
+  await expect(botForm.getByLabel("Max open orders")).toHaveValue("10");
 });
 
-test("filters executable cross-exchange arbitrage routes without placing orders", { tag: "@smoke" }, async ({ page }) => {
+test("filters basis research candidates without placing orders", { tag: "@smoke" }, async ({ page }) => {
+  const publicVenueBoundary = await page.request.get("/api/market-data/unknown/tickers?marketType=spot");
+  expect(publicVenueBoundary.status()).toBe(404);
+  expect(await publicVenueBoundary.json()).toMatchObject({ availableVenues: expect.arrayContaining(["deribit", "gate", "hyperliquid", "okx"]) });
+  const scanCapturedAt = Date.now();
   const scanFixture = {
-    updatedAt: Date.now(),
+    updatedAt: scanCapturedAt,
     stale: false,
     scannedSymbols: 2,
     estimatedTotalCostBps: 0,
@@ -1704,6 +1917,10 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
       {
         id: "BTCUSDT:binance:bybit",
         symbol: "BTCUSDT",
+        assetId: "crypto:bitcoin",
+        identityScope: "cross-venue-reviewed",
+        spotInstrumentId: "binance:spot:BTCUSDT",
+        futuresInstrumentId: "bybit:perpetual:BTCUSDT",
         spotExchange: "binance",
         futuresExchange: "bybit",
         spotBid: 99900,
@@ -1717,12 +1934,27 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
         netEdgeBps: 150,
         topBookCapacityUsd: 50750,
         fundingRate: 0.0001,
-        nextFundingTime: Date.now() + 3600000,
-        capturedAt: Date.now()
+        fundingIntervalMinutes: 480,
+        fundingScheduleVerified: true,
+        nextFundingTime: scanCapturedAt + 3600000,
+        spotExchangeTs: scanCapturedAt,
+        spotExchangeTimestampVerified: true,
+        spotReceivedAt: scanCapturedAt,
+        futuresExchangeTs: scanCapturedAt,
+        futuresExchangeTimestampVerified: true,
+        futuresReceivedAt: scanCapturedAt,
+        quoteAgeMs: 0,
+        legSkewMs: 0,
+        dataQuality: "fresh",
+        capturedAt: scanCapturedAt
       },
       {
         id: "ETHUSDT:bybit:binance",
         symbol: "ETHUSDT",
+        assetId: "crypto:ethereum",
+        identityScope: "cross-venue-reviewed",
+        spotInstrumentId: "bybit:spot:ETHUSDT",
+        futuresInstrumentId: "binance:perpetual:ETHUSDT",
         spotExchange: "bybit",
         futuresExchange: "binance",
         spotBid: 3999,
@@ -1736,8 +1968,19 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
         netEdgeBps: 50,
         topBookCapacityUsd: 800,
         fundingRate: -0.00005,
-        nextFundingTime: Date.now() + 3600000,
-        capturedAt: Date.now()
+        fundingIntervalMinutes: 480,
+        fundingScheduleVerified: true,
+        nextFundingTime: scanCapturedAt + 3600000,
+        spotExchangeTs: scanCapturedAt,
+        spotExchangeTimestampVerified: true,
+        spotReceivedAt: scanCapturedAt,
+        futuresExchangeTs: scanCapturedAt,
+        futuresExchangeTimestampVerified: true,
+        futuresReceivedAt: scanCapturedAt,
+        quoteAgeMs: 0,
+        legSkewMs: 0,
+        dataQuality: "fresh",
+        capturedAt: scanCapturedAt
       }
     ]
   };
@@ -1751,7 +1994,136 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
     markSocketRouted();
   });
   await page.route("**/api/arbitrage**", async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
+    const requestUrl = new URL(route.request().url());
+    const pathname = requestUrl.pathname;
+    if (pathname.endsWith("/clock-health")) {
+      const updatedAt = Date.now();
+      await route.fulfill({
+        json: {
+          schemaVersion: 1,
+          updatedAt,
+          stale: false,
+          sources: ["binance", "bybit"].map((venue) => ({
+            sourceId: `${venue}:public`,
+            status: "calibrated",
+            evaluatedAt: updatedAt,
+            sampleCount: 3,
+            consistentSampleCount: 3,
+            sampledAt: updatedAt - 10,
+            expiresAt: updatedAt + 60_000,
+            roundTripMs: 10,
+            minimumObservedRoundTripMs: 8,
+            offsetLowerMs: -4,
+            offsetUpperMs: 6,
+            offsetMidpointMs: 1,
+            uncertaintyMs: 5,
+            rejectedProbes: 0,
+            ok: true,
+            endpoint: `https://${venue}.example/time`
+          }))
+        }
+      });
+      return;
+    }
+    if (pathname.endsWith("/native-spreads")) {
+      const nativeUpdatedAt = Date.now();
+      await route.fulfill({
+        json: {
+          venue: "bybit",
+          marketDataMode: "venue-native-spread-orderbook",
+          executionModel: "venue-matched-multi-leg",
+          readOnly: true,
+          updatedAt: nativeUpdatedAt,
+          totalInstruments: 4,
+          eligibleInstruments: 2,
+          scannedInstruments: 2,
+          healthyBooks: 1,
+          totalOpportunities: 1,
+          truncated: false,
+          candidateTruncated: false,
+          sourceErrors: ["SECOND_SPREAD: one-sided book"],
+          opportunities: [
+            {
+              id: "bybit:native-spread:SOLUSDT_SOL/USDT",
+              venue: "bybit",
+              symbol: "SOLUSDT_SOL/USDT",
+              contractType: "FundingRateArb",
+              status: "Trading",
+              baseCoin: "SOL",
+              quoteCoin: "USDT",
+              settleCoin: "USDT",
+              tickSize: 0.0001,
+              minimumPrice: -2000,
+              maximumPrice: 2000,
+              quantityStep: 0.1,
+              minimumQuantity: 0.1,
+              maximumQuantity: 50000,
+              launchTime: nativeUpdatedAt - 100000,
+              legs: [
+                { symbol: "SOLUSDT", contractType: "LinearPerpetual" },
+                { symbol: "SOLUSDT", contractType: "Spot" }
+              ],
+              bidPrice: -1.25,
+              bidQuantity: 2,
+              askPrice: -1.2,
+              askQuantity: 3,
+              bookWidth: 0.05,
+              relativeBookWidthBps: 408.1632653061228,
+              executableQuantity: 2,
+              sequence: 10,
+              exchangeTs: nativeUpdatedAt - 10,
+              matchingEngineTs: nativeUpdatedAt - 12,
+              receivedAt: nativeUpdatedAt,
+              quoteAgeMs: 10,
+              riskFlags: ["read-only", "top-book-only", "venue-native-combination", "revalidate-before-order"]
+            }
+          ]
+        }
+      });
+      return;
+    }
+    if (pathname.endsWith("/triangular")) {
+      await route.fulfill({
+        json: {
+          updatedAt: Date.now(),
+          venue: "binance",
+          startAsset: "USDT",
+          requestedStartQuantity: 1000,
+          scannedMarkets: 300,
+          scannedCycles: 20,
+          totalOpportunities: 1,
+          truncated: false,
+          marketDataMode: "rest-top-book",
+          snapshotSource: "rest-snapshot",
+          executionStatus: "non-executable-candidate",
+          sequenceVerified: false,
+          opportunities: [
+            {
+              id: "binance:USDT-BTC-ETH-USDT",
+              venue: "binance",
+              edgeKind: "non-executable-candidate",
+              executionStatus: "non-executable-candidate",
+              marketDataMode: "rest-top-book",
+              sequenceVerified: false,
+              startAsset: "USDT",
+              startQuantity: 900,
+              endQuantity: 902,
+              grossReturnBps: 52,
+              netReturnBps: 22,
+              limitingCapacity: { requestedStartQuantity: 1000, executableStartQuantity: 900, utilizationPct: 90 },
+              legs: [
+                { index: 0, symbol: "BTCUSDT", side: "buy", fromAsset: "USDT", toAsset: "BTC", inputQuantity: 900, outputQuantity: 0.009, averagePrice: 100000, feeBps: 10, levelsUsed: 1 },
+                { index: 1, symbol: "ETHBTC", side: "buy", fromAsset: "BTC", toAsset: "ETH", inputQuantity: 0.009, outputQuantity: 0.225, averagePrice: 0.04, feeBps: 10, levelsUsed: 1 },
+                { index: 2, symbol: "ETHUSDT", side: "sell", fromAsset: "ETH", toAsset: "USDT", inputQuantity: 0.225, outputQuantity: 902, averagePrice: 4008.89, feeBps: 10, levelsUsed: 1 }
+              ],
+              timestamps: { evaluatedAt: Date.now(), quoteAgeMs: 15, legSkewMs: 3, exchangeTimestampsVerified: false },
+              riskFlags: ["sequential-leg-risk", "top-book-only", "rest-snapshot", "unsequenced", "non-executable-candidate"]
+            }
+          ]
+        }
+      });
+      return;
+    }
     if (pathname.endsWith("/history")) {
       await route.fulfill({
         json: {
@@ -1765,15 +2137,70 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
       return;
     }
     if (pathname.endsWith("/depth")) {
+      const exit = requestUrl.searchParams.get("direction") === "exit";
+      const capturedAt = Date.now();
       await route.fulfill({
         json: {
+          identityScope: "cross-venue-reviewed",
+          assetId: "crypto:bitcoin",
+          economicAssetId: "crypto:bitcoin",
+          spotInstrumentId: "binance:spot:BTCUSDT",
+          futuresInstrumentId: "bybit:perpetual:BTCUSDT",
           symbol: "BTCUSDT",
+          direction: exit ? "exit" : "entry",
           requestedNotionalUsd: 10000,
+          targetQuantity: 0.1,
+          matchedQuantity: 0.1,
+          quantityStep: 0.001,
+          quantityStepSource: "instrument",
+          precisionVerified: true,
+          roundingDustQuantity: 0,
+          liquidityShortfallQuantity: 0,
+          residualDeltaQuantity: 0,
           grossSpreadBps: 150,
+          constraints: { metadataVerified: true, minimumsSatisfied: true, verified: true, failures: [] },
           complete: true,
-          capturedAt: Date.now(),
-          spot: { exchange: "binance", market: "spot", side: "buy", requestedNotionalUsd: 10000, filledNotionalUsd: 10000, quantity: 0.1, averagePrice: 100000, worstPrice: 100000, topPrice: 100000, slippageBps: 0, levelsUsed: 1, complete: true, capturedAt: Date.now() },
-          perpetual: { exchange: "bybit", market: "perpetual", side: "sell", requestedNotionalUsd: 10000, filledNotionalUsd: 10000, quantity: 0.098522, averagePrice: 101500, worstPrice: 101500, topPrice: 101500, slippageBps: 0, levelsUsed: 1, complete: true, capturedAt: Date.now() }
+          capturedAt,
+          timing: {
+            spot: { exchangeTs: capturedAt, receivedAt: capturedAt, ageMs: 0 },
+            perpetual: { exchangeTs: capturedAt, receivedAt: capturedAt, ageMs: 0 },
+            ageMs: 0,
+            receiveSkewMs: 0,
+            exchangeSkewMs: 0,
+            legSkewMs: 0,
+            exchangeTimestampsVerified: true,
+            quality: "fresh"
+          },
+          spot: {
+            exchange: "binance",
+            market: "spot",
+            side: exit ? "sell" : "buy",
+            requestedNotionalUsd: 10000,
+            filledNotionalUsd: exit ? 10050 : 10000,
+            quantity: 0.1,
+            averagePrice: exit ? 100500 : 100000,
+            worstPrice: exit ? 100500 : 100000,
+            topPrice: exit ? 100500 : 100000,
+            slippageBps: 0,
+            levelsUsed: 1,
+            complete: true,
+            capturedAt
+          },
+          perpetual: {
+            exchange: "bybit",
+            market: "perpetual",
+            side: exit ? "buy" : "sell",
+            requestedNotionalUsd: 10000,
+            filledNotionalUsd: exit ? 10100 : 10150,
+            quantity: 0.1,
+            averagePrice: exit ? 101000 : 101500,
+            worstPrice: exit ? 101000 : 101500,
+            topPrice: exit ? 101000 : 101500,
+            slippageBps: 0,
+            levelsUsed: 1,
+            complete: true,
+            capturedAt
+          }
         }
       });
       return;
@@ -1783,11 +2210,13 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
 
   // Firefox requires WebSocket routes to be installed before navigation.
   await page.goto("/");
-  await page.getByLabel("Workspace mode").getByRole("button", { name: "Screener", exact: true }).click();
+  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Screener", exact: true }).click();
   await socketRouted;
-  const table = page.getByRole("table", { name: "Executable cross-exchange spot/perpetual routes" });
+  const table = page.getByRole("table", { name: /spot\/perpetual research candidates/ });
   const btcRow = table.getByRole("row").filter({ hasText: "BTCUSDT" });
   await expect(btcRow).toBeVisible();
+  await expect(page.getByText("Venue clock calibration", { exact: true })).toBeVisible();
+  await expect(page.getByText("clock calibrated", { exact: false }).first()).toBeVisible();
   await expect(table.getByRole("row").filter({ hasText: "ETHUSDT" })).toBeHidden();
   await btcRow.getByRole("button", { name: "Analyze order-book depth for BTCUSDT" }).click();
   await expect(table.getByText("Depth estimate for $10,000")).toBeVisible();
@@ -1796,7 +2225,12 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
   await btcRow.getByRole("button", { name: "Open paper two-leg position for BTCUSDT" }).click();
   const paper = page.getByRole("region", { name: "Paper arbitrage positions" });
   await expect(paper).toContainText("BTCUSDT");
+  const exitDepthRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/arbitrage/depth" && url.searchParams.get("direction") === "exit";
+  });
   await paper.getByRole("button", { name: "Close paper" }).click();
+  expect(new URL((await exitDepthRequest).url()).searchParams.get("quantity")).toBe("0.1");
   await expect(paper).toContainText("Closed");
   await expect(paper).toContainText("Closed win rate");
   await page.getByLabel("Minimum top-book capacity").fill("0");
@@ -1804,8 +2238,28 @@ test("filters executable cross-exchange arbitrage routes without placing orders"
   const ethRow = table.getByRole("row").filter({ hasText: "ETHUSDT" });
   await expect(ethRow).toContainText("Bybit");
   await expect(ethRow).toContainText("Binance");
-  await ethRow.getByRole("button", { name: "Open chart for ETHUSDT" }).click();
+  const chartRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/candles" && url.searchParams.get("symbol") === "ETHUSDT" && url.searchParams.get("exchange") === "binance" && url.searchParams.get("marketType") === "linear";
+  });
+  await ethRow.getByRole("button", { name: "Open Binance perpetual chart for ETHUSDT" }).click();
+  await chartRequest;
   await expect(page.getByRole("button", { name: /Current instrument ETHUSDT/ })).toBeVisible();
+
+  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Screener", exact: true }).click();
+  await page.getByRole("group", { name: "Arbitrage scanner mode" }).getByRole("button", { name: "Triangular" }).click();
+  const triangular = page.getByRole("table", { name: "Three-leg top-book simulations" });
+  await expect(triangular.getByRole("row").filter({ hasText: "USDT → BTC → ETH → USDT" })).toBeVisible();
+  await expect(page.getByText("Sequential execution risk")).toBeVisible();
+
+  await page.getByRole("group", { name: "Arbitrage scanner mode" }).getByRole("button", { name: "Bybit native spreads" }).click();
+  const nativeSpreads = page.getByRole("table", { name: "Venue-native two-leg combination quotes" });
+  const nativeRow = nativeSpreads.getByRole("row").filter({ hasText: "SOLUSDT_SOL/USDT" });
+  await expect(nativeRow).toContainText("Perpetual + spot");
+  await expect(nativeRow).toContainText("-1.25");
+  await expect(page.getByText("Native book is not guaranteed profit")).toBeVisible();
+  await expect(page.getByText("Some books were rejected (1).")).toBeVisible();
+  await expectNoAxeViolations(page);
 });
 
 test("traps command-palette focus and restores it on Escape", async ({ page }) => {
@@ -1879,7 +2333,7 @@ test("reconnects the market stream without duplicating candles", async ({ page }
   await installMarketSocketMock(page, "reconnect", candles);
   await page.reload();
 
-  await expect(page.getByRole("status")).toHaveAttribute("title", "Feed: connected", { timeout: 20_000 });
+  await expect(page.getByRole("status", { name: "Feed: connected" })).toHaveAttribute("title", "Feed: connected", { timeout: 20_000 });
   await expect(page.locator(".feed-row").filter({ hasText: "Candles" }).locator("strong")).toHaveText("2");
   await expect(page.locator(".feed-row").filter({ hasText: "Provider" }).locator("strong")).toHaveText("mock");
   await expect.poll(() => page.evaluate(() => (window as Window & { __marketSocketAttempts?: number }).__marketSocketAttempts)).toBe(2);
@@ -1896,7 +2350,7 @@ test("shows an explicit market-data unavailable state", async ({ page }) => {
   await installMarketSocketMock(page, "unavailable", []);
   await page.reload();
 
-  await expect(page.getByRole("status")).toHaveAttribute("title", "Feed: error", { timeout: 20_000 });
+  await expect(page.getByRole("status", { name: "Feed: error" })).toHaveAttribute("title", "Feed: error", { timeout: 20_000 });
   await expect(page.locator(".feed-row").filter({ hasText: "Status" })).toContainText("Market data unavailable for BTCUSDT");
   await expect(page.locator(".feed-row").filter({ hasText: "Candles" }).locator("strong")).toHaveText("0");
 });
@@ -2011,6 +2465,36 @@ async function installTradeFlowSocketMock(page: Page) {
   });
 }
 
+function accountTelemetryFixture() {
+  const evidence = { source: "bybit:/v5/account/fee-rate", version: "account-telemetry-v1", asOf: Date.now(), validUntil: Date.now() + 30_000, timestampQuality: "venue", fresh: true };
+  return {
+    schemaVersion: 1,
+    readOnly: true,
+    generatedAt: Date.now(),
+    validUntil: Date.now() + 30_000,
+    complete: true,
+    request: { venues: ["binance", "bybit"], symbols: ["BTCUSDT", "ETHUSDT"], assets: ["BTC", "USDT", "USDC"], stableAssets: ["USDC"] },
+    venues: [
+      {
+        venue: "bybit",
+        configured: true,
+        status: "fresh",
+        generatedAt: Date.now(),
+        validUntil: Date.now() + 30_000,
+        fees: [{ venue: "bybit", market: "perpetual", symbol: "BTCUSDT", tierId: "account-symbol", makerBps: 2, takerBps: 5, feeAsset: { status: "execution-dependent", actualFillRequired: true }, usableForRateRanking: true, evidence }],
+        borrow: [{ venue: "bybit", asset: "BTC", availableQuantity: 0.5, accountLimitQuantity: 1, annualRateBps: 1_200, rateBasis: "current-hourly-annualized", borrowable: true, recallStatus: "unknown", usableForProjectedCost: true, usableForNonRecallableRoutes: false, evidence }],
+        transferNetworks: [{ venue: "bybit", asset: "BTC", network: "BTC", depositEnabled: true, withdrawEnabled: true, fixedWithdrawFee: 0.0001, estimatedArrivalMinutes: 20, usableForTransfer: true, evidence }],
+        issues: []
+      },
+      { venue: "binance", configured: true, status: "partial", generatedAt: Date.now(), validUntil: Date.now() + 30_000, fees: [], borrow: [], transferNetworks: [], issues: [] }
+    ],
+    stablecoinFx: [{ venue: "bybit", baseAsset: "USDC", quoteAsset: "USDT", symbol: "USDCUSDT", bid: 0.999, ask: 1.001, usableForEconomics: true, evidence }],
+    issues: [],
+    readiness: { feeRates: true, feeAssets: false, borrowCapacityAndRate: true, borrowRecall: false, transferNetworks: true, stablecoinFx: true, executable: false, blockers: ["Borrow recall is not proven"] },
+    governor: { healthy: true, sources: [] }
+  };
+}
+
 function bybitUtaFixture() {
   return {
     updatedAt: 1_780_000_000_000,
@@ -2066,6 +2550,13 @@ async function expectNoAxeViolations(page: Page) {
   expect(audit.violations, audit.violations.map((item) => `${item.id}: ${item.help} (${item.nodes.length})`).join("\n")).toEqual([]);
 }
 
+async function navigateToCurrentAppAndWaitForWorkspace(page: Page) {
+  // Firefox can leave Playwright's reload lifecycle pending after a service-worker navigation.
+  // A same-URL navigation still creates a fresh document; the mounted workspace is the readiness boundary.
+  await page.goto(page.url(), { waitUntil: "commit" });
+  await expect(page.getByRole("navigation", { name: "Primary workspaces" })).toBeVisible({ timeout: 20_000 });
+}
+
 async function installPwaLaunchQueue(page: Page) {
   await page.addInitScript(() => {
     type LaunchConsumer = (params: { files: Array<{ name: string; getFile(): Promise<File> }> }) => void;
@@ -2087,8 +2578,7 @@ async function installPwaLaunchQueue(page: Page) {
       consumer({ files: [{ name, getFile: async () => new File([content], name, { type }) }] });
     };
   });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.locator(".brand")).toContainText("SaltanatbotV2");
+  await navigateToCurrentAppAndWaitForWorkspace(page);
   await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __pwaLaunchReady?: boolean }).__pwaLaunchReady))).toBe(true);
 }
 

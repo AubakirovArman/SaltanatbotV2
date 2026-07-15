@@ -104,7 +104,7 @@ stop-before-target rule when both prices occur in one candle.
 - DPR 1/2/3 and resize tests;
 - empty, one-bar, NaN, gap, extreme-price and long-history datasets;
 - interaction tests for wheel, drag, touch and keyboard equivalents;
-- pure two-finger midpoint/zoom-limit invariants plus a real Chromium CDP multi-touch journey proving pinch containment, data-anchored scaling and no page-scroll leakage;
+- pure two-finger midpoint/zoom-limit/invalid-geometry invariants plus real Chromium CDP multi-touch and same-task coalesced move/up journeys proving pinch containment, immutable queued gesture frames, data-anchored scaling, stable repeated 40% boundary handling, no page-scroll leakage and no recovery screen, page error, navigation or reload;
 - explicit DPR 1/2 browser checks for Canvas backing resolution, pointer/HUD alignment and density-invariant CSS interaction targets;
 - multi-chart focus/command-routing/market-context/maximize/restore checks proving top-bar, watchlist and statistics affect or describe only the active pane while hidden panes stay mounted and retain symbol, zoom, tools and accessible state;
 - shared-market transport checks proving matching pane keys fan out one physical socket, distinct keys stay isolated, late subscribers receive open state and the final consumer closes the resource;
@@ -157,6 +157,53 @@ Every result records chart and `request.security` candle provenance. Only fully 
 - missing/fallback data invalidates or labels a report.
 
 ## Trading and exchange tests
+
+### Public venue plugin certification
+
+`backend/src/venues/conformance` provides the repeatable credential-free part of the adapter gate.
+Each descriptor declares a semantic adapter/contract version, official-doc review date, exact public
+capability manifest, operation/market scopes and output limits. Registration fails on duplicate
+plugin or venue identity, a factory/manifest mismatch, unsupported advertised operations or any
+private authority.
+
+For every advertised scope the shared runner executes five deterministic cases:
+
+1. normalized success and snapshot invariants;
+2. pre-aborted caller cancellation;
+3. injected timeout;
+4. injected rate limit;
+5. injected generic HTTP failure.
+
+The reference fake venue currently covers nine scopes and produces exactly 45 immutable case
+results. Missing fixtures fail all five cases for that advertised scope. Reports are capped at 128
+cases, structured errors are bounded and credential-like messages are replaced rather than copied
+to evidence. Run it with:
+
+```bash
+npx vitest run backend/tests/publicVenuePluginConformance.test.ts
+```
+
+This proves the REST-style public snapshot contract and failure semantics only. It does not certify
+real-network availability, WebSocket reconstruction, account reads, signing, orders or recovery.
+
+### Scheduled credential-free public-feed canary
+
+`npm run test:public-feed-canary` observes one bounded selected instrument for each of all nine
+generic continuous venues. Spot targets require a reconstructed public book; derivative targets
+require a book plus a public funding observation. The explicitly non-canonical dYdX target instead
+requires its reviewed research-only book evidence and exact continuity protocol; its WebSocket does
+not invent funding. The daily/manual `Credential-free public feed canary` workflow stores the
+schema-v3 JSON result for 30 days even when the job fails. The envelope permanently records that no
+credentials, orders, funded soak or mainnet-readiness claim were used.
+
+The canary is intentionally stricter than a curl health check and weaker than conformance or soak:
+it proves only that the selected public protocol produced its required evidence at that time. A
+venue failure stays red and visible in the artifact. The 2026-07-14 local schema-v3 run passed
+eight of nine: OKX, Gate, Hyperliquid, Deribit public testnet, Coinbase, dYdX, KuCoin and MEXC.
+Kraken Spot was unreachable through the current host's TLS path, so scheduled evidence from an
+eligible network remains required. The live runs exposed KuCoin binary-marked JSON, Coinbase's
+connection-global cross-channel sequence, and the MEXC snapshot/delta bootstrap race; each now has
+deterministic regression coverage. One observation is never a soak or execution-readiness proof.
 
 Every adapter must pass a shared conformance suite:
 
@@ -212,10 +259,23 @@ The production bundle has an enforced CI gate after `npm run build`:
 npm run perf:check
 ```
 
-Reviewed raw/gzip ceilings live in `performance-budgets.json`. The checker covers HTML, every CSS
-asset, the largest individual JavaScript chunk and total JavaScript gzip size. A limit may only be
-raised with measured justification. Current limits preserve a small regression margin around the
-measured baseline; the longer-term targets remain:
+Reviewed raw/gzip ceilings live in `performance-budgets.json`. The checker resolves the emitted
+static import graph rather than assuming every emitted feature is part of startup. It enforces HTML,
+initial CSS, every CSS asset, total distributable CSS, the initial JavaScript graph, every directly
+reachable lazy-route graph, every individual JavaScript chunk and total distributable JavaScript.
+A limit may only be raised with a measured explanation.
+
+The 2026-07-14 review split the old aggregate-only model after the scanner, Strategy Studio,
+Trading workspace and their nested tools were confirmed to be separate lazy routes. Moving scanner
+CSS behind its lazy boundary reduced initial CSS from 26.2 KiB to 20.9 KiB gzip. The 2026-07-15
+review added three optional, lazy research surfaces: market-opportunity handoff, the structural
+strategy generator and L2 ML research. The measured build is 169.3 KiB initial JS, 333.4 KiB for the
+largest incremental lazy-route graph (Strategy Studio), 198.2 KiB for the largest single chunk
+(Blockly), 755.4 KiB for the complete distributable JS set and 37.5 KiB for the complete CSS set.
+The enforced ceilings are 170 KiB, 336 KiB, 200 KiB, 768 KiB and 39 KiB respectively. The roughly
+81 KiB distributable-JS increase is isolated behind those optional routes; total-distributable size
+remains a secondary regression guard and must not be reported as bytes downloaded on initial
+navigation.
 
 - initial JS gzip <= 150 KB target;
 - no JavaScript chunk > 200 KiB gzip (enforced); the stable Blockly vendor boundary is currently
@@ -295,27 +355,27 @@ platform-specific proxy/supervisor/persistent-volume rehearsal.
 
 - check, lint, unit, component, contract;
 - the complete production-build Chromium E2E suite in the required `end-to-end (Chromium)` CI job;
-- ten tagged production journeys in the required `critical journeys (Firefox)` CI job;
-- three deterministic interface baselines in the required `visual regression (Chromium)` CI job;
+- 15 tagged production journeys in the required `critical journeys (Firefox)` CI job;
+- four deterministic interface baselines in the required `visual regression (Chromium)` CI job;
 - a seven-day Playwright report/trace/screenshot/video artifact when that browser job fails;
 - reviewed visual snapshot changes;
-- dependency and secret scan;
-- documentation link check.
+- heuristic secret scan;
+- documentation link and generated-reference checks.
 
-The generic browser gate runs with the deterministic local demo feed and a disposable test-only
-authentication token. It never receives exchange credentials and must not contact mainnet or an
-exchange testnet. Authenticated exchange checks remain isolated in the manually dispatched,
-protected workflow described below.
+The browser gates use `DEMO_MODE=1`, which disables live trade execution, and a disposable test-only
+authentication token. Critical provider routes are mocked by their owning scenarios, but the test
+harness does not yet enforce complete outbound isolation for every public market-data request. It
+never receives exchange credentials. Authenticated exchange checks remain isolated in the manually
+dispatched, protected workflow described below.
 
-### Nightly
+### Scheduled browser matrix
 
-- the complete 46-scenario Chromium, Firefox and WebKit matrix, with per-browser failure evidence
+- the complete 57-scenario Chromium, Firefox and WebKit matrix, with per-browser failure evidence
   retained for 14 days;
-- fuzz/property suite;
-- full Pine corpus;
-- long performance and leak tests;
-- exchange fake-server conformance;
-- database migration/backup restore.
+
+The current scheduled workflow runs the browser matrix only. Separate scheduled fuzz/property,
+long performance/leak, exchange fake-server and database migration/restore jobs remain roadmap work;
+their ordinary deterministic suites still run through the repository's unit/integration gates.
 
 ### Release candidate
 

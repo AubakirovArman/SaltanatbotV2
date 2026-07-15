@@ -1,0 +1,24 @@
+{
+  "name": "@saltanatbotv2/arbitrage-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc index.ts basisClock.ts basisCoverage.ts client.ts clockHealth.ts continuousFeedHealth.ts continuousMarketEconomics.ts continuousMarketEconomicsMetadata.ts continuousMarketEconomicsQuantity.ts continuousMarketEconomicsStrategy.ts continuousMarketEconomicsTypes.ts continuousRoutes.ts fundingCurve.ts fundingCurveTypes.ts lifecycle.ts nLeg.ts nLegTypes.ts nativeSpreads.ts networkIdentity.ts networkIdentityTypes.ts opportunityEnvelope.ts opportunityEnvelopeTypes.ts optionsParity.ts optionsParityTypes.ts pairwise.ts pairwiseRouteTypes.ts publicMarketData.ts registry.ts triangularDepth.ts triangularDepthTypes.ts types.ts validation.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --declaration --outDir .",
+    "check": "tsc index.ts basisClock.ts basisCoverage.ts client.ts clockHealth.ts continuousFeedHealth.ts continuousMarketEconomics.ts continuousMarketEconomicsMetadata.ts continuousMarketEconomicsQuantity.ts continuousMarketEconomicsStrategy.ts continuousMarketEconomicsTypes.ts continuousRoutes.ts fundingCurve.ts fundingCurveTypes.ts lifecycle.ts nLeg.ts nLegTypes.ts nativeSpreads.ts networkIdentity.ts networkIdentityTypes.ts opportunityEnvelope.ts opportunityEnvelopeTypes.ts optionsParity.ts optionsParityTypes.ts pairwise.ts pairwiseRouteTypes.ts publicMarketData.ts registry.ts triangularDepth.ts triangularDepthTypes.ts types.ts validation.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --noEmit && node ../../scripts/check-arbitrage-sdk-generated.mjs"
+  },
+  "dependencies": {
+    "@saltanatbotv2/contracts": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

@@ -223,7 +223,7 @@ export const kkShell: Record<ShellMessageKey, string> = {
   shortPosition: "Шорт позиция",
   measure: "Өлшеу (Δ баға / % / шамдар)",
   magnet: "Магнит (бағаға бекіту)",
-  toggleVolume: "Көлемді көрсету немесе жасыру",
+  toggleVolume: "Шамдардағы көлем",
   toggleVolumeProfile: "Көрінетін диапазонның Volume Profile-ын көрсету немесе жасыру",
   volumeProfileEstimate: "OHLCV шам диапазондарынан есептелген",
   pointOfControl: "POC",

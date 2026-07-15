@@ -1,0 +1,14 @@
+{
+  "code": "200000",
+  "data": {
+    "symbol": ".XBTUSDTMFPI8H",
+    "granularity": 28800000,
+    "timePoint": 1783994400000,
+    "value": 0.000061,
+    "predictedValue": 0.000109,
+    "fundingRateCap": 0.003,
+    "fundingRateFloor": -0.003,
+    "period": 0,
+    "fundingTime": 1784023200000
+  }
+}

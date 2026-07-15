@@ -242,6 +242,20 @@ describe("request.security external data context", () => {
 
     expect(plots[0].points.map((p) => p.value)).toEqual([10, 10, 20, 20]);
   });
+
+  it("requires an explicit preview-only opt-in before falling back to chart data", () => {
+    const ir: StrategyIR = {
+      name: "security-preview-fallback",
+      inputs: [],
+      body: [{ k: "plot", label: "htf", color: "#fff", value: { k: "security", symbol: "current", timeframe: "D", source: { k: "price", field: "close" } } }]
+    };
+    const chart = [1, 2, 3, 4].map((c, i) => candle(i * MIN, c, c + 1, c - 1, c));
+
+    expect(() => previewStrategy(ir, chart)).toThrow(/request\.security data unresolved/);
+    expect(() => runBacktest(ir, chart, noFriction)).toThrow(/request\.security data unresolved/);
+    const preview = previewStrategy(ir, chart, undefined, { unresolvedSecurityPolicy: "chart" });
+    expect(preview.plots[0].points.map((point) => point.value)).toEqual([1, 2, 3, 4]);
+  });
 });
 
 describe("backtest exposes a variable trace", () => {

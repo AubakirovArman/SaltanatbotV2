@@ -1,4 +1,5 @@
 import { getSetting, insertFill, setSetting } from "./store.js";
+import { recordFuturesExposure } from "./futuresExposure.js";
 import type { ExecOrder, FillRecord, MarketType } from "./types.js";
 
 export const SPOT_INVENTORY_MODEL_VERSION = 1;
@@ -32,9 +33,13 @@ export function getSpotInventory(botId: string, symbol: string): SpotInventory |
 /** Persist a deduplicated confirmed fill and advance bot-attributed spot inventory. */
 export function recordConfirmedFill(fill: FillRecord, market: MarketType): boolean {
   const inserted = insertFill(fill);
-  if (!inserted || market !== "spot") return inserted;
-  const next = applySpotFill(getSpotInventory(fill.botId, fill.symbol), fill);
-  setSetting(inventoryKey(fill.botId, fill.symbol), next);
+  if (!inserted) return false;
+  if (market === "spot") {
+    const next = applySpotFill(getSpotInventory(fill.botId, fill.symbol), fill);
+    setSetting(inventoryKey(fill.botId, fill.symbol), next);
+  } else {
+    recordFuturesExposure(fill);
+  }
   return true;
 }
 
@@ -76,10 +81,12 @@ export function resolveSpotCloseQuantity(inventory: SpotInventory | undefined, p
 
 /** Replace account-wide closePct with this bot's confirmed attributed quantity. */
 export function constrainSpotInventoryOrder(botId: string, configuredMarket: MarketType, order: ExecOrder): ExecOrder {
-  if (configuredMarket !== "spot" || order.closePct === undefined) return order;
-  const qty = resolveSpotCloseQuantity(getSpotInventory(botId, order.symbol), order.closePct);
+  if (configuredMarket !== "spot") return order;
+  const isPositionExit = order.action === "close" || order.action === "flatten";
+  if (!isPositionExit && order.closePct === undefined) return order;
+  const qty = resolveSpotCloseQuantity(getSpotInventory(botId, order.symbol), order.closePct ?? 100);
   if (qty <= 0) throw new Error("Spot close refused: this bot has no confirmed attributed inventory.");
-  return { ...order, market: "spot", qty, closePct: undefined };
+  return { ...order, action: "neworder", market: "spot", side: "sell", qty, closePct: undefined, reduceOnly: true };
 }
 
 function spotBaseAsset(symbol: string): string {

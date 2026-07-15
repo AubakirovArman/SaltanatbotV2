@@ -5,7 +5,8 @@ import type { IndicatorConfig } from "../chart/indicatorTypes";
 import { useMarketStream, type MarketStreamState } from "../hooks/useMarketStream";
 import type { Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
-import type { CatalogResponse, DataExchange, Instrument } from "../types";
+import { localized } from "../i18n";
+import type { CatalogResponse, DataExchange, DataMarketType, Instrument, PriceType } from "../types";
 import type { ChartLayoutPreset, WorkspaceChart } from "../workspace/workspaces";
 import { matchesShortcut } from "../app/shortcuts";
 import { ChartCanvas } from "./ChartCanvas";
@@ -43,6 +44,9 @@ interface MultiChartWorkspaceProps {
 export interface PaneMarketStream extends MarketStreamState {
   symbol: string;
   timeframe: WorkspaceChart["timeframe"];
+  exchange: DataExchange;
+  marketType: DataMarketType;
+  priceType: PriceType;
 }
 
 const EMPTY_COMPARE_OVERLAYS: CompareOverlayConfig[] = [];
@@ -152,11 +156,14 @@ export function MultiChartWorkspace({ preset, charts, primary, catalog, exchange
 }
 
 function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize, maximized, maximizeShortcut, onToggleMaximize, catalog, exchange, locale, indicators, onIndicatorsChange, onEditIndicatorLogic, theme, linkedCrosshair, onLinkedCrosshairChange, linkedTimeRange, onLinkedTimeRangeChange, onUpdate, onMarketStreamChange, compareOverlays, compareState }: Omit<MultiChartWorkspaceProps, "preset" | "charts" | "primary" | "onUpdateChart" | "activeChartId" | "onActiveChartChange" | "previousChartShortcut" | "nextChartShortcut"> & { chart: WorkspaceChart; paneNumber: number; paneProps: ComponentPropsWithRef<"section">; active: boolean; canMaximize: boolean; maximized: boolean; onToggleMaximize: () => void; onUpdate: MultiChartWorkspaceProps["onUpdateChart"] }) {
-  const stream = useMarketStream(chart.symbol, chart.timeframe, exchange);
+  const paneExchange = chart.exchange ?? exchange;
+  const marketType = chart.marketType ?? "spot";
+  const priceType = paneExchange === "bybit" ? "last" : chart.priceType ?? "last";
+  const stream = useMarketStream(chart.symbol, chart.timeframe, paneExchange, { marketType, priceType });
   const instrument = catalog?.instruments.find((item) => item.symbol === chart.symbol) ?? fallbackInstrument(chart.symbol);
   const paneIndicators = chart.linkIndicators ? indicators : applyPaneIndicatorOverrides(indicators, chart.indicatorOverrides);
   const paneCompareOverlays = useMemo(() => (chart.linkCompare ? compareOverlays : chart.compareOverlays ?? []).filter((overlay) => overlay.symbol !== chart.symbol), [chart.compareOverlays, chart.linkCompare, chart.symbol, compareOverlays]);
-  const localCompareState = useCompareSeries(chart.linkCompare ? EMPTY_COMPARE_OVERLAYS : paneCompareOverlays, exchange);
+  const localCompareState = useCompareSeries(chart.linkCompare ? EMPTY_COMPARE_OVERLAYS : paneCompareOverlays, paneExchange);
   const paneCompareState = chart.linkCompare ? compareState : localCompareState;
   const compareCandidates = useMemo(() => (catalog?.instruments ?? []).filter((item) => item.symbol !== chart.symbol).map((item) => ({ symbol: item.symbol, displayName: item.displayName })), [catalog, chart.symbol]);
   const commitCompare = (next: CompareOverlayConfig[]) => onUpdate(chart.id, { linkCompare: false, compareOverlays: normalizeCompareOverlays(next, chart.timeframe, chart.chartType) });
@@ -167,8 +174,8 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
   const updateCompare = (id: string, patch: Partial<CompareOverlayConfig>) => commitCompare(paneCompareOverlays.map((overlay) => overlay.id === id ? { ...overlay, ...patch } : overlay));
   const removeCompare = (id: string) => commitCompare(paneCompareOverlays.filter((overlay) => overlay.id !== id));
   useEffect(() => {
-    onMarketStreamChange(chart.id, active ? { ...stream, symbol: chart.symbol, timeframe: chart.timeframe } : undefined);
-  }, [active, chart.id, chart.symbol, chart.timeframe, onMarketStreamChange, stream]);
+    onMarketStreamChange(chart.id, active ? { ...stream, symbol: chart.symbol, timeframe: chart.timeframe, exchange: paneExchange, marketType, priceType } : undefined);
+  }, [active, chart.id, chart.symbol, chart.timeframe, marketType, onMarketStreamChange, paneExchange, priceType, stream]);
   useEffect(() => () => onMarketStreamChange(chart.id), [chart.id, onMarketStreamChange]);
   const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkChartType" | "linkCrosshair" | "linkTimeRange" | "linkIndicators" | "linkCompare", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {
     const linked = chart[field];
@@ -188,6 +195,35 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
       {active && <PaneActiveIndicator locale={locale} paneNumber={paneNumber} />}
       <div className="chart-pane-controls">
         <span className="pane-number" aria-hidden="true">{paneNumber}</span>
+        <label>
+          <span className="sr-only">{shellText(locale, "source")}</span>
+          <select
+            aria-label={`${shellText(locale, "source")} · ${paneNumber}`}
+            value={paneExchange}
+            onChange={(event) => onUpdate(chart.id, { exchange: event.target.value as DataExchange, priceType: "last" })}
+          >
+            <option value="binance">Binance</option>
+            <option value="bybit">Bybit</option>
+          </select>
+        </label>
+        <label>
+          <span className="sr-only">{shellText(locale, "marketType")}</span>
+          <select aria-label={`${shellText(locale, "marketType")} · ${paneNumber}`} value={marketType} onChange={(event) => onUpdate(chart.id, { marketType: event.target.value as DataMarketType, priceType: "last" })}>
+            <option value="spot">{shellText(locale, "spotMarket")}</option>
+            <option value="linear">{localized(locale, { en: "Linear perpetual", ru: "Линейный perpetual", kk: "Сызықтық perpetual" })}</option>
+            <option value="inverse">{localized(locale, { en: "Inverse perpetual", ru: "Обратный perpetual", kk: "Кері perpetual" })}</option>
+          </select>
+        </label>
+        {marketType !== "spot" && paneExchange === "binance" && (
+          <label>
+            <span className="sr-only">{localized(locale, { en: "Price source", ru: "Тип цены", kk: "Баға түрі" })}</span>
+            <select aria-label={`${localized(locale, { en: "Price source", ru: "Тип цены", kk: "Баға түрі" })} · ${paneNumber}`} value={priceType} onChange={(event) => onUpdate(chart.id, { priceType: event.target.value as PriceType })}>
+              <option value="last">Last</option>
+              <option value="mark">Mark</option>
+              <option value="index">Index</option>
+            </select>
+          </label>
+        )}
         <label>
           <span className="sr-only">{shellText(locale, "symbol")}</span>
           <select aria-label={`${shellText(locale, "symbol")} · ${paneNumber}`} value={chart.symbol} onChange={(event) => onUpdate(chart.id, { symbol: event.target.value, linkSymbol: false })}>
@@ -226,7 +262,9 @@ function SecondaryChartPane({ chart, paneNumber, paneProps, active, canMaximize,
         locale={locale}
         timeZone={chart.timeZone}
         onTimeZoneChange={(timeZone) => onUpdate(chart.id, { timeZone })}
-        dataExchange={exchange}
+        dataExchange={paneExchange}
+        dataMarketType={marketType}
+        dataPriceType={priceType}
         indicators={paneIndicators}
         onIndicatorsChange={(next) => onUpdate(chart.id, { linkIndicators: false, indicatorOverrides: capturePaneIndicatorOverrides(next) })}
         onEditIndicatorLogic={onEditIndicatorLogic}

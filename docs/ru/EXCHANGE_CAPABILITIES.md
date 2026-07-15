@@ -3,14 +3,24 @@
 Подробная каноническая таблица: [Exchange capability matrix](../EXCHANGE_CAPABILITIES.md).
 Live trading остаётся **экспериментальным** и по умолчанию отключено.
 
+Поля `scopes` в `/api/venues` задают точные product/operation/status. Отсутствующая комбинация не
+поддерживается; общие boolean-поля намеренно остаются `false` для experimental/manual-only путей и
+не могут использоваться как разрешение на торговую операцию.
+
 - Paper поддерживает market/limit/conditional orders и локальные исполнения.
 - Binance USDⓈ-M и Bybit USDT linear поддерживают market/limit, защитные ордера,
   обязательное подтверждение SL/TP, private stream и REST polling fallback.
-- Live spot требует explicit experimental inventory override и не обещает
-  защищённый strategy entry; inverse-рынки не поддерживаются.
+- Binance live spot полностью отключён до появления authenticated spot execution accounting.
+  Только Bybit live spot доступен экспериментально: он требует явного `ENABLE_LIVE_SPOT`,
+  bot-attributed inventory и не обещает защищённый strategy entry; inverse-рынки не поддерживаются.
 - Private execution сохраняет execution ID, partial quantity, цену, реальную
   сумму/валюту комиссии и venue realized PnL; повтор ID идемпотентен.
 - Bybit UTA cross collateral показывает IMR/MMR, BTC-залог, долги и проценты. Займ выполняется только вручную с подтверждением; погашение по умолчанию не конвертирует залог. Для бота нужен явный opt-in, а UI-операциям требуется HTTPS.
+- Запуски live-ботов сериализуются по exchange+symbol. Ошибка защиты после принятого entry не
+  превращает его в rejected: managed state и резерв сохраняются, бот ставится на паузу, а отдельный
+  reduce-only emergency close получает уникальный `…-safety` client ID и собственный venue order ID
+  либо явную ошибку. Принятый обычный live close тоже не очищает managed state до authenticated
+  execution accounting.
 
 Перед live использованием проверьте ключи без withdrawal, IP allowlist, NTP,
 kill switch, CI/testnet read smoke, backtest/paper, filters/leverage/position mode,

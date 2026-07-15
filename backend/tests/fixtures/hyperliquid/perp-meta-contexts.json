@@ -1,0 +1,46 @@
+[
+  {
+    "universe": [
+      {
+        "name": "BTC",
+        "szDecimals": 5,
+        "maxLeverage": 40,
+        "marginTableId": 56
+      },
+      {
+        "name": "LOOM",
+        "szDecimals": 1,
+        "maxLeverage": 3,
+        "isDelisted": true,
+        "marginMode": "strictIsolated"
+      }
+    ],
+    "marginTables": []
+  },
+  [
+    {
+      "funding": "0.0000125",
+      "openInterest": "36104.8991",
+      "prevDayPx": "62911.0",
+      "dayNtlVlm": "1743330274.9845",
+      "premium": "-0.000187797",
+      "oraclePx": "62833.8",
+      "markPx": "62822.0",
+      "midPx": "62821.5",
+      "impactPxs": ["62821.0", "62822.0"],
+      "dayBaseVlm": "27927.15053"
+    },
+    {
+      "funding": "0.0",
+      "openInterest": "0",
+      "prevDayPx": "0.04",
+      "dayNtlVlm": "0",
+      "premium": null,
+      "oraclePx": "0.04",
+      "markPx": "0.04",
+      "midPx": null,
+      "impactPxs": null,
+      "dayBaseVlm": "0"
+    }
+  ]
+]

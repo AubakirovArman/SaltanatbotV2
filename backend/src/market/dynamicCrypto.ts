@@ -1,4 +1,5 @@
 import type { Instrument } from "../types.js";
+import { readBoundedText } from "../http/boundedResponse.js";
 import { fetchWithRetry } from "../providers/http.js";
 
 /**
@@ -16,10 +17,11 @@ import { fetchWithRetry } from "../providers/http.js";
  * backoff.
  */
 
-/** Hard cap on how many pairs we expose, to keep the catalog payload reasonable. */
-const MAX_PAIRS = 200;
+/** Covers the complete current cross-venue universe without silently hiding scanner routes. */
+const MAX_PAIRS = 1_000;
 /** Per-request timeout — a slow exchange must not delay startup indefinitely. */
 const FETCH_TIMEOUT_MS = 5000;
+const MAX_DISCOVERY_PAYLOAD_BYTES = 8 * 1024 * 1024;
 
 interface BinanceSymbol {
   symbol: string;
@@ -146,7 +148,8 @@ async function fetchJson<T>(url: string): Promise<T | undefined> {
   try {
     const response = await fetchWithRetry(url, { signal: controller.signal });
     if (!response.ok) return undefined;
-    return (await response.json()) as T;
+    const body = await readBoundedText(response, MAX_DISCOVERY_PAYLOAD_BYTES, () => new Error("Dynamic market response is too large"));
+    return JSON.parse(body) as T;
   } finally {
     clearTimeout(timer);
   }

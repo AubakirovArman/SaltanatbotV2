@@ -30,6 +30,8 @@ import { QuickMeasureSummary } from "./chartCanvas/QuickMeasureSummary";
 import { StrategyChip } from "./chartCanvas/StrategyChip";
 import { usePersistentDrawings } from "./chartCanvas/usePersistentDrawings";
 import { TimeZoneControl } from "./chartCanvas/TimeZoneControl";
+import { VolumeProfileSourceControl } from "./chartCanvas/VolumeProfileSourceControl";
+import { useVolumeProfileSource } from "./chartCanvas/useVolumeProfileSource";
 import { normalizeChartTimeZone } from "../chart/timeAxis";
 
 const MAX_COMPARE = 3;
@@ -45,6 +47,8 @@ export function ChartCanvas({
   timeZone,
   onTimeZoneChange,
   dataExchange,
+  dataMarketType = "spot",
+  dataPriceType = "last",
   indicators,
   onIndicatorsChange,
   onEditIndicatorLogic,
@@ -112,24 +116,22 @@ export function ChartCanvas({
   const [selectedId, setSelectedId] = useState<string>();
   const [hoveredId, setHoveredId] = useState<string>();
   const [hoverIndex, setHoverIndex] = useState<number>();
-  const [view, setView] = useState<{
-    zoom: number;
-    offset: number;
-    crosshair?: { x: number; y: number };
-    priceMode: PriceMode;
-    priceZoom: number;
-  }>({ zoom: 1, offset: 0, priceMode: "linear", priceZoom: 1 });
+  const [view, setView] = useState<{ zoom: number; offset: number; crosshair?: { x: number; y: number }; priceMode: PriceMode; priceZoom: number }>(
+    { zoom: 1, offset: 0, priceMode: "linear", priceZoom: 1 }
+  );
   const [compareLegend, setCompareLegend] = useState<CompareLegendSnapshot[]>([]);
   const [volumeProfile, setVolumeProfile] = useState<VolumeProfileSnapshot>();
+  const [visibleProfileRange, setVisibleProfileRange] = useState<{ startTime: number; endTime: number }>();
   const chartDataSummaryId = useId();
   const priceRepresentation = usePriceRepresentationSettings(instrument.symbol, chartId);
   const chartTimeZone = normalizeChartTimeZone(timeZone);
 
   const latest = candles.at(-1);
   const displayCandles = useMemo(() => preparePriceCandles(candles, chartType, instrument.decimals, priceRepresentation.settings), [candles, chartType, instrument.decimals, priceRepresentation.settings]);
-  const orderBookAvailable = instrument.assetClass === "crypto" && instrument.provider === "binance";
+  const orderBookAvailable = instrument.assetClass === "crypto" && instrument.provider === "binance" && dataMarketType === "spot";
   const heatmapRenderKey = `${latest?.time ?? 0}:${candles.length}:${view.zoom}:${view.offset}:${view.priceMode}:${view.priceZoom}`;
-  const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange, displayCandles);
+  const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange, displayCandles, dataMarketType, dataPriceType);
+  const volumeProfileSource = useVolumeProfileSource({ enabled: showVolumeProfile, symbol: instrument.symbol, chartTimeframe: timeframe, visibleRange: visibleProfileRange, exchange: dataExchange, marketType: dataMarketType, priceType: dataPriceType });
   drawingsRef.current = drawings;
 
   useEffect(() => setShowArtifactSettings(false), [activeArtifactId]);
@@ -247,16 +249,19 @@ export function ChartCanvas({
     livePositions,
     showVolume,
     showVolumeProfile,
+    volumeProfileCandles: volumeProfileSource.profileCandles,
+    volumeProfileTimeframe: volumeProfileSource.source === "chart" ? undefined : volumeProfileSource.source, volumeProfileRange: volumeProfileSource.range,
     sessionLiquidity: sessionLiquidity.enabled ? sessionLiquidity.snapshot : undefined,
     marketSessions: sessionLiquidity.marketSessions,
     marketStructure: sessionLiquidity.marketStructure,
     compare,
     theme,
     onCompareLegend: (entries) => setCompareLegend((current) => (sameLegend(current, entries) ? current : entries)),
-    onVolumeProfile: (profile) => setVolumeProfile((current) => sameVolumeProfile(current, profile) ? current : profile)
+    onVolumeProfile: (profile) => setVolumeProfile((current) => sameVolumeProfile(current, profile) ? current : profile),
+    onVisibleTimeRange: setVisibleProfileRange
   });
   useChartWheelNavigation(interactionCanvasRef, viewportRef, displayCandles, setView);
-  useChartTouchNavigation(interactionCanvasRef, viewportRef, displayCandles, view, setView, (x, offset) => {
+  const touchGestureActiveRef = useChartTouchNavigation(interactionCanvasRef, viewportRef, displayCandles, view, setView, (x, offset) => {
     interactionRef.current = { mode: "pan", startX: x, startOffset: offset };
   });
   useLinkedTimeRange({ candles: displayCandles, chartId, linkedRange: linkedTimeRange, onLinkedRangeChange: onLinkedTimeRangeChange, setView, view, viewportRef });
@@ -377,6 +382,7 @@ export function ChartCanvas({
         >
           {Math.round(view.zoom * 100)}%
         </button>
+        <VolumeProfileSourceControl locale={locale} chartTimeframe={timeframe} enabled={showVolumeProfile} onEnabledChange={setShowVolumeProfile} state={volumeProfileSource} />
         <VolumeProfileBadge visible={showVolumeProfile} profile={volumeProfile} decimals={instrument.decimals} locale={locale} />
         <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={chartTypeAriaLabel(locale, chartType, instrument.symbol, timeframe, priceRepresentation.settings)} aria-describedby={chartDataSummaryId} />
         <OrderBookHeatmapLayer
@@ -443,6 +449,10 @@ export function ChartCanvas({
             }
           }}
           onPointerMove={(event) => {
+            // The native two-touch controller owns pinch frames. Letting the
+            // ordinary React pan handler process the same two pointers makes
+            // offset/zoom state race at the minimum and maximum boundaries.
+            if (event.pointerType === "touch" && touchGestureActiveRef.current) return;
             const viewport = viewportRef.current;
             const { x, y } = devicePoint(event);
             if (viewport) setHoverIndex(clampIndex(Math.round(viewport.xToIndex(x)), displayCandles.length));
@@ -491,6 +501,7 @@ export function ChartCanvas({
             }
           }}
           onPointerLeave={() => {
+            if (touchGestureActiveRef.current) return;
             setView((current) => ({ ...current, crosshair: undefined }));
             setHoveredId(undefined);
             setHoverIndex(undefined);

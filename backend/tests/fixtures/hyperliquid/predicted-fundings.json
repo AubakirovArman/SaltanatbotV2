@@ -1,0 +1,36 @@
+[
+  [
+    "BTC",
+    [
+      [
+        "BinPerp",
+        {
+          "fundingRate": "0.0001",
+          "nextFundingTime": 1784030400000,
+          "fundingIntervalHours": 4
+        }
+      ],
+      [
+        "HlPerp",
+        {
+          "fundingRate": "0.0000125",
+          "nextFundingTime": 1784023200000,
+          "fundingIntervalHours": 1
+        }
+      ]
+    ]
+  ],
+  [
+    "ETH",
+    [
+      [
+        "HlPerp",
+        {
+          "fundingRate": "-0.00002",
+          "nextFundingTime": 1784023200000,
+          "fundingIntervalHours": 1
+        }
+      ]
+    ]
+  ]
+]

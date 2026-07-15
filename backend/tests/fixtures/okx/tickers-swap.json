@@ -1,0 +1,19 @@
+{
+  "code": "0",
+  "msg": "",
+  "data": [
+    {
+      "instType": "SWAP",
+      "instId": "BTC-USDT-SWAP",
+      "last": "62100.1",
+      "lastSz": "2",
+      "askPx": "62100.2",
+      "askSz": "14",
+      "bidPx": "62100.1",
+      "bidSz": "11",
+      "vol24h": "102400",
+      "volCcy24h": "1024",
+      "ts": "1784000000123"
+    }
+  ]
+}

@@ -1,0 +1,349 @@
+.funding-curve-workbench {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+  padding: clamp(16px, 2.5cqi, 30px);
+  background: radial-gradient(circle at 88% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 34%), var(--bg);
+  container-type: inline-size;
+  scrollbar-gutter: stable;
+}
+
+.funding-curve-header span {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.funding-curve-header h1,
+.funding-curve-header p,
+.funding-curve-form p,
+.funding-curve-gap h2,
+.funding-curve-gap p,
+.funding-curve-boundary p,
+.funding-curve-rejections h2,
+.funding-curve-status,
+.funding-curve-empty {
+  margin: 0;
+}
+
+.funding-curve-header h1 {
+  margin-top: 0.3rem;
+  font-size: clamp(1.25rem, 2.4cqi, 1.8rem);
+}
+
+.funding-curve-header p {
+  max-width: 68rem;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.funding-curve-form {
+  display: grid;
+  grid-template-columns: minmax(16rem, 2fr) minmax(14rem, 1fr) auto;
+  align-items: end;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--panel);
+}
+
+.funding-curve-form fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.funding-curve-form legend {
+  padding: 0;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.funding-curve-form fieldset > p {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.funding-curve-selection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.funding-curve-selection label,
+.funding-curve-parameters label {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.funding-curve-selection select,
+.funding-curve-parameters input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.funding-curve-selection select {
+  padding: 0 0.65rem;
+}
+
+.funding-curve-selection select:focus-visible,
+.funding-curve-parameters input:focus-visible,
+.funding-curve-form button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.funding-curve-remove,
+.funding-curve-add,
+.funding-curve-run {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.funding-curve-remove {
+  align-self: end;
+  width: 44px;
+  padding: 0;
+  color: var(--down);
+}
+
+.funding-curve-add {
+  margin-top: 0.55rem;
+  padding: 0 0.75rem;
+}
+
+.funding-curve-run {
+  min-width: 11rem;
+  padding: 0 0.9rem;
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  color: var(--accent);
+}
+
+.funding-curve-form button:disabled,
+.funding-curve-form fieldset:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.funding-curve-parameters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.funding-curve-parameters label > span {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+}
+
+.funding-curve-parameters input {
+  padding: 0 0.55rem;
+}
+
+.funding-curve-status,
+.funding-curve-empty {
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.funding-curve-status.is-error {
+  border-color: color-mix(in srgb, var(--down) 55%, var(--line));
+  color: var(--down);
+}
+
+.funding-curve-status.is-error p {
+  margin: 0;
+}
+
+.funding-curve-status.is-error small {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--muted);
+}
+
+.funding-curve-results {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.funding-curve-gap {
+  padding: 0.9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--line));
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+}
+
+.funding-curve-gap h2,
+.funding-curve-rejections h2 {
+  font-size: 0.86rem;
+}
+
+.funding-curve-gap > strong {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--accent);
+  font-size: 1.1rem;
+}
+
+.funding-curve-gap p,
+.funding-curve-gap small {
+  display: block;
+  margin-top: 0.28rem;
+}
+
+.funding-curve-gap small,
+.funding-curve-table-wrap small,
+.funding-curve-rejections small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.funding-curve-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--panel);
+}
+
+.funding-curve-table-wrap table {
+  width: 100%;
+  min-width: 66rem;
+  border-collapse: collapse;
+}
+
+.funding-curve-table-wrap th,
+.funding-curve-table-wrap td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  text-align: end;
+  white-space: nowrap;
+}
+
+.funding-curve-table-wrap thead th {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.funding-curve-table-wrap tbody th,
+.funding-curve-table-wrap thead th:first-child {
+  text-align: start;
+}
+
+.funding-curve-table-wrap tbody th span,
+.funding-curve-table-wrap tbody th small {
+  display: block;
+  margin-top: 0.18rem;
+}
+
+.funding-curve-table-wrap tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.funding-curve-rejections {
+  padding: 0.9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line));
+  border-radius: 0.75rem;
+  background: var(--panel);
+}
+
+.funding-curve-rejections ul {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.funding-curve-rejections li,
+.funding-curve-rejections li span,
+.funding-curve-rejections li small {
+  display: block;
+}
+
+.funding-curve-rejections li span,
+.funding-curve-rejections li small {
+  margin-top: 0.18rem;
+}
+
+.funding-curve-rejections li span {
+  color: var(--muted);
+}
+
+.funding-curve-boundary {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line));
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--warn) 6%, var(--panel));
+}
+
+.funding-curve-boundary svg {
+  flex: 0 0 auto;
+  color: var(--warn);
+}
+
+.funding-curve-boundary p {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+@container (max-width: 58rem) {
+  .funding-curve-form {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .funding-curve-run {
+    justify-self: start;
+  }
+}
+
+@container (max-width: 34rem) {
+  .funding-curve-parameters {
+    grid-template-columns: 1fr;
+  }
+
+  .funding-curve-run {
+    width: 100%;
+  }
+}

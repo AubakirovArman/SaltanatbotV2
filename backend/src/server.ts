@@ -11,33 +11,68 @@ import { ArbitrageScannerService } from "./arbitrage/service.js";
 import { ArbitrageStreamHub } from "./arbitrage/stream.js";
 import { ArbitrageAlertService } from "./arbitrage/alerts.js";
 import { ArbitrageHistoryRecorder } from "./arbitrage/history.js";
+import { createTriangularArbitrageHandler } from "./arbitrage/triangularRoutes.js";
+import { createTriangularDepthVerificationHandler } from "./arbitrage/triangularDepth/index.js";
+import { createNativeSpreadHandler } from "./arbitrage/nativeSpreads/index.js";
+import { createPairwiseEvaluationHandler } from "./arbitrage/pairwiseRoutes.js";
+import { createRouteFamilyEvaluationHandler } from "./arbitrage/routeFamilyRoutes.js";
+import { createOptionsParityEvaluationHandler } from "./arbitrage/optionsParityRoutes.js";
+import { createNLegEvaluationHandler } from "./arbitrage/nLegRoutes.js";
+import { createFundingCurveHandler, createFundingCurveUniverseHandler, FundingCurveService } from "./arbitrage/fundingCurve/index.js";
+import { ResearchAlertService } from "./arbitrage/researchAlerts/index.js";
+import { ContinuousRouteDiscoveryRuntime, createContinuousRouteRuntimeHandler, loadContinuousRouteConfiguration } from "./arbitrage/continuousRoutesRuntime.js";
+import { ContinuousPublicFeedHub, ContinuousRouteFamilyDiscovery, createContinuousFeedHealthHandler } from "./arbitrage/upstream/publicFeeds/index.js";
+import { attachBasisOpportunityLifecycle, attachContinuousRouteOpportunityLifecycle, createOpportunityLifecycleHandler, OpportunityLifecycleCoordinator } from "./arbitrage/lifecycle/index.js";
+import { createVenueClockHealthHandler, VenueClockCalibrationService } from "./arbitrage/timing/index.js";
 import { findInstrument, getCatalog, initCatalog } from "./market/catalog.js";
+import { createInstrumentRegistryHandler, createVenueCapabilitiesHandler } from "./market/instrumentRoutes.js";
+import { instrumentRegistry } from "./market/instrumentRegistry.js";
+import { createNetworkIdentityPreflightHandler, createNetworkIdentityRegistryHandler } from "./market/networkIdentity/index.js";
 import { timeframes } from "./market/timeframes.js";
 import { OrderBookHub } from "./orderbook/hub.js";
+import { createOrderBookMlResearchRouter } from "./orderbook/ml/researchRoutes.js";
 import { ProviderRouter } from "./providers/router.js";
 import { securityHeaders } from "./securityHeaders.js";
+import { configureTrustedProxy } from "./secureTradingOrigin.js";
 import { frontendCacheControl } from "./staticCache.js";
 import { createTradingApi } from "./trading/routes.js";
 import { TradeFlowHub } from "./tradeflow/hub.js";
 import type { Candle, OrderBookStreamMessage, QuoteStreamMessage, StreamMessage, Timeframe, TradeFlowStreamMessage } from "./types.js";
+import { createPublicVenueRouter, publicVenueAdapters } from "./venues/index.js";
 
 const port = Number(process.env.PORT ?? 4180);
 // Fail safe: bind to loopback unless the operator explicitly opts into a wider bind.
 const host = process.env.HOST ?? "127.0.0.1";
 const provider = new ProviderRouter();
 const app = express();
+configureTrustedProxy(app);
 const server = createServer(app);
-const wss = new WebSocketServer({ noServer: true });
-const quoteWss = new WebSocketServer({ noServer: true });
-const orderBookWss = new WebSocketServer({ noServer: true });
-const tradeFlowWss = new WebSocketServer({ noServer: true });
-const arbitrageWss = new WebSocketServer({ noServer: true });
+const inboundWebSocketLimit = 64 * 1024;
+const wss = new WebSocketServer({ noServer: true, maxPayload: inboundWebSocketLimit });
+const quoteWss = new WebSocketServer({ noServer: true, maxPayload: inboundWebSocketLimit });
+const orderBookWss = new WebSocketServer({ noServer: true, maxPayload: inboundWebSocketLimit });
+const tradeFlowWss = new WebSocketServer({ noServer: true, maxPayload: inboundWebSocketLimit });
+const arbitrageWss = new WebSocketServer({ noServer: true, maxPayload: inboundWebSocketLimit });
 const orderBookHub = new OrderBookHub();
 const tradeFlowHub = new TradeFlowHub();
-const arbitrageAlerts = new ArbitrageAlertService();
-const trading = createTradingApi(provider, arbitrageAlerts);
-const arbitrageScanner = new ArbitrageScannerService();
-const arbitrageStream = new ArbitrageStreamHub(arbitrageWss, arbitrageScanner);
+const venueClockCalibration = new VenueClockCalibrationService();
+const arbitrageAlerts = new ArbitrageAlertService({ clockCalibration: venueClockCalibration });
+const researchAlerts = new ResearchAlertService();
+const trading = createTradingApi(provider, arbitrageAlerts, { researchAlerts });
+const arbitrageScanner = new ArbitrageScannerService({ clockCalibration: venueClockCalibration });
+const arbitrageStream = new ArbitrageStreamHub(arbitrageWss, arbitrageScanner, 30_000, venueClockCalibration);
+const opportunityLifecycle = new OpportunityLifecycleCoordinator();
+const detachOpportunityLifecycle = attachBasisOpportunityLifecycle(arbitrageStream, opportunityLifecycle);
+const continuousPublicFeeds = new ContinuousPublicFeedHub();
+const continuousRouteDiscovery = new ContinuousRouteFamilyDiscovery(continuousPublicFeeds, { clockCalibration: venueClockCalibration });
+const continuousRouteSetup = continuousRouteConfigurationFromEnvironment();
+const continuousRouteRuntime = new ContinuousRouteDiscoveryRuntime({
+  configuration: continuousRouteSetup.configuration,
+  registry: instrumentRegistry,
+  discovery: continuousRouteDiscovery,
+  ...(continuousRouteSetup.error ? { configurationError: continuousRouteSetup.error } : {})
+});
+const detachContinuousRouteLifecycle = attachContinuousRouteOpportunityLifecycle(continuousRouteDiscovery, opportunityLifecycle);
 const arbitrageHistory = new ArbitrageHistoryRecorder();
 arbitrageStream.subscribe((scan) => arbitrageHistory.record(scan));
 arbitrageAlerts.attach(arbitrageStream);
@@ -62,6 +97,8 @@ const corsOptions: cors.CorsOptions = {
 };
 
 const exchangeParam = z.enum(["binance", "bybit"]).default("binance");
+const marketTypeParam = z.enum(["spot", "linear", "inverse"]).default("spot");
+const priceTypeParam = z.enum(["last", "mark", "index"]).default("last");
 
 const candleQuery = z.object({
   symbol: z.string().min(1),
@@ -69,7 +106,9 @@ const candleQuery = z.object({
   limit: z.coerce.number().int().min(10).max(1000).default(320),
   endTime: z.coerce.number().int().positive().optional(),
   startTime: z.coerce.number().int().positive().optional(),
-  exchange: exchangeParam
+  exchange: exchangeParam,
+  marketType: marketTypeParam,
+  priceType: priceTypeParam
 });
 
 const sparklineQuery = z.object({
@@ -91,6 +130,7 @@ app.use(express.json({ limit: "1mb" }));
 // The trading API holds exchange keys and can place real orders. Its router
 // exposes only /session publicly; every other route is gated inside routes.ts.
 app.use("/api/trade", trading.router);
+app.use("/api/orderbook-ml/research", createOrderBookMlResearchRouter());
 
 app.get("/api/health", (_request, response) => {
   response.json({ ok: true, service: "saltanatbotv2-backend", ts: Date.now() });
@@ -99,10 +139,28 @@ app.get("/api/health", (_request, response) => {
 app.get("/api/catalog", (_request, response) => {
   response.json(getCatalog());
 });
+app.get("/api/instruments", createInstrumentRegistryHandler());
+app.get("/api/venues", createVenueCapabilitiesHandler());
+app.get("/api/network-identity/registry", createNetworkIdentityRegistryHandler());
+app.post("/api/network-identity/preflight", createNetworkIdentityPreflightHandler());
+app.use("/api/market-data", createPublicVenueRouter(publicVenueAdapters));
 
 app.get("/api/arbitrage", createArbitrageHandler(arbitrageScanner));
 app.get("/api/arbitrage/depth", createArbitrageDepthHandler());
 app.get("/api/arbitrage/history", createArbitrageHistoryHandler());
+app.get("/api/arbitrage/triangular", createTriangularArbitrageHandler());
+app.post("/api/arbitrage/triangular/verify-depth", createTriangularDepthVerificationHandler());
+app.get("/api/arbitrage/native-spreads", createNativeSpreadHandler());
+app.post("/api/arbitrage/pairwise/evaluate", createPairwiseEvaluationHandler());
+app.post("/api/arbitrage/route-families/evaluate", createRouteFamilyEvaluationHandler());
+app.post("/api/arbitrage/options-parity/evaluate", createOptionsParityEvaluationHandler());
+app.post("/api/arbitrage/n-leg/evaluate", createNLegEvaluationHandler());
+app.post("/api/arbitrage/funding-curve", createFundingCurveHandler(new FundingCurveService(publicVenueAdapters, { clockCalibration: venueClockCalibration })));
+app.get("/api/arbitrage/funding-curve/universe", createFundingCurveUniverseHandler());
+app.get("/api/arbitrage/route-families/live", createContinuousRouteRuntimeHandler(continuousRouteRuntime));
+app.get("/api/arbitrage/continuous-feed-health", createContinuousFeedHealthHandler(continuousPublicFeeds));
+app.get("/api/arbitrage/clock-health", createVenueClockHealthHandler(venueClockCalibration));
+app.get("/api/arbitrage/lifecycle", createOpportunityLifecycleHandler(opportunityLifecycle));
 
 app.get("/api/candles", async (request, response) => {
   const parsed = candleQuery.safeParse(request.query);
@@ -127,7 +185,11 @@ app.get("/api/candles", async (request, response) => {
         endTime: parsed.data.endTime,
         startTime: parsed.data.startTime
       },
-      parsed.data.exchange
+      {
+        exchange: parsed.data.exchange,
+        marketType: parsed.data.marketType,
+        priceType: parsed.data.priceType
+      }
     );
   } catch (error) {
     response.status(503).json({
@@ -354,7 +416,16 @@ wss.on("connection", async (socket, request) => {
   }
 
   try {
-    const candles = await provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.limit }, parsed.data.exchange);
+    const candles = await provider.getCandles(
+      instrument,
+      parsed.data.timeframe,
+      { limit: parsed.data.limit },
+      {
+        exchange: parsed.data.exchange,
+        marketType: parsed.data.marketType,
+        priceType: parsed.data.priceType
+      }
+    );
     send({
       type: "snapshot",
       symbol: instrument.symbol,
@@ -388,7 +459,11 @@ wss.on("connection", async (socket, request) => {
           ts: Date.now()
         });
       },
-      parsed.data.exchange
+      {
+        exchange: parsed.data.exchange,
+        marketType: parsed.data.marketType,
+        priceType: parsed.data.priceType
+      }
     );
 
     socket.on("close", () => subscription.close());
@@ -456,15 +531,38 @@ server.listen(port, host, () => {
   // configured and Telegram is enabled; it can also be activated later from the
   // UI (POST /notify calls refresh()).
   trading.telegramControl.start();
+  researchAlerts.start();
+  venueClockCalibration.start();
+  continuousRouteRuntime.start();
+  if (continuousRouteSetup.error) console.log(`Continuous route allowlist disabled: ${continuousRouteSetup.error}`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     // Preserve desired status so running bots resume on the next start.
     trading.telegramControl.stop();
+    researchAlerts.close();
     arbitrageAlerts.close();
     trading.engine.shutdown();
+    detachOpportunityLifecycle();
+    detachContinuousRouteLifecycle();
     arbitrageStream.close();
+    continuousRouteRuntime.close();
+    continuousPublicFeeds.close();
+    venueClockCalibration.stop();
     server.close(() => process.exit(0));
   });
+}
+
+function continuousRouteConfigurationFromEnvironment() {
+  try {
+    return {
+      configuration: loadContinuousRouteConfiguration({
+        json: process.env.ARBITRAGE_CONTINUOUS_ROUTES_JSON,
+        file: process.env.ARBITRAGE_CONTINUOUS_ROUTES_FILE
+      })
+    };
+  } catch (error) {
+    return { configuration: [], error: error instanceof Error ? error.message : "Continuous route allowlist is invalid" };
+  }
 }

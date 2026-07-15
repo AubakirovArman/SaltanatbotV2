@@ -1,0 +1,16 @@
+{
+  "channel": "book",
+  "type": "update",
+  "data": [
+    {
+      "symbol": "BTC/USD",
+      "bids": [
+        { "price": "100.0", "qty": "0.000" },
+        { "price": "100.5", "qty": "6.000" }
+      ],
+      "asks": [{ "price": "101.0", "qty": "7.000" }],
+      "checksum": 3630265277,
+      "timestamp": "2026-07-14T12:00:00.200000Z"
+    }
+  ]
+}

@@ -1,9 +1,10 @@
 # Roadmap
 
-> P0, P1 and P2 delivery evidence is maintained in
+> The broad repository baseline is maintained in
 > [MASTER_IMPROVEMENT_PLAN.md](./MASTER_IMPROVEMENT_PLAN.md) and
-> [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md). This page contains only work beyond that
-> completed repository scope.
+> [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md). Scanner-specific P0/P1/P2 integration
+> remains active in [P0_P1_P2_EXECUTION_PLAN.md](./P0_P1_P2_EXECUTION_PLAN.md); this page records
+> longer-horizon product work without reclassifying that ledger as complete.
 
 SaltanatbotV2 is a strong open-source alpha for charting, Pine import, visual strategy authoring,
 reproducible research, paper trading and experimental exchange execution. Live trading is not
@@ -21,13 +22,17 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 - Professional multi-chart workspaces, pane/scales, drawing management, accessible tables and responsive monitoring.
 - Per-pane IANA time-zone axes with DST-safe chart labels and versioned workspace/session persistence.
 - Scoped session security, encrypted keys, audit logs, verified backup/restore and fail-closed demo mode.
-- Complete EN/RU/KK UI and user documentation, public Pages, release artifacts, SBOM, checksums and attestations.
+- EN/RU/KK coverage for core stable UI journeys and operator guides, with exact developer contracts canonical in English; public Pages, release artifacts, SBOM, checksums and attestations.
 - Enforced TypeScript, Biome, docs, architecture, unit/integration, build, performance and Playwright gates.
 - Blank-screen-safe startup with a localized pre-React fallback, global React recovery boundary and data-preserving stale-shell refresh.
 - Attested release archives with per-file manifests and an enforced controlled-corruption/atomic-rollback drill plus EN/RU/KK incident runbooks.
 - Optional offline Strategy Studio bundle with explicit install/remove controls and safe installed-app Chart/Strategy shortcuts.
 - Reviewed installed-PWA file opening and file-only Share Target for exact Pine, strategy and plugin
   formats, with bounded temporary local storage and cross-browser manual fallbacks.
+- Nine operator-allowlisted venues in the generic read-only continuous module, exposed through
+  dynamic browser venue/source filters. dYdX Indexer books remain non-canonical sequence-observed
+  research, while KuCoin and MEXC use bounded connected public protocol paths; none adds private
+  execution or mainnet readiness.
 
 ## Explicitly deferred external validation
 
@@ -36,13 +41,14 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 | Continuous 7–14-day Binance/Bybit testnet soak | Requires funded accounts and protected external credentials | Reconnect, fills, protection and recovery evidence over the full window |
 | Mainnet readiness | Requires the soak plus controlled real-account operational review | Signed operator evidence and removal of every Experimental warning only after approval |
 
-These are not silently marked complete and are not included in the P0/P1/P2 repository closure.
+These are not silently marked complete. The funded soak is excluded from the active scanner ledger,
+while its remaining repository-connected work continues independently.
 
 ## P3 product opportunities
 
 | Epic | Outcome | Relative effort |
 | --- | --- | --- |
-| Additional exchange adapters | Conformance-tested OKX and later KuCoin/MEXC data/execution adapters | L |
+| Public venue expansion | Finish dedicated browser diagnostics for the nine registered continuous venues, accumulate repeated scheduled canary evidence and obtain a successful Kraken artifact from an eligible network, then add reviewed Crypto.com, BitMEX, Bitfinex, Gemini and Bitstamp public scopes; dYdX still needs an owned-node finality/reorg gate, while private execution remains a separate review | L–XL |
 | Order-book and derivatives data | Depth, tape, funding, open interest and licensed advanced feeds | L–XL |
 | Plugin capability expansion | Additional reviewed declarative extension points beyond editable indicator/strategy packages | L–XL |
 | Moderated community registry | Signed indicator/strategy discovery, publisher verification, compromise revocation and supply-chain policy beyond local dual-signed rotation | XL |

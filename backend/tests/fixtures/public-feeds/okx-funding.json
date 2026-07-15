@@ -1,0 +1,4 @@
+{
+  "arg": { "channel": "funding-rate", "instId": "BTC-USDT-SWAP" },
+  "data": [{ "fundingRate": "0.00012", "nextFundingRate": "0.00008", "fundingTime": "1784001600000", "nextFundingTime": "1784016000000", "ts": "1784000000123" }]
+}

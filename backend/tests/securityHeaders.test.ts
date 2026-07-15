@@ -49,4 +49,21 @@ describe("securityHeaders", () => {
 
     expect(headers["cross-origin-opener-policy"]).toBeUndefined();
   });
+
+  it("does not trust a spoofed forwarded HTTPS header", async () => {
+    const url = new URL(base);
+    const headers = await new Promise<http.IncomingHttpHeaders>((resolve, reject) => {
+      const req = http.request(
+        { hostname: "127.0.0.1", port: Number(url.port), path: "/probe", headers: { Host: "203.0.113.10:4180", "X-Forwarded-Proto": "https" } },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.headers));
+        }
+      );
+      req.on("error", reject);
+      req.end();
+    });
+
+    expect(headers["cross-origin-opener-policy"]).toBeUndefined();
+  });
 });

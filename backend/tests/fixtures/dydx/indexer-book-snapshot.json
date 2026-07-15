@@ -1,0 +1,17 @@
+{
+  "type": "subscribed",
+  "connection_id": "conn-a",
+  "channel": "v4_orderbook",
+  "id": "BTC-USD",
+  "message_id": 10,
+  "contents": {
+    "bids": [
+      { "price": "100", "size": "2", "offset": "8" },
+      { "price": "99", "size": "4", "offset": "7" }
+    ],
+    "asks": [
+      { "price": "101", "size": "1", "offset": "10" },
+      { "price": "103", "size": "3", "offset": "9" }
+    ]
+  }
+}

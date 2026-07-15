@@ -2,6 +2,7 @@ import type { Locale } from "../i18n";
 import type { ArbitrageFeeProfile } from "./fees";
 import { arbitrageText } from "./text";
 import { ArbitrageServerAlerts } from "./ArbitrageServerAlerts";
+import { analysisText } from "./analysisText";
 
 interface Props {
   locale: Locale;
@@ -18,10 +19,10 @@ interface Props {
 
 export function ArbitrageControls(props: Props) {
   const feeFields: Array<[keyof ArbitrageFeeProfile, string]> = [
-    ["binanceSpotTakerBps", "Binance spot"],
-    ["binancePerpetualTakerBps", "Binance perpetual"],
-    ["bybitSpotTakerBps", "Bybit spot"],
-    ["bybitPerpetualTakerBps", "Bybit perpetual"],
+    ["binanceSpotTakerBps", arbitrageText(props.locale, "binanceSpotFee")],
+    ["binancePerpetualTakerBps", arbitrageText(props.locale, "binancePerpetualFee")],
+    ["bybitSpotTakerBps", arbitrageText(props.locale, "bybitSpotFee")],
+    ["bybitPerpetualTakerBps", arbitrageText(props.locale, "bybitPerpetualFee")],
     ["roundTripSlippageReserveBps", arbitrageText(props.locale, "slippageReserve")]
   ];
   return (
@@ -37,16 +38,18 @@ export function ArbitrageControls(props: Props) {
                 {label}
                 <span className="arb-number-control">
                   <input id={`arb-fee-${key}`} type="number" min="0" max="1000" step="0.1" value={props.profile[key]} onChange={(event) => props.onProfile({ ...props.profile, [key]: Math.min(1_000, Math.max(0, event.target.valueAsNumber || 0)) })} />
-                  <span>bp</span>
+                  <span>{arbitrageText(props.locale, "basisPointUnit")}</span>
                 </span>
               </label>
             ))}
           </div>
           <p className="arb-cost-hint">{arbitrageText(props.locale, "costModelHint")}</p>
           <div className="arb-fee-grid">
-            <CostField id="holding" label={arbitrageText(props.locale, "holdingHours")} value={props.profile.expectedHoldingHours} suffix="h" max={720} onValue={(expectedHoldingHours) => props.onProfile({ ...props.profile, expectedHoldingHours })} />
+            <CostField id="holding" label={arbitrageText(props.locale, "holdingHours")} value={props.profile.expectedHoldingHours} suffix={arbitrageText(props.locale, "hourUnit")} max={720} onValue={(expectedHoldingHours) => props.onProfile({ ...props.profile, expectedHoldingHours })} />
             <CostField id="borrow" label={arbitrageText(props.locale, "annualBorrowRate")} value={props.profile.annualBorrowRatePct} suffix="%" max={1_000} onValue={(annualBorrowRatePct) => props.onProfile({ ...props.profile, annualBorrowRatePct })} />
             <CostField id="transfer" label={arbitrageText(props.locale, "transferCost")} value={props.profile.transferCostUsd} suffix="$" max={1_000_000} onValue={(transferCostUsd) => props.onProfile({ ...props.profile, transferCostUsd })} />
+            <CostField id="initial-margin" label={analysisText(props.locale, "initialMargin")} value={props.profile.derivativeInitialMarginPct} suffix="%" max={100} onValue={(derivativeInitialMarginPct) => props.onProfile({ ...props.profile, derivativeInitialMarginPct })} />
+            <CostField id="margin-buffer" label={analysisText(props.locale, "marginBuffer")} value={props.profile.derivativeSafetyBufferPct} suffix="%" max={500} onValue={(derivativeSafetyBufferPct) => props.onProfile({ ...props.profile, derivativeSafetyBufferPct })} />
           </div>
         </fieldset>
         <fieldset>

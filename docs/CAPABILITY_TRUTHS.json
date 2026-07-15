@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "scannerModes": [
+    {
+      "id": "basis",
+      "name": "Spot ↔ perpetual"
+    },
+    {
+      "id": "triangular",
+      "name": "Triangular"
+    },
+    {
+      "id": "native",
+      "name": "Bybit native spreads"
+    },
+    {
+      "id": "options",
+      "name": "Options parity"
+    },
+    {
+      "id": "funding",
+      "name": "Funding stress"
+    },
+    {
+      "id": "continuous",
+      "name": "Live routes"
+    },
+    {
+      "id": "ml",
+      "name": "Order-book ML"
+    }
+  ],
+  "registeredPublicVenues": [
+    "okx",
+    "gate",
+    "hyperliquid",
+    "deribit",
+    "kraken",
+    "coinbase",
+    "dydx",
+    "kucoin",
+    "mexc"
+  ],
+  "continuousPublicVenues": [
+    "okx",
+    "gate",
+    "hyperliquid",
+    "deribit",
+    "kraken",
+    "coinbase",
+    "dydx",
+    "kucoin",
+    "mexc"
+  ],
+  "venueDisplayNames": {
+    "okx": "OKX",
+    "gate": "Gate.io",
+    "hyperliquid": "Hyperliquid",
+    "deribit": "Deribit",
+    "kraken": "Kraken",
+    "coinbase": "Coinbase",
+    "dydx": "dYdX",
+    "kucoin": "KuCoin",
+    "mexc": "MEXC"
+  },
+  "generatedEndpoints": {
+    "http": 93,
+    "websocket": 6
+  }
+}

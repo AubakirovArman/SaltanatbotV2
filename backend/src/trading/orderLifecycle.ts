@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { canAdvanceOrderState, deriveDurableOrderStatus } from "@saltanatbotv2/execution-core";
-import { insertOrderEvent, listOrderEvents, upsertOrderJournal } from "./store.js";
+import { getOrderJournal, insertOrderEvent, listOrderEvents, upsertOrderJournal } from "./store.js";
+import { requestedOpenOrderSlots } from "./liveRiskReservations.js";
+import { beginProtectionChildren, completeProtectionChildren } from "./protectionChildLifecycle.js";
 import type { BotConfig, ExchangeOrderSnapshot, ExecOrder, ExecResult, ExecutionLifecycleStatus, FillRecord, OrderEventRecord, OrderJournalRecord, OrderJournalStatus } from "./types.js";
 
 export interface OrderLifecycleContext {
   botId: string;
+  accountId?: string;
   exchange: BotConfig["exchange"];
   market: BotConfig["market"];
   barTime?: number;
@@ -13,6 +16,7 @@ export interface OrderLifecycleContext {
 export interface OrderLifecycleWriter {
   upsertOrder(record: OrderJournalRecord): void;
   insertEvent(event: OrderEventRecord): void;
+  getOrder?(id: string): OrderJournalRecord | undefined;
   listEvents?(orderId: string): OrderEventRecord[];
 }
 
@@ -24,6 +28,7 @@ export interface OrderLifecycleOptions {
 const durableWriter: OrderLifecycleWriter = {
   upsertOrder: upsertOrderJournal,
   insertEvent: insertOrderEvent,
+  getOrder: (id) => getOrderJournal(id),
   listEvents: (orderId) => listOrderEvents(orderId, 1_000)
 };
 
@@ -51,6 +56,7 @@ export class OrderLifecycle {
     const record: OrderJournalRecord = {
       id: identity,
       botId: context.botId,
+      accountId: context.accountId,
       exchange: context.exchange,
       market: context.market,
       symbol: order.symbol,
@@ -58,12 +64,15 @@ export class OrderLifecycle {
       side: order.side,
       type: order.type,
       qty: order.qty,
+      price: order.price,
+      trgPrice: order.trgPrice,
       reduceOnly: order.reduceOnly,
       reason: order.reason,
       clientId: order.clientId,
       exchangeOrderId: order.orderId,
       status: "intent",
       executionStatus: initialExecutionStatus(order),
+      reservedOpenOrderCount: requestedOpenOrderSlots(order),
       barTime: context.barTime,
       ts: now,
       updatedAt: now
@@ -77,24 +86,35 @@ export class OrderLifecycle {
       data: order,
       ts: now
     });
+    beginProtectionChildren(context, record, order, this.writer, () => this.createId());
     return record;
   }
 
-  complete(record: OrderJournalRecord, result: ExecResult): OrderJournalRecord {
+  complete(record: OrderJournalRecord, result: ExecResult, submittedOrder?: ExecOrder): OrderJournalRecord {
     const now = this.now();
-    const status = deriveOrderJournalStatus(record, result);
-    const lifecycleTransitions = executionLifecycleTransitions(record, result);
+    const current = this.writer.getOrder?.(record.id) ?? record;
+    const resultStatus = deriveOrderJournalStatus(current, result);
+    const lifecycleTransitions = executionLifecycleTransitions(current, result);
     const filledQty = result.fills.reduce((sum, fill) => sum + Math.abs(fill.qty), 0);
     const filledNotional = result.fills.reduce((sum, fill) => sum + Math.abs(fill.qty) * fill.price, 0);
+    const observedFilledQty = Math.max(current.filledQty ?? 0, filledQty);
+    const status = canAdvanceOrderState(current, { status: resultStatus, filledQty: observedFilledQty })
+      ? resultStatus
+      : current.status;
+    const preserveNewerExecution = terminalOrderStatus(current.status)
+      || (current.accountedFilledQty ?? 0) > (record.accountedFilledQty ?? 0);
     const next: OrderJournalRecord = {
-      ...record,
-      exchangeOrderId: result.order?.id ?? result.pendingOrder?.id ?? record.exchangeOrderId,
+      ...current,
+      qty: normalizedSubmittedQuantity(current, submittedOrder),
+      exchangeOrderId: current.exchangeOrderId ?? result.order?.id ?? result.pendingOrder?.id ?? result.protection?.entryOrderId,
       status,
-      executionStatus: lifecycleTransitions.at(-1) ?? record.executionStatus,
-      message: result.message,
-      filledQty: filledQty > 0 ? filledQty : record.filledQty,
-      avgFillPrice: filledQty > 0 ? filledNotional / filledQty : record.avgFillPrice,
-      updatedAt: now
+      executionStatus: lifecycleTransitions.at(-1) ?? current.executionStatus,
+      message: preserveNewerExecution ? current.message ?? result.message : result.message,
+      filledQty: observedFilledQty > 0 ? observedFilledQty : current.filledQty,
+      avgFillPrice: preserveNewerExecution
+        ? current.avgFillPrice ?? (filledQty > 0 ? filledNotional / filledQty : undefined)
+        : filledQty > 0 ? filledNotional / filledQty : current.avgFillPrice,
+      updatedAt: Math.max(now, current.updatedAt)
     };
     this.writer.upsertOrder(next);
     this.writer.insertEvent({
@@ -116,27 +136,21 @@ export class OrderLifecycle {
       },
       ts: now
     });
-    for (const fill of result.fills) {
-      this.writer.insertEvent({
-        id: this.createId(),
-        orderId: next.id,
-        botId: next.botId,
-        type: "fill",
-        data: fill,
-        ts: fill.ts
-      });
-    }
+    completeProtectionChildren(next, submittedOrder, result, this.writer, () => this.createId(), now);
     return next;
   }
 
   markUnknown(record: OrderJournalRecord, error: unknown): OrderJournalRecord {
     const now = this.now();
     const message = error instanceof Error ? error.message : String(error);
+    const current = this.writer.getOrder?.(record.id) ?? record;
+    const preserveNewerExecution = terminalOrderStatus(current.status)
+      || (current.accountedFilledQty ?? 0) > (record.accountedFilledQty ?? 0);
     const next: OrderJournalRecord = {
-      ...record,
-      status: "unknown",
-      message,
-      updatedAt: now
+      ...current,
+      status: preserveNewerExecution ? current.status : "unknown",
+      message: preserveNewerExecution ? current.message ?? message : message,
+      updatedAt: Math.max(now, current.updatedAt)
     };
     this.writer.upsertOrder(next);
     this.writer.insertEvent({
@@ -144,7 +158,7 @@ export class OrderLifecycle {
       orderId: next.id,
       botId: next.botId,
       type: "result",
-      data: { status: "unknown", ok: false, message },
+      data: { status: next.status, ok: false, message },
       ts: now
     });
     return next;
@@ -152,18 +166,28 @@ export class OrderLifecycle {
 
   recordFill(record: OrderJournalRecord, fill: FillRecord): OrderJournalRecord {
     const now = this.now();
-    const priorFilledQty = (this.writer.listEvents?.(record.id) ?? []).reduce(
-      (sum, event) => event.type === "fill" && isFillData(event.data) ? sum + Math.abs(event.data.qty) : sum,
-      0
-    );
-    const cumulativeFilledQty = priorFilledQty + Math.abs(fill.qty);
-    const status: OrderJournalStatus = record.qty !== undefined && cumulativeFilledQty + Number.EPSILON < Math.abs(record.qty)
-      ? "partially_filled"
-      : "filled";
+    const priorAccountedQty = record.accountedFilledQty ?? 0;
+    if (!Number.isFinite(priorAccountedQty) || priorAccountedQty < 0) {
+      throw new Error(`Order ${record.id} has invalid prior accounted quantity`);
+    }
+    const fillQty = Math.abs(fill.qty);
+    if (!Number.isFinite(fillQty) || fillQty <= 0) throw new Error("Execution fill quantity must be positive");
+    const cumulativeAccountedQty = priorAccountedQty + fillQty;
+    if (record.qty !== undefined && cumulativeAccountedQty > Math.abs(record.qty) + Number.EPSILON) {
+      throw new Error(`Execution accounting exceeds requested quantity for order ${record.id}`);
+    }
+    const observedFilledQty = Math.max(record.filledQty ?? 0, cumulativeAccountedQty);
+    const status: OrderJournalStatus = terminalOrderStatus(record.status)
+      ? record.status
+      : record.qty !== undefined && observedFilledQty + Number.EPSILON < Math.abs(record.qty)
+        ? "partially_filled"
+        : "filled";
     const next: OrderJournalRecord = {
       ...record,
       exchangeOrderId: fill.orderId ?? record.exchangeOrderId,
       status,
+      filledQty: observedFilledQty,
+      accountedFilledQty: cumulativeAccountedQty,
       message: `Asynchronous fill ${fill.qty} @ ${fill.price}`,
       updatedAt: now
     };
@@ -180,6 +204,7 @@ export class OrderLifecycle {
   }
 
   applySnapshot(record: OrderJournalRecord, snapshot: ExchangeOrderSnapshot): OrderJournalRecord {
+    if (record.clientId && snapshot.clientId && record.clientId !== snapshot.clientId) return record;
     if (!canApplySnapshot(record, snapshot)) return record;
     const avgFillPrice = snapshot.avgFillPrice ?? record.avgFillPrice;
     if (
@@ -191,7 +216,7 @@ export class OrderLifecycle {
     const next: OrderJournalRecord = {
       ...record,
       exchangeOrderId: snapshot.id,
-      clientId: snapshot.clientId ?? record.clientId,
+      clientId: record.clientId ?? snapshot.clientId,
       status: snapshot.status,
       filledQty: snapshot.filledQty,
       avgFillPrice,
@@ -235,7 +260,7 @@ export class OrderLifecycle {
     const record = this.begin(context, order);
     try {
       const result = await send();
-      this.complete(record, result);
+      this.complete(record, result, order);
       return result;
     } catch (error) {
       this.markUnknown(record, error);
@@ -279,6 +304,15 @@ export function deriveOrderJournalStatus(record: OrderJournalRecord, result: Exe
   });
 }
 
-function isFillData(value: unknown): value is Pick<FillRecord, "qty"> {
-  return typeof value === "object" && value !== null && typeof (value as { qty?: unknown }).qty === "number";
+function terminalOrderStatus(status: OrderJournalStatus): boolean {
+  return status === "filled" || status === "cancelled" || status === "expired" || status === "rejected" || status === "replaced";
+}
+
+function normalizedSubmittedQuantity(record: OrderJournalRecord, order: ExecOrder | undefined): number | undefined {
+  if (order?.qty === undefined || order.qty === record.qty) return record.qty;
+  if (!Number.isFinite(order.qty) || order.qty <= 0) throw new Error(`Order ${record.id} has invalid submitted quantity`);
+  if (record.qty !== undefined && order.qty > record.qty + Number.EPSILON) {
+    throw new Error(`Order ${record.id} submitted quantity exceeds its durable intent`);
+  }
+  return order.qty;
 }

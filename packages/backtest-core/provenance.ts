@@ -1,5 +1,10 @@
 import type { Candle } from "@saltanatbotv2/contracts";
-import type { SecurityDataContext } from "@saltanatbotv2/strategy-core";
+import {
+  getSecurityDataEvidence,
+  getSecuritySeriesStore,
+  type SecurityDataContext,
+  type SecurityDataEvidence
+} from "@saltanatbotv2/strategy-core";
 
 export type DataSourceKind = "real" | "fallback" | "synthetic" | "unknown";
 export type DataProvenanceStatus = "real" | "fallback" | "mixed" | "unknown";
@@ -18,6 +23,8 @@ export interface BacktestDataProvenance {
   securityBars: number;
   fallbackBars: number;
   unknownBars: number;
+  /** Resolution evidence is additive so legacy serialized reports remain readable. */
+  securityRequests?: SecurityDataEvidence;
   /** False means the run may still be useful for UI/testing, but not for performance claims. */
   performanceClaimsValid: boolean;
 }
@@ -54,17 +61,18 @@ export function buildBacktestDataProvenance(
   collect(chartCandles, "chart", counts);
 
   let securityBars = 0;
-  if (securityData instanceof Map) {
-    for (const candles of securityData.values()) {
-      securityBars += candles.length;
-      collect(candles, "security", counts);
-    }
-  } else if (securityData) {
-    for (const candles of Object.values(securityData)) {
-      securityBars += candles.length;
-      collect(candles, "security", counts);
-    }
+  const securityStore = getSecuritySeriesStore(securityData);
+  const seenSecuritySeries = new Set<Candle[]>();
+  const securitySeries = securityStore instanceof Map
+    ? securityStore.values()
+    : Object.values(securityStore ?? {});
+  for (const candles of securitySeries) {
+    if (seenSecuritySeries.has(candles)) continue;
+    seenSecuritySeries.add(candles);
+    securityBars += candles.length;
+    collect(candles, "security", counts);
   }
+  const securityRequests = snapshotSecurityEvidence(getSecurityDataEvidence(securityData));
 
   const sources = [...counts.values()].sort((a, b) =>
     a.scope.localeCompare(b.scope) || a.source.localeCompare(b.source) || a.kind.localeCompare(b.kind)
@@ -93,6 +101,17 @@ export function buildBacktestDataProvenance(
     securityBars,
     fallbackBars,
     unknownBars,
-    performanceClaimsValid: status === "real"
+    ...(securityRequests ? { securityRequests } : {}),
+    performanceClaimsValid: status === "real" && (securityRequests?.unresolved.length ?? 0) === 0
+  };
+}
+
+function snapshotSecurityEvidence(evidence: SecurityDataEvidence | undefined): SecurityDataEvidence | undefined {
+  if (!evidence) return undefined;
+  return {
+    version: 1,
+    requested: evidence.requested.map((request) => ({ ...request })),
+    resolved: evidence.resolved.map((request) => ({ ...request, keys: [...request.keys] })),
+    unresolved: evidence.unresolved.map((request) => ({ ...request }))
   };
 }

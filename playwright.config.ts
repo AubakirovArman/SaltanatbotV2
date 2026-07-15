@@ -7,7 +7,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // The suite shares one backend and intentionally exercises persistent state.
+  // Unbounded local parallelism (57 workers on a large host) overloads public
+  // market data and makes otherwise unrelated browser scenarios interfere.
+  workers: process.env.CI ? 1 : 4,
   reporter: process.env.CI ? [["html", { open: "never" }], ["line"]] : "line",
   use: {
     baseURL: `http://127.0.0.1:${port}`,

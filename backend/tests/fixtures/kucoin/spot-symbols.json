@@ -1,0 +1,16 @@
+{
+  "code": "200000",
+  "data": [
+    {
+      "symbol": "BTC-USDT",
+      "baseCurrency": "BTC",
+      "quoteCurrency": "USDT",
+      "baseMinSize": "0.00001",
+      "baseIncrement": "0.00000001",
+      "priceIncrement": "0.1",
+      "minFunds": "0.1",
+      "enableTrading": true,
+      "callauctionIsEnabled": false
+    }
+  ]
+}

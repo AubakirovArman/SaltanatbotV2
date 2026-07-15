@@ -1,0 +1,230 @@
+[
+  {
+    "instrumentId": "gate:spot:BTC_USDT",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "gate:perpetual:BTC_USDT",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "gate:spot:ETH_USDT",
+    "economicAssetId": "crypto:ethereum",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "gate:perpetual:ETH_USDT",
+    "economicAssetId": "crypto:ethereum",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "kucoin:spot:BTC-USDT",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "kucoin:perpetual:XBTUSDTM",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "kucoin:spot:ETH-USDT",
+    "economicAssetId": "crypto:ethereum",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "kucoin:perpetual:ETHUSDTM",
+    "economicAssetId": "crypto:ethereum",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "mexc:spot:BTCUSDT",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "mexc:perpetual:BTC_USDT",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "mexc:spot:ETHUSDT",
+    "economicAssetId": "crypto:ethereum",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "mexc:perpetual:ETH_USDT",
+    "economicAssetId": "crypto:ethereum",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "kraken:spot:BTC/USDT",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "kraken:spot:ETH/USDT",
+    "economicAssetId": "crypto:ethereum",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "coinbase:spot:BTC-USDT",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "coinbase:spot:ETH-USDT",
+    "economicAssetId": "crypto:ethereum",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "hyperliquid:mainnet:perpetual:BTC",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "dydx:perpetual:BTC-USD",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  },
+  {
+    "instrumentId": "deribit:perpetual:BTC-PERPETUAL",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  }
+]

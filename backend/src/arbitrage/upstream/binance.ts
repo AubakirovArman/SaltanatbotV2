@@ -22,8 +22,21 @@ export function parseBinanceBookTicker(value: unknown, market: "spot" | "perpetu
   const bidSize = positive(row.B);
   const ask = positive(row.a);
   const askSize = positive(row.A);
-  if (!validSymbol(symbol) || !bid || !bidSize || !ask || !askSize) return undefined;
-  return { exchange: "binance" as const, market, symbol, bid, bidSize, ask, askSize, capturedAt: positive(row.E) ?? positive(row.T) ?? capturedAt };
+  if (!validSymbol(symbol) || !bid || !bidSize || !ask || bid >= ask || !askSize) return undefined;
+  const venueTimestamp = positive(row.E) ?? positive(row.T);
+  return {
+    exchange: "binance" as const,
+    market,
+    symbol,
+    bid,
+    bidSize,
+    ask,
+    askSize,
+    ...(venueTimestamp === undefined ? {} : { exchangeTs: venueTimestamp }),
+    exchangeTimestampVerified: venueTimestamp !== undefined,
+    receivedAt: capturedAt,
+    capturedAt
+  };
 }
 
 export class BinanceTickerFeed {
@@ -35,10 +48,12 @@ export class BinanceTickerFeed {
     this.socket = new ResilientPublicSocket({
       url,
       name: `Binance ${market}`,
-      onOpen: (socket) => subscribeBinance(socket, this.symbols),
+      onOpen: (socket) => subscribeBinance(socket, this.symbols, market),
       onMessage: (value) => {
         const update = parseBinanceBookTicker(value, market);
-        if (update) onTicker(update);
+        if (!update) return false;
+        onTicker(update);
+        return true;
       },
       onStatus: (ok, message) => onStatus({ exchange: "binance", market, ok, message })
     });
@@ -58,9 +73,13 @@ export class BinanceTickerFeed {
   }
 }
 
-function subscribeBinance(socket: WebSocket, symbols: string[]) {
+function subscribeBinance(socket: WebSocket, symbols: string[], market: "spot" | "perpetual") {
   if (!symbols.length) return;
-  socket.send(JSON.stringify({ method: "SUBSCRIBE", params: symbols.map((symbol) => `${symbol.toLowerCase()}@bookTicker`), id: 1 }));
+  // Spot bookTicker has updateId but no venue timestamp. The 1s ticker stream
+  // contains the same best bid/ask fields plus venue event time E, so it can
+  // support a verified freshness gate without synthesizing local time.
+  const stream = market === "spot" ? "ticker" : "bookTicker";
+  socket.send(JSON.stringify({ method: "SUBSCRIBE", params: symbols.map((symbol) => `${symbol.toLowerCase()}@${stream}`), id: 1 }));
 }
 
 function normalizedSymbols(symbols: Iterable<string>) {

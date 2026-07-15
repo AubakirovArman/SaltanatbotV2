@@ -1,0 +1,107 @@
+import type { Locale } from "../i18n";
+
+const en = {
+  initialMargin: "Derivative initial margin",
+  marginBuffer: "Derivative safety buffer",
+  ranking: "Rank by",
+  sortProfit: "Projected P&L",
+  sortRoi: "Projected ROI",
+  sortEdge: "Projected edge",
+  sortCapacity: "Capacity",
+  sortQuality: "Data quality",
+  analysisTitle: "Capital, costs and convergence",
+  analysisHint: "Scenario values use your fee, funding, financing and margin assumptions. They are not exchange account telemetry.",
+  requiredCapital: "Estimated required capital",
+  spotCapital: "Spot purchase",
+  derivativeMargin: "Derivative margin",
+  safetyBuffer: "Safety buffer",
+  costWaterfall: "Cost waterfall",
+  component: "Component",
+  costBps: "Cost (bp)",
+  costUsd: "Cost (USD)",
+  tradingFees: "Entry + exit fees",
+  slippage: "Slippage reserve",
+  financing: "Financing / borrow",
+  transfer: "Rebalancing / transfer",
+  funding: "Projected funding",
+  totalCosts: "Total",
+  depthCostBreakdown: "Fees {fees} · funding {funding} · financing {financing} · transfer {transfer} bp",
+  scenario: "Basis-convergence scenarios",
+  convergence: "Convergence",
+  grossPnl: "Gross P&L",
+  netPnl: "Net P&L",
+  roi: "ROI"
+} as const;
+type Key = keyof typeof en;
+
+const ru: Record<Key, string> = {
+  initialMargin: "Начальная маржа дериватива",
+  marginBuffer: "Страховой запас маржи",
+  ranking: "Сортировать по",
+  sortProfit: "Прогнозному P&L",
+  sortRoi: "Прогнозному ROI",
+  sortEdge: "Прогнозному спреду",
+  sortCapacity: "Ёмкости",
+  sortQuality: "Качеству данных",
+  analysisTitle: "Капитал, издержки и схождение",
+  analysisHint: "Сценарии используют ваши допущения о комиссиях, funding, финансировании и марже. Это не данные биржевого аккаунта.",
+  requiredCapital: "Оценка необходимого капитала",
+  spotCapital: "Покупка спота",
+  derivativeMargin: "Маржа дериватива",
+  safetyBuffer: "Страховой запас",
+  costWaterfall: "Структура издержек",
+  component: "Компонент",
+  costBps: "Стоимость (bp)",
+  costUsd: "Стоимость (USD)",
+  tradingFees: "Комиссии входа + выхода",
+  slippage: "Запас на проскальзывание",
+  financing: "Финансирование / заём",
+  transfer: "Ребалансировка / перевод",
+  funding: "Прогнозный funding",
+  totalCosts: "Итого",
+  depthCostBreakdown: "Комиссии {fees} · funding {funding} · финансирование {financing} · перевод {transfer} б.п.",
+  scenario: "Сценарии схождения базиса",
+  convergence: "Схождение",
+  grossPnl: "Грязный P&L",
+  netPnl: "Чистый P&L",
+  roi: "ROI"
+};
+
+const kk: Record<Key, string> = {
+  initialMargin: "Деривативтің бастапқы маржасы",
+  marginBuffer: "Маржаның қауіпсіздік қоры",
+  ranking: "Сұрыптау",
+  sortProfit: "Болжамды P&L",
+  sortRoi: "Болжамды ROI",
+  sortEdge: "Болжамды айырма",
+  sortCapacity: "Сыйымдылық",
+  sortQuality: "Дерек сапасы",
+  analysisTitle: "Капитал, шығын және жақындасу",
+  analysisHint: "Сценарийлер комиссия, funding, қаржыландыру және маржа туралы сіздің болжамдарыңызды қолданады. Бұл биржа шотының телеметриясы емес.",
+  requiredCapital: "Қажетті капитал бағасы",
+  spotCapital: "Spot сатып алу",
+  derivativeMargin: "Дериватив маржасы",
+  safetyBuffer: "Қауіпсіздік қоры",
+  costWaterfall: "Шығын құрылымы",
+  component: "Компонент",
+  costBps: "Шығын (bp)",
+  costUsd: "Шығын (USD)",
+  tradingFees: "Кіру + шығу комиссиялары",
+  slippage: "Slippage қоры",
+  financing: "Қаржыландыру / қарыз",
+  transfer: "Қайта теңгеру / аудару",
+  funding: "Болжамды funding",
+  totalCosts: "Барлығы",
+  depthCostBreakdown: "Комиссия {fees} · funding {funding} · қаржыландыру {financing} · аударым {transfer} б.п.",
+  scenario: "Базистің жақындасу сценарийлері",
+  convergence: "Жақындасу",
+  grossPnl: "Жалпы P&L",
+  netPnl: "Таза P&L",
+  roi: "ROI"
+};
+
+const messages: Record<Locale, Record<Key, string>> = { en, ru, kk };
+
+export function analysisText(locale: Locale, key: Key, values: Record<string, string> = {}): string {
+  return Object.entries(values).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, value), messages[locale][key]);
+}

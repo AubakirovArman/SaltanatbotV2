@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createMarketSocket, getCandles, parseStreamMessage } from "../api/marketClient";
 import type { SharedSocketClient } from "../api/sharedWebSocketPool";
-import type { Candle, DataExchange, StreamMessage, Timeframe } from "../types";
+import type { Candle, DataExchange, DataMarketType, PriceType, StreamMessage, Timeframe } from "../types";
 import { analyzeCandleGaps } from "../market/dataQuality";
 
 export type ConnectionState = "connecting" | "connected" | "fallback" | "error";
@@ -26,9 +26,12 @@ export interface MarketStreamState {
 export function useMarketStream(
   symbol: string,
   timeframe: Timeframe,
-  exchange: DataExchange = "binance"
+  exchange: DataExchange = "binance",
+  route: { marketType?: DataMarketType; priceType?: PriceType } = {}
 ): MarketStreamState {
-  const marketKey = `${exchange}:${symbol}:${timeframe}`;
+  const marketType = route.marketType ?? "spot";
+  const priceType = route.priceType ?? "last";
+  const marketKey = `${exchange}:${marketType}:${priceType}:${symbol}:${timeframe}`;
   const [candles, setCandles] = useState<Candle[]>([]);
   const [dataKey, setDataKey] = useState(marketKey);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -48,7 +51,7 @@ export function useMarketStream(
 
   useEffect(() => {
     setHasMore(true);
-  }, [symbol, timeframe, exchange]);
+  }, [symbol, timeframe, exchange, marketType, priceType]);
 
   useEffect(() => {
     let alive = true;
@@ -80,7 +83,7 @@ export function useMarketStream(
 
     const connect = () => {
       setConnection("connecting");
-      socket = createMarketSocket(symbol, timeframe, exchange);
+      socket = createMarketSocket(symbol, timeframe, exchange, { marketType, priceType });
 
       socket.onopen = () => {
         attempts = 0;
@@ -135,7 +138,7 @@ export function useMarketStream(
       };
     };
 
-    getCandles(symbol, timeframe, 1000, undefined, exchange, { signal: historyAbort.signal })
+    getCandles(symbol, timeframe, 1000, undefined, exchange, { signal: historyAbort.signal, marketType, priceType })
       .then((payload) => {
         if (!alive || generationRef.current !== generation) return;
         setDataKey(marketKey);
@@ -158,7 +161,7 @@ export function useMarketStream(
       if (reconnect) window.clearTimeout(reconnect);
       socket?.close();
     };
-  }, [symbol, timeframe, exchange, marketKey]);
+  }, [symbol, timeframe, exchange, marketKey, marketType, priceType]);
 
   const loadOlder = useCallback(() => {
     if (loadingRef.current || !hasMore) return;
@@ -170,7 +173,7 @@ export function useMarketStream(
     loadAbortRef.current = controller;
     loadingRef.current = true;
     setLoadingMore(true);
-    getCandles(symbol, timeframe, 1000, oldest.time - 1, exchange, { signal: controller.signal })
+    getCandles(symbol, timeframe, 1000, oldest.time - 1, exchange, { signal: controller.signal, marketType, priceType })
       .then((payload) => {
         if (generationRef.current !== generation) return;
         const older = payload.candles.filter((candle) => candle.time < oldest.time);
@@ -194,7 +197,7 @@ export function useMarketStream(
         loadingRef.current = false;
         setLoadingMore(false);
       });
-  }, [symbol, timeframe, hasMore, exchange]);
+  }, [symbol, timeframe, hasMore, exchange, marketType, priceType]);
 
   return useMemo(
     () => ({ candles: activeCandles, connection, provider, message, latencyMs, hasMore, loadingMore, loadOlder, gapCount: gapSummary.gapCount, missingBars: gapSummary.missingBars, fallbackActive: connection === "fallback" || provider.toLowerCase().includes("synthetic") }),

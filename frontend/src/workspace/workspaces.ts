@@ -2,7 +2,7 @@ import type { IndicatorConfig } from "../chart/indicatorTypes";
 import { normalizePaneIndicatorOverrides, type PaneIndicatorOverride } from "../chart/paneIndicators";
 import { normalizeCompareOverlays } from "../chart/compareConfig";
 import type { CompareOverlayConfig } from "../chart/types";
-import type { ChartType, DataExchange, Timeframe } from "../types";
+import type { ChartType, DataExchange, DataMarketType, PriceType, Timeframe } from "../types";
 import { DEFAULT_CHART_TIME_ZONE, LEGACY_CHART_TIME_ZONE, normalizeChartTimeZone, type ChartTimeZone } from "../chart/timeAxis";
 
 const WORKSPACES_KEY = "sbv2:workspaces";
@@ -18,6 +18,10 @@ export interface WorkspaceChart {
   symbol: string;
   timeframe: Timeframe;
   chartType: ChartType;
+  /** Optional for backwards compatibility; absent values inherit the workspace exchange and spot/last. */
+  exchange?: DataExchange;
+  marketType?: DataMarketType;
+  priceType?: PriceType;
   timeZone?: ChartTimeZone;
   linkChartType: boolean;
   linkGroup?: string;
@@ -297,6 +301,9 @@ function normalizeChart(value: unknown, missingLinkChartType: boolean, primary: 
     symbol: item.symbol,
     timeframe: item.timeframe,
     chartType: item.chartType,
+    exchange: item.exchange === "binance" || item.exchange === "bybit" ? item.exchange : undefined,
+    marketType: item.marketType === "linear" || item.marketType === "inverse" ? item.marketType : "spot",
+    priceType: item.priceType === "mark" || item.priceType === "index" ? item.priceType : "last",
     timeZone: normalizeChartTimeZone(item.timeZone, fallbackTimeZone),
     linkChartType: primary || (typeof item.linkChartType === "boolean" ? item.linkChartType : missingLinkChartType),
     linkGroup: typeof item.linkGroup === "string" ? item.linkGroup : undefined,

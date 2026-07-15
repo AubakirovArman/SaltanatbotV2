@@ -18,7 +18,7 @@ export function parseBinanceAggregateTrade(value: unknown): TradeFlowTrade | und
 export function subscribeBinanceTradeFlow(
   symbol: string,
   callbacks: TradeFlowConnectorCallbacks,
-  createSocket: (url: string) => WebSocket = (url) => new WebSocket(url)
+  createSocket: (url: string) => WebSocket = (url) => new WebSocket(url, { maxPayload: 2 * 1024 * 1024 })
 ): TradeFlowSubscription {
   let socket: WebSocket | undefined;
   let reconnectTimer: NodeJS.Timeout | undefined;

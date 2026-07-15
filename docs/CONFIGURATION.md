@@ -18,7 +18,13 @@ The backend reads these environment variables in `backend/src/server.ts` / `back
 | `AUTH_WS_TICKET_TTL_MS` | `30000` | One-time `/trade-stream` ticket TTL. |
 | `COOKIE_SECURE`   | *(off)*       | Set to `1` behind HTTPS so session cookies are marked `Secure`. |
 | `DEMO_MODE`       | *(off)*       | `1`/`true` disables exchange keys and live trading — paper only. For public demos.       |
+| `ENABLE_LIVE_SPOT` | *(off)* | `1`/`true` permits experimental Bybit spot after the normal live gates. It does not enable Binance spot, which remains disabled until authenticated spot execution accounting exists. |
 | `ALLOWED_ORIGINS` | dev localhost | Comma-separated CORS allowlist for cross-origin browser access. Same-origin always works. |
+| `TRUST_PROXY` | *(unset)* | Explicit Express trusted-proxy IP/CIDR/name list (for example `loopback`). Only trusted proxies may establish HTTPS through `X-Forwarded-Proto`. |
+| `ALLOW_INSECURE_TRADING_MUTATIONS` | *(off)* | Dangerous development override for key storage and live/account mutations over public HTTP. Never enable on a public or production host. |
+| `PAPER_MULTI_LEG_DB_PATH` | `backend/data/arbitrage-paper-multi-leg.sqlite` | Optional path for the bounded append-only multi-leg paper journal. A custom path must be included in the operator's backup policy. |
+| `ARBITRAGE_CONTINUOUS_ROUTES_FILE` | *(unset)* | Preferred absolute path to one bounded, regular, non-symlinked UTF-8 public-feed allowlist. Mutually exclusive with the inline JSON variable. |
+| `ARBITRAGE_CONTINUOUS_ROUTES_JSON` | *(unset)* | Optional bounded public-feed allowlist for continuous multi-venue research discovery; exact reviewed identity and fee metadata only, never credentials. |
 
 To run on a different port, exposed on all interfaces, with a fixed token:
 
@@ -42,6 +48,46 @@ If you bind to a non-loopback address, the server prints a warning to put it beh
 
 > **`.env` is git-ignored** (with a committed `.env.example` allowed). Secrets belong in the encrypted store or `AUTH_TOKEN`, not committed files.
 
+### Continuous multi-venue research allowlist
+
+Set exactly one of `ARBITRAGE_CONTINUOUS_ROUTES_FILE` or
+`ARBITRAGE_CONTINUOUS_ROUTES_JSON` to activate selected public WebSocket books for the read-only
+route-family workspace. With neither value, the runtime is `disabled` and opens no subscriptions.
+The preferred file form keeps a reviewed allowlist in version control without a large shell-escaped
+environment value. It requires an absolute path to a regular, non-symlinked, valid UTF-8 file. Both
+forms accept the same strict JSON array of at most 24 rows and 64 KiB. Every `instrumentId` must be
+present in the current verified instrument registry; the browser can observe the resulting
+configuration but cannot change it.
+
+```bash
+ARBITRAGE_CONTINUOUS_ROUTES_FILE=/opt/saltanatbotv2/config/continuous-routes.research.json
+```
+
+```json
+[
+  {
+    "instrumentId": "okx:spot:BTC-USDT",
+    "economicAssetId": "crypto:bitcoin",
+    "takerFeeBps": 10,
+    "economicIdentity": {
+      "status": "reviewed",
+      "source": "docs/VENUE_CAPABILITIES.md official venue references and normalized instrument fixtures",
+      "version": "2026-07-14.v1",
+      "asOf": 1783987200000,
+      "validUntil": 1791763200000
+    }
+  }
+]
+```
+
+Identity fields must exactly match the server's central reviewed catalog, already be valid, expire
+within 90 days of `asOf`, and be renewed in code through explicit review. Environment values cannot
+create or override an economic-asset equivalence. Unknown fields, duplicate instruments, stale or
+mismatched reviews and unsupported venue/market combinations fail closed. `takerFeeBps` is
+operator-reviewed research metadata, not an account fee tier. Do not put API
+keys, wallet material, account balances or order data in either source. The resulting candidates are
+always `research-only`, `executable: false`; the setting cannot arm trading.
+
 ### Exchange testnet release smoke
 
 The release-only `npm run test:testnet` command is deliberately separate from normal CI and refuses all network access unless `RUN_EXCHANGE_TESTNET_SMOKE=1`. It performs read-only authenticated checks against Binance Futures Demo and Bybit Testnet; it never creates a trading order. The Binance listenKey check creates and immediately invalidates a temporary user-data token.
@@ -59,12 +105,42 @@ Repository maintainers configure these four credentials as secrets in the protec
 
 ### Live-trading arming
 
-Live trading (Binance/Bybit) is **disarmed by default**. Even with valid API keys, a live bot will not start until you:
+Live trading (Binance/Bybit) is **disarmed by default**. Binance live spot cannot be armed until an
+authenticated spot execution-accounting path exists. Bybit spot is experimental, additionally
+requires `ENABLE_LIVE_SPOT`, and uses the v5 `order` + `execution` topics. Even with valid API keys, an
+eligible live bot will not start until you:
 
-1. Enable **Arm live trading** in the Trade → Settings panel (persisted server-side), and
-2. Confirm the live-start prompt on the bot (`confirmLive`).
+1. Open the app through HTTPS or a direct localhost connection.
+2. Configure positive per-bot caps for maximum position, maximum order, daily loss and open orders (plus maximum leverage).
+3. Enable **Arm live trading** in the Trade → Settings panel (persisted server-side), and
+4. Confirm the live-start prompt on the bot (`confirmLive`).
+
+The same secure-origin gate protects exchange-key storage, live bot creation/start/resume/manual commands and Bybit UTA borrow/repay/collateral mutations. Paper bot creation and operation remain available over HTTP. Existing live bots without all required caps fail closed at start and automatic resume.
+
+Every risk-increasing live order must reach preflight with an explicit positive base `qty`; quote,
+deposit and balance-percentage sizing cannot create live exposure. The durable journal continues to
+reserve capacity for accepted, partially filled and venue-filled-but-not-accounted orders. Spot sells
+separately reserve attributed inventory. Cancelled/expired rows retain any unaccounted partial fill;
+legacy replaced rows remain conservative until their execution is accounted. Live `replace` and
+`turnover` are disabled on every market until their child actions have independent durable lifecycles.
+
+Futures preflight compares exact-symbol venue gross positions with the durable fill-accounted shadow
+quantity and uses the larger value. A matched venue/local order uses maximum quantity/price, while an
+identity conflict fails closed. A second live bot on the same exchange+symbol is rejected even across
+spot/futures and cannot be forced through with `override`. If REST polling or reconnect reconciliation
+observes a terminal order without authenticated execution accounting, the bot is paused.
+
+Live starts are serialized by exchange+symbol, so concurrent start requests cannot race the collision
+or reconciliation gates. If protection fails after an entry was accepted, that entry stays accepted,
+managed and reserved; the bot pauses while a distinct reduce-only `…-safety` close reports its own
+venue order ID or an explicit failure. A live close acknowledgement also leaves managed state intact
+and pauses the bot until its authenticated execution is committed to accounting.
 
 The **kill switch** (Trade → Settings) stops every running bot and disarms live trading instantly. `DEMO_MODE=1` forces paper-only regardless of these settings.
+
+Live execution remains experimental. The funded 7–14-day Binance/Bybit exchange soak is explicitly
+excluded from the current verified scope, so none of these configuration gates constitute a
+mainnet-readiness claim.
 
 ### Development ports
 
@@ -73,7 +149,7 @@ In development the Vite dev server (frontend) runs separately and proxies API an
 | Service          | Port   | Notes                                              |
 | ---------------- | ------ | -------------------------------------------------- |
 | Backend (Express)| `4181` | Root `npm run dev` sets `PORT=4181`; serves HTTP `/api/*` and WebSockets. |
-| Frontend (Vite)  | `4180` | Proxies `/api`, `/stream`, and `/trade-stream` to `127.0.0.1:4181`. |
+| Frontend (Vite)  | `4180` | Proxies `/api` and all six WebSockets (`/stream`, `/quotes`, `/orderbook`, `/trade-flow`, `/arbitrage-stream`, `/trade-stream`) to `127.0.0.1:4181`. |
 
 In production this split disappears — the backend serves the built frontend directly (see [Production deployment](#production-deployment)).
 
@@ -91,13 +167,16 @@ const secretPath = path.join(dataDir, ".secret");
 | -------------------------- | ---------------------------------------------------------------- |
 | `backend/data/.secret`     | Random 32-byte hex seed for the AES encryption key. Written with file mode `0600`. |
 | `backend/data/trading.db`  | SQLite database (`node:sqlite`) holding bots, fills, logs, and encrypted settings. |
+| `backend/data/arbitrage-paper-multi-leg.sqlite` | Bounded append-only deterministic multi-leg paper runs and restart-recovery journal. |
 
 Both are **created automatically at runtime** the first time the store initializes — `initStore()` calls `mkdirSync(dataDir, { recursive: true })` if the directory is missing, generates `.secret` if absent, and runs `CREATE TABLE IF NOT EXISTS` for every table. You do not create these by hand.
 
 Both are **gitignored and must never be committed.** The repository's `.gitignore` explicitly excludes `backend/data/`, `data/`, `*.secret`, `*.db`, and `*.sqlite*`.
 
 Use the verified [backup and restore workflow](./BACKUP_RESTORE.md) before upgrades or deployment
-changes. A backup must keep `trading.db` and `.secret` together and must be treated as secret data.
+changes. It includes the default multi-leg paper journal when present. A backup must keep
+`trading.db` and `.secret` together and must be treated as secret data; a journal moved with
+`PAPER_MULTI_LEG_DB_PATH` needs a separate operator backup policy.
 
 ### Database schema
 
@@ -149,7 +228,9 @@ Presence is computed by `hasKeys()`, which returns `true` only when both `apiKey
 
 ## Configuring Telegram / VK notifications
 
-Notifications are configured the same way — through the app, stored encrypted under the `notify` setting key. From `backend/src/trading/notifications.ts`, the defaults are all disabled:
+Telegram notifications can be configured in the web application. VK notification configuration is
+currently API-only. Both configurations are stored encrypted under the `notify` setting key and are
+disabled by default. From `backend/src/trading/notifications.ts`:
 
 ```ts
 export const DEFAULT_NOTIFY: NotifyConfig = {
@@ -248,7 +329,7 @@ npm install
 
 # 2. Build both workspaces:
 #    backend → tsc → backend/dist
-#    frontend → tsc -b && vite build → frontend/dist
+#    frontend → type-check → staged Vite build → PWA/budget checks → atomic frontend/dist publication
 npm run build
 
 # 3. Start the backend, which also serves frontend/dist
@@ -257,7 +338,7 @@ npm start
 
 | Script            | Runs                                                          |
 | ----------------- | ------------------------------------------------------------ |
-| `npm run build`   | `npm --workspaces run build` (backend `tsc`, frontend `vite build`). |
+| `npm run build`   | Workspace builds; frontend Vite output is verified in staging before atomic live publication. |
 | `npm start`       | `npm --workspace backend run start` → `node dist/server.js`. |
 
 The server binds to `HOST:PORT` and, on `SIGINT` / `SIGTERM`, stops Telegram control, shuts down active runtime subscriptions while preserving resumable desired bot state, and closes gracefully:
@@ -277,6 +358,11 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 The production build emits `manifest.webmanifest` and a generated `service-worker.js`. Supporting
 browsers can install the self-hosted terminal when it is served from HTTPS; localhost is also a
 secure development context. Registration is disabled in the Vite development server.
+
+The build does not empty the `frontend/dist` directory served by a running backend. It copies a
+verified candidate with per-file temporary renames, atomically swaps `index.html`, and publishes the
+new `service-worker.js` last. The active and immediately previous generation are the only retained
+sets; PWA/performance checks and release packaging read only the active generation manifest.
 
 The service worker is deliberately a static, read-only application shell:
 
@@ -318,11 +404,13 @@ identity or trading data. See [Application startup recovery](STARTUP_RECOVERY.md
 
 ### Example: run behind a process manager
 
-Because `npm start` is a plain long-lived Node process, any supervisor works. For example, with a bound loopback host so a reverse proxy fronts it:
+Because `npm start` is a plain long-lived Node process, any supervisor works. For example, with a bound loopback host and an HTTPS reverse proxy on the same machine:
 
 ```bash
-HOST=127.0.0.1 PORT=4180 npm start
+HOST=127.0.0.1 PORT=4180 TRUST_PROXY=loopback COOKIE_SECURE=1 npm start
 ```
+
+The proxy must replace `X-Forwarded-Proto` with `$scheme`. Leaving `TRUST_PROXY` unset makes Express ignore that header, while `TRUST_PROXY=true` trusts every immediate peer and is therefore discouraged. Prefer an exact proxy address/CIDR or the `loopback` preset.
 
 Point your process manager (systemd, pm2, Docker, etc.) at this command, ensure `backend/data/` is on persistent storage, and restart on failure.
 
@@ -330,7 +418,7 @@ Point your process manager (systemd, pm2, Docker, etc.) at this command, ensure 
 
 The backend now defaults to the safe posture: it binds to `127.0.0.1`, the trading API requires an access token, CORS is an allowlist (foreign origins get no `Access-Control-Allow-Origin`), and the bundled SPA is served with CSP / browser hardening headers. Live trading is disarmed by default. Still, before putting this server on the public internet, work through the checklist below.
 
-- [ ] **Terminate TLS at a reverse proxy.** Keep the app bound to loopback (`HOST=127.0.0.1`, the default) and place nginx / Caddy / Traefik in front to handle HTTPS and to proxy both HTTP (`/api/*`) and the WebSocket upgrades (`/stream`, `/trade-stream`). The app itself serves plain HTTP and intentionally does not send `upgrade-insecure-requests`, so direct `http://IP:4180` access remains usable for testing.
+- [ ] **Terminate TLS at a reverse proxy.** Keep the app bound to loopback (`HOST=127.0.0.1`, the default), set `TRUST_PROXY` to that proxy only, and place nginx / Caddy / Traefik in front to handle HTTPS and all HTTP/WebSocket routes. Direct public HTTP remains usable for charts and paper testing, but key storage and risk-increasing live mutations return `426 SECURE_TRADING_ORIGIN_REQUIRED`.
 - [ ] **Restrict network exposure with a firewall.** Only expose the proxy's `443` (and optionally `80` for redirect). Do not expose the backend's `4180` directly; block it at the host firewall / security group.
 - [ ] **Keep the access token secret.** The browser only uses it to create an HttpOnly session, but it is still the admin credential. Set a long random `AUTH_TOKEN` in production (don't rely on the auto-generated `backend/data/.authtoken` if you ship the data dir around), and never paste it into cross-origin sites. A defense-in-depth auth layer at the proxy is still welcome.
 - [ ] **Use scoped tokens where possible.** Give observers `AUTH_READONLY_TOKEN`, paper operators `AUTH_PAPER_TRADE_TOKEN`, and reserve `AUTH_TOKEN` for admin operations such as keys, live arming, deletion, and notification config.
@@ -339,6 +427,7 @@ The backend now defaults to the safe posture: it binds to `127.0.0.1`, the tradi
 - [ ] **Never commit `backend/data/`.** It contains `.secret` (the encryption key seed) and `trading.db` (encrypted API keys and tokens). It is gitignored — keep it that way, and treat backups of it as secret material.
 - [ ] **Protect `.secret` file permissions.** It is written `0600`; ensure the deployment user owns it and no other account can read it.
 - [ ] **Use exchange API keys with least privilege.** Prefer trade-only keys without withdrawal permission, and IP-allowlist them at the exchange where possible.
+- [ ] **Keep `ALLOW_INSECURE_TRADING_MUTATIONS` unset.** The override exists only for disposable development environments where TLS cannot be used.
 - [ ] **Keep secrets off disk in plaintext.** Do not stash API keys or notification tokens in `.env` files, shell history, or config files — enter them through the app so they are encrypted at rest.
 
 ## See also

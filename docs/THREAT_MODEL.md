@@ -1,7 +1,7 @@
 # Threat model
 
 Status: alpha baseline
-Last reviewed: 2026-07-11
+Last reviewed: 2026-07-14
 
 SaltanatbotV2 is a self-hosted research and trading application. It stores sensitive exchange
 credentials and can submit real orders when an operator deliberately enables experimental live
@@ -28,6 +28,7 @@ It is not a claim that the application is production- or mainnet-ready.
 | Strategy/Pine artifacts | User intellectual property and execution rules | Local browser/storage; schema validation; no `eval` |
 | Order/position state | Determines real financial exposure | Client IDs, journal, polling/private streams, reconciliation |
 | Market/backtest data | Determines signals and performance claims | Provider/provenance labels; fallback and gaps explicit |
+| Arbitrage quotes/history | Can create misleading urgency or expected-profit claims | Public-only adapters, source health, bounded stale state, depth checks and explicit research labels |
 
 ## Trust boundaries
 
@@ -38,7 +39,7 @@ Backend on trusted host
   | encrypted local SQLite / filesystem
 Operator-controlled runtime data and backups
   | signed HTTPS / authenticated private WebSocket
-Binance or Bybit
+Binance or Bybit public/private APIs
 ```
 
 The browser, reverse proxy, operating-system account and deployment host are within the operator's
@@ -67,9 +68,11 @@ Threats include cross-origin requests, stolen admin tokens, exposed backend port
 Mitigations:
 
 - loopback bind by default and documented TLS reverse-proxy/firewall boundary;
+- key storage and risk-increasing live/account mutations reject public HTTP; forwarded HTTPS is accepted only from an explicitly configured `TRUST_PROXY`;
 - explicit authentication, scoped roles, HttpOnly sessions and CSRF validation;
 - one-use tickets for the private trade WebSocket;
 - demo mode disables exchange keys/live mutation; live requires global and per-bot arming;
+- non-paper bots require positive position, order, daily-loss and open-order caps, revalidated at start/resume and immediately before live order execution;
 - emergency stop disables live execution, but operators must still inspect exchange state.
 
 ### Duplicate or uncertain orders
@@ -80,10 +83,16 @@ blind retries.
 Mitigations:
 
 - durable intent is stored before exchange I/O and correlated with stable client order IDs;
-- ambiguous mutating failures become `unknown` and are not automatically replayed;
+- network/5xx failures and unreadable, malformed or identity-free HTTP 2xx mutation responses become `unknown` and are not automatically replayed;
 - private streams and signed polling share idempotent ingest rules;
+- crossed/conflicting client and venue IDs fail closed without rebinding or accounting a fill;
 - startup reconciliation blocks `running` until in-flight outcomes are proven;
-- rejected/unconfirmed protection triggers a best-effort emergency close and failed result.
+- runtime bot identity is authoritative for authorization, running IDs cannot be overwritten, and safe stop/delete drains in-process order producers;
+- protection failure after an accepted entry never rewrites that entry as rejected: managed state and
+  its reservation remain, automation pauses, and a distinct reduce-only `…-safety` close must expose
+  its own venue order ID or an explicit failure;
+- an accepted live close does not clear managed state until authenticated execution accounting is
+  committed.
 
 ### Rate limits and clock manipulation/drift
 
@@ -94,6 +103,37 @@ Mitigations:
 - signed calls share an exchange-wide `429`/`418` circuit with bounded `Retry-After`;
 - Binance `-1021` and Bybit `10002` stop the operation with explicit clock-sync remediation;
 - mutating calls are never automatically retried by the request guard.
+
+### Misleading or stale arbitrage opportunities
+
+Threats include combining asynchronous venue quotes, treating an open socket as healthy, ticker
+collisions, thin top-book liquidity, inconsistent lot sizes, stale funding estimates and presenting
+an entry basis as locked profit. Persistent notifications can amplify a false or obsolete row.
+
+Current mitigations:
+
+- the screener uses only credential-free public adapters and has no order-submission path;
+- direct upstream sockets become healthy only after valid market data, use a silence watchdog and
+  reconnect with bounded jittered backoff;
+- source failure/stale state is visible and implausible absolute basis above 20% is rejected;
+- current live routes retain per-leg venue/receive timestamps and are suppressed outside bounded
+  age/skew gates; strict venue-native identity protects same-venue routes, while cross-venue routes
+  require a reviewed canonical identity (currently BTC/ETH) and never fall back to ticker equality;
+- public upstream HTTP bodies are capped during streaming, exchange WebSocket messages have explicit
+  payload ceilings, application sockets cap inbound messages and slow consumers are disconnected at
+  a bounded send-buffer threshold;
+- on-demand depth walks both books and derives one matched base quantity; paper entry fails closed
+  on incomplete or mismatched legs;
+- delivery contracts without the expected perpetual metadata are excluded;
+- history is bounded public research data and alerts are notification-only;
+- all user copy states that quotes are asynchronous, funding/costs are estimates and positive basis
+  is not a profit guarantee.
+
+These controls do not prove full-book sequence continuity, future funding, borrow availability or
+atomic execution. The screener, alerts and browser paper ledger therefore remain research-only.
+Persistent notification delivery uses a durable at-least-once outbox with bounded retry; a crash
+after a remote channel accepts a message but before acknowledgement persistence can still duplicate
+delivery.
 
 ### Malicious or pathological strategies
 
@@ -184,6 +224,16 @@ Mitigations:
 - The application does not provide custody, guaranteed execution, financial advice or profit claims.
 - Pine compatibility is not complete and imported results require manual comparison.
 - Candle backtests cannot reproduce intra-bar order-book sequencing or guarantee live fills.
+- Arbitrage entry basis is projected, not guaranteed; cross-venue quotes are not atomic. Current
+  browser paper exits mark at top of book and do not model partial fills, margin, liquidation,
+  discrete funding events or inventory rebalancing.
+- The protected server multi-leg paper journal models partial fills and reverse compensation only
+  from explicit deterministic failure-injection ratios. Its authenticated runtime/browser surface
+  remains paper-only and does not model queue position, matching-engine latency, margin,
+  liquidation or a guaranteed unwind.
+- The current scanner supports only Binance/Bybit cross-venue spot/perpetual discovery. Venue rows
+  marked candidate in documentation are not installed adapters, private integrations or regional
+  eligibility claims.
 - Self-hosting does not protect a compromised OS, browser extension, administrator or reverse proxy.
 - Local backup files are not encrypted by the application backup tool.
 - Continuous funded exchange soak/mainnet readiness is explicitly deferred and has not been proven.

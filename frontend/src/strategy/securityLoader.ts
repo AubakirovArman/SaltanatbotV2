@@ -1,7 +1,15 @@
 import type { Candle, DataExchange, Timeframe } from "../types";
 import { loadCandleHistory } from "./candleHistory";
 import type { StrategyIR } from "./ir";
-import { securitySeriesKey, type SecurityDataContext } from "./securityData";
+import {
+  createSecurityDataBundle,
+  securitySeriesKey,
+  type ResolvedSecuritySeries,
+  type SecurityDataContext,
+  type SecurityDataEvidence,
+  type SecuritySeriesRequest,
+  type UnresolvedSecuritySeries
+} from "./securityData";
 import { collectSecurityRequirements, type SecurityRequirement } from "./securityRequirements";
 
 const TIMEFRAMES: Timeframe[] = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"];
@@ -14,6 +22,8 @@ export interface SecurityLoadBase {
   chartCandles: Candle[];
   exchange?: DataExchange;
   signal?: AbortSignal;
+  /** Strict by default. `return-evidence` is intended for an explicitly approximate preview only. */
+  unresolvedPolicy?: "error" | "return-evidence";
 }
 
 export interface ResolvedSecurityRequest {
@@ -23,31 +33,116 @@ export interface ResolvedSecurityRequest {
   sameAsChart: boolean;
 }
 
+export class SecurityDataLoadError extends Error {
+  readonly code = "UNRESOLVED_SECURITY_DATA";
+
+  constructor(readonly evidence: SecurityDataEvidence) {
+    const summary = evidence.unresolved
+      .map((request) => `${request.symbol} ${request.timeframe} (${request.reason})`)
+      .join(", ");
+    super(`request.security data unresolved: ${summary}`);
+    this.name = "SecurityDataLoadError";
+  }
+}
+
 export async function loadSecurityDataForIr(ir: StrategyIR, base: SecurityLoadBase): Promise<SecurityDataContext> {
+  const requirements = collectSecurityRequirements(ir);
   const data: Record<string, Candle[]> = {};
-  if (base.chartCandles.length === 0) return data;
+  if (requirements.length === 0) return data;
 
-  const requests = mergeRequests(
-    collectSecurityRequirements(ir)
-      .map((req) => resolveSecurityRequest(req, base))
-      .filter((req): req is ResolvedSecurityRequest => req !== undefined)
-  );
+  const requested = requirements.map(toEvidenceRequest);
+  const resolvedEvidence: ResolvedSecuritySeries[] = [];
+  const unresolved: UnresolvedSecuritySeries[] = [];
 
-  for (const request of requests) {
-    if (request.sameAsChart) continue;
-    try {
-      const candles = await fetchSecurityWindow(request.fetchSymbol, request.fetchTimeframe, base);
-      if (!candles.length) continue;
-      for (const key of request.keys) data[key] = candles;
-    } catch (cause) {
-      console.warn(
-        `[strategy] request.security data unavailable for ${request.fetchSymbol} ${request.fetchTimeframe}`,
-        cause
-      );
+  if (base.chartCandles.length === 0) {
+    for (const request of requested) unresolved.push({ ...request, reason: "empty-chart" });
+    return finishSecurityLoad(data, { version: 1, requested, resolved: resolvedEvidence, unresolved }, base.unresolvedPolicy);
+  }
+
+  const requests = new Map<string, { request: ResolvedSecurityRequest; members: Array<{
+    evidence: SecuritySeriesRequest;
+    resolved: ResolvedSecurityRequest;
+  }> }>();
+
+  for (let index = 0; index < requirements.length; index += 1) {
+    const requirement = requirements[index];
+    const evidence = requested[index];
+    const resolved = resolveSecurityRequest(requirement, base);
+    if (!resolved) {
+      unresolved.push({ ...evidence, reason: "unsupported-request" });
+      continue;
+    }
+    if (resolved.sameAsChart) {
+      for (const key of resolved.keys) data[key] = base.chartCandles;
+      resolvedEvidence.push({
+        ...evidence,
+        fetchSymbol: resolved.fetchSymbol,
+        fetchTimeframe: resolved.fetchTimeframe,
+        source: "chart",
+        bars: base.chartCandles.length,
+        keys: resolved.keys
+      });
+      continue;
+    }
+
+    const groupKey = `${resolved.fetchSymbol}|${resolved.fetchTimeframe}`;
+    const existing = requests.get(groupKey);
+    if (existing) {
+      existing.request.keys = unique([...existing.request.keys, ...resolved.keys]);
+      existing.members.push({ evidence, resolved });
+    } else {
+      requests.set(groupKey, { request: { ...resolved }, members: [{ evidence, resolved }] });
     }
   }
 
-  return data;
+  for (const group of requests.values()) {
+    const request = group.request;
+    let candles: Candle[];
+    try {
+      candles = await fetchSecurityWindow(request.fetchSymbol, request.fetchTimeframe, base);
+    } catch (cause) {
+      if (isAbort(cause) || base.signal?.aborted) throw cause;
+      for (const member of group.members) {
+        unresolved.push({
+          ...member.evidence,
+          fetchSymbol: request.fetchSymbol,
+          fetchTimeframe: request.fetchTimeframe,
+          reason: "load-error"
+        });
+      }
+      continue;
+    }
+
+    if (!candles.length) {
+      for (const member of group.members) {
+        unresolved.push({
+          ...member.evidence,
+          fetchSymbol: request.fetchSymbol,
+          fetchTimeframe: request.fetchTimeframe,
+          reason: "empty-response"
+        });
+      }
+      continue;
+    }
+
+    for (const key of request.keys) data[key] = candles;
+    for (const member of group.members) {
+      resolvedEvidence.push({
+        ...member.evidence,
+        fetchSymbol: request.fetchSymbol,
+        fetchTimeframe: request.fetchTimeframe,
+        source: "external",
+        bars: candles.length,
+        keys: member.resolved.keys
+      });
+    }
+  }
+
+  return finishSecurityLoad(
+    data,
+    { version: 1, requested, resolved: resolvedEvidence, unresolved },
+    base.unresolvedPolicy
+  );
 }
 
 export function resolveSecurityRequest(
@@ -145,17 +240,25 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-function mergeRequests(requests: ResolvedSecurityRequest[]): ResolvedSecurityRequest[] {
-  const merged = new Map<string, ResolvedSecurityRequest>();
-  for (const request of requests) {
-    const key = `${request.fetchSymbol}|${request.fetchTimeframe}`;
-    const existing = merged.get(key);
-    if (!existing) {
-      merged.set(key, request);
-      continue;
-    }
-    existing.keys = unique([...existing.keys, ...request.keys]);
-    existing.sameAsChart = existing.sameAsChart && request.sameAsChart;
+function toEvidenceRequest(requirement: SecurityRequirement): SecuritySeriesRequest {
+  return {
+    key: securitySeriesKey(requirement.symbol, requirement.timeframe),
+    symbol: requirement.symbol,
+    timeframe: requirement.timeframe
+  };
+}
+
+function finishSecurityLoad(
+  data: Record<string, Candle[]>,
+  evidence: SecurityDataEvidence,
+  policy: SecurityLoadBase["unresolvedPolicy"]
+): SecurityDataContext {
+  if (evidence.unresolved.length > 0 && policy !== "return-evidence") {
+    throw new SecurityDataLoadError(evidence);
   }
-  return [...merged.values()];
+  return createSecurityDataBundle(data, evidence);
+}
+
+function isAbort(cause: unknown): boolean {
+  return typeof cause === "object" && cause !== null && "name" in cause && cause.name === "AbortError";
 }

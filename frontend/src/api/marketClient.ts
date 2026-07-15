@@ -6,7 +6,7 @@ import {
   parseStreamMessage as parseContractStreamMessage,
   type SparklineSeries,
 } from "@saltanatbotv2/contracts";
-import type { DataExchange, Timeframe } from "../types";
+import type { DataExchange, DataMarketType, PriceType, Timeframe } from "../types";
 import { marketWebSocketPool } from "./sharedWebSocketPool";
 
 export async function getCatalog() {
@@ -19,10 +19,12 @@ export async function getCandles(
   limit = 320,
   endTime?: number,
   exchange: DataExchange = "binance",
-  init?: { signal?: AbortSignal }
+  init?: { signal?: AbortSignal; marketType?: DataMarketType; priceType?: PriceType }
 ) {
   const query = new URLSearchParams({ symbol, timeframe, limit: String(limit), exchange });
   if (endTime !== undefined) query.set("endTime", String(endTime));
+  if (init?.marketType) query.set("marketType", init.marketType);
+  if (init?.priceType) query.set("priceType", init.priceType);
   return request(`/api/candles?${query}`, init, parseCandlesResponse);
 }
 
@@ -43,9 +45,16 @@ export async function getSparklines(
   return request(`/api/sparklines?${query}`, undefined, parseSparklinesResponse);
 }
 
-export function createMarketSocket(symbol: string, timeframe: Timeframe, exchange: DataExchange = "binance") {
+export function createMarketSocket(
+  symbol: string,
+  timeframe: Timeframe,
+  exchange: DataExchange = "binance",
+  route: { marketType?: DataMarketType; priceType?: PriceType } = {}
+) {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const params = new URLSearchParams({ symbol, timeframe, limit: "1000", exchange });
+  if (route.marketType) params.set("marketType", route.marketType);
+  if (route.priceType) params.set("priceType", route.priceType);
   return marketWebSocketPool.connect(`${protocol}://${window.location.host}/stream?${params}`);
 }
 

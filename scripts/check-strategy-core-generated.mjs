@@ -14,6 +14,7 @@ try {
   execFileSync(tsc, [
     join(packageDir, "ta.ts"),
     join(packageDir, "securityData.ts"),
+    join(packageDir, "securityRuntime.ts"),
     join(packageDir, "trace.ts"),
     join(packageDir, "evaluator.ts"),
     "--target", "ES2022",
@@ -29,6 +30,8 @@ try {
     "ta.d.ts",
     "securityData.js",
     "securityData.d.ts",
+    "securityRuntime.js",
+    "securityRuntime.d.ts",
     "trace.js",
     "trace.d.ts",
     "evaluator.js",

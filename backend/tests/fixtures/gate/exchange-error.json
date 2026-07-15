@@ -1,0 +1,5 @@
+{
+  "label": "INVALID_PARAM_VALUE",
+  "message": "Invalid value for field currency_pair",
+  "detail": "currency_pair is unavailable"
+}

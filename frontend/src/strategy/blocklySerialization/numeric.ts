@@ -6,7 +6,19 @@ export function serializeNumeric(expr: NumExpr, ctx: BlocklySerializationContext
   const num = (valueExpr: NumExpr) => ctx.num(valueExpr);
   switch (expr.k) {
     case "num": return block("math_number", field("NUM", expr.v));
-    case "input": return block("param_number", field("NAME", expr.name) + field("VALUE", ctx.defaults.get(expr.name) ?? 0));
+    case "input": {
+      const input = ctx.inputs.get(expr.name);
+      const inputValue = input?.value ?? 0;
+      return block(
+        "param_number",
+        field("NAME", expr.name)
+          + field("VALUE", inputValue)
+          + field("MIN", input?.min ?? inputValue)
+          + field("MAX", input?.max ?? inputValue)
+          + field("STEP", input?.step ?? 1)
+          + field("OPTIMIZE", input?.optimizationEligible === false ? "FALSE" : "TRUE")
+      );
+    }
     case "var": return block("var_get", field("NAME", expr.name));
     case "price": return expr.offset ? block("market_price_offset", field("FIELD", expr.field) + field("BARS", expr.offset)) : block("market_price", field("FIELD", expr.field));
     case "ma": return block("indicator_ma", field("KIND", expr.kind) + value("PERIOD", num(expr.period)) + value("SOURCE", num(expr.source)));

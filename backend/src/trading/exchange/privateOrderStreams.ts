@@ -279,7 +279,7 @@ function reconnectDelay(attempt: number, random: () => number) {
 
 function resolveDependencies(dependencies: PrivateStreamDependencies): Dependencies {
   return {
-    createSocket: dependencies.createSocket ?? ((url) => new WebSocket(url)),
+    createSocket: dependencies.createSocket ?? ((url) => new WebSocket(url, { maxPayload: 2 * 1024 * 1024 })),
     fetch: dependencies.fetch ?? globalThis.fetch,
     now: dependencies.now ?? Date.now,
     random: dependencies.random ?? Math.random,
@@ -327,9 +327,10 @@ function binanceExecution(order: Record<string, unknown>, fallbackTime: number) 
   const id = stringValue(order.t);
   const qty = positiveNumber(order.l);
   const price = positiveNumber(order.L);
-  if (!id || qty === undefined || price === undefined) return undefined;
+  const symbol = stringValue(order.s);
+  if (!id || !symbol || qty === undefined || price === undefined) return undefined;
   return {
-    id: `binance:${id}`,
+    id: `binance:${symbol}:${id}`,
     qty,
     price,
     fee: Math.abs(numberValue(order.n) ?? 0),

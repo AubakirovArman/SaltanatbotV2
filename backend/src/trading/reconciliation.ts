@@ -31,7 +31,14 @@ export function reconcileLiveRuntime(input: ReconcileInput): ReconcileResult {
 
   if (!pos) {
     if (saved) messages.push("Saved managed position was cleared because the exchange is flat.");
-    return { managed: undefined, pause: false, messages };
+    const orphanProtection = input.openOrders.filter((order) => (
+      order.symbol === input.config.symbol
+      && (order.reduceOnly || order.type.startsWith("stop") || order.type.startsWith("tp") || order.trgPrice !== undefined)
+    ));
+    if (orphanProtection.length > 0) {
+      messages.push(`${orphanProtection.length} reduce-only/protection order(s) remain while the exchange position is flat; cancel or reconcile them before resuming.`);
+    }
+    return { managed: undefined, pause: orphanProtection.length > 0, messages };
   }
 
   const managed: ManagedSnapshot = {

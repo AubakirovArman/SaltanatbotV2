@@ -24,8 +24,9 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
 }
 
 function isTrustworthyOrigin(req: Request): boolean {
-  const forwardedProto = req.headers["x-forwarded-proto"];
-  if (req.secure || forwardedProto === "https") return true;
+  // req.secure honours X-Forwarded-Proto only when Express has an explicit
+  // trust-proxy configuration. Never trust the header directly.
+  if (req.secure) return true;
   const host = (req.headers.host ?? "").split(":")[0];
   return host === "localhost" || host === "127.0.0.1" || host === "::1";
 }

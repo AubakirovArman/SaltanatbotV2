@@ -6,9 +6,17 @@ import { analyzeMarketStructure, DEFAULT_MARKET_STRUCTURE_SETTINGS } from "../..
 import type { Locale } from "../../i18n";
 import { marketStructureText } from "../../i18n/marketStructure";
 import { shellText } from "../../i18n/shell";
-import type { Candle, DataExchange, Timeframe } from "../../types";
+import type { Candle, DataExchange, DataMarketType, PriceType, Timeframe } from "../../types";
 
-export function useSessionLiquidity(candles: Candle[], symbol: string, timeframe: Timeframe, exchange: DataExchange, structureCandles = candles) {
+export function useSessionLiquidity(
+  candles: Candle[],
+  symbol: string,
+  timeframe: Timeframe,
+  exchange: DataExchange,
+  structureCandles = candles,
+  marketType: DataMarketType = "spot",
+  priceType: PriceType = "last"
+) {
   const [enabled, setEnabled] = useState(true);
   const [dailyCandles, setDailyCandles] = useState<Candle[]>([]);
   const [marketSessionVisibility, setMarketSessionVisibility] = useState(DEFAULT_MARKET_SESSION_VISIBILITY);
@@ -23,12 +31,12 @@ export function useSessionLiquidity(candles: Candle[], symbol: string, timeframe
     setDailyCandles([]);
     if (!enabled || !supported) return;
     let current = true;
-    getCandles(symbol, "1d", 10, undefined, exchange).then(
+    getCandles(symbol, "1d", 10, undefined, exchange, { marketType, priceType }).then(
       (response) => { if (current) setDailyCandles(response.candles); },
       () => undefined
     );
     return () => { current = false; };
-  }, [enabled, exchange, supported, symbol]);
+  }, [enabled, exchange, marketType, priceType, supported, symbol]);
 
   return { enabled, setEnabled, snapshot, supported, marketSessions, marketSessionsSupported, marketSessionVisibility, setMarketSessionVisibility, marketStructure, marketStructureSettings, setMarketStructureSettings };
 }

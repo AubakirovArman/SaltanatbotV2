@@ -18,7 +18,7 @@ const POLLABLE = new Set<OrderJournalRecord["status"]>(["accepted", "partially_f
 export async function pollOrderUpdates(
   records: OrderJournalRecord[],
   adapter: ExchangeAdapter,
-  onSnapshot: (record: OrderJournalRecord, snapshot: ExchangeOrderSnapshot) => void,
+  onSnapshot: (record: OrderJournalRecord, snapshot: ExchangeOrderSnapshot) => void | Promise<void>,
   limit = 10,
   offset = 0
 ): Promise<OrderPollResult> {
@@ -34,7 +34,7 @@ export async function pollOrderUpdates(
     try {
       const snapshot = await adapter.orderStatus(record.symbol, { orderId: record.exchangeOrderId, clientId: record.clientId });
       if (snapshot) {
-        onSnapshot(record, snapshot);
+        await onSnapshot(record, snapshot);
         updated += 1;
       }
     } catch (error) {

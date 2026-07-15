@@ -6,12 +6,12 @@ import { serializeNumeric } from "../src/strategy/blocklySerialization/numeric";
 import { serializeStatements } from "../src/strategy/blocklySerialization/statement";
 import { block, escapeXml, field } from "../src/strategy/blocklySerialization/xml";
 import { compileXmlToIr } from "../src/strategy/compileArtifact";
-import type { StrategyIR } from "../src/strategy/ir";
+import type { StrategyInput, StrategyIR } from "../src/strategy/ir";
 
-function context(defaults = new Map<string, number>()): BlocklySerializationContext {
+function context(inputs = new Map<string, StrategyInput>()): BlocklySerializationContext {
   const ctx = {} as BlocklySerializationContext;
   Object.assign(ctx, {
-    defaults,
+    inputs,
     num: (expr: Parameters<BlocklySerializationContext["num"]>[0]) => serializeNumeric(expr, ctx),
     bool: (expr: Parameters<BlocklySerializationContext["bool"]>[0]) => serializeBoolean(expr, ctx),
     chain: (statements: Parameters<BlocklySerializationContext["chain"]>[0]) => serializeStatements(statements, ctx)
@@ -27,13 +27,14 @@ describe("Blockly serialization", () => {
   });
 
   it("serializes numeric recursion with input defaults", () => {
-    const ctx = context(new Map([["period", 21]]));
+    const ctx = context(new Map([["period", { name: "period", value: 21, min: 2, max: 200, step: 1, optimizationEligible: true }]]));
     expect(serializeNumeric({
       k: "ma",
       kind: "ema",
       period: { k: "input", name: "period" },
       source: { k: "price", field: "close" }
     }, ctx)).toContain('<field name="VALUE">21</field>');
+    expect(serializeNumeric({ k: "input", name: "period" }, ctx)).toContain('<field name="MIN">2</field><field name="MAX">200</field><field name="STEP">1</field><field name="OPTIMIZE">TRUE</field>');
   });
 
   it("expands any-direction crosses into an editable boolean OR", () => {
@@ -58,7 +59,7 @@ describe("Blockly serialization", () => {
     const ir: StrategyIR = {
       v: 4,
       name: `A&B <strategy>`,
-      inputs: [{ name: "period", value: 20 }],
+      inputs: [{ name: "period", value: 20, defaultValue: 20, min: 5, max: 250, step: 5, optimizationEligible: false }],
       init: [{ k: "setvar", name: "counter", value: { k: "num", v: 0 } }],
       body: [
         { k: "size", mode: "equity_pct", value: { k: "num", v: 10 } },
@@ -76,6 +77,7 @@ describe("Blockly serialization", () => {
     const compiled = compileXmlToIr(xml);
     expect(compiled.errors).toEqual([]);
     expect(compiled.ir?.name).toBe(ir.name);
+    expect(compiled.ir?.inputs).toEqual(ir.inputs);
     expect(compiled.ir?.body.map((statement) => statement.k)).toEqual(["size", "entry", "alert"]);
   });
 });

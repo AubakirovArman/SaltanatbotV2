@@ -12,7 +12,7 @@ import {
   upsertArtifact
 } from "./artifactLibraryModel";
 import type { StrategyArtifact, StrategyArtifactKind } from "./library";
-import { indicatorToArtifact, normalizeArtifact } from "./library";
+import { indicatorToArtifact, normalizeArtifact, portableArtifactProvenanceSource } from "./library";
 import { warmStrategyLab } from "./loadStrategyLab";
 import { clearShareHash, readSharedFromHash } from "./share";
 import { storeStrategyLibrary } from "./storage";
@@ -115,7 +115,7 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
       name: dedupeArtifactName(input.name, artifacts),
       description: input.description || "Imported strategy.",
       provenance: {
-        source: input.provenance.source === "wizard" ? "wizard" : "file",
+        source: portableArtifactProvenanceSource(input.provenance.source),
         importedAt: now,
         parentId: input.provenance.exportedFromId,
         parentHash: input.provenance.parentHash

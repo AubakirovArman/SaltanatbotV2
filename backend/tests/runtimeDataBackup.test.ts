@@ -25,6 +25,10 @@ function seedRuntimeData(dataDir: string, marker = "original") {
   candles.exec("CREATE TABLE candles (symbol TEXT PRIMARY KEY, close REAL NOT NULL)");
   candles.prepare("INSERT INTO candles (symbol, close) VALUES (?, ?)").run("BTCUSDT", 100_000);
   candles.close();
+  const paperMultiLeg = new DatabaseSync(path.resolve(dataDir, "arbitrage-paper-multi-leg.sqlite"));
+  paperMultiLeg.exec("CREATE TABLE runs (runId TEXT PRIMARY KEY, status TEXT NOT NULL)");
+  paperMultiLeg.prepare("INSERT INTO runs (runId, status) VALUES (?, ?)").run("paper-backup-fixture", "completed");
+  paperMultiLeg.close();
   writeFileSync(path.resolve(dataDir, ".secret"), "test-secret", { mode: 0o600 });
   writeFileSync(path.resolve(dataDir, ".authtoken"), "test-token", { mode: 0o600 });
 }
@@ -45,7 +49,7 @@ describe("runtime data backup and restore", () => {
     seedRuntimeData(dataDir);
 
     expect(run("backup", "--data-dir", dataDir, "--output", backupDir)).toContain("created and verified");
-    expect(run("verify", backupDir)).toContain("verified (4 files)");
+    expect(run("verify", backupDir)).toContain("verified (5 files)");
 
     const manifest = JSON.parse(readFileSync(path.resolve(backupDir, "backup-manifest.json"), "utf8"));
     expect(manifest.format).toBe("saltanatbotv2-runtime-backup");
@@ -55,6 +59,7 @@ describe("runtime data backup and restore", () => {
     expect(manifest.files.map((entry: { name: string }) => entry.name)).toEqual([
       ".authtoken",
       ".secret",
+      "arbitrage-paper-multi-leg.sqlite",
       "candles.db",
       "trading.db",
     ]);
@@ -82,6 +87,9 @@ describe("runtime data backup and restore", () => {
       value: "from-backup",
     });
     restored.close();
+    const restoredPaperMultiLeg = new DatabaseSync(path.resolve(targetDir, "arbitrage-paper-multi-leg.sqlite"), { readOnly: true });
+    expect(restoredPaperMultiLeg.prepare("SELECT status FROM runs WHERE runId = ?").get("paper-backup-fixture")).toMatchObject({ status: "completed" });
+    restoredPaperMultiLeg.close();
     expect(readFileSync(path.resolve(targetDir, ".secret"), "utf8")).toBe("test-secret");
   });
 

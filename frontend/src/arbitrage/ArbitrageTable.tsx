@@ -1,27 +1,47 @@
-import { ArrowRight, FlaskConical, Layers3 } from "lucide-react";
+import { FlaskConical, Layers3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Locale } from "../i18n";
 import { localeTag } from "../i18n";
 import type { ArbitrageDepthResponse, ArbitrageOpportunity } from "./client";
 import { arbitrageText } from "./text";
-import type { ArbitrageCostBreakdown } from "./fees";
+import { capitalEstimate, convergenceScenarios, routeCostBreakdown, type ArbitrageFeeProfile, type BasisDisplayedScenario } from "./fees";
 import { ArbitrageHistoryChart } from "./ArbitrageHistoryChart";
+import type { ArbitrageChartTarget } from "./chartTarget";
+import { analysisText } from "./analysisText";
+import { adaptBasisOpportunity } from "./marketOpportunityAdapters";
+import { OpportunityHandoffButton } from "./OpportunityHandoffButton";
+
+export type ArbitrageDepthError = "depthUnavailable" | "exitDepthUnavailable";
 
 interface Props {
   locale: Locale;
   rows: ArbitrageOpportunity[];
-  costs(row: ArbitrageOpportunity): number;
-  net(row: ArbitrageOpportunity): number;
-  breakdown(row: ArbitrageOpportunity): ArbitrageCostBreakdown;
-  depth?: { routeId: string; loading: boolean; error?: string; value?: ArbitrageDepthResponse };
+  columns?: ReadonlySet<string>;
+  scenario(row: ArbitrageOpportunity): BasisDisplayedScenario;
+  depth?: { routeId: string; loading: boolean; error?: ArbitrageDepthError; value?: ArbitrageDepthResponse };
   onDepth(row: ArbitrageOpportunity): void;
   onPaper(row: ArbitrageOpportunity): void;
-  onOpenChart(symbol: string): void;
+  onOpenChart(target: ArbitrageChartTarget): void;
+  profile: ArbitrageFeeProfile;
+  notionalUsd: number;
 }
 
 const PAGE_SIZE = 50;
+const ALL_COLUMNS = new Set(["route", "spot", "perpetual", "gross", "net", "profit", "capacity", "funding", "actions"]);
+const depthQualityKey = {
+  fresh: "depthQualityFresh",
+  stale: "depthQualityStale",
+  skewed: "depthQualitySkewed",
+  unverified: "depthQualityUnverified"
+} as const;
+const signalQualityKey = {
+  fresh: "signalQualityFresh",
+  stale: "signalQualityStale",
+  skewed: "signalQualitySkewed",
+  unverified: "signalQualityUnverified"
+} as const;
 
-export function ArbitrageTable({ locale, rows, costs, breakdown, net, depth, onDepth, onPaper, onOpenChart }: Props) {
+export function ArbitrageTable({ locale, rows, columns = ALL_COLUMNS, scenario, depth, onDepth, onPaper, onOpenChart, profile, notionalUsd }: Props) {
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   useEffect(() => {
@@ -32,25 +52,26 @@ export function ArbitrageTable({ locale, rows, costs, breakdown, net, depth, onD
   const to = Math.min(rows.length, (page + 1) * PAGE_SIZE);
   return (
     <div className="arb-table-shell">
-      <table className="arb-table">
+      <table className="arb-table" style={{ minWidth: `${Math.max(680, columns.size * 135)}px` }}>
         <caption>{arbitrageText(locale, "results")}</caption>
         <thead>
           <tr>
-            <th scope="col">{arbitrageText(locale, "pair")}</th>
-            <th scope="col">{arbitrageText(locale, "buySpot")}</th>
-            <th scope="col">{arbitrageText(locale, "shortPerpetual")}</th>
-            <th scope="col">{arbitrageText(locale, "grossSpread")}</th>
-            <th scope="col">{arbitrageText(locale, "netEdge")}</th>
-            <th scope="col">{arbitrageText(locale, "capacity")}</th>
-            <th scope="col">{arbitrageText(locale, "funding")}</th>
-            <th scope="col">{arbitrageText(locale, "actions")}</th>
+            {columns.has("route") && <th scope="col">{arbitrageText(locale, "pair")}</th>}
+            {columns.has("spot") && <th scope="col">{arbitrageText(locale, "buySpot")}</th>}
+            {columns.has("perpetual") && <th scope="col">{arbitrageText(locale, "shortPerpetual")}</th>}
+            {columns.has("gross") && <th scope="col">{arbitrageText(locale, "grossSpread")}</th>}
+            {columns.has("net") && <th scope="col">{arbitrageText(locale, "netEdge")}</th>}
+            {columns.has("profit") && <th scope="col">{arbitrageText(locale, "expectedProfit")}</th>}
+            {columns.has("capacity") && <th scope="col">{arbitrageText(locale, "capacity")}</th>}
+            {columns.has("funding") && <th scope="col">{arbitrageText(locale, "funding")}</th>}
+            {columns.has("actions") && <th scope="col">{arbitrageText(locale, "actions")}</th>}
           </tr>
         </thead>
         <tbody>
           {visible.map((row) => {
-            const rowNet = net(row);
+            const displayedScenario = scenario(row);
             const isOpen = depth?.routeId === row.id;
-            return <RowGroup key={row.id} row={row} locale={locale} cost={costs(row)} breakdown={breakdown(row)} net={rowNet} depth={isOpen ? depth : undefined} onDepth={() => onDepth(row)} onPaper={() => onPaper(row)} onOpenChart={() => onOpenChart(row.symbol)} />;
+            return <RowGroup key={row.id} row={row} locale={locale} columns={columns} scenario={displayedScenario} depth={isOpen ? depth : undefined} onDepth={() => onDepth(row)} onPaper={() => onPaper(row)} onOpenChart={onOpenChart} profile={profile} notionalUsd={notionalUsd} />;
           })}
         </tbody>
       </table>
@@ -69,53 +90,104 @@ export function ArbitrageTable({ locale, rows, costs, breakdown, net, depth, onD
   );
 }
 
-function RowGroup({ row, locale, cost, breakdown, net, depth, onDepth, onPaper, onOpenChart }: { row: ArbitrageOpportunity; locale: Locale; cost: number; breakdown: ArbitrageCostBreakdown; net: number; depth?: Props["depth"]; onDepth(): void; onPaper(): void; onOpenChart(): void }) {
+function RowGroup({
+  row,
+  locale,
+  columns,
+  scenario,
+  depth,
+  onDepth,
+  onPaper,
+  onOpenChart,
+  profile,
+  notionalUsd
+}: { row: ArbitrageOpportunity; locale: Locale; columns: ReadonlySet<string>; scenario: BasisDisplayedScenario; depth?: Props["depth"]; onDepth(): void; onPaper(): void; onOpenChart(target: ArbitrageChartTarget): void; profile: ArbitrageFeeProfile; notionalUsd: number }) {
   const number = (value: number) => new Intl.NumberFormat(localeTag(locale), { maximumSignificantDigits: 10 }).format(value);
   const money = (value: number) => new Intl.NumberFormat(localeTag(locale), { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+  const net = scenario.netEdgeBps;
+  const profit = scenario.projectedNetProfitUsd;
+  const cost = scenario.basisScenario.costBreakdownBps.total;
   return (
     <>
       <tr>
-        <th scope="row">
-          <strong>{row.symbol}</strong>
-          <small>USDT</small>
-        </th>
-        <td>
-          <strong>{venue(row.spotExchange)}</strong>
-          <span>
-            {arbitrageText(locale, "buyAt")} {number(row.spotAsk)}
-          </span>
-        </td>
-        <td>
-          <strong>{venue(row.futuresExchange)}</strong>
-          <span>
-            {arbitrageText(locale, "sellAt")} {number(row.futuresBid)}
-          </span>
-        </td>
-        <td>{formatBps(row.grossSpreadBps)}</td>
-        <td>
-          <mark className={net > 0 ? "positive" : "negative"}>{formatBps(net)}</mark>
-          <small>−{cost.toFixed(1)} bp</small>
-        </td>
-        <td>{money(row.topBookCapacityUsd)}</td>
-        <td className={row.fundingRate >= 0 ? "funding-positive" : "funding-negative"}>{(row.fundingRate * 100).toFixed(4)}%</td>
-        <td>
-          <span className="arb-row-actions">
-            <button type="button" onClick={onDepth} aria-label={arbitrageText(locale, "analyzeDepth", { symbol: row.symbol })}>
-              <Layers3 size={14} aria-hidden="true" />
-            </button>
-            <button type="button" onClick={onPaper} aria-label={arbitrageText(locale, "openPaper", { symbol: row.symbol })}>
-              <FlaskConical size={14} aria-hidden="true" />
-            </button>
-            <button type="button" onClick={onOpenChart} aria-label={arbitrageText(locale, "openChart", { symbol: row.symbol })}>
-              <ArrowRight size={15} aria-hidden="true" />
-            </button>
-          </span>
-        </td>
+        {columns.has("route") && (
+          <th scope="row" className="arb-route-cell">
+            <strong>{row.symbol}</strong>
+            <small>
+              USDT · <mark className={row.dataQuality === "fresh" ? "positive" : "negative"}>{arbitrageText(locale, signalQualityKey[row.dataQuality])}</mark>
+            </small>
+          </th>
+        )}
+        {columns.has("spot") && (
+          <td className="arb-leg-cell">
+            <strong>{venue(row.spotExchange)}</strong>
+            <span>
+              {arbitrageText(locale, "buyAt")} {number(row.spotAsk)}
+            </span>
+          </td>
+        )}
+        {columns.has("perpetual") && (
+          <td className="arb-leg-cell">
+            <strong>{venue(row.futuresExchange)}</strong>
+            <span>
+              {arbitrageText(locale, "sellAt")} {number(row.futuresBid)}
+            </span>
+          </td>
+        )}
+        {columns.has("gross") && <td>{formatBps(row.grossSpreadBps)}</td>}
+        {columns.has("net") && (
+          <td>
+            <mark className={net > 0 ? "positive" : "negative"}>{formatBps(net)}</mark>
+            <small>
+              −{cost.toFixed(1)} {arbitrageText(locale, "basisPointUnit")}
+            </small>
+          </td>
+        )}
+        {columns.has("profit") && (
+          <td>
+            <mark className={profit > 0 ? "positive" : "negative"}>{new Intl.NumberFormat(localeTag(locale), { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(profit)}</mark>
+          </td>
+        )}
+        {columns.has("capacity") && <td>{money(row.topBookCapacityUsd)}</td>}
+        {columns.has("funding") && <td className={row.fundingRate >= 0 ? "funding-positive" : "funding-negative"}>{(row.fundingRate * 100).toFixed(4)}%</td>}
+        {columns.has("actions") && (
+          <td>
+            <span className="arb-row-actions">
+              <button type="button" onClick={onDepth} aria-label={arbitrageText(locale, "analyzeDepth", { symbol: row.symbol })}>
+                <Layers3 size={14} aria-hidden="true" />
+              </button>
+              <button type="button" onClick={onPaper} aria-label={arbitrageText(locale, "openPaper", { symbol: row.symbol })} title={row.dataQuality === "fresh" ? undefined : arbitrageText(locale, "paperRequiresFreshSignal")}>
+                <FlaskConical size={14} aria-hidden="true" />
+              </button>
+              <OpportunityHandoffButton locale={locale} name={row.symbol} createOpportunity={() => adaptBasisOpportunity(row, scenario)} />
+              <button
+                type="button"
+                onClick={() => onOpenChart({ symbol: row.symbol, exchange: row.spotExchange, marketType: "spot", priceType: "last" })}
+                aria-label={arbitrageText(locale, "openSpotChart", { symbol: row.symbol, venue: venue(row.spotExchange) })}
+                title={arbitrageText(locale, "openSpotChart", { symbol: row.symbol, venue: venue(row.spotExchange) })}
+              >
+                <span className="arb-market-glyph" aria-hidden="true">
+                  S
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenChart({ symbol: row.symbol, exchange: row.futuresExchange, marketType: "linear", priceType: "last" })}
+                aria-label={arbitrageText(locale, "openPerpetualChart", { symbol: row.symbol, venue: venue(row.futuresExchange) })}
+                title={arbitrageText(locale, "openPerpetualChart", { symbol: row.symbol, venue: venue(row.futuresExchange) })}
+              >
+                <span className="arb-market-glyph" aria-hidden="true">
+                  P
+                </span>
+              </button>
+            </span>
+          </td>
+        )}
       </tr>
       {depth && (
         <tr className="arb-depth-row">
-          <td colSpan={8}>
-            <DepthPanel locale={locale} state={depth} cost={cost} breakdown={breakdown} />
+          <td colSpan={columns.size}>
+            <DepthPanel locale={locale} state={depth} row={row} profile={profile} notionalUsd={notionalUsd} />
           </td>
         </tr>
       )}
@@ -123,35 +195,138 @@ function RowGroup({ row, locale, cost, breakdown, net, depth, onDepth, onPaper, 
   );
 }
 
-function DepthPanel({ locale, state, cost, breakdown }: { locale: Locale; state: NonNullable<Props["depth"]>; cost: number; breakdown: ArbitrageCostBreakdown }) {
+function DepthPanel({ locale, state, row, profile, notionalUsd }: { locale: Locale; state: NonNullable<Props["depth"]>; row: ArbitrageOpportunity; profile: ArbitrageFeeProfile; notionalUsd: number }) {
   if (state.loading) return <div className="arb-depth-panel">{arbitrageText(locale, "loadingDepth")}</div>;
   if (state.error)
     return (
       <div className="arb-depth-panel danger" role="alert">
-        {state.error}
+        {arbitrageText(locale, state.error)}
       </div>
     );
   if (!state.value) return null;
   const value = state.value;
-  const depthNet = value.grossSpreadBps - cost;
+  const analyzedNotional = Math.min(notionalUsd, value.spot.filledNotionalUsd);
+  const analyzedBreakdown = routeCostBreakdown(row, profile, analyzedNotional);
+  const depthNet = value.grossSpreadBps - analyzedBreakdown.totalBps;
   return (
     <div className="arb-depth-panel">
       <strong>{arbitrageText(locale, "depthResult", { amount: value.requestedNotionalUsd.toLocaleString(localeTag(locale)) })}</strong>
       <span>
-        {arbitrageText(locale, "spotVwap")}: {value.spot.averagePrice.toPrecision(8)} · {value.spot.levelsUsed} {arbitrageText(locale, "levels")} · {value.spot.slippageBps.toFixed(2)} bp
+        {arbitrageText(locale, "spotVwap")}: {value.spot.averagePrice.toPrecision(8)} · {value.spot.levelsUsed} {arbitrageText(locale, "levels")} · {value.spot.slippageBps.toFixed(2)} {arbitrageText(locale, "basisPointUnit")}
       </span>
       <span>
-        {arbitrageText(locale, "perpetualVwap")}: {value.perpetual.averagePrice.toPrecision(8)} · {value.perpetual.levelsUsed} {arbitrageText(locale, "levels")} · {value.perpetual.slippageBps.toFixed(2)} bp
+        {arbitrageText(locale, "perpetualVwap")}: {value.perpetual.averagePrice.toPrecision(8)} · {value.perpetual.levelsUsed} {arbitrageText(locale, "levels")} · {value.perpetual.slippageBps.toFixed(2)} {arbitrageText(locale, "basisPointUnit")}
       </span>
+      <span>
+        {arbitrageText(locale, "depthTiming", {
+          age: String(Math.round(value.timing.ageMs)),
+          skew: String(Math.round(value.timing.receiveSkewMs))
+        })}
+        {value.timing.exchangeSkewMs === undefined ? ` · ${arbitrageText(locale, "depthExchangePartial")}` : ` · ${arbitrageText(locale, "depthExchangeSkew", { skew: String(Math.round(value.timing.exchangeSkewMs)) })}`}
+      </span>
+      <mark className={value.timing.quality === "fresh" ? "positive" : "negative"}>{arbitrageText(locale, depthQualityKey[value.timing.quality])}</mark>
       <span>
         {arbitrageText(locale, "depthNet")}: <mark className={depthNet > 0 ? "positive" : "negative"}>{formatBps(depthNet)}</mark>
       </span>
       <span>
-        Fees {breakdown.tradingFeesBps.toFixed(1)} · funding {breakdown.fundingCostBps.toFixed(1)} · financing {breakdown.borrowCostBps.toFixed(1)} · transfer {breakdown.transferCostBps.toFixed(1)} bp
+        {analysisText(locale, "depthCostBreakdown", {
+          fees: analyzedBreakdown.tradingFeesBps.toFixed(1),
+          funding: analyzedBreakdown.fundingCostBps.toFixed(1),
+          financing: analyzedBreakdown.borrowCostBps.toFixed(1),
+          transfer: analyzedBreakdown.transferCostBps.toFixed(1)
+        })}
       </span>
       <mark className={value.complete ? "positive" : "negative"}>{value.complete ? arbitrageText(locale, "depthComplete") : arbitrageText(locale, "depthIncomplete")}</mark>
       <ArbitrageHistoryChart routeId={state.routeId} locale={locale} />
+      <CapitalScenario locale={locale} row={row} profile={profile} notionalUsd={analyzedNotional} />
     </div>
+  );
+}
+
+function CapitalScenario({ locale, row, profile, notionalUsd }: { locale: Locale; row: ArbitrageOpportunity; profile: ArbitrageFeeProfile; notionalUsd: number }) {
+  const capital = capitalEstimate(row, profile, notionalUsd);
+  const scenarios = convergenceScenarios(row, profile, notionalUsd);
+  const breakdown = routeCostBreakdown(row, profile, capital.executableNotionalUsd || notionalUsd);
+  const currency = (value: number) => new Intl.NumberFormat(localeTag(locale), { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
+  const costRows: Array<[string, number]> = [
+    [analysisText(locale, "tradingFees"), breakdown.tradingFeesBps],
+    [analysisText(locale, "slippage"), breakdown.slippageReserveBps],
+    [analysisText(locale, "financing"), breakdown.borrowCostBps],
+    [analysisText(locale, "transfer"), breakdown.transferCostBps],
+    [analysisText(locale, "funding"), breakdown.fundingCostBps]
+  ];
+  return (
+    <section className="arb-depth-analysis" aria-labelledby={`arb-analysis-${row.id.replaceAll(":", "-")}`}>
+      <header>
+        <strong id={`arb-analysis-${row.id.replaceAll(":", "-")}`}>{analysisText(locale, "analysisTitle")}</strong>
+        <p>{analysisText(locale, "analysisHint")}</p>
+      </header>
+      <dl className="arb-capital-summary">
+        <div>
+          <dt>{analysisText(locale, "spotCapital")}</dt>
+          <dd>{currency(capital.spotCapitalUsd)}</dd>
+        </div>
+        <div>
+          <dt>{analysisText(locale, "derivativeMargin")}</dt>
+          <dd>{currency(capital.derivativeInitialMarginUsd)}</dd>
+        </div>
+        <div>
+          <dt>{analysisText(locale, "safetyBuffer")}</dt>
+          <dd>{currency(capital.derivativeSafetyBufferUsd)}</dd>
+        </div>
+        <div>
+          <dt>{analysisText(locale, "requiredCapital")}</dt>
+          <dd>{currency(capital.requiredCapitalUsd)}</dd>
+        </div>
+      </dl>
+      <div className="arb-analysis-tables">
+        <table>
+          <caption>{analysisText(locale, "costWaterfall")}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{analysisText(locale, "component")}</th>
+              <th scope="col">{analysisText(locale, "costBps")}</th>
+              <th scope="col">{analysisText(locale, "costUsd")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {costRows.map(([label, bps]) => (
+              <tr key={label}>
+                <th scope="row">{label}</th>
+                <td>{bps.toFixed(2)}</td>
+                <td>{currency((capital.executableNotionalUsd * bps) / 10_000)}</td>
+              </tr>
+            ))}
+            <tr className="total">
+              <th scope="row">{analysisText(locale, "totalCosts")}</th>
+              <td>{breakdown.totalBps.toFixed(2)}</td>
+              <td>{currency((capital.executableNotionalUsd * breakdown.totalBps) / 10_000)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <table>
+          <caption>{analysisText(locale, "scenario")}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{analysisText(locale, "convergence")}</th>
+              <th scope="col">{analysisText(locale, "grossPnl")}</th>
+              <th scope="col">{analysisText(locale, "netPnl")}</th>
+              <th scope="col">{analysisText(locale, "roi")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {scenarios.map((scenario) => (
+              <tr key={scenario.convergencePct}>
+                <th scope="row">{scenario.convergencePct}%</th>
+                <td>{currency(scenario.grossPnlUsd)}</td>
+                <td className={scenario.netPnlUsd >= 0 ? "positive" : "negative"}>{currency(scenario.netPnlUsd)}</td>
+                <td>{scenario.roiPct.toFixed(3)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

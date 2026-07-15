@@ -1,0 +1,19 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "instrument_name": "BTC-PERPETUAL",
+    "timestamp": 1784000000123,
+    "state": "open",
+    "best_bid_price": 61999.5,
+    "best_bid_amount": 25000,
+    "best_ask_price": 62000,
+    "best_ask_amount": 31000,
+    "last_price": 61999.5,
+    "mark_price": 61998.75,
+    "index_price": 62001.2,
+    "current_funding": 0.0000012,
+    "funding_8h": 0.000082,
+    "stats": { "high": 63000, "low": 60500, "price_change": 0.5, "volume": 2800, "volume_usd": 173600000 }
+  }
+}

@@ -4,7 +4,8 @@ import {
   evaluateBar,
   evaluateStrategyBar,
   runInit,
-  runStrategyInit
+  runStrategyInit,
+  UnresolvedSecuritySeriesError
 } from "../src/trading/strategy/evaluator.js";
 import type { StrategyIR } from "../src/trading/strategy/ir.js";
 import { securitySeriesKey } from "../src/trading/strategy/securityData.js";
@@ -196,6 +197,11 @@ describe("evaluateBar — request.security external data context", () => {
     expect(evaluateBar(ir, bars, 1, undefined, undefined, data).entry).toBeUndefined();
     expect(evaluateBar(ir, bars, 2, undefined, undefined, data).entry).toBe("long");
     expect(evaluateBar(ir, bars, 3, undefined, undefined, data).entry).toBe("long");
+  });
+
+  it("fails closed instead of substituting chart candles when the external series is unresolved", () => {
+    expect(() => evaluateBar(ir, bars, 2)).toThrow(UnresolvedSecuritySeriesError);
+    expect(() => evaluateBar(ir, bars, 2)).toThrow(/current D \(missing-series\)/);
   });
 });
 

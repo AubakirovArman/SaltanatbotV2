@@ -11,6 +11,7 @@ The generated [strategy block catalog](./BLOCK_CATALOG.generated.md) lists stabl
 - [Block taxonomy](#block-taxonomy)
 - [The IR shape](#the-ir-shape)
 - [Backtesting: `runBacktest`](#backtesting-runbacktest)
+- [Parameter optimization and structural generation](#parameter-optimization-and-structural-generation)
 - [Metrics produced](#metrics-produced)
 - [Chart preview: `previewStrategy`](#chart-preview-previewstrategy)
 - [Sharing a strategy via URL hash](#sharing-a-strategy-via-url-hash)
@@ -223,6 +224,47 @@ interface BacktestResult {
 ```
 
 A `Trade.reason` is one of `"signal" | "stop" | "target" | "close" | "liquidation"`.
+
+## Parameter optimization and structural generation
+
+The backtest optimizer has two distinct search modes. **Grid** evaluates the Cartesian product of up
+to three selected parameter axes. **Genetic** searches up to 12 selected axes in the browser UI with
+a seeded, bounded population and generation count. It uses tournament selection, uniform crossover,
+local mutation, elitism, canonical parameter deduplication and cached evaluations inside the
+optimizer Web Worker. The same seed and inputs produce the same ranking. Genetic search is
+worker-only (there is no blocking main-thread fallback), has an explicit Cancel action and reports a
+separate final-holdout phase, so progress cannot reach 100% before the audit completes. Each
+independent split must contain more candles than the strategy's estimated indicator warm-up; the
+search fails closed with an actionable history/lookback error otherwise.
+
+Genetic fitness combines **train + validation** net return, Sharpe, profit factor, return versus
+drawdown, win rate and explicit penalties for drawdown, too few trades, liquidation, validation loss
+and the train/validation generalization gap. The final temporal **test tail is never used for
+selection, crossover, mutation or fitness ranking**: after the train/validation ranking is frozen,
+only its preselected candidate #1 is tested once. A failed gate does not advance candidate #2, and
+untested rows cannot be applied. Changing only the tail therefore cannot change the evolved genomes,
+their fitness order or which genome is selected for the gate. Applying a passing result writes its
+values into the matching Blockly input fields, so subsequent compile, save, export, backtest and bot
+paths see the same parameters. Application is refused if the strategy, market, timeframe, bar count
+or execution-cost config changed since the search. This is still a single historical split, not a
+probability, forecast or permission to run the result live; walk-forward and paper validation remain
+independent gates.
+
+The **Strategy generator** in the artifact library is a separate structural tool. Its closed grammar
+produces long and short trend, mean-reversion, breakout and momentum `StrategyIR` candidates, then
+applies seeded structural crossover/mutation, fingerprint deduplication, node/input budgets and a
+narrow validation whitelist. The result table exposes family, direction, generation, origin,
+fingerprint, parent/mutation provenance and validation evidence. Import converts only a selected
+valid candidate into a normal, editable portable strategy artifact; generation never starts a
+backtest or bot.
+
+Do not confuse generator evolution with optimized fitness. The current browser generator creates
+structural diversity but does not fetch candles, run backtests or score the candidates. Its core has
+a pure multi-market ranker for caller-supplied, disjoint train/OOS metrics, including median/worst
+market, drawdown, trade-count, liquidation, generalization and dispersion penalties, but that ranker
+is not connected to a browser multi-market evaluation pipeline. Consequently the UI intentionally
+shows ranking as unavailable; imported candidates still require ordinary backtest, walk-forward and
+paper review.
 
 ## Metrics produced
 

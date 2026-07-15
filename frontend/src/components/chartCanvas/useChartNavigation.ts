@@ -77,29 +77,37 @@ export function beginChartPinchGesture(
   view: ChartNavigationView,
   viewport: Viewport
 ): ChartPinchGesture {
+  const distance = touchDistance(points);
+  const midpoint = midpointX(points);
+  const anchorIndex = viewport.xToIndex(midpoint);
   return {
-    anchorIndex: viewport.xToIndex(midpointX(points)),
-    startDistance: Math.max(8, touchDistance(points)),
-    startOffset: view.offset,
-    startZoom: view.zoom
+    anchorIndex: Number.isFinite(anchorIndex) ? anchorIndex : viewport.start,
+    startDistance: Number.isFinite(distance) ? Math.max(8, distance) : 8,
+    startOffset: finiteOr(view.offset, 0),
+    startZoom: clamp(finiteOr(view.zoom, 1), MIN_CHART_ZOOM, MAX_CHART_ZOOM)
   };
 }
 
 /** Apply simultaneous touch pinch and horizontal pan while keeping the midpoint data-anchored. */
 export function applyChartPinchNavigation(input: PinchNavigationInput): ChartNavigationView {
   const { gesture, points, view, candles, viewport } = input;
-  const distanceRatio = touchDistance(points) / gesture.startDistance;
+  const distance = touchDistance(points);
+  if (!Number.isFinite(distance) || !Number.isFinite(gesture.startDistance) || gesture.startDistance <= 0) return withoutCrosshair(view);
+  const distanceRatio = distance / gesture.startDistance;
   const zoom = Number(clamp(gesture.startZoom * distanceRatio, MIN_CHART_ZOOM, MAX_CHART_ZOOM).toFixed(4));
-  if (!viewport || candles.length === 0) return { ...view, zoom, crosshair: undefined };
+  if (!viewport || candles.length === 0) return zoom === view.zoom ? withoutCrosshair(view) : { ...view, zoom, crosshair: undefined };
 
   const nextVisible = visibleCandles(candles, viewport.plot, zoom, gesture.startOffset);
   const midpoint = midpointX(points);
+  if (!Number.isFinite(midpoint) || !Number.isFinite(gesture.anchorIndex)) return withoutCrosshair(view);
   const desiredStart = gesture.anchorIndex - (midpoint - viewport.plot.left - nextVisible.step / 2) / nextVisible.step;
   const offset = candles.length - nextVisible.data.length - desiredStart;
+  const nextOffset = clamp(Math.round(offset), 0, nextVisible.maxOffset);
+  if (zoom === view.zoom && nextOffset === view.offset && view.crosshair === undefined) return view;
   return {
     ...view,
     zoom,
-    offset: clamp(Math.round(offset), 0, nextVisible.maxOffset),
+    offset: nextOffset,
     crosshair: undefined
   };
 }
@@ -166,6 +174,7 @@ export function useChartTouchNavigation(
   candlesRef.current = candles;
   viewRef.current = view;
   resumeRef.current = onSingleTouchResume;
+  const gestureActiveRef = useRef(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -196,8 +205,16 @@ export function useChartTouchNavigation(
       if (!currentPair) return;
       contain(event);
       if (!viewportRef.current) return;
-      canvas.setPointerCapture(event.pointerId);
+      if (!canvas.hasPointerCapture(event.pointerId)) {
+        try {
+          canvas.setPointerCapture(event.pointerId);
+        } catch {
+          points.delete(event.pointerId);
+          return;
+        }
+      }
       gesture = beginChartPinchGesture(currentPair, viewRef.current, viewportRef.current);
+      gestureActiveRef.current = true;
     };
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerType !== "touch") return;
@@ -208,10 +225,14 @@ export function useChartTouchNavigation(
       points.set(event.pointerId, pointFromEvent(event));
       const currentPair = pair();
       if (!gesture || !currentPair) return;
+      // React may evaluate a functional state updater after pointerup has
+      // cleared the mutable gesture variable. Snapshot the gesture for this
+      // frame so a fast/coalesced mobile sequence cannot read undefined.
+      const activeGesture = gesture;
       contain(event);
       setView((current) => {
         const next = applyChartPinchNavigation({
-          gesture: gesture as ChartPinchGesture,
+          gesture: activeGesture,
           points: currentPair,
           view: current,
           candles: candlesRef.current,
@@ -229,8 +250,13 @@ export function useChartTouchNavigation(
       event.preventDefault();
       if (resume) event.stopPropagation();
       gesture = undefined;
+      gestureActiveRef.current = false;
       const remaining = resume ? points.values().next().value as ChartTouchPoint | undefined : undefined;
-      if (remaining) resumeRef.current?.(remaining.x, viewRef.current.offset);
+      if (remaining) {
+        queueMicrotask(() => {
+          if (points.size === 1 && gesture === undefined) resumeRef.current?.(remaining.x, viewRef.current.offset);
+        });
+      }
     };
     const onPointerUp = (event: PointerEvent) => finishPointer(event, true);
     const onPointerCancel = (event: PointerEvent) => finishPointer(event, false);
@@ -238,6 +264,7 @@ export function useChartTouchNavigation(
       if (!points.has(event.pointerId)) return;
       points.delete(event.pointerId);
       gesture = undefined;
+      gestureActiveRef.current = false;
     };
 
     canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
@@ -252,8 +279,11 @@ export function useChartTouchNavigation(
       canvas.removeEventListener("pointercancel", onPointerCancel);
       canvas.removeEventListener("lostpointercapture", onLostPointerCapture);
       points.clear();
+      gestureActiveRef.current = false;
     };
   }, [canvasRef, setView, viewportRef]);
+
+  return gestureActiveRef;
 }
 
 function zoomOnly(view: ChartNavigationView, deltaY: number, ctrlKey: boolean): ChartNavigationView {
@@ -277,4 +307,12 @@ function midpointX(points: readonly [ChartTouchPoint, ChartTouchPoint]) {
 
 function touchDistance(points: readonly [ChartTouchPoint, ChartTouchPoint]) {
   return Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+}
+
+function finiteOr(value: number, fallback: number) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function withoutCrosshair(view: ChartNavigationView): ChartNavigationView {
+  return view.crosshair === undefined ? view : { ...view, crosshair: undefined };
 }

@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "code": 0,
+  "data": {
+    "pageSize": 2,
+    "totalCount": 2,
+    "totalPage": 1,
+    "currentPage": 1,
+    "resultList": [
+      {"symbol": "BTC_USDT", "fundingRate": 0.000266, "settleTime": 1783965600000},
+      {"symbol": "BTC_USDT", "fundingRate": 0.00029, "settleTime": 1783994400000}
+    ]
+  }
+}

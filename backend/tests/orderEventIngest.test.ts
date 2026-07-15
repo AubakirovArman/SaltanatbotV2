@@ -100,4 +100,49 @@ describe("exchange order event ingest", () => {
     }, h.lifecycle)).toEqual({ kind: "unmatched" });
     expect(h.records).toHaveLength(0);
   });
+
+  it("rejects a conflicting client identity even when the venue order ID matches", () => {
+    const h = harness();
+    const existing = { ...record(), exchangeOrderId: "exchange-1" };
+    const conflicting = {
+      id: "exchange-1",
+      clientId: "foreign-client",
+      status: "filled" as const,
+      qty: 1,
+      filledQty: 1,
+      avgFillPrice: 101,
+      updatedAt: 40,
+      execution: { id: "execution-1", qty: 1, price: 101, fee: 0, realizedPnl: 0, ts: 40 }
+    };
+
+    expect(ingestExchangeOrderEvent([existing], conflicting, h.lifecycle)).toMatchObject({
+      kind: "ignored",
+      reason: "identity_conflict",
+      record: { clientId: "client-1", exchangeOrderId: "exchange-1" }
+    });
+    expect(ingestExchangeOrderEvent([existing], conflicting, h.lifecycle)).toMatchObject({ kind: "ignored", reason: "identity_conflict" });
+    expect(h.records).toHaveLength(0);
+    expect(h.events).toHaveLength(0);
+    expect(existing.clientId).toBe("client-1");
+  });
+
+  it("rejects crossed and duplicated venue/client identity matches", () => {
+    const h = harness();
+    const venueRecord = { ...record(), id: "intent-a", exchangeOrderId: "exchange-1" };
+    const clientRecord = { ...record(), id: "intent-b", clientId: "client-b", exchangeOrderId: "exchange-2" };
+    const duplicateVenue = { ...record(), id: "intent-c", clientId: "client-c", exchangeOrderId: "exchange-1" };
+    const snapshot = {
+      id: "exchange-1",
+      clientId: "client-b",
+      status: "filled" as const,
+      qty: 1,
+      filledQty: 1,
+      updatedAt: 40
+    };
+
+    expect(ingestExchangeOrderEvent([venueRecord, clientRecord], snapshot, h.lifecycle)).toMatchObject({ kind: "ignored", reason: "identity_conflict" });
+    expect(ingestExchangeOrderEvent([venueRecord, duplicateVenue], { ...snapshot, clientId: undefined }, h.lifecycle)).toMatchObject({ kind: "ignored", reason: "identity_conflict" });
+    expect(h.records).toHaveLength(0);
+    expect(h.events).toHaveLength(0);
+  });
 });

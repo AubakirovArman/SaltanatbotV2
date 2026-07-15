@@ -1,6 +1,12 @@
 import type { Candle } from "@saltanatbotv2/contracts";
 import type { BoolExpr, NumExpr, Stmt, StrategyIR } from "./index.js";
-import { alignSecuritySeries, getSecurityCandles, type SecurityDataContext } from "./securityData.js";
+import { alignSecuritySeries, type SecurityDataContext } from "./securityData.js";
+import {
+  assertSecurityDependenciesResolved,
+  resolveSecurityCandles,
+  type UnresolvedSecurityPolicy
+} from "./securityRuntime.js";
+export { UnresolvedSecuritySeriesError, type UnresolvedSecurityPolicy } from "./securityRuntime.js";
 import {
   almaSeries,
   atr as atrSeries,
@@ -78,6 +84,8 @@ export interface StrategyRuntime {
   ctx: Record<string, number>;
   /** Optional external candles for request.security() expressions. */
   securityData?: SecurityDataContext;
+  /** Chart substitution is allowed only for an explicitly opted-in preview. */
+  unresolvedSecurityPolicy: UnresolvedSecurityPolicy;
   /** Snapshot of vars at the START of the bar — reads for `varprev` (x[1] on a var). */
   varsPrev: Map<string, number>;
   explanations: Map<string, StrategyExpressionExplanation>;
@@ -111,6 +119,7 @@ export interface StrategyRuntimeOptions {
   vars?: Map<string, number>;
   ctx?: Record<string, number>;
   securityData?: SecurityDataContext;
+  unresolvedSecurityPolicy?: UnresolvedSecurityPolicy;
 }
 
 /** Create a reusable runtime for preview/backtest. Live callers may use
@@ -120,6 +129,8 @@ export function createStrategyRuntime(
   candles: Candle[],
   options: StrategyRuntimeOptions = {}
 ): StrategyRuntime {
+  const unresolvedSecurityPolicy = options.unresolvedSecurityPolicy ?? "error";
+  assertSecurityDependenciesResolved(ir, options.securityData, unresolvedSecurityPolicy);
   return {
     candles,
     n: candles.length,
@@ -131,6 +142,7 @@ export function createStrategyRuntime(
     budgetHit: false,
     ctx: options.ctx ?? {},
     securityData: options.securityData,
+    unresolvedSecurityPolicy,
     explanations: new Map(),
     explanationsTruncated: false
   };
@@ -681,8 +693,8 @@ function computeSeries(expr: NumExpr, rt: StrategyRuntime): number[] {
 }
 
 function securitySeries(expr: Extract<NumExpr, { k: "security" }>, rt: StrategyRuntime): number[] {
-  const external = getSecurityCandles(rt.securityData, expr.symbol, expr.timeframe);
-  if (!external?.length) return getSeries(expr.source, rt);
+  const external = resolveSecurityCandles(rt.securityData, expr.symbol, expr.timeframe, rt.unresolvedSecurityPolicy);
+  if (!external) return getSeries(expr.source, rt);
   const child: StrategyRuntime = {
     ...rt,
     candles: external,

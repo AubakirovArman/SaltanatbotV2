@@ -6,20 +6,38 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const serverPath = path.join(root, "backend/src/server.ts");
 const tradingPath = path.join(root, "backend/src/trading/routes.ts");
+const tradingAccountRoutesPath = path.join(root, "backend/src/trading/tradingAccountRoutes.ts");
+const emergencyStopRoutesPath = path.join(root, "backend/src/trading/emergencyStopRoutes.ts");
 const arbitrageAlertRoutesPath = path.join(root, "backend/src/arbitrage/alertRoutes.ts");
+const researchAlertRoutesPath = path.join(root, "backend/src/arbitrage/researchAlerts/routes.ts");
+const paperMultiLegRoutesPath = path.join(root, "backend/src/arbitrage/paperMultiLeg/routes.ts");
+const publicVenueRoutesPath = path.join(root, "backend/src/venues/publicRoutes.ts");
+const orderBookMlResearchRoutesPath = path.join(root, "backend/src/orderbook/ml/researchRoutes.ts");
 const blocksPath = path.join(root, "frontend/src/strategy/blockCatalog.ts");
 const apiDocPath = path.join(root, "docs/API_ENDPOINTS.generated.md");
 const blocksDocPath = path.join(root, "docs/BLOCK_CATALOG.generated.md");
 
 const serverSource = readFileSync(serverPath, "utf8");
 const tradingSource = readFileSync(tradingPath, "utf8");
+const tradingAccountRoutesSource = readFileSync(tradingAccountRoutesPath, "utf8");
+const emergencyStopRoutesSource = readFileSync(emergencyStopRoutesPath, "utf8");
 const arbitrageAlertRoutesSource = readFileSync(arbitrageAlertRoutesPath, "utf8");
+const researchAlertRoutesSource = readFileSync(researchAlertRoutesPath, "utf8");
+const paperMultiLegRoutesSource = readFileSync(paperMultiLegRoutesPath, "utf8");
+const publicVenueRoutesSource = readFileSync(publicVenueRoutesPath, "utf8");
+const orderBookMlResearchRoutesSource = readFileSync(orderBookMlResearchRoutesPath, "utf8");
 const blocksSource = readFileSync(blocksPath, "utf8");
 
 const endpoints = [
   ...extractRoutes(serverSource, "app", "", Number.POSITIVE_INFINITY, "Public"),
   ...extractRoutes(tradingSource, "router", "/api/trade", tradingSource.indexOf("router.use(requireAuth)"), "Public"),
-  ...extractRoutes(arbitrageAlertRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/arbitrage/alertRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" }))
+  ...extractRoutes(tradingAccountRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/tradingAccountRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin" })),
+  ...extractRoutes(emergencyStopRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/emergencyStopRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · live-trade" })),
+  ...extractRoutes(arbitrageAlertRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/arbitrage/alertRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" })),
+  ...extractRoutes(researchAlertRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/arbitrage/researchAlerts/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" })),
+  ...extractRoutes(paperMultiLegRoutesSource, "router", "/api/trade/paper-multi-leg", 0, "Public", "backend/src/arbitrage/paperMultiLeg/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" })),
+  ...extractRoutes(publicVenueRoutesSource, "router", "/api/market-data", Number.POSITIVE_INFINITY, "Public · read-only", "backend/src/venues/publicRoutes.ts"),
+  ...extractRoutes(orderBookMlResearchRoutesSource, "router", "/api/orderbook-ml/research", 0, "Public", "backend/src/orderbook/ml/researchRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin · research-only" }))
 ].sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
 const sockets = [
   { path: "/stream", access: "Public", purpose: "Market candle snapshot and updates" },

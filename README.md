@@ -23,9 +23,11 @@ Live charts · a no-code visual strategy builder · one-click backtests · paper
 
 ## What is this?
 
-**SaltanatbotV2** is a trading terminal you run yourself. It streams live crypto candles from **Binance or Bybit** (switchable at runtime), renders them on a fast custom canvas chart with indicators and drawing tools, lets you **assemble trading strategies from visual blocks** (no code), **backtest them on historical data in seconds**, and then run them as **paper or live bots** driven by a compact Antares-style command language — with **Telegram / VK** notifications.
+**SaltanatbotV2** is a trading terminal you run yourself. It streams live crypto candles from **Binance or Bybit** (switchable at runtime), renders them on a fast custom canvas chart with indicators and drawing tools, lets you **assemble trading strategies from visual blocks** (no code), **backtest them on historical data in seconds**, and then run them as **paper or experimental live bots** driven by a compact Antares-style command language. Telegram is configurable in the current UI; the backend also supports an optional VK channel through its authenticated notification API.
 
-Everything is local: your keys, your data, your rules. There is no account, no cloud, no telemetry.
+Application state and credentials stay on your self-hosted SaltanatbotV2 instance: there is no
+Saltanatbot cloud account or built-in telemetry. Live market data, exchange execution and optional
+Telegram/VK delivery still require outbound network requests to the services you enable.
 
 > 🐘 *Why the elephant with a raised trunk?* A raised trunk is the classic symbol of good fortune — and the candlesticks rising over its back point the way we all hope the market goes.
 
@@ -38,6 +40,11 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 
 ## Features
 
+### 🧭 Monitoring, automation & research
+- The primary navigation separates **Monitoring** (charts and manual research), **Automation** (Strategies and Robots) and the read-only **Screener** instead of mixing those workflows in one tab.
+- A global **Running** counter opens the browser robots/portfolio center. It groups live exchange accounts and isolated paper robots, and shows available balances/equity, realized P&L, positions and open orders; unavailable margin or borrowing values are labeled instead of inferred.
+- Admins can maintain non-secret Binance/Bybit account metadata, including **own** versus **managed** ownership and enabled state. This is currently an organizational registry: there is still only **one encrypted credential set per exchange**, so additional rows are not independently executable accounts.
+
 ### 📈 Charting
 - Custom **canvas chart engine** (no heavy chart library) with its own viewport / time-scale coordinate system.
 - Chart types: **candles, hollow candles, Heikin-Ashi, bars, line, step line, area, baseline, Renko, Three Line Break, Kagi and Point & Figure**. Ten timeframes from **1m to 1M**.
@@ -45,7 +52,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - Confirmed close-only Kagi uses a fixed 0.10%-seeded reversal to filter noise into continuous up/down legs with shoulder and waist turns; the provisional live tail is excluded.
 - Renko brick percentage, Kagi reversal percentage, Line Break depth and Point & Figure construction are adjustable from each chart, validated to safe ranges and persisted by pane + symbol; changing one rebuilds only that displayed series without changing sibling panes or backtest execution candles.
 - Point & Figure uses alternating confirmed X/O columns with a fixed seeded percentage box and configurable reversal-box count; its synthetic columns are display analysis, not executable prices.
-- OHLCV-estimated visible-range Volume Profile (VPVR) with directional volume, Point of Control and a contiguous 70% value area.
+- OHLCV-estimated visible-range Volume Profile (VPVR) with directional volume, Point of Control and a contiguous 70% value area. Its source can follow the chart or use an independent **1m/5m/15m/1h/4h/1d timeframe**; incomplete, synthetic or oversized source ranges fail closed.
 - Real Binance/Bybit public top-20 order-book heatmap with a shared backend upstream, 60-second liquidity history and explicit reconnect/stale states.
 - Real-time Binance/Bybit trade footprint with aggressor cells, delta/CVD, diagonal and stacked imbalance highlighting, and explicitly provisional absorption heuristics; no synthetic prints or reconstructed history.
 - Configurable in-chart microstructure alerts for stacked imbalance, potential absorption, CVD spikes and large prints, with local persistence, bounded history and optional sound/desktop delivery.
@@ -58,7 +65,7 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - **Price alerts** (browser notification + sound), **symbol compare** overlay, crosshair with OHLC legend, persistent drawing tools, a zero-persistence **Shift-drag ruler** for price/%/bars/time, and **lazy-loaded history** on scroll-back.
 - Independent right-axis price scaling supports wheel/trackpad, vertical drag, keyboard arrows, `Home` and double-click reset without changing the visible candle range.
 - Retina/HiDPI Canvas backing keeps candles, axes, footprint and depth crisp without changing mouse, trackpad or HUD geometry.
-- Touchscreens support one-finger pan and a data-anchored two-finger pinch/pan gesture; lifting one finger continues panning without moving or zooming the surrounding page.
+- Touchscreens support one-finger pan and a data-anchored two-finger pinch/pan gesture; lifting one finger continues panning without moving or zooming the surrounding page. Repeated pinch-in at the 40% time-range limit becomes a stable no-op instead of competing with single-finger pan or reloading the interface.
 - On narrow screens, markets and instrument details open as exclusive focus-managed bottom sheets, leaving the chart unobstructed by default and respecting device safe areas.
 - One-, two- and four-chart layouts have direct numbered pane selectors, a one-click **Four different markets** preset, an explicit numbered active badge, customizable `Alt+J` / `Alt+K` keyboard cycling, adaptive compact chrome and a state-preserving active-pane maximize mode. The top bar, command palette, watchlist, live statistics and timeframe shortcuts follow the focused pane; drawings are always isolated by pane and symbol, while secondary symbols, timeframes, chart types, indicator sets and compare overlays become independent when edited and can explicitly relink comparisons, indicators, symbol, timeframe, chart type, crosshair and the absolute visible **time range**. Identical pane market keys share one ref-counted browser WebSocket.
 - Watchlist with **favorites** and **%-change sorting**; automatic last-session recovery plus **saved workspaces** for named/versioned layouts; overlay a saved strategy directly on the chart with its **plotted indicator lines**, **buy/sell signal points** and simulated trades.
@@ -67,28 +74,31 @@ Everything is local: your keys, your data, your rules. There is no account, no c
 - **Blockly** no-code builder — snap together Market / Indicators / Math / Logic / Time / Signals / Risk & Size / State & Alerts blocks. Start from a **template gallery**.
 - Blocks compile to a safe **JSON intermediate representation (IR)** — **no `eval`, ever**.
 - **Trustworthy backtests**: next-bar-open fills, gap-aware stops, slippage/funding costs, warm-up exclusion, Monte Carlo robustness, drawdown/MAE-MFE, and a **parameter optimizer with walk-forward** (in-/out-of-sample, Web Worker).
+- The optimizer offers bounded grid and seeded **genetic parameter search** with crossover, mutation, elitism and train/validation fitness. Only the frozen #1 candidate receives the untouched final test gate; a passing assignment is written back to Blockly under its exact research scope. A separate structural generator creates validated trend, mean-reversion, breakout and momentum IR candidates with reproducible provenance; its browser panel generates diversity but does **not** yet run or rank multi-market fitness.
 - Metrics + trade markers on the chart; share a strategy as a **URL** or a **`.strategy` file** (import as a remixable copy).
 
 ### 🤖 Paper & live trading
 - Run any saved strategy as a bot in **paper** (default), **Binance**, or **Bybit** mode.
 - Strategy signals are translated into an **Antares-style command language**: `param=value;` params, `::` command chaining, `pause` / `randpause`, `!`/`^` flags and **14 order actions** (market/limit/stop/take-profit, partial closes, reverses, and more).
 - Built-in **paper order engine** with pending limit/stop/TP orders and tick-based fills at real market prices; live orders round to exchange filters and place **exchange-side protective stops**.
-- **Cross-bot portfolio view**, per-bot risk caps + a **kill switch**, and **two-way Telegram control** (`/status` `/stop` `/start` `/kill`).
-- **Telegram & VK** notifications on start/stop/open/close/error/signal.
+- A cross-bot portfolio API and dedicated browser robots/portfolio center, Telegram summary, per-bot risk caps + a **kill switch**, and **two-way Telegram control** (`/status` `/stop` `/start` `/kill`).
+- UI-configurable **Telegram** notifications and an authenticated backend configuration path for **VK**, covering start/stop/open/close/error/signal events.
 
 ### 🔀 Multi-exchange market data
 - **Binance** and **Bybit** public providers (REST klines + live WebSocket) with **auto-reconnect + gap backfill**, plus a deterministic **synthetic** feed for FX/stocks/indices.
-- A read-only **cross-exchange arbitrage screener** compares executable spot asks with other-venue perpetual bids, configurable costs, top-book capacity, funding and source health.
-- **~200 USDT-spot pairs** discovered dynamically from the exchanges (curated fallback), a **persistent SQLite candle store** for deep history, and rate-limit-aware fetching.
+- A read-only **arbitrage research workspace** covers strict venue-native basis plus reviewed BTC/ETH cross-venue Binance/Bybit basis, directional top-book triangular simulations and Bybit native spreads. Operator-allowlisted continuous public feeds for OKX/Gate/Hyperliquid/Deribit/Kraken/Coinbase/dYdX/KuCoin/MEXC can show only fail-closed top-book entry quote-value/basis evidence with public taker quote-equivalent fee estimates—not a trading return. Identity provenance, refresh coverage and arithmetic are validated, and every route stays strategy-blocked and non-actionable. The public SDK and bounded adapters for all nine generic venues plus a strict options-parity HTTP/SDK evaluator expose no credential or order methods.
+- Basis, triangular, native-spread and compatible continuous results can be handed to **Automation** as a validated `market-opportunity-v1` research card with legs, economics, evidence and blockers. The handoff is not an order plan: live execution is always blocked and the exact paper multi-leg plan remains a separate short-lived artifact.
+- An admin-only **Order-book ML research** workflow accepts uploaded, reconstructed and sequence-verified aggregate L2 snapshots, builds leakage-controlled datasets and trains an inspectable ridge baseline. Sessions are temporary and in-memory; the system identifies no participant, emits no calibrated probability and cannot place paper or live orders.
+- **USDT spot pairs discovered dynamically** from each exchange (with a curated offline fallback), a **persistent SQLite candle store** for deep history, and rate-limit-aware fetching. The exact instrument count changes with exchange listings.
 - Pick the crypto **data source** (Binance ⇄ Bybit) right in the Markets panel — the whole chart, sparklines and stream re-point instantly.
 
 ### 🔒 Local-first & secure
-- Exchange API keys are **encrypted at rest** with AES-256-GCM (`node:crypto`) — they are **never** sent back to the browser and never leave your machine.
+- Exchange API keys are **encrypted at rest** with AES-256-GCM (`node:crypto`) and are never sent back to the browser. The self-hosted backend uses them only to sign the outbound exchange requests you explicitly enable.
 - Persistence uses Node's **built-in** `node:sqlite` — no native builds, no external database, no occupied ports.
 - The production terminal is **installable as a PWA** and can reopen its static interface offline. APIs, authentication, quotes, order books, trades and trading commands are never cached or replayed; offline does not mean fresh market data or available execution.
 - Strategy Studio can be made available offline from the top bar as an optional static research bundle; local artifacts stay on-device and trading remains network-only. See [Offline local research](docs/OFFLINE_RESEARCH.md).
 - Installed Chromium-family PWAs can open or receive shared `.pine`, `.strategy` and `.saltanat-plugin` files through a mandatory local review flow; manual import remains available everywhere else. See [PWA file opening and sharing](docs/PWA_FILE_HANDLING.md).
-- The complete application interface is available in **English, Russian and Kazakh**. The native language control cycles EN → RU → KK and persists the selected locale with matching document metadata and regional number/date formatting.
+- Core application navigation and stable user journeys are available in **English, Russian and Kazakh**. The native language control cycles EN → RU → KK and persists the selected locale with matching document metadata and regional number/date formatting; exact API/developer references remain canonical English.
 
 ---
 
@@ -172,6 +182,9 @@ published by the `Deploy documentation site` workflow and is also set as the rep
 | [**Declarative plugins**](docs/PLUGINS.md) | Checksummed local indicator/strategy packages, permissions, limits and trust boundaries |
 | [**Generated block catalog**](docs/BLOCK_CATALOG.generated.md) | Stable Blockly type identifiers and canonical trader-facing help generated from metadata |
 | [**Generated Pine compatibility**](docs/PINE_COMPATIBILITY.generated.md) | Corpus-backed exact, display-only, approximation and rejected feature matrix |
+| [**Arbitrage screener and research reference**](docs/ARBITRAGE_SCREENER.md) | Read-only triangular L2 verification, funding scenarios, fork guide and fail-closed continuous entry basis plus canonical [vocabulary](docs/ARBITRAGE_TAXONOMY.md), [math](docs/ARBITRAGE_MATH_AND_ASSUMPTIONS.md), [data quality](docs/MARKET_DATA_QUALITY.md), [venue status](docs/VENUE_CAPABILITIES.md) and [test gates](docs/ARBITRAGE_TEST_MATRIX.md) |
+| [**Research alerts**](docs/RESEARCH_ALERTS.md) | Protected notification-only policy/outbox UI and runtime, including the still-unconnected engine-producer boundary |
+| [**Network identity**](docs/NETWORK_IDENTITY.md) | Synthetic-only reviewed identity/transfer-proof contract; no real network mapping or transfer execution claim |
 | [**Trading & command language**](docs/TRADING.md) | The Trade tab, all 14 Antares-style actions, paper/Binance/Bybit modes, notifications |
 | [**Configuration & deployment**](docs/CONFIGURATION.md) | Env vars, runtime data, exchange keys, encryption, production & hardening checklist |
 | [**Backup & restore**](docs/BACKUP_RESTORE.md) | Verified online SQLite snapshots, checksums, atomic restore and recovery drills |
@@ -233,7 +246,7 @@ SaltanatbotV2/
 
 - The block builder is powered by [**Blockly**](https://developers.google.com/blockly).
 - The trading command syntax is inspired by the [**Antares**](https://antares-ts.gitbook.io/doc) command language.
-- Market data comes from the public [Binance](https://binance-docs.github.io/apidocs/) and [Bybit](https://bybit-exchange.github.io/docs/) APIs.
+- Market data comes from the public [Binance](https://developers.binance.com/en/docs/products/spot/rest-api) and [Bybit](https://bybit-exchange.github.io/docs/) APIs.
 
 ## License
 

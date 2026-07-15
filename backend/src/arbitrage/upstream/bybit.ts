@@ -10,6 +10,7 @@ interface BybitTicker {
   ask1Size?: unknown;
   fundingRate?: unknown;
   nextFundingTime?: unknown;
+  fundingIntervalHour?: unknown;
 }
 
 export function parseBybitTicker(value: unknown, market: "spot" | "perpetual", capturedAt = Date.now(), previous?: BybitTicker) {
@@ -23,9 +24,11 @@ export function parseBybitTicker(value: unknown, market: "spot" | "perpetual", c
   const bidSize = positive(row.bid1Size);
   const ask = positive(row.ask1Price);
   const askSize = positive(row.ask1Size);
-  if (!/^[A-Z0-9]{2,20}USDT$/.test(symbol) || !bid || !bidSize || !ask || !askSize) return undefined;
+  if (!/^[A-Z0-9]{2,20}USDT$/.test(symbol) || !bid || !bidSize || !ask || bid >= ask || !askSize) return undefined;
   const fundingRate = finite(row.fundingRate);
   const nextFundingTime = positive(row.nextFundingTime);
+  const fundingIntervalHours = positive(row.fundingIntervalHour);
+  const venueTimestamp = positive(envelope.ts);
   return {
     exchange: "bybit" as const,
     market,
@@ -36,7 +39,11 @@ export function parseBybitTicker(value: unknown, market: "spot" | "perpetual", c
     askSize,
     ...(market === "perpetual" && fundingRate !== undefined ? { fundingRate } : {}),
     ...(market === "perpetual" && nextFundingTime ? { nextFundingTime } : {}),
-    capturedAt: positive(envelope.ts) ?? capturedAt
+    ...(market === "perpetual" && fundingIntervalHours ? { fundingIntervalMinutes: fundingIntervalHours * 60 } : {}),
+    ...(venueTimestamp === undefined ? {} : { exchangeTs: venueTimestamp }),
+    exchangeTimestampVerified: venueTimestamp !== undefined,
+    receivedAt: capturedAt,
+    capturedAt
   };
 }
 
@@ -55,11 +62,13 @@ export class BybitTickerFeed {
         const envelope = object(value);
         const symbol = typeof envelope?.topic === "string" ? envelope.topic.slice(8).toUpperCase() : "";
         const delta = object(envelope?.data) as BybitTicker | undefined;
-        if (!symbol || !delta) return;
+        if (!symbol || !delta) return false;
         const merged = { ...this.latest.get(symbol), ...delta, symbol };
         this.latest.set(symbol, merged);
         const update = parseBybitTicker(value, market, Date.now(), this.latest.get(symbol));
-        if (update) onTicker(update);
+        if (!update) return false;
+        onTicker(update);
+        return true;
       },
       onStatus: (ok, message) => onStatus({ exchange: "bybit", market, ok, message }),
       heartbeat: (socket) => socket.send(JSON.stringify({ op: "ping" }))

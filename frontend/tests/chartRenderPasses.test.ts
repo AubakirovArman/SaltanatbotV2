@@ -180,4 +180,30 @@ describe("chart render passes", () => {
     drawChartPrimary(ctx, prepareChartRender({ ...input, showVolumeProfile: false }));
     expect(calls.volumeProfile).not.toHaveBeenCalled();
   });
+
+  it("builds the profile from explicit source candles intersecting the chart time range", () => {
+    const source = [
+      { ...candles[0], time: -60_000, volume: 100 },
+      { ...candles[0], time: 0, volume: 7 },
+      { ...candles[0], time: 30 * 60_000, volume: 200 }
+    ];
+    const plan = prepareChartRender({
+      ...input,
+      showVolumeProfile: true,
+      volumeProfileCandles: source,
+      volumeProfileTimeframe: "1m",
+      volumeProfileRange: { startTime: 0, endTime: 30 * 60_000 }
+    });
+    expect(plan.empty).toBe(false);
+    if (!plan.empty) expect(plan.volumeProfile?.totalVolume).toBeCloseTo(7, 8);
+
+    const stale = prepareChartRender({
+      ...input,
+      showVolumeProfile: true,
+      volumeProfileCandles: source,
+      volumeProfileTimeframe: "1m",
+      volumeProfileRange: { startTime: 0, endTime: 29 * 60_000 }
+    });
+    if (!stale.empty) expect(stale.volumeProfile).toBeUndefined();
+  });
 });

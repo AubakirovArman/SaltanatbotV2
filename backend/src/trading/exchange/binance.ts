@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import type {
   AccountState,
   ExchangeAdapter,
@@ -11,10 +10,10 @@ import type {
   PositionState
 } from "../types.js";
 import { binanceFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
-import { ExchangeTransportError, isAmbiguousExchangeError } from "./errors.js";
+import { BinanceSignedClient } from "./binanceClient.js";
+import { ambiguousAcknowledgement, isAmbiguousExchangeError, requireExchangeObject } from "./errors.js";
 import { normalizeBinanceOrderStatus } from "./orderStatus.js";
 import { subscribeBinanceOrders } from "./privateOrderStreams.js";
-import { getExchangeRequestGuard } from "./requestGuard.js";
 
 export interface ExchangeKeys {
   apiKey: string;
@@ -29,14 +28,16 @@ export interface ExchangeKeys {
 export class BinanceAdapter implements ExchangeAdapter {
   readonly id = "binance" as const;
   readonly market: MarketType;
-  private readonly requestGuard = getExchangeRequestGuard("binance");
+  private readonly client: BinanceSignedClient;
 
   constructor(
     private readonly botId: string,
     private readonly keys: ExchangeKeys,
-    market: MarketType
+    market: MarketType,
+    readonly accountId = "binance:default"
   ) {
     this.market = market;
+    this.client = new BinanceSignedClient(keys, market);
   }
 
   private get base() {
@@ -71,8 +72,9 @@ export class BinanceAdapter implements ExchangeAdapter {
       positionAmt: string;
       entryPrice: string;
       leverage: string;
+      positionSide?: string;
     }>;
-    const row = rows.find((item) => item.symbol === symbol);
+    const row = rows.find((item) => item.symbol === symbol && Number(item.positionAmt) !== 0);
     const amt = Number(row?.positionAmt ?? 0);
     if (!row || amt === 0) return null;
     return {
@@ -81,8 +83,33 @@ export class BinanceAdapter implements ExchangeAdapter {
       qty: Math.abs(amt),
       entryPrice: Number(row.entryPrice),
       leverage: Number(row.leverage),
+      hedged: row.positionSide === "LONG" || row.positionSide === "SHORT",
       openedAt: Date.now()
     };
+  }
+
+  async positions(): Promise<PositionState[]> {
+    if (this.market !== "futures") return [];
+    const rows = (await this.signed("GET", "/fapi/v2/positionRisk")) as Array<{
+      symbol: string;
+      positionAmt: string;
+      entryPrice: string;
+      leverage: string;
+      positionSide?: string;
+    }>;
+    return rows.flatMap((row) => {
+      const amt = Number(row.positionAmt);
+      if (!Number.isFinite(amt) || amt === 0) return [];
+      return [{
+        symbol: row.symbol,
+        side: amt > 0 ? "long" as const : "short" as const,
+        qty: Math.abs(amt),
+        entryPrice: Number(row.entryPrice),
+        leverage: Number(row.leverage),
+        hedged: row.positionSide === "LONG" || row.positionSide === "SHORT",
+        openedAt: Date.now()
+      }];
+    });
   }
 
   async orders(symbol?: string): Promise<PendingOrder[]> {
@@ -94,6 +121,7 @@ export class BinanceAdapter implements ExchangeAdapter {
       side: string;
       type: string;
       origQty: string;
+      executedQty?: string;
       price: string;
       stopPrice?: string;
       reduceOnly?: boolean;
@@ -106,7 +134,7 @@ export class BinanceAdapter implements ExchangeAdapter {
       symbol: row.symbol,
       side: row.side === "SELL" ? "sell" : "buy",
       type: mapBinanceType(row.type),
-      qty: Number(row.origQty),
+      qty: Math.max(0, Number(row.origQty) - Number(row.executedQty ?? 0)),
       price: Number(row.price) || undefined,
       trgPrice: row.stopPrice ? Number(row.stopPrice) || undefined : undefined,
       reduceOnly: !!row.reduceOnly,
@@ -156,11 +184,27 @@ export class BinanceAdapter implements ExchangeAdapter {
       switch (order.action) {
         case "close":
         case "flatten": {
-          const pos = await this.position(order.symbol);
+          const pos = order.positionSide
+            ? (await this.positions()).find((candidate) => candidate.symbol === order.symbol && candidate.side === order.positionSide) ?? null
+            : await this.position(order.symbol);
           if (!pos) return { ok: false, message: `No position on ${order.symbol}`, fills: [] };
           const closeQty = pos.qty * ((order.closePct ?? 100) / 100);
-          await this.placeMarket(order.symbol, pos.side === "long" ? "SELL" : "BUY", closeQty, true);
-          return { ok: true, message: `Closed ${order.symbol}`, fills: [], position: null, account: await this.account() };
+          const placed = await this.placeMarket(
+            order.symbol,
+            pos.side === "long" ? "SELL" : "BUY",
+            closeQty,
+            true,
+            pos.hedged ? pos.side : undefined,
+            order.clientId
+          ) as { orderId?: string | number };
+          const exchangeOrderId = placed.orderId === undefined ? undefined : String(placed.orderId);
+          return {
+            ok: true,
+            message: `Close accepted for ${order.symbol}; awaiting authenticated execution accounting`,
+            fills: [],
+            pendingOrder: exchangeOrderId ? pendingMarketOrder(order, exchangeOrderId, closeQty, true) : undefined,
+            ...(await this.acceptedState(order.symbol, pos))
+          };
         }
         case "cancelall":
         case "cancel":
@@ -173,11 +217,17 @@ export class BinanceAdapter implements ExchangeAdapter {
           return await this.getInfo(order);
         case "turnover": {
           const pos = await this.position(order.symbol);
-          if (pos) await this.placeMarket(order.symbol, pos.side === "long" ? "SELL" : "BUY", pos.qty, true);
+          if (pos) await this.placeMarket(order.symbol, pos.side === "long" ? "SELL" : "BUY", pos.qty, true, pos.hedged ? pos.side : undefined);
           return await this.placeEntry(order);
         }
-        default:
+        case "neworder":
+        case "open":
+        case "openorders":
+        case "spreadentry":
+        case "replace":
           return await this.placeEntry(order);
+        case "chporders":
+          return { ok: false, message: "CHPORDERS is not supported by the Binance live adapter", fills: [] };
       }
     } catch (error) {
       if (isAmbiguousExchangeError(error)) throw error;
@@ -188,7 +238,7 @@ export class BinanceAdapter implements ExchangeAdapter {
   private async placeEntry(order: ExecOrder): Promise<ExecResult> {
     const side = order.side === "sell" ? "SELL" : "BUY";
     if (this.market === "futures" && order.leverage) {
-      await this.signed("POST", "/fapi/v1/leverage", { symbol: order.symbol, leverage: String(Math.round(order.leverage)) }).catch(() => undefined);
+      await this.ensureLeverage(order.symbol, Math.round(order.leverage));
     }
     const price = await this.price(order.symbol);
     const filters = await binanceFilters(order.symbol, this.market).catch(() => undefined);
@@ -197,6 +247,7 @@ export class BinanceAdapter implements ExchangeAdapter {
     // Reject exchange-filter violations up front with a clear reason.
     const violation = checkMinimums(qty, order.type === "limit" ? order.price ?? price : price, filters);
     if (violation) return { ok: false, message: `Order rejected on ${order.symbol}: ${violation}`, fills: [] };
+    order.qty = qty;
     const entryPlaced = await this.placeOrder(order, side, qty, price, filters) as { orderId?: string | number };
     const entryOrderId = entryPlaced.orderId === undefined ? undefined : String(entryPlaced.orderId);
     // Attached protection (single stop / first TP) for futures.
@@ -207,35 +258,126 @@ export class BinanceAdapter implements ExchangeAdapter {
       if (order.stop) {
         const trg = order.stop.basis === "price" ? order.stop.value : side === "BUY" ? price * (1 - order.stop.value / 100) : price * (1 + order.stop.value / 100);
         try {
-          const placed = await this.signed("POST", "/fapi/v1/order", { symbol: order.symbol, side: closeSide, type: "STOP_MARKET", stopPrice: fmtPrice(trg, filters), closePosition: "true" }) as { orderId?: string | number };
-          if (placed.orderId === undefined) throw new Error("stop acknowledgement did not include an order ID");
+          const placed = requireOrderAcknowledgement(await this.signed("POST", "/fapi/v1/order", {
+            symbol: order.symbol, side: closeSide, type: "STOP_MARKET", stopPrice: fmtPrice(trg, filters), closePosition: "true",
+            ...(order.protectionClientIds?.stop ? { newClientOrderId: order.protectionClientIds.stop } : {})
+          }), "Binance stop-loss");
           stopOrderIds.push(String(placed.orderId));
         } catch (error) {
           // Fail loud: an unprotected position is worse than none. Close it and report.
-          await this.placeMarket(order.symbol, closeSide, qty, true).catch(() => undefined);
+          const safety = await this.attemptSafetyClose(order, closeSide, qty);
           const message = error instanceof Error ? error.message : "stop rejected";
-          return { ok: false, message: `Stop-loss rejected (${message}) — entry closed for safety`, fills: [], protection: { requested: true, confirmed: false, message, entryOrderId, stopOrderIds, takeProfitOrderIds, verification: "order_ids" }, position: await this.position(order.symbol).catch(() => null), account: await this.account().catch(() => undefined) };
+          return {
+            // The entry acknowledgement is real even though the compound
+            // operation failed. Keep the durable entry reservation alive and
+            // force the engine into its unprotected-entry pause path.
+            ok: true,
+            message: protectionFailureMessage("Stop-loss", message, safety),
+            fills: [],
+            pendingOrder: entryOrderId ? pendingMarketOrder(order, entryOrderId, qty, false) : undefined,
+            protection: {
+              requested: true,
+              confirmed: false,
+              message,
+              entryOrderId,
+              stopOrderIds,
+              takeProfitOrderIds,
+              safetyCloseAttempted: true,
+              safetyCloseConfirmed: safety.confirmed,
+              safetyCloseOrderId: safety.orderId,
+              safetyCloseClientId: safety.clientId,
+              verification: "order_ids"
+            },
+            ...(await this.acceptedState(order.symbol))
+          };
         }
       }
       try {
-        for (const tp of order.takeProfits ?? []) {
+        for (const [index, tp] of (order.takeProfits ?? []).entries()) {
           const trg = tp.priceBasis === "price" ? tp.price : side === "BUY" ? price * (1 + tp.price / 100) : price * (1 - tp.price / 100);
           const tpQty = roundToStep(tp.qtyBasis === "abs" ? tp.qty : qty * (tp.qty / 100), filters?.stepSize);
-          const placed = await this.signed("POST", "/fapi/v1/order", { symbol: order.symbol, side: closeSide, type: "TAKE_PROFIT_MARKET", stopPrice: fmtPrice(trg, filters), quantity: fmtQty(tpQty, filters), reduceOnly: "true" }) as { orderId?: string | number };
-          if (placed.orderId === undefined) throw new Error("take-profit acknowledgement did not include an order ID");
+          const clientId = order.protectionClientIds?.takeProfits?.[index];
+          const placed = requireOrderAcknowledgement(await this.signed("POST", "/fapi/v1/order", {
+            symbol: order.symbol, side: closeSide, type: "TAKE_PROFIT_MARKET", stopPrice: fmtPrice(trg, filters), quantity: fmtQty(tpQty, filters), reduceOnly: "true",
+            ...(clientId ? { newClientOrderId: clientId } : {})
+          }), "Binance take-profit");
           takeProfitOrderIds.push(String(placed.orderId));
         }
       } catch (error) {
-        await Promise.allSettled([...stopOrderIds, ...takeProfitOrderIds].map((orderId) =>
-          this.signed("DELETE", "/fapi/v1/order", { symbol: order.symbol, orderId })
+        const protectionOrderIds = [...stopOrderIds, ...takeProfitOrderIds];
+        const cancellations = await Promise.allSettled(protectionOrderIds.map((orderId) =>
+          this.signed("DELETE", "/fapi/v1/order", { symbol: order.symbol, orderId }).then((ack: { orderId?: string | number; status?: string }) => {
+            if (String(ack.orderId) !== orderId || ack.status !== "CANCELED") {
+              throw ambiguousAcknowledgement(`Binance cancellation for ${orderId}`, "its order identity or cancelled status was missing");
+            }
+          })
         ));
-        await this.placeMarket(order.symbol, closeSide, qty, true).catch(() => undefined);
-        const message = error instanceof Error ? error.message : "take-profit rejected";
-        return { ok: false, message: `Take-profit rejected (${message}) — entry closed for safety`, fills: [], protection: { requested: true, confirmed: false, message, entryOrderId, stopOrderIds, takeProfitOrderIds, verification: "order_ids" }, position: await this.position(order.symbol).catch(() => null), account: await this.account().catch(() => undefined) };
+        const orphanProtectionOrderIds = protectionOrderIds.filter((_, index) => cancellations[index]?.status === "rejected");
+        const safety = await this.attemptSafetyClose(order, closeSide, qty);
+        const cause = error instanceof Error ? error.message : "take-profit rejected";
+        const message = withOrphanProtectionWarning(cause, orphanProtectionOrderIds);
+        return {
+          ok: true,
+          message: protectionFailureMessage("Take-profit", message, safety),
+          fills: [],
+          pendingOrder: entryOrderId ? pendingMarketOrder(order, entryOrderId, qty, false) : undefined,
+          protection: {
+            requested: true,
+            confirmed: false,
+            message,
+            entryOrderId,
+            stopOrderIds,
+            takeProfitOrderIds,
+            safetyCloseAttempted: true,
+            safetyCloseConfirmed: safety.confirmed,
+            safetyCloseOrderId: safety.orderId,
+            safetyCloseClientId: safety.clientId,
+            orphanProtectionOrderIds,
+            verification: "order_ids"
+          },
+          ...(await this.acceptedState(order.symbol))
+        };
       }
-      return { ok: true, message: `Placed ${order.type} ${side} ${qty} ${order.symbol}`, fills: [], protection: { requested: true, confirmed: true, entryOrderId, stopOrderIds, takeProfitOrderIds, verification: "order_ids" }, position: await this.position(order.symbol), account: await this.account() };
+      return {
+        ok: true,
+        message: `Placed ${order.type} ${side} ${qty} ${order.symbol}`,
+        fills: [],
+        pendingOrder: entryOrderId ? pendingMarketOrder(order, entryOrderId, qty, false) : undefined,
+        protection: { requested: true, confirmed: true, entryOrderId, stopOrderIds, takeProfitOrderIds, verification: "order_ids" },
+        ...(await this.acceptedState(order.symbol))
+      };
     }
-    return { ok: true, message: `Placed ${order.type} ${side} ${qty} ${order.symbol}`, fills: [], position: await this.position(order.symbol), account: await this.account() };
+    return {
+      ok: true,
+      message: `Placed ${order.type} ${side} ${qty} ${order.symbol}`,
+      fills: [],
+      pendingOrder: entryOrderId ? pendingMarketOrder(order, entryOrderId, qty, false) : undefined,
+      ...(await this.acceptedState(order.symbol))
+    };
+  }
+
+  private async attemptSafetyClose(order: ExecOrder, side: "BUY" | "SELL", qty: number) {
+    const clientId = order.protectionClientIds?.safetyClose ?? safetyCloseClientId(order.clientId, this.botId);
+    try {
+      const placed = await this.placeMarket(
+        order.symbol,
+        side,
+        qty,
+        true,
+        order.positionSide,
+        clientId
+      ) as { orderId?: string | number };
+      if (placed.orderId === undefined) {
+        return { confirmed: false, clientId, error: "emergency close acknowledgement omitted its order ID" };
+      }
+      return { confirmed: true, clientId, orderId: String(placed.orderId) };
+    } catch (error) {
+      return {
+        confirmed: false,
+        clientId,
+        error: error instanceof Error ? error.message : "emergency close rejected"
+      };
+    }
   }
 
   private async placeOrder(order: ExecOrder, side: "BUY" | "SELL", qty: number, price: number, filters?: SymbolFilters) {
@@ -246,13 +388,42 @@ export class BinanceAdapter implements ExchangeAdapter {
     else { params.type = order.type.includes("stop") ? "STOP_MARKET" : "TAKE_PROFIT_MARKET"; params.stopPrice = fmtPrice(order.trgPrice ?? price, filters); }
     if (this.market === "futures" && order.reduceOnly) params.reduceOnly = "true";
     if (order.clientId) params.newClientOrderId = order.clientId;
-    return this.signed("POST", path, params);
+    return requireOrderAcknowledgement(await this.signed("POST", path, params), "Binance order");
   }
 
   private async cancelAll(symbol: string) {
     if (this.market === "futures") return this.signed("DELETE", "/fapi/v1/allOpenOrders", { symbol });
     const open = (await this.signed("GET", "/api/v3/openOrders", { symbol })) as Array<{ orderId: number }>;
-    await Promise.allSettled(open.map((o) => this.signed("DELETE", "/api/v3/order", { symbol, orderId: String(o.orderId) })));
+    await Promise.all(open.map((o) => this.signed("DELETE", "/api/v3/order", { symbol, orderId: String(o.orderId) })));
+  }
+
+  private async ensureLeverage(symbol: string, leverage: number): Promise<void> {
+    let setError: unknown;
+    try {
+      const result = (await this.signed("POST", "/fapi/v1/leverage", { symbol, leverage: String(leverage) })) as { leverage?: number };
+      if (Number(result.leverage) === leverage) return;
+      setError = new Error(`Binance did not confirm requested leverage ${leverage}x`);
+    } catch (error) {
+      setError = error;
+    }
+
+    try {
+      const rows = (await this.signed("GET", "/fapi/v2/positionRisk", { symbol })) as Array<{ symbol?: string; leverage?: string }>;
+      const row = rows.find((candidate) => candidate.symbol === symbol);
+      if (row && Number(row.leverage) === leverage) return;
+    } catch {
+      // Preserve the original set failure; reconciliation is read-only evidence,
+      // not a reason to replace a more precise mutation error.
+    }
+    throw setError;
+  }
+
+  private async acceptedState(symbol: string, fallback?: PositionState | null) {
+    const [position, account] = await Promise.allSettled([this.position(symbol), this.account()]);
+    return {
+      position: position.status === "fulfilled" ? position.value : fallback,
+      account: account.status === "fulfilled" ? account.value : undefined
+    };
   }
 
   private async applySet(order: ExecOrder): Promise<ExecResult> {
@@ -299,47 +470,35 @@ export class BinanceAdapter implements ExchangeAdapter {
     return Number(row?.free ?? 0);
   }
 
-  private async placeMarket(symbol: string, side: "BUY" | "SELL", qty: number, reduceOnly: boolean) {
+  private async placeMarket(
+    symbol: string,
+    side: "BUY" | "SELL",
+    qty: number,
+    reduceOnly: boolean,
+    positionSide?: "long" | "short",
+    clientId?: string
+  ) {
     const path = this.market === "futures" ? "/fapi/v1/order" : "/api/v3/order";
     const filters = await binanceFilters(symbol, this.market).catch(() => undefined);
     const rounded = roundToStep(qty, filters?.stepSize);
     const params: Record<string, string> = { symbol, side, type: "MARKET", quantity: fmtQty(rounded, filters) };
-    if (this.market === "futures" && reduceOnly) params.reduceOnly = "true";
-    return this.signed("POST", path, params);
+    if (this.market === "futures" && positionSide) params.positionSide = positionSide.toUpperCase();
+    else if (this.market === "futures" && reduceOnly) params.reduceOnly = "true";
+    if (clientId) params.newClientOrderId = clientId;
+    return requireOrderAcknowledgement(await this.signed("POST", path, params), "Binance market order");
   }
 
   private async signed(method: "GET" | "POST" | "DELETE", path: string, params: Record<string, string> = {}): Promise<any> {
-    if (!this.keys.apiKey || !this.keys.apiSecret) throw new Error("Binance API keys are not set");
-    this.requestGuard.assertAvailable();
-    const query = new URLSearchParams({ ...params, timestamp: String(Date.now()), recvWindow: "5000" });
-    const signature = createHmac("sha256", this.keys.apiSecret).update(query.toString()).digest("hex");
-    query.append("signature", signature);
-    const url = `${this.base}${path}?${query.toString()}`;
-    let res: Response;
-    try {
-      res = await fetch(url, { method, headers: { "X-MBX-APIKEY": this.keys.apiKey } });
-    } catch (error) {
-      throw new ExchangeTransportError(`Binance transport failed: ${error instanceof Error ? error.message : error}`, method !== "GET", { cause: error });
-    }
-    this.requestGuard.observeHttpResponse(res);
-    if (!res.ok) {
-      const raw = await res.text();
-      let code: number | undefined;
-      let detail = raw;
-      try {
-        const parsed = JSON.parse(raw) as { code?: number; msg?: string };
-        code = parsed.code;
-        detail = parsed.msg ?? raw;
-      } catch {
-        // Preserve non-JSON exchange/proxy errors verbatim.
-      }
-      this.requestGuard.detectClockSkew(code, detail, res.headers?.get?.("date") ?? null);
-      const message = `Binance HTTP ${res.status}: ${raw}`;
-      if (method !== "GET" && res.status >= 500) throw new ExchangeTransportError(message, true);
-      throw new Error(message);
-    }
-    return res.json();
+    return this.client.request(method, path, params);
   }
+}
+
+function requireOrderAcknowledgement(value: unknown, context: string): { orderId: string | number } {
+  const acknowledgement = requireExchangeObject(value, context, true);
+  if (typeof acknowledgement.orderId === "string" || typeof acknowledgement.orderId === "number") {
+    return { ...acknowledgement, orderId: acknowledgement.orderId } as { orderId: string | number };
+  }
+  throw ambiguousAcknowledgement(context, "its order ID was missing");
 }
 
 /** Format qty for the wire: snap to stepSize when known, else the legacy 6-dp trim. */
@@ -374,4 +533,43 @@ function baseAsset(symbol: string): string {
   const quotes = ["USDT", "USDC", "FDUSD", "BUSD", "TUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "USD"];
   const quote = quotes.find((item) => symbol.endsWith(item));
   return quote ? symbol.slice(0, -quote.length) : symbol;
+}
+
+interface SafetyCloseOutcome {
+  confirmed: boolean;
+  clientId: string;
+  orderId?: string;
+  error?: string;
+}
+
+function safetyCloseClientId(entryClientId: string | undefined, botId: string): string {
+  const root = entryClientId ?? `${botId.slice(0, 12)}-${Date.now()}`;
+  return `${root.slice(0, 27)}-safety`;
+}
+
+function protectionFailureMessage(label: string, cause: string, safety: SafetyCloseOutcome): string {
+  if (safety.confirmed) {
+    return `${label} rejected (${cause}); entry was accepted and emergency close ${safety.orderId} was accepted. Trading is paused until both executions are accounted.`;
+  }
+  return `${label} rejected (${cause}); entry was accepted and emergency close failed (${safety.error ?? "unconfirmed acknowledgement"}). An unprotected position may remain; trading is paused.`;
+}
+
+function withOrphanProtectionWarning(cause: string, orderIds: string[]): string {
+  return orderIds.length === 0
+    ? cause
+    : `${cause}; cancellation was not confirmed for protection order(s) ${orderIds.join(", ")}; orphan protection may remain`;
+}
+
+function pendingMarketOrder(order: ExecOrder, id: string, qty: number, reduceOnly: boolean): PendingOrder {
+  return {
+    id,
+    clientId: order.clientId,
+    symbol: order.symbol,
+    side: order.side ?? "buy",
+    type: "market",
+    qty,
+    reduceOnly,
+    tif: order.tif ?? "GTC",
+    createdAt: Date.now()
+  };
 }

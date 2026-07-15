@@ -1,0 +1,62 @@
+[
+  {
+    "blockHeight": 100,
+    "execMode": 102,
+    "snapshot": true,
+    "operations": [
+      {
+        "kind": "place",
+        "order": {
+          "orderId": "bid-1",
+          "clobPairId": 0,
+          "side": "bid",
+          "price": 100,
+          "initialQuantums": 10,
+          "filledQuantums": 0
+        }
+      },
+      {
+        "kind": "place",
+        "order": {
+          "orderId": "ask-1",
+          "clobPairId": 0,
+          "side": "ask",
+          "price": 101,
+          "initialQuantums": 12,
+          "filledQuantums": 0
+        }
+      }
+    ]
+  },
+  {
+    "blockHeight": 101,
+    "execMode": 0,
+    "snapshot": false,
+    "operations": [{ "kind": "fill", "orderId": "bid-1", "totalFilledQuantums": 4 }]
+  },
+  {
+    "blockHeight": 101,
+    "execMode": 7,
+    "snapshot": false,
+    "operations": [{ "kind": "fill", "orderId": "bid-1", "totalFilledQuantums": 2 }]
+  },
+  {
+    "blockHeight": 102,
+    "execMode": 0,
+    "snapshot": false,
+    "operations": [
+      { "kind": "remove", "orderId": "ask-1" },
+      {
+        "kind": "place",
+        "order": {
+          "orderId": "ask-2",
+          "clobPairId": 0,
+          "side": "ask",
+          "price": 103,
+          "initialQuantums": 8,
+          "filledQuantums": 0
+        }
+      }
+    ]
+  }
+]

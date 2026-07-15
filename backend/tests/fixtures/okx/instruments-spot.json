@@ -1,0 +1,16 @@
+{
+  "code": "0",
+  "msg": "",
+  "data": [
+    {
+      "instType": "SPOT",
+      "instId": "BTC-USDT",
+      "baseCcy": "BTC",
+      "quoteCcy": "USDT",
+      "tickSz": "0.1",
+      "lotSz": "0.00000001",
+      "minSz": "0.00001",
+      "state": "live"
+    }
+  ]
+}

@@ -598,7 +598,7 @@ class Converter {
     if (value.t === "str") throw new PineConvertError("request.security() expression returned text, not a numeric/boolean series.");
     this.warnOnce(
       "requestsecurity",
-      "request.security() imported as an external-series block. Preview/backtest use attached external candles when available, otherwise fall back to the current chart."
+      "request.security() imported as an external-series block. Research/live runs require resolved external candles; current-chart fallback is preview-only and must be explicitly enabled."
     );
     const source = value.t === "bool" ? boolToNumericSeries(value.e) : value.e;
     const wrapped: NumExpr = { k: "security", symbol, timeframe, source };

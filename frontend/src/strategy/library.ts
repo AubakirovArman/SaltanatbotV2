@@ -52,7 +52,7 @@ export interface StrategyArtifact {
   history?: ArtifactRevision[];
   migration?: { fromSchema: number; toSchema: number; migratedAt: number };
   provenance?: {
-    source: "local" | "pine" | "file" | "share" | "wizard" | "plugin";
+    source: "local" | "pine" | "file" | "share" | "wizard" | "generator" | "plugin";
     importedAt?: number;
     parentId?: string;
     parentHash?: string;
@@ -80,6 +80,13 @@ export interface StrategyArtifact {
     report: PineConversionReport;
     sourceMap: PineSourceMapEntry[];
   };
+}
+
+export type PortableArtifactProvenanceSource = Extract<NonNullable<StrategyArtifact["provenance"]>["source"], "file" | "wizard" | "generator">;
+
+/** Provenance labels are descriptive, not a trust boundary; unrecognized portable labels fail closed to "file". */
+export function portableArtifactProvenanceSource(source: string): PortableArtifactProvenanceSource {
+  return source === "wizard" || source === "generator" ? source : "file";
 }
 
 export function createDefaultStrategyLibrary(indicators: IndicatorConfig[]) {

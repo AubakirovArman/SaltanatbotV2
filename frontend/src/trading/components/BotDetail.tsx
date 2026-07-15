@@ -89,10 +89,24 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
         <MetricCard label={tradingText(locale, "unrealizedPnl")} value={unrealizedPnl.toFixed(2)} tone={unrealizedPnl >= 0 ? "up" : "down"} />
       </section>
 
+      {bot.exchange !== "paper" && (
+        <section className="trade-cards trade-risk-cards" aria-label={tradingText(locale, "liveRiskLimits")}>
+          <MetricCard label={tradingText(locale, "maxPositionQuote")} value={formatLimit(bot.maxPositionQuote, locale)} />
+          <MetricCard label={tradingText(locale, "maxOrderQuote")} value={formatLimit(bot.maxOrderQuote, locale)} />
+          <MetricCard label={tradingText(locale, "maxDailyLossQuote")} value={formatLimit(bot.maxDailyLossQuote, locale)} />
+          <MetricCard label={tradingText(locale, "maxOpenOrders")} value={bot.maxOpenOrders?.toString() ?? tradingText(locale, "notConfigured")} />
+          <MetricCard label={tradingText(locale, "maxLeverage")} value={`${bot.leverage}×`} />
+        </section>
+      )}
+
       <BotCommandConsole bot={bot} output={commandOutput} onRun={runCommand} locale={locale} />
       <BotActivity symbol={bot.symbol} orders={orders} orderJournal={orderJournal} fills={fills} logs={logs} onCommand={runCommand} locale={locale} />
     </div>
   );
+}
+
+function formatLimit(value: number | undefined, locale: Locale): string {
+  return value === undefined ? tradingText(locale, "notConfigured") : `${value.toLocaleString(locale)} USDT`;
 }
 
 function MetricCard({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "up" | "down" }) {

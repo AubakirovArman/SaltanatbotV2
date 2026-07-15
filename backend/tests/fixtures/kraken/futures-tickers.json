@@ -1,0 +1,65 @@
+{
+  "result": "success",
+  "serverTime": "2026-07-14T12:34:56.000Z",
+  "tickers": [
+    {
+      "tag": "perpetual",
+      "pair": "XBT:USD",
+      "symbol": "PI_XBTUSD",
+      "bid": 64544.0,
+      "bidSize": 1000,
+      "ask": 64544.5,
+      "askSize": 1200,
+      "vol24h": 15304,
+      "volumeQuote": 7305.2,
+      "indexPrice": 50000,
+      "last": 64544.5,
+      "lastTime": "2026-07-14T12:34:55.000Z",
+      "lastSize": 100,
+      "suspended": false,
+      "fundingRate": 0.000000002,
+      "fundingRatePrediction": 0.0000000016,
+      "postOnly": false
+    },
+    {
+      "tag": "perpetual",
+      "pair": "XBT:USD",
+      "symbol": "PF_XBTUSD",
+      "bid": 64543.0,
+      "bidSize": 2.5,
+      "ask": 64544.0,
+      "askSize": 3.25,
+      "vol24h": 1000,
+      "volumeQuote": 64000000,
+      "indexPrice": 64543.5,
+      "last": 64543.5,
+      "lastTime": "2026-07-14T12:34:55.000Z",
+      "lastSize": 0.1,
+      "suspended": false,
+      "fundingRate": 0.0001,
+      "fundingRatePrediction": 0.00008,
+      "postOnly": false
+    },
+    {
+      "tag": "quarter",
+      "pair": "XBT:USD",
+      "symbol": "FI_XBTUSD_260925",
+      "bid": 65000,
+      "bidSize": 900,
+      "ask": 65001,
+      "askSize": 800,
+      "vol24h": 100,
+      "volumeQuote": 200,
+      "last": 65000.5,
+      "lastTime": "2026-07-14T12:34:54.000Z",
+      "lastSize": 10,
+      "suspended": false,
+      "postOnly": false
+    },
+    {
+      "symbol": "in_xbtusd",
+      "last": 64543.5,
+      "lastTime": "2026-07-14T12:34:55.000Z"
+    }
+  ]
+}

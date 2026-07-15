@@ -8,7 +8,10 @@
  * throttling recovers on its own instead of surfacing as a hard failure.
  */
 
+import { readBoundedText } from "../http/boundedResponse.js";
+
 const RETRY_STATUS = new Set([429, 418]);
+const MAX_RETRY_ERROR_BODY_BYTES = 64 * 1024;
 
 export interface FetchWithRetryOptions extends RequestInit {
   /** Maximum retry attempts after the first try (default 3). */
@@ -38,8 +41,9 @@ export async function fetchWithRetry(
       if (!RETRY_STATUS.has(response.status) || attempt === maxRetries) {
         return response;
       }
-      // Drain the body so the socket can be reused before we wait and retry.
-      await response.arrayBuffer().catch(() => undefined);
+      // Drain only a small bounded body so a throttled upstream cannot force an
+      // unbounded allocation before the retry delay.
+      await readBoundedText(response, MAX_RETRY_ERROR_BODY_BYTES, () => new Error("rate-limit response is too large")).catch(() => undefined);
       await sleep(backoffDelay(attempt, maxDelayMs, response.headers.get("retry-after")));
     } catch (error) {
       // Network-level failure (DNS, reset, abort). Retry unless we are out of budget.

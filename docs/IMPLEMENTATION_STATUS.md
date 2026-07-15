@@ -1,23 +1,194 @@
 # Improvement implementation status
 
-Updated: 2026-07-13
+Updated: 2026-07-15
 
 Active branch: `main`
 
 Source plan: [MASTER_IMPROVEMENT_PLAN.md](./MASTER_IMPROVEMENT_PLAN.md)
 
-This is the execution ledger. It records what is proven complete, what is active, and what remains. A checked item requires code plus the listed verification evidence.
+This is the execution ledger. It records what is proven complete, what is active, and what remains. A
+checked item proves only the named slice and its listed evidence; it does **not** mean every P0, P1
+or P2 epic is complete. The canonical thirty-row completion contract remains
+[P0/P1/P2 execution ledger](P0_P1_P2_EXECUTION_PLAN.md).
 
-## Completed
+Evidence levels are not interchangeable: an **engine** is pure code; **runtime-connected** means the
+server can mount it when configured; **browser-delivered** means an EN/RU/KK workflow exists;
+**deterministic** means fixtures/tests pass; a **public canary** is one credential-free live
+observation; **private evidence** requires authenticated account/order/fill observations; and
+**production-ready** additionally requires sustained runtime, operational, legal and applicable
+private gates. No earlier level implies a later one.
 
-### Cross-exchange spot/perpetual arbitrage screener — 2026-07-13
+## Delivered slices (not full roadmap completion)
+
+### Product workspaces, strategy research and market evidence — 2026-07-15
+
+- [x] Separate the primary browser information architecture into **Monitoring**, **Automation** and
+  read-only **Screener**. Automation retains explicit **Strategies** and **Robots** sub-sections.
+- [x] Add a global running-robot count and a browser robots/portfolio center that groups available
+  live exchange-account and isolated paper-bot state. It shows available balance/equity, realized
+  P&L, positions and open orders, labels own versus managed account metadata, and has explicit
+  loading, error and empty states. Margin and borrowing remain unavailable when the portfolio API
+  does not supply them; the UI does not synthesize values.
+- [x] Add admin-only CRUD for non-secret Binance/Bybit trading-account metadata with enabled and
+  own/managed fields, secure-origin mutation checks and in-use deletion/disable guards. Credential
+  storage remains one encrypted key set per exchange. Additional registry rows are metadata-only
+  and do not represent independently authenticated live accounts.
+- [x] Let visible-range horizontal Volume Profile use chart candles or an independently selected
+  `1m`, `5m`, `15m`, `1h`, `4h` or `1d` source. Bounded paging is cancellable and persisted; an
+  incomplete, fallback/synthetic, unavailable or over-budget source fails closed instead of mixing
+  fabricated volume into the profile. Candle-volume display remains a separate control.
+- [x] Add deterministic, bounded genetic parameter optimization in the existing Web Worker with up
+  to 12 axes, seeded population, tournament selection, crossover, mutation, elitism, deduplication,
+  explicit cancel/phase progress, train/validation composite fitness and one final untouched test of
+  the preselected winner only. Applying a passing winner updates Blockly and is bound to the exact
+  strategy/market/timeframe/history/config evidence; undersized warm-up windows fail closed. The
+  score is comparative backtest research, not a profitability forecast.
+- [x] Add a separate deterministic structural strategy generator for long/short trend,
+  mean-reversion, breakout and momentum IR. It provides bounded seeded crossover/mutation,
+  fingerprints, deduplication, provenance, canonical validation and reviewed import into Strategy
+  Studio. The browser generator currently produces diversity only: it does not fetch candles, run
+  backtests or rank candidates. A pure multi-market ranker accepts caller-supplied train/OOS metrics,
+  but no browser multi-market fitness pipeline is connected.
+- [x] Publish the strict `market-opportunity-v1` research envelope and a short-lived bounded browser
+  handoff from supported Screener rows to an Automation research card. The card exposes economics,
+  legs, evidence and blockers; it never authorizes live execution. It is not the exact
+  `paper-multi-leg-plan-v1` consumed by the paper journal, so opening the card cannot place an order.
+- [x] Add an admin-only Order-book ML research foundation and Screener workflow for uploaded,
+  reconstructed, sequence-verified aggregate L2 snapshots. It includes fail-closed quality checks,
+  past-only features, future-label provenance, purged chronological train/validation/test splits,
+  a train-only-scaled ridge baseline and exact-scope inference. The bounded API holds at most four
+  30-minute in-memory sessions, 2,000 snapshots and three models per session; there is no online
+  collector or durable model registry. Anonymous aggregate liquidity cannot establish participant
+  identity, the score is not a calibrated probability, and neither the UI nor API can place paper
+  or live orders.
+
+### Arbitrage P0 correctness and basis workspace — 2026-07-14
 
 - [x] Aggregate public Binance/Bybit spot and perpetual best bid/ask data without credentials.
-- [x] Compare buy-spot ask with other-venue perpetual bid in both venue directions.
+- [x] Compare buy-spot ask with same- and other-venue perpetual bid in all four Binance/Bybit directions.
 - [x] Report configurable cost-adjusted edge, top-book capacity and funding separately.
 - [x] Exclude delivery/non-executable rows and expose partial/stale source status explicitly.
-- [x] Add lazy EN/RU/KK workspace, accessible table, responsive filters, docs and unit/API/E2E tests.
+- [x] Bootstrap discovery with bounded REST and maintain shared direct public WebSockets for all four venue/market sources.
+- [x] Mark a socket healthy only after valid market data, terminate silent feeds and reconnect with bounded jittered exponential backoff.
+- [x] Add on-demand two-book depth with one matched base quantity, common-step rounding, residual-delta reporting and fail-closed paper entry.
+- [x] Normalize Binance/Bybit asset/instrument IDs, lot/tick/minimum filters and funding intervals in a cached registry, use verified execution filters for depth, require strict venue-native identity for same-venue routes and reviewed economic identity (currently BTC/ETH) before cross-venue matching.
+- [x] Preserve per-leg exchange/receive timestamps, visibly classify degraded discovery rows and suppress them from alerts, history and paper/live gates outside bounded quote-age or cross-leg-skew limits.
+- [x] Count only discrete registry-verified funding settlements; unknown schedules receive no speculative funding credit.
+- [x] Filter server-side before truncation, rank expected executable dollars by default and expose total/truncated metadata.
+- [x] Persist a sampled seven-day SQLite opportunity history and expose a bounded history endpoint/chart.
+- [x] Persist authenticated alert rules and a durable at-least-once outbox with per-rule/route crossing, retry/restart/cancellation and visible delivery state.
+- [x] Add an append-only browser paper ledger with matched entry/exit fills, explicit manually confirmed funding events, deterministic replay, migration and restart recovery.
+- [x] Add route-specific cost waterfall, required capital/margin buffer, convergence scenarios and ranking by net dollars, ROI, edge, capacity or quality.
+- [x] Add lazy EN/RU/KK workspace, accessible table, responsive filters, canonical docs and unit/API/E2E tests.
 - [x] Keep the entire feature read-only; no order placement or guaranteed-profit claim.
+
+### Arbitrage P1 strategy engines and venue products — 2026-07-14
+
+- [x] Publish three-leg Binance/Bybit spot-cycle research from directional REST top-book snapshots with fee/step rounding after every leg, residual dust and fail-closed partial cycles; it does not claim full-depth execution.
+- [x] Publish read-only Bybit `FundingRateArb`, `CarryTrade`, `FutureSpread` and `PerpBasis` native combination books.
+- [x] Add a pure pairwise evaluator for prefunded spot-spot, perpetual-perpetual, reverse carry and dated/calendar spreads with explicit assumptions and `executable: false`.
+- [x] Add deterministic research-only discovery/evaluation for cross-venue spot-spot, reverse carry, perpetual-perpetual funding, spot-dated-future, calendar and perpetual-future routes with exact assumption scopes and bounded HTTP input.
+- [x] Add a bounded four-to-eight-leg spot-cycle generator/simulator with exact accounting units,
+  sequence-verified depth, fee/dust conservation, explicit work limits, a credential-free HTTP
+  boundary and a generated SDK parser that independently checks arithmetic and provenance.
+- [x] Add an isolated OKX spot/swap/futures public adapter and normalized registry metadata.
+- [x] Add bounded selected-instrument OKX/Gate/Hyperliquid/Deribit/Kraken/Coinbase/dYdX/KuCoin/MEXC
+  public WebSocket feeds and a continuous route-family discovery bridge. OKX/Gate/Deribit/Coinbase/
+  KuCoin/MEXC retain protocol sequence proof; Kraken Spot uses checksum proof, Kraken Futures and
+  dYdX stay sequence-observed, and Hyperliquid remains an atomic-snapshot signal. The operator-
+  configurable server lifecycle, read-only API/strict SDK and EN/RU/KK browser source/route view with
+  dynamic venue/source filters are runtime-connected; actual subscriptions still require explicit
+  operator allowlist activation, and dedicated venue pages/chart selectors are not delivered.
+- [x] Add server-owned `continuous-market-economics-v1` evaluation to the same bounded route-family
+  snapshot. It evaluates the complete compatible universe below the 24-instrument/552-candidate
+  hard bound before a maximum-500 publication slice, with separate evaluated/published counts and
+  net quote-value/basis/capacity/continuity/freshness ranking. It matches the maximum common quantity visible at two fresh sequence/checksum-verified
+  top-book entry quotes, fences connection generations and reports entry quote-value difference and
+  basis before/after operator-environment public taker quote-equivalent fee estimates. Fee asset and
+  exposure impact are unverified. Ordered long/short economic identity provenance includes
+  source/version/as-of/valid-until, while identity validity and all derived arithmetic fail closed
+  in the engine and strict SDK. Every result remains `readOnly`, `researchOnly`, `executable: false`
+  and strategy-blocked: account tier, balances, inventory, networks, borrow, margin, full-horizon
+  funding, convergence, expiry/delivery, exit and execution evidence are not inferred.
+- [x] Publish explicit continuous runtime/discovery coverage (`complete`, `current`, retained-prior
+  state and reason). A failed later registry refresh can retain previous discovery only as
+  incomplete/non-current evidence; a first failure has no successful `refreshedAt`. Continuous
+  lifecycle skips market-data-blocked zero-evidence candidates, preserves exact failure codes and
+  propagates refresh state, stale sources and candidate/economics truncation while keeping every
+  accepted market observation evidence-incomplete and `actionable: false`.
+- [x] Add a bounded file-backed continuous-route allowlist loader and the reviewed
+  `config/continuous-routes.research.json` research configuration. The file is not auto-activated:
+  a deployment must set the absolute `ARBITRAGE_CONTINUOUS_ROUTES_FILE` path (or the mutually
+  exclusive inline JSON variable), and repository/deterministic fixture presence is not proof that
+  a running process opened those subscriptions.
+- [x] Mount the public no-store `continuous-feed-health-v1` endpoint, strict generated SDK parser/
+  client method and EN/RU/KK browser diagnostics for aggregate state, reconnect generation, last
+  receive and fresh current-generation continuity. This is bounded public transport observability;
+  `idle`, `healthy` or protocol-ready does not prove route economics, private evidence, soak or
+  production readiness.
+- [x] Add a daily/manual nine-target credential-free public-feed canary with deterministic
+  route-ready/research-only book, continuity-protocol and funding requirements, bounded schema-v3
+  JSON, always-uploaded failure artifacts and explicit no-order, no-soak and
+  no-mainnet-readiness fields. The 2026-07-14 local run passed OKX, Gate, Hyperliquid, Deribit
+  public testnet, Coinbase, dYdX, KuCoin and MEXC; Kraken remained an explicit host TLS-egress
+  failure. Live runs exposed and regression-tested KuCoin binary-marked JSON, Coinbase's
+  connection-global cross-channel sequence and the MEXC snapshot/delta bootstrap race. The earlier
+  Coinbase 4.8 MiB/43k-row snapshot bounds remain fixed without increasing retained book depth.
+
+### Arbitrage P2 reproducibility, scale and extension surface — 2026-07-14
+
+- [x] Add immutable replay manifests, event digests, point-in-time listing/delisting, version provenance and deterministic basis backtests using executable entry and exit depth.
+- [x] Prove 10,000-route dependency-indexed recomputation, bounded browser snapshots and the deterministic slow-client disconnect policy; a real overloaded-socket transport test remains separate from the policy proof.
+- [x] Add a generated, transport-validating, public/read-only TypeScript SDK with no credential or order methods.
+- [x] Add a bounded machine-readable documentation truth contract and deterministic CI guard that
+  imports the rendered scanner modes, shared public registry and continuous protocol allowlist,
+  probes each continuous factory branch without networking, and cross-checks generated endpoint
+  totals plus the canonical English capability rows.
+- [x] Add one bounded public market-data facade for allowlisted venue adapters with typed upstream errors.
+- [x] Add isolated credential-free Gate.io and Hyperliquid public adapters with recorded fixtures and fail-closed native quantity rules.
+- [x] Add and expose the isolated Deribit futures/options public adapter plus pure put-call parity,
+  conversion/reversal, box and synthetic-forward engine through a bounded strict HTTP/SDK research
+  surface and lazy EN/RU/KK caller-supplied scenario UI; live selected-book wiring, private execution
+  and order controls remain absent by design.
+- [x] Add an isolated dYdX public Indexer perpetual metadata/selected-book/funding adapter plus
+  bounded pure reducers for Indexer logical sequencing and decoded full-node optimistic/finalized
+  state. It is registered in the shared public facade, instrument registry and generic SDK path.
+  The shared continuous hub opens bounded unbatched Indexer books with connected identity and exact
+  `message_id` continuity, but publishes them only as `sequence-observed`; streaming funding is not
+  invented. Every book remains non-canonical and route-ineligible. Owned-node reconnect/reorg
+  evidence, dedicated venue UX and all wallet/private execution remain open.
+- [x] Verify the scanner's RU/KK mode cycle, keyboard activation, semantic tables, axe audit, mobile containment and 200% text-size behavior; mobile workspace buttons retain localized accessible names when their visible labels collapse to icons.
+
+### Arbitrage verification, scenario and operator surfaces — 2026-07-14
+
+- [x] Add a selected-route triangular verifier that reconstructs three bounded Binance/Bybit Spot
+  L2 books, checks sequence and connection-generation leases, and repeats exact fee, lot, depth,
+  VWAP and residual simulation through non-executable HTTP, strict SDK and EN/RU/KK browser views.
+- [x] Mount `funding-curve-v1` through public HTTP and the strict read-only SDK, and add a lazy
+  localized scenario workspace for fresh perpetual instruments with verified discrete schedules,
+  exact reviewed economic identity and additive stress. The result is a rate projection, not P&L.
+- [x] Replace the browser-side capability/registry join with a server-owned funding universe that
+  intersects fresh verified trading perpetuals with the adapters actually implemented by Funding
+  Curve. Strict API/SDK bounds, catalog validity and accessible loading/error/empty/partial states
+  prevent unsupported Binance/Bybit selections from appearing as usable.
+- [x] Add the localized collapsible fork guide for double/pairwise, triple/triangular,
+  intra-exchange and bounded four-to-eight-leg terminology without presenting any route as atomic
+  or guaranteed profit.
+- [x] Mount the protected family-aware research-alert policy/outbox API, server lifecycle and
+  EN/RU/KK operator UI. Its account-aware evaluator still has no server-owned candidate/economics
+  producer connection; continuous market-only lifecycle observations remain evidence-incomplete and
+  do not cross this boundary. It therefore cannot yet originate a notification from live research
+  candidates and has no order path.
+- [x] Deliver the versioned static reviewed network-identity registry and mount its bounded public
+  `GET /api/network-identity/registry` plus fail-closed `POST /api/network-identity/preflight` through
+  the strict public SDK. The snapshot contains reviewed Binance/Bybit BTC/ETH native and Ethereum
+  USDT/USDC representation mappings; it proves identity compatibility only. Dynamic deposit/
+  withdrawal status, fees, limits, confirmations and an arrival observer are absent, so
+  `transferCapabilities` stays empty and preflight cannot establish live transfer readiness.
+
+No item above claims mainnet readiness. The funded 7–14-day Binance/Bybit soak remains explicitly
+excluded by project decision; authenticated exchange smoke is manual and cannot be replaced by a
+fixture or public canary.
 
 ### Reviewed installed-PWA Share Target — 2026-07-13
 
@@ -229,11 +400,20 @@ data, authenticated trading access or deferred execution.
 - [x] Add coarse-pointer guidance and 48px scale/reset controls.
 - [x] Verify the pure gesture model and a production-build Chromium multi-touch journey.
 
-### P0/P1/P2 closure and architecture enforcement — 2026-07-11
+### Earlier trading-safety and architecture closure slice — 2026-07-11
 
 - [x] Require complete `MarketKey` envelopes for trading candle events and prove Bybit/linear routing.
-- [x] Persist protected-entry lifecycle stages and Binance entry/SL/TP identities; fail closed on rejected protection.
-- [x] Persist bot-attributed spot inventory and constrain closes independently of account-wide holdings.
+- [x] Persist protected-entry lifecycle stages and Binance entry/SL/TP identities; after an accepted
+  entry, fail closed on rejected protection without rewriting the entry as rejected or releasing its
+  reservation.
+- [x] Persist bot-attributed Bybit spot inventory and constrain closes independently of account-wide
+  holdings; keep Binance live spot disabled until authenticated spot execution accounting exists.
+- [x] Require explicit positive base `qty` for every risk-increasing live order and reserve
+  accepted/partial/filled-but-unaccounted journal rows plus pending spot-sell inventory.
+- [x] Retain unaccounted partial fills after cancel/expiry and legacy replaced entries; compare
+  futures venue positions with a durable gross-exposure shadow ledger.
+- [x] Merge matched venue/local orders by conservative maximum, fail closed on identity conflicts,
+  forbid live collision overrides and pause on terminal REST status without execution accounting.
 - [x] Migrate the trading store to schema v2 with orders, events, fills, positions and strategy runs.
 - [x] Reconcile every non-terminal order state before resumed automation can trade; ambiguous outcomes require operator action.
 - [x] Enforce a repository-wide 600-line source budget with four reviewed pure-domain exceptions.
@@ -241,7 +421,9 @@ data, authenticated trading access or deferred execution.
 
 Verification:
 
-- Complete TypeScript, Biome, documentation, architecture, Vitest, production build, bundle-budget, 44-scenario Playwright and three-baseline visual gates pass.
+- At that slice, TypeScript, Biome, documentation, architecture, Vitest, production build,
+  bundle-budget, 44-scenario Playwright and three-baseline visual gates passed; this historical gate
+  does not mark the later thirty-row scanner ledger complete.
 - The largest production JavaScript request is below the enforced 200 KiB gzip ceiling; Blockly remains outside the initial Chart shell and is cached separately from project-owned block definitions.
 - The funded 7–14-day Binance/Bybit soak and mainnet-readiness claim remain explicitly excluded.
 
@@ -709,14 +891,14 @@ Current: 44 scenarios implemented; the critical-flow and accessibility checklist
 - [x] Split `TradingView` into auth/bots/orders/portfolio/settings feature modules.
 - [x] Reduce `App.tsx` to composition and routing state.
   - [x] Extract strategy artifact persistence, sharing, creation, import, version/hash and linked-indicator synchronization into `useArtifactLibrary` plus a pure model.
-  - [x] Reduce `App.tsx` from 782 to under 600 lines without changing workspace flows.
+  - [x] Keep `App.tsx` below the architecture budget enforced by `config/source-file-budgets.json` without changing workspace flows.
   - [x] Extract artifact compilation, `request.security`, preview/backtest overlay, input overrides and chart focus into `useChartArtifactOverlay`.
   - [x] Reject stale async overlay results after market/timeframe/request changes and cover the race directly.
-  - [x] Reduce `App.tsx` further to 529 lines.
   - [x] Extract shell/workspace persistence, compare migration and preferences into `useAppShell` plus `shellStorage`.
   - [x] Extract command construction, palette state and global shortcuts into `useAppCommands`.
   - [x] Apply persisted theme before React boot and synchronize native `color-scheme`/theme metadata.
-  - [x] Reduce `App.tsx` to a 291-line workspace composition root.
+  - [x] Extract shell, artifact, command and chart-overlay responsibilities from `App.tsx`.
+  - [ ] Continue decomposing pane, PWA and screener composition before the enforced budget is reached. Exact line counts are intentionally not frozen here because they change with ongoing composition work.
 - [x] Split chart orchestration into dirty render layers.
   - [x] Separate persistent base and transparent interaction canvases.
   - [x] Coalesce rapid invalidations in one RAF with base-before-interaction ordering.
@@ -741,7 +923,8 @@ Current: 44 scenarios implemented; the critical-flow and accessibility checklist
 - [x] Reduce the 940-line `TradingEngine` below 600 lines by extracting runtime contracts, adapter routing, durable state/context, portfolio aggregation and order/reconciliation coordination.
   - [x] Retain one public lifecycle/market-event facade and serial per-bot actor queues.
   - [x] Keep polling/private-stream events on the same durable identity and execution-accounting boundary.
-- [x] Preserve Binance/Bybit private execution IDs, incremental quantities/prices, actual fee assets and venue realized PnL.
+- [x] Preserve Binance USDⓈ-M and Bybit v5 private execution IDs, incremental quantities/prices,
+  actual fee assets and venue realized PnL; Bybit v5 covers enabled spot/linear bots.
 - [x] Deduplicate replayed private executions before durable fill/accounting writes.
 - [x] Display fee amount and asset in the localized fill journal.
 - [x] Reserve proactive exchange request weight with safety headroom and reconcile usage from venue headers.
@@ -761,23 +944,41 @@ Current: 44 scenarios implemented; the critical-flow and accessibility checklist
     - [x] Resolve aggregate snapshots to one durable intent by venue or client identity.
     - [x] Share one ingest boundary between signed polling and future private streams.
     - [x] Ignore duplicate/replayed updates and reject identity conflicts or state/quantity regressions.
-    - [x] Connect authenticated Binance/Bybit stream events to the ingest boundary.
+    - [x] Connect authenticated Binance USDⓈ-M and Bybit v5 stream events to the ingest boundary
+      without treating the Binance futures stream as spot accounting.
 - [x] Add private fill/order stream with polling fallback.
   - [x] Add bounded signed REST order-status polling for Binance and Bybit.
   - [x] Normalize partial, filled, cancelled, expired and rejected venue states.
   - [x] Persist idempotent aggregate execution snapshots and polling audit events.
-  - [x] Add authenticated Binance USDⓈ-M and Bybit private order/execution streams with heartbeat, reconnect and REST gap reconciliation.
+  - [x] Add authenticated Binance USDⓈ-M and Bybit v5 private order/execution streams with
+    heartbeat, reconnect and REST gap reconciliation; Bybit uses `order` + `execution` for enabled
+    spot/linear bots.
 - [x] Require explicit Binance/Bybit SL/TP acknowledgement before protected runtime state.
-- [x] Fail the entry result and issue a best-effort emergency close when requested SL or TP is rejected.
+- [x] When requested SL/TP fails after an accepted entry, preserve the accepted entry and managed
+  state, pause the bot, retain its reservation, and issue a separately identified best-effort
+  reduce-only emergency close whose acknowledgement/failure is explicit.
 - [x] Complete startup reconciliation for every in-flight state.
   - [x] Query signed venue status sequentially for `intent`, `unknown`, `accepted` and `partially_filled` rows before resume.
   - [x] Fall back to matching open orders only when that evidence proves the original command outcome.
   - [x] Require terminal evidence for interrupted cancel commands and manual review for ambiguous replace commands.
   - [x] Mark crash-left intent `unknown` and pause the bot whenever an outcome remains unproven.
-- [x] Keep live spot fail-closed by default behind an explicit experimental inventory override.
-  - [x] Persist deduplicated bot-attributed quantity, weighted average, per-asset fees and remaining quantity from confirmed fills.
+- [x] Disable Binance live spot until authenticated spot execution accounting exists and keep Bybit
+  spot experimental behind `ENABLE_LIVE_SPOT`.
+  - [x] Persist deduplicated bot-attributed quantity, weighted average, per-asset fees and remaining
+    quantity from confirmed Bybit v5 executions.
   - [x] Constrain automated/manual bot closes to attributed inventory and pause instead of using account-wide balance when attribution is missing.
   - [x] Restore attributed inventory on restart and require operator balance verification before resume.
+- [x] Require explicit positive base `qty` for every risk-increasing live order.
+- [x] Keep risk reserved for accepted, partially filled and venue-filled-but-not-accounted journal
+  rows; reserve pending spot sells against attributed inventory.
+- [x] Retain only unaccounted partial fills for cancelled/expired rows and conservatively retain
+  legacy replaced entries until execution accounting is proven.
+- [x] Use the maximum of exact-symbol venue gross positions and the durable futures exposure ledger;
+  merge matched venue/local orders by maximum quantity/price and fail closed on identity conflicts.
+- [x] Disable live `replace` and `turnover` until child lifecycles exist, forbid live collision
+  override and pause a bot when terminal REST reconciliation lacks authenticated execution evidence.
+- [x] Serialize live starts by exchange+symbol and keep managed state after an accepted live close
+  until its authenticated execution is committed.
 - [x] Add fake-exchange transport, protection, status-polling and failure-injection suites.
 - [x] Add opt-in Binance/Bybit testnet release checks.
   - [x] Refuse network access without an explicit runtime arm flag and reject every production/non-HTTPS base URL.

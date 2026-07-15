@@ -1,0 +1,18 @@
+{
+  "timezone": "UTC",
+  "serverTime": 1784023200000,
+  "symbols": [
+    {
+      "symbol": "BTCUSDT",
+      "status": "ENABLED",
+      "baseAsset": "BTC",
+      "baseAssetPrecision": 8,
+      "quoteAsset": "USDT",
+      "quotePrecision": 2,
+      "isSpotTradingAllowed": true,
+      "quoteAmountPrecision": "5",
+      "baseSizePrecision": "0.0001",
+      "tradeSideType": 1
+    }
+  ]
+}

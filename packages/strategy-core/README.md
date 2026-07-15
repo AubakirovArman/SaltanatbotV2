@@ -9,6 +9,7 @@ This workspace is becoming the canonical runtime-neutral strategy domain.
 - Numeric-expression discriminator.
 - Runtime-neutral technical-analysis series used by preview, backtest and live execution.
 - Canonical stateful bar evaluator, execution budgets, intent types and `request.security()` series alignment.
+- `request.security()` is fail-closed by default across backtest/live runtimes; current-chart substitution requires an explicit preview policy and never happens implicitly.
 - Versioned JSON-safe per-bar intent traces with bounded statement explanations and variable diffs.
 
 The TypeScript files are canonical sources. Package builds generate JavaScript for runtime consumers and declarations for TypeScript consumers. The package check fails if any generated evaluator, security-series or TA artifact is stale.

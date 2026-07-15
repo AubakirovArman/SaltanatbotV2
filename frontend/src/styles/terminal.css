@@ -103,7 +103,8 @@
   background: var(--panel-soft);
 }
 
-.mode-tabs {
+.space-tabs,
+.automation-tabs {
   flex: 0 0 auto;
 }
 
@@ -128,12 +129,62 @@
   padding: 0 8px;
 }
 
-.mode-tabs button {
+.space-tabs button,
+.automation-tabs button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   font-weight: 600;
+}
+
+.workspace-navigation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.automation-tabs {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line-soft));
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel-soft));
+}
+
+.automation-tabs button {
+  font-size: var(--fs-sm);
+}
+
+.running-bots-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-block-size: var(--ctl-h);
+  padding-inline: 8px;
+  border: 1px solid color-mix(in srgb, var(--up) 32%, var(--line-soft));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--up) 6%, transparent);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.running-bots-button:hover,
+.running-bots-button.active {
+  border-color: color-mix(in srgb, var(--up) 55%, var(--line));
+  background: color-mix(in srgb, var(--up) 12%, transparent);
+  color: var(--text);
+}
+
+.running-bots-button.degraded {
+  border-color: color-mix(in srgb, var(--down) 45%, var(--line));
+}
+
+.running-bots-button strong {
+  color: var(--up);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .segmented button:hover,

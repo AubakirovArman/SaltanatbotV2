@@ -180,13 +180,13 @@ export class TelegramControl {
       case "pnl":
         return { text: await this.pnlReply() };
       case "stop":
-        return { text: this.stopReply(arg) };
+        return { text: await this.stopReply(arg) };
       case "start":
         return { text: await this.startReply(arg) };
       case "close":
         return { text: await this.closeReply(arg) };
       case "resume":
-        return { text: this.resumeReply(arg) };
+        return { text: await this.resumeReply(arg) };
       case "logs":
         return { text: this.logsReply(arg) };
       case "mute":
@@ -195,7 +195,7 @@ export class TelegramControl {
         return { text: this.muteReply(arg, false) };
       case "kill":
         // Require an explicit button press before the destructive kill.
-        return { text: "⚠️ Confirm: stop ALL bots and disarm live trading?", keyboard: [[{ text: "🛑 Confirm kill", data: "kill:yes" }]] };
+        return { text: "⚠️ Confirm: disarm live trading, stop ALL bots and cancel account orders? Positions stay open.", keyboard: [[{ text: "🛑 Confirm kill", data: "kill:yes" }]] };
       case "":
         return { text: "" }; // plain chat message — stay silent
       default:
@@ -208,14 +208,23 @@ export class TelegramControl {
     const [action, id] = data.split(":");
     switch (action) {
       case "kill":
-        this.engine.stopAll();
         setSetting("liveTradingEnabled", false);
-        return { toast: "Killed", text: "🛑 Kill switch engaged — all bots stopped and live trading disarmed." };
+        {
+          const result = await this.engine.emergencyStop();
+          if (!result.ok) {
+            return { toast: "Partial failure", text: `⚠️ Emergency stop is incomplete. Live trading remains disarmed.\n${result.errors.map(escapeHtml).join("\n")}` };
+          }
+          return { toast: "Confirmed", text: "🛑 Emergency stop confirmed — bots stopped, open orders cancelled, live trading disarmed." };
+        }
       case "resume":
-        return { toast: this.engine.confirmResume(id) ? "Resumed" : "Not paused" };
+        return { toast: (await this.engine.confirmResume(id)) ? "Resumed" : "Not paused" };
       case "stop":
-        this.engine.stop(id);
-        return { toast: "Stopped" };
+        try {
+          await this.engine.stopSafely(id);
+          return { toast: "Stopped" };
+        } catch {
+          return { toast: "Stop failed" };
+        }
       case "close": {
         const ok = await this.engine.closeNow(id).catch(() => false);
         return { toast: ok ? "Closed" : "No position" };
@@ -281,10 +290,10 @@ export class TelegramControl {
     return ok ? `✋ Closed <b>${escapeHtml(bot.name)}</b>'s position.` : `<b>${escapeHtml(bot.name)}</b> has no open position.`;
   }
 
-  private resumeReply(arg: string): string {
+  private async resumeReply(arg: string): Promise<string> {
     const bot = findBotByName(arg.trim());
     if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
-    return this.engine.confirmResume(bot.id) ? `▶️ Resumed <b>${escapeHtml(bot.name)}</b>.` : `<b>${escapeHtml(bot.name)}</b> isn't paused.`;
+    return (await this.engine.confirmResume(bot.id)) ? `▶️ Resumed <b>${escapeHtml(bot.name)}</b>.` : `<b>${escapeHtml(bot.name)}</b> isn't paused.`;
   }
 
   private logsReply(arg: string): string {
@@ -292,7 +301,10 @@ export class TelegramControl {
     if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
     const logs = listLogs(bot.id, 8);
     if (!logs.length) return `No logs for <b>${escapeHtml(bot.name)}</b>.`;
-    return [...logs].reverse().map((entry) => `${escapeHtml(entry.level)}: ${escapeHtml(entry.message)}`).join("\n");
+    return [...logs]
+      .reverse()
+      .map((entry) => `${escapeHtml(entry.level)}: ${escapeHtml(entry.message)}`)
+      .join("\n");
   }
 
   private muteReply(arg: string, muted: boolean): string {
@@ -330,18 +342,30 @@ export class TelegramControl {
     return { side: pos.side, qty: pos.qty };
   }
 
-  private stopReply(arg: string): string {
+  private async stopReply(arg: string): Promise<string> {
     const target = arg.trim();
     if (!target) return "Usage: /stop &lt;name|all&gt;";
     if (target.toLowerCase() === "all") {
-      this.engine.stopAll();
+      const failures: string[] = [];
+      for (const bot of listBots().filter((candidate) => this.engine.isRunning(candidate.id))) {
+        try {
+          await this.engine.stopSafely(bot.id);
+        } catch {
+          failures.push(bot.name);
+        }
+      }
+      if (failures.length) return `⚠️ Failed to stop: ${failures.map(escapeHtml).join(", ")}.`;
       return "⏹️ Stopped all bots.";
     }
     const bot = findBotByName(target);
     if (!bot) return `No bot named "${escapeHtml(target)}".`;
     if (!this.engine.isRunning(bot.id)) return `<b>${escapeHtml(bot.name)}</b> is not running.`;
-    this.engine.stop(bot.id);
-    return `⏹️ Stopped <b>${escapeHtml(bot.name)}</b>.`;
+    try {
+      await this.engine.stopSafely(bot.id);
+      return `⏹️ Stopped <b>${escapeHtml(bot.name)}</b>.`;
+    } catch {
+      return `⚠️ Failed to stop <b>${escapeHtml(bot.name)}</b>.`;
+    }
   }
 
   private async startReply(arg: string): Promise<string> {

@@ -2,6 +2,8 @@ import { BinanceTickerFeed } from "./binance.js";
 import { BybitTickerFeed } from "./bybit.js";
 import type { StatusListener, TickerListener } from "./types.js";
 
+export * from "./publicFeeds/index.js";
+
 /** Owns exactly one public ticker connection per exchange/market for all browser clients. */
 export class ArbitrageUpstream {
   private readonly feeds: Array<BinanceTickerFeed | BybitTickerFeed>;

@@ -1,20 +1,33 @@
 import { AlertTriangle, Bot } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Locale } from "../../i18n";
 import { tradingText } from "../../i18n/trading";
 import { compileXmlToIr } from "../../strategy/compileArtifact";
 import type { StrategyArtifact } from "../../strategy/library";
 import type { CatalogResponse } from "../../types";
+import { listTradingAccounts, type TradingAccountView } from "../accountClient";
 import { saveBot, type ExchangeId, type TradingBot } from "../tradeClient";
+import { DEFAULT_LIVE_RISK_LIMITS, validLiveRiskLimits } from "../liveRisk";
 
 interface CreateBotFormProps {
   strategies: StrategyArtifact[];
   catalog?: CatalogResponse;
   locale: Locale;
+  canReadAccounts?: boolean;
   onCreated: (bot: TradingBot) => void;
+  loadAccounts?: () => Promise<TradingAccountView[]>;
+  saveTradingBot?: (bot: Partial<TradingBot>) => Promise<TradingBot>;
 }
 
-export function CreateBotForm({ strategies, catalog, locale, onCreated }: CreateBotFormProps) {
+export function CreateBotForm({
+  strategies,
+  catalog,
+  locale,
+  canReadAccounts = false,
+  onCreated,
+  loadAccounts = listTradingAccounts,
+  saveTradingBot = saveBot
+}: CreateBotFormProps) {
   const runnable = useMemo(() => strategies.filter((item) => item.kind === "strategy"), [strategies]);
   const [strategyId, setStrategyId] = useState(runnable[0]?.id ?? "");
   const [name, setName] = useState("");
@@ -25,11 +38,47 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
   const [sizeMode, setSizeMode] = useState<TradingBot["sizeMode"]>("quote");
   const [sizeValue, setSizeValue] = useState(100);
   const [leverage, setLeverage] = useState(3);
+  const [maxPositionQuote, setMaxPositionQuote] = useState(DEFAULT_LIVE_RISK_LIMITS.maxPositionQuote);
+  const [maxOrderQuote, setMaxOrderQuote] = useState(DEFAULT_LIVE_RISK_LIMITS.maxOrderQuote);
+  const [maxDailyLossQuote, setMaxDailyLossQuote] = useState(DEFAULT_LIVE_RISK_LIMITS.maxDailyLossQuote);
+  const [maxOpenOrders, setMaxOpenOrders] = useState(DEFAULT_LIVE_RISK_LIMITS.maxOpenOrders);
   const [bybitCrossCollateral, setBybitCrossCollateral] = useState(false);
   const [notifyMarkers, setNotifyMarkers] = useState(true);
+  const [accounts, setAccounts] = useState<TradingAccountView[]>();
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const [accountsLoadFailed, setAccountsLoadFailed] = useState(false);
+  const [accountId, setAccountId] = useState("");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const strategy = runnable.find((item) => item.id === strategyId);
+  const exchangeAccounts = useMemo(
+    () => exchange === "paper" ? [] : (accounts ?? []).filter((account) => account.exchange === exchange),
+    [accounts, exchange]
+  );
+  const selectedLiveAccount = exchangeAccounts.find((account) => account.id === accountId && selectableLiveAccount(account));
+
+  useEffect(() => {
+    if (!canReadAccounts) return;
+    let active = true;
+    setAccountsLoading(true);
+    setAccountsLoadFailed(false);
+    void loadAccounts()
+      .then((next) => {
+        if (!active) return;
+        setAccounts(next);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAccounts(undefined);
+        setAccountsLoadFailed(true);
+      })
+      .finally(() => {
+        if (active) setAccountsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canReadAccounts, loadAccounts]);
 
   const create = async () => {
     if (!strategy) {
@@ -41,10 +90,23 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
       setError(compiled.errors[0] ?? tradingText(locale, "strategyErrors"));
       return;
     }
+    const riskLimits = { maxPositionQuote, maxOrderQuote, maxDailyLossQuote, maxOpenOrders };
+    if (exchange === "binance" && market === "spot") {
+      setError(tradingText(locale, "binanceSpotDisabled"));
+      return;
+    }
+    if (exchange !== "paper" && !validLiveRiskLimits(riskLimits)) {
+      setError(tradingText(locale, "riskLimitsInvalid"));
+      return;
+    }
+    if (exchange !== "paper" && accountId && !selectedLiveAccount) {
+      setError(tradingText(locale, "liveAccountInvalid"));
+      return;
+    }
     setBusy(true);
     setError(undefined);
     try {
-      const bot = await saveBot({
+      const bot = await saveTradingBot({
         name: name.trim() || strategy.name,
         strategyName: strategy.name,
         ir: compiled.ir,
@@ -54,9 +116,11 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
         market,
         sizeMode,
         sizeValue,
-        leverage,
+        leverage: market === "spot" ? 1 : leverage,
         bybitCrossCollateral: exchange === "bybit" && market === "futures" && bybitCrossCollateral,
-        notifyMarkers
+        notifyMarkers,
+        ...(selectedLiveAccount ? { accountId: selectedLiveAccount.id } : {}),
+        ...(exchange === "paper" ? {} : riskLimits)
       });
       onCreated(bot);
     } catch (cause) {
@@ -108,16 +172,52 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
         <legend>{tradingText(locale, "execution")}</legend>
         <div className="form-grid">
           <label>{tradingText(locale, "exchange")}
-            <select name="exchange" value={exchange} onChange={(event) => setExchange(event.target.value as ExchangeId)}>
+            <select name="exchange" value={exchange} onChange={(event) => {
+              const next = event.target.value as ExchangeId;
+              setExchange(next);
+              setAccountId("");
+              if (next === "binance" && market === "spot") setMarket("futures");
+            }}>
               <option value="paper">{tradingText(locale, "paperSimulated")}</option><option value="binance">Binance</option><option value="bybit">Bybit</option>
             </select>
           </label>
           <label>{tradingText(locale, "marketType")}
             <select name="market" value={market} onChange={(event) => setMarket(event.target.value as "spot" | "futures")}>
-              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot">{tradingText(locale, "spot")}</option>
+              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot" disabled={exchange === "binance"}>{tradingText(locale, "spot")}</option>
             </select>
           </label>
         </div>
+        {exchange === "binance" && <p className="field-help">{tradingText(locale, "binanceSpotDisabled")}</p>}
+        {exchange === "paper" ? (
+          <p className="field-help" role="note">{tradingText(locale, "paperAccountHelp")}</p>
+        ) : canReadAccounts ? (
+          <>
+            <label>{tradingText(locale, "liveAccount")}
+              <select
+                name="account-id"
+                value={accountId}
+                aria-describedby="live-account-help"
+                disabled={accountsLoading}
+                onChange={(event) => setAccountId(event.target.value)}
+              >
+                <option value="">{tradingText(locale, "liveAccountServerDefault")}</option>
+                {exchangeAccounts.map((account) => (
+                  <option key={account.id} value={account.id} disabled={!selectableLiveAccount(account)}>
+                    {account.label} · {tradingText(locale, account.ownership === "own" ? "accountOwn" : "accountManaged")} · {tradingText(locale, accountStatusKey(account))}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p id="live-account-help" className="field-help">{tradingText(locale, "liveAccountSharedHelp")}</p>
+            {accountsLoading && <p className="field-help" role="status" aria-live="polite">{tradingText(locale, "liveAccountLoading")}</p>}
+            {accountsLoadFailed && <p className="field-help" role="alert">{tradingText(locale, "liveAccountLoadFailed")}</p>}
+            {!accountsLoading && !accountsLoadFailed && accounts && exchangeAccounts.length === 0 && (
+              <p className="field-help" role="note">{tradingText(locale, "liveAccountNone")}</p>
+            )}
+          </>
+        ) : (
+          <p className="field-help" role="note">{tradingText(locale, "liveAccountAdminFallback")}</p>
+        )}
         <div className="form-grid">
           <label>{tradingText(locale, "sizing")}
             <select name="size-mode" value={sizeMode} onChange={(event) => setSizeMode(event.target.value as TradingBot["sizeMode"])}>
@@ -125,10 +225,10 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
             </select>
           </label>
           <label>{tradingText(locale, "amount")}
-            <input name="amount" type="number" value={sizeValue} min={0} step={1} onChange={(event) => setSizeValue(event.target.valueAsNumber || 0)} />
+            <input name="amount" type="number" value={sizeValue} min={0.00000001} step="any" required onChange={(event) => setSizeValue(event.target.valueAsNumber || 0)} />
           </label>
           <label>{tradingText(locale, "leverage")}
-            <input name="leverage" type="number" value={leverage} min={1} max={125} step={1} onChange={(event) => setLeverage(event.target.valueAsNumber || 1)} />
+            <input name="leverage" type="number" value={market === "spot" ? 1 : leverage} min={1} max={125} step={1} required disabled={market === "spot"} onChange={(event) => setLeverage(event.target.valueAsNumber || 1)} />
           </label>
         </div>
         <label className="check-row">
@@ -146,9 +246,44 @@ export function CreateBotForm({ strategies, catalog, locale, onCreated }: Create
         )}
       </fieldset>
 
+      {exchange !== "paper" && (
+        <fieldset className="form-section live-risk-limits" aria-describedby="live-risk-limits-help">
+          <legend>{tradingText(locale, "liveRiskLimits")}</legend>
+          <p id="live-risk-limits-help" className="field-help">{tradingText(locale, "liveRiskLimitsHelp")}</p>
+          <div className="form-grid">
+            <label>{tradingText(locale, "maxPositionQuote")}
+              <input name="max-position-quote" type="number" value={maxPositionQuote} min={0.01} max={1_000_000_000} step={0.01} required onChange={(event) => setMaxPositionQuote(event.target.valueAsNumber || 0)} />
+            </label>
+            <label>{tradingText(locale, "maxOrderQuote")}
+              <input name="max-order-quote" type="number" value={maxOrderQuote} min={0.01} max={maxPositionQuote || 0.01} step={0.01} required onChange={(event) => setMaxOrderQuote(event.target.valueAsNumber || 0)} />
+            </label>
+            <label>{tradingText(locale, "maxDailyLossQuote")}
+              <input name="max-daily-loss-quote" type="number" value={maxDailyLossQuote} min={0.01} max={1_000_000_000} step={0.01} required onChange={(event) => setMaxDailyLossQuote(event.target.valueAsNumber || 0)} />
+            </label>
+            <label>{tradingText(locale, "maxOpenOrders")}
+              <input name="max-open-orders" type="number" value={maxOpenOrders} min={1} max={10_000} step={1} required onChange={(event) => setMaxOpenOrders(event.target.valueAsNumber || 0)} />
+            </label>
+          </div>
+        </fieldset>
+      )}
+
       {exchange !== "paper" && <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> {tradingText(locale, "realTradingWarning")}</div>}
       {error && <div className="strategy-warnings" role="alert"><span><AlertTriangle size={12} aria-hidden="true" /> {error}</span></div>}
       <button type="submit" className="run-button form-submit" disabled={busy}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
     </form>
   );
+}
+
+function selectableLiveAccount(account: TradingAccountView): boolean {
+  return account.enabled
+    && account.id === `${account.exchange}:default`
+    && account.credential.mode === "legacy_exchange_shared"
+    && (account.status === "ready" || account.status === "credentials_missing");
+}
+
+function accountStatusKey(account: TradingAccountView): "accountReady" | "accountCredentialsMissing" | "accountMetadataOnly" | "accountDisabled" {
+  if (account.status === "ready") return "accountReady";
+  if (account.status === "credentials_missing") return "accountCredentialsMissing";
+  if (account.status === "metadata_only") return "accountMetadataOnly";
+  return "accountDisabled";
 }

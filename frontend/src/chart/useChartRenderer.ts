@@ -35,6 +35,7 @@ import type { MarketStructureSnapshot } from "./marketStructure";
 import type { ChartTimeZone } from "./timeAxis";
 import type { Locale } from "../i18n";
 import { prepareCanvasContext, resizeCanvasToEntry } from "./canvasDensity";
+import type { VisibleTimeRange, VolumeProfileTimeframe } from "./volumeProfileSource";
 
 interface UseChartRendererOptions {
   candles: Candle[];
@@ -58,6 +59,9 @@ interface UseChartRendererOptions {
   livePositions?: ChartLivePosition[];
   showVolume: boolean;
   showVolumeProfile: boolean;
+  volumeProfileCandles?: Candle[];
+  volumeProfileTimeframe?: VolumeProfileTimeframe;
+  volumeProfileRange?: VisibleTimeRange;
   sessionLiquidity?: SessionLiquiditySnapshot;
   marketSessions?: MarketSessionRange[];
   marketStructure?: MarketStructureSnapshot;
@@ -65,6 +69,7 @@ interface UseChartRendererOptions {
   theme?: string;
   onCompareLegend(entries: CompareLegendSnapshot[]): void;
   onVolumeProfile(profile?: VolumeProfileSnapshot): void;
+  onVisibleTimeRange(range?: VisibleTimeRange): void;
 }
 
 export function useChartRenderer(options: UseChartRendererOptions) {
@@ -76,10 +81,13 @@ export function useChartRenderer(options: UseChartRendererOptions) {
   const interactionCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const renderPlanRef = useRef<ChartRenderPlan>();
   const viewportRef = useRef<Viewport>();
+  const visibleTimeRangeRef = useRef<VisibleTimeRange>();
   const legendCallbackRef = useRef(options.onCompareLegend);
   const volumeProfileCallbackRef = useRef(options.onVolumeProfile);
+  const visibleTimeRangeCallbackRef = useRef(options.onVisibleTimeRange);
   legendCallbackRef.current = options.onCompareLegend;
   volumeProfileCallbackRef.current = options.onVolumeProfile;
+  visibleTimeRangeCallbackRef.current = options.onVisibleTimeRange;
   const [renderRevision, setRenderRevision] = useState(0);
   const schedulerRef = useRef<ReturnType<typeof createChartLayerScheduler>>();
   if (!schedulerRef.current) {
@@ -127,11 +135,20 @@ export function useChartRenderer(options: UseChartRendererOptions) {
         livePositions: options.livePositions,
         showVolume: options.showVolume,
         showVolumeProfile: options.showVolumeProfile,
+        volumeProfileCandles: options.volumeProfileCandles,
+        volumeProfileTimeframe: options.volumeProfileTimeframe,
+        volumeProfileRange: options.volumeProfileRange,
         marketSessions: options.marketSessions,
         marketStructure: options.marketStructure,
         compare: options.compare,
         baseSymbol: options.symbol,
         onViewport: (viewport) => { viewportRef.current = viewport; },
+        onVisibleTimeRange: (range) => {
+          const previous = visibleTimeRangeRef.current;
+          if (previous?.startTime === range?.startTime && previous?.endTime === range?.endTime) return;
+          visibleTimeRangeRef.current = range;
+          visibleTimeRangeCallbackRef.current(range);
+        },
         onCompareLegend: (entries) => legendCallbackRef.current(entries),
         onVolumeProfile: (profile) => volumeProfileCallbackRef.current(profile)
       });
@@ -146,7 +163,7 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     });
     schedulerRef.current?.schedule("overlays", () => drawOverlays(overlaysCanvas, renderPlanRef.current, options, anchoredVwaps));
     schedulerRef.current?.schedule("interaction", () => drawInteraction(interactionCanvas, viewportRef.current, options));
-  }, [options.candles, options.displayCandles, options.chartType, options.indicators, options.decimals, options.locale, options.timeZone, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, options.view.priceZoom, renderRevision]);
+  }, [options.candles, options.displayCandles, options.chartType, options.indicators, options.decimals, options.locale, options.timeZone, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.volumeProfileCandles, options.volumeProfileTimeframe, options.volumeProfileRange, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, options.view.priceZoom, renderRevision]);
 
   useEffect(() => {
     const canvas = primaryCanvasRef.current;

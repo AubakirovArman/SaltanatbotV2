@@ -1,0 +1,11 @@
+export declare function record(value: unknown, label: string): Record<string, unknown>;
+export declare function array(value: unknown, label: string, maximum: number): unknown[];
+export declare function text(value: unknown, label: string): string;
+export declare function optionalText(value: unknown, label: string): string;
+export declare function finite(value: unknown, label: string): number;
+export declare function positive(value: unknown, label: string): number;
+export declare function nonNegative(value: unknown, label: string): number;
+export declare function integer(value: unknown, label: string): number;
+export declare function bool(value: unknown, label: string): boolean;
+export declare function exact<const T extends readonly string[]>(value: unknown, values: T, label: string): T[number];
+export declare function optionalFinite(value: unknown, label: string): number;

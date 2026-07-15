@@ -1,5 +1,5 @@
-import { Boxes, Download, FileCode2, LayoutGrid, PackageOpen, PackagePlus, Plus, ShieldAlert, Upload, WandSparkles, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { Boxes, Dna, Download, FileCode2, LayoutGrid, PackageOpen, PackagePlus, Plus, ShieldAlert, Upload, WandSparkles, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { PineImportDialog } from "../../components/PineImportDialog";
 import type { PineImport } from "../pine";
 import type { StrategyArtifact, StrategyArtifactKind } from "../library";
@@ -18,6 +18,13 @@ import { trustPluginKey } from "../pluginTrust";
 import type { PwaFileLaunchBatch } from "../../pwa/fileLaunch";
 import { useImportReviewQueue } from "../useImportReviewQueue";
 import { StrategyFileReviewDialog } from "./StrategyFileReviewDialog";
+
+const GeneratorPanel = lazy(() => import("./GeneratorPanel").then((module) => ({ default: module.GeneratorPanel })));
+const generatorEntryMessages = {
+  en: { open: "Generator", openHelp: "Generate editable strategies with bounded algorithms and structural mutations", loading: "Loading strategy generator…" },
+  ru: { open: "Генератор", openHelp: "Создавать редактируемые стратегии ограниченными алгоритмами и структурными мутациями", loading: "Загрузка генератора стратегий…" },
+  kk: { open: "Генератор", openHelp: "Шектелген алгоритмдер және құрылымдық мутациялар арқылы өңделетін стратегиялар жасау", loading: "Стратегия генераторы жүктелуде…" }
+} as const;
 
 export function StrategyLibrary({
   locale,
@@ -51,6 +58,7 @@ export function StrategyLibrary({
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [pineOpen, setPineOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [generatorOpen, setGeneratorOpen] = useState(false);
   const [pluginExportOpen, setPluginExportOpen] = useState(false);
   const [pluginCatalogOpen, setPluginCatalogOpen] = useState(false);
   const imports = useImportReviewQueue(locale);
@@ -82,6 +90,9 @@ export function StrategyLibrary({
         </button>
         <button type="button" onClick={() => setWizardOpen(true)} title={strategyText(locale, "strategyWizard")}>
           <WandSparkles size={14} aria-hidden="true" /> {strategyText(locale, "wizard")}
+        </button>
+        <button type="button" onClick={() => setGeneratorOpen(true)} title={generatorEntryMessages[locale].openHelp}>
+          <Dna size={14} aria-hidden="true" /> {generatorEntryMessages[locale].open}
         </button>
         <button type="button" onClick={() => fileInputRef.current?.click()} title={strategyText(locale, "importStrategy")}>
           <Upload size={14} aria-hidden="true" /> {strategyText(locale, "import")}
@@ -153,6 +164,18 @@ export function StrategyLibrary({
             setWizardOpen(false);
           }}
         />
+      )}
+      {!importReviewActive && generatorOpen && (
+        <Suspense fallback={<p className="empty-note" role="status">{generatorEntryMessages[locale].loading}</p>}>
+          <GeneratorPanel
+            locale={locale}
+            onClose={() => setGeneratorOpen(false)}
+            onImport={(artifact) => {
+              onImportStrategy(artifact);
+              setGeneratorOpen(false);
+            }}
+          />
+        </Suspense>
       )}
       {!importReviewActive && galleryOpen && (
         <TemplateGallery

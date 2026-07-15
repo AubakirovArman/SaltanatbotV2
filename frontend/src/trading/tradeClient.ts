@@ -1,5 +1,6 @@
 import type { StrategyIR } from "../strategy/ir";
 import type { Timeframe } from "../types";
+import { accountTelemetrySearch, parseAccountTelemetrySnapshot, type AccountTelemetryQuery, type AccountTelemetrySnapshot } from "./accountTelemetry";
 
 export type ExchangeId = "paper" | "binance" | "bybit";
 export type MarketType = "spot" | "futures";
@@ -7,6 +8,8 @@ export type BotStatus = "stopped" | "running" | "error";
 
 export interface TradingBot {
   id: string;
+  /** Durable account binding; legacy live bots resolve to the venue default. */
+  accountId?: string;
   name: string;
   strategyName: string;
   ir: StrategyIR;
@@ -17,6 +20,10 @@ export interface TradingBot {
   sizeMode: "quote" | "base" | "equity_pct" | "risk_pct";
   sizeValue: number;
   leverage: number;
+  maxPositionQuote?: number;
+  maxOrderQuote?: number;
+  maxDailyLossQuote?: number;
+  maxOpenOrders?: number;
   bybitCrossCollateral?: boolean;
   notifyMarkers: boolean;
   status: BotStatus;
@@ -96,6 +103,7 @@ export interface OrderJournal {
   status: "intent" | "accepted" | "partially_filled" | "filled" | "cancelled" | "replaced" | "expired" | "rejected" | "unknown";
   message?: string;
   filledQty?: number;
+  accountedFilledQty?: number;
   avgFillPrice?: number;
   barTime?: number;
   ts: number;
@@ -129,6 +137,36 @@ export interface TradeEvent {
   signal?: { dir: "up" | "down"; label: string; price: number; ts: number };
   account?: Account;
   position?: Position | null;
+}
+
+export interface EmergencyStepResult<T> {
+  state: "not_requested" | "confirmed" | "failed";
+  attempted: boolean;
+  initial: T[];
+  remaining: T[];
+  errors: string[];
+}
+
+export interface EmergencyAccountResult {
+  account: string;
+  exchange: ExchangeId;
+  market: MarketType;
+  symbols: string[];
+  cancelOrders: EmergencyStepResult<{ id: string; symbol: string }>;
+  flattenPositions: EmergencyStepResult<{ symbol: string; side: "long" | "short"; qty: number }>;
+  ok: boolean;
+}
+
+export interface EmergencyStopStatus {
+  operationId?: string;
+  phase: "idle" | "stopping" | "terminal" | "partial_failure";
+  ok: boolean;
+  flattenRequested: boolean;
+  startedAt?: number;
+  completedAt?: number;
+  botsStopped: number;
+  accounts: EmergencyAccountResult[];
+  errors: string[];
 }
 
 export interface NotifyStatus {
@@ -197,6 +235,28 @@ export interface ArbitrageAlertRule {
   createdAt: number;
   updatedAt: number;
   lastTriggeredAt?: number;
+  lastDelivery?: ArbitrageAlertDeliverySummary;
+}
+
+export type ArbitrageAlertDeliveryStatus = "queued" | "sending" | "retrying" | "delivered" | "failed" | "cancelled";
+
+export interface ArbitrageAlertDeliverySummary {
+  id: string;
+  opportunityId: string;
+  status: ArbitrageAlertDeliveryStatus;
+  attempts: number;
+  queuedAt: number;
+  nextAttemptAt?: number;
+  deliveredAt?: number;
+  lastError?: string;
+}
+
+export interface ArbitrageAlertDelivery extends ArbitrageAlertDeliverySummary {
+  ruleId: string;
+  symbol: string;
+  maxAttempts: number;
+  lastAttemptAt?: number;
+  leaseUntil?: number;
 }
 
 const BASE = "/api/trade";
@@ -259,10 +319,14 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Internal authenticated transport for modular trading panels. */
+export const tradeApiRequest = <T>(path: string, init?: RequestInit) => req<T>(path, init);
+
 export interface AuthState {
   ok: boolean;
   demo: boolean;
   liveTradingEnabled: boolean;
+  secureTradingOrigin?: boolean;
   role?: "read-only" | "paper-trade" | "live-trade" | "admin";
   csrfToken?: string;
 }
@@ -282,7 +346,20 @@ export async function checkAuth(token?: string): Promise<AuthState> {
 
 export const getSettings = () => req<AuthState>("/settings");
 export const setLiveTrading = (liveTradingEnabled: boolean) => req<{ liveTradingEnabled: boolean }>("/settings", { method: "POST", body: JSON.stringify({ liveTradingEnabled }) });
-export const killAll = () => req<{ ok: boolean }>("/kill", { method: "POST" });
+export const getEmergencyStop = () => req<EmergencyStopStatus>("/kill");
+export function createEmergencyOperationId(): string {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+export const killAll = (input: { operationId: string; flatten: boolean }) =>
+  req<EmergencyStopStatus>("/kill", {
+    method: "POST",
+    body: JSON.stringify({ ...input, confirmFlatten: input.flatten ? "FLATTEN_ALL_LIVE_POSITIONS" : undefined })
+  });
 
 export const listBots = () => req<{ bots: TradingBot[] }>("/bots").then((r) => r.bots);
 export const saveBot = (bot: Partial<TradingBot>) => req<{ bot: TradingBot }>("/bots", { method: "POST", body: JSON.stringify(bot) }).then((r) => r.bot);
@@ -299,10 +376,13 @@ export const getOrderEvents = (id: string, orderId: string) => req<{ events: Ord
 /** Deliver a triggered price alert through the server notification channel (Telegram). */
 export const notifyAlert = (payload: { symbol: string; price: number; direction: "above" | "below"; hitPrice?: number }) => req<{ ok: boolean }>("/notify-alert", { method: "POST", body: JSON.stringify(payload) });
 export const notifyArbitrageAlert = (payload: { symbol: string; spotExchange: "binance" | "bybit"; futuresExchange: "binance" | "bybit"; netEdgeBps: number; minimumNetEdgeBps: number }) => req<{ ok: boolean }>("/notify-arbitrage", { method: "POST", body: JSON.stringify(payload) });
-export const listArbitrageAlertRules = () => req<{ rules: ArbitrageAlertRule[] }>("/arbitrage-alerts").then((value) => value.rules);
+export const getArbitrageAlertState = () => req<{ rules: ArbitrageAlertRule[]; deliveries?: ArbitrageAlertDelivery[] }>("/arbitrage-alerts").then((value) => ({ rules: value.rules, deliveries: value.deliveries ?? [] }));
+export const listArbitrageAlertRules = () => getArbitrageAlertState().then((value) => value.rules);
+export const listArbitrageAlertDeliveries = (limit = 100) => req<{ deliveries: ArbitrageAlertDelivery[] }>(`/arbitrage-alerts/deliveries?limit=${encodeURIComponent(String(limit))}`).then((value) => value.deliveries);
 export const saveArbitrageAlertRule = (rule: Omit<ArbitrageAlertRule, "id" | "createdAt" | "updatedAt" | "lastTriggeredAt"> & { id?: string }) => req<{ rule: ArbitrageAlertRule }>("/arbitrage-alerts", { method: "POST", body: JSON.stringify(rule) }).then((value) => value.rule);
 export const deleteArbitrageAlertRule = (id: string) => req<{ rules: ArbitrageAlertRule[] }>(`/arbitrage-alerts/${encodeURIComponent(id)}`, { method: "DELETE" }).then((value) => value.rules);
 export const getKeys = () => req<{ binance: boolean; bybit: boolean }>("/keys");
+export const getAccountTelemetry = (query: AccountTelemetryQuery): Promise<AccountTelemetrySnapshot> => req<unknown>(`/account-telemetry?${accountTelemetrySearch(query)}`).then(parseAccountTelemetrySnapshot);
 export const saveKeys = (exchange: ExchangeId, apiKey: string, apiSecret: string) => req("/keys", { method: "POST", body: JSON.stringify({ exchange, apiKey, apiSecret }) });
 export const getBybitUta = () => req<{ configured: boolean; snapshot?: BybitUtaSnapshot }>("/bybit/uta");
 export const borrowBybitUta = (coin: string, amount: number) => req<BybitUtaActionResult>("/bybit/uta/borrow", { method: "POST", body: JSON.stringify({ coin, amount, confirm: true }) });

@@ -1,0 +1,14 @@
+{
+  "code": "200000",
+  "data": {
+    "sequence": 1697895100310,
+    "symbol": "XBTUSDTM",
+    "size": 2936,
+    "price": "67158.4",
+    "bestBidPrice": "67169.6",
+    "bestBidSize": 32345,
+    "bestAskPrice": "67169.7",
+    "bestAskSize": 7251,
+    "ts": "1784023200200000000"
+  }
+}

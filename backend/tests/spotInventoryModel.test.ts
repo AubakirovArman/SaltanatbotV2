@@ -20,6 +20,7 @@ import {
   resolveSpotCloseQuantity
 } from "../src/trading/spotInventory.js";
 import type { ExecOrder, FillRecord } from "../src/trading/types.js";
+import { applyFuturesExposure, getFuturesExposure } from "../src/trading/futuresExposure.js";
 
 beforeEach(() => {
   settings.clear();
@@ -53,8 +54,19 @@ describe("bot-attributed spot inventory", () => {
   it("constrains closePct to this bot's inventory and refuses unattributed balance", () => {
     recordConfirmedFill(fill({ fee: 0, feeAsset: undefined }), "spot");
     const order: ExecOrder = { action: "neworder", market: "spot", symbol: "BTCUSDT", side: "sell", type: "market", closePct: 100, reduceOnly: true, reason: "close" };
-    expect(constrainSpotInventoryOrder("bot", "spot", order)).toMatchObject({ qty: 0.25, closePct: undefined });
+    expect(constrainSpotInventoryOrder("bot", "spot", order)).toMatchObject({ action: "neworder", side: "sell", qty: 0.25, closePct: undefined });
+    expect(constrainSpotInventoryOrder("bot", "spot", { ...order, action: "close", closePct: undefined })).toMatchObject({ action: "neworder", side: "sell", qty: 0.25 });
     expect(resolveSpotCloseQuantity(getSpotInventory("bot", "BTCUSDT"), 50)).toBe(0.125);
     expect(() => constrainSpotInventoryOrder("other", "spot", order)).toThrow(/no confirmed attributed inventory/i);
+  });
+});
+
+describe("durable futures exposure ledger", () => {
+  it("keeps accounted entry exposure visible while venue positions lag", () => {
+    expect(recordConfirmedFill(fill({ fee: 0, feeAsset: undefined }), "futures")).toBe(true);
+    expect(getFuturesExposure("bot", "BTCUSDT")?.grossQty).toBe(0.25);
+    expect(recordConfirmedFill(fill({ fee: 0, feeAsset: undefined }), "futures")).toBe(false);
+    const closed = applyFuturesExposure(getFuturesExposure("bot", "BTCUSDT"), fill({ id: "close", side: "sell", kind: "close", qty: 0.1 }));
+    expect(closed.grossQty).toBeCloseTo(0.15);
   });
 });

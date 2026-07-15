@@ -9,6 +9,7 @@ import {
   runStrategyInit,
   traceBarIntents,
   type SecurityDataContext,
+  type UnresolvedSecurityPolicy,
   type StrategyBarTrace
 } from "@saltanatbotv2/strategy-core";
 import type { Candle } from "../../types";
@@ -63,6 +64,11 @@ export interface StrategyPreview {
   eventTrace: StrategyBarTrace[];
 }
 
+export interface StrategyPreviewOptions {
+  /** Explicit opt-in for UI-only approximation when external candles are unavailable. */
+  unresolvedSecurityPolicy?: UnresolvedSecurityPolicy;
+}
+
 /** Render-safety caps for drawing overlays (a hostile/buggy strategy can fire every bar). */
 const MAX_BOXES = 500;
 const MAX_VLINES = 500;
@@ -75,10 +81,12 @@ const MAX_RAYS = 200;
 export function previewStrategy(
   ir: StrategyIR,
   candles: Candle[],
-  securityData?: SecurityDataContext
+  securityData?: SecurityDataContext,
+  options: StrategyPreviewOptions = {}
 ): StrategyPreview {
-  const runtime = createStrategyRuntime(ir, candles, { securityData });
-  const traceRuntime = createStrategyRuntime(ir, candles, { securityData });
+  const runtimeOptions = { securityData, unresolvedSecurityPolicy: options.unresolvedSecurityPolicy };
+  const runtime = createStrategyRuntime(ir, candles, runtimeOptions);
+  const traceRuntime = createStrategyRuntime(ir, candles, runtimeOptions);
   runStrategyInit(ir, runtime);
   runStrategyInit(ir, traceRuntime);
   const signals: TradeMarker[] = [];

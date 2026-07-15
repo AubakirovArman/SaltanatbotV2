@@ -13,8 +13,8 @@
     display: none;
   }
 
-  .mode-tabs button span {
-    display: none;
+  .automation-tabs button {
+    padding-inline: 7px;
   }
 }
 
@@ -196,7 +196,29 @@
   .topbar-actions {
     inline-size: 100%;
     margin-inline-start: 0;
-    justify-content: space-between;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .workspace-navigation {
+    flex: 1 1 100%;
+  }
+
+  .space-tabs {
+    flex: 1 1 auto;
+  }
+
+  .space-tabs button {
+    flex: 1 1 auto;
+    min-block-size: 36px;
+  }
+
+  .automation-tabs {
+    flex: 0 1 auto;
+  }
+
+  .running-bots-button {
+    margin-inline-start: auto;
   }
 
   .chart-legend {

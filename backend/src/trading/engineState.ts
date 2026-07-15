@@ -1,6 +1,29 @@
 import { timeframeMs } from "../market/timeframes.js";
 import { listFills, setSetting, upsertPositionSnapshot, withStoreTransaction } from "./store.js";
 import type { BotStateSnapshot, RunningBot } from "./engineRuntime.js";
+import type { AccountState, PositionState } from "./types.js";
+
+export interface LiveRuntimeState {
+  account?: AccountState;
+  position?: PositionState | null;
+  price: number;
+  paused: boolean;
+  runtimeStatus: "running" | "requires_manual_action";
+  pauseReason?: string;
+  vars: Record<string, number>;
+}
+
+export async function liveRuntimeState(bot: RunningBot): Promise<LiveRuntimeState> {
+  return {
+    account: await bot.adapter.account().catch(() => undefined),
+    position: await bot.adapter.position(bot.config.symbol).catch(() => null),
+    price: bot.price,
+    paused: bot.paused === true,
+    runtimeStatus: bot.paused ? "requires_manual_action" : "running",
+    pauseReason: bot.pauseReason,
+    vars: Object.fromEntries(bot.vars)
+  };
+}
 
 export function realizedToday(botId: string, now = Date.now()): number {
   const startOfDay = Math.floor(now / 86_400_000) * 86_400_000;
@@ -79,6 +102,21 @@ export function persistRuntimeState(bot: RunningBot, now = Date.now()) {
 export function pauseRunningBot(bot: RunningBot, reason: string) {
   bot.paused = true;
   bot.pauseReason = reason;
+}
+
+/** Clear a pause only when the cleared state is durably persisted. */
+export function clearPausedRuntime(bot: RunningBot): boolean {
+  const previousReason = bot.pauseReason;
+  bot.paused = false;
+  bot.pauseReason = undefined;
+  try {
+    persistRuntimeState(bot);
+    return true;
+  } catch {
+    bot.paused = true;
+    bot.pauseReason = previousReason ?? "Resume confirmation persistence failed.";
+    return false;
+  }
 }
 
 export function roundTradingValue(value: number): number {

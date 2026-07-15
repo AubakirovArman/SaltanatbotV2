@@ -1,0 +1,76 @@
+[
+  {
+    "tokens": [
+      {
+        "name": "USDC",
+        "szDecimals": 8,
+        "weiDecimals": 8,
+        "index": 0,
+        "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+        "isCanonical": true
+      },
+      {
+        "name": "PURR",
+        "szDecimals": 0,
+        "weiDecimals": 5,
+        "index": 1,
+        "tokenId": "0xc1fb593aeffbeb02f85e0308e9956a90",
+        "isCanonical": true
+      },
+      {
+        "name": "UBTC",
+        "szDecimals": 5,
+        "weiDecimals": 8,
+        "index": 150,
+        "tokenId": "0x0123456789abcdef0123456789abcdef",
+        "isCanonical": false
+      }
+    ],
+    "universe": [
+      {
+        "name": "PURR/USDC",
+        "tokens": [1, 0],
+        "index": 0,
+        "isCanonical": true
+      },
+      {
+        "name": "@107",
+        "tokens": [150, 0],
+        "index": 107,
+        "isCanonical": false
+      }
+    ]
+  },
+  [
+    {
+      "coin": "#8310",
+      "dayNtlVlm": "12",
+      "markPx": "0.56",
+      "midPx": "0.562",
+      "prevDayPx": "0.5"
+    },
+    {
+      "coin": "@99",
+      "dayNtlVlm": "0",
+      "markPx": "1",
+      "midPx": null,
+      "prevDayPx": "1"
+    },
+    {
+      "coin": "@107",
+      "dayNtlVlm": "890600",
+      "dayBaseVlm": "14.3",
+      "markPx": "62010",
+      "midPx": "62020",
+      "prevDayPx": "61000"
+    },
+    {
+      "coin": "PURR/USDC",
+      "dayNtlVlm": "8906",
+      "dayBaseVlm": "42000",
+      "markPx": "0.14",
+      "midPx": "0.209265",
+      "prevDayPx": "0.20432"
+    }
+  ]
+]

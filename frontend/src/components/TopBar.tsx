@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { nextLocale, translate, type Locale } from "../i18n";
+import { automationText } from "../i18n/automation";
 import { shellText } from "../i18n/shell";
 import type { CatalogResponse, ChartType, Instrument, Timeframe } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
@@ -39,6 +40,8 @@ interface TopBarProps {
   locale: Locale;
   leftOpen: boolean;
   rightOpen: boolean;
+  runningBotsCount?: number;
+  runningBotsStatus: "loading" | "ready" | "locked" | "error";
   mobilePanels?: boolean;
   panelsSwapped: boolean;
   workspaces: Workspace[];
@@ -56,6 +59,7 @@ interface TopBarProps {
   onTimeframeChange: (timeframe: Timeframe) => void;
   onChartTypeChange: (chartType: ChartType) => void;
   onModeChange: (mode: "chart" | "strategy" | "trade" | "screener") => void;
+  onOpenRobotsCenter: () => void;
   onStrategyWarmup: () => void;
   onOpenPalette: () => void;
   onOpenShortcutSettings: () => void;
@@ -82,6 +86,8 @@ export function TopBar({
   locale,
   leftOpen,
   rightOpen,
+  runningBotsCount,
+  runningBotsStatus,
   mobilePanels = false,
   panelsSwapped,
   workspaces,
@@ -99,6 +105,7 @@ export function TopBar({
   onTimeframeChange,
   onChartTypeChange,
   onModeChange,
+  onOpenRobotsCenter,
   onStrategyWarmup,
   onOpenPalette,
   onOpenShortcutSettings,
@@ -136,46 +143,65 @@ export function TopBar({
       <ChartTypeMenu locale={locale} catalog={catalog} chartType={chartType} onChartTypeChange={onChartTypeChange} />
 
       <div className="topbar-actions">
-        <div className="segmented mode-tabs" aria-label={shellText(locale, "workspaceMode")}>
-          <button
-            type="button"
-            className={mode === "chart" ? "active" : ""}
-            onClick={() => onModeChange("chart")}
-            aria-pressed={mode === "chart"}
-          >
-            <CandlestickChart size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span>{translate(locale, "chart")}</span>
-          </button>
-          <button
-            type="button"
-            className={mode === "strategy" ? "active" : ""}
-            onClick={() => onModeChange("strategy")}
-            onFocus={onStrategyWarmup}
-            onPointerEnter={onStrategyWarmup}
-            aria-pressed={mode === "strategy"}
-          >
-            <Workflow size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span>{translate(locale, "strategy")}</span>
-          </button>
-          <button
-            type="button"
-            className={mode === "trade" ? "active" : ""}
-            onClick={() => onModeChange("trade")}
-            aria-pressed={mode === "trade"}
-          >
-            <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span>{translate(locale, "trade")}</span>
-          </button>
-          <button
-            type="button"
-            className={mode === "screener" ? "active" : ""}
-            onClick={() => onModeChange("screener")}
-            aria-pressed={mode === "screener"}
-          >
-            <ScanSearch size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span>{translate(locale, "screener")}</span>
-          </button>
-        </div>
+        <nav className="workspace-navigation" aria-label={automationText(locale, "primaryNavigation")}>
+          <div className="segmented space-tabs">
+            <button
+              type="button"
+              className={mode === "chart" ? "active" : ""}
+              onClick={() => onModeChange("chart")}
+              aria-pressed={mode === "chart"}
+            >
+              <CandlestickChart size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span>{automationText(locale, "monitoring")}</span>
+            </button>
+            <button
+              type="button"
+              className={mode === "strategy" || mode === "trade" ? "active" : ""}
+              onClick={() => {
+                onStrategyWarmup();
+                onModeChange("strategy");
+              }}
+              onFocus={onStrategyWarmup}
+              onPointerEnter={onStrategyWarmup}
+              aria-pressed={mode === "strategy" || mode === "trade"}
+            >
+              <Workflow size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span>{automationText(locale, "automation")}</span>
+            </button>
+            <button
+              type="button"
+              className={mode === "screener" ? "active" : ""}
+              onClick={() => onModeChange("screener")}
+              aria-pressed={mode === "screener"}
+            >
+              <ScanSearch size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span>{automationText(locale, "screener")}</span>
+            </button>
+          </div>
+
+          <div className="segmented automation-tabs" role="group" aria-label={automationText(locale, "automationNavigation")}>
+            <button type="button" className={mode === "strategy" ? "active" : ""} onClick={() => onModeChange("strategy")} onFocus={onStrategyWarmup} onPointerEnter={onStrategyWarmup} aria-pressed={mode === "strategy"}>
+              <Workflow size={13} strokeWidth={1.75} aria-hidden="true" />
+              <span>{automationText(locale, "strategies")}</span>
+            </button>
+            <button type="button" className={mode === "trade" ? "active" : ""} onClick={() => onModeChange("trade")} aria-pressed={mode === "trade"}>
+              <Bot size={13} strokeWidth={1.75} aria-hidden="true" />
+              <span>{automationText(locale, "robots")}</span>
+            </button>
+          </div>
+        </nav>
+
+        <button
+          type="button"
+          className={`running-bots-button ${mode === "trade" ? "active" : ""} ${runningBotsStatus === "error" ? "degraded" : ""}`}
+          onClick={onOpenRobotsCenter}
+          title={runningBotsStatus === "ready" ? automationText(locale, "openRobotsCenter") : automationText(locale, "runningUnavailable")}
+          aria-label={`${automationText(locale, "openRobotsCenter")}. ${runningBotsStatus === "ready" ? `${automationText(locale, "running")}: ${runningBotsCount ?? 0}` : automationText(locale, "runningUnavailable")}`}
+        >
+          <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
+          <span>{automationText(locale, "running")}:</span>
+          <strong aria-live="polite" aria-atomic="true">{runningBotsStatus === "ready" ? runningBotsCount ?? 0 : "—"}</strong>
+        </button>
 
         <span className="divider-v" aria-hidden="true" />
 

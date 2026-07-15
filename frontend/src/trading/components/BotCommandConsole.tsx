@@ -61,7 +61,7 @@ export function BotCommandConsole({ bot, output, onRun, locale }: BotCommandCons
       </div>
 
       <form className="trade-console-input" onSubmit={(event) => { event.preventDefault(); void run(command); }}>
-        <input name="bot-command" aria-label={tradingText(locale, "botCommand")} value={command} placeholder="action=openposition;side=buy;openpro=25;lev=5" onChange={(event) => setCommand(event.target.value)} disabled={bot.status !== "running"} />
+        <input name="bot-command" aria-label={tradingText(locale, "botCommand")} value={command} placeholder="action=openposition;side=buy;qty=0.1;lev=5" onChange={(event) => setCommand(event.target.value)} disabled={bot.status !== "running"} />
         <button type="button" aria-label={tradingText(locale, "saveCommand")} title={tradingText(locale, "saveCommand")} className="console-save" onClick={() => command.trim() && openEditor(undefined, command)} disabled={!command.trim()}><Save size={14} aria-hidden="true" /></button>
         <button type="button" className="console-dry" title={tradingText(locale, "dryRunTitle")} onClick={() => void run(command, true)} disabled={bot.status !== "running" || !command.trim()}>{tradingText(locale, "dryRun")}</button>
         <button type="submit" aria-label={tradingText(locale, "runCommand")} disabled={bot.status !== "running"}><Send size={14} aria-hidden="true" /></button>

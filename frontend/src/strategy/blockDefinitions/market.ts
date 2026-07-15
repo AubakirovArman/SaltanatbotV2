@@ -61,7 +61,7 @@ export const marketBlocks = [
     ],
     output: "Number",
     colour: "#4285b4",
-    tooltip: "Pine request.security(): external symbol/timeframe series. Uses attached external candles when available, otherwise falls back to current chart data."
+    tooltip: "Pine request.security(): external symbol/timeframe series. Research/live runs fail closed when candles are unresolved; chart fallback requires an explicit preview option."
   },
   {
     type: "market_barindex",

@@ -10,15 +10,15 @@ interface Props {
   configured: boolean;
   demo: boolean;
   liveArmed: boolean;
+  secureTradingOrigin: boolean;
 }
 
-export function BybitUtaPanel({ locale, configured, demo, liveArmed }: Props) {
+export function BybitUtaPanel({ locale, configured, demo, liveArmed, secureTradingOrigin }: Props) {
   const [snapshot, setSnapshot] = useState<BybitUtaSnapshot>();
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [status, setStatus] = useState<string>();
-  const secure = typeof window === "undefined" || window.isSecureContext;
 
   const refresh = useCallback(async () => {
     if (!configured) return;
@@ -51,7 +51,7 @@ export function BybitUtaPanel({ locale, configured, demo, liveArmed }: Props) {
     }
   };
 
-  const mutationsDisabled = demo || !secure || busy || !configured;
+  const mutationsDisabled = demo || !secureTradingOrigin || busy || !configured;
   const formatMoney = (value: number) => new Intl.NumberFormat(localeTag(locale), { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
   const formatNumber = (value: number, digits = 8) => new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: digits }).format(value);
   const formatPercent = (value: number) => new Intl.NumberFormat(localeTag(locale), { style: "percent", maximumFractionDigits: 2 }).format(value);
@@ -66,7 +66,7 @@ export function BybitUtaPanel({ locale, configured, demo, liveArmed }: Props) {
       </div>
       <p className="settings-note">{bybitUtaText(locale, "description")}</p>
       {!configured && <p className="uta-notice">{bybitUtaText(locale, "notConfigured")}</p>}
-      {!secure && <p className="uta-notice danger"><AlertTriangle size={14} aria-hidden="true" /> {bybitUtaText(locale, "httpsRequired")}</p>}
+      {!secureTradingOrigin && <p className="uta-notice danger"><AlertTriangle size={14} aria-hidden="true" /> {bybitUtaText(locale, "httpsRequired")}</p>}
       {error && <p className="uta-notice danger" role="alert"><AlertTriangle size={14} aria-hidden="true" /> {error}</p>}
       {status && <p className="uta-notice success" role="status">{status}</p>}
 

@@ -1,4 +1,12 @@
 import { randomUUID } from "node:crypto";
+import type { PaperLedgerEvent, PaperLedgerState } from "../paperLedger.js";
+import {
+  PaperLedgerController,
+  toPaperState,
+  type PaperState,
+  type VerifiedPaperFundingSettlement
+} from "../paperLedgerController.js";
+import { PaperExecutionModel, type PaperExecutionQuote } from "./paperExecution.js";
 import type {
   AccountState,
   ExchangeAdapter,
@@ -14,22 +22,22 @@ import type {
   TpLevel
 } from "../types.js";
 
-export interface PaperState {
-  balance: number;
-  position: PositionState | null;
-  orders: PendingOrder[];
-  leverage: number;
-  isolated: boolean;
-  dualSide: boolean;
-}
+export type { PaperState, VerifiedPaperFundingSettlement } from "../paperLedgerController.js";
+export type { PaperExecutionQuote } from "./paperExecution.js";
 
 interface PaperOptions {
   botId: string;
+  accountId?: string;
   market: MarketType;
   startBalance: number;
   feePct: number;
   slipPct: number;
   getPrice: (symbol: string) => number;
+  getExecutionQuote?: (symbol: string, side: Side, qty: number) => PaperExecutionQuote | undefined;
+  now?: () => number;
+  createId?: () => string;
+  initialEvents?: PaperLedgerEvent[];
+  persistEvents?: (events: readonly PaperLedgerEvent[]) => void;
 }
 
 /**
@@ -42,29 +50,64 @@ interface PaperOptions {
 export class PaperAdapter implements ExchangeAdapter {
   readonly id = "paper" as const;
   readonly market: MarketType;
-  private balance: number;
+  readonly accountId: string;
+  private balance = 0;
   private pos: PositionState | null = null;
   private book: PendingOrder[] = [];
   private leverage = 1;
   private isolated = false;
   private dualSide = false;
+  private readonly ledger: PaperLedgerController;
+  private readonly execution: PaperExecutionModel;
+  private readonly now: () => number;
+  private readonly createId: () => string;
 
   constructor(private readonly opts: PaperOptions) {
     this.market = opts.market;
-    this.balance = opts.startBalance;
+    this.accountId = opts.accountId ?? `paper:${opts.botId}`;
+    this.now = opts.now ?? Date.now;
+    this.createId = opts.createId ?? randomUUID;
+    this.execution = new PaperExecutionModel(opts.slipPct, opts.getExecutionQuote);
+    this.ledger = new PaperLedgerController({
+      botId: opts.botId,
+      startBalance: opts.startBalance,
+      now: this.now,
+      createId: this.createId,
+      initialEvents: opts.initialEvents,
+      persistEvents: opts.persistEvents
+    });
+    this.applyLedgerState(this.ledger.state());
   }
 
   getState(): PaperState {
-    return { balance: this.balance, position: this.pos, orders: this.book, leverage: this.leverage, isolated: this.isolated, dualSide: this.dualSide };
+    return this.snapshot();
   }
 
+  /** Import a legacy snapshot once; subsequent recovery must use ledger events. */
   setState(state: PaperState) {
-    this.balance = state.balance;
-    this.pos = state.position;
-    this.book = state.orders ?? [];
-    this.leverage = state.leverage ?? 1;
-    this.isolated = state.isolated ?? false;
-    this.dualSide = state.dualSide ?? false;
+    this.applyLedgerState(this.ledger.importLegacy(state));
+  }
+
+  getLedgerEvents(): PaperLedgerEvent[] {
+    return this.ledger.events();
+  }
+
+  getLedgerState(): PaperLedgerState {
+    return this.ledger.state();
+  }
+
+  restoreLedger(events: readonly PaperLedgerEvent[]): void {
+    this.applyLedgerState(this.ledger.restore(events));
+  }
+
+  setLedgerPersistence(persist: (events: readonly PaperLedgerEvent[]) => void): void {
+    this.ledger.setPersistence(persist);
+  }
+
+  applyFundingSettlement(settlement: VerifiedPaperFundingSettlement): number {
+    const applied = this.ledger.applyFunding(settlement, this.pos);
+    this.applyLedgerState(applied.state);
+    return applied.amount;
   }
 
   async price(symbol: string): Promise<number> {
@@ -79,6 +122,10 @@ export class PaperAdapter implements ExchangeAdapter {
     return this.pos && this.pos.symbol === symbol ? this.pos : null;
   }
 
+  async positions(): Promise<PositionState[]> {
+    return this.pos ? [this.pos] : [];
+  }
+
   async orders(symbol?: string): Promise<PendingOrder[]> {
     return symbol ? this.book.filter((order) => order.symbol === symbol) : this.book;
   }
@@ -86,29 +133,56 @@ export class PaperAdapter implements ExchangeAdapter {
   /** Called every tick: fills any resting orders whose trigger/limit is crossed. */
   onPrice(symbol: string, price: number): FillRecord[] {
     if (!Number.isFinite(price) || price <= 0) return [];
+    const before = this.snapshot();
     const fills: FillRecord[] = [];
     const remaining: PendingOrder[] = [];
-    for (const order of this.book) {
-      if (order.symbol !== symbol || !this.triggered(order, price)) {
-        remaining.push(order);
-        continue;
+    try {
+      for (const order of this.book) {
+        if (order.symbol !== symbol || !this.triggered(order, price)) {
+          remaining.push(order);
+          continue;
+        }
+        const isLimit = order.type === "limit" || order.type === "stop_limit" || order.type === "tp_limit";
+        const fillPrice = isLimit
+          ? this.execution.limit(order)
+          : this.execution.market(order.symbol, order.side, order.qty, price);
+        if (fillPrice === undefined) {
+          remaining.push(order);
+          continue;
+        }
+        const fill = this.applyFill(order.symbol, order.side, order.qty, fillPrice, order.reduceOnly, `trigger:${order.type}`);
+        if (fill) fills.push({ ...fill, orderId: order.id, clientId: order.clientId });
       }
-      const fillPrice = order.type === "limit" || order.type === "stop_limit" || order.type === "tp_limit"
-        ? order.price ?? price
-        : price;
-      const fill = this.applyFill(order.symbol, order.side, order.qty, fillPrice, order.reduceOnly, `trigger:${order.type}`);
-      if (fill) fills.push({ ...fill, orderId: order.id, clientId: order.clientId });
-      // Reduce-only protection that fully closed the position cancels siblings.
+      this.book = this.pos ? remaining : remaining.filter((order) => !order.reduceOnly);
+      this.commitTransition(before, this.snapshot(), fills, `price:${symbol}:${price}`);
+      return fills;
+    } catch (error) {
+      this.restoreSnapshot(before);
+      throw error;
     }
-    this.book = this.pos ? remaining : remaining.filter((order) => !order.reduceOnly);
-    return fills;
   }
 
   async execute(order: ExecOrder): Promise<ExecResult> {
+    const before = this.snapshot();
     const mark = this.opts.getPrice(order.symbol);
     if (order.action !== "get" && order.action !== "set" && order.action !== "cancel" && order.action !== "cancelall" && order.action !== "cancelorphans" && (!Number.isFinite(mark) || mark <= 0)) {
       return this.fail("No market price available");
     }
+    try {
+      const result = this.executeMutation(order, mark);
+      if (!result.ok) {
+        this.restoreSnapshot(before);
+        return result;
+      }
+      this.commitTransition(before, this.snapshot(), result.fills, order.clientId ?? order.orderId ?? `command:${order.action}`);
+      return result;
+    } catch (error) {
+      this.restoreSnapshot(before);
+      throw error;
+    }
+  }
+
+  private executeMutation(order: ExecOrder, mark: number): ExecResult {
     switch (order.action) {
       case "neworder": return this.neworder(order, mark);
       case "open": return this.openPosition(order, mark);
@@ -136,7 +210,10 @@ export class PaperAdapter implements ExchangeAdapter {
       if (order.reduceOnly || order.closePct !== undefined) {
         return this.closePosition({ ...order, action: "close" }, mark);
       }
-      const fill = this.applyFill(order.symbol, order.side, this.resolveQty(order, mark), this.slip(mark, order.side, true), false, order.reason);
+      const qty = this.resolveQty(order, mark);
+      const execution = this.execution.market(order.symbol, order.side, qty, mark);
+      if (execution === undefined) return this.fail("Insufficient verified executable liquidity");
+      const fill = this.applyFill(order.symbol, order.side, qty, execution, false, order.reason);
       return fill ? this.ok(fillMsg(fill), [fill]) : this.fail("Computed quantity is zero");
     }
     // Resting order.
@@ -149,24 +226,42 @@ export class PaperAdapter implements ExchangeAdapter {
       return this.fail(`Already in a ${this.pos.side} position on ${order.symbol}`);
     }
     if (order.stop || order.takeProfits || order.clearStage) this.cancelSymbol(order.symbol);
-    if (order.clearStage && this.pos) this.applyFill(this.pos.symbol, this.pos.side === "long" ? "sell" : "buy", this.pos.qty, mark, true, "clearstage");
+    const fills: FillRecord[] = [];
+    if (order.clearStage && this.pos) {
+      const closeSide = this.pos.side === "long" ? "sell" : "buy";
+      const closePrice = this.execution.market(this.pos.symbol, closeSide, this.pos.qty, mark);
+      if (closePrice === undefined) return this.fail("Insufficient verified executable liquidity to clear the position");
+      const close = this.applyFill(this.pos.symbol, closeSide, this.pos.qty, closePrice, true, "clearstage");
+      if (close) fills.push(close);
+    }
     const dir: Side = order.side === "sell" ? "sell" : "buy";
-    const fill = this.applyFill(order.symbol, dir, this.resolveQty(order, mark), this.slip(mark, dir, true), false, order.reason);
+    const qty = this.resolveQty(order, mark);
+    const execution = this.execution.market(order.symbol, dir, qty, mark);
+    if (execution === undefined) return this.fail("Insufficient verified executable liquidity");
+    const fill = this.applyFill(order.symbol, dir, qty, execution, false, order.reason);
     if (!fill) return this.fail("qty parameter is missing or invalid");
+    fills.push(fill);
     if (order.leverage) this.leverage = order.leverage;
     this.attachProtection(order, this.pos!);
-    return this.ok(`${fillMsg(fill)}${this.book.length ? ` (+${this.book.length} protective)` : ""}`, [fill]);
+    return this.ok(`${fillMsg(fill)}${this.book.length ? ` (+${this.book.length} protective)` : ""}`, fills);
   }
 
   private openOrders(order: ExecOrder, mark: number): ExecResult {
     if (order.stop || order.takeProfits || order.clearStage) this.cancelSymbol(order.symbol);
-    if (order.clearStage && this.pos) this.applyFill(this.pos.symbol, this.pos.side === "long" ? "sell" : "buy", this.pos.qty, mark, true, "clearstage");
+    const fills: FillRecord[] = [];
+    if (order.clearStage && this.pos) {
+      const closeSide = this.pos.side === "long" ? "sell" : "buy";
+      const closePrice = this.execution.market(this.pos.symbol, closeSide, this.pos.qty, mark);
+      if (closePrice === undefined) return this.fail("Insufficient verified executable liquidity to clear the position");
+      const close = this.applyFill(this.pos.symbol, closeSide, this.pos.qty, closePrice, true, "clearstage");
+      if (close) fills.push(close);
+    }
     const entry = this.place({ ...order, type: "limit" }, mark);
     if (!entry) return this.fail("Limit entry parameters invalid");
     // Protective orders rest reduce-only and act once the entry fills.
     const refPrice = order.price ?? mark;
     this.placeProtection(order, order.side === "sell" ? "sell" : "buy", entry.qty, refPrice, refPrice);
-    return this.ok(`Limit entry @ ${round(refPrice)} + ${this.book.length - 1} protective`, []);
+    return this.ok(`Limit entry @ ${round(refPrice)} + ${this.book.length - 1} protective`, fills);
   }
 
   private spreadEntry(order: ExecOrder, mark: number): ExecResult {
@@ -178,7 +273,9 @@ export class PaperAdapter implements ExchangeAdapter {
     const per = totalQty / count;
     const fills: FillRecord[] = [];
     // First slice as a market order for an immediate position.
-    const first = this.applyFill(order.symbol, side, per, this.slip(mark, side, true), false, "spreadentry");
+    const firstPrice = this.execution.market(order.symbol, side, per, mark);
+    if (firstPrice === undefined) return this.fail("Insufficient verified executable liquidity");
+    const first = this.applyFill(order.symbol, side, per, firstPrice, false, "spreadentry");
     if (first) fills.push(first);
     // Remaining slices as limit orders across the range.
     for (let i = 1; i < count; i += 1) {
@@ -195,7 +292,10 @@ export class PaperAdapter implements ExchangeAdapter {
     const pct = order.qty !== undefined ? (order.qty / this.pos.qty) * 100 : order.closePct ?? 100;
     const qty = Math.min(this.pos.qty, this.pos.qty * (pct / 100));
     const side: Side = this.pos.side === "long" ? "sell" : "buy";
-    const price = order.type === "limit" && order.price ? order.price : this.slip(mark, side, false);
+    const price = order.type === "limit" && order.price
+      ? this.execution.limitAt(order.symbol, side, qty, order.price)
+      : this.execution.market(order.symbol, side, qty, mark);
+    if (price === undefined) return this.fail("Insufficient verified executable liquidity to close");
     const fill = this.applyFill(order.symbol, side, qty, price, true, order.reason);
     return fill ? this.ok(fillMsg(fill), [fill]) : this.fail("Nothing to close");
   }
@@ -204,7 +304,10 @@ export class PaperAdapter implements ExchangeAdapter {
     const fills: FillRecord[] = [];
     if (this.pos) {
       const mark = this.opts.getPrice(this.pos.symbol);
-      const fill = this.applyFill(this.pos.symbol, this.pos.side === "long" ? "sell" : "buy", this.pos.qty, this.slip(mark, this.pos.side === "long" ? "sell" : "buy", false), true, "flatten");
+      const side = this.pos.side === "long" ? "sell" : "buy";
+      const execution = this.execution.market(this.pos.symbol, side, this.pos.qty, mark);
+      if (execution === undefined) return this.fail("Insufficient verified executable liquidity to flatten");
+      const fill = this.applyFill(this.pos.symbol, side, this.pos.qty, execution, true, "flatten");
       if (fill) fills.push(fill);
     }
     this.book = [];
@@ -213,17 +316,26 @@ export class PaperAdapter implements ExchangeAdapter {
 
   private turnover(order: ExecOrder, mark: number): ExecResult {
     const wanted: Side = order.side === "sell" ? "sell" : "buy";
+    const fills: FillRecord[] = [];
+    const openingQty = this.resolveQty(order, mark);
+    const openingPrice = this.execution.market(order.symbol, wanted, openingQty, mark);
+    if (openingPrice === undefined) return this.fail("Insufficient verified executable liquidity to open the reversal");
     if (this.pos) {
       const same = (this.pos.side === "long" && wanted === "buy") || (this.pos.side === "short" && wanted === "sell");
       if (same && !order.ignoreSide) return this.fail("Already in a position in the same direction");
-      this.applyFill(this.pos.symbol, this.pos.side === "long" ? "sell" : "buy", this.pos.qty, mark, true, "turnover:close");
+      const closeSide = this.pos.side === "long" ? "sell" : "buy";
+      const closePrice = this.execution.market(this.pos.symbol, closeSide, this.pos.qty, mark);
+      if (closePrice === undefined) return this.fail("Insufficient verified executable liquidity to close the current position");
+      const close = this.applyFill(this.pos.symbol, closeSide, this.pos.qty, closePrice, true, "turnover:close");
+      if (close) fills.push(close);
       this.cancelSymbol(order.symbol);
     }
-    const fill = this.applyFill(order.symbol, wanted, this.resolveQty(order, mark), this.slip(mark, wanted, true), false, "turnover:open");
+    const fill = this.applyFill(order.symbol, wanted, openingQty, openingPrice, false, "turnover:open");
     if (!fill) return this.fail("Turnover size is zero");
+    fills.push(fill);
     if (order.leverage) this.leverage = order.leverage;
     this.attachProtection(order, this.pos!);
-    return this.ok(`Reversed to ${wanted === "buy" ? "long" : "short"}`, [fill]);
+    return this.ok(`Reversed to ${wanted === "buy" ? "long" : "short"}`, fills);
   }
 
   private chpOrders(order: ExecOrder, mark: number): ExecResult {
@@ -324,7 +436,7 @@ export class PaperAdapter implements ExchangeAdapter {
 
   private placeProtection(order: ExecOrder, entrySide: Side, qty: number, refPrice: number, entryPrice: number) {
     const closeSide: Side = entrySide === "buy" ? "sell" : "buy";
-    const posLike: PositionState = { symbol: order.symbol, side: entrySide === "buy" ? "long" : "short", qty, entryPrice, leverage: order.leverage ?? 1, openedAt: Date.now() };
+    const posLike: PositionState = { symbol: order.symbol, side: entrySide === "buy" ? "long" : "short", qty, entryPrice, leverage: order.leverage ?? 1, openedAt: this.now() };
     if (order.stop) this.placeStop(order.stop, posLike, order, refPrice);
     if (order.takeProfits) this.placeTps(order.takeProfits, posLike, entryPrice);
     void closeSide;
@@ -343,7 +455,7 @@ export class PaperAdapter implements ExchangeAdapter {
       const trg = level.priceBasis === "price" ? level.price : pos.side === "long" ? entryPrice * (1 + level.price / 100) : entryPrice * (1 - level.price / 100);
       const qty = level.qtyBasis === "abs" ? level.qty : pos.qty * (level.qty / 100);
       const type: OrderType = level.limitPrice !== undefined ? "tp_limit" : "tp_market";
-      const pending: PendingOrder = { id: randomUUID(), symbol: pos.symbol, side, type, qty, trgPrice: trg, price: level.limitPrice, reduceOnly: true, tif: "GTC", createdAt: Date.now() };
+      const pending: PendingOrder = { id: this.createId(), symbol: pos.symbol, side, type, qty, trgPrice: trg, price: level.limitPrice, reduceOnly: true, tif: "GTC", createdAt: this.now() };
       this.book.push(pending);
     }
     if (this.pos && levels[0]) this.pos.targetPrice = this.book.find((o) => o.type.startsWith("tp"))?.trgPrice;
@@ -363,7 +475,7 @@ export class PaperAdapter implements ExchangeAdapter {
   }
 
   private pending(side: Side, qty: number, type: OrderType, price: number | undefined, trg: number | undefined, reduceOnly: boolean, order: ExecOrder): PendingOrder {
-    return { id: randomUUID(), clientId: order.clientId, symbol: order.symbol, side, type, qty, price, trgPrice: trg, reduceOnly, tif: order.tif ?? "GTC", createdAt: Date.now() };
+    return { id: this.createId(), clientId: order.clientId, symbol: order.symbol, side, type, qty, price, trgPrice: trg, reduceOnly, tif: order.tif ?? "GTC", createdAt: this.now() };
   }
 
   private triggered(order: PendingOrder, price: number): boolean {
@@ -381,9 +493,9 @@ export class PaperAdapter implements ExchangeAdapter {
     // Reduce / close.
     if (this.pos && ((side === "sell" && this.pos.side === "long") || (side === "buy" && this.pos.side === "short"))) {
       const closeQty = Math.min(this.pos.qty, qty);
-      const gross = this.pos.side === "long" ? closeQty * (price - this.pos.entryPrice) : closeQty * (this.pos.entryPrice - price);
-      const fee = closeQty * price * (this.opts.feePct / 100);
-      const pnl = gross - fee;
+      const gross = round(this.pos.side === "long" ? closeQty * (price - this.pos.entryPrice) : closeQty * (this.pos.entryPrice - price));
+      const fee = round(closeQty * price * (this.opts.feePct / 100));
+      const pnl = round(gross - fee);
       this.balance += pnl;
       this.pos.qty -= closeQty;
       const sym = this.pos.symbol;
@@ -393,9 +505,9 @@ export class PaperAdapter implements ExchangeAdapter {
     if (reduceOnly) return null;
     // Open (single one-way position per symbol).
     if (this.pos) return null;
-    const fee = qty * price * (this.opts.feePct / 100);
+    const fee = round(qty * price * (this.opts.feePct / 100));
     this.balance -= fee;
-    this.pos = { symbol, side: side === "buy" ? "long" : "short", qty, entryPrice: price, leverage: this.leverage, openedAt: Date.now() };
+    this.pos = { symbol, side: side === "buy" ? "long" : "short", qty, entryPrice: price, leverage: this.leverage, openedAt: this.now() };
     return this.record(symbol, side, qty, price, fee, 0, "open", reason);
   }
 
@@ -407,12 +519,6 @@ export class PaperAdapter implements ExchangeAdapter {
     if (order.depoPct !== undefined) return (this.balance * (order.depoPct / 100) * (order.leverage ?? 1)) / price;
     if (order.closePct !== undefined && this.pos) return this.pos.qty * (order.closePct / 100);
     return 0;
-  }
-
-  private slip(price: number, side: Side, entering: boolean): number {
-    void entering;
-    const worseUp = side === "buy";
-    return price * (1 + (worseUp ? this.opts.slipPct : -this.opts.slipPct) / 100);
   }
 
   private cancelSymbol(symbol: string) {
@@ -427,7 +533,7 @@ export class PaperAdapter implements ExchangeAdapter {
   }
 
   private record(symbol: string, side: Side, qty: number, price: number, fee: number, pnl: number, kind: "open" | "close", reason: string): FillRecord {
-    return { id: randomUUID(), botId: this.opts.botId, symbol, side, qty: round(qty), price: round(price), fee: round(fee), feeAsset: "USDT", realizedPnl: round(pnl), kind, reason, ts: Date.now() };
+    return { id: this.createId(), botId: this.opts.botId, symbol, side, qty: round(qty), price: round(price), fee: round(fee), feeAsset: "USDT", realizedPnl: round(pnl), kind, reason, ts: this.now() };
   }
 
   private ok(message: string, fills: FillRecord[]): ExecResult {
@@ -436,6 +542,34 @@ export class PaperAdapter implements ExchangeAdapter {
 
   private fail(message: string): ExecResult {
     return { ok: false, message, fills: [] };
+  }
+
+  private snapshot(): PaperState {
+    return {
+      balance: this.balance,
+      position: this.pos ? structuredClone(this.pos) : null,
+      orders: structuredClone(this.book),
+      leverage: this.leverage,
+      isolated: this.isolated,
+      dualSide: this.dualSide
+    };
+  }
+
+  private restoreSnapshot(state: PaperState): void {
+    this.balance = state.balance;
+    this.pos = state.position ? structuredClone(state.position) : null;
+    this.book = structuredClone(state.orders ?? []);
+    this.leverage = state.leverage ?? 1;
+    this.isolated = state.isolated ?? false;
+    this.dualSide = state.dualSide ?? false;
+  }
+
+  private commitTransition(before: PaperState, after: PaperState, fills: FillRecord[], reason: string): void {
+    this.applyLedgerState(this.ledger.commitTransition(before, after, fills, reason));
+  }
+
+  private applyLedgerState(state: PaperLedgerState): void {
+    this.restoreSnapshot(toPaperState(state));
   }
 }
 

@@ -18,10 +18,25 @@ export function ingestExchangeOrderEvent(
 ): OrderEventIngestResult {
   const exchangeMatches = records.filter((record) => record.exchangeOrderId === snapshot.id);
   const clientMatches = snapshot.clientId ? records.filter((record) => record.clientId === snapshot.clientId) : [];
-  const record = unique(exchangeMatches) ?? unique(clientMatches);
+  const exchangeRecord = unique(exchangeMatches);
+  const clientRecord = unique(clientMatches);
+  const conflictRecord = exchangeMatches[0] ?? clientMatches[0];
+  if (
+    exchangeMatches.length > 1
+    || clientMatches.length > 1
+    || (exchangeRecord && clientRecord && exchangeRecord.id !== clientRecord.id)
+  ) {
+    return conflictRecord
+      ? { kind: "ignored", record: conflictRecord, reason: "identity_conflict" }
+      : { kind: "unmatched" };
+  }
+  const record = exchangeRecord ?? clientRecord;
   if (!record) return { kind: "unmatched" };
 
-  if (record.exchangeOrderId && record.exchangeOrderId !== snapshot.id) {
+  if (
+    (record.exchangeOrderId && record.exchangeOrderId !== snapshot.id)
+    || (record.clientId && snapshot.clientId && record.clientId !== snapshot.clientId)
+  ) {
     return { kind: "ignored", record, reason: "identity_conflict" };
   }
 

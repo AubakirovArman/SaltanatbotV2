@@ -1,0 +1,18 @@
+[
+  {
+    "contract": "BTC_USDT",
+    "last": "62790.8",
+    "lowest_ask": "62792.1",
+    "lowest_size": "52790",
+    "highest_bid": "62792",
+    "highest_size": "19801",
+    "volume_24h": "606659039",
+    "volume_24h_base": "60665",
+    "volume_24h_quote": "3785952326",
+    "volume_24h_settle": "3785952326",
+    "funding_rate": "-0.000015",
+    "mark_price": "62790.9",
+    "index_price": "62823.66",
+    "quanto_multiplier": "0.0001"
+  }
+]

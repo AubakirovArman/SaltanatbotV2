@@ -45,7 +45,7 @@ The stable block type is the serialization/compiler identifier and is intentiona
 | `value_between` | Logic | Between | True when a value is within a low–high range (inclusive). | — |
 | `market_price` | Market | Market price | The current bar's price field: close/open/high/low/volume, or the averages hl2, hlc3, ohlc4. | — |
 | `market_price_offset` | Market | Price N bars ago | A price field from a past bar (offset back from the current bar). | — |
-| `market_security` | Market | External series | Pine request.security(): value from another symbol or timeframe. Backtests/previews use attached external candles when available, otherwise chart-data fallback. | — |
+| `market_security` | Market | External series | Pine request.security(): value from another symbol or timeframe. Research/live runs require resolved external candles; chart fallback is available only through an explicit preview option. | — |
 | `market_time` | Market | Bar time | Pine time(): bar timestamp, optionally filtered by a session string such as 0930-1600:23456. | — |
 | `ctx_read` | Position & PnL | Position / PnL read | The live position/PnL state: direction, entry, unrealized PnL, bars in trade, loss streak, trades today, equity. 0 when flat. | — |
 | `position_is` | Position & PnL | Position is… | True when the current position is long, short, or flat. | — |

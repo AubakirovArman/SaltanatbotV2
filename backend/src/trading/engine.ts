@@ -2,119 +2,134 @@ import type { Candle, Instrument, Timeframe } from "../types.js";
 import { findInstrument } from "../market/catalog.js";
 import { timeframeMs } from "../market/timeframes.js";
 import { ProviderRouter } from "../providers/router.js";
-import { commandToExec, formatExec, parseMessageSet } from "./commands.js";
 import { findLiveCollision } from "./collision.js";
 import { resolvePositionQty, resolveStopPrice, resolveTargetPrice } from "./engineRisk.js";
 import { atrValue, evaluateBar, runInit, type BarIntents } from "./strategy/evaluator.js";
-import { PaperAdapter, type PaperState } from "./exchange/paper.js";
+import { PaperAdapter } from "./exchange/paper.js";
 import { notify } from "./notifications.js";
-import { orderLifecycle } from "./orderLifecycle.js";
 import { classifyCandleSequence } from "./candleSequence.js";
-import { getSetting, insertLog, listBots, listOrderJournal, setSetting, upsertBot, withStoreTransaction } from "./store.js";
+import { getSetting, insertLog, listBots, listOrderJournal, setSetting, upsertBot } from "./store.js";
+import { restorePaperTrading } from "./paperRecovery.js";
 import type { Managed, BotStateSnapshot, RunningBot } from "./engineRuntime.js";
 import { EngineOrderCoordinator } from "./engineOrderCoordinator.js";
+import { EmergencyStopCoordinator, type EmergencyStopOptions } from "./emergencyStop.js";
 import { buildPortfolioSummary } from "./enginePortfolio.js";
-import { buildEngineAdapter, engineMarketRoute } from "./engineAdapters.js";
-import { equityOf, pauseRunningBot, persistPaper, persistRuntimeState, positionContext, realizedToday, roundTradingValue as round } from "./engineState.js";
-import { constrainSpotInventoryOrder, getSpotInventory, liveSpotInventoryEnabled, recordConfirmedFill, resolveSpotCloseQuantity } from "./spotInventory.js";
-import type { AccountState, BotConfig, ExecOrder, ExecResult, FillRecord, PortfolioSummary, PositionState } from "./types.js";
-
+import { buildEmergencyAdapters, buildEngineAdapter, engineMarketRoute } from "./engineAdapters.js";
+import { clearPausedRuntime, equityOf, liveRuntimeState, pauseRunningBot, persistRuntimeState, positionContext, realizedToday, roundTradingValue as round } from "./engineState.js";
+import { getSpotInventory, liveSpotInventoryEnabled, resolveSpotCloseQuantity } from "./spotInventory.js";
+import { assertLiveRiskReady, preflightLiveOrder } from "./liveRisk.js";
+import { KeyedExclusiveLock } from "./keyedExclusiveLock.js";
+import { runManualCommandSet } from "./manualCommandRunner.js";
+import { loadLiveRiskJournal } from "./liveRiskReservations.js";
+import { getFuturesExposure } from "./futuresExposure.js";
+import { applyEngineResult } from "./engineResultAccounting.js";
+import { applySynchronousReduceOnlyExecution, pausedOrderAllowed } from "./managedExecution.js";
+import { executeDurableEngineOrder } from "./durableEngineExecution.js";
+import type { TradeEvent } from "./engineEvents.js";
+import { EngineStopCoordinator, engineOrderLockKey } from "./engineStopCoordinator.js";
+import { applyPriceTriggeredFills } from "./enginePriceEvents.js";
+import type { BotConfig, ExchangeAdapter, ExecOrder, ExecResult, PortfolioSummary } from "./types.js";
+import { botTradingAccountId } from "./tradingAccounts.js";
 const BUFFER_CAP = 1500;
-/**
- * History seeded before a live bot starts evaluating, so indicators have warmup.
- * NOTE: a live bot only evaluates bars that close AFTER it starts, so `setvar`
- * counters (e.g. "entries so far", loss streaks) begin at the start moment —
- * whereas a backtest accumulates them from bar 0 of history. For strategies whose
- * decisions depend on absolute counts over all history, backtest and live will
- * therefore diverge by construction; counters should be framed as "since start".
- */
 const SEED_BARS = 500;
-
-export interface TradeEvent {
-  type: "bot" | "fill" | "log" | "signal";
-  botId: string;
-  bot?: BotConfig;
-  fill?: FillRecord;
-  log?: { level: string; message: string; ts: number };
-  signal?: { dir: "up" | "down"; label: string; price: number; ts: number };
-  account?: AccountState;
-  position?: PositionState | null;
-}
-
 export class TradingEngine {
   private running = new Map<string, RunningBot>();
-  /** Bot ids whose per-bar alert/marker notifications are muted (persisted). */
+  private readonly botStartLock = new KeyedExclusiveLock();
+  private readonly liveStartLock = new KeyedExclusiveLock();
+  private readonly manualCommandLock = new KeyedExclusiveLock();
+  private readonly orderExecutionLock = new KeyedExclusiveLock();
   private muted: Set<string>;
   private readonly orderCoordinator: EngineOrderCoordinator;
-
+  private readonly stopCoordinator: EngineStopCoordinator;
+  private readonly emergency: EmergencyStopCoordinator;
   constructor(
     private readonly provider: ProviderRouter,
-    private readonly broadcast: (event: TradeEvent) => void
+    private readonly broadcast: (event: TradeEvent) => void,
+    emergencyAdapters: () => Iterable<ExchangeAdapter> = buildEmergencyAdapters
   ) {
     this.muted = new Set(getSetting<string[]>("mutedBots") ?? []);
     this.orderCoordinator = new EngineOrderCoordinator(
       (id) => this.running.get(id),
       (botId, level, message) => this.log(botId, level, message),
       (event) => this.broadcast(event),
-      (bot, reason) => pauseRunningBot(bot, reason)
+      (bot, reason) => {
+        pauseRunningBot(bot, reason);
+        persistRuntimeState(bot);
+      },
+      (bot) => persistRuntimeState(bot)
     );
+    this.stopCoordinator = new EngineStopCoordinator(
+      {
+        current: (id) => this.running.get(id),
+        remove: (id) => {
+          this.running.delete(id);
+        },
+        log: (id, message) => this.log(id, "info", message),
+        emit: (id) => this.emitBot(id)
+      },
+      this.botStartLock,
+      this.manualCommandLock,
+      this.orderExecutionLock
+    );
+    this.emergency = new EmergencyStopCoordinator({ running: () => this.running.values(), stop: (id) => this.stop(id), additionalAdapters: emergencyAdapters });
   }
-
   /** Mute/unmute a bot's alert & marker notifications (persisted). */
   setMuted(id: string, muted: boolean): void {
     if (muted) this.muted.add(id);
     else this.muted.delete(id);
     setSetting("mutedBots", [...this.muted]);
   }
-
   isMuted(id: string): boolean {
     return this.muted.has(id);
   }
-
+  emergencyStatus() {
+    return this.emergency.status();
+  }
+  emergencyStop(options?: EmergencyStopOptions) {
+    return this.emergency.run(options);
+  }
+  resetEmergencyAfterTerminal() {
+    this.emergency.resetAfterTerminal();
+  }
   /** Flatten a running bot's open position without stopping the bot. */
   async closeNow(id: string): Promise<boolean> {
     const bot = this.running.get(id);
-    if (!bot?.managed) return false;
+    if (!bot?.managed || this.stopCoordinator.isStopping(id)) return false;
     await this.closePosition(bot, "signal");
     return true;
   }
-
   isRunning(id: string) {
     return this.running.has(id);
   }
 
-  async liveState(id: string): Promise<{ account?: AccountState; position?: PositionState | null; price: number; paused: boolean; runtimeStatus: "running" | "requires_manual_action"; pauseReason?: string; vars: Record<string, number> } | null> {
-    const bot = this.running.get(id);
-    if (!bot) return null;
-    return {
-      account: await bot.adapter.account().catch(() => undefined),
-      position: await bot.adapter.position(bot.config.symbol).catch(() => null),
-      price: bot.price,
-      paused: bot.paused === true,
-      runtimeStatus: bot.paused ? "requires_manual_action" : "running",
-      pauseReason: bot.pauseReason,
-      vars: Object.fromEntries(bot.vars)
-    };
+  /** Configuration that owns the actual running adapter (authoritative for auth). */
+  runtimeConfig(id: string): BotConfig | undefined {
+    const config = this.running.get(id)?.config;
+    return config ? structuredClone(config) : undefined;
   }
 
-  /**
-   * Detect a live-on-live collision: another RUNNING live bot on the same
-   * exchange+symbol would fight this one (its close flattens the shared
-   * position, its cancelAll cancels the other's orders). Paper bots are
-   * isolated sims and never collide. Returns the offending bot's config, if any.
-   */
+  async liveState(id: string) {
+    const bot = this.running.get(id);
+    return bot ? liveRuntimeState(bot) : null;
+  }
+
+  /** Return a live bot that already owns the same exchange account instrument. */
   liveCollision(config: BotConfig): BotConfig | undefined {
     return findLiveCollision(
       config,
       [...this.running.values()].map((bot) => bot.config)
     );
   }
-
   async start(config: BotConfig, options: { override?: boolean; resumed?: boolean } = {}) {
+    return this.botStartLock.run(config.id, () => (config.exchange === "paper" ? this.startUnlocked(config, options) : this.liveStartLock.run(`${botTradingAccountId(config)}:${config.symbol}`, () => this.startUnlocked(config, options))));
+  }
+  private async startUnlocked(config: BotConfig, options: { override?: boolean; resumed?: boolean } = {}) {
     if (this.running.has(config.id)) return;
+    if (config.exchange !== "paper") this.emergency.assertLiveStartAllowed();
     const instrument = findInstrument(config.symbol);
     if (!instrument) throw new Error(`Unknown symbol: ${config.symbol}`);
     if (config.exchange !== "paper") {
+      assertLiveRiskReady(config);
       if (instrument.provider !== "binance") {
         throw new Error(`Live trading requires a real exchange feed for ${config.symbol}`);
       }
@@ -122,25 +137,19 @@ export class TradingEngine {
         throw new Error("Live spot trading is disabled until the spot inventory model is enabled.");
       }
     }
-
     // Guard against two live bots fighting over one exchange+symbol.
-    if (!options.override) {
-      const clash = this.liveCollision(config);
-      if (clash) {
-        throw new Error(`A live bot is already running on ${config.exchange} ${config.symbol} ("${clash.name}"). Stop it first or pass override to run both.`);
-      }
+    const clash = this.liveCollision(config);
+    if (clash && (config.exchange !== "paper" || !options.override)) {
+      throw new Error(`A live bot is already running on ${config.exchange} ${config.symbol} ("${clash.name}"). Stop it before starting another bot on the same account instrument.`);
     }
-
     const adapter = buildEngineAdapter(config, () => this.running.get(config.id)?.price ?? 0);
     const bot: RunningBot = { config, adapter, instrument, buffer: [], price: 0, vars: new Map(), eventQueue: Promise.resolve() };
     if (adapter instanceof PaperAdapter) {
       bot.paper = adapter;
-      const saved = getSetting<PaperState>(`paper:${config.id}`);
-      if (saved) adapter.setState(saved);
+      restorePaperTrading(config.id, adapter);
     }
 
-    // Restore durable strategy state (setvar counters + managed-position tracking)
-    // so a restart doesn't reset counters or lose track of an open position.
+    // Restore durable counters and managed-position tracking across restarts.
     const savedState = getSetting<BotStateSnapshot>(`state:${config.id}`);
     let persistAfterSeed = false;
     if (savedState) {
@@ -148,18 +157,15 @@ export class TradingEngine {
       bot.managed = savedState.managed;
       bot.paused = savedState.paused === true;
       bot.pauseReason = savedState.pauseReason;
-      // Resume staleness gate: if the bot comes back with risky state (an open
-      // position or nonzero counters) after a long gap, don't blindly resume
-      // trading — buffer only and wait for operator confirmation. A lost loss
-      // streak would resume a bot that should be dead; a stale one would gate on
-      // a dead regime. Human confirm is the only safe default for both.
+      // Stale risky state buffers data but requires an operator before trading.
       const hasRisk = !!bot.managed || Object.values(savedState.vars ?? {}).some((v) => v !== 0);
       const gap = Date.now() - (savedState.lastBarTime || 0);
       const stale = gap > 3 * (timeframeMs[config.timeframe] ?? 60_000);
       if (options.resumed && hasRisk && stale) pauseRunningBot(bot, "Resumed with stale state (open position or nonzero counters) pending operator confirmation.");
     }
 
-    if (options.resumed && config.exchange !== "paper") {
+    const hasPriorLifecycle = savedState !== undefined || listOrderJournal(config.id, 1).length > 0;
+    if (config.exchange !== "paper" && (options.resumed || hasPriorLifecycle)) {
       persistAfterSeed = await this.orderCoordinator.reconcileOnResume(bot, savedState?.managed);
     }
 
@@ -167,13 +173,11 @@ export class TradingEngine {
     const strict = config.exchange !== "paper";
     const route = engineMarketRoute(config);
 
-    // Seed history so indicators have warmup.
     const seed = await this.provider.getCandles(instrument, config.timeframe, { limit: SEED_BARS }, { ...route, strict });
     bot.buffer = seed.slice(-BUFFER_CAP);
     bot.price = bot.buffer.at(-1)?.close ?? 0;
     if (persistAfterSeed || bot.paused) persistRuntimeState(bot);
 
-    // Fresh start (no restored state): run the strategy's one-time on-start init.
     if (!savedState) runInit(config.ir, bot.buffer, bot.vars);
 
     bot.sub = await this.provider.subscribeMarket(
@@ -200,13 +204,17 @@ export class TradingEngine {
     }
   }
 
-  /** Clear the paused flag set by the resume staleness gate and let the bot trade. */
-  confirmResume(id: string): boolean {
+  /** Reconcile fresh live state before clearing a fail-closed pause. */
+  async confirmResume(id: string): Promise<boolean> {
     const bot = this.running.get(id);
     if (!bot?.paused) return false;
-    bot.paused = false;
-    bot.pauseReason = undefined;
-    persistRuntimeState(bot);
+    let confirmed = false;
+    bot.eventQueue = bot.eventQueue.then(async () => {
+      if (this.running.get(id) !== bot || !bot.paused) return;
+      confirmed = bot.config.exchange === "paper" ? clearPausedRuntime(bot) : await this.orderCoordinator.confirmResume(bot);
+    });
+    await bot.eventQueue;
+    if (!confirmed) return false;
     this.log(id, "info", "Trading resumed by operator");
     void notify({ event: "start", bot: bot.config.name, symbol: bot.config.symbol, text: "Trading resumed by operator" });
     return true;
@@ -217,20 +225,11 @@ export class TradingEngine {
   }
 
   stop(id: string) {
-    const bot = this.running.get(id);
-    if (!bot) return;
-    bot.sub?.close();
-    if (bot.orderPollTimer) clearInterval(bot.orderPollTimer);
-    bot.privateOrderSubscription?.close();
-    if (bot.paper) persistPaper(bot);
-    persistRuntimeState(bot);
-    this.running.delete(id);
-    bot.config.status = "stopped";
-    bot.config.updatedAt = Date.now();
-    upsertBot(bot.config);
-    this.log(id, "info", "Bot stopped");
-    this.emitBot(id);
-    void notify({ event: "stop", bot: bot.config.name, symbol: bot.config.symbol, text: "Stopped" });
+    this.stopCoordinator.stopNow(id);
+  }
+
+  async stopSafely(id: string): Promise<void> {
+    await this.stopCoordinator.stopSafely(id);
   }
 
   stopAll() {
@@ -243,14 +242,7 @@ export class TradingEngine {
    * Use stop()/stopAll() for an intentional stop that should persist.
    */
   shutdown() {
-    for (const bot of this.running.values()) {
-      bot.sub?.close();
-      if (bot.orderPollTimer) clearInterval(bot.orderPollTimer);
-      bot.privateOrderSubscription?.close();
-      if (bot.paper) persistPaper(bot);
-      persistRuntimeState(bot);
-    }
-    this.running.clear();
+    this.stopCoordinator.shutdown(this.running.values());
   }
 
   /** Restart bots that were running before the process stopped (called on boot). */
@@ -258,7 +250,8 @@ export class TradingEngine {
     for (const config of listBots()) {
       if (config.status !== "running" || this.running.has(config.id)) continue;
       try {
-        // Bypass the collision guard on resume — these were legitimately running.
+        // Resume uses the same live-collision guard; duplicate account owners
+        // must not come back concurrently after a restart.
         await this.start(config, { override: true, resumed: true });
         this.log(config.id, "info", "Resumed after restart");
       } catch (error) {
@@ -276,7 +269,7 @@ export class TradingEngine {
 
   /**
    * Cross-bot portfolio snapshot. Live accounts (id !== "paper") are deduped by
-   * exchange+market so two bots on one account aren't double-counted; each
+   * account+market so two bots on one account aren't double-counted; each
    * account's equity/positions/open-orders are read once. Paper bots are kept
    * separate (isolated sims). Every adapter call is guarded so one failing
    * exchange degrades to an `error` field instead of breaking the response.
@@ -292,29 +285,17 @@ export class TradingEngine {
    */
   async manualCommand(id: string, input: string, dryRun = false): Promise<{ ok: boolean; message: string }> {
     const bot = this.running.get(id);
-    if (!bot) return { ok: false, message: "Bot is not running" };
-    try {
-      const steps = parseMessageSet(input);
-      const messages: string[] = [];
-      for (const step of steps) {
-        if (step.command) {
-          let exec = commandToExec(step.command);
-          if (!exec.symbol) exec.symbol = bot.config.symbol;
-          exec = constrainSpotInventoryOrder(bot.config.id, bot.config.market, exec);
-          if (dryRun) {
-            messages.push(`would ${formatExec(exec)}`);
-            continue;
-          }
-          const result = await this.executeOrder(bot, exec);
-          this.applyResult(bot, result, exec.reason);
-          messages.push(result.message);
-        }
-        if (!dryRun && step.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(step.delayMs, 10_000)));
-      }
-      return { ok: true, message: (dryRun ? "Dry run — " : "") + (messages.join(" · ") || "Done") };
-    } catch (error) {
-      return { ok: false, message: error instanceof Error ? error.message : "Command failed" };
-    }
+    if (!bot || this.stopCoordinator.isStopping(id)) return { ok: false, message: "Bot is not running" };
+    return this.manualCommandLock.run(id, async () => {
+      if (this.running.get(id) !== bot || this.stopCoordinator.isStopping(id)) return { ok: false, message: "Bot is not running" };
+      return runManualCommandSet({
+        bot,
+        input,
+        dryRun,
+        execute: (order) => this.executeOrder(bot, order),
+        applyResult: (result, reason, order) => this.applyResult(bot, result, reason, order)
+      });
+    });
   }
 
   private onCandle(id: string, candle: Candle) {
@@ -335,22 +316,10 @@ export class TradingEngine {
     }
     bot.price = candle.close;
 
-    // Fill any resting limit / stop / take-profit orders crossed by this tick.
-    if (bot.adapter.onPrice) {
-      const fills = bot.adapter.onPrice(bot.config.symbol, candle.close);
-      for (const fill of fills) {
-        const recorded = withStoreTransaction(() => recordConfirmedFill(fill, bot.config.market));
-        if (!recorded) continue;
-        if (fill.orderId || fill.clientId) {
-          const record = listOrderJournal(bot.config.id, 500).find((candidate) => (fill.orderId !== undefined && candidate.exchangeOrderId === fill.orderId) || (fill.clientId !== undefined && candidate.clientId === fill.clientId));
-          if (record) orderLifecycle.recordFill(record, fill);
-        }
-        this.log(bot.config.id, "info", `Order ${fill.kind} ${fill.qty} @ ${fill.price}${fill.kind === "close" ? ` · PnL ${round(fill.realizedPnl)}` : ""}`);
-        this.broadcast({ type: "fill", botId: bot.config.id, fill });
-        if (fill.kind === "close") void notify({ event: "close", bot: bot.config.name, symbol: bot.config.symbol, text: `Order fill · PnL ${round(fill.realizedPnl)}` });
-      }
-      if (fills.length && bot.paper) persistPaper(bot);
-    }
+    applyPriceTriggeredFills(bot, candle.close, {
+      log: (message) => this.log(bot.config.id, "info", message),
+      broadcast: (fill) => this.broadcast({ type: "fill", botId: bot.config.id, fill })
+    });
 
     if (!last || candle.time === last.time) {
       if (last && candle.time === last.time) bot.buffer[bot.buffer.length - 1] = candle;
@@ -369,7 +338,7 @@ export class TradingEngine {
 
   /** Intrabar: trailing stop ratchet + stop / target hit checks. */
   private async onTick(bot: RunningBot, candle: Candle) {
-    if (!bot.managed) return;
+    if (bot.paused || this.stopCoordinator.isStopping(bot.config.id) || !bot.managed) return;
     const m = bot.managed;
     if (m.trail) {
       const atr = m.trail.mode === "atr" ? atrValue(bot.buffer, 14, bot.buffer.length - 1) || 0 : 0;
@@ -389,7 +358,7 @@ export class TradingEngine {
 
   private async onClosedBar(bot: RunningBot, index: number) {
     // Auto-resumed with stale risky state: buffer only, don't trade, until confirmed.
-    if (bot.paused) return;
+    if (bot.paused || this.stopCoordinator.isStopping(bot.config.id)) return;
     const barTime = bot.buffer[index]?.time;
     if (barTime !== undefined) {
       if (bot.lastEvaluatedBarTime === barTime) return;
@@ -494,7 +463,8 @@ export class TradingEngine {
       if (result.ok) {
         // When the exchange holds the SL/TP, don't also manage them locally (avoids double-close).
         const entryTime = bot.buffer[index]?.time ?? bot.buffer.at(-1)?.time ?? 0;
-        bot.managed = exchangeManaged && protectionConfirmed ? { side: dir, entry: bot.price, qty, entryTime } : { side: dir, entry: bot.price, qty, entryTime, stop, target, trail: intents.trail };
+        const submittedQty = order.qty ?? qty;
+        bot.managed = exchangeManaged && protectionConfirmed ? { side: dir, entry: bot.price, qty: submittedQty, entryTime } : { side: dir, entry: bot.price, qty: submittedQty, entryTime, stop, target, trail: intents.trail };
         if (!protectionConfirmed) {
           pauseRunningBot(bot, "Exchange accepted the entry without confirming requested protection; trading is paused for operator review.");
           this.log(bot.config.id, "error", bot.pauseReason ?? "Exchange protection was not confirmed.");
@@ -503,7 +473,7 @@ export class TradingEngine {
       } else {
         this.log(bot.config.id, "error", `Open failed: ${result.message}`);
       }
-      this.applyResult(bot, result, "signal:entry");
+      this.applyResult(bot, result, "signal:entry", order);
       if (result.ok && protectionConfirmed) {
         await notify({ event: "open", bot: bot.config.name, symbol: bot.config.symbol, text: `Opened ${dir.toUpperCase()} ${round(qty)} @ ${round(price)}${stop ? ` · SL ${round(stop)}` : ""}${target ? ` · TP ${round(target)}` : ""}` });
       } else if (result.ok) {
@@ -546,12 +516,12 @@ export class TradingEngine {
         order.closePct = undefined;
       }
       const result = await this.executeOrder(bot, order, bot.buffer.at(-1)?.time);
-      this.applyResult(bot, result, `signal:${reason}`);
-      if (result.ok) {
+      const accounting = this.applyResult(bot, result, `signal:${reason}`, order);
+      if (accounting.pauseReason) {
+        await notify({ event: "error", bot: bot.config.name, symbol: bot.config.symbol, text: "Close accepted; awaiting authenticated execution accounting. Trading paused." });
+      } else if (result.ok && accounting.changed) {
         const pnl = result.fills.reduce((sum, f) => sum + f.realizedPnl, 0);
-        bot.managed = undefined;
-        persistRuntimeState(bot);
-        await notify({ event: "close", bot: bot.config.name, symbol: bot.config.symbol, text: `Closed (${reason}) · PnL ${round(pnl)}` });
+        await notify({ event: "close", bot: bot.config.name, symbol: bot.config.symbol, text: `${accounting.cleared ? "Closed" : "Reduced"} (${reason}) · PnL ${round(pnl)}` });
       } else {
         this.log(bot.config.id, "error", `Close failed: ${result.message}`);
       }
@@ -560,28 +530,39 @@ export class TradingEngine {
     }
   }
 
-  private applyResult(bot: RunningBot, result: ExecResult, _reason: string) {
-    for (const fill of result.fills) {
-      if (withStoreTransaction(() => recordConfirmedFill(fill, bot.config.market))) this.broadcast({ type: "fill", botId: bot.config.id, fill, account: result.account, position: result.position });
-    }
-    if (result.message) this.log(bot.config.id, result.ok ? "info" : "error", result.message);
-    if (bot.paper) persistPaper(bot);
-    if (result.account || result.position !== undefined) {
-      this.broadcast({ type: "bot", botId: bot.config.id, account: result.account, position: result.position });
-    }
+  private applyResult(bot: RunningBot, result: ExecResult, _reason: string, order: ExecOrder) {
+    const accounting = applyEngineResult(bot, result, order, {
+      log: (level, message) => this.log(bot.config.id, level, message),
+      fill: (fill, account, position) => this.broadcast({ type: "fill", botId: bot.config.id, fill, account, position }),
+      state: (account, position) => this.broadcast({ type: "bot", botId: bot.config.id, account, position })
+    });
+    const accountingFailure = accounting.failures.length > 0 && bot.config.exchange !== "paper" ? `${accounting.failures.length} synchronous live execution(s) could not cross durable accounting; managed state was preserved.` : undefined;
+    const outcome = accountingFailure ? { changed: false, cleared: false, pauseReason: accountingFailure } : applySynchronousReduceOnlyExecution(bot, order, result, accounting.committedFills, accounting.duplicateFills.length);
+    if (outcome.pauseReason) pauseRunningBot(bot, outcome.pauseReason);
+    if (outcome.changed || outcome.pauseReason) persistRuntimeState(bot);
+    if (outcome.pauseReason) this.log(bot.config.id, "warn", outcome.pauseReason);
+    return outcome;
   }
 
-  private executeOrder(bot: RunningBot, order: ExecOrder, barTime?: number): Promise<ExecResult> {
-    return orderLifecycle.execute(
-      {
-        botId: bot.config.id,
-        exchange: bot.config.exchange,
-        market: bot.config.market,
-        barTime
-      },
-      order,
-      () => bot.adapter.execute(order)
-    );
+  private async executeOrder(bot: RunningBot, order: ExecOrder, barTime?: number): Promise<ExecResult> {
+    if (order.action === "close" || order.action === "flatten") order.reduceOnly = true;
+    if (this.stopCoordinator.isStopping(bot.config.id)) throw new Error("Bot is stopping; new exchange orders are disabled.");
+    return this.orderExecutionLock.run(engineOrderLockKey(bot), async () => {
+      if (this.stopCoordinator.isStopping(bot.config.id)) throw new Error("Bot is stopping; new exchange orders are disabled.");
+      if (bot.paused && !pausedOrderAllowed(order)) throw new Error("Trading is paused; only reduce-only exits, cancellation, and reads are allowed.");
+      const release = bot.config.exchange !== "paper" ? this.emergency.beginLiveOrder() : undefined;
+      try {
+        const inventory = bot.config.market === "spot" ? getSpotInventory(bot.config.id, bot.config.symbol) : undefined;
+        const spotQuantity = bot.config.market === "spot" ? (inventory && (inventory.botId !== bot.config.id || inventory.symbol !== bot.config.symbol) ? Number.NaN : (inventory?.remainingQty ?? 0)) : undefined;
+        const futuresQuantity = bot.config.market === "futures" ? (getFuturesExposure(bot.config.id, bot.config.symbol)?.grossQty ?? 0) : undefined;
+        const journalOrders = bot.config.exchange !== "paper" ? loadLiveRiskJournal(bot.config.id) : undefined;
+        await preflightLiveOrder(bot.config, order, bot.adapter, bot.price, realizedToday(bot.config.id), { verifiedSpotQuantity: spotQuantity, accountedFuturesQuantity: futuresQuantity, journalOrders });
+        if (bot.paused && !pausedOrderAllowed(order)) throw new Error("Trading was paused while live risk was being verified.");
+        return await executeDurableEngineOrder(bot, order, barTime, (message) => this.log(bot.config.id, "error", message));
+      } finally {
+        release?.();
+      }
+    });
   }
 
   private log(botId: string, level: "info" | "warn" | "error", message: string) {

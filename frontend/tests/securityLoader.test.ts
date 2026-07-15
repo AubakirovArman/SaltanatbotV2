@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { StrategyIR } from "../src/strategy/ir";
-import { securitySeriesKey } from "../src/strategy/securityData";
-import { normalizeSecuritySymbol, normalizeSecurityTimeframe, resolveSecurityRequest } from "../src/strategy/securityLoader";
+import { getSecurityCandles, getSecurityDataEvidence, securitySeriesKey } from "../src/strategy/securityData";
+import {
+  loadSecurityDataForIr,
+  normalizeSecuritySymbol,
+  normalizeSecurityTimeframe,
+  resolveSecurityRequest,
+  SecurityDataLoadError
+} from "../src/strategy/securityLoader";
 import { collectSecurityRequirements } from "../src/strategy/securityRequirements";
+import type { Candle } from "../src/types";
 
 describe("security requirements", () => {
   it("collects request.security dependencies anywhere in the IR", () => {
@@ -63,6 +70,7 @@ describe("security loader normalization", () => {
     expect(normalizeSecurityTimeframe("D", "1m")).toBe("1d");
     expect(normalizeSecurityTimeframe("1M", "1m")).toBe("1M");
     expect(normalizeSecurityTimeframe("3", "1m")).toBeUndefined();
+    expect(securitySeriesKey("BTCUSDT", "1m")).not.toBe(securitySeriesKey("BTCUSDT", "1M"));
   });
 
   it("keeps both raw Pine lookup keys and normalized fetch keys", () => {
@@ -79,4 +87,77 @@ describe("security loader normalization", () => {
     expect(resolved?.keys).toContain(securitySeriesKey("NASDAQ:AAPL", "D"));
     expect(resolved?.keys).toContain(securitySeriesKey("AAPL", "1d"));
   });
+
+  it("records same-chart dependencies as resolved instead of treating them as fallback", async () => {
+    const chartCandles = candles();
+    const context = await loadSecurityDataForIr(securityIr("current", "chart"), {
+      symbol: "BTCUSDT",
+      timeframe: "1m",
+      chartCandles
+    });
+
+    expect(getSecurityCandles(context, "current", "chart")).toBe(chartCandles);
+    expect(getSecurityDataEvidence(context)).toMatchObject({
+      version: 1,
+      requested: [{ symbol: "current", timeframe: "chart" }],
+      resolved: [{ source: "chart", fetchSymbol: "BTCUSDT", fetchTimeframe: "1m", bars: 2 }],
+      unresolved: []
+    });
+  });
+
+  it("fails closed with structured evidence for unsupported requests", async () => {
+    const promise = loadSecurityDataForIr(securityIr("current", "3"), {
+      symbol: "BTCUSDT",
+      timeframe: "1m",
+      chartCandles: candles()
+    });
+
+    await expect(promise).rejects.toBeInstanceOf(SecurityDataLoadError);
+    await expect(promise).rejects.toMatchObject({
+      code: "UNRESOLVED_SECURITY_DATA",
+      evidence: {
+        requested: [{ symbol: "current", timeframe: "3" }],
+        resolved: [],
+        unresolved: [{ symbol: "current", timeframe: "3", reason: "unsupported-request" }]
+      }
+    });
+  });
+
+  it("returns unresolved evidence only when an approximate preview explicitly opts in", async () => {
+    const context = await loadSecurityDataForIr(securityIr("current", "3"), {
+      symbol: "BTCUSDT",
+      timeframe: "1m",
+      chartCandles: candles(),
+      unresolvedPolicy: "return-evidence"
+    });
+
+    expect(getSecurityDataEvidence(context)?.unresolved).toMatchObject([
+      { symbol: "current", timeframe: "3", reason: "unsupported-request" }
+    ]);
+  });
 });
+
+function securityIr(symbol: string, timeframe: string): StrategyIR {
+  return {
+    name: "security-loader",
+    inputs: [],
+    body: [{
+      k: "plot",
+      label: "external",
+      color: "#fff",
+      value: { k: "security", symbol, timeframe, source: { k: "price", field: "close" } }
+    }]
+  };
+}
+
+function candles(): Candle[] {
+  return [0, 60_000].map((time) => ({
+    time,
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100,
+    volume: 1_000,
+    source: "Binance"
+  }));
+}

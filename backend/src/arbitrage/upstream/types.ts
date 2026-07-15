@@ -10,6 +10,13 @@ export interface ArbitrageTickerUpdate {
   askSize: number;
   fundingRate?: number;
   nextFundingTime?: number;
+  fundingIntervalMinutes?: number;
+  /** Venue-provided timestamp. Omitted when the stream event has none. */
+  exchangeTs?: number;
+  /** False when the venue did not provide exchangeTs. */
+  exchangeTimestampVerified: boolean;
+  receivedAt: number;
+  /** @deprecated local capture time; use exchangeTs for venue time and receivedAt for local time. */
   capturedAt: number;
 }
 

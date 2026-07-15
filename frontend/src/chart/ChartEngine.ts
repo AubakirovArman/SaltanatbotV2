@@ -41,6 +41,7 @@ import { drawCrosshair, drawEmpty, drawGrid, drawLastPrice, drawTimeAxis } from 
 import { computePlot, visibleCandles } from "./scales";
 import { buildViewport, medianBarTime } from "./viewport";
 import { buildVolumeProfile } from "./volumeProfile";
+import { candlesIntersectingRange, visibleCandleTimeRange } from "./volumeProfileSource";
 import { calculateDrawingAvwaps } from "./anchoredVwap";
 import { preparePriceCandles } from "./priceRepresentation";
 import type { ChartShapes, DrawChartOptions, PlotArea, PriceMode, PriceScale, Viewport } from "./types";
@@ -118,10 +119,16 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
     : 0;
   const mainHeight = Math.max(180, height - lowerIndicators.length * lowerHeight - volumeHeight - subPanelHeight);
   const plot = computePlot(width, mainHeight);
-  if (candles.length === 0) return { empty: true, input };
+  if (candles.length === 0) {
+    input.onVisibleTimeRange?.();
+    return { empty: true, input };
+  }
 
   const chartCandles = input.displayCandles ?? preparePriceCandles(candles, chartType, input.decimals);
-  if (chartCandles.length === 0) return { empty: true, input };
+  if (chartCandles.length === 0) {
+    input.onVisibleTimeRange?.();
+    return { empty: true, input };
+  }
   const rightPaddingBars = projectionPaddingBars(chartCandles, shapes);
   const visible = visibleCandles(chartCandles, plot, view.zoom, view.offset, rightPaddingBars);
   const data = visible.data;
@@ -133,6 +140,15 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
     candles: chartCandles, plot, zoom: view.zoom, offset: view.offset, priceMode, priceZoom, extraValues, rightPaddingBars
   });
   onViewport?.(viewport);
+  const visibleTimeRange = visibleCandleTimeRange(chartCandles, start, end, viewport.barTimeMs);
+  input.onVisibleTimeRange?.(visibleTimeRange);
+  const explicitRangeMatches = visibleTimeRange?.startTime === input.volumeProfileRange?.startTime
+    && visibleTimeRange?.endTime === input.volumeProfileRange?.endTime;
+  const profileCandles = input.volumeProfileCandles === undefined
+    ? visible.data
+    : visibleTimeRange && input.volumeProfileTimeframe && explicitRangeMatches
+      ? candlesIntersectingRange(input.volumeProfileCandles, visibleTimeRange, input.volumeProfileTimeframe)
+      : [];
 
   return {
     empty: false,
@@ -151,7 +167,7 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
     lowerHeight,
     subPanelHeight,
     panelTop: plot.bottom + 22,
-    volumeProfile: showVolumeProfile ? buildVolumeProfile(visible.data) : undefined
+    volumeProfile: showVolumeProfile ? buildVolumeProfile(profileCandles) : undefined
   };
 }
 

@@ -54,10 +54,10 @@ export function round4(v: number): number {
 }
 
 /** Translate the editable spec into the pure OptimizeSpec the core consumes. */
-export function buildSpec(state: OptSpecState): OptimizeSpec {
+export function buildSpec(state: OptSpecState, maxParams = 3): OptimizeSpec {
   const params: ParamSpec[] = state.axes
     .filter((axis) => axis.enabled)
-    .slice(0, 3)
+    .slice(0, Math.max(1, Math.min(32, Math.trunc(maxParams))))
     .map((axis) => ({ name: axis.name, min: axis.min, max: axis.max, step: axis.step > 0 ? axis.step : 1 }));
   return { params, objective: state.objective, trainFrac: state.trainFrac };
 }

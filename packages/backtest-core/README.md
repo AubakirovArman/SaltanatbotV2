@@ -13,7 +13,7 @@ Runtime-neutral historical trading primitives shared independently of the React 
 - evaluator context and bounded variable traces;
 - deterministic performance and risk metrics.
 - versioned evaluator event traces attached to every backtest result.
-- chart and `request.security` candle-source provenance, including explicit performance-claim validity.
+- chart and `request.security` candle-source provenance, including requested/resolved/unresolved dependency evidence and explicit performance-claim validity.
 - canonical final report assembly from execution outputs, including measured range, metrics, traces and provenance.
 - versioned JSON-safe historical execution traces for fills, position/equity transitions, funding, warnings and provenance.
 - schema-v1 immutable report metadata with normalized execution assumptions,

@@ -1,0 +1,62 @@
+{
+  "result": "success",
+  "serverTime": "2026-07-14T12:34:56.000Z",
+  "instruments": [
+    {
+      "symbol": "PI_XBTUSD",
+      "pair": "XBT:USD",
+      "base": "XBT",
+      "quote": "USD",
+      "type": "futures_inverse",
+      "underlying": "rr_xbtusd",
+      "tickSize": 0.5,
+      "contractSize": 1,
+      "tradeable": true,
+      "contractValueTradePrecision": 0,
+      "postOnly": false,
+      "isExpired": false
+    },
+    {
+      "symbol": "FI_XBTUSD_260925",
+      "pair": "XBT:USD",
+      "base": "XBT",
+      "quote": "USD",
+      "type": "futures_inverse",
+      "underlying": "rr_xbtusd",
+      "lastTradingTime": "2026-09-25T16:00:00.000Z",
+      "tickSize": 0.5,
+      "contractSize": 1,
+      "tradeable": true,
+      "contractValueTradePrecision": 0,
+      "postOnly": false,
+      "isExpired": false
+    },
+    {
+      "symbol": "PF_XBTUSD",
+      "pair": "XBT:USD",
+      "base": "XBT",
+      "quote": "USD",
+      "type": "flexible_futures",
+      "tickSize": 1,
+      "contractSize": 1,
+      "tradeable": true,
+      "contractValueTradePrecision": 4,
+      "postOnly": false,
+      "isExpired": false
+    },
+    {
+      "symbol": "FF_XBTUSD_260925",
+      "pair": "XBT:USD",
+      "base": "XBT",
+      "quote": "USD",
+      "type": "flexible_futures",
+      "lastTradingTime": "2026-09-25T08:00:00.000Z",
+      "tickSize": 1,
+      "contractSize": 1,
+      "tradeable": true,
+      "contractValueTradePrecision": 4,
+      "postOnly": false,
+      "isExpired": false
+    }
+  ]
+}

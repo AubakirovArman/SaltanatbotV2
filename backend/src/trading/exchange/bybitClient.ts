@@ -1,6 +1,11 @@
 import { createHmac } from "node:crypto";
 import type { ExchangeKeys } from "./binance.js";
-import { ExchangeTransportError } from "./errors.js";
+import {
+  ExchangeTransportError,
+  parseExchangeJsonBody,
+  readExchangeResponseBody,
+  requireExchangeObject
+} from "./errors.js";
 import { getExchangeRequestGuard, type ExchangeRequestGuard } from "./requestGuard.js";
 
 export type BybitMethod = "GET" | "POST";
@@ -70,16 +75,39 @@ export class BybitV5Client {
       throw new ExchangeTransportError(`Bybit transport failed: ${error instanceof Error ? error.message : error}`, method !== "GET", { cause: error });
     }
     this.requestGuard.observeHttpResponse(response);
+    const mutation = method !== "GET";
+    const context = `Bybit ${method} ${path}`;
     if (!response.ok) {
-      const message = `Bybit HTTP ${response.status}: ${await response.text()}`;
+      const raw = await readExchangeResponseBody(response, context, mutation);
+      const message = `Bybit HTTP ${response.status}: ${raw}`;
       if (method !== "GET" && response.status >= 500) throw new ExchangeTransportError(message, true);
       throw new Error(message);
     }
-    const envelope = await response.json() as BybitEnvelope<T>;
+    const raw = await readExchangeResponseBody(response, context, mutation);
+    const parsed = parseExchangeJsonBody(raw, context, mutation);
+    const envelope = requireBybitEnvelope<T>(parsed, context, mutation);
     this.requestGuard.detectClockSkew(envelope.retCode, envelope.retMsg, response.headers?.get?.("date") ?? null);
     if (envelope.retCode !== 0) throw new Error(`Bybit: ${envelope.retMsg}`);
     return envelope;
   }
+}
+
+function requireBybitEnvelope<T>(value: unknown, context: string, ambiguous: boolean): BybitEnvelope<T> {
+  const envelope = requireExchangeObject(value, context, ambiguous);
+  if (
+    typeof envelope.retCode !== "number"
+    || !Number.isFinite(envelope.retCode)
+    || typeof envelope.retMsg !== "string"
+    || (envelope.retCode === 0 && !Object.hasOwn(envelope, "result"))
+    || (ambiguous && envelope.retCode === 0 && !isObject(envelope.result))
+  ) {
+    throw new ExchangeTransportError(`${context} response did not match the Bybit envelope schema`, ambiguous);
+  }
+  return envelope as unknown as BybitEnvelope<T>;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function queryString(params: Record<string, unknown>): string {

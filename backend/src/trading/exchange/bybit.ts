@@ -11,7 +11,7 @@ import type {
 import type { ExchangeKeys } from "./binance.js";
 import { BybitV5Client } from "./bybitClient.js";
 import { bybitFilters, checkMinimums, roundToStep, roundToTick, type SymbolFilters } from "./filters.js";
-import { isAmbiguousExchangeError } from "./errors.js";
+import { ambiguousAcknowledgement, isAmbiguousExchangeError } from "./errors.js";
 import { normalizeBybitOrderStatus } from "./orderStatus.js";
 import { subscribeBybitOrders } from "./privateOrderStreams.js";
 
@@ -28,7 +28,8 @@ export class BybitAdapter implements ExchangeAdapter {
   constructor(
     private readonly botId: string,
     private readonly keys: ExchangeKeys,
-    market: MarketType
+    market: MarketType,
+    readonly accountId = "bybit:default"
   ) {
     this.market = market;
     this.client = new BybitV5Client(keys);
@@ -55,7 +56,7 @@ export class BybitAdapter implements ExchangeAdapter {
   async position(symbol: string): Promise<PositionState | null> {
     if (this.market !== "futures") return null;
     const data = (await this.signed("GET", "/v5/position/list", { category: this.category, symbol })) as {
-      result: { list: Array<{ side: string; size: string; avgPrice: string; leverage: string }> };
+      result: { list: Array<{ side: string; size: string; avgPrice: string; leverage: string; positionIdx?: number }> };
     };
     const row = data.result.list.find((item) => Number(item.size) > 0);
     if (!row) return null;
@@ -65,24 +66,63 @@ export class BybitAdapter implements ExchangeAdapter {
       qty: Number(row.size),
       entryPrice: Number(row.avgPrice),
       leverage: Number(row.leverage),
+      hedged: row.positionIdx === 1 || row.positionIdx === 2,
+      positionIndex: row.positionIdx,
       openedAt: Date.now()
     };
   }
 
+  async positions(): Promise<PositionState[]> {
+    if (this.market !== "futures") return [];
+    const rows: Array<{ symbol: string; side: string; size: string; avgPrice: string; leverage: string; positionIdx?: number }> = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page += 1) {
+      const data = (await this.signed("GET", "/v5/position/list", { category: this.category, settleCoin: "USDT", limit: 200, ...(cursor ? { cursor } : {}) })) as {
+        result: { list: typeof rows; nextPageCursor?: string };
+      };
+      rows.push(...(data.result.list ?? []));
+      const next = data.result.nextPageCursor;
+      if (!next || next === cursor) break;
+      cursor = next;
+    }
+    return rows.flatMap((row) => {
+      const qty = Number(row.size);
+      if (!Number.isFinite(qty) || qty <= 0) return [];
+      return [{
+        symbol: row.symbol,
+        side: row.side === "Buy" ? "long" as const : "short" as const,
+        qty,
+        entryPrice: Number(row.avgPrice),
+        leverage: Number(row.leverage),
+        hedged: row.positionIdx === 1 || row.positionIdx === 2,
+        positionIndex: row.positionIdx,
+        openedAt: Date.now()
+      }];
+    });
+  }
+
   async orders(symbol?: string): Promise<PendingOrder[]> {
-    const params: Record<string, unknown> = { category: this.category };
+    const params: Record<string, unknown> = { category: this.category, limit: 50 };
     if (symbol) params.symbol = symbol;
     else if (this.category === "linear") params.settleCoin = "USDT"; // Bybit requires symbol OR settleCoin for linear.
-    const data = (await this.signed("GET", "/v5/order/realtime", params)) as {
-      result: { list: Array<{ symbol: string; orderId: string; orderLinkId?: string; side: string; orderType: string; qty: string; price?: string; triggerPrice?: string; reduceOnly?: boolean; timeInForce?: string; createdTime?: string }> };
-    };
-    return (data.result.list ?? []).map((row) => ({
+    const rows: Array<{ symbol: string; orderId: string; orderLinkId?: string; side: string; orderType: string; qty: string; leavesQty?: string; cumExecQty?: string; price?: string; triggerPrice?: string; reduceOnly?: boolean; timeInForce?: string; createdTime?: string }> = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page += 1) {
+      const data = (await this.signed("GET", "/v5/order/realtime", { ...params, ...(cursor ? { cursor } : {}) })) as {
+        result: { list: typeof rows; nextPageCursor?: string };
+      };
+      rows.push(...(data.result.list ?? []));
+      const next = data.result.nextPageCursor;
+      if (!next || next === cursor) break;
+      cursor = next;
+    }
+    return rows.map((row) => ({
       id: row.orderId,
       clientId: row.orderLinkId || undefined,
       symbol: row.symbol,
       side: row.side === "Sell" ? "sell" : "buy",
       type: row.triggerPrice && Number(row.triggerPrice) > 0 ? (row.orderType === "Limit" ? "stop_limit" : "stop_market") : row.orderType === "Limit" ? "limit" : "market",
-      qty: Number(row.qty),
+      qty: Math.max(0, row.leavesQty !== undefined ? Number(row.leavesQty) : Number(row.qty) - Number(row.cumExecQty ?? 0)),
       price: row.price ? Number(row.price) || undefined : undefined,
       trgPrice: row.triggerPrice ? Number(row.triggerPrice) || undefined : undefined,
       reduceOnly: !!row.reduceOnly,
@@ -124,11 +164,22 @@ export class BybitAdapter implements ExchangeAdapter {
       switch (order.action) {
         case "close":
         case "flatten": {
-          const pos = await this.position(order.symbol);
+          const pos = order.positionIndex !== undefined
+            ? (await this.positions()).find((candidate) => candidate.symbol === order.symbol && candidate.positionIndex === order.positionIndex) ?? null
+            : await this.position(order.symbol);
           if (!pos) return { ok: false, message: `No position on ${order.symbol}`, fills: [] };
           const qty = pos.qty * ((order.closePct ?? 100) / 100);
-          await this.createOrder(order, pos.side === "long" ? "Sell" : "Buy", qty, await this.price(order.symbol), true);
-          return { ok: true, message: `Closed ${order.symbol}`, fills: [], position: null, account: await this.account() };
+          const side = pos.side === "long" ? "Sell" : "Buy";
+          const submitted = { ...order, side: side === "Sell" ? "sell" as const : "buy" as const, positionIndex: order.positionIndex ?? pos.positionIndex };
+          const placed = await this.createOrder(submitted, side, qty, await this.price(order.symbol), true) as { result?: { orderId?: string } };
+          const exchangeOrderId = placed.result?.orderId;
+          return {
+            ok: true,
+            message: `Close accepted for ${order.symbol}; awaiting authenticated execution accounting`,
+            fills: [],
+            pendingOrder: exchangeOrderId ? pendingMarketOrder(submitted, exchangeOrderId, qty, true) : undefined,
+            ...(await this.acceptedState(order.symbol, pos))
+          };
         }
         case "cancel":
         case "cancelall":
@@ -141,11 +192,17 @@ export class BybitAdapter implements ExchangeAdapter {
           return await this.getInfo(order);
         case "turnover": {
           const pos = await this.position(order.symbol);
-          if (pos) await this.createOrder(order, pos.side === "long" ? "Sell" : "Buy", pos.qty, await this.price(order.symbol), true);
+          if (pos) await this.createOrder({ ...order, positionIndex: pos.positionIndex }, pos.side === "long" ? "Sell" : "Buy", pos.qty, await this.price(order.symbol), true);
           return await this.placeEntry(order);
         }
-        default:
+        case "neworder":
+        case "open":
+        case "openorders":
+        case "spreadentry":
+        case "replace":
           return await this.placeEntry(order);
+        case "chporders":
+          return { ok: false, message: "CHPORDERS is not supported by the Bybit live adapter", fills: [] };
       }
     } catch (error) {
       if (isAmbiguousExchangeError(error)) throw error;
@@ -155,39 +212,113 @@ export class BybitAdapter implements ExchangeAdapter {
 
   private async placeEntry(order: ExecOrder): Promise<ExecResult> {
     if (this.market === "futures" && order.leverage) {
-      await this.signed("POST", "/v5/position/set-leverage", { category: this.category, symbol: order.symbol, buyLeverage: String(order.leverage), sellLeverage: String(order.leverage) }).catch(() => undefined);
+      await this.ensureLeverage(order.symbol, order.leverage);
     }
     const price = await this.price(order.symbol);
     const filters = await bybitFilters(order.symbol, this.market).catch(() => undefined);
     const qty = roundToStep(await this.resolveQty(order, price), filters?.stepSize);
     const violation = checkMinimums(qty, order.type === "limit" ? order.price ?? price : price, filters);
     if (violation) return { ok: false, message: `Order rejected on ${order.symbol}: ${violation}`, fills: [] };
+    order.qty = qty;
     const entryResponse = await this.createOrder(order, order.side === "sell" ? "Sell" : "Buy", qty, price, order.reduceOnly ?? false, filters) as { result?: { orderId?: string } };
     const entryOrderId = entryResponse.result?.orderId;
     if (this.market === "futures" && (order.stop || order.takeProfits?.length)) {
       if (!entryOrderId) {
         const closeSide = order.side === "sell" ? "Buy" : "Sell";
-        await this.createOrder({ ...order, type: "market" }, closeSide, qty, price, true, filters).catch(() => undefined);
-        return { ok: false, message: "Entry acknowledgement omitted its order ID — entry closed for safety", fills: [], protection: { requested: true, confirmed: false, message: "missing entry order ID", verification: "exchange_ack" } };
+        const safety = await this.attemptSafetyClose(order, closeSide, qty, price, filters);
+        return {
+          ok: true,
+          message: protectionFailureMessage("Entry acknowledgement omitted its order ID", safety),
+          fills: [],
+          protection: {
+            requested: true,
+            confirmed: false,
+            message: "missing entry order ID",
+            safetyCloseAttempted: true,
+            safetyCloseConfirmed: safety.confirmed,
+            safetyCloseOrderId: safety.orderId,
+            safetyCloseClientId: safety.clientId,
+            verification: "exchange_ack"
+          }
+        };
       }
       try {
         await this.applyTradingStop(order, order.side === "sell" ? "Sell" : "Buy", price, filters);
       } catch (error) {
         const closeSide = order.side === "sell" ? "Buy" : "Sell";
-        await this.createOrder({ ...order, type: "market" }, closeSide, qty, price, true, filters).catch(() => undefined);
+        const safety = await this.attemptSafetyClose(order, closeSide, qty, price, filters);
         const message = error instanceof Error ? error.message : "protection rejected";
         return {
-          ok: false,
-          message: `Protection rejected (${message}) — entry closed for safety`,
+          ok: true,
+          message: protectionFailureMessage(`Protection rejected (${message})`, safety),
           fills: [],
-          protection: { requested: true, confirmed: false, message, entryOrderId, verification: "exchange_ack" },
-          position: await this.position(order.symbol).catch(() => null),
-          account: await this.account().catch(() => undefined)
+          pendingOrder: pendingMarketOrder(order, entryOrderId, qty, false),
+          protection: {
+            requested: true,
+            confirmed: false,
+            message,
+            entryOrderId,
+            safetyCloseAttempted: true,
+            safetyCloseConfirmed: safety.confirmed,
+            safetyCloseOrderId: safety.orderId,
+            safetyCloseClientId: safety.clientId,
+            verification: "exchange_ack"
+          },
+          ...(await this.acceptedState(order.symbol))
         };
       }
-      return { ok: true, message: `Placed ${order.type} ${order.side} ${qty} ${order.symbol}`, fills: [], protection: { requested: true, confirmed: true, entryOrderId, verification: "exchange_ack" }, position: await this.position(order.symbol), account: await this.account() };
+      return {
+        ok: true,
+        message: `Placed ${order.type} ${order.side} ${qty} ${order.symbol}`,
+        fills: [],
+        pendingOrder: pendingMarketOrder(order, entryOrderId, qty, false),
+        protection: { requested: true, confirmed: true, entryOrderId, verification: "exchange_ack" },
+        ...(await this.acceptedState(order.symbol))
+      };
     }
-    return { ok: true, message: `Placed ${order.type} ${order.side} ${qty} ${order.symbol}`, fills: [], position: await this.position(order.symbol), account: await this.account() };
+    return {
+      ok: true,
+      message: `Placed ${order.type} ${order.side} ${qty} ${order.symbol}`,
+      fills: [],
+      pendingOrder: entryOrderId ? pendingMarketOrder(order, entryOrderId, qty, false) : undefined,
+      ...(await this.acceptedState(order.symbol))
+    };
+  }
+
+  private async attemptSafetyClose(
+    order: ExecOrder,
+    side: "Buy" | "Sell",
+    qty: number,
+    price: number,
+    filters?: SymbolFilters
+  ) {
+    const clientId = order.protectionClientIds?.safetyClose ?? safetyCloseClientId(order.clientId, this.botId);
+    try {
+      const placed = await this.createOrder(
+        {
+          ...order,
+          clientId,
+          side: side === "Sell" ? "sell" : "buy",
+          type: "market",
+          stop: undefined,
+          takeProfits: undefined
+        },
+        side,
+        qty,
+        price,
+        true,
+        filters
+      ) as { result?: { orderId?: string } };
+      const orderId = placed.result?.orderId;
+      if (!orderId) return { confirmed: false, clientId, error: "emergency close acknowledgement omitted its order ID" };
+      return { confirmed: true, clientId, orderId };
+    } catch (error) {
+      return {
+        confirmed: false,
+        clientId,
+        error: error instanceof Error ? error.message : "emergency close rejected"
+      };
+    }
   }
 
   private async applySet(order: ExecOrder): Promise<ExecResult> {
@@ -252,8 +383,14 @@ export class BybitAdapter implements ExchangeAdapter {
       params.orderType = "Market";
     }
     if (reduceOnly) params.reduceOnly = true;
+    if (order.positionIndex !== undefined) params.positionIdx = order.positionIndex;
     if (order.clientId) params.orderLinkId = order.clientId;
-    return this.signed("POST", "/v5/order/create", params);
+    const response = await this.signed<{ orderId?: unknown }>("POST", "/v5/order/create", params);
+    const orderId = response.result?.orderId;
+    if (typeof orderId !== "string" || orderId.length === 0) {
+      throw ambiguousAcknowledgement("Bybit order", "its order ID was missing");
+    }
+    return { ...response, result: { ...response.result, orderId } };
   }
 
   private async applyTradingStop(order: ExecOrder, side: "Buy" | "Sell", price: number, filters?: SymbolFilters) {
@@ -287,6 +424,40 @@ export class BybitAdapter implements ExchangeAdapter {
     return this.signed("POST", "/v5/position/trading-stop", params);
   }
 
+  private async ensureLeverage(symbol: string, leverage: number): Promise<void> {
+    let setError: unknown;
+    try {
+      await this.signed("POST", "/v5/position/set-leverage", {
+        category: this.category,
+        symbol,
+        buyLeverage: String(leverage),
+        sellLeverage: String(leverage)
+      });
+      return;
+    } catch (error) {
+      setError = error;
+    }
+
+    try {
+      const data = (await this.signed("GET", "/v5/position/list", { category: this.category, symbol })) as {
+        result: { list?: Array<{ leverage?: string }> };
+      };
+      const rows = data.result.list ?? [];
+      if (rows.length > 0 && rows.every((row) => Number(row.leverage) === leverage)) return;
+    } catch {
+      // Preserve the original set failure when exact leverage cannot be read.
+    }
+    throw setError;
+  }
+
+  private async acceptedState(symbol: string, fallback?: PositionState | null) {
+    const [position, account] = await Promise.allSettled([this.position(symbol), this.account()]);
+    return {
+      position: position.status === "fulfilled" ? position.value : fallback,
+      account: account.status === "fulfilled" ? account.value : undefined
+    };
+  }
+
   private signed<T = any>(method: "GET" | "POST", path: string, params: Record<string, unknown>): Promise<{ result: T }> {
     return this.client.request<T>(method, path, params);
   }
@@ -301,4 +472,37 @@ function baseAsset(symbol: string): string {
   const quotes = ["USDT", "USDC", "FDUSD", "BUSD", "TUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "USD"];
   const quote = quotes.find((item) => symbol.endsWith(item));
   return quote ? symbol.slice(0, -quote.length) : symbol;
+}
+
+interface SafetyCloseOutcome {
+  confirmed: boolean;
+  clientId: string;
+  orderId?: string;
+  error?: string;
+}
+
+function safetyCloseClientId(entryClientId: string | undefined, botId: string): string {
+  const root = entryClientId ?? `${botId.slice(0, 12)}-${Date.now()}`;
+  return `${root.slice(0, 27)}-safety`;
+}
+
+function protectionFailureMessage(cause: string, safety: SafetyCloseOutcome): string {
+  if (safety.confirmed) {
+    return `${cause}; entry was accepted and emergency close ${safety.orderId} was accepted. Trading is paused until both executions are accounted.`;
+  }
+  return `${cause}; entry was accepted and emergency close failed (${safety.error ?? "unconfirmed acknowledgement"}). An unprotected position may remain; trading is paused.`;
+}
+
+function pendingMarketOrder(order: ExecOrder, id: string, qty: number, reduceOnly: boolean): PendingOrder {
+  return {
+    id,
+    clientId: order.clientId,
+    symbol: order.symbol,
+    side: order.side ?? "buy",
+    type: "market",
+    qty,
+    reduceOnly,
+    tif: order.tif ?? "GTC",
+    createdAt: Date.now()
+  };
 }

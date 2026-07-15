@@ -1,0 +1,175 @@
+.opportunity-research {
+  display: grid;
+  gap: 16px;
+  max-inline-size: 1180px;
+  margin-inline: auto;
+}
+
+.opportunity-research-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.opportunity-research h1,
+.opportunity-research h2,
+.opportunity-research h3,
+.opportunity-research p,
+.opportunity-research dl {
+  margin: 0;
+}
+
+.opportunity-research h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xl);
+}
+
+.opportunity-research h1 svg {
+  color: var(--accent);
+}
+
+.opportunity-research h2 {
+  margin-block-end: 8px;
+  font-size: var(--fs-md);
+}
+
+.opportunity-research-scenario {
+  display: grid;
+  gap: 8px;
+  margin-block-start: 12px;
+}
+
+.opportunity-research-scenario h3 {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.opportunity-research-head p,
+.opportunity-research-hint,
+.opportunity-research section > p {
+  margin-block-start: 5px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.opportunity-research-boundaries {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.opportunity-research-boundaries span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.opportunity-research-boundaries .blocked {
+  border-color: color-mix(in srgb, var(--down) 55%, var(--line));
+  color: var(--down);
+}
+
+.opportunity-research-summary,
+.opportunity-research-metrics,
+.opportunity-research-execution {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--line);
+}
+
+.opportunity-research-summary > div,
+.opportunity-research-metrics > div,
+.opportunity-research-execution > div {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-inline-size: 0;
+  padding: 10px;
+  background: var(--panel);
+}
+
+.opportunity-research dt {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.opportunity-research dd {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.opportunity-research-table {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.opportunity-research-table table {
+  inline-size: 100%;
+  min-inline-size: 760px;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.opportunity-research-table th,
+.opportunity-research-table td {
+  padding: 8px 10px;
+  border-block-end: 1px solid var(--line-soft);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.opportunity-research-table thead th {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.opportunity-research-blockers {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-inline-start: 22px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.opportunity-research-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.opportunity-research-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 760px) {
+  .opportunity-research-head {
+    display: grid;
+  }
+
+  .opportunity-research-boundaries {
+    justify-content: flex-start;
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "error": [],
+  "result": {
+    "BTC/USD": {
+      "altname": "XBTUSD",
+      "wsname": "XBT/USD",
+      "base": "BTC",
+      "quote": "USD",
+      "lot": "unit",
+      "pair_decimals": 1,
+      "lot_decimals": 8,
+      "lot_multiplier": 1,
+      "ordermin": "0.00005",
+      "costmin": "0.5",
+      "tick_size": "0.1",
+      "status": "online"
+    },
+    "ETH/EUR": {
+      "altname": "ETHEUR",
+      "wsname": "ETH/EUR",
+      "base": "ETH",
+      "quote": "EUR",
+      "lot": "unit",
+      "pair_decimals": 2,
+      "lot_decimals": 8,
+      "lot_multiplier": 1,
+      "ordermin": "0.001",
+      "costmin": "0.5",
+      "tick_size": "0.01",
+      "status": "limit_only"
+    }
+  }
+}

@@ -213,7 +213,7 @@ export const enShell = {
   shortPosition: "Short position",
   measure: "Measure (Δ price / % / bars)",
   magnet: "Magnet (snap to price)",
-  toggleVolume: "Toggle volume",
+  toggleVolume: "Volume on candles",
   toggleVolumeProfile: "Toggle visible-range volume profile",
   volumeProfileEstimate: "Estimated from OHLCV candle ranges",
   pointOfControl: "POC",

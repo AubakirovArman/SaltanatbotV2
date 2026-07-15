@@ -1,0 +1,20 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "instrument_name": "BTC-25SEP26-60000-C",
+    "timestamp": 1784000000123,
+    "state": "open",
+    "change_id": 987654321,
+    "best_bid_price": 0.049,
+    "best_bid_amount": 2.1,
+    "best_ask_price": 0.05,
+    "best_ask_amount": 1.8,
+    "last_price": 0.0495,
+    "mark_price": 0.0494,
+    "index_price": 62000,
+    "bids": [[0.049, 2.1], [0.0485, 3.4]],
+    "asks": [[0.05, 1.8], [0.0505, 4.2]],
+    "stats": { "high": 0.055, "low": 0.041, "price_change": 1.2, "volume": 214.5, "volume_usd": 658000 }
+  }
+}

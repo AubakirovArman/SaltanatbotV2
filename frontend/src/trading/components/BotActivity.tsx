@@ -40,9 +40,9 @@ export function BotActivity({ symbol, orders, orderJournal, fills, logs, onComma
               <thead><tr><th scope="col">{tradingText(locale, "time")}</th><th scope="col">{tradingText(locale, "status")}</th><th scope="col">{tradingText(locale, "action")}</th><th scope="col">{tradingText(locale, "side")}</th><th scope="col">{tradingText(locale, "quantity")}</th><th scope="col">{tradingText(locale, "reason")}</th></tr></thead>
               <tbody>{orderJournal.slice(0, 40).map((order) => (
                 <tr key={order.id}>
-                  <td>{formatTime(order.updatedAt, locale)}</td><td><span className={orderStatusTone(order.status)} data-order-status={order.status}>{tradingTerm(locale, order.status)}</span></td>
+                  <td>{formatTime(order.updatedAt, locale)}</td><td><span className={orderStatusTone(order)} data-order-status={order.status}>{tradingTerm(locale, order.status)}{accountingPending(order) ? ` · ${tradingText(locale, "accountingPending")}` : ""}</span></td>
                   <td>{tradingTerm(locale, order.action)}</td><td className={order.side === "buy" ? "up" : order.side === "sell" ? "down" : ""}>{tradingTerm(locale, order.side ?? "flat")}</td>
-                  <td>{order.filledQty !== undefined ? `${order.filledQty}/${order.qty ?? "?"}` : order.qty ?? "-"}</td><td>{order.reason.replace("signal:", "")}</td>
+                  <td>{order.filledQty !== undefined ? `${order.accountedFilledQty ?? 0}/${order.filledQty}/${order.qty ?? "?"}` : order.qty ?? "-"}</td><td>{order.reason.replace("signal:", "")}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -74,8 +74,15 @@ function formatTime(timestamp: number, locale: Locale) {
   return new Date(timestamp).toLocaleTimeString(tradingLocale(locale), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function orderStatusTone(status: OrderJournal["status"]): string {
-  if (status === "accepted" || status === "filled" || status === "replaced" || status === "cancelled") return "up";
-  if (status === "rejected" || status === "unknown" || status === "expired") return "down";
+function orderStatusTone(order: OrderJournal): string {
+  if (accountingPending(order)) return "";
+  if (order.status === "accepted" || order.status === "filled" || order.status === "replaced" || order.status === "cancelled") return "up";
+  if (order.status === "rejected" || order.status === "unknown" || order.status === "expired") return "down";
   return "";
+}
+
+function accountingPending(order: OrderJournal): boolean {
+  if (!["filled", "cancelled", "expired", "replaced"].includes(order.status)) return false;
+  const target = order.status === "filled" || order.status === "replaced" ? order.qty : order.filledQty;
+  return target !== undefined && (order.accountedFilledQty ?? 0) + Number.EPSILON < target;
 }

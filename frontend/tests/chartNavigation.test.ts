@@ -3,6 +3,7 @@ import {
   applyChartPinchNavigation,
   applyChartWheelNavigation,
   beginChartPinchGesture,
+  MIN_CHART_ZOOM,
   type ChartNavigationView,
   type ChartTouchPoint
 } from "../src/components/chartCanvas/useChartNavigation";
@@ -90,6 +91,32 @@ describe("chart touch navigation", () => {
       viewport
     });
     expect(next.zoom).toBe(4);
+  });
+
+  it("stops scheduling new view objects after reaching the pinch-out boundary", () => {
+    const minimumView = { ...view, zoom: MIN_CHART_ZOOM };
+    const minimumGesture = beginChartPinchGesture(start, minimumView, viewport);
+    const next = applyChartPinchNavigation({
+      gesture: minimumGesture,
+      points: [{ x: 398, y: 200 }, { x: 402, y: 200 }],
+      view: minimumView,
+      candles: [],
+      viewport: undefined
+    });
+
+    expect(next).toBe(minimumView);
+  });
+
+  it("ignores malformed touch geometry instead of propagating NaN into rendering", () => {
+    const next = applyChartPinchNavigation({
+      gesture,
+      points: [{ x: Number.NaN, y: 200 }, { x: 500, y: 200 }],
+      view,
+      candles,
+      viewport
+    });
+
+    expect(next).toBe(view);
   });
 });
 

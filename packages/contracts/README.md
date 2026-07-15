@@ -4,6 +4,12 @@ This workspace is the canonical source for transport-neutral market REST and Web
 used by the frontend and backend. `index.ts` owns both TypeScript declarations and fail-closed
 runtime parsers for untrusted JSON.
 
+Venue capability booleans are conservative discovery summaries. The optional `scopes` collection
+provides exact `product + operation + status` records; missing combinations are unsupported, and no
+capability record may be used as authorization for a private mutation.
+`VenueFundingMarketType` is intentionally limited to `perpetual`: the public funding facade does not
+silently reinterpret other market scopes that happen to share the same venue-native symbol.
+
 ## Rules
 
 - Contracts contain no React, Express, filesystem or network implementation.

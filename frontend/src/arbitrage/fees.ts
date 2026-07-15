@@ -1,4 +1,5 @@
 import type { ArbitrageExchange, ArbitrageOpportunity } from "./client";
+import type { MarketOpportunityBasisScenario } from "@saltanatbotv2/arbitrage-sdk";
 
 export interface ArbitrageFeeProfile {
   binanceSpotTakerBps: number;
@@ -9,6 +10,8 @@ export interface ArbitrageFeeProfile {
   expectedHoldingHours: number;
   annualBorrowRatePct: number;
   transferCostUsd: number;
+  derivativeInitialMarginPct: number;
+  derivativeSafetyBufferPct: number;
 }
 
 export const DEFAULT_FEE_PROFILE: ArbitrageFeeProfile = {
@@ -19,7 +22,9 @@ export const DEFAULT_FEE_PROFILE: ArbitrageFeeProfile = {
   roundTripSlippageReserveBps: 8,
   expectedHoldingHours: 8,
   annualBorrowRatePct: 0,
-  transferCostUsd: 0
+  transferCostUsd: 0,
+  derivativeInitialMarginPct: 20,
+  derivativeSafetyBufferPct: 10
 };
 
 const KEY = "sbv2:arbitrage-fees:v2";
@@ -30,25 +35,45 @@ export interface ArbitrageCostBreakdown {
   borrowCostBps: number;
   transferCostBps: number;
   fundingCostBps: number;
+  fundingSettlementCount: number;
+  fundingScheduleVerified: boolean;
   totalBps: number;
 }
 
-export function routeCostBreakdown(row: Pick<ArbitrageOpportunity, "spotExchange" | "futuresExchange" | "fundingRate">, profile: ArbitrageFeeProfile, notionalUsd = 10_000): ArbitrageCostBreakdown {
+export interface BasisDisplayedScenario {
+  netEdgeBps: number;
+  projectedNetProfitUsd: number;
+  basisScenario: MarketOpportunityBasisScenario;
+}
+
+type FundingSchedule = Pick<ArbitrageOpportunity, "fundingRate" | "fundingIntervalMinutes" | "fundingScheduleVerified" | "nextFundingTime">;
+
+export function routeCostBreakdown(row: Pick<ArbitrageOpportunity, "spotExchange" | "futuresExchange"> & FundingSchedule, profile: ArbitrageFeeProfile, notionalUsd = 10_000, now = Date.now()): ArbitrageCostBreakdown {
   const tradingFeesBps = 2 * (spotFee(row.spotExchange, profile) + perpetualFee(row.futuresExchange, profile));
   const borrowCostBps = (((profile.annualBorrowRatePct / 100) * profile.expectedHoldingHours) / (365 * 24)) * 10_000;
   const transferCostBps = (profile.transferCostUsd / Math.max(10, notionalUsd)) * 10_000;
+  const fundingSettlementCount = projectedFundingSettlements(row, profile.expectedHoldingHours, now);
   // A positive funding rate is received by the short perpetual leg and therefore reduces cost.
-  const fundingCostBps = -row.fundingRate * (profile.expectedHoldingHours / 8) * 10_000;
+  const fundingCostBps = -row.fundingRate * fundingSettlementCount * 10_000;
   const totalBps = tradingFeesBps + profile.roundTripSlippageReserveBps + borrowCostBps + transferCostBps + fundingCostBps;
-  return { tradingFeesBps, slippageReserveBps: profile.roundTripSlippageReserveBps, borrowCostBps, transferCostBps, fundingCostBps, totalBps };
+  return {
+    tradingFeesBps,
+    slippageReserveBps: profile.roundTripSlippageReserveBps,
+    borrowCostBps,
+    transferCostBps,
+    fundingCostBps,
+    fundingSettlementCount,
+    fundingScheduleVerified: row.fundingScheduleVerified,
+    totalBps
+  };
 }
 
-export function routeCostBps(row: Pick<ArbitrageOpportunity, "spotExchange" | "futuresExchange" | "fundingRate">, profile: ArbitrageFeeProfile, notionalUsd = 10_000): number {
+export function routeCostBps(row: Pick<ArbitrageOpportunity, "spotExchange" | "futuresExchange"> & FundingSchedule, profile: ArbitrageFeeProfile, notionalUsd = 10_000): number {
   return routeCostBreakdown(row, profile, notionalUsd).totalBps;
 }
 
 export function routeNonFundingCostBps(row: Pick<ArbitrageOpportunity, "spotExchange" | "futuresExchange">, profile: ArbitrageFeeProfile, notionalUsd = 10_000) {
-  return routeCostBreakdown({ ...row, fundingRate: 0 }, profile, notionalUsd).totalBps;
+  return routeCostBreakdown({ ...row, fundingRate: 0, fundingScheduleVerified: false }, profile, notionalUsd).totalBps;
 }
 
 export function maximumRouteNonFundingCostBps(profile: ArbitrageFeeProfile, notionalUsd = 10_000) {
@@ -56,7 +81,102 @@ export function maximumRouteNonFundingCostBps(profile: ArbitrageFeeProfile, noti
 }
 
 export function netEdgeBps(row: ArbitrageOpportunity, profile: ArbitrageFeeProfile, notionalUsd = 10_000): number {
-  return row.grossSpreadBps - routeCostBps(row, profile, notionalUsd);
+  return basisDisplayedScenario(row, profile, notionalUsd).netEdgeBps;
+}
+
+export function projectedNetProfitUsd(row: ArbitrageOpportunity, profile: ArbitrageFeeProfile, notionalUsd = 10_000) {
+  return basisDisplayedScenario(row, profile, notionalUsd).projectedNetProfitUsd;
+}
+
+/** One coherent scenario shared by filtering, displayed metrics and Automation handoff. */
+export function basisDisplayedScenario(row: ArbitrageOpportunity, profile: ArbitrageFeeProfile, requestedNotionalUsd = 10_000, computedAt = Date.now()): BasisDisplayedScenario {
+  const requested = Math.max(0, requestedNotionalUsd);
+  const executableNotionalUsd = Math.min(requested, Math.max(0, row.topBookCapacityUsd));
+  const costNotional = executableNotionalUsd || requested;
+  const breakdown = routeCostBreakdown(row, profile, costNotional, computedAt);
+  const net = row.grossSpreadBps - breakdown.totalBps;
+  return {
+    netEdgeBps: net,
+    projectedNetProfitUsd: (executableNotionalUsd * net) / 10_000,
+    basisScenario: {
+      model: "browser-basis-cost-v1",
+      computedAt,
+      requestedNotionalUsd: requested,
+      executableNotionalUsd,
+      assumptions: {
+        spotTakerBps: spotFee(row.spotExchange, profile),
+        perpetualTakerBps: perpetualFee(row.futuresExchange, profile),
+        roundTripSlippageReserveBps: profile.roundTripSlippageReserveBps,
+        expectedHoldingHours: profile.expectedHoldingHours,
+        annualBorrowRatePct: profile.annualBorrowRatePct,
+        transferCostUsd: profile.transferCostUsd
+      },
+      costBreakdownBps: {
+        tradingFees: breakdown.tradingFeesBps,
+        slippage: breakdown.slippageReserveBps,
+        borrow: breakdown.borrowCostBps,
+        transfer: breakdown.transferCostBps,
+        funding: breakdown.fundingCostBps,
+        total: breakdown.totalBps,
+        fundingSettlementCount: breakdown.fundingSettlementCount,
+        fundingScheduleVerified: breakdown.fundingScheduleVerified
+      }
+    }
+  };
+}
+
+export interface ArbitrageCapitalEstimate {
+  executableNotionalUsd: number;
+  spotCapitalUsd: number;
+  derivativeInitialMarginUsd: number;
+  derivativeSafetyBufferUsd: number;
+  requiredCapitalUsd: number;
+}
+
+export interface ArbitrageConvergenceScenario {
+  convergencePct: number;
+  grossPnlUsd: number;
+  costUsd: number;
+  netPnlUsd: number;
+  roiPct: number;
+}
+
+/** Explicit capital denominator used by ROI; it remains a user scenario, not account telemetry. */
+export function capitalEstimate(row: Pick<ArbitrageOpportunity, "topBookCapacityUsd">, profile: ArbitrageFeeProfile, requestedNotionalUsd: number): ArbitrageCapitalEstimate {
+  const executableNotionalUsd = Math.min(Math.max(0, requestedNotionalUsd), Math.max(0, row.topBookCapacityUsd));
+  const spotCapitalUsd = executableNotionalUsd;
+  const derivativeInitialMarginUsd = executableNotionalUsd * (profile.derivativeInitialMarginPct / 100);
+  const derivativeSafetyBufferUsd = executableNotionalUsd * (profile.derivativeSafetyBufferPct / 100);
+  return {
+    executableNotionalUsd,
+    spotCapitalUsd,
+    derivativeInitialMarginUsd,
+    derivativeSafetyBufferUsd,
+    requiredCapitalUsd: spotCapitalUsd + derivativeInitialMarginUsd + derivativeSafetyBufferUsd
+  };
+}
+
+export function projectedRoiPct(row: ArbitrageOpportunity, profile: ArbitrageFeeProfile, requestedNotionalUsd = 10_000) {
+  const capital = capitalEstimate(row, profile, requestedNotionalUsd);
+  return capital.requiredCapitalUsd > 0 ? (projectedNetProfitUsd(row, profile, requestedNotionalUsd) / capital.requiredCapitalUsd) * 100 : 0;
+}
+
+/** Shows how much of the observed entry basis must actually converge before the route earns it. */
+export function convergenceScenarios(row: ArbitrageOpportunity, profile: ArbitrageFeeProfile, requestedNotionalUsd = 10_000, now = Date.now()): ArbitrageConvergenceScenario[] {
+  const capital = capitalEstimate(row, profile, requestedNotionalUsd);
+  const breakdown = routeCostBreakdown(row, profile, capital.executableNotionalUsd || requestedNotionalUsd, now);
+  const costUsd = (capital.executableNotionalUsd * breakdown.totalBps) / 10_000;
+  return [100, 75, 50, 25, 0].map((convergencePct) => {
+    const grossPnlUsd = capital.executableNotionalUsd * (row.grossSpreadBps / 10_000) * (convergencePct / 100);
+    const netPnlUsd = grossPnlUsd - costUsd;
+    return {
+      convergencePct,
+      grossPnlUsd,
+      costUsd,
+      netPnlUsd,
+      roiPct: capital.requiredCapitalUsd > 0 ? (netPnlUsd / capital.requiredCapitalUsd) * 100 : 0
+    };
+  });
 }
 
 export function loadFeeProfile(): ArbitrageFeeProfile {
@@ -71,6 +191,26 @@ export function loadFeeProfile(): ArbitrageFeeProfile {
 
 export function storeFeeProfile(profile: ArbitrageFeeProfile) {
   localStorage.setItem(KEY, JSON.stringify(profile));
+}
+
+/**
+ * Counts funding events used by the estimate. Unknown schedules never earn a
+ * speculative credit; a negative current rate is charged for at least one
+ * settlement even when nextFundingTime is missing.
+ */
+export function projectedFundingSettlements(schedule: FundingSchedule, holdingHours: number, now = Date.now()) {
+  if (!(holdingHours > 0) || !Number.isFinite(schedule.fundingRate)) return 0;
+  const end = now + holdingHours * 60 * 60_000;
+  if (!schedule.fundingScheduleVerified) {
+    return schedule.fundingRate < 0 ? 1 : 0;
+  }
+  if (!(schedule.fundingIntervalMinutes && schedule.fundingIntervalMinutes > 0) || !(schedule.nextFundingTime && schedule.nextFundingTime > 0) || !Number.isFinite(end)) {
+    return 0;
+  }
+  const intervalMs = schedule.fundingIntervalMinutes * 60_000;
+  let next = schedule.nextFundingTime;
+  if (next <= now) next += (Math.floor((now - next) / intervalMs) + 1) * intervalMs;
+  return next > end ? 0 : 1 + Math.floor((end - next) / intervalMs);
 }
 
 function spotFee(exchange: ArbitrageExchange, profile: ArbitrageFeeProfile) {

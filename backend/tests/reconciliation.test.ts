@@ -44,6 +44,18 @@ describe("live runtime reconciliation", () => {
     expect(result.messages.join(" ")).toMatch(/cleared/i);
   });
 
+  it("pauses a flat account when an orphan protection order remains", () => {
+    const result = reconcileLiveRuntime({
+      config: baseBot,
+      exchangePosition: null,
+      openOrders: [protectiveStop()],
+      now: 20
+    });
+
+    expect(result).toMatchObject({ managed: undefined, pause: true });
+    expect(result.messages.join(" ")).toMatch(/protection order.*flat.*cancel or reconcile/i);
+  });
+
   it("adopts an exchange position and pauses when local runtime state is missing", () => {
     const result = reconcileLiveRuntime({
       config: baseBot,

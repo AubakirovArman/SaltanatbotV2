@@ -1,0 +1,12 @@
+{
+  "channel": "spot@public.aggre.depth.v3.api.pb@10ms@BTCUSDT",
+  "publicAggreDepths": {
+    "asks": [{"price": "101", "quantity": "0"}, {"price": "101.5", "quantity": "3"}],
+    "bids": [{"price": "100", "quantity": "2"}],
+    "eventType": "spot@public.aggre.depth.v3.api.pb@10ms",
+    "fromVersion": "1001",
+    "toVersion": "1003"
+  },
+  "symbol": "BTCUSDT",
+  "sendTime": 1784023200010
+}

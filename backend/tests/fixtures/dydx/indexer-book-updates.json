@@ -1,0 +1,21 @@
+[
+  {
+    "type": "channel_data",
+    "connection_id": "conn-a",
+    "channel": "v4_orderbook",
+    "id": "BTC-USD",
+    "message_id": 11,
+    "contents": { "bids": [["102", "1.5", "11"]] }
+  },
+  {
+    "type": "channel_data",
+    "connection_id": "conn-a",
+    "channel": "v4_orderbook",
+    "id": "BTC-USD",
+    "message_id": 12,
+    "contents": {
+      "bids": [["100", "0", "12"]],
+      "asks": [["104", "2", "12"]]
+    }
+  }
+]

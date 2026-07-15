@@ -22,7 +22,7 @@ export function parseBinancePartialDepth(value: unknown): BinancePartialDepth | 
 export function subscribeBinanceOrderBook(
   symbol: string,
   callbacks: OrderBookConnectorCallbacks,
-  createSocket: (url: string) => WebSocket = (url) => new WebSocket(url)
+  createSocket: (url: string) => WebSocket = (url) => new WebSocket(url, { maxPayload: 2 * 1024 * 1024 })
 ): OrderBookSubscription {
   let socket: WebSocket | undefined;
   let reconnectTimer: NodeJS.Timeout | undefined;

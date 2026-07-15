@@ -1,4 +1,6 @@
 import { ingestExchangeOrderEvent } from "./orderEventIngest.js";
+import { isTerminalUnaccountedExecution } from "./executionAccounting.js";
+import { isTerminalUnaccountedRisk } from "./liveRiskReservations.js";
 import type { OrderLifecycle } from "./orderLifecycle.js";
 import type { ExchangeAdapter, OrderJournalRecord, PendingOrder } from "./types.js";
 
@@ -27,7 +29,7 @@ export async function reconcileStartupOrders(
   adapter: Pick<ExchangeAdapter, "orderStatus">,
   lifecycle: Pick<OrderLifecycle, "applySnapshot" | "reconcile">
 ): Promise<StartupOrderReconciliationResult> {
-  const pending = records.filter((record) => IN_FLIGHT.has(record.status)).sort((a, b) => a.updatedAt - b.updatedAt);
+  const pending = records.filter((record) => IN_FLIGHT.has(record.status) || terminalUnaccounted(record)).sort((a, b) => a.updatedAt - b.updatedAt);
   const result: StartupOrderReconciliationResult = { checked: pending.length, resolved: 0, updated: 0, unresolved: [] };
 
   for (const record of pending) {
@@ -45,11 +47,14 @@ export async function reconcileStartupOrders(
             const ingested = ingestExchangeOrderEvent([record], snapshot, lifecycle);
             if (ingested.kind === "updated") result.updated += 1;
             const snapshotAccepted = ingested.kind === "updated" || (ingested.kind === "ignored" && ingested.reason === "duplicate");
-            if (snapshotAccepted) {
+            const acceptedRecord = ingested.kind === "updated" || ingested.kind === "ignored" ? ingested.record : record;
+            if (snapshotAccepted && !terminalUnaccounted(acceptedRecord)) {
               result.resolved += 1;
               continue;
             }
-            queryError = new Error(`venue snapshot was rejected (${ingested.kind === "ignored" ? ingested.reason : "unmatched"})`);
+            queryError = snapshotAccepted
+              ? new Error(`venue status ${acceptedRecord.status} does not include locally accounted execution evidence`)
+              : new Error(`venue snapshot was rejected (${ingested.kind === "ignored" ? ingested.reason : "unmatched"})`);
           }
         }
       } catch (error) {
@@ -83,6 +88,10 @@ export async function reconcileStartupOrders(
   }
 
   return result;
+}
+
+function terminalUnaccounted(record: OrderJournalRecord) {
+  return isTerminalUnaccountedRisk(record) || isTerminalUnaccountedExecution(record);
 }
 
 function provesCommandOutcome(record: OrderJournalRecord, status: OrderJournalRecord["status"]) {

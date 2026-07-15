@@ -1,10 +1,10 @@
-import type { BoolExpr, NumExpr, Stmt } from "../ir";
+import type { BoolExpr, NumExpr, Stmt, StrategyInput } from "../ir";
 
-export type InputDefaults = ReadonlyMap<string, number>;
+export type InputDefinitions = ReadonlyMap<string, StrategyInput>;
 
 export interface BlocklySerializationContext {
   bool(expr: BoolExpr): string;
   chain(statements: Stmt[]): string;
-  defaults: InputDefaults;
+  inputs: InputDefinitions;
   num(expr: NumExpr): string;
 }

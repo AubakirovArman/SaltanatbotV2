@@ -24,7 +24,7 @@ const groups: LocalizedGroup[] = [
     title: text("Market & limit orders (neworder)", "Рыночные и лимитные ордера (neworder)", "Нарықтық және лимиттік ордерлер (neworder)"),
     items: [
       { label: text("Market buy 0.1", "Рыночная покупка 0,1", "Нарықтан 0,1 сатып алу"), command: "mktype=futures;symbol={sym};side=buy;type=market;qty=0.1;lev=5" },
-      { label: text("Market buy 25% of balance", "Рыночная покупка на 25% баланса", "Балансқа шаққанда 25% нарықтық сатып алу"), command: "mktype=futures;symbol={sym};side=buy;type=market;openpro=25;lev=10;levforqty!" },
+      { label: text("Paper-only: buy 25% of balance", "Только paper: покупка на 25% баланса", "Тек paper: баланстың 25%-ына сатып алу"), command: "mktype=futures;symbol={sym};side=buy;type=market;openpro=25;lev=10;levforqty!" },
       { label: text("Limit buy at price", "Лимитная покупка по цене", "Баға бойынша лимиттік сатып алу"), command: "mktype=futures;symbol={sym};side=buy;type=limit;price=30000;qty=0.1" },
       { label: text("Reduce-only close 50%", "Закрыть 50% в reduce-only", "Reduce-only арқылы 50% жабу"), command: "mktype=futures;symbol={sym};side=sell;type=market;closepro=50;reduceonly!" }
     ]
@@ -32,11 +32,11 @@ const groups: LocalizedGroup[] = [
   {
     title: text("Positions", "Позиции", "Позициялар"),
     items: [
-      { label: text("Open long + stop + 2 TP", "Открыть лонг + стоп + 2 TP", "Лонг + стоп + 2 TP ашу"), command: "action=openposition;symbol={sym};side=buy;openpro=10;lev=10;levforqty!;stop=5%;tp=[3%,50%][6%,50%]" },
-      { label: text("Open short (quote 100)", "Открыть шорт (котируемая сумма 100)", "Шорт ашу (котировка 100)"), command: "action=openposition;symbol={sym};side=sell;quqty=100;lev=5;levforqty!;stop=3%" },
+      { label: text("Open long + stop + 2 TP", "Открыть лонг + стоп + 2 TP", "Лонг + стоп + 2 TP ашу"), command: "action=openposition;symbol={sym};side=buy;qty=0.1;lev=10;stop=5%;tp=[3%,50%][6%,50%]" },
+      { label: text("Open short (0.1 base)", "Открыть шорт (0,1 базового актива)", "Шорт ашу (0,1 базалық актив)"), command: "action=openposition;symbol={sym};side=sell;qty=0.1;lev=5;stop=3%" },
       { label: text("Close position (100%)", "Закрыть позицию (100%)", "Позицияны жабу (100%)"), command: "action=closeposition;symbol={sym}" },
       { label: text("Close 50%", "Закрыть 50%", "50% жабу"), command: "closeposition={sym};closepro=50" },
-      { label: text("Reverse position", "Развернуть позицию", "Позицияны кері бұру"), command: "action=turnover;symbol={sym};side=sell;qty=0.1;lev=5" },
+      { label: text("Close, wait, then open short", "Закрыть, подождать, затем открыть шорт", "Жабу, күту, кейін шорт ашу"), command: "action=closeposition;symbol={sym}::pause=500::action=openposition;mktype=futures;symbol={sym};side=sell;type=market;qty=0.1;lev=5" },
       { label: text("Close ALL positions", "Закрыть ВСЕ позиции", "БАРЛЫҚ позицияны жабу"), command: "action=exitallpositions;mktype=futures" }
     ]
   },
@@ -74,7 +74,7 @@ const groups: LocalizedGroup[] = [
   },
   {
     title: text("Chaining & pauses", "Цепочки и паузы", "Тізбектер және үзілістер"),
-    items: [{ label: text("Close → wait → reverse", "Закрыть → подождать → развернуть", "Жабу → күту → кері бұру"), command: "closepos=symbol;symbol={sym}::pause=500::mktype=futures;symbol={sym};side=sell;type=market;openpro=100;lev=5" }]
+    items: [{ label: text("Close → wait → explicit entry", "Закрыть → подождать → явный вход", "Жабу → күту → нақты кіру"), command: "closepos=symbol;symbol={sym}::pause=500::mktype=futures;symbol={sym};side=sell;type=market;qty=0.1;lev=5" }]
   }
 ];
 

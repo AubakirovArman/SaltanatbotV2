@@ -4,6 +4,19 @@ import react from "@vitejs/plugin-react";
 import { pwaPlugin } from "./vite/pwaPlugin";
 
 const frontendRoot = fileURLToPath(new URL(".", import.meta.url));
+export const backendDevTarget = "http://127.0.0.1:4181";
+export const developmentWebSocketPaths = [
+  "/stream",
+  "/quotes",
+  "/orderbook",
+  "/trade-flow",
+  "/arbitrage-stream",
+  "/trade-stream"
+] as const;
+
+const websocketProxy = Object.fromEntries(
+  developmentWebSocketPaths.map((path) => [path, { target: backendDevTarget, ws: true }])
+);
 
 export default defineConfig({
   plugins: [
@@ -37,15 +50,8 @@ export default defineConfig({
     port: 4180,
     strictPort: true,
     proxy: {
-      "/api": "http://127.0.0.1:4181",
-      "/stream": {
-        target: "ws://127.0.0.1:4181",
-        ws: true
-      },
-      "/trade-stream": {
-        target: "ws://127.0.0.1:4181",
-        ws: true
-      }
+      "/api": backendDevTarget,
+      ...websocketProxy
     }
   }
 });

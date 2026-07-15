@@ -1,6 +1,8 @@
 import type { Candle } from "@saltanatbotv2/contracts";
 import type { BoolExpr, NumExpr, StrategyIR } from "./index.js";
 import { type SecurityDataContext } from "./securityData.js";
+import { type UnresolvedSecurityPolicy } from "./securityRuntime.js";
+export { UnresolvedSecuritySeriesError, type UnresolvedSecurityPolicy } from "./securityRuntime.js";
 import { type StrategyBarTrace, type StrategyExpressionExplanation } from "./trace.js";
 export interface BarIntents {
     entry?: "long" | "short";
@@ -50,6 +52,8 @@ export interface StrategyRuntime {
     ctx: Record<string, number>;
     /** Optional external candles for request.security() expressions. */
     securityData?: SecurityDataContext;
+    /** Chart substitution is allowed only for an explicitly opted-in preview. */
+    unresolvedSecurityPolicy: UnresolvedSecurityPolicy;
     /** Snapshot of vars at the START of the bar — reads for `varprev` (x[1] on a var). */
     varsPrev: Map<string, number>;
     explanations: Map<string, StrategyExpressionExplanation>;
@@ -71,6 +75,7 @@ export interface StrategyRuntimeOptions {
     vars?: Map<string, number>;
     ctx?: Record<string, number>;
     securityData?: SecurityDataContext;
+    unresolvedSecurityPolicy?: UnresolvedSecurityPolicy;
 }
 /** Create a reusable runtime for preview/backtest. Live callers may use
  * `evaluateBar()` when their candle buffer changes on every invocation. */

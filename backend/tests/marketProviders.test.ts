@@ -197,10 +197,5 @@ describe("ProviderRouter stream fan-out", () => {
 });
 
 function json(payload: unknown): Response {
-  return {
-    ok: true,
-    status: 200,
-    json: async () => payload,
-    text: async () => JSON.stringify(payload)
-  } as Response;
+  return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
 }

@@ -4,10 +4,18 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const markdownFiles = execFileSync("git", ["ls-files", "*.md"], { cwd: root, encoding: "utf8" })
-  .trim()
-  .split("\n")
-  .filter(Boolean);
+const markdownFiles = [
+  ...new Set(
+    execFileSync(
+      "git",
+      ["ls-files", "--cached", "--others", "--exclude-standard", "--", "*.md"],
+      { cwd: root, encoding: "utf8" }
+    )
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+  )
+].sort();
 const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 const scripts = new Set(Object.keys(packageJson.scripts ?? {}));
 const failures = [];
@@ -36,4 +44,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Documentation checks passed for ${markdownFiles.length} tracked Markdown files.`);
+console.log(`Documentation checks passed for ${markdownFiles.length} tracked and untracked non-ignored Markdown files.`);

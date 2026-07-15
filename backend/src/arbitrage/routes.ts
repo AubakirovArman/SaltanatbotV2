@@ -1,13 +1,16 @@
-import type { RequestHandler } from "express";
+import type { Request, RequestHandler, Response } from "express";
 import { z } from "zod";
 import { ArbitrageScannerService } from "./service.js";
 import { ArbitrageDepthService } from "./depth.js";
 import { listArbitrageHistory } from "../trading/store.js";
+import { abortError, ArbitrageOverloadError } from "./sharedAbortableWork.js";
 
 const querySchema = z.object({
   costBps: z.coerce.number().min(0).max(1_000).default(30),
   minSpreadBps: z.coerce.number().min(-10_000).max(10_000).default(-1_000),
-  limit: z.coerce.number().int().min(1).max(500).default(250)
+  minCapacityUsd: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  sort: z.enum(["expected-profit", "net-edge", "capacity"]).default("expected-profit"),
+  limit: z.coerce.number().int().min(1).max(2_000).default(250)
 });
 
 const depthQuerySchema = z
@@ -19,9 +22,15 @@ const depthQuerySchema = z
       .regex(/^[A-Z0-9]{2,20}USDT$/),
     spotExchange: z.enum(["binance", "bybit"]),
     futuresExchange: z.enum(["binance", "bybit"]),
-    notionalUsd: z.coerce.number().min(10).max(1_000_000)
+    notionalUsd: z.coerce.number().min(10).max(1_000_000),
+    direction: z.enum(["entry", "exit"]).default("entry"),
+    quantity: z.coerce.number().positive().max(1_000_000_000).optional()
   })
-  .refine((value) => value.spotExchange !== value.futuresExchange, { message: "Spot and perpetual exchanges must differ" });
+  .superRefine((value, context) => {
+    if (value.direction === "exit" && value.quantity === undefined) {
+      context.addIssue({ code: "custom", path: ["quantity"], message: "quantity is required for exit depth" });
+    }
+  });
 
 const historyQuerySchema = z.object({
   routeId: z
@@ -41,20 +50,30 @@ export function createArbitrageHandler(service = new ArbitrageScannerService()):
       response.status(400).json({ error: parsed.error.flatten() });
       return;
     }
+    const lifetime = clientRequestLifetime(request, response);
     try {
       response.setHeader("Cache-Control", "public, max-age=1, stale-if-error=30");
       response.json(
-        await service.scan({
-          estimatedTotalCostBps: parsed.data.costBps,
-          minSpreadBps: parsed.data.minSpreadBps,
-          limit: parsed.data.limit
-        })
+        await service.scan(
+          {
+            estimatedTotalCostBps: parsed.data.costBps,
+            minSpreadBps: parsed.data.minSpreadBps,
+            minCapacityUsd: parsed.data.minCapacityUsd,
+            sort: parsed.data.sort,
+            limit: parsed.data.limit
+          },
+          lifetime.signal
+        )
       );
     } catch (error) {
+      if (lifetime.signal.aborted || response.destroyed) return;
+      if (error instanceof ArbitrageOverloadError) response.setHeader("Retry-After", "1");
       response.status(503).json({
         error: error instanceof Error ? error.message : "Arbitrage market data unavailable",
         unavailable: true
       });
+    } finally {
+      lifetime.cleanup();
     }
   };
 }
@@ -66,11 +85,32 @@ export function createArbitrageDepthHandler(service = new ArbitrageDepthService(
       response.status(400).json({ error: parsed.error.flatten() });
       return;
     }
+    const lifetime = clientRequestLifetime(request, response);
     try {
       response.setHeader("Cache-Control", "public, max-age=1");
-      response.json(await service.analyze(parsed.data));
+      response.json(await service.analyze(parsed.data, lifetime.signal));
     } catch (error) {
+      if (lifetime.signal.aborted || response.destroyed) return;
+      if (error instanceof ArbitrageOverloadError) response.setHeader("Retry-After", "1");
       response.status(503).json({ error: error instanceof Error ? error.message : "Arbitrage order books unavailable", unavailable: true });
+    } finally {
+      lifetime.cleanup();
+    }
+  };
+}
+
+function clientRequestLifetime(request: Request, response: Response) {
+  const controller = new AbortController();
+  const abort = () => {
+    if (!response.writableEnded) controller.abort(abortError("Client disconnected"));
+  };
+  request.once("aborted", abort);
+  response.once("close", abort);
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      request.removeListener("aborted", abort);
+      response.removeListener("close", abort);
     }
   };
 }

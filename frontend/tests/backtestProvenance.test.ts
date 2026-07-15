@@ -1,4 +1,5 @@
 import { buildBacktestDataProvenance } from "@saltanatbotv2/backtest-core";
+import { createSecurityDataBundle, securitySeriesKey } from "@saltanatbotv2/strategy-core";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, runBacktest } from "../src/strategy/backtest";
 import type { StrategyIR } from "../src/strategy/ir";
@@ -51,6 +52,65 @@ describe("backtest market-data provenance", () => {
     );
 
     expect(provenance).toMatchObject({ status: "real", chartBars: 1, securityBars: 2, performanceClaimsValid: true });
+    expect(provenance.sources).toContainEqual({ scope: "security", source: "Bybit", kind: "real", bars: 2 });
+  });
+
+  it("includes requested/resolved/unresolved evidence and invalidates incomplete runs", () => {
+    const resolvedKey = securitySeriesKey("ETHUSDT", "60");
+    const unresolvedKey = securitySeriesKey("SOLUSDT", "60");
+    const external = [candle(0, "Bybit"), candle(60_000, "Bybit")];
+    const provenance = buildBacktestDataProvenance(
+      [candle(0, "Binance")],
+      createSecurityDataBundle({ [resolvedKey]: external }, {
+        version: 1,
+        requested: [
+          { key: resolvedKey, symbol: "ETHUSDT", timeframe: "60" },
+          { key: unresolvedKey, symbol: "SOLUSDT", timeframe: "60" }
+        ],
+        resolved: [{
+          key: resolvedKey,
+          symbol: "ETHUSDT",
+          timeframe: "60",
+          fetchSymbol: "ETHUSDT",
+          fetchTimeframe: "1h",
+          source: "external",
+          bars: 2,
+          keys: [resolvedKey]
+        }],
+        unresolved: [{ key: unresolvedKey, symbol: "SOLUSDT", timeframe: "60", fetchSymbol: "SOLUSDT", reason: "empty-response" }]
+      })
+    );
+
+    expect(provenance.status).toBe("real");
+    expect(provenance.performanceClaimsValid).toBe(false);
+    expect(provenance.securityRequests).toEqual({
+      version: 1,
+      requested: [
+        { key: resolvedKey, symbol: "ETHUSDT", timeframe: "60" },
+        { key: unresolvedKey, symbol: "SOLUSDT", timeframe: "60" }
+      ],
+      resolved: [{
+        key: resolvedKey,
+        symbol: "ETHUSDT",
+        timeframe: "60",
+        fetchSymbol: "ETHUSDT",
+        fetchTimeframe: "1h",
+        source: "external",
+        bars: 2,
+        keys: [resolvedKey]
+      }],
+      unresolved: [{ key: unresolvedKey, symbol: "SOLUSDT", timeframe: "60", fetchSymbol: "SOLUSDT", reason: "empty-response" }]
+    });
+  });
+
+  it("does not count alias keys that reference the same external candles more than once", () => {
+    const series = [candle(0, "Bybit"), candle(60_000, "Bybit")];
+    const provenance = buildBacktestDataProvenance([candle(0, "Binance")], {
+      "ETHUSDT|60": series,
+      "ETHUSDT|1H": series
+    });
+
+    expect(provenance.securityBars).toBe(2);
     expect(provenance.sources).toContainEqual({ scope: "security", source: "Bybit", kind: "real", bars: 2 });
   });
 

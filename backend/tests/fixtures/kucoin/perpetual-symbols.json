@@ -1,0 +1,31 @@
+{
+  "code": "200000",
+  "data": [
+    {
+      "symbol": "XBTUSDTM",
+      "baseCurrency": "XBT",
+      "quoteCurrency": "USDT",
+      "settleCurrency": "USDT",
+      "expireDate": null,
+      "lotSize": 1,
+      "tickSize": 0.1,
+      "multiplier": 0.001,
+      "isInverse": false,
+      "status": "Open",
+      "currentFundingRateGranularity": 28800000
+    },
+    {
+      "symbol": "XBTUSDM",
+      "baseCurrency": "XBT",
+      "quoteCurrency": "USD",
+      "settleCurrency": "XBT",
+      "expireDate": null,
+      "lotSize": 1,
+      "tickSize": 0.1,
+      "multiplier": 1,
+      "isInverse": true,
+      "status": "Open",
+      "currentFundingRateGranularity": 28800000
+    }
+  ]
+}

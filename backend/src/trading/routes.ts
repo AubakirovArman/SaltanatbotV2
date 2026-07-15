@@ -6,24 +6,35 @@ import { z } from "zod";
 import { clearAuthSession, createAuthSession, isDemoMode, issueWsTicket, requireAuth, roleAllows, roleForToken } from "../auth.js";
 import { timeframes } from "../market/timeframes.js";
 import type { ProviderRouter } from "../providers/router.js";
-import { TradingEngine, type TradeEvent } from "./engine.js";
+import { TradingEngine } from "./engine.js";
+import type { TradeEvent } from "./engineEvents.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
 import { BybitV5Client } from "./exchange/bybitClient.js";
 import { BybitUtaService } from "./bybitUta.js";
 import { createBybitUtaHandlers } from "./bybitUtaRoutes.js";
+import { mutationAuthority, resolveBotRouteIdentity, roleForBot } from "./botRouteIdentity.js";
 import { getNotifyConfig, notify, testNotify, type NotifyConfig } from "./notifications.js";
 import { TelegramControl } from "./telegramControl.js";
-import { deleteBot, deleteSetting, initStore, insertAuditLog, listAuditLog, listBots, listFills, listLogs, listOrderEvents, listOrderJournal, getSetting, setSetting, upsertBot } from "./store.js";
+import { deleteBot, deleteSetting, ensureLegacyTradingAccount, getSetting, getTradingAccount, initStore, listAuditLog, listBots, listFills, listLogs, listOrderEvents, listOrderJournal, setSetting, upsertBot } from "./store.js";
 import { parseStrategyIR } from "./strategy/irSchema.js";
 import type { Timeframe } from "../types.js";
 import type { AuthRole, BotConfig, ExchangeId } from "./types.js";
 import type { ArbitrageAlertService } from "../arbitrage/alerts.js";
 import { registerArbitrageAlertRoutes } from "../arbitrage/alertRoutes.js";
+import { ensureSecureTradingOrigin, isSecureTradingOrigin, requireSecureTradingOrigin } from "../secureTradingOrigin.js";
+import { liveRiskValidationErrors } from "./liveRisk.js";
+import { ensureEmergencyCanRearm, registerEmergencyStopRoutes } from "./emergencyStopRoutes.js";
+import { auditTradingMutation } from "./tradingRouteAudit.js";
+import { createPaperMultiLegRouter, getPaperMultiLegRuntime, type PaperMultiLegService } from "../arbitrage/paperMultiLeg/index.js";
+import { registerResearchAlertRoutes, type ResearchAlertService } from "../arbitrage/researchAlerts/index.js";
+import { botTradingAccountId, legacyTradingAccountId, paperTradingAccountId, tradingAccountBindingIssue } from "./tradingAccounts.js";
+import { registerTradingAccountIntegrationRoutes, registerTradingAccountRegistryRoutes } from "./tradingAccountRoutes.js";
 
 const timeframeEnum = z.enum(timeframes as [Timeframe, ...Timeframe[]]);
 
 const botBodySchema = z.object({
   id: z.string().optional(),
+  accountId: z.string().trim().min(3).max(128).optional(),
   name: z.string().max(120).optional(),
   strategyName: z.string().max(120).optional(),
   // Structurally validated separately by parseStrategyIR (a strict node whitelist).
@@ -37,15 +48,11 @@ const botBodySchema = z.object({
   leverage: z.coerce.number().int().min(1).max(125).default(1),
   bybitCrossCollateral: z.boolean().default(false),
   notifyMarkers: z.boolean().default(false),
-  // Live-trading risk caps (0/undefined = unlimited; enforced by the engine).
+  // Paper may omit these. Live bots must provide every cap as a positive value.
   maxPositionQuote: z.coerce.number().nonnegative().finite().max(1_000_000_000).optional(),
-  maxDailyLossQuote: z.coerce.number().nonnegative().finite().max(1_000_000_000).optional()
-});
-
-const keysBodySchema = z.object({
-  exchange: z.enum(["binance", "bybit"]),
-  apiKey: z.string().trim().min(8).max(256),
-  apiSecret: z.string().trim().min(8).max(256)
+  maxOrderQuote: z.coerce.number().nonnegative().finite().max(1_000_000_000).optional(),
+  maxDailyLossQuote: z.coerce.number().nonnegative().finite().max(1_000_000_000).optional(),
+  maxOpenOrders: z.coerce.number().int().nonnegative().max(10_000).optional()
 });
 
 const commandBodySchema = z.object({
@@ -78,10 +85,16 @@ export interface TradingApi {
   telegramControl: TelegramControl;
 }
 
-export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: ArbitrageAlertService): TradingApi {
+export interface TradingApiOptions {
+  emergencyAdapters?: () => Iterable<import("./types.js").ExchangeAdapter>;
+  paperMultiLeg?: PaperMultiLegService | false;
+  researchAlerts?: ResearchAlertService;
+}
+
+export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: ArbitrageAlertService, options: TradingApiOptions = {}): TradingApi {
   initStore();
 
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const clients = new Set<WebSocket>();
   wss.on("connection", (socket) => {
     clients.add(socket);
@@ -95,7 +108,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     }
   };
 
-  const engine = new TradingEngine(provider, broadcast);
+  const engine = new TradingEngine(provider, broadcast, options.emergencyAdapters);
   // Inbound Telegram control. No-op until a token+chatId are configured and
   // Telegram is enabled; refresh()'d by POST /notify so a UI toggle takes effect
   // without a restart. Started from server.ts after listen().
@@ -113,6 +126,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     liveEnabled,
     keys: () => getSetting<ExchangeKeys>("keys:bybit")
   });
+  const paperMultiLeg = options.paperMultiLeg === false ? undefined : (options.paperMultiLeg ?? (process.env.NODE_ENV === "test" ? undefined : getPaperMultiLegRuntime()));
 
   router.post("/session", (req, res) => {
     const parsed = sessionBodySchema.safeParse(req.body);
@@ -122,23 +136,23 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       return;
     }
     const session = createAuthSession(res, role);
-    res.json({ ok: true, demo: isDemoMode(), liveTradingEnabled: liveEnabled(), role: session.role, csrfToken: session.csrfToken, expiresAt: session.expiresAt });
+    res.json({ ok: true, demo: isDemoMode(), liveTradingEnabled: liveEnabled(), secureTradingOrigin: isSecureTradingOrigin(req), role: session.role, csrfToken: session.csrfToken, expiresAt: session.expiresAt });
   });
 
   // Public status probe for the Trade tab. It avoids a noisy browser-console 401
   // on first load, while every actual trading endpoint below remains gated.
   router.get("/auth", (req, res) => {
     if (!req.headers.authorization && !req.headers.cookie) {
-      res.json({ ok: false, demo: isDemoMode(), liveTradingEnabled: false });
+      res.json({ ok: false, demo: isDemoMode(), liveTradingEnabled: false, secureTradingOrigin: isSecureTradingOrigin(req) });
       return;
     }
     requireAuth(req, res, () => {
-      res.json({ ok: true, demo: isDemoMode(), liveTradingEnabled: liveEnabled(), role: res.locals.authRole, csrfToken: res.locals.csrfToken });
+      res.json({ ok: true, demo: isDemoMode(), liveTradingEnabled: liveEnabled(), secureTradingOrigin: isSecureTradingOrigin(req), role: res.locals.authRole, csrfToken: res.locals.csrfToken });
     });
   });
 
   router.use(requireAuth);
-  router.use(auditMutations);
+  router.use(auditTradingMutation);
 
   router.delete("/session", (req, res) => {
     clearAuthSession(req, res);
@@ -149,9 +163,11 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     res.json(issueWsTicket());
   });
 
-  router.get("/settings", (_req, res) => {
-    res.json({ demo: isDemoMode(), liveTradingEnabled: liveEnabled() });
+  router.get("/settings", (req, res) => {
+    res.json({ demo: isDemoMode(), liveTradingEnabled: liveEnabled(), secureTradingOrigin: isSecureTradingOrigin(req), role: res.locals.authRole });
   });
+
+  registerTradingAccountRegistryRoutes(router, requireRole("admin"));
 
   router.post("/settings", requireRole("admin"), (req, res) => {
     const parsed = z.object({ liveTradingEnabled: z.boolean() }).safeParse(req.body);
@@ -159,27 +175,24 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       res.status(400).json({ error: parsed.error.flatten() });
       return;
     }
+    if (parsed.data.liveTradingEnabled && !ensureSecureTradingOrigin(req, res)) return;
     if (isDemoMode() && parsed.data.liveTradingEnabled) {
       res.status(403).json({ error: "Live trading is disabled in DEMO_MODE." });
       return;
     }
+    if (parsed.data.liveTradingEnabled && !ensureEmergencyCanRearm(engine, res)) return;
     setSetting("liveTradingEnabled", parsed.data.liveTradingEnabled);
     res.json({ liveTradingEnabled: parsed.data.liveTradingEnabled });
   });
 
-  // Global kill switch: stop every bot and disarm live trading.
-  router.post("/kill", requireRole("live-trade"), (_req, res) => {
-    engine.stopAll();
-    setSetting("liveTradingEnabled", false);
-    res.json({ ok: true });
-  });
+  registerEmergencyStopRoutes(router, engine, requireRole("live-trade"));
 
   router.get("/bots", (_req, res) => {
     res.json({ bots: listBots().map(withStatus) });
   });
 
   // Cross-bot portfolio: live account equity/positions/orders (deduped by
-  // exchange) plus today's realized PnL. Fail-safe — never throws to the client.
+  // account+market) plus today's realized PnL. Fail-safe — never throws.
   router.get("/portfolio", async (_req, res) => {
     try {
       res.json(await engine.portfolio());
@@ -195,9 +208,21 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       return;
     }
     const body = parsed.data;
-    if (!ensureRole(res, body.exchange === "paper" ? "paper-trade" : "live-trade")) return;
+    const existing = body.id ? listBots().find((bot) => bot.id === body.id) : undefined;
+    const { runtime, role, secureOrigin } = mutationAuthority(engine, existing, body.id, body.exchange);
+    if (!ensureRole(res, role)) return;
+    if (secureOrigin && !ensureSecureTradingOrigin(req, res)) return;
+    if (runtime) {
+      res.status(409).json({ error: "Stop the running bot before changing its configuration." });
+      return;
+    }
     if (isDemoMode() && body.exchange !== "paper") {
       res.status(403).json({ error: "Only paper trading is available in DEMO_MODE." });
+      return;
+    }
+    const liveRiskErrors = liveRiskValidationErrors(body);
+    if (liveRiskErrors.length) {
+      res.status(400).json({ error: `Live risk limits are incomplete: ${liveRiskErrors.join("; ")}` });
       return;
     }
     // Reject any IR that isn't a known node shape before it can be persisted/executed.
@@ -206,10 +231,23 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       res.status(400).json({ error: `Invalid strategy IR: ${irResult.error}` });
       return;
     }
+    const id = body.id ?? randomUUID();
+    let accountId: string;
+    if (body.exchange === "paper") {
+      accountId = paperTradingAccountId(id);
+    } else {
+      accountId = body.accountId ?? (existing?.exchange === body.exchange ? existing.accountId : undefined) ?? legacyTradingAccountId(body.exchange);
+      if (!body.accountId && accountId === legacyTradingAccountId(body.exchange)) ensureLegacyTradingAccount(body.exchange);
+      const issue = tradingAccountBindingIssue({ id, exchange: body.exchange, accountId }, getTradingAccount(accountId));
+      if (issue) {
+        res.status(409).json({ error: issue.message, code: issue.code });
+        return;
+      }
+    }
     const now = Date.now();
-    const existing = body.id ? listBots().find((bot) => bot.id === body.id) : undefined;
     const bot: BotConfig = {
-      id: body.id ?? randomUUID(),
+      id,
+      accountId,
       name: body.name?.trim() || body.strategyName || "Bot",
       strategyName: body.strategyName ?? "Strategy",
       ir: irResult.ir,
@@ -223,7 +261,9 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       bybitCrossCollateral: body.exchange === "bybit" && body.market === "futures" && body.bybitCrossCollateral,
       notifyMarkers: body.notifyMarkers,
       maxPositionQuote: body.maxPositionQuote,
+      maxOrderQuote: body.maxOrderQuote,
       maxDailyLossQuote: body.maxDailyLossQuote,
+      maxOpenOrders: body.maxOpenOrders,
       status: "stopped",
       createdAt: existing?.createdAt ?? now,
       updatedAt: now
@@ -232,16 +272,20 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     res.json({ bot: withStatus(bot) });
   });
 
-  router.delete("/bots/:id", requireRole("admin"), (req, res) => {
+  router.delete("/bots/:id", requireRole("admin"), async (req, res) => {
     const id = routeParam(req, "id");
-    engine.stop(id);
-    deleteBot(id);
-    res.json({ ok: true });
+    try {
+      await engine.stopSafely(id);
+      deleteBot(id);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(409).json({ error: error instanceof Error ? error.message : "Failed to stop bot before deletion" });
+    }
   });
 
   router.post("/bots/:id/start", async (req, res) => {
     const id = routeParam(req, "id");
-    const bot = listBots().find((item) => item.id === id);
+    const bot = resolveBotRouteIdentity(engine, listBots(), id);
     if (!bot) {
       res.status(404).json({ error: "Bot not found" });
       return;
@@ -249,6 +293,12 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     if (!ensureRole(res, roleForBot(bot))) return;
     // Live trading is double-gated: a global arm flag AND per-request confirmation.
     if (bot.exchange !== "paper") {
+      if (!ensureSecureTradingOrigin(req, res)) return;
+      const issue = tradingAccountBindingIssue(bot, getTradingAccount(botTradingAccountId(bot)));
+      if (issue) {
+        res.status(409).json({ error: issue.message, code: issue.code });
+        return;
+      }
       if (isDemoMode()) {
         res.status(403).json({ error: "Live trading is disabled in DEMO_MODE." });
         return;
@@ -278,29 +328,34 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     }
   });
 
-  router.post("/bots/:id/stop", (req, res) => {
+  router.post("/bots/:id/stop", async (req, res) => {
     const id = routeParam(req, "id");
-    const bot = listBots().find((item) => item.id === id);
+    const bot = resolveBotRouteIdentity(engine, listBots(), id);
     if (!bot) {
       res.status(404).json({ error: "Bot not found" });
       return;
     }
     if (!ensureRole(res, roleForBot(bot))) return;
-    engine.stop(id);
-    res.json({ ok: true });
+    try {
+      await engine.stopSafely(id);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(409).json({ error: error instanceof Error ? error.message : "Failed to stop bot" });
+    }
   });
 
   // Clear the pause set by the resume staleness gate (bot resumed with stale
   // open-position/counter state) and let it trade again.
-  router.post("/bots/:id/confirm-resume", (req, res) => {
+  router.post("/bots/:id/confirm-resume", async (req, res) => {
     const id = routeParam(req, "id");
-    const bot = listBots().find((item) => item.id === id);
+    const bot = resolveBotRouteIdentity(engine, listBots(), id);
     if (!bot) {
       res.status(404).json({ error: "Bot not found" });
       return;
     }
     if (!ensureRole(res, roleForBot(bot))) return;
-    res.json({ ok: engine.confirmResume(id) });
+    if (bot.exchange !== "paper" && !ensureSecureTradingOrigin(req, res)) return;
+    res.json({ ok: await engine.confirmResume(id) });
   });
 
   // Reset a bot's durable strategy state (setvar counters + managed tracking).
@@ -322,12 +377,13 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       return;
     }
     const id = routeParam(req, "id");
-    const bot = listBots().find((item) => item.id === id);
+    const bot = resolveBotRouteIdentity(engine, listBots(), id);
     if (!bot) {
       res.status(404).json({ error: "Bot not found" });
       return;
     }
     if (!ensureRole(res, roleForBot(bot))) return;
+    if (bot.exchange !== "paper" && parsed.data.dryRun !== true && !ensureSecureTradingOrigin(req, res)) return;
     const result = await engine.manualCommand(id, parsed.data.command, parsed.data.dryRun === true);
     res.json(result);
   });
@@ -361,33 +417,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     res.json({ events: listAuditLog(limit) });
   });
 
-  // ---- exchange keys (never returned in plaintext) ----
-  router.get("/keys", requireRole("admin"), (_req, res) => {
-    res.json({
-      binance: hasKeys("binance"),
-      bybit: hasKeys("bybit")
-    });
-  });
-
-  router.post("/keys", requireRole("admin"), (req, res) => {
-    if (isDemoMode()) {
-      res.status(403).json({ error: "Exchange keys cannot be stored in DEMO_MODE." });
-      return;
-    }
-    const parsed = keysBodySchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.flatten() });
-      return;
-    }
-    setSetting(`keys:${parsed.data.exchange}`, { apiKey: parsed.data.apiKey, apiSecret: parsed.data.apiSecret }, true);
-    res.json({ ok: true });
-  });
-
-  // ---- Bybit Unified Trading Account collateral + manual debt ----
-  router.get("/bybit/uta", requireRole("admin"), uta.status);
-  router.post("/bybit/uta/borrow", requireRole("admin"), uta.borrow);
-  router.post("/bybit/uta/repay", requireRole("admin"), uta.repay);
-  router.post("/bybit/uta/collateral", requireRole("admin"), uta.collateral);
+  registerTradingAccountIntegrationRoutes(router, requireRole("admin"), uta);
 
   // ---- notifications ----
   router.get("/notify", requireRole("admin"), (_req, res) => {
@@ -487,13 +517,10 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
   });
 
   registerArbitrageAlertRoutes(router, arbitrageAlerts, requireRole("paper-trade"));
+  registerResearchAlertRoutes(router, options.researchAlerts, requireRole("paper-trade"));
+  if (paperMultiLeg) router.use("/paper-multi-leg", requireRole("paper-trade"), createPaperMultiLegRouter(paperMultiLeg));
 
   return { router, wss, engine, telegramControl };
-}
-
-function hasKeys(exchange: ExchangeId): boolean {
-  const keys = getSetting<ExchangeKeys>(`keys:${exchange}`);
-  return !!(keys?.apiKey && keys.apiSecret);
 }
 
 function bybitUta(): BybitUtaService {
@@ -513,54 +540,6 @@ function ensureRole(res: Response, required: AuthRole): boolean {
   if (roleAllows(role, required)) return true;
   res.status(403).json({ error: `Forbidden — requires ${required} access.` });
   return false;
-}
-
-function roleForBot(bot: BotConfig): AuthRole {
-  return bot.exchange === "paper" ? "paper-trade" : "live-trade";
-}
-
-function auditMutations(req: Request, res: Response, next: NextFunction) {
-  if (["GET", "HEAD", "OPTIONS"].includes(req.method.toUpperCase())) {
-    next();
-    return;
-  }
-  const startedAt = Date.now();
-  res.on("finish", () => {
-    try {
-      insertAuditLog({
-        id: randomUUID(),
-        actor: String(res.locals.authMode ?? "unknown"),
-        role: (res.locals.authRole as AuthRole | undefined) ?? "read-only",
-        action: `${req.method.toUpperCase()} ${req.route?.path ?? req.path}`,
-        target: routeParamOptional(req, "id") ?? routeParamOptional(req, "orderId"),
-        statusCode: res.statusCode,
-        ip: req.ip,
-        data: {
-          params: sanitizeAuditValue(req.params),
-          query: sanitizeAuditValue(req.query),
-          body: sanitizeAuditValue(req.body)
-        },
-        ts: startedAt
-      });
-    } catch {
-      // Audit must never break an operator action; failed writes are surfaced by tests/logs.
-    }
-  });
-  next();
-}
-
-function sanitizeAuditValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitizeAuditValue);
-  if (!value || typeof value !== "object") return value;
-  const out: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    out[key] = isSecretKey(key) ? "[redacted]" : sanitizeAuditValue(child);
-  }
-  return out;
-}
-
-function isSecretKey(key: string): boolean {
-  return /token|secret|apikey|api_key|authorization|password/i.test(key);
 }
 
 function routeParam(req: Request, key: string): string {

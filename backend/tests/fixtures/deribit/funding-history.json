@@ -1,0 +1,20 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": [
+    {
+      "timestamp": 1783994400000,
+      "index_price": 61980,
+      "prev_index_price": 61850,
+      "interest_8h": 0.000079,
+      "interest_1h": 0.0000098
+    },
+    {
+      "timestamp": 1783998000000,
+      "index_price": 62001.2,
+      "prev_index_price": 61980,
+      "interest_8h": 0.000081,
+      "interest_1h": 0.0000101
+    }
+  ]
+}

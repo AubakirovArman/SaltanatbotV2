@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "code": 0,
+  "data": [
+    {
+      "symbol": "BTC_USDT",
+      "baseCoin": "BTC",
+      "quoteCoin": "USDT",
+      "settleCoin": "USDT",
+      "contractSize": 0.0001,
+      "priceUnit": 0.5,
+      "volUnit": 1,
+      "minVol": 1,
+      "state": 0,
+      "apiAllowed": true
+    }
+  ]
+}

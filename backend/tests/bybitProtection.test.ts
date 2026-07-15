@@ -73,7 +73,7 @@ describe("Bybit futures protection", () => {
     });
   });
 
-  it("reports unconfirmed protection and closes the entry when trading-stop is rejected", async () => {
+  it("reports unconfirmed protection and submits a safety close when trading-stop is rejected", async () => {
     const calls: FetchCall[] = [];
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -89,16 +89,31 @@ describe("Bybit futures protection", () => {
     });
 
     const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
-    const result = await adapter.execute({ action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1, stop: { basis: "price", value: 95 }, reason: "test" });
+    const result = await adapter.execute({
+      action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1,
+      stop: { basis: "price", value: 95 }, clientId: "entry-protection-1",
+      protectionClientIds: { safetyClose: "entry-protection-1-safety-child" }, reason: "test"
+    });
 
-    expect(result.ok).toBe(false);
-    expect(result.protection).toMatchObject({ requested: true, confirmed: false, message: "Bybit: invalid stop" });
+    expect(result.ok).toBe(true);
+    expect(result.protection).toMatchObject({
+      requested: true,
+      confirmed: false,
+      message: "Bybit: invalid stop",
+      safetyCloseAttempted: true,
+      safetyCloseConfirmed: true,
+      safetyCloseOrderId: "ok",
+      safetyCloseClientId: "entry-protection-1-safety-child"
+    });
+    expect(result.pendingOrder).toMatchObject({ id: "ok", clientId: "entry-protection-1", reduceOnly: false });
     const createCalls = calls.filter((call) => call.url.includes("/v5/order/create"));
     expect(createCalls).toHaveLength(2);
-    expect(createCalls[1]?.body).toMatchObject({ side: "Sell", reduceOnly: true });
+    expect(createCalls[0]?.body).toMatchObject({ side: "Buy", orderLinkId: "entry-protection-1" });
+    expect(createCalls[1]?.body).toMatchObject({ side: "Sell", reduceOnly: true, orderLinkId: "entry-protection-1-safety-child" });
+    expect(result.message).toMatch(/entry was accepted.*emergency close.*accepted.*paused/i);
   });
 
-  it("closes an entry whose acknowledgement omits the order ID", async () => {
+  it("does not place a blind safety close when an accepted entry acknowledgement omits the order ID", async () => {
     const calls: FetchCall[] = [];
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -111,11 +126,164 @@ describe("Bybit futures protection", () => {
     });
     const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
 
-    const result = await adapter.execute({ action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1, stop: { basis: "price", value: 95 }, reason: "test" });
-
-    expect(result).toMatchObject({ ok: false, protection: { requested: true, confirmed: false, message: "missing entry order ID" } });
-    expect(calls.filter((call) => call.url.includes("/v5/order/create"))).toHaveLength(2);
+    await expect(adapter.execute({ action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1, stop: { basis: "price", value: 95 }, clientId: "entry-missing-1", reason: "test" })).rejects.toMatchObject({
+      name: "ExchangeTransportError",
+      ambiguous: true
+    });
+    const createCalls = calls.filter((call) => call.url.includes("/v5/order/create"));
+    expect(createCalls).toHaveLength(1);
+    expect(createCalls[0]?.body?.orderLinkId).toBe("entry-missing-1");
     expect(calls.some((call) => call.url.includes("/v5/position/trading-stop"))).toBe(false);
+  });
+
+  it("keeps position protection unconfirmed when its HTTP 200 acknowledgement is truncated", async () => {
+    let createCount = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
+      if (url.includes("/v5/market/instruments-info")) {
+        return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001" }, priceFilter: { tickSize: "0.1" } }] } });
+      }
+      if (url.includes("/v5/position/trading-stop")) return new Response('{"retCode":0,"retMsg":"OK","result":', { status: 200 });
+      if (url.includes("/v5/order/create")) {
+        createCount += 1;
+        return json({ retCode: 0, retMsg: "OK", result: { orderId: createCount === 1 ? "entry-1" : "safety-1" } });
+      }
+      if (url.includes("/v5/position/list")) return json({ retCode: 0, retMsg: "OK", result: { list: [] } });
+      if (url.includes("/v5/account/wallet-balance")) return json({ retCode: 0, retMsg: "OK", result: { list: [] } });
+      return json({ retCode: 0, retMsg: "OK", result: {} });
+    });
+    const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1,
+      stop: { basis: "price", value: 95 }, clientId: "entry-client", reason: "test"
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      pendingOrder: { id: "entry-1" },
+      protection: {
+        requested: true,
+        confirmed: false,
+        safetyCloseConfirmed: true,
+        safetyCloseOrderId: "safety-1"
+      }
+    });
+    expect(result.protection?.message).toMatch(/not valid JSON/i);
+  });
+
+  it("preserves an accepted close and both IDs when post-ACK state reads fail", async () => {
+    const calls: FetchCall[] = [];
+    let accepted = false;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+      calls.push({ url, method: init?.method ?? "GET", body });
+      if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
+      if (url.includes("/v5/market/instruments-info")) {
+        return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001" }, priceFilter: { tickSize: "0.1" } }] } });
+      }
+      if (url.includes("/v5/position/list")) {
+        if (accepted) return json({ retCode: 10001, retMsg: "position enrichment unavailable" });
+        return json({ retCode: 0, retMsg: "OK", result: { list: [{ side: "Buy", size: "1", avgPrice: "100", leverage: "1", positionIdx: 0 }] } });
+      }
+      if (url.includes("/v5/account/wallet-balance")) {
+        return json({ retCode: 10001, retMsg: "account enrichment unavailable" });
+      }
+      if (url.includes("/v5/order/create")) accepted = true;
+      return json({ retCode: 0, retMsg: "OK", result: { orderId: "close-88" } });
+    });
+    const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "close",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "sell",
+      type: "market",
+      closePct: 100,
+      reduceOnly: true,
+      clientId: "durable-close-1",
+      reason: "test"
+    });
+
+    const create = calls.find((call) => call.url.includes("/v5/order/create"));
+    expect(create?.body).toMatchObject({ side: "Sell", reduceOnly: true, orderLinkId: "durable-close-1" });
+    expect(result).toMatchObject({
+      ok: true,
+      fills: [],
+      pendingOrder: { id: "close-88", clientId: "durable-close-1", reduceOnly: true }
+    });
+    expect(result.message).toMatch(/awaiting authenticated execution accounting/i);
+    expect(result.position).toMatchObject({ symbol: "BTCUSDT", qty: 1 });
+    expect(result.account).toBeUndefined();
+  });
+
+  it("preserves a protected entry when every post-ACK state read fails", async () => {
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
+      if (url.includes("/v5/market/instruments-info")) {
+        return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001", minNotionalValue: "5" }, priceFilter: { tickSize: "0.1" } }] } });
+      }
+      if (url.includes("/v5/order/create")) return json({ retCode: 0, retMsg: "OK", result: { orderId: "entry-ack" } });
+      if (url.includes("/v5/position/trading-stop")) return json({ retCode: 0, retMsg: "OK", result: {} });
+      return json({ retCode: 10001, retMsg: "state enrichment unavailable" });
+    });
+    const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1,
+      clientId: "entry-client", stop: { basis: "price", value: 95 }, reason: "test"
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      pendingOrder: { id: "entry-ack", clientId: "entry-client" },
+      protection: { confirmed: true, entryOrderId: "entry-ack" }
+    });
+    expect(result.position).toBeUndefined();
+    expect(result.account).toBeUndefined();
+  });
+
+  it("preserves the entry ACK and explicit safety identity when the safety close is rejected", async () => {
+    let createCount = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
+      if (url.includes("/v5/market/instruments-info")) {
+        return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001", minNotionalValue: "5" }, priceFilter: { tickSize: "0.1" } }] } });
+      }
+      if (url.includes("/v5/position/trading-stop")) return json({ retCode: 10001, retMsg: "invalid stop" });
+      if (url.includes("/v5/order/create")) {
+        createCount += 1;
+        return createCount === 1
+          ? json({ retCode: 0, retMsg: "OK", result: { orderId: "entry-accepted" } })
+          : json({ retCode: 10001, retMsg: "safety close rejected" });
+      }
+      return json({ retCode: 10001, retMsg: "state unavailable" });
+    });
+    const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1,
+      clientId: "entry-client", protectionClientIds: { safetyClose: "safety-child-client" },
+      stop: { basis: "price", value: 95 }, reason: "test"
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      pendingOrder: { id: "entry-accepted", clientId: "entry-client" },
+      protection: {
+        confirmed: false,
+        entryOrderId: "entry-accepted",
+        safetyCloseConfirmed: false,
+        safetyCloseClientId: "safety-child-client"
+      }
+    });
+    expect(result.message).toMatch(/emergency close failed.*unprotected position may remain/i);
+    expect(result.message).not.toMatch(/entry (?:was )?closed/i);
   });
 });
 

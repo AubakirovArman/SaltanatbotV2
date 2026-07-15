@@ -1,11 +1,14 @@
 import type { DatabaseSync } from "node:sqlite";
+import { legacyTradingAccountId, paperTradingAccountId } from "./tradingAccounts.js";
+import type { TradingAccountExchange } from "./types.js";
 
-export const TRADING_SCHEMA_VERSION = 3;
+export const TRADING_SCHEMA_VERSION = 5;
 
 interface Migration {
   version: number;
   name: string;
   sql: string;
+  apply?: (database: DatabaseSync, appliedAt: number) => void;
 }
 
 const migrations: Migration[] = [
@@ -118,8 +121,95 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_arbitrage_history_ts
         ON arbitrage_history(ts);
     `
+  },
+  {
+    version: 4,
+    name: "append_only_paper_trading_ledger",
+    sql: `
+      CREATE TABLE IF NOT EXISTS paper_events (
+        id TEXT PRIMARY KEY,
+        botId TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        idempotencyKey TEXT,
+        data TEXT NOT NULL,
+        ts INTEGER NOT NULL,
+        UNIQUE (botId, sequence)
+      );
+      CREATE INDEX IF NOT EXISTS idx_paper_events_bot_sequence
+        ON paper_events(botId, sequence ASC);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_paper_events_idempotency
+        ON paper_events(botId, idempotencyKey) WHERE idempotencyKey IS NOT NULL;
+      CREATE TRIGGER IF NOT EXISTS paper_events_no_update
+        BEFORE UPDATE ON paper_events
+        BEGIN
+          SELECT RAISE(ABORT, 'paper_events is append-only');
+        END;
+    `
+  },
+  {
+    version: 5,
+    name: "durable_trading_account_registry",
+    sql: `
+      CREATE TABLE IF NOT EXISTS trading_accounts (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        exchange TEXT NOT NULL CHECK (exchange IN ('binance', 'bybit')),
+        ownership TEXT NOT NULL CHECK (ownership IN ('own', 'managed')),
+        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_trading_accounts_exchange_enabled
+        ON trading_accounts(exchange, enabled, updatedAt DESC);
+    `,
+    apply: seedLegacyTradingAccountsAndBackfillBots
   }
 ];
+
+function seedLegacyTradingAccountsAndBackfillBots(database: DatabaseSync, appliedAt: number): void {
+  const exchanges = new Set<TradingAccountExchange>();
+  const keyRows = database.prepare("SELECT key FROM settings WHERE key IN ('keys:binance', 'keys:bybit')").all();
+  for (const row of keyRows) {
+    const key = String(row.key);
+    if (key === "keys:binance") exchanges.add("binance");
+    if (key === "keys:bybit") exchanges.add("bybit");
+  }
+
+  const botRows = database.prepare("SELECT id, config FROM bots").all() as Array<{ id: string; config: string }>;
+  const updateBot = database.prepare("UPDATE bots SET config = ? WHERE id = ?");
+  for (const row of botRows) {
+    try {
+      const config = JSON.parse(row.config) as { id?: unknown; exchange?: unknown; accountId?: unknown };
+      const exchange = config.exchange;
+      if (exchange === "binance" || exchange === "bybit") exchanges.add(exchange);
+      if (typeof config.accountId !== "string" || config.accountId.trim().length === 0) {
+        if (exchange === "binance" || exchange === "bybit") config.accountId = legacyTradingAccountId(exchange);
+        else if (exchange === "paper") config.accountId = paperTradingAccountId(typeof config.id === "string" ? config.id : row.id);
+        else continue;
+        updateBot.run(JSON.stringify(config), row.id);
+      }
+    } catch {
+      // A malformed legacy bot remains untouched; normal store parsing will
+      // continue to reject it rather than making up an account binding.
+    }
+  }
+
+  const insert = database.prepare(`
+    INSERT OR IGNORE INTO trading_accounts
+      (id, label, exchange, ownership, enabled, createdAt, updatedAt)
+    VALUES (?, ?, ?, 'own', 1, ?, ?)
+  `);
+  for (const exchange of exchanges) {
+    insert.run(
+      legacyTradingAccountId(exchange),
+      `${exchange === "binance" ? "Binance" : "Bybit"} default (shared legacy credentials)`,
+      exchange,
+      appliedAt,
+      appliedAt
+    );
+  }
+}
 
 function readUserVersion(database: DatabaseSync) {
   const row = database.prepare("PRAGMA user_version").get() as { user_version: number } | undefined;
@@ -156,8 +246,10 @@ export function migrateTradingStore(database: DatabaseSync, now = Date.now): Mig
     `);
     const record = database.prepare("INSERT OR IGNORE INTO schema_migrations (version, name, appliedAt) VALUES (?, ?, ?)");
     for (const migration of pending) {
+      const appliedAt = now();
       database.exec(migration.sql);
-      record.run(migration.version, migration.name, now());
+      migration.apply?.(database, appliedAt);
+      record.run(migration.version, migration.name, appliedAt);
       database.exec(`PRAGMA user_version = ${migration.version}`);
       applied.push({ version: migration.version, name: migration.name });
     }

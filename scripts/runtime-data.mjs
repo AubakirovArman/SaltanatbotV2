@@ -18,7 +18,7 @@ import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const defaultDataDir = resolve(root, "backend/data");
-const databaseNames = ["trading.db", "candles.db"];
+const databaseNames = ["trading.db", "candles.db", "arbitrage-paper-multi-leg.sqlite"];
 const sensitiveNames = [".secret", ".authtoken"];
 const allowedNames = new Set([...databaseNames, ...sensitiveNames]);
 const manifestName = "backup-manifest.json";

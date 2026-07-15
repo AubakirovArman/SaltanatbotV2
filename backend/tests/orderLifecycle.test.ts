@@ -17,6 +17,7 @@ const order: ExecOrder = {
 function harness() {
   const calls: string[] = [];
   const records: OrderJournalRecord[] = [];
+  const current = new Map<string, OrderJournalRecord>();
   const events: OrderEventRecord[] = [];
   let id = 0;
   let time = 100;
@@ -24,10 +25,15 @@ function harness() {
     upsertOrder(record) {
       calls.push(`order:${record.status}`);
       records.push(structuredClone(record));
+      current.set(record.id, structuredClone(record));
     },
     insertEvent(event) {
       calls.push(`event:${event.type}`);
       events.push(structuredClone(event));
+    },
+    getOrder(orderId) {
+      const record = current.get(orderId);
+      return record ? structuredClone(record) : undefined;
     },
     listEvents(orderId) {
       return events.filter((event) => event.orderId === orderId).map((event) => structuredClone(event));
@@ -75,7 +81,24 @@ describe("durable order lifecycle", () => {
     expect(h.records[0]).toMatchObject({ id: sentClientId, clientId: sentClientId });
   });
 
-  it("persists intent before exchange I/O and then accepted result and fills", async () => {
+  it("persists the adapter-normalized quantity without exceeding the original intent", async () => {
+    const h = harness();
+    const submitted = { ...order, qty: 1 };
+    await h.lifecycle.execute(context, submitted, async () => {
+      submitted.qty = 0.9;
+      return { ok: true, message: "accepted", fills: [] };
+    });
+    expect(h.records.at(-1)?.qty).toBe(0.9);
+
+    const unsafe = { ...order, clientId: "unsafe", qty: 1 };
+    await expect(h.lifecycle.execute(context, unsafe, async () => {
+      unsafe.qty = 1.1;
+      return { ok: true, message: "accepted", fills: [] };
+    })).rejects.toThrow(/exceeds its durable intent/);
+    expect(h.records.at(-1)?.status).toBe("unknown");
+  });
+
+  it("persists intent and aggregate result before accounting commits individual fills", async () => {
     const h = harness();
     const send = vi.fn(async () => {
       h.calls.push("exchange");
@@ -84,10 +107,43 @@ describe("durable order lifecycle", () => {
 
     await expect(h.lifecycle.execute(context, order, send)).resolves.toBe(accepted);
 
-    expect(h.calls).toEqual(["order:intent", "event:intent", "exchange", "order:filled", "event:result", "event:fill"]);
+    expect(h.calls).toEqual(["order:intent", "event:intent", "exchange", "order:filled", "event:result"]);
     expect(h.records.map((record) => record.status)).toEqual(["intent", "filled"]);
     expect(h.records.at(-1)).toMatchObject({ filledQty: 1, avgFillPrice: 100 });
-    expect(h.events.at(-2)?.data).toMatchObject({ status: "filled", ok: true });
+    expect(h.events.at(-1)?.data).toMatchObject({ status: "filled", ok: true, fills: [{ id: "fill-1" }] });
+  });
+
+  it("does not overwrite a private-stream fill that commits before the REST response", async () => {
+    const h = harness();
+    let resolveSend: (result: ExecResult) => void = () => {};
+    const execution = h.lifecycle.execute(context, { ...order }, () => new Promise<ExecResult>((resolve) => {
+      resolveSend = resolve;
+    }));
+    await Promise.resolve();
+
+    const intent = h.records[0];
+    const venueFilled = h.lifecycle.applySnapshot(intent, {
+      id: "exchange-race-1",
+      clientId: order.clientId,
+      status: "filled",
+      qty: 1,
+      filledQty: 1,
+      avgFillPrice: 100,
+      updatedAt: 150
+    });
+    h.lifecycle.recordFill(venueFilled, { ...accepted.fills[0], orderId: "exchange-race-1" });
+    resolveSend({ ok: true, message: "REST accepted", fills: [] });
+    await execution;
+
+    expect(h.records.at(-1)).toMatchObject({
+      status: "filled",
+      exchangeOrderId: "exchange-race-1",
+      filledQty: 1,
+      accountedFilledQty: 1,
+      avgFillPrice: 100,
+      message: "Asynchronous fill 1 @ 100"
+    });
+    expect(h.events.map((event) => event.type)).toEqual(["intent", "update", "fill", "result"]);
   });
 
   it("persists a known exchange rejection as rejected", async () => {
@@ -110,9 +166,122 @@ describe("durable order lifecycle", () => {
     });
 
     expect(record.executionStatus).toBe("entry_submitted");
-    expect(next.executionStatus).toBe("open_protected");
+    expect(record.reservedOpenOrderCount).toBe(2);
+    expect(next).toMatchObject({ executionStatus: "open_protected", exchangeOrderId: "entry" });
     expect(h.events.at(-1)?.data).toMatchObject({
       lifecycleTransitions: ["entry_submitted", "entry_confirmed", "protection_submitted", "protection_confirmed", "open_protected"],
+    });
+  });
+
+  it("writes deterministic protection child intents before live exchange I/O", async () => {
+    const h = harness();
+    const liveOrder: ExecOrder = {
+      ...order,
+      action: "open",
+      market: "futures",
+      clientId: "live-entry-1",
+      stop: { basis: "price", value: 95 },
+      takeProfits: [{ priceBasis: "price", price: 110, qtyBasis: "percent", qty: 100 }]
+    };
+    let identitiesAtSend: ExecOrder["protectionClientIds"];
+
+    await h.lifecycle.execute(
+      { botId: "bot-1", exchange: "binance", market: "futures" },
+      liveOrder,
+      async () => {
+        identitiesAtSend = structuredClone(liveOrder.protectionClientIds);
+        expect(h.records.filter((record) => record.status === "intent")).toHaveLength(4);
+        liveOrder.qty = 0.9;
+        return {
+          ok: true,
+          message: "protected",
+          fills: [],
+          protection: {
+            requested: true,
+            confirmed: true,
+            entryOrderId: "venue-entry",
+            stopOrderIds: ["venue-stop"],
+            takeProfitOrderIds: ["venue-tp"],
+            verification: "order_ids"
+          }
+        };
+      }
+    );
+
+    expect(identitiesAtSend).toEqual({
+      stop: "live-entry-1-sl",
+      takeProfits: ["live-entry-1-tp1"],
+      safetyClose: "live-entry-1-safety"
+    });
+    const latest = new Map(h.records.map((record) => [record.id, record]));
+    expect(latest.get("live-entry-1-sl")).toMatchObject({ status: "accepted", exchangeOrderId: "venue-stop", qty: 0.9, reduceOnly: true });
+    expect(latest.get("live-entry-1-tp1")).toMatchObject({ status: "accepted", exchangeOrderId: "venue-tp", qty: 0.9, reduceOnly: true });
+    expect(latest.get("live-entry-1-safety")).toMatchObject({ status: "rejected", qty: 0.9, reduceOnly: true });
+  });
+
+  it("keeps unproven orphan protection and emergency close children fail-closed", async () => {
+    const h = harness();
+    const liveOrder: ExecOrder = {
+      ...order,
+      action: "open",
+      market: "futures",
+      clientId: "live-entry-2",
+      stop: { basis: "price", value: 95 }
+    };
+
+    await h.lifecycle.execute(
+      { botId: "bot-1", exchange: "binance", market: "futures" },
+      liveOrder,
+      async () => ({
+        ok: true,
+        message: "protection failed",
+        fills: [],
+        protection: {
+          requested: true,
+          confirmed: false,
+          entryOrderId: "venue-entry",
+          stopOrderIds: ["venue-stop"],
+          orphanProtectionOrderIds: ["venue-stop"],
+          safetyCloseAttempted: true,
+          safetyCloseConfirmed: true,
+          safetyCloseOrderId: "venue-safety",
+          safetyCloseClientId: "live-entry-2-safety",
+          verification: "order_ids"
+        }
+      })
+    );
+
+    const latest = new Map(h.records.map((record) => [record.id, record]));
+    expect(latest.get("live-entry-2-sl")).toMatchObject({ status: "unknown", exchangeOrderId: "venue-stop" });
+    expect(latest.get("live-entry-2-safety")).toMatchObject({ status: "accepted", exchangeOrderId: "venue-safety" });
+  });
+
+  it("retains Bybit position-level protection even when no child order ID is exposed", async () => {
+    const h = harness();
+    const liveOrder: ExecOrder = {
+      ...order,
+      action: "open",
+      market: "futures",
+      clientId: "bybit-entry-1",
+      stop: { basis: "price", value: 95 }
+    };
+
+    await h.lifecycle.execute(
+      { botId: "bot-1", exchange: "bybit", market: "futures" },
+      liveOrder,
+      async () => ({
+        ok: true,
+        message: "protected",
+        fills: [],
+        protection: { requested: true, confirmed: true, entryOrderId: "venue-entry", verification: "exchange_ack" }
+      })
+    );
+
+    const latest = new Map(h.records.map((record) => [record.id, record]));
+    expect(latest.get("bybit-entry-1-sl")).toMatchObject({
+      status: "accepted",
+      exchangeOrderId: undefined,
+      message: expect.stringMatching(/without a correlatable child order ID/i)
     });
   });
 
@@ -201,6 +370,34 @@ describe("durable order lifecycle", () => {
 
     expect(first.status).toBe("partially_filled");
     expect(second.status).toBe("filled");
+    expect(second.accountedFilledQty).toBe(1);
+  });
+
+  it("preserves terminal venue state while accounting a late partial execution", () => {
+    const h = harness();
+    const cancelled = {
+      ...h.lifecycle.complete(h.lifecycle.begin(context, order), { ok: true, message: "resting", fills: [] }),
+      status: "cancelled" as const,
+      filledQty: 0.4
+    };
+    const next = h.lifecycle.recordFill(cancelled, { ...accepted.fills[0], qty: 0.4, orderId: "exchange-1" });
+
+    expect(next).toMatchObject({ status: "cancelled", filledQty: 0.4, accountedFilledQty: 0.4 });
+    expect(() => h.lifecycle.recordFill(next, { ...accepted.fills[0], id: "overflow", qty: 0.7 })).toThrow(/exceeds requested quantity/);
+  });
+
+  it("handles order-filled before split execution events without releasing accounting early", () => {
+    const h = harness();
+    const acceptedRecord = h.lifecycle.complete(h.lifecycle.begin(context, order), { ok: true, message: "accepted", fills: [] });
+    const venueFilled = h.lifecycle.applySnapshot(acceptedRecord, {
+      id: "exchange-1", clientId: order.clientId, status: "filled", qty: 1, filledQty: 1, updatedAt: 200
+    });
+    const first = h.lifecycle.recordFill(venueFilled, { ...accepted.fills[0], qty: 0.4, orderId: "exchange-1" });
+    const second = h.lifecycle.recordFill(first, { ...accepted.fills[0], id: "fill-2", qty: 0.6, orderId: "exchange-1" });
+
+    expect(venueFilled.accountedFilledQty).toBeUndefined();
+    expect(first).toMatchObject({ status: "filled", filledQty: 1, accountedFilledQty: 0.4 });
+    expect(second).toMatchObject({ status: "filled", filledQty: 1, accountedFilledQty: 1 });
   });
 
   it("applies polling snapshots idempotently", () => {

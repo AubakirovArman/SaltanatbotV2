@@ -1,0 +1,19 @@
+{
+  "name": "BTC_USDT",
+  "type": "direct",
+  "quanto_multiplier": "0.0001",
+  "order_price_round": "0.1",
+  "order_size_min": 1,
+  "order_size_max": 12000000,
+  "enable_decimal": false,
+  "status": "trading",
+  "in_delisting": false,
+  "position_size": 323811020,
+  "funding_rate": "-0.000015",
+  "funding_rate_indicative": "-0.000015",
+  "funding_interval": 28800,
+  "funding_next_apply": 1784044800,
+  "last_price": "62790.8",
+  "mark_price": "62790.9",
+  "index_price": "62823.66"
+}

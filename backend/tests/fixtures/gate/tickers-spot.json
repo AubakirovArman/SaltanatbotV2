@@ -1,0 +1,15 @@
+[
+  {
+    "currency_pair": "BTC_USDT",
+    "last": "62815.1",
+    "lowest_ask": "62815.2",
+    "lowest_size": "14.316492",
+    "highest_bid": "62815.1",
+    "highest_size": "8.575012",
+    "change_percentage": "-0.12",
+    "base_volume": "7332.078802",
+    "quote_volume": "457900375.6546521",
+    "high_24h": "62970.4",
+    "low_24h": "61826.5"
+  }
+]
