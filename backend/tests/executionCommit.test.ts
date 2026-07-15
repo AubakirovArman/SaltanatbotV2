@@ -9,12 +9,16 @@ const state = vi.hoisted(() => ({
 
 vi.mock("../src/trading/store.js", () => {
   const clone = <T>(value: T): T => structuredClone(value);
+  const orderKey = (botId: string, orderId: string) => `${botId}:${orderId}`;
   return {
-    upsertOrderJournal: (order: { id: string }) => state.orders.set(order.id, clone(order)),
-    getOrderJournal: (id: string) => clone(state.orders.get(id)),
+    upsertOrderJournal: (order: { id: string; botId: string }) => state.orders.set(orderKey(order.botId, order.id), clone(order)),
+    getOrderJournal: (botId: string, id: string) => clone(state.orders.get(orderKey(botId, id))),
     insertOrderEvent: (event: unknown) => state.events.push(clone(event)),
-    listOrderEvents: (orderId: string) => state.events
-      .filter((event) => (event as { orderId?: string }).orderId === orderId)
+    listOrderEvents: (botId: string, orderId: string) => state.events
+      .filter((event) => {
+        const typed = event as { botId?: string; orderId?: string };
+        return typed.botId === botId && typed.orderId === orderId;
+      })
       .map((event) => clone(event)),
     listRiskOrderJournal: () => [],
     listExecutionReconciliationJournal: () => [],

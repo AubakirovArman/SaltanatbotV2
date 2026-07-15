@@ -16,8 +16,8 @@ export interface OrderLifecycleContext {
 export interface OrderLifecycleWriter {
   upsertOrder(record: OrderJournalRecord): void;
   insertEvent(event: OrderEventRecord): void;
-  getOrder?(id: string): OrderJournalRecord | undefined;
-  listEvents?(orderId: string): OrderEventRecord[];
+  getOrder?(botId: string, id: string): OrderJournalRecord | undefined;
+  listEvents?(botId: string, orderId: string): OrderEventRecord[];
 }
 
 export interface OrderLifecycleOptions {
@@ -28,8 +28,8 @@ export interface OrderLifecycleOptions {
 const durableWriter: OrderLifecycleWriter = {
   upsertOrder: upsertOrderJournal,
   insertEvent: insertOrderEvent,
-  getOrder: (id) => getOrderJournal(id),
-  listEvents: (orderId) => listOrderEvents(orderId, 1_000)
+  getOrder: (botId, id) => getOrderJournal(botId, id),
+  listEvents: (botId, orderId) => listOrderEvents(botId, orderId, 1_000)
 };
 
 /**
@@ -92,7 +92,7 @@ export class OrderLifecycle {
 
   complete(record: OrderJournalRecord, result: ExecResult, submittedOrder?: ExecOrder): OrderJournalRecord {
     const now = this.now();
-    const current = this.writer.getOrder?.(record.id) ?? record;
+    const current = this.writer.getOrder?.(record.botId, record.id) ?? record;
     const resultStatus = deriveOrderJournalStatus(current, result);
     const lifecycleTransitions = executionLifecycleTransitions(current, result);
     const filledQty = result.fills.reduce((sum, fill) => sum + Math.abs(fill.qty), 0);
@@ -143,7 +143,7 @@ export class OrderLifecycle {
   markUnknown(record: OrderJournalRecord, error: unknown): OrderJournalRecord {
     const now = this.now();
     const message = error instanceof Error ? error.message : String(error);
-    const current = this.writer.getOrder?.(record.id) ?? record;
+    const current = this.writer.getOrder?.(record.botId, record.id) ?? record;
     const preserveNewerExecution = terminalOrderStatus(current.status)
       || (current.accountedFilledQty ?? 0) > (record.accountedFilledQty ?? 0);
     const next: OrderJournalRecord = {

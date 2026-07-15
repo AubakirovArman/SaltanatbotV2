@@ -23,6 +23,7 @@ describe("trading permission revocation", () => {
     const repository = new MemoryIdentityRepository();
     const service = new IdentityService(repository, { allowNonAdminTrading: true });
     const admin = await service.bootstrapAdmin("tenant-admin", "temporary-Admin-password-2026");
+    await repository.updateUser(admin.id, { mustChangePassword: false, updatedAt: new Date() });
     const trader = await service.register("tenant-trader", "correct-horse-battery-staple");
     const adminPrincipal = (await service.authenticate(
       (await service.login(admin.login, "temporary-Admin-password-2026")).sessionToken

@@ -6,6 +6,23 @@
   background: var(--bg);
 }
 
+.skip-link {
+  position: fixed;
+  z-index: 2000;
+  inset-block-start: 8px;
+  inset-inline-start: 8px;
+  translate: 0 -160%;
+  padding: 8px 12px;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.skip-link:focus {
+  translate: 0 0;
+}
+
 .topbar {
   position: relative;
   z-index: 30;
@@ -146,8 +163,13 @@
 }
 
 .automation-tabs {
+  display: none;
   border-color: color-mix(in srgb, var(--accent) 22%, var(--line-soft));
   background: color-mix(in srgb, var(--accent) 5%, var(--panel-soft));
+}
+
+.automation-tabs.context-active {
+  display: flex;
 }
 
 .automation-tabs button {
@@ -264,8 +286,16 @@
   color: var(--accent);
 }
 
-.layout-menu-separator { block-size: 1px; margin: 3px 4px; background: var(--line-soft); }
-.layout-menu button:disabled { color: var(--dim); cursor: not-allowed; opacity: 0.65; }
+.layout-menu-separator {
+  block-size: 1px;
+  margin: 3px 4px;
+  background: var(--line-soft);
+}
+.layout-menu button:disabled {
+  color: var(--dim);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
 
 /* Timeframe segment + overflow dropdown. */
 .timeframe-control {
@@ -293,6 +323,10 @@
   background: var(--accent-soft);
 }
 
+.timeframe-more-collapsed-label {
+  display: none;
+}
+
 .timeframe-menu {
   min-inline-size: 96px;
 }
@@ -309,6 +343,35 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.mobile-robots-count,
+.icon-button.mobile-utility-toggle {
+  display: none;
+}
+
+.mobile-utility-wrap {
+  display: contents;
+}
+
+.topbar-utility-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topbar .auth-account-launcher {
+  position: static;
+  display: inline-grid;
+  place-content: center;
+  inline-size: var(--ctl-h);
+  block-size: var(--ctl-h);
+  padding: 0;
+  border-radius: var(--radius);
+}
+
+.topbar .auth-account-launcher span {
+  display: none;
 }
 
 .icon-button {

@@ -21,22 +21,25 @@ function harness() {
   const events: OrderEventRecord[] = [];
   let id = 0;
   let time = 100;
+  const orderKey = (botId: string, orderId: string) => `${botId}:${orderId}`;
   const writer: OrderLifecycleWriter = {
     upsertOrder(record) {
       calls.push(`order:${record.status}`);
       records.push(structuredClone(record));
-      current.set(record.id, structuredClone(record));
+      current.set(orderKey(record.botId, record.id), structuredClone(record));
     },
     insertEvent(event) {
       calls.push(`event:${event.type}`);
       events.push(structuredClone(event));
     },
-    getOrder(orderId) {
-      const record = current.get(orderId);
+    getOrder(botId, orderId) {
+      const record = current.get(orderKey(botId, orderId));
       return record ? structuredClone(record) : undefined;
     },
-    listEvents(orderId) {
-      return events.filter((event) => event.orderId === orderId).map((event) => structuredClone(event));
+    listEvents(botId, orderId) {
+      return events
+        .filter((event) => event.botId === botId && event.orderId === orderId)
+        .map((event) => structuredClone(event));
     }
   };
   const lifecycle = new OrderLifecycle(writer, {

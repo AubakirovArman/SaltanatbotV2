@@ -1,4 +1,14 @@
 import type { ArbitrageOpportunity, ArbitrageScanResponse } from "./client";
+import { readTenantLocalItem, writeTenantLocalItem, type TenantLocalStorage } from "../app/tenantLocalStorage";
+
+export interface BrowserAlertConfig {
+  enabled: boolean;
+  thresholdBps: number;
+}
+
+export const BROWSER_ALERT_STORAGE_KEY = "sbv2:arbitrage-alert:v1";
+
+const DEFAULT_BROWSER_ALERT_CONFIG: BrowserAlertConfig = { enabled: false, thresholdBps: 50 };
 
 export interface BrowserAlertState {
   initialized: boolean;
@@ -8,6 +18,29 @@ export interface BrowserAlertState {
 export interface BrowserAlertEvaluation {
   state: BrowserAlertState;
   fired: ArbitrageOpportunity[];
+}
+
+/** Browser-only alert preferences scoped to the authenticated local owner. */
+export function loadBrowserAlertConfig(ownerId?: string, storage: TenantLocalStorage | undefined = browserStorage()): BrowserAlertConfig {
+  if (!storage) return { ...DEFAULT_BROWSER_ALERT_CONFIG };
+  try {
+    const value = JSON.parse(readTenantLocalItem(storage, BROWSER_ALERT_STORAGE_KEY, ownerId) ?? "null") as { enabled?: unknown; thresholdBps?: unknown } | null;
+    return {
+      enabled: value?.enabled === true,
+      thresholdBps: typeof value?.thresholdBps === "number" && Number.isFinite(value.thresholdBps) ? value.thresholdBps : DEFAULT_BROWSER_ALERT_CONFIG.thresholdBps
+    };
+  } catch {
+    return { ...DEFAULT_BROWSER_ALERT_CONFIG };
+  }
+}
+
+export function storeBrowserAlertConfig(config: BrowserAlertConfig, ownerId?: string, storage: TenantLocalStorage | undefined = browserStorage()): void {
+  if (!storage) return;
+  try {
+    writeTenantLocalItem(storage, BROWSER_ALERT_STORAGE_KEY, JSON.stringify(config), ownerId);
+  } catch {
+    // Storage can be unavailable; alert evaluation remains usable in memory.
+  }
 }
 
 /**
@@ -49,4 +82,12 @@ function completeSourceUniverse(scan: Pick<ArbitrageScanResponse, "sources">) {
 function sourceHealthy(scan: Pick<ArbitrageScanResponse, "sources">, exchange: ArbitrageOpportunity["spotExchange"], market: "spot" | "perpetual") {
   const matching = scan.sources.filter((source) => source.exchange === exchange && source.market === market);
   return matching.length === 1 && matching[0]?.ok === true;
+}
+
+function browserStorage(): TenantLocalStorage | undefined {
+  try {
+    return typeof localStorage === "undefined" ? undefined : localStorage;
+  } catch {
+    return undefined;
+  }
 }

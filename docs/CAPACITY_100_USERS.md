@@ -44,8 +44,12 @@ These figures are a point-in-time observation on a shared machine, not reserved 
 ## Protections implemented
 
 - PostgreSQL connection pools are bounded and have connection/query/transaction timeouts.
-- Authentication endpoints have stricter per-IP/login limits; the authenticated API uses a token
-  bucket with a higher cost for mutations.
+- Authentication endpoints pass through the general request governor and have independent failed-
+  login buckets per client IP and normalized login. Registration counts successful attempts too.
+  Both stores have a hard 4,096-entry default rather than an attacker-controlled unbounded map.
+- Argon2id work is globally limited to two active operations plus 32 queued requests by default;
+  overflow fails with a generic retryable response instead of allocating an unbounded CPU/memory
+  backlog. Each active default hash uses about 64 MiB plus library overhead.
 - Identical candle requests are coalesced and distinct upstream requests are limited to 24 active
   plus 128 queued operations.
 - Slow quote, candle, order-book and trade-flow WebSocket clients are disconnected when their send
@@ -54,6 +58,10 @@ These figures are a point-in-time observation on a shared machine, not reserved 
   `FOR UPDATE SKIP LOCKED` leases.
 - Trading accounts, AES-GCM credential envelopes, bots, REST reads, audit rows, emergency state and
   private WebSocket events are owner-scoped. Application admin role does not bypass that boundary.
+- Per owner, new resources are capped at 8 exchange accounts and 24 saved robots; concurrent starts
+  are capped at 4 paper and 2 live robots. All four defaults are configurable through the documented
+  `TRADING_MAX_*_PER_USER` variables. Over-limit creates/starts fail with HTTP 429 while existing
+  resources remain readable and stoppable.
 - Disabling a user or changing trading permission revokes sessions, disconnects private streams and
   quiesces only that user's active runtimes.
 - A user may have at most five queued/running jobs and only one running job.

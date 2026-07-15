@@ -82,6 +82,7 @@ export function ChartCanvas({
   onUpdateCompare,
   onRemoveCompare,
   chartId = "chart-1",
+  storageOwnerId,
   linkedCrosshair,
   onLinkedCrosshairChange,
   linkedTimeRange,
@@ -105,7 +106,7 @@ export function ChartCanvas({
   const [showArtifactSettings, setShowArtifactSettings] = useState(false);
   const [showDrawingObjects, setShowDrawingObjects] = useState(false);
   const [, setHistoryVersion] = useState(0);
-  const [drawings, setDrawings, drawingScopeKey] = usePersistentDrawings(instrument.symbol, chartId);
+  const [drawings, setDrawings, drawingScopeKey] = usePersistentDrawings(instrument.symbol, chartId, storageOwnerId);
   const [draft, setDraft] = useState<{ tool: ShapeTool; points: Anchor[] }>();
   const [quickMeasure, setQuickMeasure] = useState<DraftDrawing>();
   const [quickMeasureActive, setQuickMeasureActive] = useState(false);
@@ -114,14 +115,12 @@ export function ChartCanvas({
   const [selectedId, setSelectedId] = useState<string>();
   const [hoveredId, setHoveredId] = useState<string>();
   const [hoverIndex, setHoverIndex] = useState<number>();
-  const [view, setView] = useState<{ zoom: number; offset: number; crosshair?: { x: number; y: number }; priceMode: PriceMode; priceZoom: number }>(
-    { zoom: 1, offset: 0, priceMode: "linear", priceZoom: 1 }
-  );
+  const [view, setView] = useState<{ zoom: number; offset: number; crosshair?: { x: number; y: number }; priceMode: PriceMode; priceZoom: number }>({ zoom: 1, offset: 0, priceMode: "linear", priceZoom: 1 });
   const [compareLegend, setCompareLegend] = useState<CompareLegendSnapshot[]>([]);
   const [volumeProfile, setVolumeProfile] = useState<VolumeProfileSnapshot>();
   const [visibleProfileRange, setVisibleProfileRange] = useState<{ startTime: number; endTime: number }>();
   const chartDataSummaryId = useId();
-  const priceRepresentation = usePriceRepresentationSettings(instrument.symbol, chartId);
+  const priceRepresentation = usePriceRepresentationSettings(instrument.symbol, chartId, storageOwnerId);
   const chartTimeZone = normalizeChartTimeZone(timeZone);
 
   const latest = candles.at(-1);
@@ -129,7 +128,7 @@ export function ChartCanvas({
   const orderBookAvailable = instrument.assetClass === "crypto" && instrument.provider === "binance" && dataMarketType === "spot";
   const heatmapRenderKey = `${latest?.time ?? 0}:${candles.length}:${view.zoom}:${view.offset}:${view.priceMode}:${view.priceZoom}`;
   const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange, displayCandles, dataMarketType, dataPriceType);
-  const volumeProfileIndicator = useVolumeProfileIndicator({ symbol: instrument.symbol, chartTimeframe: timeframe, visibleRange: visibleProfileRange, exchange: dataExchange, marketType: dataMarketType, priceType: dataPriceType });
+  const volumeProfileIndicator = useVolumeProfileIndicator({ symbol: instrument.symbol, chartTimeframe: timeframe, visibleRange: visibleProfileRange, exchange: dataExchange, marketType: dataMarketType, priceType: dataPriceType, storageOwnerId });
   drawingsRef.current = drawings;
 
   useEffect(() => setShowArtifactSettings(false), [activeArtifactId]);
@@ -248,14 +247,15 @@ export function ChartCanvas({
     showVolume,
     showVolumeProfile: volumeProfileIndicator.visible,
     volumeProfileCandles: volumeProfileIndicator.source.profileCandles,
-    volumeProfileTimeframe: volumeProfileIndicator.source.source === "chart" ? undefined : volumeProfileIndicator.source.source, volumeProfileRange: volumeProfileIndicator.source.range,
+    volumeProfileTimeframe: volumeProfileIndicator.source.source === "chart" ? undefined : volumeProfileIndicator.source.source,
+    volumeProfileRange: volumeProfileIndicator.source.range,
     sessionLiquidity: sessionLiquidity.enabled ? sessionLiquidity.snapshot : undefined,
     marketSessions: sessionLiquidity.marketSessions,
     marketStructure: sessionLiquidity.marketStructure,
     compare,
     theme,
     onCompareLegend: (entries) => setCompareLegend((current) => (sameLegend(current, entries) ? current : entries)),
-    onVolumeProfile: (profile) => setVolumeProfile((current) => sameVolumeProfile(current, profile) ? current : profile),
+    onVolumeProfile: (profile) => setVolumeProfile((current) => (sameVolumeProfile(current, profile) ? current : profile)),
     onVisibleTimeRange: setVisibleProfileRange
   });
   useChartWheelNavigation(interactionCanvasRef, viewportRef, displayCandles, setView);
@@ -326,21 +326,25 @@ export function ChartCanvas({
       />
       <div className="chart-stage">
         <ChartLegend candle={legendCandle} chartType={chartType} instrument={instrument} settings={priceRepresentation.settings} timeframe={timeframe} />
-        {strategyName && <StrategyChip
-          hasInputs={Boolean(strategyInputs?.length && onStrategyInputChange)}
-          locale={locale}
-          name={strategyName}
-          onClear={() => { setShowArtifactSettings(false); onClearStrategy?.(); }}
-          onToggleSettings={() => setShowArtifactSettings((open) => !open)}
-          signals={signals?.length ?? 0}
-          summary={strategySummary}
-          trades={trades?.length ?? 0}
-        />}
+        {strategyName && (
+          <StrategyChip
+            hasInputs={Boolean(strategyInputs?.length && onStrategyInputChange)}
+            locale={locale}
+            name={strategyName}
+            onClear={() => {
+              setShowArtifactSettings(false);
+              onClearStrategy?.();
+            }}
+            onToggleSettings={() => setShowArtifactSettings((open) => !open)}
+            signals={signals?.length ?? 0}
+            summary={strategySummary}
+            trades={trades?.length ?? 0}
+          />
+        )}
         {showArtifactSettings && strategyInputs && onStrategyInputChange && <ArtifactInputPanel locale={locale} inputs={strategyInputs} onChange={onStrategyInputChange} onClose={() => setShowArtifactSettings(false)} />}
-        {showIndicatorControls && <ChartIndicatorOverlay
-          locale={locale} indicators={indicators} onChange={onIndicatorsChange} onEditLogic={onEditIndicatorLogic}
-          customIndicators={customIndicators} strategies={strategies} activeArtifactId={activeArtifactId} onAddArtifact={onAddArtifact} volumeProfile={volumeProfileIndicator.control}
-        />}
+        {showIndicatorControls && (
+          <ChartIndicatorOverlay locale={locale} indicators={indicators} onChange={onIndicatorsChange} onEditLogic={onEditIndicatorLogic} customIndicators={customIndicators} strategies={strategies} activeArtifactId={activeArtifactId} onAddArtifact={onAddArtifact} volumeProfile={volumeProfileIndicator.control} />
+        )}
         {onAddCompare && onUpdateCompare && onRemoveCompare && (
           <CompareControl
             locale={locale}
@@ -375,18 +379,11 @@ export function ChartCanvas({
         </button>
         <VolumeProfileBadge visible={volumeProfileIndicator.visible} profile={volumeProfile} decimals={instrument.decimals} locale={locale} />
         <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={chartTypeAriaLabel(locale, chartType, instrument.symbol, timeframe, priceRepresentation.settings)} aria-describedby={chartDataSummaryId} />
-        <OrderBookHeatmapLayer
-          enabled={showOrderBookHeatmap && orderBookAvailable}
-          symbol={instrument.symbol}
-          exchange={dataExchange}
-          locale={locale}
-          viewportRef={viewportRef}
-          renderKey={heatmapRenderKey}
-        />
+        <OrderBookHeatmapLayer enabled={showOrderBookHeatmap && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} viewportRef={viewportRef} renderKey={heatmapRenderKey} />
         <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
         <SessionLiquidityBadge state={sessionLiquidity} decimals={instrument.decimals} locale={locale} compact={compactChrome} />
         <AnchoredVwapLegend drawings={drawings} candles={candles} decimals={instrument.decimals} locale={locale} timeZone={chartTimeZone} />
-        <TradeFootprintLayer enabled={showTradeFootprint && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} timeZone={chartTimeZone} candles={candles} viewportRef={viewportRef} renderKey={heatmapRenderKey} />
+        <TradeFootprintLayer enabled={showTradeFootprint && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} timeZone={chartTimeZone} candles={candles} viewportRef={viewportRef} renderKey={heatmapRenderKey} storageOwnerId={storageOwnerId} />
         <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />
         <canvas ref={overlaysCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-overlays" aria-hidden="true" />
         <canvas
@@ -502,8 +499,15 @@ export function ChartCanvas({
             if (interactionRef.current?.mode === "measure") setQuickMeasureActive(false);
             interactionRef.current = undefined;
           }}
-          onPointerCancel={() => { interactionRef.current = undefined; setQuickMeasure(undefined); setQuickMeasureActive(false); }}
-          onLostPointerCapture={() => { interactionRef.current = undefined; setQuickMeasureActive(false); }}
+          onPointerCancel={() => {
+            interactionRef.current = undefined;
+            setQuickMeasure(undefined);
+            setQuickMeasureActive(false);
+          }}
+          onLostPointerCapture={() => {
+            interactionRef.current = undefined;
+            setQuickMeasureActive(false);
+          }}
           onDoubleClick={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
           onContextMenu={(event) => {
             event.preventDefault();
@@ -517,22 +521,14 @@ export function ChartCanvas({
           }}
         />
         {!compactChrome && <span className="chart-touch-hint" aria-hidden="true" />}
-        <ChartPriceHud
-          candle={legendCandle}
-          latest={latest}
-          timeframe={timeframe}
-          decimals={instrument.decimals}
-          locale={locale}
-          timeZone={chartTimeZone}
-          viewport={viewportRef.current}
-          crosshair={quickMeasure ? undefined : view.crosshair}
-        />
+        <ChartPriceHud candle={legendCandle} latest={latest} timeframe={timeframe} decimals={instrument.decimals} locale={locale} timeZone={chartTimeZone} viewport={viewportRef.current} crosshair={quickMeasure ? undefined : view.crosshair} />
         <QuickMeasureSummary active={quickMeasureActive} decimals={instrument.decimals} locale={locale} measurement={quickMeasure} viewport={viewportRef.current} />
         {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay locale={locale} tables={tables} />}
         <ChartDataPanel candles={displayCandles} decimals={instrument.decimals} focusedIndex={hoverIndex} signals={signals} trades={trades} symbol={instrument.symbol} timeframe={timeframe} locale={locale} timeZone={chartTimeZone} summaryId={chartDataSummaryId} />
         {showDrawingObjects && (
           <DrawingObjectsPanel
             locale={locale}
+            storageOwnerId={storageOwnerId}
             drawings={drawings}
             selectedId={selectedId}
             canUndo={historyRef.current.length >= 2}

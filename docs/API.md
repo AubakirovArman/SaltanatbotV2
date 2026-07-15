@@ -69,6 +69,11 @@ caller's owner-scoped, redacted SQLite `audit_log`. Token/bearer login exists on
 JSON-object `payload`. Updates and deletes include the last `revision`; stale writes return `409` plus
 the current document. `GET /api/workspaces/:id/revisions` returns at most 20 snapshots and
 `POST /api/workspaces/:id/rollback` creates a new revision from an older snapshot.
+In database-auth mode every workspace request must also send
+`X-SBV2-Expected-User: <current session user ID>`. The browser client captures this value when it
+starts synchronization. If a shared cookie changes users in another tab, a missing or stale header
+returns `409 workspace_owner_mismatch` before any workspace is read or written; refresh the session
+and restart synchronization. Legacy-auth compatibility mode does not require this header.
 
 `POST /api/jobs` accepts a bounded `kind: "backtest"` strategy/candle/config payload and returns
 `202` with a durable job. `GET /api/jobs`, `GET /api/jobs/:id` and

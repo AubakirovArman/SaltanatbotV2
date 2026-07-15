@@ -1,4 +1,5 @@
 import { assertArbitrageDepthBinding, type ArbitrageDepthResponse, type ArbitrageOpportunity } from "./client";
+import { readTenantLocalItem, writeTenantLocalItem } from "../app/tenantLocalStorage";
 import type { ArbitrageFeeProfile } from "./fees";
 import { routeNonFundingCostBps } from "./fees";
 
@@ -133,9 +134,9 @@ function paperOpportunityMatches(position: ArbitragePaperPosition, quote: Arbitr
   );
 }
 
-export function loadPaperPositions(): ArbitragePaperPosition[] {
+export function loadPaperPositions(ownerId?: string): ArbitragePaperPosition[] {
   try {
-    const value = JSON.parse(localStorage.getItem(KEY) ?? "[]") as Array<Partial<ArbitragePaperPosition> & Pick<ArbitragePaperPosition, "id" | "notionalUsd"> & { quantity?: number }>;
+    const value = JSON.parse(readTenantLocalItem(localStorage, KEY, ownerId) ?? "[]") as Array<Partial<ArbitragePaperPosition> & Pick<ArbitragePaperPosition, "id" | "notionalUsd"> & { quantity?: number }>;
     if (!Array.isArray(value)) return [];
     return value
       .slice(0, 100)
@@ -145,8 +146,8 @@ export function loadPaperPositions(): ArbitragePaperPosition[] {
     return [];
   }
 }
-export function storePaperPositions(positions: ArbitragePaperPosition[]) {
-  localStorage.setItem(KEY, JSON.stringify(positions.slice(0, 100)));
+export function storePaperPositions(positions: ArbitragePaperPosition[], ownerId?: string) {
+  writeTenantLocalItem(localStorage, KEY, JSON.stringify(positions.slice(0, 100)), ownerId);
 }
 
 export interface ArbitragePaperAnalytics {

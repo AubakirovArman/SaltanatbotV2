@@ -1,15 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { getCandles } from "../../api/marketClient";
-import {
-  loadRealVolumeProfileCandles,
-  normalizeVolumeProfileSource,
-  volumeProfileRefreshIntervalMs,
-  VolumeProfileSourceError,
-  type VisibleTimeRange,
-  type VolumeProfileSource,
-  type VolumeProfileSourceIssue
-} from "../../chart/volumeProfileSource";
+import { loadRealVolumeProfileCandles, normalizeVolumeProfileSource, volumeProfileRefreshIntervalMs, VolumeProfileSourceError, type VisibleTimeRange, type VolumeProfileSource, type VolumeProfileSourceIssue } from "../../chart/volumeProfileSource";
 import type { Candle, DataExchange, DataMarketType, PriceType, Timeframe } from "../../types";
+import { readTenantLocalItem, tenantLocalStorageKey, writeTenantLocalItem } from "../../app/tenantLocalStorage";
 
 const STORAGE_KEY = "saltanat.chart.volume-profile-source.v1";
 const REQUEST_DEBOUNCE_MS = 180;
@@ -40,8 +33,12 @@ export function useVolumeProfileSource(options: {
   exchange: DataExchange;
   marketType: DataMarketType;
   priceType: PriceType;
+  storageOwnerId?: string;
 }): VolumeProfileSourceState {
-  const [source, setSourceState] = useState<VolumeProfileSource>(readSource);
+  const storageKey = tenantLocalStorageKey(STORAGE_KEY, options.storageOwnerId) ?? `tenant-storage-unavailable:${STORAGE_KEY}`;
+  const [sourceState, setSourceState] = useState(() => ({ key: storageKey, source: readSource(options.storageOwnerId) }));
+  if (sourceState.key !== storageKey) setSourceState({ key: storageKey, source: readSource(options.storageOwnerId) });
+  const source = sourceState.key === storageKey ? sourceState.source : "chart";
   const [load, setLoad] = useState<LoadState>({ status: "idle", candles: EMPTY_PROFILE_CANDLES });
   const [refreshRevision, setRefreshRevision] = useState(0);
   const timeframe = source === "chart" ? options.chartTimeframe : source;
@@ -52,8 +49,13 @@ export function useVolumeProfileSource(options: {
   }, [options.exchange, options.marketType, options.priceType, options.symbol, options.visibleRange, source]);
 
   useEffect(() => {
-    try { window.localStorage.setItem(STORAGE_KEY, source); } catch { /* Runtime-only setting when storage is unavailable. */ }
-  }, [source]);
+    if (sourceState.key !== storageKey) return;
+    try {
+      writeTenantLocalItem(window.localStorage, STORAGE_KEY, sourceState.source, options.storageOwnerId);
+    } catch {
+      /* Runtime-only setting when storage is unavailable. */
+    }
+  }, [options.storageOwnerId, sourceState, storageKey]);
 
   useEffect(() => {
     if (!options.enabled || source === "chart" || !options.visibleRange) return;
@@ -75,9 +77,7 @@ export function useVolumeProfileSource(options: {
     if (!options.enabled || source === "chart" || !options.visibleRange || !requestKey) return;
     const controller = new AbortController();
     const range = options.visibleRange;
-    setLoad((current) => current.key === requestKey && current.candles.length > 0
-      ? { ...current, range, status: "loading", issue: undefined, detail: undefined }
-      : { key: requestKey, range, status: "loading", candles: EMPTY_PROFILE_CANDLES });
+    setLoad((current) => (current.key === requestKey && current.candles.length > 0 ? { ...current, range, status: "loading", issue: undefined, detail: undefined } : { key: requestKey, range, status: "loading", candles: EMPTY_PROFILE_CANDLES }));
     const timer = window.setTimeout(() => {
       loadRealVolumeProfileCandles({
         timeframe: source,
@@ -92,7 +92,9 @@ export function useVolumeProfileSource(options: {
           return { candles: payload.candles, provider: payload.provider, hasMore: payload.hasMore };
         }
       }).then(
-        (candles) => { if (!controller.signal.aborted) setLoad({ key: requestKey, range, status: "ready", candles }); },
+        (candles) => {
+          if (!controller.signal.aborted) setLoad({ key: requestKey, range, status: "ready", candles });
+        },
         (error: unknown) => {
           if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
           setLoad({
@@ -112,7 +114,7 @@ export function useVolumeProfileSource(options: {
     };
   }, [options.enabled, options.exchange, options.marketType, options.priceType, options.symbol, options.visibleRange, refreshRevision, requestKey, source]);
 
-  const setSource = (next: VolumeProfileSource) => setSourceState(normalizeVolumeProfileSource(next));
+  const setSource = (next: VolumeProfileSource) => setSourceState({ key: storageKey, source: normalizeVolumeProfileSource(next) });
   if (!options.enabled || !options.visibleRange) {
     return { source, setSource, timeframe, status: "idle", candles: EMPTY_PROFILE_CANDLES, profileCandles: source === "chart" ? undefined : EMPTY_PROFILE_CANDLES };
   }
@@ -123,7 +125,11 @@ export function useVolumeProfileSource(options: {
   return { ...current, source, setSource, timeframe, profileCandles: current.status === "ready" || (current.status === "loading" && current.candles.length > 0) ? current.candles : EMPTY_PROFILE_CANDLES };
 }
 
-function readSource(): VolumeProfileSource {
+function readSource(ownerId?: string): VolumeProfileSource {
   if (typeof window === "undefined") return "chart";
-  try { return normalizeVolumeProfileSource(window.localStorage.getItem(STORAGE_KEY)); } catch { return "chart"; }
+  try {
+    return normalizeVolumeProfileSource(readTenantLocalItem(window.localStorage, STORAGE_KEY, ownerId));
+  } catch {
+    return "chart";
+  }
 }

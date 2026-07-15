@@ -214,7 +214,8 @@ test("toggles DST-aware regional session boxes accessibly", async ({ page }) => 
   await expect(asia).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".session-liquidity-badge .sr-only li").filter({ hasText: "Asia session" })).toHaveCount(0);
   await expectNoAxeViolations(page);
-  await page.getByRole("button", { name: "4h", exact: true }).click();
+  await page.getByRole("button", { name: "More timeframes" }).click();
+  await page.getByRole("menuitemradio", { name: "4h", exact: true }).click();
   await expect(page.getByRole("button", { name: /Asia session.*Available on 1-minute through 1-hour charts/ })).toBeDisabled();
 });
 
@@ -233,7 +234,8 @@ test("controls confirmed market structure independently on every timeframe", asy
   await expect(page.locator(".session-liquidity-badge .sr-only")).toContainText(/Trend: .*confirmed swings.*structure breaks.*open fair value gaps/);
   await expectNoAxeViolations(page);
 
-  await page.getByRole("button", { name: "1d", exact: true }).click();
+  await page.getByRole("button", { name: "More timeframes" }).click();
+  await page.getByRole("menuitemradio", { name: "1d", exact: true }).click();
   await expect(page.getByRole("button", { name: /Toggle UTC map.*available on 1-minute through 4-hour charts/i })).toBeDisabled();
   await expect(structure).toBeEnabled();
   await expect(fvg).toBeEnabled();
@@ -685,7 +687,8 @@ test("chooses an independent symbol directly in every secondary chart", async ({
   await expect(secondPane).toHaveAttribute("aria-label", /ETHUSDT/);
   await expect(secondPane.getByRole("button", { name: "Link symbol to primary chart" })).toHaveAttribute("aria-pressed", "false");
 
-  await page.getByRole("button", { name: "5m", exact: true }).click();
+  await page.getByRole("button", { name: "More timeframes" }).click();
+  await page.getByRole("menuitemradio", { name: "5m", exact: true }).click();
   await expect(secondPane.getByRole("combobox", { name: "Timeframe · 2" })).toHaveValue("5m");
   await expect(secondPane.getByRole("button", { name: "Link timeframe to primary chart" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".multi-chart-pane.primary").getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible();
@@ -889,7 +892,7 @@ test("restores the last four-chart session after reload without a named workspac
   await second.getByRole("button", { name: "Remove SMA" }).click();
   await second.locator(".compare-add").click();
   const compareMenu = second.locator(".compare-menu");
-  await compareMenu.getByRole("textbox").fill("SOLUSDT");
+  await compareMenu.getByRole("combobox").fill("SOLUSDT");
   await compareMenu.getByRole("option", { name: /SOLUSDT/ }).click();
   await expect(second.locator(".compare-chip").filter({ hasText: "SOLUSDT" })).toBeVisible();
 
@@ -1055,11 +1058,10 @@ test("renders a mocked live footprint and trade delta accessibly", async ({ page
 test("passes automated WCAG A/AA audits on chart, strategy and trading surfaces", { tag: "@smoke" }, async ({ page }) => {
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
   await expectNoAxeViolations(page);
-  const modes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await modes.getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   await expectNoAxeViolations(page);
-  await modes.getByRole("button", { name: "Robots", exact: true }).click();
+  await openRobotsWorkspace(page);
   await expect(page.getByRole("heading", { name: "Trading is locked" })).toBeVisible();
   await expectNoAxeViolations(page);
 });
@@ -1099,7 +1101,7 @@ test("command palette is keyboard-operable and switches symbols", async ({ page 
   const search = palette.getByPlaceholder("Search symbols, timeframes, chart types, actions...");
   await expect(search).toBeFocused();
   await search.fill("EURUSD");
-  await expect(palette.getByRole("button").filter({ hasText: "EURUSD" }).first()).toBeVisible({ timeout: 20_000 });
+  await expect(palette.getByRole("option").filter({ hasText: "EURUSD" }).first()).toBeVisible({ timeout: 20_000 });
   await search.press("Enter");
 
   await expect(page.getByRole("button", { name: /Current instrument EURUSD/i })).toBeVisible();
@@ -1108,7 +1110,7 @@ test("command palette is keyboard-operable and switches symbols", async ({ page 
 
 test("opens the lazy Strategy workspace without losing the shell", async ({ page }) => {
   const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
 
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   await expect(workspaceModes.getByRole("button", { name: "Monitoring", exact: true })).toHaveAttribute("aria-pressed", "false");
@@ -1120,8 +1122,7 @@ test("opens the lazy Strategy workspace without losing the shell", async ({ page
 });
 
 test("creates an ordinary editable strategy with the guided wizard", async ({ page }) => {
-  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
 
   await page.getByRole("button", { name: "Wizard", exact: true }).click();
@@ -1159,8 +1160,7 @@ test("persists the selected theme across reload", async ({ page }) => {
 });
 
 test("imports a Pine indicator as an editable artifact", { tag: "@smoke" }, async ({ page }) => {
-  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
 
   await page.getByRole("button", { name: "Pine", exact: true }).click();
@@ -1282,8 +1282,7 @@ test("checksum-reviews an OS-launched strategy before adding it", async ({ page 
 test("reviews a checksummed declarative plugin before importing it", async ({ page }) => {
   test.setTimeout(60_000);
   await installPwaLaunchQueue(page);
-  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   const library = page.locator(".strategy-library");
   await expect(library).toBeVisible({ timeout: 20_000 });
   await expect(library).toContainText("A checksum proves integrity, not publisher trust");
@@ -1348,7 +1347,7 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   });
 
   await navigateToCurrentAppAndWaitForWorkspace(page);
-  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   const restoredLibrary = page.locator(".strategy-library");
   await expect(restoredLibrary).toContainText("E2E plugin overlay", { timeout: 20_000 });
   await expect(restoredLibrary).toContainText("E2E plugin strategy");
@@ -1451,7 +1450,7 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
     localStorage.setItem(key, JSON.stringify(artifacts));
   });
   await navigateToCurrentAppAndWaitForWorkspace(page);
-  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   await page
     .locator(".strategy-library")
     .getByRole("button", { name: /Installed plugins 1/ })
@@ -1469,12 +1468,12 @@ test("reviews a checksummed declarative plugin before importing it", async ({ pa
   await expect(restoredLibrary).not.toContainText("E2E plugin overlay");
 
   await navigateToCurrentAppAndWaitForWorkspace(page);
-  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   await expect(page.locator(".strategy-library")).not.toContainText("E2E plugin overlay", { timeout: 20_000 });
 });
 
 test("exports selected local artifacts as a verified plugin package", { tag: "@smoke" }, async ({ page }) => {
-  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   const library = page.locator(".strategy-library");
   await expect(library).toBeVisible({ timeout: 20_000 });
   await library.getByRole("button", { name: "Build plugin", exact: true }).click();
@@ -1532,7 +1531,8 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
   await expect(page).toHaveTitle("Мониторинг · SaltanatbotV2");
   const workspaceModes = page.locator(".workspace-navigation");
   await expect(workspaceModes.getByRole("button", { name: "Мониторинг", exact: true })).toBeVisible();
-  await expect(workspaceModes.getByRole("button", { name: "Стратегии", exact: true })).toBeVisible();
+  await expect(workspaceModes.getByRole("button", { name: "Автоматизация", exact: true })).toBeVisible();
+  await expect(workspaceModes.getByRole("button", { name: "Стратегии", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: "Переключить язык интерфейса на казахский" })).toBeVisible();
   await expect(page.locator(".locale-toggle")).toHaveText("RU");
   await expect(page.getByRole("button", { name: "Данные графика", exact: true })).toBeVisible();
@@ -1547,7 +1547,8 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
   await expect(localizedPalette.getByPlaceholder("Поиск символов, интервалов, типов графика и действий…")).toBeFocused();
   await page.keyboard.press("Escape");
 
-  await workspaceModes.getByRole("button", { name: "Стратегии", exact: true }).click();
+  await openStrategyWorkspace(page, { automation: "Автоматизация", strategies: "Стратегии" });
+  await expect(workspaceModes.getByRole("button", { name: "Стратегии", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page).toHaveTitle("Автоматизация · Стратегии · SaltanatbotV2");
   await page.getByRole("navigation", { name: "Этапы Студии" }).getByRole("button", { name: "Бэктест", exact: true }).click();
   await expect(page.getByRole("button", { name: "Запустить бэктест", exact: true })).toBeVisible({ timeout: 20_000 });
@@ -1560,7 +1561,7 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
   await expect(workspaceModes.getByRole("button", { name: "Мониторинг", exact: true })).toBeVisible();
-  await workspaceModes.getByRole("button", { name: "Роботы", exact: true }).click();
+  await openRobotsWorkspace(page, { automation: "Автоматизация", robots: "Роботы" });
   await expect(page.getByRole("heading", { name: "Торговля заблокирована" })).toBeVisible();
   await page.getByRole("button", { name: "Переключить язык интерфейса на казахский" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "kk");
@@ -1573,9 +1574,8 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
 
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "kk");
-  await expect(page).toHaveTitle("Мониторинг · SaltanatbotV2");
-  await expect(workspaceModes.getByRole("button", { name: "Мониторинг", exact: true })).toBeVisible();
-  await workspaceModes.getByRole("button", { name: "Роботтар", exact: true }).click();
+  await expect(page).toHaveTitle("Автоматтандыру · Роботтар · SaltanatbotV2");
+  await expect(workspaceModes.getByRole("button", { name: "Роботтар", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
   await page.getByRole("button", { name: "Құлыпты ашу", exact: true }).click();
   await page.getByRole("button", { name: "Параметрлер", exact: true }).click();
@@ -1599,8 +1599,7 @@ test("saves and restores a named chart workspace", async ({ page }) => {
 });
 
 test("runs a backtest and exposes assumptions and metrics", { tag: "@smoke" }, async ({ page }) => {
-  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   await page.getByRole("navigation", { name: "Studio stages" }).getByRole("button", { name: "Backtest", exact: true }).click();
   await page
@@ -1621,8 +1620,7 @@ test("runs a backtest and exposes assumptions and metrics", { tag: "@smoke" }, a
 
 test("runs several markets through one portfolio capital pool", async ({ page }) => {
   await mockCandleHistory(page, mockChartCandles());
-  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   await page.getByRole("navigation", { name: "Studio stages" }).getByRole("button", { name: "Backtest", exact: true }).click();
 
@@ -1657,8 +1655,7 @@ test("runs several markets through one portfolio capital pool", async ({ page })
 });
 
 test("keeps trading locked for a bad token and opens an authenticated session", { tag: "@smoke" }, async ({ page }) => {
-  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Robots", exact: true }).click();
+  await openRobotsWorkspace(page);
   await expect(page.getByRole("heading", { name: "Trading is locked" })).toBeVisible();
 
   const token = page.getByLabel("Access token");
@@ -1687,7 +1684,7 @@ test("configures and persists a built-in indicator", async ({ page }) => {
 
 test("adds an imported custom indicator to the chart", async ({ page }) => {
   const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
 
   await page.getByRole("button", { name: "Pine", exact: true }).click();
@@ -1705,8 +1702,7 @@ test("adds an imported custom indicator to the chart", async ({ page }) => {
 });
 
 test("creates, starts, journals and stops a paper bot", { tag: "@smoke" }, async ({ page }) => {
-  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Robots", exact: true }).click();
+  await openRobotsWorkspace(page);
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
   await expect(page.getByRole("region", { name: "Running robots" })).toBeVisible({ timeout: 15_000 });
@@ -1754,8 +1750,7 @@ test("exposes safe demo trading settings and labeled secret forms", async ({ pag
       await route.fulfill({ json: { accounts: [tradingAccountFixture("binance", false), tradingAccountFixture("bybit", true)] } });
     } else await route.continue();
   });
-  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Robots", exact: true }).click();
+  await openRobotsWorkspace(page);
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -1786,7 +1781,7 @@ test("shows protected account economics as read-only admin evidence", async ({ p
     await route.fulfill({ json: accountTelemetryFixture() });
   });
 
-  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Robots", exact: true }).click();
+  await openRobotsWorkspace(page);
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -1836,7 +1831,7 @@ test("confirms account emergency stop and requires a separate flatten confirmati
     });
   });
 
-  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Robots", exact: true }).click();
+  await openRobotsWorkspace(page);
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -1874,8 +1869,7 @@ test("shows Bybit UTA collateral risk and requires explicit debt confirmations",
     await route.fulfill({ json: { ok: true, status: "success", snapshot } });
   });
 
-  const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
-  await workspaceModes.getByRole("button", { name: "Robots", exact: true }).click();
+  await openRobotsWorkspace(page);
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -2289,7 +2283,7 @@ test("traps command-palette focus and restores it on Escape", async ({ page }) =
   await expect(search).toBeFocused();
 
   await search.press("Shift+Tab");
-  await expect(palette.getByRole("button").last()).toBeFocused();
+  await expect(palette.getByRole("option").last()).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(palette).toBeHidden();
   await expect(trigger).toBeFocused();
@@ -2300,11 +2294,10 @@ test("uses exclusive mobile market and instrument sheets without covering the ch
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   await expect(page.getByRole("img", { name: /BTCUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
-  const marketsTrigger = page.getByRole("button", { name: "Toggle markets panel" });
-  const instrumentTrigger = page.getByRole("button", { name: "Toggle instrument panel" });
-  await expect(marketsTrigger).toHaveAttribute("aria-haspopup", "dialog");
-  await expect(marketsTrigger).toHaveAttribute("aria-pressed", "false");
-  await expect(instrumentTrigger).toHaveAttribute("aria-pressed", "false");
+  const mobileTools = page.getByRole("button", { name: "More tools" });
+  await expect(mobileTools).toHaveAttribute("aria-expanded", "false");
+  const marketsTrigger = page.getByRole("button", { name: "Toggle markets panel", includeHidden: true });
+  const instrumentTrigger = page.getByRole("button", { name: "Toggle instrument panel", includeHidden: true });
   await expect(page.getByRole("dialog", { name: "Markets" })).toBeHidden();
   await expect(page.getByRole("dialog", { name: "Current instrument" })).toBeHidden();
   const stageBox = await page.locator(".chart-stage").boundingBox();
@@ -2320,7 +2313,9 @@ test("uses exclusive mobile market and instrument sheets without covering the ch
   expect(analysisBox!.x).toBeGreaterThanOrEqual(stageBox!.x);
   expect(analysisBox!.x + analysisBox!.width).toBeLessThanOrEqual(stageBox!.x + stageBox!.width);
   expect(indicatorBox!.x + indicatorBox!.width).toBeLessThanOrEqual(priceAxisBox!.x + 1);
-  await indicatorOverlay.locator(".indicator-strip").evaluate((strip) => { strip.scrollLeft = strip.scrollWidth; });
+  await indicatorOverlay.locator(".indicator-strip").evaluate((strip) => {
+    strip.scrollLeft = strip.scrollWidth;
+  });
   const hideRsi = indicatorOverlay.getByRole("button", { name: "Hide RSI" });
   await expect(hideRsi).toBeVisible();
   const hideRsiBox = await hideRsi.boundingBox();
@@ -2329,6 +2324,12 @@ test("uses exclusive mobile market and instrument sheets without covering the ch
   await hideRsi.click();
   await expect(indicatorOverlay.getByRole("button", { name: "Show RSI" })).toBeVisible();
 
+  await openMobileTools(page);
+  await expect(marketsTrigger).toBeVisible();
+  await expect(instrumentTrigger).toBeVisible();
+  await expect(marketsTrigger).toHaveAttribute("aria-haspopup", "dialog");
+  await expect(marketsTrigger).toHaveAttribute("aria-pressed", "false");
+  await expect(instrumentTrigger).toHaveAttribute("aria-pressed", "false");
   await marketsTrigger.click();
   const markets = page.getByRole("dialog", { name: "Markets" });
   await expect(markets).toBeVisible();
@@ -2336,7 +2337,9 @@ test("uses exclusive mobile market and instrument sheets without covering the ch
   await expect(markets.getByPlaceholder("Search BTC, NASDAQ, EUR…")).toBeFocused();
   await page.mouse.click(8, 90);
   await expect(markets).toBeHidden();
-  await expect(marketsTrigger).toBeFocused();
+  await expect(mobileTools).toBeVisible();
+  await expect(mobileTools).toHaveAttribute("aria-expanded", "false");
+  await openMobileTools(page);
   await marketsTrigger.click();
   await expect(markets).toBeVisible();
   await markets.getByPlaceholder("Search BTC, NASDAQ, EUR…").fill("ETHUSDT");
@@ -2344,6 +2347,7 @@ test("uses exclusive mobile market and instrument sheets without covering the ch
   await expect(markets).toBeHidden();
   await expect(page.getByRole("img", { name: /ETHUSDT candles chart on 1m/i })).toBeVisible({ timeout: 20_000 });
 
+  await openMobileTools(page);
   await instrumentTrigger.click();
   const instrument = page.getByRole("dialog", { name: "Current instrument" });
   await expect(instrument).toBeVisible();
@@ -2355,7 +2359,8 @@ test("uses exclusive mobile market and instrument sheets without covering the ch
   expect(sheetBox!.y + sheetBox!.height).toBeLessThanOrEqual(844);
   await page.keyboard.press("Escape");
   await expect(instrument).toBeHidden();
-  await expect(instrumentTrigger).toBeFocused();
+  await expect(mobileTools).toBeVisible();
+  await expect(mobileTools).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("img", { name: /ETHUSDT candles chart on 1m/i })).toBeVisible();
 });
 
@@ -2364,7 +2369,7 @@ test("keeps every mobile Strategy Studio pane full-width and operable", { tag: "
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
 
-  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   const paneTabs = page.getByRole("navigation", { name: "Strategy Studio panels" });
   const libraryTab = paneTabs.getByRole("button", { name: "Library", exact: true });
@@ -2391,6 +2396,15 @@ test("keeps every mobile Strategy Studio pane full-width and operable", { tag: "
   await expect(page.locator(".strategy-library")).toBeHidden();
   await expect(page.locator(".code-preview")).toBeHidden();
   await expect(page.locator(".blocklySvg")).toBeVisible({ timeout: 20_000 });
+  const toolboxToggle = page.getByRole("button", { name: "Show blocks" });
+  await expect(toolboxToggle).toBeVisible();
+  await expect(toolboxToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".blocklyToolbox")).toBeHidden();
+  await toolboxToggle.click();
+  await expect(page.getByRole("button", { name: "Hide blocks" })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator(".blocklyToolbox")).toBeVisible();
+  await page.getByRole("button", { name: "Hide blocks" }).click();
+  await expect(page.locator(".blocklyToolbox")).toBeHidden();
   await expectPaneFits(".strategy-authoring");
 
   await libraryTab.click();
@@ -2659,6 +2673,44 @@ async function navigateToCurrentAppAndWaitForWorkspace(page: Page) {
   await expect(page.getByRole("navigation", { name: "Primary workspaces" })).toBeVisible({ timeout: 20_000 });
 }
 
+async function openStrategyWorkspace(page: Page, labels = { automation: "Automation", strategies: "Strategies" }) {
+  const navigation = page.locator(".workspace-navigation");
+  const strategies = navigation.getByRole("button", { name: labels.strategies, exact: true });
+  await expect(navigation).toBeVisible({ timeout: 20_000 });
+  if ((page.viewportSize()?.width ?? 0) <= 760) {
+    await expect(strategies).toBeVisible({ timeout: 20_000 });
+    await strategies.click();
+    return;
+  }
+  if (await strategies.isVisible()) {
+    await strategies.click();
+    return;
+  }
+  await navigation.getByRole("button", { name: labels.automation, exact: true }).click();
+}
+
+async function openRobotsWorkspace(page: Page, labels = { automation: "Automation", robots: "Robots" }) {
+  const navigation = page.locator(".workspace-navigation");
+  const robots = navigation.getByRole("button", { name: labels.robots, exact: true });
+  await expect(navigation).toBeVisible({ timeout: 20_000 });
+  if ((page.viewportSize()?.width ?? 0) <= 760) {
+    await expect(robots).toBeVisible({ timeout: 20_000 });
+    await robots.click();
+    return;
+  }
+  if (!(await robots.isVisible())) {
+    await navigation.getByRole("button", { name: labels.automation, exact: true }).click();
+    await expect(robots).toBeVisible();
+  }
+  await robots.click();
+}
+
+async function openMobileTools(page: Page) {
+  const trigger = page.getByRole("button", { name: "More tools" });
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+}
+
 async function installPwaLaunchQueue(page: Page) {
   await page.addInitScript(() => {
     type LaunchConsumer = (params: { files: Array<{ name: string; getFile(): Promise<File> }> }) => void;
@@ -2753,7 +2805,7 @@ async function selectChartSymbol(page: Page, symbol: string) {
   const palette = page.getByRole("dialog", { name: "Command palette" });
   const search = palette.getByPlaceholder("Search symbols, timeframes, chart types, actions...");
   await search.fill(symbol);
-  await expect(palette.getByRole("button").filter({ hasText: symbol }).first()).toBeVisible({ timeout: 20_000 });
+  await expect(palette.getByRole("option").filter({ hasText: symbol }).first()).toBeVisible({ timeout: 20_000 });
   await search.press("Enter");
   await expect(page.getByRole("button", { name: new RegExp(`Current instrument ${symbol}`, "i") })).toBeVisible();
 }

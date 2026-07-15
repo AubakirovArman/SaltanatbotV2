@@ -1,5 +1,6 @@
 import type { ArbitrageDepthResponse } from "./client";
 import { closePaperPositionWithDepth, loadPaperPositions, migrateLegacyPaperPosition, type ArbitragePaperPosition } from "./paper";
+import { readTenantLocalItem, writeTenantLocalItem } from "../app/tenantLocalStorage";
 
 const KEY = "sbv2:arbitrage-paper:v2";
 const CORRUPT_KEY = "sbv2:arbitrage-paper:v2:corrupt";
@@ -154,19 +155,19 @@ export function replayPaperEvents(events: readonly ArbitragePaperEvent[]): Arbit
   return [...positions.values()].filter((position) => !archived.has(position.id)).sort((left, right) => right.openedAt - left.openedAt || left.id.localeCompare(right.id));
 }
 
-export function loadPaperEvents(): ArbitragePaperEvent[] {
-  const raw = localStorage.getItem(KEY);
-  if (!raw) return migrateLegacyLedger();
+export function loadPaperEvents(ownerId?: string): ArbitragePaperEvent[] {
+  const raw = readTenantLocalItem(localStorage, KEY, ownerId);
+  if (!raw) return migrateLegacyLedger(ownerId);
   try {
     const envelope = JSON.parse(raw) as { schemaVersion?: unknown; events?: unknown };
     if ((envelope.schemaVersion !== 2 && envelope.schemaVersion !== 3) || !Array.isArray(envelope.events)) throw new Error("Unsupported paper ledger schema");
     const events = envelope.schemaVersion === 2 ? migrateV2Events(envelope.events) : (envelope.events as ArbitragePaperEvent[]);
     replayPaperEvents(events);
-    if (envelope.schemaVersion === 2) storePaperEvents(events);
+    if (envelope.schemaVersion === 2) storePaperEvents(events, ownerId);
     return events;
   } catch {
     try {
-      localStorage.setItem(CORRUPT_KEY, raw.slice(0, MAX_BYTES));
+      writeTenantLocalItem(localStorage, CORRUPT_KEY, raw.slice(0, MAX_BYTES), ownerId);
     } catch {
       /* Preserve the original key when backup storage is unavailable. */
     }
@@ -174,11 +175,11 @@ export function loadPaperEvents(): ArbitragePaperEvent[] {
   }
 }
 
-export function storePaperEvents(events: readonly ArbitragePaperEvent[]) {
+export function storePaperEvents(events: readonly ArbitragePaperEvent[], ownerId?: string) {
   replayPaperEvents(events);
   const value = JSON.stringify({ schemaVersion: 3, events });
   if (new TextEncoder().encode(value).byteLength > MAX_BYTES) throw new Error("Paper ledger storage limit reached");
-  localStorage.setItem(KEY, value);
+  writeTenantLocalItem(localStorage, KEY, value, ownerId);
 }
 
 function migrateV2Events(values: unknown[]): ArbitragePaperEvent[] {
@@ -190,8 +191,8 @@ function migrateV2Events(values: unknown[]): ArbitragePaperEvent[] {
   });
 }
 
-function migrateLegacyLedger(): ArbitragePaperEvent[] {
-  const legacy = loadPaperPositions().slice(0, MAX_POSITIONS);
+function migrateLegacyLedger(ownerId?: string): ArbitragePaperEvent[] {
+  const legacy = loadPaperPositions(ownerId).slice(0, MAX_POSITIONS);
   const events: ArbitragePaperEvent[] = [];
   for (const position of legacy.sort((left, right) => left.openedAt - right.openedAt || left.id.localeCompare(right.id))) {
     const open = { ...position, fundingPnlUsd: position.fundingPnlUsd ?? 0, closedAt: undefined, realizedPnlUsd: undefined };
@@ -209,7 +210,7 @@ function migrateLegacyLedger(): ArbitragePaperEvent[] {
       });
     }
   }
-  if (events.length > 0) storePaperEvents(events);
+  if (events.length > 0) storePaperEvents(events, ownerId);
   return events;
 }
 

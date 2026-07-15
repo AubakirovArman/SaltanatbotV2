@@ -1,11 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mockCandleHistory, mockChartCandles } from "./support/marketMocks";
 
 test("journals and recovers a deterministic multi-leg paper run", { tag: "@smoke" }, async ({ page }) => {
   await mockCandleHistory(page, mockChartCandles());
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Robots", exact: true }).click();
+  await openRobotsWorkspace(page);
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
 
@@ -34,7 +34,7 @@ test("journals and recovers a deterministic multi-leg paper run", { tag: "@smoke
   expect(accessibility.violations).toEqual([]);
 
   await page.reload();
-  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Robots", exact: true }).click();
+  await openRobotsWorkspace(page);
   await page.getByRole("button", { name: /Multi-leg paper journal/ }).click();
   const history = page.getByRole("table", { name: "Recent deterministic multi-leg paper runs" });
   await expect(history).toContainText(runId, { timeout: 15_000 });
@@ -48,6 +48,17 @@ test("journals and recovers a deterministic multi-leg paper run", { tag: "@smoke
   await expect(page.getByRole("heading", { name: "Multi-leg paper журналы", exact: true })).toBeVisible();
   await expect(page.getByLabel("Қайта іске қосқаннан кейін қалпына келтіру")).toContainText("Дайын");
 });
+
+async function openRobotsWorkspace(page: Page) {
+  const navigation = page.getByRole("navigation", { name: "Primary workspaces" });
+  const robots = navigation.getByRole("button", { name: "Robots", exact: true });
+  await expect(navigation).toBeVisible({ timeout: 20_000 });
+  if (!(await robots.isVisible())) {
+    await navigation.getByRole("button", { name: "Automation", exact: true }).click();
+    await expect(robots).toBeVisible({ timeout: 20_000 });
+  }
+  await robots.click();
+}
 
 function paperPlan(runId: string) {
   const now = Date.now();

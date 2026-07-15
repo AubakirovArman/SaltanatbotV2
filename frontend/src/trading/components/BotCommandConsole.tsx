@@ -11,16 +11,17 @@ interface BotCommandConsoleProps {
   output?: string;
   onRun: (command: string, dryRun?: boolean) => Promise<void>;
   locale: Locale;
+  storageOwnerId?: string;
 }
 
-export function BotCommandConsole({ bot, output, onRun, locale }: BotCommandConsoleProps) {
+export function BotCommandConsole({ bot, output, onRun, locale, storageOwnerId }: BotCommandConsoleProps) {
   const [command, setCommand] = useState("");
   const [showReference, setShowReference] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [saved, setSaved] = useState<SavedCommand[]>([]);
   const [editor, setEditor] = useState<{ id?: string; name: string; command: string } | null>(null);
 
-  useEffect(() => setSaved(loadSavedCommands()), []);
+  useEffect(() => setSaved(loadSavedCommands(storageOwnerId)), [storageOwnerId]);
 
   const run = async (input: string, dryRun = false) => {
     if (!input.trim()) return;
@@ -37,13 +38,13 @@ export function BotCommandConsole({ bot, output, onRun, locale }: BotCommandCons
       ? saved.map((item) => item.id === editor.id ? { ...item, name: editor.name.trim(), command: editor.command.trim() } : item)
       : [{ id: newCommandId(), name: editor.name.trim(), command: editor.command.trim() }, ...saved];
     setSaved(next);
-    persistSavedCommands(next);
+    persistSavedCommands(next, storageOwnerId);
     setEditor(null);
   };
   const removeSaved = (id: string) => {
     const next = saved.filter((item) => item.id !== id);
     setSaved(next);
-    persistSavedCommands(next);
+    persistSavedCommands(next, storageOwnerId);
   };
 
   return (

@@ -47,6 +47,24 @@ describe("Bybit UTA service", () => {
     expect(client.calls.find((call) => call.path === "/v5/account/repay")).toMatchObject({ method: "POST", params: { coin: "USDT", repaymentType: "ALL" } });
   });
 
+  it("asserts the current authorization lease after preflight and before every UTA POST", async () => {
+    const client = new FakeClient();
+    const events: string[] = [];
+    const service = new BybitUtaService(client, async () => {
+      events.push("revalidate");
+      return {
+        assertCurrent() {
+          events.push("assert");
+          return false;
+        }
+      };
+    });
+
+    await expect(service.borrow("USDT", 25)).rejects.toThrow(/authorization changed/i);
+    expect(events).toEqual(["revalidate", "assert"]);
+    expect(client.calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
   it("changes only supported collateral coins", async () => {
     const client = new FakeClient();
     const service = new BybitUtaService(client);

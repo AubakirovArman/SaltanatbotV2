@@ -172,6 +172,8 @@ export const kkStrategy: Record<StrategyMessageKey, string> = {
   mobileStudioLibrary: "Кітапхана",
   mobileStudioEditor: "Редактор",
   mobileStudioParameters: "Параметрлер",
+  showBlockLibrary: "Блоктарды көрсету",
+  hideBlockLibrary: "Блоктарды жасыру",
   example: "Мысал",
   inputs: "Кірістер",
   output: "Нәтиже",

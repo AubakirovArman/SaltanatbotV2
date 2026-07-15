@@ -52,12 +52,22 @@ docker compose exec saltanatbotv2 \
 
 The command prints one generated password once. It is not written to the repository or stored in
 plaintext in PostgreSQL. Sign in with it, change it immediately when prompted, then delete the
-terminal scrollback if other people can read it. A second bootstrap attempt fails closed.
+terminal scrollback if other people can read it. Concurrent bootstrap attempts are serialized in
+PostgreSQL and only one can succeed; every later attempt fails closed.
 
 Registration is intentionally simple: a person chooses a login and password, receives a pending
 status, and cannot create a session until an administrator activates the account. The account menu
 contains the pending-user list for administrators. Disabling an account or changing its permissions
-revokes its active sessions.
+revokes its active sessions. An administrator cannot disable or demote the last active administrator,
+including when two administrators try to remove each other concurrently.
+
+Authentication abuse protection is enabled without extra services: failed login attempts are
+limited independently by client IP and normalized login, every registration attempt consumes the
+per-IP allowance even when it succeeds, and Argon2id has a bounded global worker/queue gate. The
+shared in-process limiter stores are capped at 4,096 keys by default, which leaves ample headroom for
+the first 100 users while preventing attacker-controlled map growth. See
+[Configuration](./CONFIGURATION.md) for tuning variables. If TLS is terminated by a proxy, set
+`TRUST_PROXY` only to that proxy; otherwise all clients can appear as one IP and share its allowance.
 
 ## Direct host installation
 
@@ -89,14 +99,28 @@ processes cannot apply a migration concurrently.
 | Storage | Data | Backup tool |
 | --- | --- | --- |
 | PostgreSQL | users, hashed passwords, sessions, WS tickets, auth audit, workspaces/revisions, research jobs | `pg_dump` / `pg_restore` |
-| `backend/data/trading.db` | owner-scoped trading accounts, bots, orders, fills, logs, audit rows and encrypted account credentials/notifications | `npm run data:backup` |
-| `backend/data/.secret` | AES root secret for encrypted SQLite settings | `npm run data:backup` |
-| `backend/data/candles.db` | optional candle cache | `npm run data:backup` |
-| paper-journal SQLite files | paper multi-leg history | `npm run data:backup` at the default path |
+| `backend/data/trading.db` | owner-scoped trading accounts, bots, orders, fills, logs, audit rows and encrypted account credentials/notifications | `npm run data:backup`; for Compose use the [named-volume procedure](./BACKUP_RESTORE.md#docker-compose-named-volume) |
+| `backend/data/.secret` | AES root secret for encrypted SQLite settings | same verified runtime backup |
+| `backend/data/candles.db` | optional candle cache | same verified runtime backup |
+| paper-journal SQLite files | paper multi-leg history | same backup at the default path; separately back up a custom path |
 
-The browser keeps an offline/local copy of chart preferences and exportable artifacts. Named
-workspace sync is additive and owner-scoped; file export/import remains available so a fork is not
+The browser keeps an offline/local copy of chart preferences and exportable artifacts. In database
+authentication mode, named workspaces, chart sessions and drawings, alerts, watchlists, shortcuts,
+strategy/indicator libraries and parameter overrides, plugin trust, the paper-arbitrage ledger, and
+saved trading commands use a separate browser-storage namespace for each user ID. Plugin signing
+identities are also separate IndexedDB records; the old shared legacy private key is deliberately
+not assigned to any database-auth account. Pre-authentication non-key browser data can be claimed
+once by the first authenticated user in that browser profile when the browser supports the Web Locks
+API; the exclusive origin-wide lock keeps simultaneous tabs from assigning different owners.
+Browsers without Web Locks leave legacy data unclaimed instead of guessing an owner. Later users
+never inherit claimed data. After upgrading a shared installation, use a current browser and sign in
+with the intended legacy-data owner first. File export/import remains available so a fork is not
 locked to one server.
+
+This browser namespace prevents accidental disclosure when accounts take turns in the same browser,
+but it is not an operating-system security boundary: someone with access to the same browser profile
+and its developer tools can inspect local storage. Use separate OS/browser profiles on an untrusted
+shared device and clear site data before handing the profile to another person.
 
 ## Multi-user trading boundary
 
@@ -118,6 +142,22 @@ Trading-role assignment is enabled by default after the owner migration. Set
 changing or removing a user's permission revokes sessions, disconnects private streams and stops
 that user's running robots.
 
+The API also applies hard, owner-local quotas before allocating trading control-plane resources:
+
+| Environment variable | Default | What it limits |
+| --- | ---: | --- |
+| `TRADING_MAX_ACCOUNTS_PER_USER` | 8 | saved exchange accounts |
+| `TRADING_MAX_BOTS_PER_USER` | 24 | saved robot configurations |
+| `TRADING_MAX_RUNNING_PAPER_BOTS_PER_USER` | 4 | concurrently running paper robots |
+| `TRADING_MAX_RUNNING_LIVE_BOTS_PER_USER` | 2 | concurrently running live robots |
+
+These conservative defaults target the first roughly 100 users on one API/executor process. A
+limit must be a positive integer; invalid configuration stops startup. Lowering a limit never
+deletes data: excess existing accounts and robots remain readable, editable and stoppable, while a
+new create/start returns HTTP `429` with a stable `*_QUOTA_EXCEEDED` code. Raise limits only after
+measuring event-loop lag, exchange connections, memory and API latency. The current executor is
+single-process; do not run two API replicas against the same trading SQLite database.
+
 Per-user Telegram/VK notifications are outbound-only in database auth mode. Inbound Telegram bot
 commands remain available only in explicit legacy single-operator mode until the poller can bind a
 chat to a durable user and verify the current trading role on every command.
@@ -128,7 +168,9 @@ Schema v6 transactionally assigns every pre-v6 trading row to one administrator,
 legacy `keys:binance`/`keys:bybit` value for its concrete migrated account and clears the old
 server-wide live arm. Nothing is assigned to newly registered users. Before the first v6 start:
 
-1. Stop the application and run both the PostgreSQL and `npm run data:backup` backups.
+1. Stop the application and run both the PostgreSQL and verified runtime-data backups. Compose
+   operators must use the [named-volume procedure](./BACKUP_RESTORE.md#docker-compose-named-volume),
+   because `backend/data` is not stored in the source checkout.
 2. Ensure the intended owner already exists in PostgreSQL with `appRole=admin`.
 3. If there is more than one administrator, set `TRADING_LEGACY_OWNER_USER_ID` to the intended
    administrator UUID. Startup deliberately refuses an ambiguous migration.

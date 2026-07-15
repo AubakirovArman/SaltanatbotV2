@@ -1,19 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,6 +13,9 @@ const sensitiveNames = [".secret"];
 const legacySensitiveNames = [".authtoken"];
 const allowedNames = new Set([...databaseNames, ...sensitiveNames, ...legacySensitiveNames]);
 const manifestName = "backup-manifest.json";
+const restoreManifestName = ".restore-manifest.json";
+const sqliteSidecarNames = databaseNames.flatMap((name) => [`${name}-wal`, `${name}-shm`, `${name}-journal`]);
+const inPlaceManagedNames = [...allowedNames, ...sqliteSidecarNames, restoreManifestName];
 const formatName = "saltanatbotv2-runtime-backup";
 const formatVersion = 1;
 
@@ -47,9 +38,19 @@ function assertRegularFile(path, label) {
   return stat;
 }
 
+function lstatIfExists(path) {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
 function removeSqliteSidecars(path) {
   rmSync(`${path}-wal`, { force: true });
   rmSync(`${path}-shm`, { force: true });
+  rmSync(`${path}-journal`, { force: true });
 }
 
 function normalizePortableSqlite(path) {
@@ -63,8 +64,10 @@ function normalizePortableSqlite(path) {
   removeSqliteSidecars(path);
 }
 
-function assertSqliteIntegrity(path, cleanupSidecars = false) {
-  const handle = new DatabaseSync(path, { readOnly: true });
+function assertSqliteIntegrity(path) {
+  const immutablePath = pathToFileURL(path);
+  immutablePath.searchParams.set("immutable", "1");
+  const handle = new DatabaseSync(immutablePath, { readOnly: true });
   try {
     const rows = handle.prepare("PRAGMA quick_check").all();
     const messages = rows.map((row) => String(row.quick_check ?? Object.values(row)[0]));
@@ -75,7 +78,6 @@ function assertSqliteIntegrity(path, cleanupSidecars = false) {
     return Number(versionRow?.user_version ?? 0);
   } finally {
     handle.close();
-    if (cleanupSidecars) removeSqliteSidecars(path);
   }
 }
 
@@ -102,17 +104,6 @@ export function verifyRuntimeBackup(backupDirectory) {
     }
     if (seen.has(entry.name)) fail(`Backup manifest contains a duplicate file: ${entry.name}`);
     seen.add(entry.name);
-    const file = resolve(backupDir, entry.name);
-    if (dirname(file) !== backupDir || !existsSync(file)) fail(`Backup file is missing: ${entry.name}`);
-    const stat = assertRegularFile(file, `Backup file ${entry.name}`);
-    if (stat.size !== entry.size) fail(`Backup file size mismatch: ${entry.name}`);
-    if (sha256(file) !== entry.sha256) fail(`Backup checksum mismatch: ${entry.name}`);
-    if (databaseNames.includes(entry.name)) {
-      const userVersion = assertSqliteIntegrity(file, true);
-      if (entry.sqliteUserVersion !== undefined && entry.sqliteUserVersion !== userVersion) {
-        fail(`Backup SQLite schema version mismatch: ${entry.name}`);
-      }
-    }
   }
 
   const actualFiles = readdirSync(backupDir).filter((name) => name !== manifestName);
@@ -120,6 +111,20 @@ export function verifyRuntimeBackup(backupDirectory) {
     if (!seen.has(name)) fail(`Backup contains an unmanifested file: ${name}`);
   }
   if (!seen.has("trading.db")) fail("Backup does not contain trading.db");
+
+  for (const entry of manifest.files) {
+    const file = resolve(backupDir, entry.name);
+    if (dirname(file) !== backupDir || !existsSync(file)) fail(`Backup file is missing: ${entry.name}`);
+    const stat = assertRegularFile(file, `Backup file ${entry.name}`);
+    if (stat.size !== entry.size) fail(`Backup file size mismatch: ${entry.name}`);
+    if (sha256(file) !== entry.sha256) fail(`Backup checksum mismatch: ${entry.name}`);
+    if (databaseNames.includes(entry.name)) {
+      const userVersion = assertSqliteIntegrity(file);
+      if (entry.sqliteUserVersion !== undefined && entry.sqliteUserVersion !== userVersion) {
+        fail(`Backup SQLite schema version mismatch: ${entry.name}`);
+      }
+    }
+  }
 
   return { backupDir, manifest };
 }
@@ -152,7 +157,7 @@ export async function createRuntimeBackup({ dataDirectory = defaultDataDir, outp
       }
       normalizePortableSqlite(destination);
       chmodSync(destination, 0o600);
-      const sqliteUserVersion = assertSqliteIntegrity(destination, true);
+      const sqliteUserVersion = assertSqliteIntegrity(destination);
       const stat = statSync(destination);
       files.push({ name, size: stat.size, sha256: sha256(destination), mode: "0600", sqliteUserVersion });
     }
@@ -177,7 +182,7 @@ export async function createRuntimeBackup({ dataDirectory = defaultDataDir, outp
       version: formatVersion,
       createdAt: new Date().toISOString(),
       source: "backend/data",
-      files: files.sort((left, right) => left.name.localeCompare(right.name)),
+      files: files.sort((left, right) => left.name.localeCompare(right.name))
     };
     const manifestPath = resolve(stagingDir, manifestName);
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
@@ -190,11 +195,132 @@ export async function createRuntimeBackup({ dataDirectory = defaultDataDir, outp
   }
 }
 
-export function restoreRuntimeBackup({ backupDirectory, dataDirectory = defaultDataDir, force = false }) {
+function stageRuntimeRestore(backupDir, manifest, stagingDir) {
+  for (const entry of manifest.files) {
+    const destination = resolve(stagingDir, entry.name);
+    copyFileSync(resolve(backupDir, entry.name), destination);
+    chmodSync(destination, 0o600);
+  }
+  const stagedManifest = {
+    ...manifest,
+    restoredAt: new Date().toISOString(),
+    restoredFrom: backupDir
+  };
+  writeFileSync(resolve(stagingDir, restoreManifestName), `${JSON.stringify(stagedManifest, null, 2)}\n`, {
+    mode: 0o600
+  });
+  verifyStagedRuntimeRestore(stagingDir, manifest);
+  return stagedManifest;
+}
+
+function verifyStagedRuntimeRestore(directory, manifest) {
+  for (const entry of manifest.files) {
+    const file = resolve(directory, entry.name);
+    const stat = assertRegularFile(file, `Staged restore file ${entry.name}`);
+    if (stat.size !== entry.size) fail(`Staged restore file size mismatch: ${entry.name}`);
+    if (sha256(file) !== entry.sha256) fail(`Staged restore checksum mismatch: ${entry.name}`);
+    if (databaseNames.includes(entry.name)) {
+      const userVersion = assertSqliteIntegrity(file);
+      if (entry.sqliteUserVersion !== undefined && entry.sqliteUserVersion !== userVersion) {
+        fail(`Staged restore SQLite schema version mismatch: ${entry.name}`);
+      }
+    }
+  }
+  assertRegularFile(resolve(directory, restoreManifestName), "Restore manifest");
+}
+
+function rollbackInPlaceRestore({ dataDir, stagingDir, rollbackDir, installedNames, previousNames, renameFile }) {
+  const errors = [];
+  mkdirSync(stagingDir, { recursive: true, mode: 0o700 });
+  for (const name of [...installedNames].reverse()) {
+    const installed = resolve(dataDir, name);
+    if (!lstatIfExists(installed)) continue;
+    try {
+      renameFile(installed, resolve(stagingDir, name));
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  for (const name of [...previousNames].reverse()) {
+    const previous = resolve(rollbackDir, name);
+    if (!lstatIfExists(previous)) continue;
+    const destination = resolve(dataDir, name);
+    if (lstatIfExists(destination)) {
+      errors.push(new Error(`Rollback target is occupied: ${destination}`));
+      continue;
+    }
+    try {
+      renameFile(previous, destination);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length > 0) throw new AggregateError(errors, `In-place restore rollback is incomplete: ${rollbackDir}`);
+}
+
+function restoreRuntimeBackupInPlace({ backupDir, manifest, dataDir, force, renameFile }) {
+  const targetStat = lstatIfExists(dataDir);
+  if (targetStat?.isSymbolicLink()) fail(`In-place restore target must not be a symbolic link: ${dataDir}`);
+  if (targetStat && !targetStat.isDirectory()) fail(`In-place restore target must be a directory: ${dataDir}`);
+  const targetCreated = !targetStat;
+  const targetHasFiles = Boolean(targetStat && readdirSync(dataDir).length > 0);
+  if (targetHasFiles && !force) {
+    fail(`Restore target is not empty: ${dataDir}. Stop the application and pass --force to replace runtime files in place.`);
+  }
+  if (targetCreated) mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+
+  const stagingDir = resolve(dataDir, `.restore-stage-${randomUUID()}`);
+  const rollbackDir = resolve(dataDir, `.restore-rollback-${randomUUID()}`);
+  const previousNames = [];
+  const installedNames = [];
+
+  let stagedManifest;
+  try {
+    mkdirSync(stagingDir, { mode: 0o700 });
+    mkdirSync(rollbackDir, { mode: 0o700 });
+    stagedManifest = stageRuntimeRestore(backupDir, manifest, stagingDir);
+    for (const name of inPlaceManagedNames) {
+      const current = resolve(dataDir, name);
+      if (!lstatIfExists(current)) continue;
+      renameFile(current, resolve(rollbackDir, name));
+      previousNames.push(name);
+    }
+    for (const name of [...manifest.files.map((entry) => entry.name), restoreManifestName]) {
+      renameFile(resolve(stagingDir, name), resolve(dataDir, name));
+      installedNames.push(name);
+    }
+    verifyStagedRuntimeRestore(dataDir, manifest);
+  } catch (error) {
+    let rollbackError;
+    if (previousNames.length > 0 || installedNames.length > 0) {
+      try {
+        rollbackInPlaceRestore({ dataDir, stagingDir, rollbackDir, installedNames, previousNames, renameFile });
+      } catch (candidate) {
+        rollbackError = candidate;
+      }
+    }
+    if (!rollbackError) {
+      rmSync(stagingDir, { recursive: true, force: true });
+      rmSync(rollbackDir, { recursive: true, force: true });
+      if (targetCreated && readdirSync(dataDir).length === 0) rmSync(dataDir);
+    }
+    if (rollbackError) {
+      throw new AggregateError([error, rollbackError], `In-place restore failed and rollback is incomplete; recovery files remain in ${rollbackDir}`);
+    }
+    throw error;
+  }
+
+  rmSync(stagingDir, { recursive: true, force: true });
+  rmSync(rollbackDir, { recursive: true, force: true });
+  return { dataDir, manifest: stagedManifest };
+}
+
+export function restoreRuntimeBackup({ backupDirectory, dataDirectory = defaultDataDir, force = false, inPlace = false, renameFile = renameSync }) {
   if (!backupDirectory) fail("restore requires a backup directory");
   const { backupDir, manifest } = verifyRuntimeBackup(backupDirectory);
   const dataDir = resolve(dataDirectory);
   if (isInside(dataDir, backupDir)) fail("Backup source must be outside the runtime data directory");
+  if (inPlace) return restoreRuntimeBackupInPlace({ backupDir, manifest, dataDir, force, renameFile });
   const parent = dirname(dataDir);
   mkdirSync(parent, { recursive: true });
 
@@ -209,23 +335,7 @@ export function restoreRuntimeBackup({ backupDirectory, dataDirectory = defaultD
   mkdirSync(stagingDir, { mode: 0o700 });
 
   try {
-    for (const entry of manifest.files) {
-      const destination = resolve(stagingDir, entry.name);
-      copyFileSync(resolve(backupDir, entry.name), destination);
-      chmodSync(destination, 0o600);
-    }
-    const stagedManifest = {
-      ...manifest,
-      restoredAt: new Date().toISOString(),
-      restoredFrom: backupDir,
-    };
-    writeFileSync(resolve(stagingDir, ".restore-manifest.json"), `${JSON.stringify(stagedManifest, null, 2)}\n`, {
-      mode: 0o600,
-    });
-    for (const name of databaseNames) {
-      const database = resolve(stagingDir, name);
-      if (existsSync(database)) assertSqliteIntegrity(database, true);
-    }
+    const stagedManifest = stageRuntimeRestore(backupDir, manifest, stagingDir);
 
     if (targetExists) renameSync(dataDir, previousDir);
     try {
@@ -254,9 +364,9 @@ function printUsage() {
   console.log(`Usage:
   npm run data:backup -- --output <directory> [--data-dir <directory>]
   npm run data:verify -- <backup-directory>
-  npm run data:restore -- <backup-directory> [--data-dir <directory>] [--force]
+  npm run data:restore -- <backup-directory> [--data-dir <directory>] [--force] [--in-place]
 
-Restore replaces runtime data only with --force. Stop the application before restoring.`);
+Restore replaces runtime data only with --force. Use --in-place for a mounted data directory. Stop the application before restoring.`);
 }
 
 async function main(args) {
@@ -269,7 +379,7 @@ async function main(args) {
   if (command === "backup") {
     const result = await createRuntimeBackup({
       dataDirectory,
-      outputDirectory: readOption(args, "--output"),
+      outputDirectory: readOption(args, "--output")
     });
     console.log(`Runtime backup created and verified: ${result.backupDir}`);
     return;
@@ -284,6 +394,7 @@ async function main(args) {
       backupDirectory: positional,
       dataDirectory,
       force: args.includes("--force"),
+      inPlace: args.includes("--in-place")
     });
     console.log(`Runtime data restored and verified: ${result.dataDir}`);
     return;

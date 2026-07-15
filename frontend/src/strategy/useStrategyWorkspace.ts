@@ -11,12 +11,14 @@ import type { StrategyArtifact } from "./library";
 import { artifactIrHash } from "./artifactLibraryModel";
 
 const blocklyMessages = Object.fromEntries(Object.entries(En).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+const MOBILE_WORKSPACE_SCALE = 0.65;
 let localeReady = false;
 
 interface UseStrategyWorkspaceOptions {
   activeArtifact?: StrategyArtifact;
   onSaveArtifact: (artifact: StrategyArtifact) => void;
   theme: "dark" | "light";
+  toolboxVisible?: boolean;
 }
 
 export function useStrategyWorkspace(options: UseStrategyWorkspaceOptions) {
@@ -27,6 +29,7 @@ export function useStrategyWorkspace(options: UseStrategyWorkspaceOptions) {
   const previewTimer = useRef<number>();
   const onSaveRef = useRef(options.onSaveArtifact);
   const activeRef = useRef(options.activeArtifact);
+  const toolboxVisibleRef = useRef(options.toolboxVisible !== false);
   const [preview, setPreview] = useState("");
   const [selectedType, setSelectedType] = useState<string>();
   const [strategyInputs, setStrategyInputs] = useState<StrategyIR["inputs"]>([]);
@@ -37,6 +40,7 @@ export function useStrategyWorkspace(options: UseStrategyWorkspaceOptions) {
   const [savedAt, setSavedAt] = useState<number>();
   onSaveRef.current = options.onSaveArtifact;
   activeRef.current = options.activeArtifact;
+  toolboxVisibleRef.current = options.toolboxVisible !== false;
 
   useEffect(() => {
     if (!localeReady) {
@@ -99,7 +103,7 @@ export function useStrategyWorkspace(options: UseStrategyWorkspaceOptions) {
     workspace.addChangeListener(onChange);
     observer = new ResizeObserver(() => Blockly.svgResize(workspace));
     observer.observe(container);
-    requestAnimationFrame(() => fitWorkspaceView(workspace));
+    requestAnimationFrame(() => fitWorkspaceView(workspace, toolboxVisibleRef.current ? undefined : MOBILE_WORKSPACE_SCALE));
 
     return () => {
       window.clearTimeout(previewTimer.current);
@@ -118,6 +122,14 @@ export function useStrategyWorkspace(options: UseStrategyWorkspaceOptions) {
 
   useEffect(() => {
     const workspace = workspaceRef.current;
+    if (!workspace) return;
+    const toolboxVisible = options.toolboxVisible !== false;
+    workspace.getToolbox()?.setVisible(toolboxVisible);
+    fitWorkspaceView(workspace, toolboxVisible ? undefined : MOBILE_WORKSPACE_SCALE);
+  }, [options.toolboxVisible]);
+
+  useEffect(() => {
+    const workspace = workspaceRef.current;
     const artifact = options.activeArtifact;
     if (!workspace || !artifact) return;
     try {
@@ -126,7 +138,7 @@ export function useStrategyWorkspace(options: UseStrategyWorkspaceOptions) {
       setInitError(undefined);
       setSavedAt(undefined);
       requestAnimationFrame(() => {
-        fitWorkspaceView(workspace);
+        fitWorkspaceView(workspace, toolboxVisibleRef.current ? undefined : MOBILE_WORKSPACE_SCALE);
         previewRef.current();
       });
     } catch (cause) {
@@ -191,12 +203,26 @@ function serializeArtifact(workspace: Blockly.WorkspaceSvg, artifact: StrategyAr
 }
 
 function extractWorkspaceName(workspace: Blockly.WorkspaceSvg) {
-  return workspace.getTopBlocks(false).find((block) => block.type === "strategy_start")?.getFieldValue("NAME") as string | undefined;
+  return workspace
+    .getTopBlocks(false)
+    .find((block) => block.type === "strategy_start")
+    ?.getFieldValue("NAME") as string | undefined;
 }
 
-function fitWorkspaceView(workspace: Blockly.WorkspaceSvg) {
+function fitWorkspaceView(workspace: Blockly.WorkspaceSvg, preferredScale?: number) {
   Blockly.svgResize(workspace);
   requestAnimationFrame(() => {
+    if (preferredScale) {
+      workspace.setScale(preferredScale);
+      const entryBlock = workspace.getTopBlocks(true)[0];
+      if (entryBlock) {
+        const origin = entryBlock.getRelativeToSurfaceXY();
+        workspace.scroll(16 - origin.x * preferredScale, 76 - origin.y * preferredScale);
+      } else {
+        workspace.scrollCenter();
+      }
+      return;
+    }
     workspace.zoomToFit();
     workspace.scrollCenter();
   });

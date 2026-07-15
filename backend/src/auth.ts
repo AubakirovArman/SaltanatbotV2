@@ -129,6 +129,50 @@ export function roleRank(role: AuthRole): number {
   }
 }
 
+export interface TradingAuthorizationLease {
+  /** Must be called synchronously immediately before the protected mutation. */
+  assertCurrent(): boolean;
+}
+
+/**
+ * Revalidate database authorization after a request waited behind a lifecycle
+ * lock. Legacy sessions are rechecked against their immutable request role.
+ */
+export async function revalidateTradingAuthorization(res: Response, required: AuthRole): Promise<TradingAuthorizationLease | undefined> {
+  if (!databaseIdentity) {
+    if (process.env.AUTH_MODE === "database") {
+      res.status(503).json({ error: "Authentication database is unavailable.", code: "auth_unavailable" });
+      return undefined;
+    }
+    return authorizationLease(res, () => roleAllows(res.locals.authRole as AuthRole | undefined, required));
+  }
+  const stale = res.locals.authPrincipal as IdentityPrincipal | undefined;
+  const current = stale && (await databaseIdentity.revalidatePrincipal(stale));
+  if (!current || current.user.id !== res.locals.authUserId) {
+    res.status(401).json({ error: "Authentication changed while the request was queued.", code: "authorization_stale" });
+    return undefined;
+  }
+  if (!roleAllows(current.effectiveTradingRole, required)) {
+    res.status(403).json({ error: `Forbidden — requires ${required} access.`, code: "trading_not_allowed" });
+    return undefined;
+  }
+  res.locals.authPrincipal = current;
+  res.locals.appRole = current.user.appRole;
+  res.locals.tradingRole = current.user.tradingRole;
+  res.locals.authRole = current.effectiveTradingRole;
+  return authorizationLease(res, () => databaseIdentity?.isAuthorizationCurrent(current) === true && roleAllows(current.effectiveTradingRole, required));
+}
+
+function authorizationLease(res: Response, current: () => boolean): TradingAuthorizationLease {
+  return {
+    assertCurrent() {
+      if (current()) return true;
+      if (!res.headersSent) res.status(401).json({ error: "Authentication changed while the request was queued.", code: "authorization_stale" });
+      return false;
+    }
+  };
+}
+
 /** Extract a bearer token from an Authorization header. */
 export function extractToken(req: { headers: Record<string, unknown>; query?: Record<string, unknown> }): string | undefined {
   const header = req.headers["authorization"];

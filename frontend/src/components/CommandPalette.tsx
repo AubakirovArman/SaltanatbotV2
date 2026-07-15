@@ -1,4 +1,4 @@
-import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
@@ -24,6 +24,8 @@ export function CommandPalette({ locale, open, onClose, commands }: CommandPalet
   const inputRef = useRef<HTMLInputElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const searchId = useId();
+  const listboxId = useId();
 
   useLayoutEffect(() => {
     if (open) {
@@ -39,9 +41,7 @@ export function CommandPalette({ locale, open, onClose, commands }: CommandPalet
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    const list = normalized
-      ? commands.filter((command) => `${command.label} ${command.group} ${command.hint ?? ""}`.toLowerCase().includes(normalized))
-      : commands;
+    const list = normalized ? commands.filter((command) => `${command.label} ${command.group} ${command.hint ?? ""}`.toLowerCase().includes(normalized)) : commands;
     return list.slice(0, 60);
   }, [commands, query]);
 
@@ -53,6 +53,7 @@ export function CommandPalette({ locale, open, onClose, commands }: CommandPalet
     command.run();
     onClose();
   };
+  const activeOptionId = filtered[index] ? `${listboxId}-option-${index}` : undefined;
 
   return createPortal(
     <div className="cmdk-backdrop" onClick={onClose} role="presentation">
@@ -72,18 +73,33 @@ export function CommandPalette({ locale, open, onClose, commands }: CommandPalet
         aria-modal="true"
         aria-label={shellText(locale, "commandPalette")}
       >
+        <label className="sr-only" htmlFor={searchId}>
+          {shellText(locale, "commandSearch")}
+        </label>
         <input
+          id={searchId}
           ref={inputRef}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls={listboxId}
+          aria-expanded="true"
+          aria-activedescendant={activeOptionId}
           value={query}
           placeholder={shellText(locale, "commandSearch")}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown") {
               event.preventDefault();
-              setIndex((current) => Math.min(filtered.length - 1, current + 1));
+              setIndex((current) => Math.min(Math.max(filtered.length - 1, 0), current + 1));
             } else if (event.key === "ArrowUp") {
               event.preventDefault();
               setIndex((current) => Math.max(0, current - 1));
+            } else if (event.key === "Home") {
+              event.preventDefault();
+              setIndex(0);
+            } else if (event.key === "End") {
+              event.preventDefault();
+              setIndex(Math.max(0, filtered.length - 1));
             } else if (event.key === "Enter") {
               event.preventDefault();
               const command = filtered[index];
@@ -92,20 +108,20 @@ export function CommandPalette({ locale, open, onClose, commands }: CommandPalet
           }}
         />
         <div className="cmdk-list">
-          {filtered.map((command, i) => (
-            <button
-              type="button"
-              key={command.id}
-              className={i === index ? "active" : ""}
-              onMouseEnter={() => setIndex(i)}
-              onClick={() => run(command)}
-            >
-              <span className="cmdk-group">{command.group}</span>
-              <span className="cmdk-label">{command.label}</span>
-              {command.hint && <span className="cmdk-hint">{command.hint}</span>}
-            </button>
-          ))}
-          {filtered.length === 0 && <div className="cmdk-empty">{shellText(locale, "noCommands")}</div>}
+          <div id={listboxId} role="listbox" aria-label={shellText(locale, "commandPalette")}>
+            {filtered.map((command, i) => (
+              <button type="button" key={command.id} id={`${listboxId}-option-${i}`} role="option" aria-selected={i === index} tabIndex={-1} className={i === index ? "active" : ""} onMouseEnter={() => setIndex(i)} onClick={() => run(command)}>
+                <span className="cmdk-group">{command.group}</span>
+                <span className="cmdk-label">{command.label}</span>
+                {command.hint && <span className="cmdk-hint">{command.hint}</span>}
+              </button>
+            ))}
+          </div>
+          {filtered.length === 0 && (
+            <div className="cmdk-empty" role="status">
+              {shellText(locale, "noCommands")}
+            </div>
+          )}
         </div>
         <div className="cmdk-footer">
           <span>↑↓ navigate</span>
@@ -120,9 +136,7 @@ export function CommandPalette({ locale, open, onClose, commands }: CommandPalet
 
 function trapTabKey(event: ReactKeyboardEvent, root: HTMLElement | null) {
   if (!root) return;
-  const focusable = Array.from(root.querySelectorAll<HTMLElement>(
-    'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
-  )).filter((element) => !element.hidden && element.getClientRects().length > 0);
+  const focusable = Array.from(root.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')).filter((element) => !element.hidden && element.getClientRects().length > 0);
   if (focusable.length === 0) return;
   const first = focusable[0];
   const last = focusable.at(-1);

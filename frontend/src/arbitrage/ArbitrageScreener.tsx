@@ -18,7 +18,7 @@ import type { ArbitrageChartTarget } from "./chartTarget";
 import { analysisText } from "./analysisText";
 import { alertDeliveryText } from "./alertDeliveryText";
 import { NativeSpreadScreener } from "./NativeSpreadScreener";
-import { evaluateBrowserAlertSnapshot } from "./browserAlerts";
+import { evaluateBrowserAlertSnapshot, loadBrowserAlertConfig, storeBrowserAlertConfig } from "./browserAlerts";
 import { LifecycleStatus } from "./LifecycleStatus";
 import { ScannerWorkbench, type ScannerColumn, type ScannerVisualRow } from "./ScannerWorkbench";
 import type { ScannerFilterValue } from "./scannerPrefs";
@@ -38,13 +38,15 @@ interface Props {
   locale: Locale;
   onOpenChart(target: ArbitrageChartTarget): void;
 }
+interface TenantScopedProps extends Props {
+  storageOwner?: string;
+}
 interface DepthState {
   routeId: string;
   loading: boolean;
   error?: ArbitrageDepthError;
   value?: ArbitrageDepthResponse;
 }
-const ALERT_KEY = "sbv2:arbitrage-alert:v1";
 const BASIS_COLUMNS: readonly ScannerColumn[] = [
   { id: "route", label: "", required: true },
   { id: "spot", label: "" },
@@ -70,17 +72,20 @@ const BASIS_COLUMN_TEXT = {
 } as const;
 
 export function ArbitrageScreener(props: Props) {
+  const accountAuth = useAuth();
+  const storageOwner = accountAuth.authRequired ? (accountAuth.user?.id ?? "") : undefined;
+  const storageScopeKey = storageOwner === undefined ? "legacy" : storageOwner || "unavailable";
   const [mode, setMode] = useState<ScannerMode>("basis");
 
   return (
     <div className="arb-workspace">
       <ScannerModeNav locale={props.locale} mode={mode} onMode={setMode} />
       {mode === "basis" ? (
-        <BasisScreener {...props} />
+        <BasisScreener key={`basis:${storageScopeKey}`} {...props} storageOwner={storageOwner} />
       ) : mode === "triangular" ? (
-        <TriangularScreener {...props} />
+        <TriangularScreener key={`triangular:${storageScopeKey}`} {...props} storageOwner={storageOwner} />
       ) : mode === "native" ? (
-        <NativeSpreadScreener {...props} />
+        <NativeSpreadScreener key={`native:${storageScopeKey}`} {...props} storageOwner={storageOwner} />
       ) : mode === "options" ? (
         <Suspense
           fallback={
@@ -118,31 +123,31 @@ export function ArbitrageScreener(props: Props) {
   );
 }
 
-function BasisScreener({ locale, onOpenChart }: Props) {
+function BasisScreener({ locale, onOpenChart, storageOwner }: TenantScopedProps) {
   const accountAuth = useAuth();
   const { scan, connection, error, refresh, clockHealth, clockError, refreshClock } = useArbitrageStream();
   const [search, setSearch] = useState("");
   const [minEdge, setMinEdge] = useState(0);
   const [minCapacity, setMinCapacity] = useState(1_000);
   const [ranking, setRanking] = useState<"profit" | "roi" | "edge" | "capacity" | "quality">("profit");
-  const [profile, setProfile] = useState(loadFeeProfile);
+  const [profile, setProfile] = useState(() => loadFeeProfile(storageOwner));
   const [notionalUsd, setNotionalUsd] = useState(10_000);
   const [depth, setDepth] = useState<DepthState>();
-  const [paperEvents, setPaperEvents] = useState(loadPaperEvents);
-  const [alertConfig, setAlertConfig] = useState(() => loadAlertConfig());
+  const [paperEvents, setPaperEvents] = useState(() => loadPaperEvents(storageOwner));
+  const [alertConfig, setAlertConfig] = useState(() => loadBrowserAlertConfig(storageOwner));
   const [notice, setNotice] = useState<string>();
   const previousEligible = useRef(new Set<string>());
   const initializedAlerts = useRef(false);
 
   useEffect(() => {
-    storeFeeProfile(profile);
-  }, [profile]);
+    storeFeeProfile(profile, storageOwner);
+  }, [profile, storageOwner]);
   useEffect(() => {
-    storePaperEvents(paperEvents);
-  }, [paperEvents]);
+    storePaperEvents(paperEvents, storageOwner);
+  }, [paperEvents, storageOwner]);
   useEffect(() => {
-    localStorage.setItem(ALERT_KEY, JSON.stringify(alertConfig));
-  }, [alertConfig]);
+    storeBrowserAlertConfig(alertConfig, storageOwner);
+  }, [alertConfig, storageOwner]);
 
   const opportunities = useMemo(() => {
     const query = search.trim().toUpperCase();
@@ -429,6 +434,7 @@ function BasisScreener({ locale, onOpenChart }: Props) {
       )}
       <ScannerWorkbench
         mode="basis"
+        storageOwner={storageOwner}
         locale={locale}
         filters={workspaceFilters}
         columns={workspaceColumns}
@@ -506,15 +512,6 @@ function Summary({ label, value, tone }: { label: string; value: string; tone?: 
     </div>
   );
 }
-function loadAlertConfig(): { enabled: boolean; thresholdBps: number } {
-  try {
-    const value = JSON.parse(localStorage.getItem(ALERT_KEY) ?? "null") as { enabled?: unknown; thresholdBps?: unknown } | null;
-    return { enabled: value?.enabled === true, thresholdBps: typeof value?.thresholdBps === "number" ? value.thresholdBps : 50 };
-  } catch {
-    return { enabled: false, thresholdBps: 50 };
-  }
-}
-
 function signalTextKey(quality: ArbitrageOpportunity["dataQuality"]): "signalQualityFresh" | "signalQualityStale" | "signalQualitySkewed" | "signalQualityUnverified" {
   if (quality === "fresh") return "signalQualityFresh";
   if (quality === "stale") return "signalQualityStale";

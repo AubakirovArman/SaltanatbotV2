@@ -1,4 +1,4 @@
-import type { AuditEventInput, IdentityRepository, UserUpdate, WsTicketRecord } from "./repository.js";
+import type { AdminGuardedUserUpdateResult, AuditEventInput, FirstAdminCreateResult, IdentityRepository, UserUpdate, WsTicketRecord } from "./repository.js";
 import type { IdentitySession, IdentityUser, UserStatus } from "./types.js";
 
 export class MemoryIdentityRepository implements IdentityRepository {
@@ -11,6 +11,14 @@ export class MemoryIdentityRepository implements IdentityRepository {
     if ([...this.users.values()].some((item) => item.loginNormalized === user.loginNormalized)) return false;
     this.users.set(user.id, cloneUser(user));
     return true;
+  }
+
+  async createFirstAdmin(user: IdentityUser): Promise<FirstAdminCreateResult> {
+    if (user.appRole !== "admin" || user.status !== "active") throw new Error("First administrator must be active.");
+    if ([...this.users.values()].some((item) => item.appRole === "admin")) return "admin_exists";
+    if ([...this.users.values()].some((item) => item.loginNormalized === user.loginNormalized)) return "login_exists";
+    this.users.set(user.id, cloneUser(user));
+    return "created";
   }
 
   async findUserByLogin(loginNormalized: string): Promise<IdentityUser | undefined> {
@@ -40,6 +48,21 @@ export class MemoryIdentityRepository implements IdentityRepository {
     const next = cloneUser({ ...current, ...update });
     this.users.set(id, next);
     return cloneUser(next);
+  }
+
+  async updateUserAsAdmin(actorUserId: string, subjectUserId: string, update: UserUpdate): Promise<AdminGuardedUserUpdateResult> {
+    const actor = this.users.get(actorUserId);
+    const actorFailure = validateAdminActor(actor);
+    if (actorFailure) return { status: actorFailure };
+    const current = this.users.get(subjectUserId);
+    if (!current) return { status: "subject_not_found" };
+    const next = cloneUser({ ...current, ...update });
+    if (isActiveAdmin(current) && !isActiveAdmin(next)) {
+      const replacementExists = [...this.users.values()].some((user) => user.id !== subjectUserId && isActiveAdmin(user));
+      if (!replacementExists) return { status: "last_active_admin" };
+    }
+    this.users.set(subjectUserId, next);
+    return { status: "updated", user: cloneUser(next) };
   }
 
   async createSession(session: IdentitySession): Promise<void> {
@@ -121,4 +144,16 @@ function cloneSession(session: IdentitySession): IdentitySession {
     createdAt: new Date(session.createdAt),
     revokedAt: session.revokedAt && new Date(session.revokedAt)
   };
+}
+
+function isActiveAdmin(user: Pick<IdentityUser, "status" | "appRole">): boolean {
+  return user.status === "active" && user.appRole === "admin";
+}
+
+function validateAdminActor(user: IdentityUser | undefined): "actor_not_found" | "actor_inactive" | "actor_not_admin" | "actor_password_change_required" | undefined {
+  if (!user) return "actor_not_found";
+  if (user.status !== "active") return "actor_inactive";
+  if (user.appRole !== "admin") return "actor_not_admin";
+  if (user.mustChangePassword) return "actor_password_change_required";
+  return undefined;
 }

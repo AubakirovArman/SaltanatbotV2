@@ -4,7 +4,7 @@ import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
-import { clearAuthSession, createAuthSession, isDatabaseAuthMode, isDemoMode, issueWsTicketForRequest, requireAuth, roleAllows, roleForToken } from "../auth.js";
+import { clearAuthSession, createAuthSession, isDatabaseAuthMode, isDemoMode, issueWsTicketForRequest, requireAuth, revalidateTradingAuthorization, roleAllows, roleForToken } from "../auth.js";
 import type { IdentityPrincipal } from "../identity/types.js";
 import type { ProviderRouter } from "../providers/router.js";
 import { TradingEngine } from "./engine.js";
@@ -14,22 +14,8 @@ import { BybitV5Client } from "./exchange/bybitClient.js";
 import { BybitUtaService } from "./bybitUta.js";
 import { roleForBot } from "./botRouteIdentity.js";
 import { TelegramControl } from "./telegramControl.js";
-import {
-  getBotForOwner,
-  getSetting,
-  getTradingAccountCredentialsForOwner,
-  getTradingAccountForOwner,
-  initStore,
-  LEGACY_TRADING_OWNER_ID,
-  listAuditLogForOwner,
-  listBotsForOwner,
-  listFillsForOwner,
-  listLogsForOwner,
-  listOrderEventsForOwner,
-  listOrderJournalForOwner,
-  setSetting
-} from "./store.js";
-import type { AuthRole, BotConfig, ExchangeId } from "./types.js";
+import { getBotForOwner, getSetting, getTradingAccountCredentialsForOwner, getTradingAccountForOwner, initStore, LEGACY_TRADING_OWNER_ID, listAuditLogForOwner, listBotsForOwner, listFillsForOwner, listLogsForOwner, listOrderEventsForOwner, listOrderJournalForOwner, setSetting } from "./store.js";
+import type { AuthRole, BotConfig, ExchangeId, ExecOrder } from "./types.js";
 import type { ArbitrageAlertService } from "../arbitrage/alerts.js";
 import { registerArbitrageAlertRoutes } from "../arbitrage/alertRoutes.js";
 import { ensureSecureTradingOrigin, isSecureTradingOrigin, requireSecureTradingOrigin } from "../secureTradingOrigin.js";
@@ -43,6 +29,8 @@ import { tenantSettingKey, tradingOwnerFromResponse } from "./ownership.js";
 import { TradeStreamHub } from "./tradeStreamHub.js";
 import { registerNotificationRoutes } from "./notificationRoutes.js";
 import { registerBotLifecycleMutationRoutes } from "./botLifecycleMutationRoutes.js";
+import { isTradingResourceQuotaError, loadTradingResourceLimits, type TradingResourceLimits } from "./resourceQuotas.js";
+import { pausedOrderAllowed } from "./managedExecution.js";
 
 const commandBodySchema = z.object({
   command: z.string().min(1).max(2000),
@@ -77,6 +65,8 @@ export interface TradingApiOptions {
   legacyOwnerUserId?: string;
   /** Inbound Telegram commands are single-operator only until the poller is tenant/session aware. */
   telegramControlEnabled?: boolean;
+  /** Per-owner hard caps. Environment defaults are loaded when omitted. */
+  resourceLimits?: TradingResourceLimits;
 }
 
 interface OwnerAccessRevocationOperations {
@@ -86,10 +76,7 @@ interface OwnerAccessRevocationOperations {
 }
 
 /** Run every fail-closed revocation step even when durable disarm persistence fails. */
-export async function revokeTradingOwnerAccess(
-  ownerUserId: string,
-  operations: OwnerAccessRevocationOperations
-): Promise<void> {
+export async function revokeTradingOwnerAccess(ownerUserId: string, operations: OwnerAccessRevocationOperations): Promise<void> {
   const failures: unknown[] = [];
   try {
     operations.disconnect();
@@ -120,6 +107,7 @@ export async function revokeTradingOwnerAccess(
 
 export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: ArbitrageAlertService, options: TradingApiOptions = {}): TradingApi {
   initStore({ legacyOwnerUserId: options.legacyOwnerUserId });
+  const resourceLimits = options.resourceLimits ?? loadTradingResourceLimits();
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const tradeStream = new TradeStreamHub();
@@ -129,15 +117,10 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       socket.close(1008, "Authenticated trading principal is required");
       return;
     }
-    tradeStream.attach(
-      socket,
-      principal?.user.id ?? LEGACY_TRADING_OWNER_ID,
-      principal?.expiresAt.getTime(),
-      principal?.sessionIdHash
-    );
+    tradeStream.attach(socket, principal?.user.id ?? LEGACY_TRADING_OWNER_ID, principal?.expiresAt.getTime(), principal?.sessionIdHash);
   });
 
-  const engine = new TradingEngine(provider, (event: TradeEvent) => tradeStream.publish(event), options.emergencyAdapters);
+  const engine = new TradingEngine(provider, (event: TradeEvent) => tradeStream.publish(event), options.emergencyAdapters, resourceLimits);
   const telegramControl = new TelegramControl(engine, options.legacyOwnerUserId ?? LEGACY_TRADING_OWNER_ID, options.telegramControlEnabled ?? !isDatabaseAuthMode());
   const router = Router();
 
@@ -146,8 +129,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     return { ...publicBot, status: engine.isRunningForOwner(ownerUserId, bot.id) ? "running" : "stopped" };
   };
 
-  const liveEnabled = (ownerUserId: string) => getSetting<boolean>(tenantSettingKey(ownerUserId, "liveTradingEnabled")) === true
-    || (ownerUserId === LEGACY_TRADING_OWNER_ID && getSetting<boolean>("liveTradingEnabled") === true);
+  const liveEnabled = (ownerUserId: string) => getSetting<boolean>(tenantSettingKey(ownerUserId, "liveTradingEnabled")) === true || (ownerUserId === LEGACY_TRADING_OWNER_ID && getSetting<boolean>("liveTradingEnabled") === true);
   const paperMultiLeg = options.paperMultiLeg === false ? undefined : (options.paperMultiLeg ?? (process.env.NODE_ENV === "test" ? undefined : getPaperMultiLegRuntime()));
 
   router.post("/session", (req, res) => {
@@ -201,8 +183,8 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
 
   registerTradingAccountRegistryRoutes(router, requireRole("live-trade"), {
     isBotRunning: (ownerUserId, botId) => engine.isRunningForOwner(ownerUserId, botId),
-    withAccountLifecycleLock: (ownerUserId, accountId, operation) =>
-      engine.withAccountLifecycleLock(ownerUserId, accountId, operation)
+    maxAccountsPerOwner: resourceLimits.maxAccountsPerOwner,
+    withAccountLifecycleLock: (ownerUserId, accountId, operation) => engine.withAccountLifecycleLock(ownerUserId, accountId, operation)
   });
 
   router.post("/settings", requireRole("live-trade"), (req, res) => {
@@ -240,7 +222,10 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     }
   });
 
-  registerBotLifecycleMutationRoutes(router, engine, { view: withStatus });
+  registerBotLifecycleMutationRoutes(router, engine, {
+    view: withStatus,
+    maxBotsPerOwner: resourceLimits.maxBotsPerOwner
+  });
 
   router.post("/bots/:id/start", async (req, res) => {
     const ownerUserId = tradingOwnerFromResponse(res);
@@ -250,7 +235,8 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       res.status(404).json({ error: "Bot not found" });
       return;
     }
-    if (!ensureRole(res, roleForBot(bot))) return;
+    const requiredRole = roleForBot(bot);
+    if (!ensureRole(res, requiredRole)) return;
     // Live trading is double-gated: a global arm flag AND per-request confirmation.
     if (bot.exchange !== "paper") {
       if (!ensureSecureTradingOrigin(req, res)) return;
@@ -272,21 +258,32 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
         return;
       }
     }
+    const authorization = await revalidateTradingAuthorization(res, requiredRole);
+    if (!authorization) return;
     try {
-      const preflight = bot.exchange === "bybit" && bot.market === "futures" && bot.bybitCrossCollateral ? async () => {
-        const snapshot = await bybitUta(ownerUserId, botTradingAccountId(bot)).snapshot();
-        if (!snapshot.risk.entryAllowed) throw new Error(`Bybit UTA risk guard blocked start: ${snapshot.risk.reasons.join("; ")}`);
-        if (!snapshot.assets.some((asset) => asset.collateralEnabled && asset.usdValue > 0)) {
-          throw new Error("Bybit cross-collateral mode requires a funded collateral asset to be enabled.");
+      const preflight = async () => {
+        if (bot.exchange === "bybit" && bot.market === "futures" && bot.bybitCrossCollateral) {
+          const snapshot = await bybitUta(ownerUserId, botTradingAccountId(bot)).snapshot();
+          if (!snapshot.risk.entryAllowed) throw new Error(`Bybit UTA risk guard blocked start: ${snapshot.risk.reasons.join("; ")}`);
+          if (!snapshot.assets.some((asset) => asset.collateralEnabled && asset.usdValue > 0)) {
+            throw new Error("Bybit cross-collateral mode requires a funded collateral asset to be enabled.");
+          }
         }
-      } : undefined;
+        if (!authorization.assertCurrent()) throw new Error("Trading authorization changed while the bot start was queued.");
+      };
       const override = (req.body as { override?: boolean })?.override === true;
       const validateCurrent = () => {
         if (!isDeepStrictEqual(getBotForOwner(ownerUserId, id), bot)) throw new Error("Bot configuration changed while start was queued. Retry with the current configuration.");
+        if (!authorization.assertCurrent()) throw new Error("Trading authorization changed while the bot start was queued.");
       };
       await engine.startForOwner(ownerUserId, bot, { override, preflight, validateCurrent });
       res.json({ ok: true, bot: withStatus(ownerUserId, bot) });
     } catch (error) {
+      if (res.headersSent) return;
+      if (isTradingResourceQuotaError(error)) {
+        res.status(429).json({ error: error.message, code: error.code, limit: error.limit });
+        return;
+      }
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to start" });
     }
   });
@@ -318,9 +315,13 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       res.status(404).json({ error: "Bot not found" });
       return;
     }
-    if (!ensureRole(res, roleForBot(bot))) return;
+    const requiredRole = roleForBot(bot);
+    if (!ensureRole(res, requiredRole)) return;
     if (bot.exchange !== "paper" && !ensureSecureTradingOrigin(req, res)) return;
-    res.json({ ok: await engine.confirmResumeForOwner(ownerUserId, id) });
+    const authorization = await revalidateTradingAuthorization(res, requiredRole);
+    if (!authorization) return;
+    const ok = await engine.confirmResumeForOwner(ownerUserId, id, () => authorization.assertCurrent());
+    if (!res.headersSent) res.json({ ok });
   });
 
   router.post("/bots/:id/command", async (req, res) => {
@@ -336,10 +337,15 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       res.status(404).json({ error: "Bot not found" });
       return;
     }
-    if (!ensureRole(res, roleForBot(bot))) return;
-    if (bot.exchange !== "paper" && parsed.data.dryRun !== true && !ensureSecureTradingOrigin(req, res)) return;
-    const result = await engine.manualCommandForOwner(ownerUserId, id, parsed.data.command, parsed.data.dryRun === true);
-    res.json(result);
+    const requiredRole = roleForBot(bot);
+    if (!ensureRole(res, requiredRole)) return;
+    const dryRun = parsed.data.dryRun === true;
+    if (bot.exchange !== "paper" && !dryRun && !ensureSecureTradingOrigin(req, res)) return;
+    const authorization = dryRun ? undefined : await revalidateTradingAuthorization(res, requiredRole);
+    if (!dryRun && !authorization) return;
+    const authorize = authorization ? (order: ExecOrder) => pausedOrderAllowed(order) || authorization.assertCurrent() : undefined;
+    const result = await engine.manualCommandForOwner(ownerUserId, id, parsed.data.command, dryRun, authorize);
+    if (!res.headersSent) res.json(result);
   });
 
   router.get("/bots/:id/fills", (req, res) => {
@@ -405,11 +411,12 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     telegramControl,
     disconnectOwner: (ownerUserId, reason) => tradeStream.disconnectOwner(ownerUserId, reason),
     disconnectSession: (sessionIdHash, reason) => tradeStream.disconnectSession(sessionIdHash, reason),
-    revokeOwnerAccess: (ownerUserId) => revokeTradingOwnerAccess(ownerUserId, {
-      disconnect: () => tradeStream.disconnectOwner(ownerUserId),
-      stopAndSuspend: () => engine.stopOwnerSafely(ownerUserId),
-      disarm: () => setSetting(tenantSettingKey(ownerUserId, "liveTradingEnabled"), false)
-    }),
+    revokeOwnerAccess: (ownerUserId) =>
+      revokeTradingOwnerAccess(ownerUserId, {
+        disconnect: () => tradeStream.disconnectOwner(ownerUserId),
+        stopAndSuspend: () => engine.stopOwnerSafely(ownerUserId),
+        disarm: () => setSetting(tenantSettingKey(ownerUserId, "liveTradingEnabled"), false)
+      }),
     restoreOwnerAccess: (ownerUserId) => engine.resumeOwnerStarts(ownerUserId)
   };
 }

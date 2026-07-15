@@ -22,8 +22,13 @@ export function registerIdentityServerRoutes(app: Express, runtime: IdentityRunt
 
   if (runtime.service) {
     const routers = createIdentityRouters(runtime.service);
-    app.use("/api/auth", express.json({ limit: "32kb" }), routers.auth);
-    app.use("/api/admin", express.json({ limit: "32kb" }), routers.admin);
+    // Public authentication and internally-authenticated admin routes finish
+    // before the catch-all /api middleware below. Give them the same bounded
+    // request governor explicitly, keyed by IP before a session is trusted.
+    app.use("/api/auth", apiRateLimit);
+    app.use("/api/admin", apiRateLimit);
+    app.use("/api/auth", routers.auth);
+    app.use("/api/admin", routers.admin);
   } else {
     app.get("/api/auth/config", (_request, response) => {
       response.setHeader("Cache-Control", "no-store");

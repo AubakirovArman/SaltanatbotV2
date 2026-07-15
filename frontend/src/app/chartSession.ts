@@ -1,5 +1,6 @@
 import type { ChartType, Timeframe } from "../types";
 import type { ChartLayoutPreset, WorkspaceChart } from "../workspace/workspaces";
+import { readTenantLocalItem, writeTenantLocalItem } from "./tenantLocalStorage";
 import { normalizePaneIndicatorOverrides } from "../chart/paneIndicators";
 import { normalizeCompareOverlays } from "../chart/compareConfig";
 import { DEFAULT_CHART_TIME_ZONE, LEGACY_CHART_TIME_ZONE, normalizeChartTimeZone } from "../chart/timeAxis";
@@ -23,9 +24,9 @@ export interface LastChartSession {
   charts: WorkspaceChart[];
 }
 
-export function loadLastChartSession(fallback: ChartSessionFallback): LastChartSession {
+export function loadLastChartSession(fallback: ChartSessionFallback, ownerId?: string): LastChartSession {
   try {
-    const raw = localStorage.getItem(LAST_CHART_SESSION_KEY);
+    const raw = readTenantLocalItem(localStorage, LAST_CHART_SESSION_KEY, ownerId);
     if (!raw || raw.length > MAX_SESSION_BYTES) return defaultSession(fallback);
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return defaultSession(fallback);
@@ -42,7 +43,7 @@ export function loadLastChartSession(fallback: ChartSessionFallback): LastChartS
   }
 }
 
-export function saveLastChartSession(preset: ChartLayoutPreset, charts: WorkspaceChart[], now = Date.now()): void {
+export function saveLastChartSession(preset: ChartLayoutPreset, charts: WorkspaceChart[], now = Date.now(), ownerId?: string): void {
   try {
     const count = chartCount(preset);
     if (charts.length < count) return;
@@ -50,9 +51,18 @@ export function saveLastChartSession(preset: ChartLayoutPreset, charts: Workspac
       version: LAST_CHART_SESSION_VERSION,
       savedAt: now,
       preset,
-      charts: charts.slice(0, count).map((chart, index) => ({ ...chart, id: `chart-${index + 1}`, linkSymbol: index === 0 ? true : chart.linkSymbol, linkChartType: index === 0 ? true : chart.linkChartType, indicatorOverrides: chart.linkIndicators ? undefined : chart.indicatorOverrides?.map((override) => ({ ...override })), compareOverlays: chart.linkCompare ? undefined : chart.compareOverlays?.map((overlay) => ({ ...overlay })) }))
+      charts: charts
+        .slice(0, count)
+        .map((chart, index) => ({
+          ...chart,
+          id: `chart-${index + 1}`,
+          linkSymbol: index === 0 ? true : chart.linkSymbol,
+          linkChartType: index === 0 ? true : chart.linkChartType,
+          indicatorOverrides: chart.linkIndicators ? undefined : chart.indicatorOverrides?.map((override) => ({ ...override })),
+          compareOverlays: chart.linkCompare ? undefined : chart.compareOverlays?.map((overlay) => ({ ...overlay }))
+        }))
     };
-    localStorage.setItem(LAST_CHART_SESSION_KEY, JSON.stringify(session));
+    writeTenantLocalItem(localStorage, LAST_CHART_SESSION_KEY, JSON.stringify(session), ownerId);
   } catch {
     // Runtime state remains usable when storage is unavailable or full.
   }
@@ -71,11 +81,11 @@ function chartCount(preset: ChartLayoutPreset): number {
 }
 
 function normalizeChart(value: unknown, index: number, fallback: ChartSessionFallback, fallbackTimeZone: import("../chart/timeAxis").ChartTimeZone): WorkspaceChart {
-  const item = value && typeof value === "object" ? value as Partial<WorkspaceChart> : {};
+  const item = value && typeof value === "object" ? (value as Partial<WorkspaceChart>) : {};
   const linkIndicators = item.linkIndicators !== false;
   const linkCompare = item.linkCompare !== false;
-  const timeframe = TIMEFRAMES.includes(item.timeframe as Timeframe) ? item.timeframe as Timeframe : fallback.timeframe;
-  const chartType = CHART_TYPES.includes(item.chartType as ChartType) ? item.chartType as ChartType : fallback.chartType;
+  const timeframe = TIMEFRAMES.includes(item.timeframe as Timeframe) ? (item.timeframe as Timeframe) : fallback.timeframe;
+  const chartType = CHART_TYPES.includes(item.chartType as ChartType) ? (item.chartType as ChartType) : fallback.chartType;
   return {
     id: `chart-${index + 1}`,
     symbol: validSymbol(item.symbol) ? item.symbol : fallback.symbol,
@@ -99,11 +109,7 @@ function normalizeChart(value: unknown, index: number, fallback: ChartSessionFal
 }
 
 function validSymbol(value: unknown): value is string {
-  return typeof value === "string"
-    && value.trim() === value
-    && value.length > 0
-    && value.length <= 64
-    && !Array.from(value).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
+  return typeof value === "string" && value.trim() === value && value.length > 0 && value.length <= 64 && !Array.from(value).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
 }
 
 function finiteNumber(value: unknown, fallback: number): number {

@@ -53,6 +53,7 @@ type SocketHealth = "connecting" | "connected" | "degraded";
 
 export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 }: TradingViewProps) {
   const accountAuth = useAuth();
+  const localStorageOwner = accountAuth.authRequired ? accountAuth.user?.id ?? "" : undefined;
   const [bots, setBots] = useState<TradingBot[]>([]);
   const [view, setView] = useState<CenterView>({ kind: "portfolio" });
   const [live, setLive] = useState<Record<string, LiveState>>({});
@@ -461,6 +462,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
             fills={fills[selectedBot.id] ?? []}
             logs={logs[selectedBot.id] ?? []}
             locale={locale}
+            storageOwnerId={localStorageOwner}
             canControl={selectedBot.exchange === "paper" ? canUsePaperTrading : canUseLiveTrading}
             onChanged={refreshBots}
             onDeleted={() => {

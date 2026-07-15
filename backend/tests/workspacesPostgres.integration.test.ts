@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { migrateDatabase } from "../src/database/migrations.js";
 import { createWorkspaceRouter } from "../src/workspaces/routes.js";
+import { assertIsolatedTestDatabase } from "./support/postgresTestDatabase.js";
 
 const connectionString = process.env.WORKSPACES_TEST_DATABASE_URL;
 const describePostgres = connectionString ? describe : describe.skip;
@@ -32,6 +33,7 @@ interface ApiJson {
 describePostgres("workspaces against isolated PostgreSQL", () => {
   beforeAll(async () => {
     pool = new Pool({ connectionString, max: 8 });
+    await assertIsolatedTestDatabase(pool, "WORKSPACES_TEST_DATABASE_URL");
     await migrateDatabase(pool);
     await pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [[OWNER_A, OWNER_B]]);
     await pool.query(
@@ -82,6 +84,30 @@ describePostgres("workspaces against isolated PostgreSQL", () => {
     expect((await json(ownerView)).workspace).toMatchObject({ name: "Private chart", payload: { owner: "a" }, revision: 1 });
   });
 
+  it("rejects stale or missing expected-owner headers before reading or writing the cookie owner's workspaces", async () => {
+    const created = await createWorkspace(OWNER_B, "owner-b-private", "Owner B private", { owner: "b" });
+
+    const staleRead = await api(OWNER_B, "/", { expectedOwner: OWNER_A });
+    expect(staleRead.status).toBe(409);
+    expect(await json(staleRead)).toMatchObject({ code: "workspace_owner_mismatch" });
+
+    const staleWrite = await api(OWNER_B, "/", {
+      method: "POST",
+      expectedOwner: OWNER_A,
+      body: workspaceInput("stale-owner-a", "Must not be written", { owner: "a" })
+    });
+    expect(staleWrite.status).toBe(409);
+    expect(await json(staleWrite)).toMatchObject({ code: "workspace_owner_mismatch" });
+
+    const missingHeader = await api(OWNER_B, "/", { expectedOwner: null });
+    expect(missingHeader.status).toBe(409);
+    expect(await json(missingHeader)).toMatchObject({ code: "workspace_owner_mismatch" });
+
+    expect(await json(await api(OWNER_B, "/"))).toMatchObject({
+      workspaces: [{ id: created.id, clientId: "owner-b-private", payload: { owner: "b" } }]
+    });
+  });
+
   it("returns the current document on stale update, delete, and rollback conflicts without adding revisions", async () => {
     const created = await createWorkspace(OWNER_A, "optimistic", "Revision one", { version: 1 });
     const updatedResponse = await api(OWNER_A, `/${created.id}`, {
@@ -110,10 +136,7 @@ describePostgres("workspaces against isolated PostgreSQL", () => {
       });
     }
 
-    const count = await pool.query<{ count: string }>(
-      "SELECT count(*)::text AS count FROM workspace_revisions WHERE workspace_id = $1",
-      [created.id]
-    );
+    const count = await pool.query<{ count: string }>("SELECT count(*)::text AS count FROM workspace_revisions WHERE workspace_id = $1", [created.id]);
     expect(count.rows[0]?.count).toBe("2");
   });
 
@@ -144,10 +167,7 @@ describePostgres("workspaces against isolated PostgreSQL", () => {
     const afterRollback = (await json(await api(OWNER_A, `/${created.id}/revisions`))).revisions as WorkspaceJson[];
     expect(afterRollback).toHaveLength(20);
     expect(afterRollback.map((workspace) => workspace.revision)).toEqual(Array.from({ length: 20 }, (_, index) => 27 - index));
-    const count = await pool.query<{ count: string }>(
-      "SELECT count(*)::text AS count FROM workspace_revisions WHERE workspace_id = $1",
-      [created.id]
-    );
+    const count = await pool.query<{ count: string }>("SELECT count(*)::text AS count FROM workspace_revisions WHERE workspace_id = $1", [created.id]);
     expect(count.rows[0]?.count).toBe("20");
   });
 
@@ -185,12 +205,7 @@ describePostgres("workspaces against isolated PostgreSQL", () => {
   });
 });
 
-function workspaceInput(
-  clientId: string,
-  name: string,
-  payload: Record<string, unknown>,
-  revision?: number
-): Record<string, unknown> {
+function workspaceInput(clientId: string, name: string, payload: Record<string, unknown>, revision?: number): Record<string, unknown> {
   return {
     clientId,
     name,
@@ -200,26 +215,18 @@ function workspaceInput(
   };
 }
 
-async function createWorkspace(
-  owner: string,
-  clientId: string,
-  name: string,
-  payload: Record<string, unknown>
-): Promise<WorkspaceJson> {
+async function createWorkspace(owner: string, clientId: string, name: string, payload: Record<string, unknown>): Promise<WorkspaceJson> {
   const response = await api(owner, "/", { method: "POST", body: workspaceInput(clientId, name, payload) });
   expect(response.status).toBe(201);
   return (await json(response)).workspace as WorkspaceJson;
 }
 
-async function api(
-  owner: string,
-  path: string,
-  input: { method?: string; body?: unknown } = {}
-): Promise<Response> {
+async function api(owner: string, path: string, input: { method?: string; body?: unknown; expectedOwner?: string | null } = {}): Promise<Response> {
   return fetch(`${baseUrl}${path}`, {
     method: input.method,
     headers: {
       "x-test-owner": owner,
+      ...(input.expectedOwner === null ? {} : { "x-sbv2-expected-user": input.expectedOwner ?? owner }),
       ...(input.body === undefined ? {} : { "content-type": "application/json" })
     },
     ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) })
@@ -227,7 +234,7 @@ async function api(
 }
 
 async function json(response: Response): Promise<ApiJson> {
-  return await response.json() as ApiJson;
+  return (await response.json()) as ApiJson;
 }
 
 async function startWorkspaceApi(database: Pool): Promise<{ server: Server; baseUrl: string }> {
@@ -235,6 +242,7 @@ async function startWorkspaceApi(database: Pool): Promise<{ server: Server; base
   app.use(express.json());
   app.use((request, response, next) => {
     response.locals.authPrincipal = { user: { id: request.header("x-test-owner") } };
+    response.locals.authMode = "database";
     next();
   });
   app.use("/api/workspaces", createWorkspaceRouter(database));
@@ -249,5 +257,5 @@ async function startWorkspaceApi(database: Pool): Promise<{ server: Server; base
 }
 
 function closeServer(instance: Server): Promise<void> {
-  return new Promise((resolve, reject) => instance.close((error) => error ? reject(error) : resolve()));
+  return new Promise((resolve, reject) => instance.close((error) => (error ? reject(error) : resolve())));
 }

@@ -6,33 +6,13 @@ import { loadLocale, localeDirection, nextLocale, storeLocale, type Locale } fro
 import { warmStrategyLab } from "../strategy/loadStrategyLab";
 import { storeIndicators } from "../strategy/storage";
 import type { ChartType, DataExchange, Timeframe } from "../types";
-import {
-  applyIndicatorSelection,
-  captureWorkspace,
-  downloadWorkspaceFile,
-  loadWorkspaces,
-  parseWorkspaceFile,
-  reviseWorkspace,
-  rollbackWorkspace,
-  saveWorkspaces,
-  type ChartLayoutPreset,
-  type WorkspaceChart
-} from "../workspace/workspaces";
+import { applyIndicatorSelection, captureWorkspace, downloadWorkspaceFile, loadWorkspaces, parseWorkspaceFile, reviseWorkspace, rollbackWorkspace, saveWorkspaces, type ChartLayoutPreset, type WorkspaceChart } from "../workspace/workspaces";
 import { createWorkspaceRemoteSync, mergeWorkspaceUpdates, type WorkspaceRemoteSync } from "../workspace/remoteSync";
-import {
-  asCompareChartType,
-  DEFAULT_COMPARE_DOWN,
-  DEFAULT_COMPARE_UP,
-  loadCompare,
-  loadCryptoExchange,
-  loadTheme,
-  MAX_COMPARE,
-  readPanel,
-  writePanel
-} from "./shellStorage";
+import { asCompareChartType, DEFAULT_COMPARE_DOWN, DEFAULT_COMPARE_UP, loadCompare, loadCryptoExchange, loadTheme, MAX_COMPARE, readPanel, writePanel } from "./shellStorage";
 import { compareColor } from "../chart/compareColors";
 import { loadLastChartSession, saveLastChartSession, type LastChartSession } from "./chartSession";
 import { normalizeDistinctMarketSymbols } from "./distinctMarkets";
+import { writeTenantLocalItem } from "./tenantLocalStorage";
 
 export type AppMode = "chart" | "strategy" | "trade" | "screener";
 export type AppTheme = "dark" | "light";
@@ -52,9 +32,9 @@ interface UseAppShellOptions {
 
 export function useAppShell(options: UseAppShellOptions) {
   const auth = useContext(AuthContext);
-  const workspaceOwner = auth?.authRequired ? auth.user?.id ?? "" : undefined;
-  const [initialChartSession] = useState(() => options.initialChartSession ?? loadLastChartSession({ symbol: options.symbol, timeframe: options.timeframe, chartType: options.chartType }));
-  const [cryptoExchange, setCryptoExchange] = useState<DataExchange>(loadCryptoExchange);
+  const workspaceOwner = auth?.authRequired ? (auth.user?.id ?? "") : undefined;
+  const [initialChartSession] = useState(() => options.initialChartSession ?? loadLastChartSession({ symbol: options.symbol, timeframe: options.timeframe, chartType: options.chartType }, workspaceOwner));
+  const [cryptoExchange, setCryptoExchange] = useState<DataExchange>(() => loadCryptoExchange(workspaceOwner));
   const [theme, setTheme] = useState<AppTheme>(loadTheme);
   const [locale, setLocale] = useState<Locale>(loadLocale);
   const [leftOpen, setLeftOpen] = useState(() => readPanel("mf:panel:left", true));
@@ -67,7 +47,7 @@ export function useAppShell(options: UseAppShellOptions) {
   const [leftSize, setLeftSize] = useState(260);
   const [rightSize, setRightSize] = useState(280);
   const [panelsSwapped, setPanelsSwapped] = useState(false);
-  const [compareOverlays, setCompareOverlays] = useState<CompareOverlayConfig[]>(() => loadCompare(options.timeframe, options.chartType));
+  const [compareOverlays, setCompareOverlays] = useState<CompareOverlayConfig[]>(() => loadCompare(options.timeframe, options.chartType, workspaceOwner));
   const workspaceSync = useRef<WorkspaceRemoteSync>();
   const workspacesRef = useRef(workspaces);
   workspacesRef.current = workspaces;
@@ -78,7 +58,7 @@ export function useAppShell(options: UseAppShellOptions) {
   }, [workspaceOwner, workspaces]);
   useEffect(() => {
     if (!auth?.authRequired || !auth.user) return;
-    const sync = createWorkspaceRemoteSync((incoming) => {
+    const sync = createWorkspaceRemoteSync(auth.user.id, (incoming) => {
       setWorkspaces((current) => mergeWorkspaceUpdates(current, incoming));
     });
     workspaceSync.current = sync;
@@ -91,42 +71,60 @@ export function useAppShell(options: UseAppShellOptions) {
       if (workspaceSync.current === sync) workspaceSync.current = undefined;
     };
   }, [auth?.authRequired, auth?.user?.id]);
-  useEffect(() => { try { localStorage.setItem("mf:cryptoExchange", cryptoExchange); } catch { /* noop */ } }, [cryptoExchange]);
+  useEffect(() => {
+    try {
+      writeTenantLocalItem(localStorage, "mf:cryptoExchange", cryptoExchange, workspaceOwner);
+    } catch {
+      /* noop */
+    }
+  }, [cryptoExchange, workspaceOwner]);
   useEffect(() => writePanel("mf:panel:left", leftOpen), [leftOpen]);
   useEffect(() => writePanel("mf:panel:right", rightOpen), [rightOpen]);
-  useEffect(() => { try { localStorage.setItem("sbv2:compare", JSON.stringify(compareOverlays)); } catch { /* noop */ } }, [compareOverlays]);
-  useEffect(() => storeIndicators(options.indicators), [options.indicators]);
-  useEffect(() => saveLastChartSession(layoutPreset, charts), [charts, layoutPreset]);
+  useEffect(() => {
+    try {
+      writeTenantLocalItem(localStorage, "sbv2:compare", JSON.stringify(compareOverlays), workspaceOwner);
+    } catch {
+      /* noop */
+    }
+  }, [compareOverlays, workspaceOwner]);
+  useEffect(() => storeIndicators(options.indicators, workspaceOwner), [options.indicators, workspaceOwner]);
+  useEffect(() => saveLastChartSession(layoutPreset, charts, Date.now(), workspaceOwner), [charts, layoutPreset, workspaceOwner]);
 
   useEffect(() => {
     if (!charts.some((chart) => chart.id === activeChartId)) setActiveChartId(charts[0]?.id);
   }, [activeChartId, charts]);
 
   useEffect(() => {
-    setCharts((current) => current.map((chart, index) => ({
-      ...chart,
-      symbol: index === 0 || chart.linkSymbol ? options.symbol : chart.symbol,
-      timeframe: index === 0 || chart.linkTimeframe ? options.timeframe : chart.timeframe,
-      chartType: index === 0 || chart.linkChartType ? options.chartType : chart.chartType
-    })));
+    setCharts((current) =>
+      current.map((chart, index) => ({
+        ...chart,
+        symbol: index === 0 || chart.linkSymbol ? options.symbol : chart.symbol,
+        timeframe: index === 0 || chart.linkTimeframe ? options.timeframe : chart.timeframe,
+        chartType: index === 0 || chart.linkChartType ? options.chartType : chart.chartType
+      }))
+    );
   }, [options.chartType, options.symbol, options.timeframe]);
 
   useEffect(() => {
     if (!activeWorkspaceId) return;
     const id = window.setTimeout(() => {
-      setWorkspaces((current) => current.map((workspace) => workspace.id === activeWorkspaceId
-        ? reviseWorkspace(workspace, {
-          symbol: options.symbol,
-          timeframe: options.timeframe,
-          chartType: options.chartType,
-          cryptoExchange,
-          indicators: options.indicators,
-          compareOverlays,
-          theme,
-          layout: { preset: layoutPreset, leftOpen, rightOpen, leftSize, rightSize, panelsSwapped },
-          charts
-        })
-        : workspace));
+      setWorkspaces((current) =>
+        current.map((workspace) =>
+          workspace.id === activeWorkspaceId
+            ? reviseWorkspace(workspace, {
+                symbol: options.symbol,
+                timeframe: options.timeframe,
+                chartType: options.chartType,
+                cryptoExchange,
+                indicators: options.indicators,
+                compareOverlays,
+                theme,
+                layout: { preset: layoutPreset, leftOpen, rightOpen, leftSize, rightSize, panelsSwapped },
+                charts
+              })
+            : workspace
+        )
+      );
     }, 750);
     return () => window.clearTimeout(id);
   }, [activeWorkspaceId, charts, compareOverlays, cryptoExchange, layoutPreset, leftOpen, leftSize, options.chartType, options.indicators, options.symbol, options.timeframe, panelsSwapped, rightOpen, rightSize, theme]);
@@ -135,7 +133,11 @@ export function useAppShell(options: UseAppShellOptions) {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="color-scheme"]')?.setAttribute("content", theme);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0b0d10" : "#f2f4f7");
-    try { localStorage.setItem("mf:theme", theme); } catch { /* noop */ }
+    try {
+      localStorage.setItem("mf:theme", theme);
+    } catch {
+      /* noop */
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -150,185 +152,268 @@ export function useAppShell(options: UseAppShellOptions) {
   }, []);
 
   useEffect(() => {
-    setCompareOverlays((current) => current.some((item) => item.symbol === options.symbol)
-      ? current.filter((item) => item.symbol !== options.symbol)
-      : current);
+    setCompareOverlays((current) => (current.some((item) => item.symbol === options.symbol) ? current.filter((item) => item.symbol !== options.symbol) : current));
   }, [options.symbol]);
 
-  const addCompare = useCallback((symbol: string) => {
-    setCompareOverlays((current) => current.some((item) => item.symbol === symbol) || current.length >= MAX_COMPARE
-      ? current
-      : [...current, {
-        id: symbol,
-        symbol,
-        timeframe: options.timeframe,
-        chartType: asCompareChartType(options.chartType),
-        color: compareColor(current.length),
-        upColor: DEFAULT_COMPARE_UP,
-        downColor: DEFAULT_COMPARE_DOWN
-      }]);
-  }, [options.chartType, options.timeframe]);
+  const addCompare = useCallback(
+    (symbol: string) => {
+      setCompareOverlays((current) =>
+        current.some((item) => item.symbol === symbol) || current.length >= MAX_COMPARE
+          ? current
+          : [
+              ...current,
+              {
+                id: symbol,
+                symbol,
+                timeframe: options.timeframe,
+                chartType: asCompareChartType(options.chartType),
+                color: compareColor(current.length),
+                upColor: DEFAULT_COMPARE_UP,
+                downColor: DEFAULT_COMPARE_DOWN
+              }
+            ]
+      );
+    },
+    [options.chartType, options.timeframe]
+  );
 
   const updateCompare = useCallback((id: string, patch: Partial<CompareOverlayConfig>) => {
-    setCompareOverlays((current) => current.map((item) => item.id === id
-      ? { ...item, ...patch, chartType: asCompareChartType(patch.chartType ?? item.chartType) }
-      : item));
+    setCompareOverlays((current) => current.map((item) => (item.id === id ? { ...item, ...patch, chartType: asCompareChartType(patch.chartType ?? item.chartType) } : item)));
   }, []);
   const removeCompare = useCallback((id: string) => setCompareOverlays((current) => current.filter((item) => item.id !== id)), []);
 
-  const saveWorkspace = useCallback((name: string) => {
-    const workspace = captureWorkspace(name, {
-      symbol: options.symbol,
-      timeframe: options.timeframe,
-      chartType: options.chartType,
-      cryptoExchange,
-      indicators: options.indicators,
-      compareOverlays,
-      theme,
-      layout: { preset: layoutPreset, leftOpen, rightOpen, leftSize, rightSize, panelsSwapped },
-      charts
-    });
-    setWorkspaces((current) => [workspace, ...current]);
-    setActiveWorkspaceId(workspace.id);
-  }, [charts, compareOverlays, cryptoExchange, layoutPreset, leftOpen, leftSize, options.chartType, options.indicators, options.symbol, options.timeframe, panelsSwapped, rightOpen, rightSize, theme]);
+  const saveWorkspace = useCallback(
+    (name: string) => {
+      const workspace = captureWorkspace(name, {
+        symbol: options.symbol,
+        timeframe: options.timeframe,
+        chartType: options.chartType,
+        cryptoExchange,
+        indicators: options.indicators,
+        compareOverlays,
+        theme,
+        layout: { preset: layoutPreset, leftOpen, rightOpen, leftSize, rightSize, panelsSwapped },
+        charts
+      });
+      setWorkspaces((current) => [workspace, ...current]);
+      setActiveWorkspaceId(workspace.id);
+    },
+    [charts, compareOverlays, cryptoExchange, layoutPreset, leftOpen, leftSize, options.chartType, options.indicators, options.symbol, options.timeframe, panelsSwapped, rightOpen, rightSize, theme]
+  );
 
-  const applyWorkspace = useCallback((id: string) => {
-    const workspace = workspaces.find((item) => item.id === id);
-    if (!workspace) return;
-    options.setSymbol(workspace.symbol);
-    options.setTimeframe(workspace.timeframe);
-    options.setChartType(workspace.chartType);
-    setCryptoExchange(workspace.cryptoExchange);
-    setTheme(workspace.theme);
-    setLeftOpen(workspace.layout.leftOpen);
-    setRightOpen(workspace.layout.rightOpen);
-    setLayoutPresetState(workspace.layout.preset);
-    setCharts(workspace.charts);
-    setCompareOverlays(workspace.compareOverlays);
-    setLeftSize(workspace.layout.leftSize);
-    setRightSize(workspace.layout.rightSize);
-    setPanelsSwapped(workspace.layout.panelsSwapped);
-    options.setIndicators((current) => applyIndicatorSelection(current, workspace.enabledIndicators));
-    options.setMode("chart");
-    setActiveWorkspaceId(workspace.id);
-  }, [options.setChartType, options.setIndicators, options.setMode, options.setSymbol, options.setTimeframe, workspaces]);
+  const applyWorkspace = useCallback(
+    (id: string) => {
+      const workspace = workspaces.find((item) => item.id === id);
+      if (!workspace) return;
+      options.setSymbol(workspace.symbol);
+      options.setTimeframe(workspace.timeframe);
+      options.setChartType(workspace.chartType);
+      setCryptoExchange(workspace.cryptoExchange);
+      setTheme(workspace.theme);
+      setLeftOpen(workspace.layout.leftOpen);
+      setRightOpen(workspace.layout.rightOpen);
+      setLayoutPresetState(workspace.layout.preset);
+      setCharts(workspace.charts);
+      setCompareOverlays(workspace.compareOverlays);
+      setLeftSize(workspace.layout.leftSize);
+      setRightSize(workspace.layout.rightSize);
+      setPanelsSwapped(workspace.layout.panelsSwapped);
+      options.setIndicators((current) => applyIndicatorSelection(current, workspace.enabledIndicators));
+      options.setMode("chart");
+      setActiveWorkspaceId(workspace.id);
+    },
+    [options.setChartType, options.setIndicators, options.setMode, options.setSymbol, options.setTimeframe, workspaces]
+  );
 
   const deleteWorkspace = useCallback((id: string) => {
     workspaceSync.current?.remove(id);
     setWorkspaces((current) => current.filter((item) => item.id !== id));
-    setActiveWorkspaceId((current) => current === id ? undefined : current);
+    setActiveWorkspaceId((current) => (current === id ? undefined : current));
   }, []);
 
-  const exportWorkspace = useCallback((id: string) => {
-    const workspace = workspaces.find((item) => item.id === id);
-    return workspace ? downloadWorkspaceFile(workspace) : Promise.resolve();
-  }, [workspaces]);
+  const exportWorkspace = useCallback(
+    (id: string) => {
+      const workspace = workspaces.find((item) => item.id === id);
+      return workspace ? downloadWorkspaceFile(workspace) : Promise.resolve();
+    },
+    [workspaces]
+  );
 
-  const importWorkspace = useCallback(async (raw: string) => {
-    const parsed = await parseWorkspaceFile(raw);
-    if (!parsed) return false;
-    const duplicate = workspaces.some((workspace) => workspace.id === parsed.id);
-    const workspace = duplicate ? { ...parsed, id: `${parsed.id}-import-${Date.now()}` } : parsed;
-    setWorkspaces((current) => [workspace, ...current]);
-    return true;
-  }, [workspaces]);
+  const importWorkspace = useCallback(
+    async (raw: string) => {
+      const parsed = await parseWorkspaceFile(raw);
+      if (!parsed) return false;
+      const duplicate = workspaces.some((workspace) => workspace.id === parsed.id);
+      const workspace = duplicate ? { ...parsed, id: `${parsed.id}-import-${Date.now()}` } : parsed;
+      setWorkspaces((current) => [workspace, ...current]);
+      return true;
+    },
+    [workspaces]
+  );
 
-  const rollbackWorkspaceVersion = useCallback((id: string, revision: number) => {
-    const workspace = workspaces.find((item) => item.id === id);
-    const next = workspace ? rollbackWorkspace(workspace, revision) : undefined;
-    if (!next) return false;
-    setWorkspaces((current) => current.map((item) => item.id === id ? next : item));
-    options.setSymbol(next.symbol);
-    options.setTimeframe(next.timeframe);
-    options.setChartType(next.chartType);
-    setCryptoExchange(next.cryptoExchange);
-    setTheme(next.theme);
-    setLeftOpen(next.layout.leftOpen);
-    setRightOpen(next.layout.rightOpen);
-    setLeftSize(next.layout.leftSize);
-    setRightSize(next.layout.rightSize);
-    setPanelsSwapped(next.layout.panelsSwapped);
-    setLayoutPresetState(next.layout.preset);
-    setCharts(next.charts);
-    setCompareOverlays(next.compareOverlays);
-    options.setIndicators((current) => applyIndicatorSelection(current, next.enabledIndicators));
-    options.setMode("chart");
-    setActiveWorkspaceId(next.id);
-    return true;
-  }, [options.setChartType, options.setIndicators, options.setMode, options.setSymbol, options.setTimeframe, workspaces]);
+  const rollbackWorkspaceVersion = useCallback(
+    (id: string, revision: number) => {
+      const workspace = workspaces.find((item) => item.id === id);
+      const next = workspace ? rollbackWorkspace(workspace, revision) : undefined;
+      if (!next) return false;
+      setWorkspaces((current) => current.map((item) => (item.id === id ? next : item)));
+      options.setSymbol(next.symbol);
+      options.setTimeframe(next.timeframe);
+      options.setChartType(next.chartType);
+      setCryptoExchange(next.cryptoExchange);
+      setTheme(next.theme);
+      setLeftOpen(next.layout.leftOpen);
+      setRightOpen(next.layout.rightOpen);
+      setLeftSize(next.layout.leftSize);
+      setRightSize(next.layout.rightSize);
+      setPanelsSwapped(next.layout.panelsSwapped);
+      setLayoutPresetState(next.layout.preset);
+      setCharts(next.charts);
+      setCompareOverlays(next.compareOverlays);
+      options.setIndicators((current) => applyIndicatorSelection(current, next.enabledIndicators));
+      options.setMode("chart");
+      setActiveWorkspaceId(next.id);
+      return true;
+    },
+    [options.setChartType, options.setIndicators, options.setMode, options.setSymbol, options.setTimeframe, workspaces]
+  );
 
-  const setLayoutPreset = useCallback((preset: ChartLayoutPreset) => {
-    setLayoutPresetState(preset);
-    const count = preset === "single" ? 1 : preset === "grid-4" ? 4 : 2;
-    setCharts((current) => Array.from({ length: count }, (_, index) => current[index] ?? {
-      id: `chart-${index + 1}`,
-      symbol: options.symbol,
-      timeframe: options.timeframe,
-      chartType: options.chartType,
-      linkChartType: true,
-      linkGroup: "primary",
-      linkSymbol: index === 0,
-      linkTimeframe: true,
-      linkCrosshair: true,
-      linkTimeRange: true,
-      linkIndicators: true,
-      linkCompare: true
-    }));
-  }, [options.chartType, options.symbol, options.timeframe]);
+  const setLayoutPreset = useCallback(
+    (preset: ChartLayoutPreset) => {
+      setLayoutPresetState(preset);
+      const count = preset === "single" ? 1 : preset === "grid-4" ? 4 : 2;
+      setCharts((current) =>
+        Array.from(
+          { length: count },
+          (_, index) =>
+            current[index] ?? {
+              id: `chart-${index + 1}`,
+              symbol: options.symbol,
+              timeframe: options.timeframe,
+              chartType: options.chartType,
+              linkChartType: true,
+              linkGroup: "primary",
+              linkSymbol: index === 0,
+              linkTimeframe: true,
+              linkCrosshair: true,
+              linkTimeRange: true,
+              linkIndicators: true,
+              linkCompare: true
+            }
+        )
+      );
+    },
+    [options.chartType, options.symbol, options.timeframe]
+  );
 
-  const setDistinctMarketLayout = useCallback((symbols: string[]) => {
-    const distinct = normalizeDistinctMarketSymbols(options.symbol, symbols, 4);
-    if (distinct.length < 4) return false;
-    setLayoutPresetState("grid-4");
-    setCharts((current) => Array.from({ length: 4 }, (_, index) => {
-      const chart = current[index] ?? {
-        id: `chart-${index + 1}`, symbol: options.symbol, timeframe: options.timeframe, chartType: options.chartType,
-        linkGroup: "primary", linkSymbol: index === 0, linkTimeframe: true, linkChartType: true, linkCrosshair: true, linkTimeRange: true, linkIndicators: true, linkCompare: true
-      };
-      const symbol = distinct[index];
-      return { ...chart, symbol, linkSymbol: index === 0, compareOverlays: chart.linkCompare ? undefined : chart.compareOverlays?.filter((overlay) => overlay.symbol !== symbol) };
-    }));
-    return true;
-  }, [options.chartType, options.symbol, options.timeframe]);
+  const setDistinctMarketLayout = useCallback(
+    (symbols: string[]) => {
+      const distinct = normalizeDistinctMarketSymbols(options.symbol, symbols, 4);
+      if (distinct.length < 4) return false;
+      setLayoutPresetState("grid-4");
+      setCharts((current) =>
+        Array.from({ length: 4 }, (_, index) => {
+          const chart = current[index] ?? {
+            id: `chart-${index + 1}`,
+            symbol: options.symbol,
+            timeframe: options.timeframe,
+            chartType: options.chartType,
+            linkGroup: "primary",
+            linkSymbol: index === 0,
+            linkTimeframe: true,
+            linkChartType: true,
+            linkCrosshair: true,
+            linkTimeRange: true,
+            linkIndicators: true,
+            linkCompare: true
+          };
+          const symbol = distinct[index];
+          return { ...chart, symbol, linkSymbol: index === 0, compareOverlays: chart.linkCompare ? undefined : chart.compareOverlays?.filter((overlay) => overlay.symbol !== symbol) };
+        })
+      );
+      return true;
+    },
+    [options.chartType, options.symbol, options.timeframe]
+  );
 
-  const updateChart = useCallback((id: string, patch: Partial<WorkspaceChart>) => {
-    setCharts((current) => current.map((chart) => {
-      if (chart.id !== id) return chart;
-      const next = { ...chart, ...patch, id: chart.id };
-      if (patch.linkSymbol === true) next.symbol = options.symbol;
-      if (patch.linkTimeframe === true) next.timeframe = options.timeframe;
-      if (patch.linkChartType === true) next.chartType = options.chartType;
-      if (patch.linkIndicators === true) next.indicatorOverrides = undefined;
-      if (patch.linkCompare === true) next.compareOverlays = undefined;
-      if (patch.symbol !== undefined && next.compareOverlays) next.compareOverlays = next.compareOverlays.filter((overlay) => overlay.symbol !== patch.symbol);
-      return next;
-    }));
-    const chart = charts.find((item) => item.id === id);
-    if (!chart) return;
-    if (patch.symbol !== undefined && (patch.linkSymbol ?? chart.linkSymbol)) options.setSymbol(patch.symbol);
-    if (patch.timeframe !== undefined && (patch.linkTimeframe ?? chart.linkTimeframe)) options.setTimeframe(patch.timeframe);
-    if (patch.chartType !== undefined && id === charts[0]?.id) options.setChartType(patch.chartType);
-  }, [charts, options.symbol, options.timeframe, options.setChartType, options.setSymbol, options.setTimeframe]);
+  const updateChart = useCallback(
+    (id: string, patch: Partial<WorkspaceChart>) => {
+      setCharts((current) =>
+        current.map((chart) => {
+          if (chart.id !== id) return chart;
+          const next = { ...chart, ...patch, id: chart.id };
+          if (patch.linkSymbol === true) next.symbol = options.symbol;
+          if (patch.linkTimeframe === true) next.timeframe = options.timeframe;
+          if (patch.linkChartType === true) next.chartType = options.chartType;
+          if (patch.linkIndicators === true) next.indicatorOverrides = undefined;
+          if (patch.linkCompare === true) next.compareOverlays = undefined;
+          if (patch.symbol !== undefined && next.compareOverlays) next.compareOverlays = next.compareOverlays.filter((overlay) => overlay.symbol !== patch.symbol);
+          return next;
+        })
+      );
+      const chart = charts.find((item) => item.id === id);
+      if (!chart) return;
+      if (patch.symbol !== undefined && (patch.linkSymbol ?? chart.linkSymbol)) options.setSymbol(patch.symbol);
+      if (patch.timeframe !== undefined && (patch.linkTimeframe ?? chart.linkTimeframe)) options.setTimeframe(patch.timeframe);
+      if (patch.chartType !== undefined && id === charts[0]?.id) options.setChartType(patch.chartType);
+    },
+    [charts, options.symbol, options.timeframe, options.setChartType, options.setSymbol, options.setTimeframe]
+  );
 
-  const updateActiveChart = useCallback((patch: Partial<WorkspaceChart>) => {
-    const chart = charts.find((item) => item.id === activeChartId) ?? charts[0];
-    if (!chart) return;
-    const independentPatch = chart.id === charts[0]?.id ? patch : {
-      ...patch,
-      ...(patch.symbol === undefined ? {} : { linkSymbol: false }),
-      ...(patch.timeframe === undefined ? {} : { linkTimeframe: false }),
-      ...(patch.chartType === undefined ? {} : { linkChartType: false })
-    };
-    updateChart(chart.id, independentPatch);
-  }, [activeChartId, charts, updateChart]);
+  const updateActiveChart = useCallback(
+    (patch: Partial<WorkspaceChart>) => {
+      const chart = charts.find((item) => item.id === activeChartId) ?? charts[0];
+      if (!chart) return;
+      const independentPatch =
+        chart.id === charts[0]?.id
+          ? patch
+          : {
+              ...patch,
+              ...(patch.symbol === undefined ? {} : { linkSymbol: false }),
+              ...(patch.timeframe === undefined ? {} : { linkTimeframe: false }),
+              ...(patch.chartType === undefined ? {} : { linkChartType: false })
+            };
+      updateChart(chart.id, independentPatch);
+    },
+    [activeChartId, charts, updateChart]
+  );
 
   const activeChart = charts.find((chart) => chart.id === activeChartId) ?? charts[0];
 
   return {
-    cryptoExchange, setCryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, setLeftSize, setRightSize, panelsSwapped, workspaces, activeWorkspaceId, layoutPreset, setLayoutPreset, setDistinctMarketLayout, charts, activeChart, activeChartId, setActiveChartId, updateChart, updateActiveChart,
-    compareOverlays, addCompare, updateCompare, removeCompare,
-    saveWorkspace, applyWorkspace, deleteWorkspace, exportWorkspace, importWorkspace, rollbackWorkspaceVersion,
-    toggleTheme: () => setTheme((current) => current === "dark" ? "light" : "dark"),
+    cryptoExchange,
+    setCryptoExchange,
+    theme,
+    locale,
+    leftOpen,
+    rightOpen,
+    leftSize,
+    rightSize,
+    setLeftSize,
+    setRightSize,
+    panelsSwapped,
+    workspaces,
+    activeWorkspaceId,
+    layoutPreset,
+    setLayoutPreset,
+    setDistinctMarketLayout,
+    charts,
+    activeChart,
+    activeChartId,
+    setActiveChartId,
+    updateChart,
+    updateActiveChart,
+    compareOverlays,
+    addCompare,
+    updateCompare,
+    removeCompare,
+    saveWorkspace,
+    applyWorkspace,
+    deleteWorkspace,
+    exportWorkspace,
+    importWorkspace,
+    rollbackWorkspaceVersion,
+    toggleTheme: () => setTheme((current) => (current === "dark" ? "light" : "dark")),
     toggleLocale: () => setLocale(nextLocale),
     toggleLeft: () => setLeftOpen((current) => !current),
     toggleRight: () => setRightOpen((current) => !current),

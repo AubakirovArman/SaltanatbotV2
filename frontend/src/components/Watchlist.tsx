@@ -19,6 +19,7 @@ interface WatchlistProps {
   onSelectSymbol: (symbol: string) => void;
   onSelectAsset: (asset: AssetClass | "all") => void;
   onSelectExchange: (exchange: DataExchange) => void;
+  storageOwnerId?: string;
 }
 
 const assets: Array<AssetClass | "all"> = ["all", "crypto", "forex", "stock", "index"];
@@ -35,43 +36,27 @@ const sortMeta: Record<WatchlistSort, { labelKey: "sortHighLow" | "sortLowHigh" 
   "change-asc": { labelKey: "sortLowHigh", Icon: ArrowUpNarrowWide }
 };
 
-export function Watchlist({
-  locale,
-  instruments,
-  selectedSymbol,
-  selectedAsset,
-  latest,
-  sparklines,
-  cryptoExchange,
-  onSelectSymbol,
-  onSelectAsset,
-  onSelectExchange
-}: WatchlistProps) {
+export function Watchlist({ locale, instruments, selectedSymbol, selectedAsset, latest, sparklines, cryptoExchange, onSelectSymbol, onSelectAsset, onSelectExchange, storageOwnerId }: WatchlistProps) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const [query, setQuery] = useState("");
-  const [favorites, setFavorites] = useState<string[]>(() => loadFavorites());
-  const [sort, setSort] = useState<WatchlistSort>(() => loadWatchlistSort());
+  const [favorites, setFavorites] = useState<string[]>(() => loadFavorites(storageOwnerId));
+  const [sort, setSort] = useState<WatchlistSort>(() => loadWatchlistSort(storageOwnerId));
   const listRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const sortLabel = sortMeta[sort].labelKey ? t(sortMeta[sort].labelKey) : "A → Z";
-  const showExchange = useMemo(
-    () => instruments.some((instrument) => instrument.assetClass === "crypto"),
-    [instruments]
-  );
+  const showExchange = useMemo(() => instruments.some((instrument) => instrument.assetClass === "crypto"), [instruments]);
 
   useEffect(() => {
-    storeFavorites(favorites);
-  }, [favorites]);
+    storeFavorites(favorites, storageOwnerId);
+  }, [favorites, storageOwnerId]);
   useEffect(() => {
-    storeWatchlistSort(sort);
-  }, [sort]);
+    storeWatchlistSort(sort, storageOwnerId);
+  }, [sort, storageOwnerId]);
 
   const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
   const toggleFavorite = useCallback((symbol: string) => {
-    setFavorites((current) =>
-      current.includes(symbol) ? current.filter((item) => item !== symbol) : [...current, symbol]
-    );
+    setFavorites((current) => (current.includes(symbol) ? current.filter((item) => item !== symbol) : [...current, symbol]));
   }, []);
   const cycleSort = useCallback(() => {
     setSort((current) => sortCycle[(sortCycle.indexOf(current) + 1) % sortCycle.length]);
@@ -88,20 +73,7 @@ export function Watchlist({
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    const matches = !normalized
-      ? instruments
-      : instruments.filter((instrument) =>
-          [
-            instrument.symbol,
-            instrument.displayName,
-            instrument.exchange,
-            instrument.assetClass,
-            instrument.currency
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(normalized)
-        );
+    const matches = !normalized ? instruments : instruments.filter((instrument) => [instrument.symbol, instrument.displayName, instrument.exchange, instrument.assetClass, instrument.currency].join(" ").toLowerCase().includes(normalized));
 
     // Pinned symbols always float to the top; the chosen sort orders within each group.
     const compare = (a: Instrument, b: Instrument) => {
@@ -142,14 +114,10 @@ export function Watchlist({
       <div className="panel-header">
         <strong>{t("markets")}</strong>
         <div className="panel-header-meta">
-          <span>{filtered.length} {t("symbols")}</span>
-          <button
-            type="button"
-            className="watchlist-sort"
-            onClick={cycleSort}
-            title={`${t("sort")}: ${sortLabel}`}
-            aria-label={`${t("changeSort")} ${sortLabel}`}
-          >
+          <span>
+            {filtered.length} {t("symbols")}
+          </span>
+          <button type="button" className="watchlist-sort" onClick={cycleSort} title={`${t("sort")}: ${sortLabel}`} aria-label={`${t("changeSort")} ${sortLabel}`}>
             {(() => {
               const { Icon } = sortMeta[sort];
               return <Icon size={13} strokeWidth={1.75} aria-hidden="true" />;
@@ -161,22 +129,12 @@ export function Watchlist({
       <label className="market-search">
         <Search size={15} aria-hidden="true" />
         <span className="sr-only">{t("searchInstruments")}</span>
-        <input
-          value={query}
-          placeholder={t("searchPlaceholder")}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <input value={query} placeholder={t("searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
       </label>
 
       <div className="asset-tabs">
         {assets.map((asset) => (
-          <button
-            type="button"
-            key={asset}
-            className={asset === selectedAsset ? "active" : ""}
-            onClick={() => onSelectAsset(asset)}
-            aria-pressed={asset === selectedAsset}
-          >
+          <button type="button" key={asset} className={asset === selectedAsset ? "active" : ""} onClick={() => onSelectAsset(asset)} aria-pressed={asset === selectedAsset}>
             {t(asset === "all" ? "all" : asset === "stock" ? "stocks" : asset)}
           </button>
         ))}
@@ -187,14 +145,7 @@ export function Watchlist({
           <span className="exchange-select-label">{t("source")}</span>
           <div className="exchange-select-options">
             {exchanges.map((exchange) => (
-              <button
-                type="button"
-                key={exchange.id}
-                className={exchange.id === cryptoExchange ? "active" : ""}
-                onClick={() => onSelectExchange(exchange.id)}
-                aria-pressed={exchange.id === cryptoExchange}
-                title={`${t("showPricesFrom")} ${exchange.label}`}
-              >
+              <button type="button" key={exchange.id} className={exchange.id === cryptoExchange ? "active" : ""} onClick={() => onSelectExchange(exchange.id)} aria-pressed={exchange.id === cryptoExchange} title={`${t("showPricesFrom")} ${exchange.label}`}>
                 {exchange.label}
               </button>
             ))}
@@ -207,42 +158,20 @@ export function Watchlist({
         {visible.map((instrument) => {
           const active = instrument.symbol === selectedSymbol;
           const spark = sparklines?.[instrument.symbol];
-          const price = active && latest ? latest.close : spark?.last ?? instrument.basePrice;
+          const price = active && latest ? latest.close : (spark?.last ?? instrument.basePrice);
           const change = active && latest ? ((latest.close - latest.open) / latest.open) * 100 : spark?.changePct;
           const pinned = favoriteSet.has(instrument.symbol);
           return (
-            <div
-              className={`symbol-row ${active ? "active" : ""} ${pinned ? "pinned" : ""}`}
-              key={instrument.symbol}
-              title={`${instrument.displayName} · ${instrument.exchange}`}
-            >
-              <button
-                type="button"
-                className={`symbol-star ${pinned ? "active" : ""}`}
-                onClick={() => toggleFavorite(instrument.symbol)}
-                aria-pressed={pinned}
-                aria-label={`${t(pinned ? "unpin" : "pin")} ${instrument.symbol}`}
-                title={pinned ? t("unpin") : t("pinTop")}
-              >
+            <div className={`symbol-row ${active ? "active" : ""} ${pinned ? "pinned" : ""}`} key={instrument.symbol} title={`${instrument.displayName} · ${instrument.exchange}`}>
+              <button type="button" className={`symbol-star ${pinned ? "active" : ""}`} onClick={() => toggleFavorite(instrument.symbol)} aria-pressed={pinned} aria-label={`${t(pinned ? "unpin" : "pin")} ${instrument.symbol}`} title={pinned ? t("unpin") : t("pinTop")}>
                 <Star size={13} strokeWidth={1.75} fill={pinned ? "currentColor" : "none"} aria-hidden="true" />
               </button>
-              <button
-                type="button"
-                className="symbol-select"
-                onClick={() => onSelectSymbol(instrument.symbol)}
-                aria-pressed={active}
-              >
+              <button type="button" className="symbol-select" onClick={() => onSelectSymbol(instrument.symbol)} aria-pressed={active}>
                 <strong className="symbol-ticker">{instrument.symbol}</strong>
-                {spark && spark.points.length > 1 ? (
-                  <Sparkline points={spark.points} up={(change ?? 0) >= 0} />
-                ) : (
-                  <span className="sparkline-empty" aria-hidden="true" />
-                )}
+                {spark && spark.points.length > 1 ? <Sparkline points={spark.points} up={(change ?? 0) >= 0} /> : <span className="sparkline-empty" aria-hidden="true" />}
                 <span className="symbol-quote">
                   <span className="symbol-price num">{price.toFixed(instrument.decimals)}</span>
-                  <span className={`symbol-change num ${change !== undefined && change < 0 ? "down" : "up"}`}>
-                    {change === undefined ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
-                  </span>
+                  <span className={`symbol-change num ${change !== undefined && change < 0 ? "down" : "up"}`}>{change === undefined ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</span>
                 </span>
               </button>
             </div>

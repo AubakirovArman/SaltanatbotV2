@@ -1,5 +1,6 @@
 import type { ArbitrageExchange, ArbitrageOpportunity } from "./client";
 import type { MarketOpportunityBasisScenario } from "@saltanatbotv2/arbitrage-sdk";
+import { readTenantLocalItem, writeTenantLocalItem, type TenantLocalStorage } from "../app/tenantLocalStorage";
 
 export interface ArbitrageFeeProfile {
   binanceSpotTakerBps: number;
@@ -27,7 +28,7 @@ export const DEFAULT_FEE_PROFILE: ArbitrageFeeProfile = {
   derivativeSafetyBufferPct: 10
 };
 
-const KEY = "sbv2:arbitrage-fees:v2";
+export const ARBITRAGE_FEE_PROFILE_STORAGE_KEY = "sbv2:arbitrage-fees:v2";
 
 export interface ArbitrageCostBreakdown {
   tradingFeesBps: number;
@@ -179,9 +180,10 @@ export function convergenceScenarios(row: ArbitrageOpportunity, profile: Arbitra
   });
 }
 
-export function loadFeeProfile(): ArbitrageFeeProfile {
+export function loadFeeProfile(ownerId?: string, storage: TenantLocalStorage | undefined = browserStorage()): ArbitrageFeeProfile {
+  if (!storage) return DEFAULT_FEE_PROFILE;
   try {
-    const value = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<ArbitrageFeeProfile> | null;
+    const value = JSON.parse(readTenantLocalItem(storage, ARBITRAGE_FEE_PROFILE_STORAGE_KEY, ownerId) ?? "null") as Partial<ArbitrageFeeProfile> | null;
     if (!value) return DEFAULT_FEE_PROFILE;
     return Object.fromEntries(Object.entries(DEFAULT_FEE_PROFILE).map(([key, fallback]) => [key, bounded(key as keyof ArbitrageFeeProfile, value[key as keyof ArbitrageFeeProfile], fallback)])) as unknown as ArbitrageFeeProfile;
   } catch {
@@ -189,8 +191,13 @@ export function loadFeeProfile(): ArbitrageFeeProfile {
   }
 }
 
-export function storeFeeProfile(profile: ArbitrageFeeProfile) {
-  localStorage.setItem(KEY, JSON.stringify(profile));
+export function storeFeeProfile(profile: ArbitrageFeeProfile, ownerId?: string, storage: TenantLocalStorage | undefined = browserStorage()) {
+  if (!storage) return;
+  try {
+    writeTenantLocalItem(storage, ARBITRAGE_FEE_PROFILE_STORAGE_KEY, JSON.stringify(profile), ownerId);
+  } catch {
+    // Storage can be unavailable; the current scenario remains usable in memory.
+  }
 }
 
 /**
@@ -222,4 +229,12 @@ function perpetualFee(exchange: ArbitrageExchange, profile: ArbitrageFeeProfile)
 function bounded(key: keyof ArbitrageFeeProfile, value: unknown, fallback: number) {
   const maximum = key === "transferCostUsd" ? 1_000_000 : key === "expectedHoldingHours" ? 720 : 1_000;
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= maximum ? value : fallback;
+}
+
+function browserStorage(): TenantLocalStorage | undefined {
+  try {
+    return typeof localStorage === "undefined" ? undefined : localStorage;
+  } catch {
+    return undefined;
+  }
 }

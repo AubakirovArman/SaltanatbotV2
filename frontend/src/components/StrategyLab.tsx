@@ -1,3 +1,4 @@
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { PineImport } from "../strategy/pine";
 import { buildShareUrl } from "../strategy/share";
@@ -38,6 +39,7 @@ interface StrategyLabProps {
   exchange?: DataExchange;
   theme?: "dark" | "light";
   locale: Locale;
+  storageOwnerId?: string;
   onApplyResult?: (result: BacktestResult, symbol: string, timeframe: Timeframe, visuals: { plots: PlotSeries[]; shapes: ShapeOverlays } | undefined, exchange: DataExchange) => void;
   onShowOnChart?: (symbol: string, timeframe: Timeframe) => void;
   onOpenTrading?: () => void;
@@ -66,12 +68,15 @@ export function StrategyLab({
   exchange = "binance",
   theme = "dark",
   locale,
+  storageOwnerId,
   onApplyResult,
   onShowOnChart,
   onOpenTrading
 }: StrategyLabProps) {
   const activeArtifact = artifacts.find((artifact) => artifact.id === activeArtifactId) ?? artifacts[0];
-  const workspace = useStrategyWorkspace({ activeArtifact, onSaveArtifact, theme });
+  const [mobileLayout, setMobileLayout] = useState(isMobileStrategyViewport);
+  const [toolboxOpen, setToolboxOpen] = useState(false);
+  const workspace = useStrategyWorkspace({ activeArtifact, onSaveArtifact, theme, toolboxVisible: !mobileLayout || toolboxOpen });
   const research = useStrategyResearch({
     workspaceRef: workspace.workspaceRef,
     strategyInputs: workspace.strategyInputs,
@@ -91,6 +96,18 @@ export function StrategyLab({
     // The research result belongs to one artifact and must never leak to the next.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeArtifact?.id]);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(max-width: 760px)");
+    const onChange = (event: MediaQueryListEvent) => {
+      setMobileLayout(event.matches);
+      if (event.matches) setToolboxOpen(false);
+    };
+    setMobileLayout(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
 
   const shareNow = () => {
     const payload = workspace.sharePayload();
@@ -120,6 +137,7 @@ export function StrategyLab({
       <div className="strategy-grid" data-mobile-pane={mobilePane}>
         <StrategyLibrary
           locale={locale}
+          storageOwnerId={storageOwnerId}
           artifacts={artifacts}
           activeId={activeArtifact?.id}
           onSelect={(id) => {
@@ -153,6 +171,10 @@ export function StrategyLab({
         <div className={`strategy-authoring${activeArtifact?.pine ? " has-pine-source" : ""}`}>
           {activeArtifact?.pine && <PineSourceComparison locale={locale} pine={activeArtifact.pine} />}
           <div className="blockly-shell">
+            <button type="button" className="blockly-mobile-toolbox-toggle" aria-expanded={toolboxOpen} onClick={() => setToolboxOpen((open) => !open)}>
+              {toolboxOpen ? <PanelLeftClose size={18} aria-hidden="true" /> : <PanelLeftOpen size={18} aria-hidden="true" />}
+              {strategyText(locale, toolboxOpen ? "hideBlockLibrary" : "showBlockLibrary")}
+            </button>
             {activeArtifact?.pine && <span className="blockly-panel-label">{strategyText(locale, "generatedBlocks")}</span>}
             <div className="blockly-host" ref={workspace.containerRef} />
             {workspace.initError && (
@@ -229,4 +251,8 @@ export function StrategyLab({
       </div>
     </section>
   );
+}
+
+function isMobileStrategyViewport() {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 760px)").matches;
 }

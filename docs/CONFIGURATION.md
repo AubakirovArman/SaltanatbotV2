@@ -19,7 +19,21 @@ The backend reads these environment variables in `backend/src/server.ts` / `back
 | `AUTH_SESSION_TTL_MS` | `43200000` | HttpOnly browser session TTL (default 12 hours). |
 | `AUTH_WS_TICKET_TTL_MS` | `30000` | One-time `/trade-stream` ticket TTL. |
 | `AUTH_TRADING_ROLES_ENABLED` | `1` | Allows non-admin trading-role grants. Set `0` only as a maintenance switch; owner isolation remains enforced. |
+| `AUTH_LOGIN_RATE_WINDOW_MS` / `AUTH_LOGIN_RATE_BLOCK_MS` | `900000` / `900000` | Window and block duration for independent failed-login buckets. |
+| `AUTH_LOGIN_IP_MAX_FAILURES` | `30` | Concurrent login allowances per client IP in the login window. Allowances are reserved before password hashing; credential failures remain counted. A successful login refunds only its own reservation and does not erase earlier failures from that IP. |
+| `AUTH_LOGIN_IDENTITY_MAX_FAILURES` | `10` | Concurrent login allowances per normalized login across all client IPs. Allowances are reserved before password hashing; credential failures remain counted. A valid login clears this identity bucket. Capacity and internal failures refund their reservation. |
+| `AUTH_REGISTER_RATE_WINDOW_MS` / `AUTH_REGISTER_RATE_BLOCK_MS` | `3600000` / `3600000` | Window and block duration for registration attempts. |
+| `AUTH_REGISTER_IP_MAX_ATTEMPTS` | `5` | Registration attempts per client IP and window. Valid, invalid, successful and failed attempts all count. |
+| `AUTH_RATE_LIMIT_MAX_ENTRIES` | `4096` | Hard cap for the process-local store shared by login and registration limiters. New keys fail closed while a full store has no expired entry. |
+| `AUTH_PASSWORD_HASH_CONCURRENCY` | `2` | Maximum concurrent Argon2id operations. Each default operation uses about 64 MiB plus library overhead. |
+| `AUTH_PASSWORD_HASH_QUEUE` | `32` | Maximum requests waiting for Argon2id; overflow receives a generic retryable `503` instead of an unbounded queue. |
+| `API_RATE_REFILL_PER_SECOND` / `API_RATE_BURST` | `20` / `240` | General shared API token-bucket refill and burst. Mutations cost four tokens. |
+| `API_RATE_MAX_BUCKETS` | `4096` | Hard cap for general per-account/per-IP API buckets. |
 | `TRADING_LEGACY_OWNER_USER_ID` | *(automatic)* | Admin UUID that receives pre-v6 SQLite trading rows. Required before the first v6 start when PostgreSQL contains multiple admins. |
+| `TRADING_MAX_ACCOUNTS_PER_USER` | `8` | Hard per-owner cap for saved exchange accounts; excess existing rows are preserved. |
+| `TRADING_MAX_BOTS_PER_USER` | `24` | Hard per-owner cap for saved robot configurations; excess existing rows are preserved. |
+| `TRADING_MAX_RUNNING_PAPER_BOTS_PER_USER` | `4` | Concurrent paper-robot cap per owner in the single trading executor. |
+| `TRADING_MAX_RUNNING_LIVE_BOTS_PER_USER` | `2` | Concurrent live-robot cap per owner in the single trading executor. |
 | `COOKIE_SECURE`   | *(off)*       | Set to `1` behind HTTPS so session cookies are marked `Secure`. |
 | `DATABASE_URL` | *(unset)* | PostgreSQL URL. Takes precedence over individual `PG*` parameters and cannot be combined with `PGPASSWORD_FILE`. |
 | `PGHOST` / `PGPORT` | `127.0.0.1` / `55434` | Isolated project PostgreSQL address. Compose uses `postgres:5432` internally. |
@@ -31,7 +45,7 @@ The backend reads these environment variables in `backend/src/server.ts` / `back
 | `ALLOWED_ORIGINS` | dev localhost | Comma-separated HTTP CORS and WebSocket `Origin` allowlist for cross-origin browser access. Same-origin always works. |
 | `TRUST_PROXY` | *(unset)* | Explicit Express trusted-proxy IP/CIDR/name list (for example `loopback`). Only trusted proxies may establish HTTPS through `X-Forwarded-Proto`. |
 | `ALLOW_INSECURE_TRADING_MUTATIONS` | *(off)* | Dangerous development override for key storage and live/account mutations over public HTTP. Never enable on a public or production host. |
-| `PAPER_MULTI_LEG_DB_PATH` | `backend/data/arbitrage-paper-multi-leg.sqlite` | Optional path for the bounded append-only multi-leg paper journal. A custom path must be included in the operator's backup policy. |
+| `PAPER_MULTI_LEG_DB_PATH` | `backend/data/arbitrage-paper-multi-leg.sqlite` | Optional path for the bounded append-only multi-leg paper journal. Compose operators should leave the default inside `/app/backend/data`; any custom container path needs its own persistent mount and backup policy or it is lost when the container is recreated. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_FILE` | *(unset)* | Preferred absolute path to one bounded, regular, non-symlinked UTF-8 public-feed allowlist. Mutually exclusive with the inline JSON variable. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_JSON` | *(unset)* | Optional bounded public-feed allowlist for continuous multi-venue research discovery; exact reviewed identity and fee metadata only, never credentials. |
 
@@ -57,6 +71,17 @@ If you bind to a non-loopback address, the server prints a warning to put it beh
 > notification tokens remain encrypted in SQLite, are never placed in PostgreSQL and are never
 > returned to the browser.
 
+The authentication limits are intentionally process-local because the supported deployment runs
+one API/trading process. Login allowances are synchronously reserved in both the IP and normalized-
+identity buckets before the first asynchronous password operation, so parallel bursts cannot pass
+on stale failure counts. Capacity and internal failures roll back only their own reservation; a
+successful login clears its identity bucket but preserves earlier attack history for its source IP.
+All authentication buckets share one bounded store inside that process, and password hashing has a
+separate global concurrency/queue gate. Do not add a second API replica and assume these limits are
+global; a future horizontally scaled API needs a shared external limiter in addition to the trading-
+executor lease/fencing work. Behind a reverse proxy, configure `TRUST_PROXY` narrowly so `request.ip`
+is the real client address rather than the proxy address.
+
 > **`.env` and `.secrets/` are git-ignored.** Database passwords, dumps and runtime data must never
 > be committed. See [Self-hosting](./SELF_HOSTING.md) for Docker and direct-host recipes.
 
@@ -70,6 +95,10 @@ environment value. It requires an absolute path to a regular, non-symlinked, val
 forms accept the same strict JSON array of at most 24 rows and 64 KiB. Every `instrumentId` must be
 present in the current verified instrument registry; the browser can observe the resulting
 configuration but cannot change it.
+
+The Compose service mounts this repository's `config/` directory read-only at `/app/config`, so its
+file value should normally be `/app/config/continuous-routes.research.json`. A direct-host service
+may use any suitable absolute path readable by the service account.
 
 ```bash
 ARBITRAGE_CONTINUOUS_ROUTES_FILE=/opt/saltanatbotv2/config/continuous-routes.research.json
@@ -217,7 +246,9 @@ semantics. Schema v6 assigns legacy bots/accounts/audit rows to exactly one admi
 re-encrypts old exchange keys into `trading_account_credentials`, deletes the old key rows only
 after successful re-encryption, and clears the former server-wide live arm. Create and verify a
 backup before upgrading. If multiple administrators exist, set `TRADING_LEGACY_OWNER_USER_ID`
-before that first v6 start or migration fails closed.
+before that first v6 start or migration fails closed. Schema v7 then changes fill, order and order
+event identity to `(botId, id)`, preserving every existing row while allowing independent tenants
+to receive the same venue/client identifier without journal collisions.
 
 ## Configuring exchange API keys
 

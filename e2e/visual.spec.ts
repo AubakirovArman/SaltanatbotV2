@@ -50,9 +50,13 @@ test("desktop trading terminal", async ({ page }) => {
 
 test("mobile market bottom sheet", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "More tools" }).click();
   await expect(page.getByRole("button", { name: "Toggle markets panel" })).toHaveAttribute("aria-pressed", "false");
   await page.getByRole("button", { name: "Toggle markets panel" }).click();
   await expect(page.getByRole("dialog", { name: "Markets" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "More tools" })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator("#topbar-utility-actions")).toBeHidden();
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await waitForCanvasPaint(page, 1);
   await capture(page, "terminal-mobile-markets-dark.png");
 });
@@ -80,7 +84,7 @@ test("four independent markets layout", async ({ page }) => {
 });
 
 test("strategy studio workspace", async ({ page }) => {
-  await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Strategies", exact: true }).click();
+  await openStrategyWorkspace(page);
   await expect(page.locator(".strategy-lab")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("navigation", { name: "Studio stages" })).toBeVisible();
   await expect(page.locator(".blocklySvg")).toBeVisible({ timeout: 20_000 });
@@ -131,6 +135,22 @@ async function waitForCanvasPaint(page: Page, expectedCount: number) {
       { timeout: 20_000 }
     )
     .toBe(true);
+}
+
+async function openStrategyWorkspace(page: Page) {
+  const navigation = page.getByRole("navigation", { name: "Primary workspaces" });
+  const strategies = navigation.getByRole("button", { name: "Strategies", exact: true });
+  await expect(navigation).toBeVisible({ timeout: 20_000 });
+  if ((page.viewportSize()?.width ?? 0) <= 760) {
+    await expect(strategies).toBeVisible({ timeout: 20_000 });
+    await strategies.click();
+    return;
+  }
+  if (await strategies.isVisible()) {
+    await strategies.click();
+    return;
+  }
+  await navigation.getByRole("button", { name: "Automation", exact: true }).click();
 }
 
 function instrument(symbol: string, displayName: string, basePrice: number, decimals: number, assetClass = "crypto") {

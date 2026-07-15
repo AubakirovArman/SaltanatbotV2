@@ -47,6 +47,10 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/backend/package.json ./backend/package.json
 COPY --from=build /app/backend/dist ./backend/dist
 COPY --from=build /app/frontend/dist ./frontend/dist
+# Keep the verified SQLite backup/restore utility in the runtime image. Compose
+# stores backend/data in a named volume, so operators must be able to run this
+# script against that mounted volume from the service container.
+COPY --from=build /app/scripts/runtime-data.mjs ./scripts/runtime-data.mjs
 # npm workspaces are relative symlinks under node_modules; copy their runtime
 # package roots so those links remain valid in the slim image.
 COPY --from=build /app/packages ./packages

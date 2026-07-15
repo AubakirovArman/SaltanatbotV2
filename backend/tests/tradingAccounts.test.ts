@@ -16,6 +16,7 @@ import {
   listTradingAccountsFromForOwner,
   setTradingAccountCredentialsForOwner,
   TradingAccountInUseError,
+  upsertBotIntoForOwner,
   updateTradingAccountIn,
   updateTradingAccountInForOwner
 } from "../src/trading/store.js";
@@ -24,6 +25,7 @@ import { migrateTradingStore } from "../src/trading/storeSchema.js";
 import { buildPortfolioSummary } from "../src/trading/enginePortfolio.js";
 import type { RunningBot } from "../src/trading/engineRuntime.js";
 import type { BotConfig, ExchangeAdapter, PendingOrder, PositionState, TradingAccount } from "../src/trading/types.js";
+import { TradingResourceQuotaError } from "../src/trading/resourceQuotas.js";
 
 const databases: DatabaseSync[] = [];
 const OWNER_A = "owner-a";
@@ -76,6 +78,26 @@ afterEach(() => {
 });
 
 describe("trading account registry", () => {
+  it("enforces owner-local account and bot creation quotas without hiding existing rows", () => {
+    const db = database();
+    const firstAccount = account({ id: "account-a-1" });
+    insertTradingAccountIntoForOwner(db, OWNER_A, firstAccount, 1);
+
+    expect(() => insertTradingAccountIntoForOwner(db, OWNER_A, account({ id: "account-a-2" }), 1)).toThrow(TradingResourceQuotaError);
+    expect(() => insertTradingAccountIntoForOwner(db, OWNER_B, account({ id: "account-b-1", ownerUserId: OWNER_B }), 1)).not.toThrow();
+    expect(listTradingAccountsFromForOwner(db, OWNER_A)).toEqual([firstAccount]);
+
+    const firstBot = bot({ id: "bot-a-1", ownerUserId: OWNER_A, exchange: "paper" });
+    upsertBotIntoForOwner(db, OWNER_A, firstBot, { maxBots: 1 });
+    expect(() =>
+      upsertBotIntoForOwner(db, OWNER_A, bot({ id: "bot-a-2", ownerUserId: OWNER_A, exchange: "paper" }), {
+        maxBots: 1
+      })
+    ).toThrow(TradingResourceQuotaError);
+
+    expect(() => upsertBotIntoForOwner(db, OWNER_A, { ...firstBot, name: "Still editable", updatedAt: 2 }, { maxBots: 1 })).not.toThrow();
+  });
+
   it("persists and updates non-secret account metadata", () => {
     const db = database();
     const initial = account();

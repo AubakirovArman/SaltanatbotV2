@@ -44,6 +44,23 @@ describe("independent volume-profile refresh", () => {
     expect(container.textContent).toBe("ready:2");
     await act(async () => root.unmount());
   });
+
+  it("changes storage scope atomically when the authenticated owner changes", async () => {
+    localStorage.setItem("saltanat.chart.volume-profile-source.v1:user-a", "5m");
+    localStorage.setItem("saltanat.chart.volume-profile-source.v1:user-b", "15m");
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => root.render(<OwnerHarness ownerId="user-a" />));
+    expect(container.textContent).toBe("5m");
+    await act(async () => root.render(<OwnerHarness ownerId="user-b" />));
+    expect(container.textContent).toBe("15m");
+    await act(async () => root.render(<OwnerHarness ownerId="" />));
+    expect(container.textContent).toBe("chart");
+    expect(localStorage.getItem("saltanat.chart.volume-profile-source.v1:")).toBeNull();
+    await act(async () => root.unmount());
+  });
 });
 
 function Harness() {
@@ -56,7 +73,24 @@ function Harness() {
     marketType: "spot",
     priceType: "last"
   });
-  return <span>{state.status}:{state.profileCandles?.length ?? 0}</span>;
+  return (
+    <span>
+      {state.status}:{state.profileCandles?.length ?? 0}
+    </span>
+  );
+}
+
+function OwnerHarness({ ownerId }: { ownerId: string }) {
+  const state = useVolumeProfileSource({
+    enabled: false,
+    symbol: "BTCUSDT",
+    chartTimeframe: "1h",
+    exchange: "binance",
+    marketType: "spot",
+    priceType: "last",
+    storageOwnerId: ownerId
+  });
+  return <span>{state.source}</span>;
 }
 
 async function advance(milliseconds: number) {

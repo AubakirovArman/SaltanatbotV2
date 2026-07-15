@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { BotConfig, TradingAccount, TradingAccountExchange } from "./types.js";
 import { botTradingAccountId, legacyTradingAccountId, withResolvedBotAccountId } from "./tradingAccounts.js";
 import { LEGACY_TRADING_OWNER_ID } from "./storeSchema.js";
+import { assertTradingAccountCapacity } from "./resourceQuotas.js";
 
 interface CredentialsCodec {
   seal(plain: string, aad: string): string;
@@ -108,16 +109,33 @@ export function insertTradingAccountInto(db: DatabaseSync, account: TradingAccou
   insertTradingAccountIntoForOwner(db, account.ownerUserId ?? LEGACY_TRADING_OWNER_ID, account);
 }
 
-export function insertTradingAccountForOwner(ownerUserId: string, account: TradingAccount): void {
-  insertTradingAccountIntoForOwner(database(), ownerUserId, account);
+export function insertTradingAccountForOwner(ownerUserId: string, account: TradingAccount, maxAccounts?: number): void {
+  insertTradingAccountIntoForOwner(database(), ownerUserId, account, maxAccounts);
 }
 
-export function insertTradingAccountIntoForOwner(db: DatabaseSync, ownerUserId: string, account: TradingAccount): void {
+export function insertTradingAccountIntoForOwner(db: DatabaseSync, ownerUserId: string, account: TradingAccount, maxAccounts?: number): void {
   const owner = normalizeOwnerUserId(ownerUserId);
-  db.prepare(`
+  const insert = () =>
+    db
+      .prepare(`
     INSERT INTO trading_accounts (id, ownerUserId, label, exchange, ownership, enabled, createdAt, updatedAt)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(account.id, owner, account.label, account.exchange, account.ownership, account.enabled ? 1 : 0, account.createdAt, account.updatedAt);
+  `)
+      .run(account.id, owner, account.label, account.exchange, account.ownership, account.enabled ? 1 : 0, account.createdAt, account.updatedAt);
+  if (maxAccounts === undefined) {
+    insert();
+    return;
+  }
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const row = db.prepare("SELECT count(*) AS count FROM trading_accounts WHERE ownerUserId = ?").get(owner) as { count: number };
+    assertTradingAccountCapacity(Number(row.count), maxAccounts);
+    insert();
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function updateTradingAccount(account: TradingAccount): boolean {

@@ -9,7 +9,7 @@ export function DrawingStyleBar({ locale, drawing, onChange }: { locale: Locale;
   return (
     <div style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", zIndex: 30, display: "flex", gap: 6, alignItems: "center", padding: "5px 8px", background: "#12161f", border: "1px solid rgba(134,150,166,0.25)", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.35)" }}>
       {DRAW_COLORS.map((c) => (
-        <button key={c} type="button" title={c} aria-label={`${t("colour")} ${c}`} onClick={() => onChange({ color: c })} style={{ width: 16, height: 16, borderRadius: "50%", background: c, border: drawing.style.color === c ? "2px solid #fff" : "1px solid rgba(0,0,0,0.35)", cursor: "pointer", padding: 0 }} />
+        <button key={c} type="button" title={c} aria-label={`${t("colour")} ${c}`} onClick={() => onChange({ color: c })} style={{ width: 24, height: 24, borderRadius: "50%", background: c, border: drawing.style.color === c ? "2px solid #fff" : "1px solid rgba(0,0,0,0.35)", cursor: "pointer", padding: 0 }} />
       ))}
       <span style={{ width: 1, height: 16, background: "rgba(134,150,166,0.3)" }} />
       {[1, 2, 3].map((w) => (

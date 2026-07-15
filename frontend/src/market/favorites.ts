@@ -1,9 +1,11 @@
+import { readTenantLocalItem, writeTenantLocalItem } from "../app/tenantLocalStorage";
+
 const KEY = "sbv2:favorites";
 
 /** Persisted set of pinned/favorite symbols. Pinned symbols sort to the top of the watchlist. */
-export function loadFavorites(): string[] {
+export function loadFavorites(ownerId?: string): string[] {
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = readTenantLocalItem(window.localStorage, KEY, ownerId);
     const parsed = raw ? (JSON.parse(raw) as unknown) : undefined;
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
   } catch {
@@ -11,9 +13,9 @@ export function loadFavorites(): string[] {
   }
 }
 
-export function storeFavorites(symbols: string[]) {
+export function storeFavorites(symbols: string[], ownerId?: string) {
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(symbols));
+    writeTenantLocalItem(window.localStorage, KEY, JSON.stringify(symbols), ownerId);
   } catch {
     // Storage can be unavailable in private contexts; runtime state still works.
   }

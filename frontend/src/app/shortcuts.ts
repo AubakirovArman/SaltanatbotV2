@@ -1,7 +1,6 @@
-export type ShortcutAction =
-  | "commandPalette" | "shortcutSettings" | "openChart" | "openStrategy" | "openTrading"
-  | "toggleMarkets" | "toggleInstrument" | "previousChart" | "nextChart" | "maximizeChart"
-  | "timeframe1" | "timeframe2" | "timeframe3" | "timeframe4" | "timeframe5" | "timeframe6";
+import { readTenantLocalItem, writeTenantLocalItem } from "./tenantLocalStorage";
+
+export type ShortcutAction = "commandPalette" | "shortcutSettings" | "openChart" | "openStrategy" | "openTrading" | "toggleMarkets" | "toggleInstrument" | "previousChart" | "nextChart" | "maximizeChart" | "timeframe1" | "timeframe2" | "timeframe3" | "timeframe4" | "timeframe5" | "timeframe6";
 
 export type ShortcutMap = Record<ShortcutAction, string>;
 
@@ -26,9 +25,9 @@ export const DEFAULT_SHORTCUTS: ShortcutMap = {
 
 const KEY = "sbv2:shortcuts:v1";
 
-export function loadShortcuts(): ShortcutMap {
+export function loadShortcuts(ownerId?: string): ShortcutMap {
   try {
-    const parsed = JSON.parse(localStorage.getItem(KEY) ?? "{}");
+    const parsed = JSON.parse(readTenantLocalItem(localStorage, KEY, ownerId) ?? "{}");
     if (!parsed || typeof parsed !== "object") return { ...DEFAULT_SHORTCUTS };
     return Object.fromEntries(Object.entries(DEFAULT_SHORTCUTS).map(([action, fallback]) => [action, typeof parsed[action] === "string" ? parsed[action] : fallback])) as ShortcutMap;
   } catch {
@@ -36,8 +35,12 @@ export function loadShortcuts(): ShortcutMap {
   }
 }
 
-export function saveShortcuts(shortcuts: ShortcutMap) {
-  try { localStorage.setItem(KEY, JSON.stringify(shortcuts)); } catch { /* runtime-only fallback */ }
+export function saveShortcuts(shortcuts: ShortcutMap, ownerId?: string) {
+  try {
+    writeTenantLocalItem(localStorage, KEY, JSON.stringify(shortcuts), ownerId);
+  } catch {
+    /* runtime-only fallback */
+  }
 }
 
 export function shortcutFromEvent(event: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">): string | undefined {

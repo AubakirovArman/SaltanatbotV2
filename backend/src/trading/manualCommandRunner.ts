@@ -7,6 +7,7 @@ interface ManualCommandRunnerOptions {
   bot: RunningBot;
   input: string;
   dryRun: boolean;
+  authorize?: (order: ExecOrder) => boolean;
   execute(order: ExecOrder): Promise<ExecResult>;
   applyResult(result: ExecResult, reason: string, order: ExecOrder): void;
 }
@@ -23,6 +24,7 @@ export async function runManualCommandSet(options: ManualCommandRunnerOptions): 
         order = constrainSpotInventoryOrder(options.bot.config.id, options.bot.config.market, order);
         if (options.dryRun) messages.push(`would ${formatExec(order)}`);
         else {
+          if (options.authorize && !options.authorize(order)) throw new Error("Trading authorization changed while the command was queued.");
           const result = await options.execute(order);
           options.applyResult(result, order.reason, order);
           messages.push(result.message);

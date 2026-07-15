@@ -25,4 +25,13 @@ describe("PineImportDialog overlay", () => {
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-live="polite"');
   });
+
+  it("gives the Pine source editor an explicit accessible label", () => {
+    const html = renderToStaticMarkup(<PineImportDialog locale="en" onClose={() => {}} onImportMany={() => {}} />);
+    const document = new DOMParser().parseFromString(html, "text/html");
+    const source = document.querySelector<HTMLTextAreaElement>('textarea[name="pine-source"]');
+
+    expect(source?.id).toBeTruthy();
+    expect(document.querySelector(`label[for="${source?.id}"]`)?.textContent).toBe("Pine source");
+  });
 });

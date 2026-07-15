@@ -1,4 +1,5 @@
 import type { ChartType } from "../types";
+import { readTenantLocalItem, removeTenantLocalItem, tenantLocalStorageKey, writeTenantLocalItem } from "../app/tenantLocalStorage";
 import { DEFAULT_KAGI_REVERSAL_PERCENT } from "./kagi";
 import { DEFAULT_RENKO_BRICK_PERCENT } from "./renko";
 import { DEFAULT_PNF_BOX_PERCENT, DEFAULT_PNF_REVERSAL_BOXES } from "./pointAndFigure";
@@ -34,7 +35,7 @@ export function priceRepresentationSettingsStorageKey(symbol: string, chartId = 
 }
 
 export function sanitizePriceRepresentationSettings(value: unknown): PriceRepresentationSettings {
-  const candidate = value && typeof value === "object" ? value as Partial<PriceRepresentationSettings> : {};
+  const candidate = value && typeof value === "object" ? (value as Partial<PriceRepresentationSettings>) : {};
   return {
     renkoBrickPercent: clampNumber(candidate.renkoBrickPercent, 0.01, 10, DEFAULT_PRICE_REPRESENTATION_SETTINGS.renkoBrickPercent, 2),
     lineBreakDepth: clampNumber(candidate.lineBreakDepth, 1, 10, DEFAULT_PRICE_REPRESENTATION_SETTINGS.lineBreakDepth, 0),
@@ -44,32 +45,38 @@ export function sanitizePriceRepresentationSettings(value: unknown): PriceRepres
   };
 }
 
-export function loadPriceRepresentationSettings(symbol = "global", chartId = "chart-1"): PriceRepresentationSettings {
+export function loadPriceRepresentationSettings(symbol = "global", chartId = "chart-1", ownerId?: string): PriceRepresentationSettings {
   try {
     const key = priceRepresentationSettingsStorageKey(symbol, chartId);
-    const current = localStorage.getItem(key);
+    if (!tenantLocalStorageKey(key, ownerId)) return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS };
+    const current = readTenantLocalItem(localStorage, key, ownerId);
     if (current) return parseSettings(current);
     if (chartId !== "chart-1") return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS };
-    const legacy = localStorage.getItem(LEGACY_PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY);
+    const legacy = readTenantLocalItem(localStorage, LEGACY_PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY, ownerId);
     if (!legacy) return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS };
     const migrated = parseSettings(legacy);
     try {
-      localStorage.setItem(key, JSON.stringify(migrated));
-      localStorage.removeItem(LEGACY_PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY);
-    } catch { /* keep the validated runtime snapshot */ }
+      writeTenantLocalItem(localStorage, key, JSON.stringify(migrated), ownerId);
+      removeTenantLocalItem(localStorage, LEGACY_PRICE_REPRESENTATION_SETTINGS_STORAGE_KEY, ownerId);
+    } catch {
+      /* keep the validated runtime snapshot */
+    }
     return migrated;
   } catch {
     return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS };
   }
 }
 
-export function storePriceRepresentationSettings(settings: PriceRepresentationSettings, symbol = "global", chartId = "chart-1") {
+export function storePriceRepresentationSettings(settings: PriceRepresentationSettings, symbol = "global", chartId = "chart-1", ownerId?: string) {
   const safe = sanitizePriceRepresentationSettings(settings);
-  const key = priceRepresentationSettingsStorageKey(symbol, chartId);
+  const baseKey = priceRepresentationSettingsStorageKey(symbol, chartId);
+  const key = tenantLocalStorageKey(baseKey, ownerId);
   try {
-    localStorage.setItem(key, JSON.stringify(safe));
-  } catch { /* storage can be unavailable */ }
-  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent<PriceRepresentationSettingsEventDetail>(PRICE_REPRESENTATION_SETTINGS_EVENT, { detail: { key, settings: safe } }));
+    writeTenantLocalItem(localStorage, baseKey, JSON.stringify(safe), ownerId);
+  } catch {
+    /* storage can be unavailable */
+  }
+  if (typeof window !== "undefined" && key) window.dispatchEvent(new CustomEvent<PriceRepresentationSettingsEventDetail>(PRICE_REPRESENTATION_SETTINGS_EVENT, { detail: { key, settings: safe } }));
 }
 
 export function priceRepresentationBadge(chartType: ChartType, settings = DEFAULT_PRICE_REPRESENTATION_SETTINGS) {
@@ -91,7 +98,11 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number,
 
 function parseSettings(raw: string): PriceRepresentationSettings {
   if (raw.length > MAX_STORAGE_BYTES) return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS };
-  try { return sanitizePriceRepresentationSettings(JSON.parse(raw)); } catch { return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS }; }
+  try {
+    return sanitizePriceRepresentationSettings(JSON.parse(raw));
+  } catch {
+    return { ...DEFAULT_PRICE_REPRESENTATION_SETTINGS };
+  }
 }
 
 function validSegment(value: string, fallback: string): string {

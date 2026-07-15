@@ -124,9 +124,18 @@ export interface BybitUtaActionResult {
   snapshot: BybitUtaSnapshot;
 }
 
+export interface MutationAuthorizationLease {
+  assertCurrent(): boolean;
+}
+
+export type MutationAuthorization = () => Promise<MutationAuthorizationLease | undefined>;
+
 /** Read and mutate Bybit UTA debt through one typed, guard-railed service. */
 export class BybitUtaService {
-  constructor(private readonly client: BybitRequester | BybitV5Client) {}
+  constructor(
+    private readonly client: BybitRequester | BybitV5Client,
+    private readonly authorizeMutation?: MutationAuthorization
+  ) {}
 
   async snapshot(): Promise<BybitUtaSnapshot> {
     const [walletEnvelope, accountEnvelope, collateralEnvelope, historyEnvelope] = await Promise.all([
@@ -141,6 +150,8 @@ export class BybitUtaService {
   async borrow(coin: string, amount: number): Promise<BybitUtaActionResult> {
     const before = await this.snapshot();
     assertBorrowAllowed(before, coin, amount);
+    const authorization = this.authorizeMutation ? await this.authorizeMutation() : undefined;
+    if (this.authorizeMutation && !authorization?.assertCurrent()) throw new Error("Trading authorization changed before the Bybit UTA mutation.");
     await this.client.request("POST", "/v5/account/borrow", { coin, amount: decimal(amount) });
     return { ok: true, status: "success", snapshot: await this.snapshot() };
   }
@@ -149,6 +160,8 @@ export class BybitUtaService {
     const params: Record<string, unknown> = { coin: input.coin, repaymentType: input.repaymentType };
     if (input.amount !== undefined) params.amount = decimal(input.amount);
     const path = input.convertCollateral ? "/v5/account/repay" : "/v5/account/no-convert-repay";
+    const authorization = this.authorizeMutation ? await this.authorizeMutation() : undefined;
+    if (this.authorizeMutation && !authorization?.assertCurrent()) throw new Error("Trading authorization changed before the Bybit UTA mutation.");
     const response = await this.client.request<{ resultStatus?: string }>("POST", path, params);
     const processing = response.result.resultStatus === "P";
     return { ok: true, status: processing ? "processing" : "success", snapshot: await this.snapshot() };
@@ -163,6 +176,8 @@ export class BybitUtaService {
       if (asset && !asset.marginCollateral) throw new Error(`${coin} is not currently accepted as margin collateral by Bybit.`);
       if (asset?.collateralRestriction === "restricted") throw new Error(`${coin} collateral is restricted by the Bybit platform limit.`);
     }
+    const authorization = this.authorizeMutation ? await this.authorizeMutation() : undefined;
+    if (this.authorizeMutation && !authorization?.assertCurrent()) throw new Error("Trading authorization changed before the Bybit UTA mutation.");
     await this.client.request("POST", "/v5/account/set-collateral-switch", { coin, collateralSwitch: enabled ? "ON" : "OFF" });
     return { ok: true, status: "success", snapshot: await this.snapshot() };
   }

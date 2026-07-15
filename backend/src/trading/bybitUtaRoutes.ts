@@ -2,7 +2,7 @@ import type { RequestHandler, Response } from "express";
 import { z } from "zod";
 import type { ExchangeKeys } from "./exchange/binance.js";
 import { BybitV5Client } from "./exchange/bybitClient.js";
-import { BybitUtaService } from "./bybitUta.js";
+import { BybitUtaService, type MutationAuthorization } from "./bybitUta.js";
 
 const coinSchema = z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,15}$/);
 const borrowSchema = z.object({
@@ -24,6 +24,7 @@ interface Dependencies {
   demo: () => boolean;
   liveEnabled: () => boolean;
   keys: () => ExchangeKeys | undefined;
+  authorizeMutation?: MutationAuthorization;
 }
 
 export interface BybitUtaHandlers {
@@ -37,7 +38,7 @@ export function createBybitUtaHandlers(deps: Dependencies): BybitUtaHandlers {
   const service = () => {
     const keys = deps.keys();
     if (!keys?.apiKey || !keys.apiSecret) throw new Error("Bybit API keys are not configured.");
-    return new BybitUtaService(new BybitV5Client(keys));
+    return new BybitUtaService(new BybitV5Client(keys), deps.authorizeMutation);
   };
   const allowMutation = (response: Response, requiresLiveArm: boolean) => {
     if (deps.demo()) {
@@ -79,7 +80,7 @@ export function createBybitUtaHandlers(deps: Dependencies): BybitUtaHandlers {
       try {
         response.json(await service().borrow(parsed.data.coin, parsed.data.amount));
       } catch (error) {
-        response.status(400).json({ error: message(error) });
+        if (!response.headersSent) response.status(400).json({ error: message(error) });
       }
     },
     repay: async (request, response) => {
@@ -96,7 +97,7 @@ export function createBybitUtaHandlers(deps: Dependencies): BybitUtaHandlers {
       try {
         response.json(await service().repay(parsed.data));
       } catch (error) {
-        response.status(400).json({ error: message(error) });
+        if (!response.headersSent) response.status(400).json({ error: message(error) });
       }
     },
     collateral: async (request, response) => {
@@ -109,7 +110,7 @@ export function createBybitUtaHandlers(deps: Dependencies): BybitUtaHandlers {
       try {
         response.json(await service().setCollateral(parsed.data.coin, parsed.data.enabled));
       } catch (error) {
-        response.status(400).json({ error: message(error) });
+        if (!response.headersSent) response.status(400).json({ error: message(error) });
       }
     }
   };

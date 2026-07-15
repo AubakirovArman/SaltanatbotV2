@@ -1,16 +1,6 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
-import {
-  createArtifactCopy,
-  createPineArtifacts,
-  createPluginArtifacts,
-  createTemplateCopy,
-  dedupeArtifactName,
-  stampArtifact,
-  rollbackArtifact,
-  type PineArtifactInput,
-  upsertArtifact
-} from "./artifactLibraryModel";
+import { createArtifactCopy, createPineArtifacts, createPluginArtifacts, createTemplateCopy, dedupeArtifactName, stampArtifact, rollbackArtifact, type PineArtifactInput, upsertArtifact } from "./artifactLibraryModel";
 import type { StrategyArtifact, StrategyArtifactKind } from "./library";
 import { indicatorToArtifact, normalizeArtifact, portableArtifactProvenanceSource } from "./library";
 import { warmStrategyLab } from "./loadStrategyLab";
@@ -21,6 +11,7 @@ import type { PortableStrategyArtifact } from "./strategyFile";
 import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 import { analyzePluginRemoval, removeArtifactScopedValues } from "./pluginCatalog";
 import { isPluginKeyTrusted } from "./pluginTrust";
+import { readTenantLocalItem, writeTenantLocalItem } from "../app/tenantLocalStorage";
 
 const ARTIFACT_INPUTS_KEY = "marketforge.artifactInputs.v1";
 
@@ -28,12 +19,13 @@ interface UseArtifactLibraryOptions {
   initialArtifacts: StrategyArtifact[];
   setIndicators: Dispatch<SetStateAction<IndicatorConfig[]>>;
   openStrategyWorkspace(): void;
+  storageOwnerId?: string;
 }
 
-export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrategyWorkspace }: UseArtifactLibraryOptions) {
+export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrategyWorkspace, storageOwnerId }: UseArtifactLibraryOptions) {
   const [artifacts, setArtifacts] = useState(initialArtifacts);
   const [activeArtifactId, setActiveArtifactId] = useState("strategy:price-cross-ema");
-  const [inputOverrides, setInputOverrides] = useState<Record<string, Record<string, number>>>(() => readArtifactInputOverrides());
+  const [inputOverrides, setInputOverrides] = useState<Record<string, Record<string, number>>>(() => readArtifactInputOverrides(storageOwnerId));
 
   useEffect(() => {
     const shared = readSharedFromHash();
@@ -56,17 +48,17 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
     clearShareHash();
   }, [openStrategyWorkspace]);
 
-  useEffect(() => storeStrategyLibrary(artifacts), [artifacts]);
+  useEffect(() => storeStrategyLibrary(artifacts, storageOwnerId), [artifacts, storageOwnerId]);
   useEffect(() => {
-    try { localStorage.setItem(ARTIFACT_INPUTS_KEY, JSON.stringify(inputOverrides)); } catch { /* runtime state still works */ }
-  }, [inputOverrides]);
+    try {
+      writeTenantLocalItem(localStorage, ARTIFACT_INPUTS_KEY, JSON.stringify(inputOverrides), storageOwnerId);
+    } catch {
+      /* runtime state still works */
+    }
+  }, [inputOverrides, storageOwnerId]);
 
-  const customIndicators = useMemo(() => artifacts
-    .filter((item) => item.kind === "indicator" && !item.linkedIndicatorId)
-    .map((item) => ({ id: item.id, name: item.name, description: item.description })), [artifacts]);
-  const strategies = useMemo(() => artifacts
-    .filter((item) => item.kind === "strategy")
-    .map((item) => ({ id: item.id, name: item.name, description: item.description })), [artifacts]);
+  const customIndicators = useMemo(() => artifacts.filter((item) => item.kind === "indicator" && !item.linkedIndicatorId).map((item) => ({ id: item.id, name: item.name, description: item.description })), [artifacts]);
+  const strategies = useMemo(() => artifacts.filter((item) => item.kind === "strategy").map((item) => ({ id: item.id, name: item.name, description: item.description })), [artifacts]);
 
   const selectIndicatorLogic = (indicator: IndicatorConfig) => {
     const artifact = indicatorToArtifact(indicator);
@@ -77,12 +69,13 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
   };
 
   const saveArtifact = (artifact: StrategyArtifact) => {
-    const saved = stampArtifact(artifact, artifacts.find((item) => item.id === artifact.id));
+    const saved = stampArtifact(
+      artifact,
+      artifacts.find((item) => item.id === artifact.id)
+    );
     setArtifacts((current) => upsertArtifact(current, artifact));
     if (!artifact.linkedIndicatorId) return;
-    setIndicators((current) => current.map((indicator) => indicator.id === artifact.linkedIndicatorId
-      ? { ...indicator, logicCode: saved.code, logicXml: saved.xml, logicVersion: saved.version, logicHash: saved.hash }
-      : indicator));
+    setIndicators((current) => current.map((indicator) => (indicator.id === artifact.linkedIndicatorId ? { ...indicator, logicCode: saved.code, logicXml: saved.xml, logicVersion: saved.version, logicHash: saved.hash } : indicator)));
   };
 
   const createArtifact = (kind: StrategyArtifactKind) => {
@@ -138,7 +131,7 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
 
   const importPlugin = (input: VerifiedPlugin) => {
     const now = Date.now();
-    const created = createPluginArtifacts(input.manifest, input.checksum, artifacts, now, input.signature, input.signature ? isPluginKeyTrusted(input.signature.keyFingerprint) : false);
+    const created = createPluginArtifacts(input.manifest, input.checksum, artifacts, now, input.signature, input.signature ? isPluginKeyTrusted(input.signature.keyFingerprint, localStorage, storageOwnerId) : false);
     if (!created.length) return;
     setArtifacts((current) => [...created, ...current]);
     setActiveArtifactId(created[0].id);
@@ -187,10 +180,10 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
   };
 }
 
-function readArtifactInputOverrides(): Record<string, Record<string, number>> {
+function readArtifactInputOverrides(ownerId?: string): Record<string, Record<string, number>> {
   try {
-    const raw = localStorage.getItem(ARTIFACT_INPUTS_KEY);
-    return raw ? JSON.parse(raw) as Record<string, Record<string, number>> : {};
+    const raw = readTenantLocalItem(localStorage, ARTIFACT_INPUTS_KEY, ownerId);
+    return raw ? (JSON.parse(raw) as Record<string, Record<string, number>>) : {};
   } catch {
     return {};
   }

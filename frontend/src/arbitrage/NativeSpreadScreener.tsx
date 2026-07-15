@@ -13,6 +13,7 @@ import { OpportunityHandoffButton } from "./OpportunityHandoffButton";
 interface Props {
   locale: Locale;
   onOpenChart(target: ArbitrageChartTarget): void;
+  storageOwner?: string;
 }
 
 interface ScanOptions {
@@ -39,7 +40,7 @@ const NATIVE_COLUMNS: readonly ScannerColumn[] = [
 const NATIVE_DEFAULT_COLUMNS = NATIVE_COLUMNS.map((column) => column.id);
 const NATIVE_COLUMN_TEXT = { route: "routeColumn", legs: "legsColumn", bid: "bidColumn", ask: "askColumn", width: "widthColumn", capacity: "capacityColumn", rules: "rulesColumn", quality: "qualityColumn", actions: "actionsColumn" } as const;
 
-export function NativeSpreadScreener({ locale, onOpenChart }: Props) {
+export function NativeSpreadScreener({ locale, onOpenChart, storageOwner }: Props) {
   const [options, setOptions] = useState(DEFAULT_OPTIONS);
   const [scan, setScan] = useState<NativeSpreadScanResponse>();
   const [error, setError] = useState<"scannerUnavailable">();
@@ -182,6 +183,7 @@ export function NativeSpreadScreener({ locale, onOpenChart }: Props) {
 
       <ScannerWorkbench
         mode="native"
+        storageOwner={storageOwner}
         locale={locale}
         filters={workspaceFilters}
         columns={workspaceColumns}

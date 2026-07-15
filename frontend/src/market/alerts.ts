@@ -1,3 +1,5 @@
+import { readTenantLocalItem, writeTenantLocalItem } from "../app/tenantLocalStorage";
+
 export type AlertDirection = "above" | "below";
 
 export interface PriceAlert {
@@ -11,9 +13,9 @@ export interface PriceAlert {
 
 const KEY = "sbv2:alerts";
 
-export function loadAlerts(): PriceAlert[] {
+export function loadAlerts(ownerId?: string): PriceAlert[] {
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = readTenantLocalItem(window.localStorage, KEY, ownerId);
     const parsed = raw ? (JSON.parse(raw) as unknown) : undefined;
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(isAlert);
@@ -22,9 +24,9 @@ export function loadAlerts(): PriceAlert[] {
   }
 }
 
-export function storeAlerts(alerts: PriceAlert[]) {
+export function storeAlerts(alerts: PriceAlert[], ownerId?: string) {
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(alerts));
+    writeTenantLocalItem(window.localStorage, KEY, JSON.stringify(alerts), ownerId);
   } catch {
     // Storage can be unavailable in private contexts; runtime state still works.
   }
@@ -33,14 +35,7 @@ export function storeAlerts(alerts: PriceAlert[]) {
 function isAlert(value: unknown): value is PriceAlert {
   if (typeof value !== "object" || value === null) return false;
   const alert = value as Record<string, unknown>;
-  return (
-    typeof alert.id === "string" &&
-    typeof alert.symbol === "string" &&
-    typeof alert.price === "number" &&
-    (alert.direction === "above" || alert.direction === "below") &&
-    typeof alert.createdAt === "number" &&
-    typeof alert.triggered === "boolean"
-  );
+  return typeof alert.id === "string" && typeof alert.symbol === "string" && typeof alert.price === "number" && (alert.direction === "above" || alert.direction === "below") && typeof alert.createdAt === "number" && typeof alert.triggered === "boolean";
 }
 
 /**
@@ -64,11 +59,7 @@ export async function ensureNotificationPermission(): Promise<NotificationPermis
 
 export function showAlertNotification(alert: PriceAlert, price: number, decimals: number) {
   const arrow = alert.direction === "above" ? "▲" : "▼";
-  showSystemNotification(
-    `${alert.symbol} ${arrow} ${alert.price.toFixed(decimals)}`,
-    `Price ${alert.direction === "above" ? "rose above" : "fell below"} ${alert.price.toFixed(decimals)} (now ${price.toFixed(decimals)})`,
-    alert.id
-  );
+  showSystemNotification(`${alert.symbol} ${arrow} ${alert.price.toFixed(decimals)}`, `Price ${alert.direction === "above" ? "rose above" : "fell below"} ${alert.price.toFixed(decimals)} (now ${price.toFixed(decimals)})`, alert.id);
 }
 
 export function showSystemNotification(title: string, body: string, tag: string) {

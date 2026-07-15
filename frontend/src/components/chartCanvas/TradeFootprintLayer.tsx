@@ -40,7 +40,8 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   timeZone,
   candles,
   viewportRef,
-  renderKey
+  renderKey,
+  storageOwnerId
 }: {
   enabled: boolean;
   symbol: string;
@@ -50,6 +51,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   candles: Candle[];
   viewportRef: { current: Viewport | undefined };
   renderKey: string;
+  storageOwnerId?: string;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -64,11 +66,11 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   const lastInsightMetaAtRef = useRef(0);
   const [meta, setMeta] = useState<FlowMeta>({ status: "connecting", message: "", prints: 0, buyNotional: 0, sellNotional: 0 });
   const [insightMeta, setInsightMeta] = useState<InsightMeta>(insightMetaRef.current);
-  const [alertSettings, setAlertSettings] = useState(loadMicrostructureAlertSettings);
+  const [alertSettings, setAlertSettings] = useState(() => loadMicrostructureAlertSettings(storageOwnerId));
   const [alertEvents, setAlertEvents] = useState<MicrostructureAlertEvent[]>([]);
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
 
-  useEffect(() => storeMicrostructureAlertSettings(alertSettings), [alertSettings]);
+  useEffect(() => storeMicrostructureAlertSettings(alertSettings, storageOwnerId), [alertSettings, storageOwnerId]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -125,8 +127,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
         insightMetaTimerRef.current = undefined;
         pendingInsightMetaRef.current = undefined;
         publishInsightMeta(nextMeta, insightMetaRef, lastInsightMetaAtRef, setInsightMeta);
-      }
-      else if (insightMetaTimerRef.current === undefined) {
+      } else if (insightMetaTimerRef.current === undefined) {
         insightMetaTimerRef.current = window.setTimeout(() => {
           insightMetaTimerRef.current = undefined;
           const pending = pendingInsightMetaRef.current;
@@ -145,7 +146,9 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
     });
   }, [draw]);
 
-  useEffect(() => { scheduleDraw(); }, [renderKey, scheduleDraw]);
+  useEffect(() => {
+    scheduleDraw();
+  }, [renderKey, scheduleDraw]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -196,13 +199,25 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
       setStatus(attempts > 0 ? "reconnecting" : "connecting", "");
       const currentSocket = createTradeFlowSocket(symbol, exchange);
       socket = currentSocket;
-      currentSocket.onopen = () => { attempts = 0; };
+      currentSocket.onopen = () => {
+        attempts = 0;
+      };
       currentSocket.onmessage = (event) => {
         let message: TradeFlowStreamMessage;
-        try { message = parseTradeFlowStreamMessage(JSON.parse(String(event.data))); }
-        catch { setStatus("error", "Invalid trade flow message"); return; }
-        if (message.type === "error") { setStatus("error", message.message); return; }
-        if (message.type === "trade_flow_status") { setStatus(message.status, message.message); return; }
+        try {
+          message = parseTradeFlowStreamMessage(JSON.parse(String(event.data)));
+        } catch {
+          setStatus("error", "Invalid trade flow message");
+          return;
+        }
+        if (message.type === "error") {
+          setStatus("error", message.message);
+          return;
+        }
+        if (message.type === "trade_flow_status") {
+          setStatus(message.status, message.message);
+          return;
+        }
         if (message.symbol !== symbol || message.exchange !== exchange) return;
         const now = Date.now();
         lastTradeAt = now;
@@ -259,10 +274,13 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
     root?.addEventListener("contentvisibilityautostatechange", onContentVisibility);
     let intersection: IntersectionObserver | undefined;
     if (!("contentVisibility" in document.documentElement.style) && root) {
-      intersection = new IntersectionObserver(([entry]) => {
-        skipped = !entry.isIntersecting;
-        updateOperationalVisibility();
-      }, { rootMargin: "200px" });
+      intersection = new IntersectionObserver(
+        ([entry]) => {
+          skipped = !entry.isIntersecting;
+          updateOperationalVisibility();
+        },
+        { rootMargin: "200px" }
+      );
       intersection.observe(root);
     }
     staleTimer = window.setInterval(() => {
@@ -284,21 +302,36 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   }, [enabled, exchange, scheduleDraw, symbol]);
 
   if (!enabled) return null;
-  const statusLabel = meta.status === "connected" ? t("flowLive")
-    : meta.status === "connecting" ? t("flowConnecting")
-      : meta.status === "reconnecting" ? t("flowReconnecting")
-        : meta.status === "stale" ? t("flowStale")
-          : meta.status === "paused" ? t("flowPaused") : t("flowError");
+  const statusLabel = meta.status === "connected" ? t("flowLive") : meta.status === "connecting" ? t("flowConnecting") : meta.status === "reconnecting" ? t("flowReconnecting") : meta.status === "stale" ? t("flowStale") : meta.status === "paused" ? t("flowPaused") : t("flowError");
   const deltaPct = tradeFlowDeltaPercent(meta.buyNotional, meta.sellNotional);
   return (
     <>
       <div ref={rootRef} className="trade-footprint-layer">
         <canvas ref={canvasRef} className="chart-canvas chart-canvas-layer trade-footprint-canvas" aria-hidden="true" />
-        <div className={`trade-footprint-badge ${meta.status}`} role="status" title={meta.message} aria-label={`${t("tradeFootprint")}: ${statusLabel}; ${t("tradeDelta")} ${deltaPct.toFixed(1)}%; ${insightMeta.imbalances} ${t("imbalances")}; ${insightMeta.stacks} ${t("stacks")}; ${insightMeta.absorptions} ${t("potentialAbsorptions")}`}>
+        <div
+          className={`trade-footprint-badge ${meta.status}`}
+          role="status"
+          title={meta.message}
+          aria-label={`${t("tradeFootprint")}: ${statusLabel}; ${t("tradeDelta")} ${deltaPct.toFixed(1)}%; ${insightMeta.imbalances} ${t("imbalances")}; ${insightMeta.stacks} ${t("stacks")}; ${insightMeta.absorptions} ${t("potentialAbsorptions")}`}
+        >
           <strong>FOOTPRINT · {exchange.toUpperCase()} · LIVE</strong>
-          <span>{statusLabel} · Δ <b className={deltaPct >= 0 ? "up" : "down"}>{deltaPct >= 0 ? "+" : ""}{deltaPct.toFixed(1)}%</b></span>
-          {meta.prints > 0 && <small>{meta.prints} {t("prints")} · {formatCompact(meta.buyNotional + meta.sellNotional)}</small>}
-          {meta.prints > 0 && <small className="trade-footprint-insights">{insightMeta.imbalances} {t("imbalances")} · {insightMeta.stacks} {t("stacks")} · {insightMeta.absorptions} ABS?</small>}
+          <span>
+            {statusLabel} · Δ{" "}
+            <b className={deltaPct >= 0 ? "up" : "down"}>
+              {deltaPct >= 0 ? "+" : ""}
+              {deltaPct.toFixed(1)}%
+            </b>
+          </span>
+          {meta.prints > 0 && (
+            <small>
+              {meta.prints} {t("prints")} · {formatCompact(meta.buyNotional + meta.sellNotional)}
+            </small>
+          )}
+          {meta.prints > 0 && (
+            <small className="trade-footprint-insights">
+              {insightMeta.imbalances} {t("imbalances")} · {insightMeta.stacks} {t("stacks")} · {insightMeta.absorptions} ABS?
+            </small>
+          )}
         </div>
       </div>
       <TradeFlowAlertCenter
@@ -314,16 +347,7 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   );
 });
 
-function drawFootprintCells(
-  ctx: CanvasRenderingContext2D,
-  footprint: ReturnType<typeof aggregateTradeFootprint>,
-  viewport: Viewport,
-  up: string,
-  down: string,
-  text: string,
-  dimmed: number,
-  width: number
-) {
+function drawFootprintCells(ctx: CanvasRenderingContext2D, footprint: ReturnType<typeof aggregateTradeFootprint>, viewport: Viewport, up: string, down: string, text: string, dimmed: number, width: number) {
   if (footprint.maxCellNotional <= 0) return;
   const logMax = Math.log1p(footprint.maxCellNotional);
   const half = width / 2;
@@ -362,12 +386,7 @@ function sameInsightMeta(left: InsightMeta, right: InsightMeta) {
   return left.imbalances === right.imbalances && left.stacks === right.stacks && left.absorptions === right.absorptions;
 }
 
-function publishInsightMeta(
-  value: InsightMeta,
-  current: { current: InsightMeta },
-  lastPublishedAt: { current: number },
-  publish: (value: InsightMeta) => void
-) {
+function publishInsightMeta(value: InsightMeta, current: { current: InsightMeta }, lastPublishedAt: { current: number }, publish: (value: InsightMeta) => void) {
   current.current = value;
   lastPublishedAt.current = Date.now();
   publish(value);
@@ -381,17 +400,7 @@ function microstructureNotificationBody(event: MicrostructureAlertEvent, t: (key
   return `${side} · ${t("largePrint")} ${event.value.toFixed(0)}`;
 }
 
-function drawDeltaRibbon(
-  ctx: CanvasRenderingContext2D,
-  footprint: ReturnType<typeof aggregateTradeFootprint>,
-  viewport: Viewport,
-  up: string,
-  down: string,
-  accent: string,
-  panel: string,
-  grid: string,
-  dimmed: number
-) {
+function drawDeltaRibbon(ctx: CanvasRenderingContext2D, footprint: ReturnType<typeof aggregateTradeFootprint>, viewport: Viewport, up: string, down: string, accent: string, panel: string, grid: string, dimmed: number) {
   if (footprint.bars.length === 0 || footprint.maxAbsDelta <= 0) return;
   const height = Math.min(84, Math.max(48, viewport.plot.height * 0.16));
   const top = viewport.plot.bottom - height;
@@ -421,7 +430,7 @@ function drawDeltaRibbon(
   const maxCumulative = Math.max(...footprint.bars.map((bar) => Math.abs(bar.cumulative)), 1);
   ctx.beginPath();
   for (const [index, bar] of footprint.bars.entries()) {
-    const barHeight = Math.max(1, Math.abs(bar.delta) / footprint.maxAbsDelta * (height / 2 - 5));
+    const barHeight = Math.max(1, (Math.abs(bar.delta) / footprint.maxAbsDelta) * (height / 2 - 5));
     ctx.globalAlpha = 0.5 * dimmed;
     ctx.fillStyle = bar.delta >= 0 ? up : down;
     ctx.fillRect(bar.x - barWidth / 2, bar.delta >= 0 ? baseline - barHeight : baseline, barWidth, barHeight);

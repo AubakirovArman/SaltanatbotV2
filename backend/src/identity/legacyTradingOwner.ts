@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { LEGACY_TRADING_OWNER_ID, TRADING_SCHEMA_VERSION } from "../trading/storeSchema.js";
+import { LEGACY_TRADING_OWNER_ID, TRADING_TENANT_OWNERSHIP_SCHEMA_VERSION } from "../trading/storeSchema.js";
 import type { IdentityRuntime } from "./runtime.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,7 +53,7 @@ export function tradingStoreRequiresLegacyOwner(databasePath = defaultTradingDat
   const database = new DatabaseSync(databasePath, { readOnly: true });
   try {
     const version = Number((database.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
-    if (version >= TRADING_SCHEMA_VERSION) return false;
+    if (version >= TRADING_TENANT_OWNERSHIP_SCHEMA_VERSION) return false;
     const tables = new Set(
       (database.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>)
         .map((row) => row.name)

@@ -29,13 +29,25 @@ export interface UserUpdate {
   updatedAt: Date;
 }
 
+export type FirstAdminCreateResult = "created" | "admin_exists" | "login_exists";
+
+export type AdminGuardedUserUpdateResult =
+  | { status: "updated"; user: IdentityUser }
+  | { status: "subject_not_found" }
+  | { status: "last_active_admin" }
+  | { status: "actor_not_found" | "actor_inactive" | "actor_not_admin" | "actor_password_change_required" };
+
 export interface IdentityRepository {
   createUser(user: IdentityUser): Promise<boolean>;
+  /** Atomically creates the only initial administrator. */
+  createFirstAdmin(user: IdentityUser): Promise<FirstAdminCreateResult>;
   findUserByLogin(loginNormalized: string): Promise<IdentityUser | undefined>;
   findUserById(id: string): Promise<IdentityUser | undefined>;
   listUsers(status?: UserStatus): Promise<IdentityUser[]>;
   countAdmins(): Promise<number>;
   updateUser(id: string, update: UserUpdate): Promise<IdentityUser | undefined>;
+  /** Revalidates the administrator and mutates the subject under one guard/transaction. */
+  updateUserAsAdmin(actorUserId: string, subjectUserId: string, update: UserUpdate): Promise<AdminGuardedUserUpdateResult>;
 
   createSession(session: IdentitySession): Promise<void>;
   findSession(idHash: string): Promise<{ session: IdentitySession; user: IdentityUser } | undefined>;

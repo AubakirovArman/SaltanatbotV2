@@ -334,7 +334,7 @@
   pointer-events: auto;
   display: inline-flex;
   align-items: center;
-  min-block-size: 22px;
+  min-block-size: 24px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--chart-bg) 86%, transparent);
@@ -414,8 +414,8 @@
 .compare-chip button {
   display: inline-grid;
   place-content: center;
-  inline-size: 18px;
-  block-size: 18px;
+  inline-size: 24px;
+  block-size: 24px;
   border: 0;
   border-radius: 5px;
   background: transparent;
@@ -460,8 +460,8 @@
 .compare-settings header button {
   display: inline-grid;
   place-content: center;
-  inline-size: 20px;
-  block-size: 20px;
+  inline-size: 24px;
+  block-size: 24px;
   border: 0;
   border-radius: 5px;
   background: transparent;
@@ -538,6 +538,11 @@
   outline: none;
 }
 
+.compare-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .compare-menu-list {
   display: grid;
   gap: 2px;
@@ -561,7 +566,8 @@
   font: inherit;
 }
 
-.compare-menu-list button:hover {
+.compare-menu-list button:hover,
+.compare-menu-list button[aria-selected="true"] {
   background: var(--accent-soft);
 }
 
@@ -578,7 +584,7 @@
   white-space: nowrap;
 }
 
-.compare-menu-list p {
+.compare-menu-empty {
   margin: 0;
   padding: 8px;
   color: var(--muted);

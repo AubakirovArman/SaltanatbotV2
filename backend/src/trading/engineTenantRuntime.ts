@@ -4,7 +4,8 @@ import type { RunningBot } from "./engineRuntime.js";
 import { KeyedExclusiveLock } from "./keyedExclusiveLock.js";
 import { botBelongsToOwner, tenantSettingKey, tradingOwnerForBot } from "./ownership.js";
 import { deleteSetting, getSetting, setSetting } from "./store.js";
-import type { BotConfig, ExchangeAdapter } from "./types.js";
+import type { BotConfig, ExchangeAdapter, ExchangeId } from "./types.js";
+import { assertRunningBotCapacity, DEFAULT_TRADING_RESOURCE_LIMITS, type TradingResourceLimits } from "./resourceQuotas.js";
 
 interface OwnerStartLease {
   ownerUserId: string;
@@ -28,7 +29,8 @@ export class EngineTenantRuntime {
     private readonly running: () => Iterable<RunningBot>,
     private readonly stop: (botId: string) => void,
     private readonly publish: (event: TradeEvent) => void,
-    private readonly emergencyAdapters: (ownerUserId: string) => Iterable<ExchangeAdapter>
+    private readonly emergencyAdapters: (ownerUserId: string) => Iterable<ExchangeAdapter>,
+    private readonly resourceLimits: TradingResourceLimits = DEFAULT_TRADING_RESOURCE_LIMITS
   ) {}
 
   remember(config: BotConfig): string {
@@ -57,11 +59,18 @@ export class EngineTenantRuntime {
     return { ownerUserId, botId, assertCurrent };
   }
 
-  runStart<T>(lease: OwnerStartLease, accountId: string | undefined, operation: () => Promise<T>, validateCurrent?: () => void): Promise<T> {
+  runStart<T>(lease: OwnerStartLease, accountId: string | undefined, exchange: ExchangeId, operation: () => Promise<T>, validateCurrent?: () => void): Promise<T> {
     return this.withBotLifecycleLock(lease.ownerUserId, lease.botId, () => {
       validateCurrent?.();
       return this.ownerStartLock.run(lease.ownerUserId, async () => {
         lease.assertCurrent();
+        if (!this.owned(lease.ownerUserId, lease.botId)) {
+          assertRunningBotCapacity(
+            [...this.running()].map((bot) => bot.config).filter((bot) => botBelongsToOwner(bot, lease.ownerUserId)),
+            { exchange },
+            this.resourceLimits
+          );
+        }
         const run = async () => {
           lease.assertCurrent();
           const result = await operation();
@@ -94,11 +103,7 @@ export class EngineTenantRuntime {
     this.bumpStartEpoch(ownerUserId);
   }
 
-  async drainOwner(
-    ownerUserId: string,
-    stopSafely: (botId: string) => Promise<void>,
-    suspend = false
-  ): Promise<number> {
+  async drainOwner(ownerUserId: string, stopSafely: (botId: string) => Promise<void>, suspend = false): Promise<number> {
     if (suspend) this.suspendOwnerStarts(ownerUserId);
     const stopped = new Set<string>();
     await this.stopOwned(ownerUserId, stopSafely, stopped);
@@ -154,8 +159,11 @@ export class EngineTenantRuntime {
   private async stopOwned(ownerUserId: string, stopSafely: (botId: string) => Promise<void>, stopped: Set<string>): Promise<void> {
     const ids = [...this.running()].filter((bot) => botBelongsToOwner(bot.config, ownerUserId)).map((bot) => bot.config.id);
     for (const id of ids) {
-      try { await stopSafely(id); }
-      catch { this.stop(id); }
+      try {
+        await stopSafely(id);
+      } catch {
+        this.stop(id);
+      }
       stopped.add(id);
     }
   }

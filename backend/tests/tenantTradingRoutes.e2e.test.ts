@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { configureIdentityAuth } from "../src/auth.js";
 import { MemoryIdentityRepository } from "../src/identity/memoryRepository.js";
 import { IdentityService } from "../src/identity/service.js";
-import type { SessionCredentials } from "../src/identity/types.js";
+import type { IdentityPrincipal, SessionCredentials } from "../src/identity/types.js";
 import { createTradingApi } from "../src/trading/routes.js";
 
 const storeState = vi.hoisted(() => ({
@@ -113,6 +113,7 @@ let identity: IdentityService;
 let trading: ReturnType<typeof createTradingApi>;
 let adminAuth: AuthContext;
 let traderAuth: AuthContext;
+let adminPrincipal: IdentityPrincipal;
 let previousAuthMode: string | undefined;
 
 function bot(ownerUserId: string, id: string) {
@@ -168,7 +169,7 @@ beforeAll(async () => {
   await identity.repository.updateUser(admin.id, { mustChangePassword: false, updatedAt: new Date() });
   const trader = await identity.register("isolation-trader", "correct-horse-battery-staple");
   const adminCredentials = await identity.login(admin.login, "temporary-Admin-password-2026");
-  const adminPrincipal = (await identity.authenticate(adminCredentials.sessionToken))!;
+  adminPrincipal = (await identity.authenticate(adminCredentials.sessionToken))!;
   await identity.activateUser(adminPrincipal, trader.id);
   await identity.updatePermissions(adminPrincipal, trader.id, { tradingRole: "live-trade" });
   const freshAdminCredentials = await identity.login(admin.login, "temporary-Admin-password-2026");
@@ -268,6 +269,132 @@ describe("database-auth trading tenant boundary", () => {
     expect(traderBots.status).toBe(200);
     const traderBotBody = await traderBots.json() as { bots: Array<{ id: string }> };
     expect(traderBotBody.bots.map((item) => item.id)).toEqual(["trader-bot"]);
+  });
+
+  it("rejects a credential rotation queued before a durable trading-role downgrade", async () => {
+    const queuedUser = await identity.register("queued-trader", "correct-horse-battery-staple");
+    await identity.activateUser(adminPrincipal, queuedUser.id);
+    await identity.updatePermissions(adminPrincipal, queuedUser.id, { tradingRole: "live-trade" });
+    const queuedCredentials = await identity.login(queuedUser.login, "correct-horse-battery-staple");
+    const queuedAuth = authContext(queuedUser.id, queuedCredentials);
+    const accountId = "queued-account";
+    storeState.accounts.set(accountId, account(queuedUser.id, accountId));
+    storeState.credentials.set(`${queuedUser.id}:${accountId}`, { apiKey: "original-api-key", apiSecret: "original-api-secret" });
+
+    const originalLock = trading.engine.withAccountLifecycleLock.bind(trading.engine);
+    let releaseBlock = () => {};
+    let markBlockEntered = () => {};
+    const blockEntered = new Promise<void>((resolve) => {
+      markBlockEntered = resolve;
+    });
+    const blockGate = new Promise<void>((resolve) => {
+      releaseBlock = resolve;
+    });
+    const blocker = originalLock(queuedUser.id, accountId, async () => {
+      markBlockEntered();
+      await blockGate;
+    });
+    await blockEntered;
+
+    let markRequestQueued = () => {};
+    const requestQueued = new Promise<void>((resolve) => {
+      markRequestQueued = resolve;
+    });
+    const lockSpy = vi.spyOn(trading.engine, "withAccountLifecycleLock").mockImplementation((ownerUserId, candidateAccountId, operation) => {
+      if (ownerUserId === queuedUser.id && candidateAccountId === accountId) markRequestQueued();
+      return originalLock(ownerUserId, candidateAccountId, operation);
+    });
+
+    try {
+      const rotation = fetch(`${baseUrl}/accounts/${accountId}/credentials`, {
+        method: "PUT",
+        headers: headers(queuedAuth, true),
+        body: JSON.stringify({ apiKey: "replacement-api-key", apiSecret: "replacement-api-secret" })
+      });
+      await requestQueued;
+      await identity.updatePermissions(adminPrincipal, queuedUser.id, { tradingRole: "none" });
+      releaseBlock();
+
+      const response = await rotation;
+      expect(response.status).toBe(401);
+      expect(await response.json()).toMatchObject({ code: "authorization_stale" });
+      expect(storeState.credentials.get(`${queuedUser.id}:${accountId}`)).toEqual({
+        apiKey: "original-api-key",
+        apiSecret: "original-api-secret"
+      });
+    } finally {
+      releaseBlock();
+      await blocker;
+      lockSpy.mockRestore();
+    }
+  });
+
+  it("rejects a bot update queued before a durable trading-role downgrade", async () => {
+    const queuedUser = await identity.register("queued-bot-trader", "correct-horse-battery-staple");
+    await identity.activateUser(adminPrincipal, queuedUser.id);
+    await identity.updatePermissions(adminPrincipal, queuedUser.id, { tradingRole: "paper-trade" });
+    const queuedCredentials = await identity.login(queuedUser.login, "correct-horse-battery-staple");
+    const queuedAuth = authContext(queuedUser.id, queuedCredentials);
+    const botId = "queued-paper-bot";
+    const initial = bot(queuedUser.id, botId);
+    storeState.bots.set(botId, initial);
+
+    const originalLock = trading.engine.withBotLifecycleLock.bind(trading.engine);
+    let releaseBlock = () => {};
+    let markBlockEntered = () => {};
+    const blockEntered = new Promise<void>((resolve) => {
+      markBlockEntered = resolve;
+    });
+    const blockGate = new Promise<void>((resolve) => {
+      releaseBlock = resolve;
+    });
+    const blocker = originalLock(queuedUser.id, botId, async () => {
+      markBlockEntered();
+      await blockGate;
+    });
+    await blockEntered;
+
+    let markRequestQueued = () => {};
+    const requestQueued = new Promise<void>((resolve) => {
+      markRequestQueued = resolve;
+    });
+    const lockSpy = vi.spyOn(trading.engine, "withBotLifecycleLock").mockImplementation((ownerUserId, candidateBotId, operation) => {
+      if (ownerUserId === queuedUser.id && candidateBotId === botId) markRequestQueued();
+      return originalLock(ownerUserId, candidateBotId, operation);
+    });
+
+    try {
+      const update = fetch(`${baseUrl}/bots`, {
+        method: "POST",
+        headers: headers(queuedAuth, true),
+        body: JSON.stringify({
+          id: botId,
+          name: "must-not-persist",
+          strategyName: initial.strategyName,
+          ir: initial.ir,
+          symbol: initial.symbol,
+          timeframe: initial.timeframe,
+          exchange: initial.exchange,
+          market: initial.market,
+          sizeMode: initial.sizeMode,
+          sizeValue: initial.sizeValue,
+          leverage: initial.leverage,
+          notifyMarkers: initial.notifyMarkers
+        })
+      });
+      await requestQueued;
+      await identity.updatePermissions(adminPrincipal, queuedUser.id, { tradingRole: "none" });
+      releaseBlock();
+
+      const response = await update;
+      expect(response.status).toBe(401);
+      expect(await response.json()).toMatchObject({ code: "authorization_stale" });
+      expect(storeState.bots.get(botId)).toMatchObject({ name: botId, ownerUserId: queuedUser.id });
+    } finally {
+      releaseBlock();
+      await blocker;
+      lockSpy.mockRestore();
+    }
   });
 
   it("disarms only the revoked owner's live gate", async () => {

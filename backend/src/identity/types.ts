@@ -51,6 +51,8 @@ export interface IdentityPrincipal {
   sessionIdHash: string;
   csrfHash: string;
   expiresAt: Date;
+  /** In-process authorization generation used to invalidate queued mutations. */
+  authorizationEpoch: number;
   effectiveTradingRole?: AuthRole;
 }
 

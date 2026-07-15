@@ -1,3 +1,5 @@
+import { readTenantLocalItem, writeTenantLocalItem } from "../app/tenantLocalStorage";
+
 export interface SavedCommand {
   id: string;
   name: string;
@@ -6,9 +8,9 @@ export interface SavedCommand {
 
 const KEY = "mf:commands";
 
-export function loadSavedCommands(): SavedCommand[] {
+export function loadSavedCommands(ownerId?: string): SavedCommand[] {
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = readTenantLocalItem(window.localStorage, KEY, ownerId);
     const parsed = raw ? (JSON.parse(raw) as SavedCommand[]) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -16,9 +18,9 @@ export function loadSavedCommands(): SavedCommand[] {
   }
 }
 
-export function persistSavedCommands(list: SavedCommand[]) {
+export function persistSavedCommands(list: SavedCommand[], ownerId?: string) {
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(list));
+    writeTenantLocalItem(window.localStorage, KEY, JSON.stringify(list), ownerId);
   } catch {
     // ignore
   }

@@ -28,6 +28,7 @@ const generatorEntryMessages = {
 
 export function StrategyLibrary({
   locale,
+  storageOwnerId,
   artifacts,
   activeId,
   onSelect,
@@ -41,6 +42,7 @@ export function StrategyLibrary({
   onLaunchedBatchConsumed
 }: {
   locale: Locale;
+  storageOwnerId?: string;
   artifacts: StrategyArtifact[];
   activeId?: string;
   onSelect: (id: string) => void;
@@ -121,7 +123,9 @@ export function StrategyLibrary({
           event.target.value = "";
         }}
       />
-      <label className="visually-hidden" htmlFor={pluginInputId}>{strategyText(locale, "importPlugin")}</label>
+      <label className="visually-hidden" htmlFor={pluginInputId}>
+        {strategyText(locale, "importPlugin")}
+      </label>
       <input
         ref={pluginInputRef}
         id={pluginInputId}
@@ -137,9 +141,20 @@ export function StrategyLibrary({
         }}
       />
       <div className="strategy-library-messages">
-        <p className="plugin-safety-note"><ShieldAlert size={13} aria-hidden="true" />{strategyText(locale, "pluginSafety")}</p>
-        {importError && <div className="import-error" role="alert">{importError}</div>}
-        {importStatus && <div className="import-status" role="status">{importStatus}</div>}
+        <p className="plugin-safety-note">
+          <ShieldAlert size={13} aria-hidden="true" />
+          {strategyText(locale, "pluginSafety")}
+        </p>
+        {importError && (
+          <div className="import-error" role="alert">
+            {importError}
+          </div>
+        )}
+        {importStatus && (
+          <div className="import-status" role="status">
+            {importStatus}
+          </div>
+        )}
       </div>
       <div className="strategy-library-groups">
         <LibraryGroup locale={locale} title={strategyText(locale, "indicators")} items={indicators} activeId={activeId} onSelect={onSelect} />
@@ -166,7 +181,13 @@ export function StrategyLibrary({
         />
       )}
       {!importReviewActive && generatorOpen && (
-        <Suspense fallback={<p className="empty-note" role="status">{generatorEntryMessages[locale].loading}</p>}>
+        <Suspense
+          fallback={
+            <p className="empty-note" role="status">
+              {generatorEntryMessages[locale].loading}
+            </p>
+          }
+        >
           <GeneratorPanel
             locale={locale}
             onClose={() => setGeneratorOpen(false)}
@@ -190,11 +211,12 @@ export function StrategyLibrary({
       {!launchedBatch && pendingPlugin && (
         <PluginImportReviewDialog
           locale={locale}
+          storageOwnerId={storageOwnerId}
           plugin={pendingPlugin}
           analysis={analyzePluginImport(artifacts, pendingPlugin)}
           onClose={imports.shiftPlugin}
           onConfirm={(plugin, trustSigner) => {
-            if (trustSigner && plugin.signature) trustPluginKey(plugin.signature.keyFingerprint, plugin.manifest.publisher.name);
+            if (trustSigner && plugin.signature) trustPluginKey(plugin.signature.keyFingerprint, plugin.manifest.publisher.name, localStorage, Date.now(), storageOwnerId);
             onImportPlugin(plugin);
             imports.setImportStatus(`${strategyText(locale, "pluginImported")}: ${plugin.manifest.name} · ${plugin.manifest.artifacts.length} ${strategyText(locale, "artifacts")}`);
             imports.shiftPlugin();
@@ -225,18 +247,11 @@ export function StrategyLibrary({
           }}
         />
       )}
-      {!importReviewActive && pluginExportOpen && (
-        <PluginExportDialog
-          locale={locale}
-          artifacts={artifacts}
-          activeId={activeId}
-          onClose={() => setPluginExportOpen(false)}
-          onExport={(manifest) => imports.setImportStatus(`${strategyText(locale, "pluginExported")}: ${manifest.name}`)}
-        />
-      )}
+      {!importReviewActive && pluginExportOpen && <PluginExportDialog locale={locale} storageOwnerId={storageOwnerId} artifacts={artifacts} activeId={activeId} onClose={() => setPluginExportOpen(false)} onExport={(manifest) => imports.setImportStatus(`${strategyText(locale, "pluginExported")}: ${manifest.name}`)} />}
       {!importReviewActive && pluginCatalogOpen && (
         <PluginCatalogDialog
           locale={locale}
+          storageOwnerId={storageOwnerId}
           artifacts={artifacts}
           onClose={() => setPluginCatalogOpen(false)}
           onRemove={(key) => {

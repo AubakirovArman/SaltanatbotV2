@@ -2,7 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { legacyTradingAccountId, paperTradingAccountId } from "./tradingAccounts.js";
 import type { TradingAccountExchange } from "./types.js";
 
-export const TRADING_SCHEMA_VERSION = 6;
+export const TRADING_SCHEMA_VERSION = 7;
+export const TRADING_TENANT_OWNERSHIP_SCHEMA_VERSION = 6;
 
 /** Stable standalone/legacy tenant. Database-auth deployments should pass the
  * real administrator id through `legacyOwnerUserId` during first migration. */
@@ -189,6 +190,55 @@ const migrations: Migration[] = [
     name: "tenant_owned_trading_resources_and_credentials",
     sql: "",
     apply: migrateTenantOwnership
+  },
+  {
+    version: 7,
+    name: "tenant_safe_execution_journal_identity",
+    sql: `
+      CREATE TABLE fills_v7 (
+        id TEXT NOT NULL,
+        botId TEXT NOT NULL,
+        data TEXT NOT NULL,
+        ts INTEGER NOT NULL,
+        PRIMARY KEY (botId, id)
+      );
+      INSERT INTO fills_v7 (id, botId, data, ts)
+        SELECT id, botId, data, ts FROM fills;
+      DROP TABLE fills;
+      ALTER TABLE fills_v7 RENAME TO fills;
+      CREATE INDEX idx_fills_bot ON fills(botId, ts);
+
+      CREATE TABLE orders_v7 (
+        id TEXT NOT NULL,
+        botId TEXT NOT NULL,
+        status TEXT NOT NULL,
+        data TEXT NOT NULL,
+        ts INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL,
+        PRIMARY KEY (botId, id)
+      );
+      INSERT INTO orders_v7 (id, botId, status, data, ts, updatedAt)
+        SELECT id, botId, status, data, ts, updatedAt FROM orders;
+      DROP TABLE orders;
+      ALTER TABLE orders_v7 RENAME TO orders;
+      CREATE INDEX idx_orders_bot ON orders(botId, updatedAt);
+
+      CREATE TABLE order_events_v7 (
+        id TEXT NOT NULL,
+        orderId TEXT NOT NULL,
+        botId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        data TEXT NOT NULL,
+        ts INTEGER NOT NULL,
+        PRIMARY KEY (botId, id)
+      );
+      INSERT INTO order_events_v7 (id, orderId, botId, type, data, ts)
+        SELECT id, orderId, botId, type, data, ts FROM order_events;
+      DROP TABLE order_events;
+      ALTER TABLE order_events_v7 RENAME TO order_events;
+      CREATE INDEX idx_order_events_bot_order
+        ON order_events(botId, orderId, ts);
+    `
   }
 ];
 

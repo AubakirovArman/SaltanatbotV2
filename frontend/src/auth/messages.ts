@@ -1,23 +1,91 @@
 import type { Locale } from "../i18n";
 
 interface AuthMessages {
-  product: string; eyebrow: string; signInTitle: string; signInHelp: string;
-  registerTitle: string; registerHelp: string; login: string; loginHint: string;
-  password: string; currentPassword: string; newPassword: string; passwordHint: string;
-  showPassword: string; hidePassword: string; signIn: string; createAccount: string;
-  needAccount: string; alreadyRegistered: string; openRegistration: string; openSignIn: string;
-  language: string; loading: string; serviceUnavailableTitle: string; serviceUnavailableHelp: string;
-  retry: string; pendingTitle: string; pendingHelp: string; pendingLogin: string; checkAgain: string;
-  forcedTitle: string; forcedHelp: string; changePassword: string; passwordChanged: string;
-  account: string; close: string; signOut: string; status: string; appRole: string; tradingRole: string;
-  userRole: string; adminRole: string; noTrading: string; readOnly: string; paperTrade: string;
-  liveTrade: string; active: string; pending: string; disabled: string; securityTitle: string;
-  securityHelp: string; usersTitle: string; usersHelp: string; tradingMigrationPending: string;
-  reloadUsers: string; noUsers: string; activate: string; disable: string; savePermissions: string;
-  permissionsSaved: string; userActivated: string; userDisabled: string; working: string;
-  adminArea: string; accountArea: string; errorGeneric: string; errorInvalidCredentials: string;
-  errorPending: string; errorDisabled: string; errorRateLimited: string; errorLoginExists: string;
-  errorInvalidLogin: string; errorPasswordPolicy: string; errorCurrentPassword: string;
+  product: string;
+  eyebrow: string;
+  signInTitle: string;
+  signInHelp: string;
+  registerTitle: string;
+  registerHelp: string;
+  login: string;
+  loginHint: string;
+  password: string;
+  currentPassword: string;
+  newPassword: string;
+  passwordHint: string;
+  showPassword: string;
+  hidePassword: string;
+  signIn: string;
+  createAccount: string;
+  needAccount: string;
+  alreadyRegistered: string;
+  openRegistration: string;
+  openSignIn: string;
+  language: string;
+  loading: string;
+  serviceUnavailableTitle: string;
+  serviceUnavailableHelp: string;
+  retry: string;
+  pendingTitle: string;
+  pendingHelp: string;
+  pendingLogin: string;
+  checkAgain: string;
+  forcedTitle: string;
+  forcedHelp: string;
+  changePassword: string;
+  passwordChanged: string;
+  account: string;
+  close: string;
+  signOut: string;
+  status: string;
+  appRole: string;
+  tradingRole: string;
+  userRole: string;
+  adminRole: string;
+  noTrading: string;
+  readOnly: string;
+  paperTrade: string;
+  liveTrade: string;
+  active: string;
+  pending: string;
+  disabled: string;
+  securityTitle: string;
+  securityHelp: string;
+  usersTitle: string;
+  usersHelp: string;
+  tradingMigrationPending: string;
+  reloadUsers: string;
+  noUsers: string;
+  activate: string;
+  disable: string;
+  savePermissions: string;
+  permissionsSaved: string;
+  userActivated: string;
+  userDisabled: string;
+  working: string;
+  userFilters: string;
+  searchUsers: string;
+  searchUsersHint: string;
+  filterStatus: string;
+  allStatuses: string;
+  usersShown: string;
+  noMatchingUsers: string;
+  permissionsForUser: string;
+  ownAdminRoleLocked: string;
+  saveAndActivate: string;
+  userActivatedWithPermissions: string;
+  activationFailedAfterPermissions: string;
+  adminArea: string;
+  accountArea: string;
+  errorGeneric: string;
+  errorInvalidCredentials: string;
+  errorPending: string;
+  errorDisabled: string;
+  errorRateLimited: string;
+  errorLoginExists: string;
+  errorInvalidLogin: string;
+  errorPasswordPolicy: string;
+  errorCurrentPassword: string;
 }
 
 export type AuthMessageKey = keyof AuthMessages;
@@ -25,7 +93,7 @@ const catalogs = new Map<Locale, AuthMessages>();
 
 export async function loadAuthMessages(locale: Locale): Promise<void> {
   if (catalogs.has(locale)) return;
-  const catalog = await fetchCatalog(locale).catch(() => locale === "en" ? undefined : fetchCatalog("en").catch(() => undefined));
+  const catalog = await fetchCatalog(locale).catch(() => (locale === "en" ? undefined : fetchCatalog("en").catch(() => undefined)));
   if (catalog) catalogs.set(locale, catalog);
 }
 
@@ -55,7 +123,7 @@ export function authErrorText(locale: Locale, code: string): string {
 async function fetchCatalog(locale: Locale): Promise<AuthMessages> {
   const response = await fetch(`/auth-i18n/${locale}.json`, { cache: "force-cache" });
   if (!response.ok) throw new Error("auth_catalog_unavailable");
-  return await response.json() as AuthMessages;
+  return (await response.json()) as AuthMessages;
 }
 
 function fallback(key: AuthMessageKey): string {

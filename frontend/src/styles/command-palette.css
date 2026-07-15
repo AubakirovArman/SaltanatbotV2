@@ -33,6 +33,12 @@
   box-shadow: none;
 }
 
+.cmdk > input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 1px var(--accent-soft);
+}
+
 .cmdk-list {
   overflow-y: auto;
   overscroll-behavior: contain;

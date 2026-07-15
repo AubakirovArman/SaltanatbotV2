@@ -70,10 +70,10 @@
   --accent: #1273c4;
   --accent-soft: rgba(18, 115, 196, 0.09);
   --accent-line: rgba(18, 115, 196, 0.4);
-  --up: #089981;
-  --down: #e1443a;
-  --up-soft: rgba(8, 153, 129, 0.08);
-  --down-soft: rgba(225, 68, 58, 0.08);
+  --up: #007a65;
+  --down: #c0362f;
+  --up-soft: rgba(0, 122, 101, 0.08);
+  --down-soft: rgba(192, 54, 47, 0.08);
   --overlay: rgba(255, 255, 255, 0.88);
   --shadow-pop: 0 8px 24px rgba(20, 35, 50, 0.12);
   --shadow-modal: 0 24px 60px rgba(20, 35, 50, 0.18);

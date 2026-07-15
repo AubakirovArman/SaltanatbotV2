@@ -13,6 +13,7 @@ import { OpportunityHandoffButton } from "./OpportunityHandoffButton";
 interface Props {
   locale: Locale;
   onOpenChart(target: ArbitrageChartTarget): void;
+  storageOwner?: string;
 }
 
 interface ScanOptions {
@@ -47,7 +48,7 @@ const TRIANGULAR_COLUMNS: readonly ScannerColumn[] = [
 const TRIANGULAR_DEFAULT_COLUMNS = TRIANGULAR_COLUMNS.map((column) => column.id);
 const TRIANGULAR_COLUMN_TEXT = { route: "routeColumn", leg1: "leg1Column", leg2: "leg2Column", leg3: "leg3Column", gross: "grossColumn", net: "netColumn", result: "resultColumn", capacity: "capacityColumn", quality: "qualityColumn", actions: "actionsColumn" } as const;
 
-export function TriangularScreener({ locale, onOpenChart }: Props) {
+export function TriangularScreener({ locale, onOpenChart, storageOwner }: Props) {
   const [options, setOptions] = useState(DEFAULT_OPTIONS);
   const [scan, setScan] = useState<TriangularScanResponse>();
   const [error, setError] = useState<"scannerUnavailable">();
@@ -203,6 +204,7 @@ export function TriangularScreener({ locale, onOpenChart }: Props) {
 
       <ScannerWorkbench
         mode="triangular"
+        storageOwner={storageOwner}
         locale={locale}
         filters={workspaceFilters}
         columns={workspaceColumns}

@@ -1,15 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { useAuth } from "../auth/AuthRoot";
-import {
-  alertCrossed,
-  ensureNotificationPermission,
-  loadAlerts,
-  playAlertBeep,
-  showAlertNotification,
-  storeAlerts,
-  type AlertDirection,
-  type PriceAlert
-} from "../market/alerts";
+import { alertCrossed, ensureNotificationPermission, loadAlerts, playAlertBeep, showAlertNotification, storeAlerts, type AlertDirection, type PriceAlert } from "../market/alerts";
 import { getToken, notifyAlert } from "../trading/tradeClient";
 
 export interface AlertToast {
@@ -26,6 +17,11 @@ export interface NewAlertInput {
   direction: AlertDirection;
 }
 
+interface AlertState {
+  ownerId?: string;
+  alerts: PriceAlert[];
+}
+
 function makeId() {
   return `alert-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -36,37 +32,68 @@ function makeId() {
  */
 export function usePriceAlerts(prices: Record<string, number>, decimalsFor: (symbol: string) => number) {
   const accountAuth = useAuth();
-  const [alerts, setAlerts] = useState<PriceAlert[]>(() => loadAlerts());
+  const ownerId = accountAuth.authRequired ? (accountAuth.user?.id ?? "") : undefined;
+  const [alertState, setAlertState] = useState<AlertState>(() => ({ ownerId, alerts: loadAlerts(ownerId) }));
   const [toasts, setToasts] = useState<AlertToast[]>([]);
   const decimalsRef = useRef(decimalsFor);
   decimalsRef.current = decimalsFor;
 
+  // Keep the owner and snapshot atomic. If the authenticated account changes
+  // in-place, stale state can never be persisted under the new account key.
+  if (alertState.ownerId !== ownerId) {
+    setAlertState({ ownerId, alerts: loadAlerts(ownerId) });
+  }
+  const alerts = alertState.ownerId === ownerId ? alertState.alerts : [];
+  const setAlerts = useCallback(
+    (action: SetStateAction<PriceAlert[]>) => {
+      setAlertState((current) => {
+        const currentAlerts = current.ownerId === ownerId ? current.alerts : loadAlerts(ownerId);
+        const nextAlerts = typeof action === "function" ? action(currentAlerts) : action;
+        if (current.ownerId === ownerId && nextAlerts === current.alerts) return current;
+        return {
+          ownerId,
+          alerts: nextAlerts
+        };
+      });
+    },
+    [ownerId]
+  );
+
   useEffect(() => {
-    storeAlerts(alerts);
-  }, [alerts]);
+    if (alertState.ownerId === ownerId) storeAlerts(alertState.alerts, ownerId);
+  }, [alertState, ownerId]);
 
-  const addAlert = useCallback((input: NewAlertInput) => {
-    void ensureNotificationPermission();
-    setAlerts((current) => [
-      ...current,
-      {
-        id: makeId(),
-        symbol: input.symbol,
-        price: input.price,
-        direction: input.direction,
-        createdAt: Date.now(),
-        triggered: false
-      }
-    ]);
-  }, []);
+  const addAlert = useCallback(
+    (input: NewAlertInput) => {
+      void ensureNotificationPermission();
+      setAlerts((current) => [
+        ...current,
+        {
+          id: makeId(),
+          symbol: input.symbol,
+          price: input.price,
+          direction: input.direction,
+          createdAt: Date.now(),
+          triggered: false
+        }
+      ]);
+    },
+    [setAlerts]
+  );
 
-  const removeAlert = useCallback((id: string) => {
-    setAlerts((current) => current.filter((alert) => alert.id !== id));
-  }, []);
+  const removeAlert = useCallback(
+    (id: string) => {
+      setAlerts((current) => current.filter((alert) => alert.id !== id));
+    },
+    [setAlerts]
+  );
 
-  const resetAlert = useCallback((id: string) => {
-    setAlerts((current) => current.map((alert) => (alert.id === id ? { ...alert, triggered: false } : alert)));
-  }, []);
+  const resetAlert = useCallback(
+    (id: string) => {
+      setAlerts((current) => current.map((alert) => (alert.id === id ? { ...alert, triggered: false } : alert)));
+    },
+    [setAlerts]
+  );
 
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -107,7 +134,7 @@ export function usePriceAlerts(prices: Record<string, number>, decimalsFor: (sym
         }
       }
     }
-  }, [accountAuth.authRequired, accountAuth.tradingAvailable, prices]);
+  }, [accountAuth.authRequired, accountAuth.tradingAvailable, prices, setAlerts]);
 
   const activeCount = useMemo(() => alerts.filter((alert) => !alert.triggered).length, [alerts]);
 

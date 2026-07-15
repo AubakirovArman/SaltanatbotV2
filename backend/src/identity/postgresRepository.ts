@@ -1,7 +1,9 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { UserDatabaseRow } from "../database/index.js";
-import type { AuditEventInput, IdentityRepository, UserUpdate, WsTicketRecord } from "./repository.js";
+import type { AdminGuardedUserUpdateResult, AuditEventInput, FirstAdminCreateResult, IdentityRepository, UserUpdate, WsTicketRecord } from "./repository.js";
 import type { IdentitySession, IdentityUser, UserStatus } from "./types.js";
+
+const IDENTITY_ADMIN_GUARD_LOCK = 1_824_664_913;
 
 interface SessionJoinRow extends UserDatabaseRow {
   session_id_hash: string;
@@ -25,13 +27,26 @@ export class PostgresIdentityRepository implements IdentityRepository {
          must_change_password, approved_by, approved_at, last_login_at, created_at, updated_at
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT (login_normalized) DO NOTHING`,
-      [
-        user.id, user.login, user.loginNormalized, user.passwordHash, user.status, user.appRole,
-        user.tradingRole, user.mustChangePassword, user.approvedBy ?? null, user.approvedAt ?? null,
-        user.lastLoginAt ?? null, user.createdAt, user.updatedAt
-      ]
+      [user.id, user.login, user.loginNormalized, user.passwordHash, user.status, user.appRole, user.tradingRole, user.mustChangePassword, user.approvedBy ?? null, user.approvedAt ?? null, user.lastLoginAt ?? null, user.createdAt, user.updatedAt]
     );
     return result.rowCount === 1;
+  }
+
+  async createFirstAdmin(user: IdentityUser): Promise<FirstAdminCreateResult> {
+    if (user.appRole !== "admin" || user.status !== "active") throw new Error("First administrator must be active.");
+    return this.withAdminGuard(async (client) => {
+      const admin = await client.query("SELECT 1 FROM users WHERE app_role = 'admin' LIMIT 1");
+      if ((admin.rowCount ?? 0) > 0) return "admin_exists";
+      const inserted = await client.query(
+        `INSERT INTO users (
+           id, login, login_normalized, password_hash, status, app_role, trading_role,
+           must_change_password, approved_by, approved_at, last_login_at, created_at, updated_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT (login_normalized) DO NOTHING`,
+        userInsertValues(user)
+      );
+      return inserted.rowCount === 1 ? "created" : "login_exists";
+    });
   }
 
   async findUserByLogin(loginNormalized: string): Promise<IdentityUser | undefined> {
@@ -45,9 +60,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   async listUsers(status?: UserStatus): Promise<IdentityUser[]> {
-    const result = status
-      ? await this.pool.query<UserDatabaseRow>("SELECT * FROM users WHERE status = $1 ORDER BY created_at DESC", [status])
-      : await this.pool.query<UserDatabaseRow>("SELECT * FROM users ORDER BY created_at DESC");
+    const result = status ? await this.pool.query<UserDatabaseRow>("SELECT * FROM users WHERE status = $1 ORDER BY created_at DESC", [status]) : await this.pool.query<UserDatabaseRow>("SELECT * FROM users ORDER BY created_at DESC");
     return result.rows.map(mapUser);
   }
 
@@ -57,30 +70,34 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   async updateUser(id: string, update: UserUpdate): Promise<IdentityUser | undefined> {
-    const values: unknown[] = [];
-    const assignments: string[] = [];
-    const add = (column: string, value: unknown) => {
-      values.push(value);
-      assignments.push(`${column} = $${values.length}`);
-    };
-    if (update.status !== undefined) add("status", update.status);
-    if (update.appRole !== undefined) add("app_role", update.appRole);
-    if (update.tradingRole !== undefined) add("trading_role", update.tradingRole);
-    if (update.mustChangePassword !== undefined) add("must_change_password", update.mustChangePassword);
-    if (update.passwordHash !== undefined) {
-      add("password_hash", update.passwordHash);
-      add("password_changed_at", update.updatedAt);
-    }
-    if (update.approvedBy !== undefined) add("approved_by", update.approvedBy);
-    if (update.approvedAt !== undefined) add("approved_at", update.approvedAt);
-    if (update.lastLoginAt !== undefined) add("last_login_at", update.lastLoginAt);
-    add("updated_at", update.updatedAt);
-    values.push(id);
-    const result = await this.pool.query<UserDatabaseRow>(
-      `UPDATE users SET ${assignments.join(", ")} WHERE id = $${values.length} RETURNING *`,
-      values
-    );
+    const statement = userUpdateStatement(id, update);
+    const result = await this.pool.query<UserDatabaseRow>(statement.text, statement.values);
     return result.rows[0] && mapUser(result.rows[0]);
+  }
+
+  async updateUserAsAdmin(actorUserId: string, subjectUserId: string, update: UserUpdate): Promise<AdminGuardedUserUpdateResult> {
+    return this.withAdminGuard(async (client) => {
+      const actorResult = await client.query<UserDatabaseRow>("SELECT * FROM users WHERE id = $1 FOR UPDATE", [actorUserId]);
+      const actorRow = actorResult.rows[0];
+      const actorFailure = validateAdminActorRow(actorRow);
+      if (actorFailure) return { status: actorFailure };
+
+      const currentRow =
+        actorUserId === subjectUserId
+          ? actorRow
+          : (await client.query<UserDatabaseRow>("SELECT * FROM users WHERE id = $1 FOR UPDATE", [subjectUserId])).rows[0];
+      if (!currentRow) return { status: "subject_not_found" };
+      const nextStatus = update.status ?? currentRow.status;
+      const nextRole = update.appRole ?? currentRow.app_role;
+      if (isActiveAdminRow(currentRow) && (nextStatus !== "active" || nextRole !== "admin")) {
+        const replacement = await client.query("SELECT 1 FROM users WHERE id <> $1 AND status = 'active' AND app_role = 'admin' LIMIT 1", [subjectUserId]);
+        if ((replacement.rowCount ?? 0) === 0) return { status: "last_active_admin" };
+      }
+      const statement = userUpdateStatement(subjectUserId, update);
+      const result = await client.query<UserDatabaseRow>(statement.text, statement.values);
+      const row = result.rows[0];
+      return row ? { status: "updated", user: mapUser(row) } : { status: "subject_not_found" };
+    });
   }
 
   async createSession(session: IdentitySession): Promise<void> {
@@ -89,10 +106,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
          id_hash, user_id, csrf_hash, expires_at, last_seen_at, revoked_at,
          user_agent, ip_address, created_at
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [
-        session.idHash, session.userId, session.csrfHash, session.expiresAt, session.lastSeenAt,
-        session.revokedAt ?? null, session.userAgent ?? null, session.ipAddress ?? null, session.createdAt
-      ]
+      [session.idHash, session.userId, session.csrfHash, session.expiresAt, session.lastSeenAt, session.revokedAt ?? null, session.userAgent ?? null, session.ipAddress ?? null, session.createdAt]
     );
   }
 
@@ -106,17 +120,11 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   async updateSessionCsrf(idHash: string, csrfHash: string, now: Date): Promise<void> {
-    await this.pool.query(
-      "UPDATE auth_sessions SET csrf_hash = $2, last_seen_at = $3 WHERE id_hash = $1 AND revoked_at IS NULL",
-      [idHash, csrfHash, now]
-    );
+    await this.pool.query("UPDATE auth_sessions SET csrf_hash = $2, last_seen_at = $3 WHERE id_hash = $1 AND revoked_at IS NULL", [idHash, csrfHash, now]);
   }
 
   async revokeSession(idHash: string, now: Date): Promise<void> {
-    await this.pool.query(
-      "UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, $2), revoke_reason = COALESCE(revoke_reason, 'logout') WHERE id_hash = $1",
-      [idHash, now]
-    );
+    await this.pool.query("UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, $2), revoke_reason = COALESCE(revoke_reason, 'logout') WHERE id_hash = $1", [idHash, now]);
   }
 
   async revokeUserSessions(userId: string, now: Date, exceptIdHash?: string): Promise<void> {
@@ -148,7 +156,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
          RETURNING session_id_hash, user_id
        )
        ${sessionJoinSql(`JOIN consumed c ON c.session_id_hash = s.id_hash AND c.user_id = s.user_id
-         WHERE s.revoked_at IS NULL AND s.expires_at > $2` )}`,
+         WHERE s.revoked_at IS NULL AND s.expires_at > $2`)}`,
       [ticketHash, now]
     );
     return result.rows[0] && mapSessionJoin(result.rows[0]);
@@ -162,16 +170,67 @@ export class PostgresIdentityRepository implements IdentityRepository {
     await this.pool.query(
       `INSERT INTO audit_events (event_type, actor_user_id, subject_user_id, ip_address, metadata, occurred_at)
        VALUES ($1,$2,$3,$4,$5::jsonb,$6)`,
-      [
-        event.eventType,
-        event.actorUserId ?? null,
-        event.subjectUserId ?? null,
-        event.ipAddress ?? null,
-        JSON.stringify(event.metadata ?? {}),
-        event.createdAt
-      ]
+      [event.eventType, event.actorUserId ?? null, event.subjectUserId ?? null, event.ipAddress ?? null, JSON.stringify(event.metadata ?? {}), event.createdAt]
     );
   }
+
+  private async withAdminGuard<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock($1)", [IDENTITY_ADMIN_GUARD_LOCK]);
+      const result = await operation(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+}
+
+function userInsertValues(user: IdentityUser): unknown[] {
+  return [user.id, user.login, user.loginNormalized, user.passwordHash, user.status, user.appRole, user.tradingRole, user.mustChangePassword, user.approvedBy ?? null, user.approvedAt ?? null, user.lastLoginAt ?? null, user.createdAt, user.updatedAt];
+}
+
+function userUpdateStatement(id: string, update: UserUpdate): { text: string; values: unknown[] } {
+  const values: unknown[] = [];
+  const assignments: string[] = [];
+  const add = (column: string, value: unknown) => {
+    values.push(value);
+    assignments.push(`${column} = $${values.length}`);
+  };
+  if (update.status !== undefined) add("status", update.status);
+  if (update.appRole !== undefined) add("app_role", update.appRole);
+  if (update.tradingRole !== undefined) add("trading_role", update.tradingRole);
+  if (update.mustChangePassword !== undefined) add("must_change_password", update.mustChangePassword);
+  if (update.passwordHash !== undefined) {
+    add("password_hash", update.passwordHash);
+    add("password_changed_at", update.updatedAt);
+  }
+  if (update.approvedBy !== undefined) add("approved_by", update.approvedBy);
+  if (update.approvedAt !== undefined) add("approved_at", update.approvedAt);
+  if (update.lastLoginAt !== undefined) add("last_login_at", update.lastLoginAt);
+  add("updated_at", update.updatedAt);
+  values.push(id);
+  return {
+    text: `UPDATE users SET ${assignments.join(", ")} WHERE id = $${values.length} RETURNING *`,
+    values
+  };
+}
+
+function isActiveAdminRow(row: UserDatabaseRow): boolean {
+  return row.status === "active" && row.app_role === "admin";
+}
+
+function validateAdminActorRow(row: UserDatabaseRow | undefined): "actor_not_found" | "actor_inactive" | "actor_not_admin" | "actor_password_change_required" | undefined {
+  if (!row) return "actor_not_found";
+  if (row.status !== "active") return "actor_inactive";
+  if (row.app_role !== "admin") return "actor_not_admin";
+  if (row.must_change_password) return "actor_password_change_required";
+  return undefined;
 }
 
 function sessionJoinSql(joinOrWhere: string): string {

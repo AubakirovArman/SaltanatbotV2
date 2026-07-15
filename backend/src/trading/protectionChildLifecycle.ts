@@ -11,7 +11,7 @@ import type {
 interface ChildWriter {
   upsertOrder(record: OrderJournalRecord): void;
   insertEvent(event: OrderEventRecord): void;
-  getOrder?(id: string): OrderJournalRecord | undefined;
+  getOrder?(botId: string, id: string): OrderJournalRecord | undefined;
 }
 
 interface ChildContext {
@@ -103,7 +103,7 @@ export function completeProtectionChildren(
 
   for (const update of updates) {
     if (!update.id) continue;
-    const current = writer.getOrder?.(update.id);
+    const current = writer.getOrder?.(parent.botId, update.id);
     if (!current) continue;
     const preserveExecution = terminalStatus(current.status) || (current.accountedFilledQty ?? 0) > 0;
     const normalizedQty = validChildQuantity(update.qty, current.accountedFilledQty) ? update.qty : current.qty;

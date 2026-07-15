@@ -28,9 +28,10 @@ interface BotDetailProps {
   onDeleted: () => void;
   locale: Locale;
   canControl?: boolean;
+  storageOwnerId?: string;
 }
 
-export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChanged, onDeleted, locale, canControl = true }: BotDetailProps) {
+export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChanged, onDeleted, locale, canControl = true, storageOwnerId }: BotDetailProps) {
   const [commandOutput, setCommandOutput] = useState<string>();
   const position = live?.position;
   const unrealizedPnl = position && live
@@ -102,7 +103,7 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
         </section>
       )}
 
-      {canControl && <BotCommandConsole bot={bot} output={commandOutput} onRun={runCommand} locale={locale} />}
+      {canControl && <BotCommandConsole bot={bot} output={commandOutput} onRun={runCommand} locale={locale} storageOwnerId={storageOwnerId} />}
       <BotActivity symbol={bot.symbol} orders={orders} orderJournal={orderJournal} fills={fills} logs={logs} onCommand={runCommand} locale={locale} canControl={canControl} />
     </div>
   );

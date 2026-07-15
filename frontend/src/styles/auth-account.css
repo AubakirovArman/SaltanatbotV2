@@ -106,11 +106,48 @@
   margin-block-end: 0.8rem;
 }
 
+.auth-user-filters {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(10rem, 0.5fr) auto;
+  align-items: end;
+  gap: 0.8rem;
+  margin-block-end: 1rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.auth-user-filters label {
+  display: grid;
+}
+
+.auth-user-filters input,
+.auth-user-filters select {
+  min-block-size: 2.75rem;
+  padding-inline: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.auth-user-filters output {
+  min-block-size: 2.75rem;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .auth-permission-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.8rem;
   margin-block-end: 0.85rem;
+  min-inline-size: 0;
+  padding: 0;
+  border: 0;
 }
 
 .auth-permission-grid label {
@@ -121,6 +158,19 @@
   min-block-size: 2.75rem;
   padding-inline: 0.7rem 2rem;
   border-radius: var(--radius);
+}
+
+.auth-permission-grid small {
+  margin-block-start: 0.35rem;
+  color: var(--muted);
+}
+
+.auth-user-card .auth-form-success {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border-inline-start: 3px solid currentColor;
+  color: var(--up);
+  background: var(--up-soft);
 }
 
 .auth-user-card > footer {
@@ -161,8 +211,13 @@
   }
 
   .auth-account-section,
-  .auth-permission-grid {
+  .auth-permission-grid,
+  .auth-user-filters {
     grid-template-columns: 1fr;
+  }
+
+  .auth-user-filters output {
+    min-block-size: 0;
   }
 
   .auth-admin-heading,

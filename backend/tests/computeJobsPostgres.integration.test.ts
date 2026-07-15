@@ -7,6 +7,7 @@ import {
   JobIdempotencyConflictError,
   JobQuotaError
 } from "../src/jobs/repository.js";
+import { assertIsolatedTestDatabase } from "./support/postgresTestDatabase.js";
 
 const connectionString = process.env.JOBS_TEST_DATABASE_URL;
 const describePostgres = connectionString ? describe : describe.skip;
@@ -18,6 +19,7 @@ let repository: ComputeJobRepository;
 describePostgres("compute jobs against isolated PostgreSQL", () => {
   beforeAll(async () => {
     pool = new Pool({ connectionString, max: 8 });
+    await assertIsolatedTestDatabase(pool, "JOBS_TEST_DATABASE_URL");
     await migrateDatabase(pool);
     await pool.query(
       `INSERT INTO users (id, login, login_normalized, password_hash, status)

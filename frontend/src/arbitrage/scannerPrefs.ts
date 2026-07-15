@@ -1,3 +1,5 @@
+import { readTenantLocalItem, removeTenantLocalItem, writeTenantLocalItem } from "../app/tenantLocalStorage";
+
 export const SCANNER_WORKSPACE_STORAGE_KEY = "sbv2:arbitrage-workspace:v2";
 export const LEGACY_SCANNER_WORKSPACE_STORAGE_KEY = "sbv2:arbitrage-workspace:v1";
 
@@ -47,31 +49,31 @@ const MAX_ABSOLUTE_NUMBER = 1_000_000_000_000;
 const VALID_MODES: ScannerMode[] = ["basis", "triangular", "native"];
 const VALID_VISUALIZATIONS: ScannerVisualization[] = ["table", "heatmap", "compare"];
 
-export function loadScannerWorkspace(mode: ScannerMode, allowedColumns: readonly string[], defaultColumns: readonly string[], requiredColumns: readonly string[] = [], storage = browserStorage()): ScannerWorkspacePreferences {
+export function loadScannerWorkspace(mode: ScannerMode, allowedColumns: readonly string[], defaultColumns: readonly string[], requiredColumns: readonly string[] = [], storage = browserStorage(), ownerId?: string): ScannerWorkspacePreferences {
   const rules = { allowedColumns, defaultColumns, requiredColumns };
   const fallback = defaultWorkspace(rules);
   if (!storage) return fallback;
-  const current = readRaw(storage, SCANNER_WORKSPACE_STORAGE_KEY);
+  const current = readRaw(storage, SCANNER_WORKSPACE_STORAGE_KEY, ownerId);
   const parsed = parseEnvelope(current);
   if (parsed) return sanitizeWorkspace(parsed.modes[mode], rules);
 
-  const legacy = parseLegacyEnvelope(current) ?? parseLegacyEnvelope(readRaw(storage, LEGACY_SCANNER_WORKSPACE_STORAGE_KEY));
+  const legacy = parseLegacyEnvelope(current) ?? parseLegacyEnvelope(readRaw(storage, LEGACY_SCANNER_WORKSPACE_STORAGE_KEY, ownerId));
   if (!legacy) return fallback;
   const migrated = sanitizeWorkspace(legacy.modes[mode], rules);
   const modes = Object.fromEntries(VALID_MODES.filter((key) => legacy.modes[key] !== undefined).map((key) => [key, legacy.modes[key]]));
   modes[mode] = migrated;
-  if (!writeEnvelope(storage, { version: 2, modes })) writeEnvelope(storage, { version: 2, modes: { [mode]: migrated } });
-  safeRemove(storage, LEGACY_SCANNER_WORKSPACE_STORAGE_KEY);
+  if (!writeEnvelope(storage, { version: 2, modes }, ownerId)) writeEnvelope(storage, { version: 2, modes: { [mode]: migrated } }, ownerId);
+  safeRemove(storage, LEGACY_SCANNER_WORKSPACE_STORAGE_KEY, ownerId);
   return migrated;
 }
 
-export function storeScannerWorkspace(mode: ScannerMode, preferences: ScannerWorkspacePreferences, allowedColumns: readonly string[], defaultColumns: readonly string[], requiredColumns: readonly string[] = [], storage = browserStorage()): ScannerWorkspacePreferences {
+export function storeScannerWorkspace(mode: ScannerMode, preferences: ScannerWorkspacePreferences, allowedColumns: readonly string[], defaultColumns: readonly string[], requiredColumns: readonly string[] = [], storage = browserStorage(), ownerId?: string): ScannerWorkspacePreferences {
   const rules = { allowedColumns, defaultColumns, requiredColumns };
   const sanitized = sanitizeWorkspace(preferences, rules);
   if (!storage) return sanitized;
-  const current = parseEnvelope(readRaw(storage, SCANNER_WORKSPACE_STORAGE_KEY));
-  if (!writeEnvelope(storage, { version: 2, modes: { ...(current?.modes ?? {}), [mode]: sanitized } })) {
-    writeEnvelope(storage, { version: 2, modes: { [mode]: sanitized } });
+  const current = parseEnvelope(readRaw(storage, SCANNER_WORKSPACE_STORAGE_KEY, ownerId));
+  if (!writeEnvelope(storage, { version: 2, modes: { ...(current?.modes ?? {}), [mode]: sanitized } }, ownerId)) {
+    writeEnvelope(storage, { version: 2, modes: { [mode]: sanitized } }, ownerId);
   }
   return sanitized;
 }
@@ -211,11 +213,11 @@ function parseJson(raw: string | undefined): unknown {
   }
 }
 
-function writeEnvelope(storage: StorageLike, envelope: StoredEnvelope): boolean {
+function writeEnvelope(storage: StorageLike, envelope: StoredEnvelope, ownerId?: string): boolean {
   try {
     const raw = JSON.stringify(envelope);
     if (raw.length > MAX_RAW_LENGTH) return false;
-    storage.setItem(SCANNER_WORKSPACE_STORAGE_KEY, raw);
+    writeTenantLocalItem(storage, SCANNER_WORKSPACE_STORAGE_KEY, raw, ownerId);
     return true;
   } catch {
     // Storage can be unavailable or full. Scanner state remains usable in memory.
@@ -223,17 +225,17 @@ function writeEnvelope(storage: StorageLike, envelope: StoredEnvelope): boolean 
   }
 }
 
-function readRaw(storage: StorageLike, key: string): string | undefined {
+function readRaw(storage: StorageLike, key: string, ownerId?: string): string | undefined {
   try {
-    return storage.getItem(key) ?? undefined;
+    return readTenantLocalItem(storage, key, ownerId) ?? undefined;
   } catch {
     return undefined;
   }
 }
 
-function safeRemove(storage: StorageLike, key: string) {
+function safeRemove(storage: StorageLike, key: string, ownerId?: string) {
   try {
-    storage.removeItem(key);
+    removeTenantLocalItem(storage, key, ownerId);
   } catch {
     // A denied storage write must not break the scanner.
   }

@@ -1,5 +1,5 @@
 import { GitCompareArrows, Plus, Search, SlidersHorizontal, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import type { CompareChartType, CompareLegendSnapshot, CompareOverlayConfig } from "../chart/types";
 import type { ChartType, Timeframe } from "../types";
 import { chartTypeLabel } from "./chartTypePresentation";
@@ -28,31 +28,20 @@ interface CompareControlProps {
   onRemove: (id: string) => void;
 }
 
-export function CompareControl({
-  locale,
-  candidates,
-  active,
-  max,
-  timeframes,
-  chartTypes,
-  legend,
-  loading,
-  errors,
-  onAdd,
-  onUpdate,
-  onRemove
-}: CompareControlProps) {
+export function CompareControl({ locale, candidates, active, max, timeframes, chartTypes, legend, loading, errors, onAdd, onUpdate, onRemove }: CompareControlProps) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string>();
   const [query, setQuery] = useState("");
+  const [optionIndex, setOptionIndex] = useState(0);
+  const addButtonRef = useRef<HTMLButtonElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const listboxId = useId();
 
   const atMax = active.length >= max;
   const legendById = useMemo(() => new Map(legend.filter((entry) => !entry.base).map((entry) => [entry.id, entry])), [legend]);
-  const compareChartTypes = useMemo(
-    () => chartTypes.filter(isCompareChartType),
-    [chartTypes]
-  );
+  const compareChartTypes = useMemo(() => chartTypes.filter(isCompareChartType), [chartTypes]);
   const options = useMemo(() => {
     const taken = new Set(active.map((entry) => entry.symbol));
     const needle = query.trim().toUpperCase();
@@ -67,11 +56,45 @@ export function CompareControl({
 
   const editing = active.find((entry) => entry.id === editingId);
   const editingCandleLike = editing ? isCandleLike(editing.chartType) : false;
+  const currentOptionIndex = options.length > 0 ? Math.min(optionIndex, options.length - 1) : 0;
+
+  const closePicker = () => {
+    setOpen(false);
+    setQuery("");
+    addButtonRef.current?.focus();
+  };
+
+  const choose = (symbol: string) => {
+    onAdd(symbol);
+    setEditingId(symbol);
+    setOpen(false);
+    setQuery("");
+  };
+
+  const focusOption = (index: number) => {
+    if (options.length === 0) return;
+    const next = Math.max(0, Math.min(options.length - 1, index));
+    setOptionIndex(next);
+    optionRefs.current[next]?.focus();
+  };
 
   return (
     <div className="compare-control">
       <div className="compare-strip">
-        <button type="button" className="compare-add" aria-expanded={open} aria-haspopup="listbox" disabled={atMax} title={atMax ? `${t("compareMaximum")} ${max}` : t("compareAnother")} onClick={() => setOpen((value) => !value)}>
+        <button
+          ref={addButtonRef}
+          type="button"
+          className="compare-add"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-controls={open ? listboxId : undefined}
+          disabled={atMax}
+          title={atMax ? `${t("compareMaximum")} ${max}` : t("compareAnother")}
+          onClick={() => {
+            setOptionIndex(0);
+            setOpen((value) => !value);
+          }}
+        >
           <GitCompareArrows size={13} aria-hidden="true" />
           {t("compare")}
           <Plus size={12} aria-hidden="true" />
@@ -85,7 +108,9 @@ export function CompareControl({
               <span className="compare-dot" style={dotStyle(entry)} />
               <span className="compare-chip-main">
                 <strong>{entry.symbol}</strong>
-                <em>{entry.timeframe} · {typeLabel(locale, entry.chartType)}</em>
+                <em>
+                  {entry.timeframe} · {typeLabel(locale, entry.chartType)}
+                </em>
               </span>
               <small className={pctClass(live?.pct)}>{status}</small>
               <button type="button" aria-label={`${t("configure")} ${entry.symbol}`} title={t("configureCompare")} onClick={() => setEditingId((current) => (current === entry.id ? undefined : entry.id))}>
@@ -100,32 +125,93 @@ export function CompareControl({
       </div>
 
       {open && (
-        <div className="compare-menu">
+        <div
+          className="compare-menu"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              closePicker();
+            }
+          }}
+        >
           <label className="compare-search">
             <Search size={13} aria-hidden="true" />
             <span className="sr-only">{t("searchCompare")}</span>
-            <input type="text" value={query} placeholder={t("searchSymbol")} autoFocus onChange={(event) => setQuery(event.target.value)} />
+            <input
+              ref={searchRef}
+              type="text"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls={listboxId}
+              aria-expanded="true"
+              aria-activedescendant={options[currentOptionIndex] ? `${listboxId}-option-${currentOptionIndex}` : undefined}
+              value={query}
+              placeholder={t("searchSymbol")}
+              autoFocus
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setOptionIndex(0);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  focusOption(0);
+                } else if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  focusOption(options.length - 1);
+                } else if (event.key === "Enter" && options[currentOptionIndex]) {
+                  event.preventDefault();
+                  choose(options[currentOptionIndex].symbol);
+                }
+              }}
+            />
           </label>
-          <div className="compare-menu-list" role="listbox" aria-label={t("compareSymbols")}>
-            {options.map((item) => (
+          <div id={listboxId} className="compare-menu-list" role="listbox" aria-label={t("compareSymbols")}>
+            {options.map((item, index) => (
               <button
+                ref={(node) => {
+                  optionRefs.current[index] = node;
+                }}
                 type="button"
                 key={item.symbol}
+                id={`${listboxId}-option-${index}`}
                 role="option"
-                aria-selected={false}
-                onClick={() => {
-                  onAdd(item.symbol);
-                  setEditingId(item.symbol);
-                  setOpen(false);
-                  setQuery("");
+                aria-selected={index === currentOptionIndex}
+                tabIndex={index === currentOptionIndex ? 0 : -1}
+                onFocus={() => setOptionIndex(index)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    focusOption(index + 1);
+                  } else if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    if (index === 0) {
+                      setOptionIndex(0);
+                      searchRef.current?.focus();
+                    } else {
+                      focusOption(index - 1);
+                    }
+                  } else if (event.key === "Home") {
+                    event.preventDefault();
+                    focusOption(0);
+                  } else if (event.key === "End") {
+                    event.preventDefault();
+                    focusOption(options.length - 1);
+                  }
                 }}
+                onClick={() => choose(item.symbol)}
               >
                 <strong>{item.symbol}</strong>
                 <small>{item.displayName}</small>
               </button>
             ))}
-            {options.length === 0 && <p>{t("noCompareSymbols")}</p>}
           </div>
+          {options.length === 0 && (
+            <p className="compare-menu-empty" role="status">
+              {t("noCompareSymbols")}
+            </p>
+          )}
         </div>
       )}
 
@@ -142,7 +228,9 @@ export function CompareControl({
             <span>{t("timeframe")}</span>
             <select value={editing.timeframe} onChange={(event) => onUpdate(editing.id, { timeframe: event.target.value as Timeframe })}>
               {timeframes.map((item) => (
-                <option key={item} value={item}>{item}</option>
+                <option key={item} value={item}>
+                  {item}
+                </option>
               ))}
             </select>
           </label>
@@ -150,7 +238,9 @@ export function CompareControl({
             <span>{t("type")}</span>
             <select value={editing.chartType} onChange={(event) => onUpdate(editing.id, { chartType: event.target.value as CompareChartType })}>
               {compareChartTypes.map((item) => (
-                <option key={item} value={item}>{typeLabel(locale, item)}</option>
+                <option key={item} value={item}>
+                  {typeLabel(locale, item)}
+                </option>
               ))}
             </select>
           </label>

@@ -39,4 +39,25 @@ describe("usePersistentDrawings", () => {
     expect(loadDrawings("ETHUSDT", "chart-2").map(({ id }) => id)).toEqual(["chart-2-ETHUSDT"]);
     await act(async () => root.unmount());
   });
+
+  it("flushes an account switch back to the departing owner instead of the arriving owner", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    let draw: (() => void) | undefined;
+
+    function Harness({ ownerId }: { ownerId: string }) {
+      const [drawings, setDrawings] = usePersistentDrawings("BTCUSDT", "chart-1", ownerId);
+      draw = () => setDrawings([line(`private-${ownerId}`)]);
+      return <output>{drawings.map(({ id }) => id).join(",")}</output>;
+    }
+
+    await act(async () => root.render(<Harness ownerId="user-a" />));
+    await act(async () => draw?.());
+    await act(async () => root.render(<Harness ownerId="user-b" />));
+
+    expect(container.querySelector("output")?.textContent).toBe("");
+    expect(loadDrawings("BTCUSDT", "chart-1", "user-a").map(({ id }) => id)).toEqual(["private-user-a"]);
+    expect(loadDrawings("BTCUSDT", "chart-1", "user-b")).toEqual([]);
+    await act(async () => root.unmount());
+  });
 });

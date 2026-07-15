@@ -39,6 +39,55 @@ directory is created as `0700`.
 An old `.authtoken` remains accepted when verifying/restoring a pre-account-auth backup, but new
 backups no longer copy it. Delete the retired file after confirming database account login works.
 
+### Docker Compose named volume
+
+The Compose deployment keeps `backend/data` in the `saltanat-data` named volume, not in the source
+checkout. Run the backup utility inside the application container, then copy the already verified
+directory to trusted host storage:
+
+```bash
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p ../saltanat-backups
+docker compose exec saltanatbotv2 \
+  npm run data:backup -- --output "/tmp/$STAMP"
+docker compose cp \
+  "saltanatbotv2:/tmp/$STAMP" "../saltanat-backups/$STAMP"
+```
+
+The backup command verifies the archive before it returns. To verify the host copy through the same
+runtime image without mounting the live data volume as a source, run:
+
+```bash
+BACKUP_DIR="$(realpath "../saltanat-backups/$STAMP")"
+docker compose run --rm --no-deps --user root \
+  -v "$BACKUP_DIR:/restore:ro" \
+  saltanatbotv2 node scripts/runtime-data.mjs verify /restore
+```
+
+For a Compose restore, stop both data-using services and restore through a one-off container that
+has the same named volume. The final `chown` returns the restored files to the unprivileged runtime
+user:
+
+```bash
+docker compose stop saltanatbotv2 research-worker
+BACKUP_DIR="$(realpath ../saltanat-backups/2026-07-15T120000Z)"
+docker compose run --rm --no-deps --user root \
+  -v "$BACKUP_DIR:/restore:ro" \
+  saltanatbotv2 sh -lc \
+  'node scripts/runtime-data.mjs verify /restore &&
+   node scripts/runtime-data.mjs restore /restore --data-dir /app/backend/data --force --in-place &&
+   for file in trading.db candles.db arbitrage-paper-multi-leg.sqlite .secret .authtoken .restore-manifest.json; do
+     [ ! -e "/app/backend/data/$file" ] || chown node:node "/app/backend/data/$file";
+   done'
+docker compose up -d saltanatbotv2 research-worker
+```
+
+Restore PostgreSQL from its matching dump before starting the services. Do not use raw `docker cp`
+against live SQLite files; the online backup API is what makes the runtime archive consistent.
+`--in-place` is required for the named-volume mountpoint: it verifies and stages the replacement
+inside that volume, publishes only the allowlisted runtime files, preserves unrelated files, and
+rolls the previous generation back if publication or post-restore verification fails.
+
 ## Back up PostgreSQL
 
 Create a custom-format dump near the SQLite backup. For Compose:
@@ -69,7 +118,8 @@ npm run data:backup -- --data-dir /srv/saltanat/data --output /srv/backups/salta
 ```
 
 If `PAPER_MULTI_LEG_DB_PATH` points outside that data directory, the backup command cannot discover
-it; include that custom SQLite file in a separate trusted online-backup policy.
+it; include that custom SQLite file in a separate trusted online-backup policy. In Compose, such a
+path also needs an explicit persistent volume/bind mount; otherwise container recreation deletes it.
 
 ## Verify a backup
 

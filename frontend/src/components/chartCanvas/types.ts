@@ -59,6 +59,8 @@ export interface ChartCanvasProps {
   onUpdateCompare?: (id: string, patch: Partial<CompareOverlayConfig>) => void;
   onRemoveCompare?: (id: string) => void;
   chartId?: string;
+  /** Authenticated browser-storage owner. Empty means database auth is unresolved and persistence is disabled. */
+  storageOwnerId?: string;
   linkedCrosshair?: LinkedCrosshair;
   onLinkedCrosshairChange?: (crosshair?: LinkedCrosshair) => void;
   linkedTimeRange?: LinkedTimeRange;

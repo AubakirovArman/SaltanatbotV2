@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { assignShortcut, DEFAULT_SHORTCUTS, loadShortcuts, matchesShortcut, saveShortcuts, shortcutFromEvent } from "../src/app/shortcuts";
+import { TENANT_LOCAL_LEGACY_OWNER_KEY } from "../src/app/tenantLocalStorage";
 
 describe("custom keyboard shortcuts", () => {
   beforeEach(() => localStorage.clear());
@@ -23,5 +24,23 @@ describe("custom keyboard shortcuts", () => {
     localStorage.setItem("sbv2:shortcuts:v1", JSON.stringify({ commandPalette: "Mod+P" }));
     expect(loadShortcuts()).toMatchObject({ commandPalette: "Mod+P", previousChart: "Alt+K", nextChart: "Alt+J", maximizeChart: "Alt+Enter" });
     expect(matchesShortcut(new KeyboardEvent("keydown", { key: "Enter", altKey: true }), loadShortcuts().maximizeChart)).toBe(true);
+  });
+
+  it("isolates authenticated shortcut maps and fails closed for an unresolved owner", () => {
+    saveShortcuts({ ...DEFAULT_SHORTCUTS, commandPalette: "Mod+A" }, "user-a");
+    saveShortcuts({ ...DEFAULT_SHORTCUTS, commandPalette: "Mod+B" }, "user-b");
+    saveShortcuts({ ...DEFAULT_SHORTCUTS, commandPalette: "Mod+X" }, "");
+
+    expect(loadShortcuts("user-a").commandPalette).toBe("Mod+A");
+    expect(loadShortcuts("user-b").commandPalette).toBe("Mod+B");
+    expect(loadShortcuts("")).toEqual(DEFAULT_SHORTCUTS);
+    expect(localStorage.getItem("sbv2:shortcuts:v1:")).toBeNull();
+  });
+
+  it("allows only one authenticated owner to claim legacy shortcuts", () => {
+    localStorage.setItem(TENANT_LOCAL_LEGACY_OWNER_KEY, "user-a");
+    localStorage.setItem("sbv2:shortcuts:v1", JSON.stringify({ commandPalette: "Mod+L" }));
+    expect(loadShortcuts("user-a").commandPalette).toBe("Mod+L");
+    expect(loadShortcuts("user-b").commandPalette).toBe(DEFAULT_SHORTCUTS.commandPalette);
   });
 });

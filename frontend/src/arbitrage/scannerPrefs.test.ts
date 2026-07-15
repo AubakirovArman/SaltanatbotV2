@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { TENANT_LOCAL_LEGACY_OWNER_KEY } from "../app/tenantLocalStorage";
 import { deleteScannerPreset, LEGACY_SCANNER_WORKSPACE_STORAGE_KEY, loadScannerWorkspace, saveScannerPreset, SCANNER_WORKSPACE_STORAGE_KEY, storeScannerWorkspace } from "./scannerPrefs";
 
 const COLUMNS = ["route", "net", "capacity", "actions"];
@@ -103,6 +104,36 @@ describe("scanner workspace preferences", () => {
     const stored = JSON.parse(storage.getItem(SCANNER_WORKSPACE_STORAGE_KEY) ?? "null");
     expect(stored.modes.basis.visualization).toBe("heatmap");
     expect(stored.modes.native).toBeUndefined();
+  });
+
+  it("claims a legacy workspace once and isolates authenticated owners", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(TENANT_LOCAL_LEGACY_OWNER_KEY, "roman");
+    storage.setItem(SCANNER_WORKSPACE_STORAGE_KEY, JSON.stringify({ version: 2, modes: { basis: { columns: ["route", "net", "actions"], visualization: "heatmap" } } }));
+
+    const roman = loadScannerWorkspace("basis", COLUMNS, DEFAULTS, REQUIRED, storage, "roman");
+    const arman = loadScannerWorkspace("basis", COLUMNS, DEFAULTS, REQUIRED, storage, "arman");
+
+    expect(roman.visualization).toBe("heatmap");
+    expect(arman.visualization).toBe("table");
+    expect(storage.getItem(TENANT_LOCAL_LEGACY_OWNER_KEY)).toBe("roman");
+    expect(storage.getItem(`${SCANNER_WORKSPACE_STORAGE_KEY}:roman`)).not.toBeNull();
+
+    storeScannerWorkspace("basis", { ...arman, visualization: "compare" }, COLUMNS, DEFAULTS, REQUIRED, storage, "arman");
+    expect(loadScannerWorkspace("basis", COLUMNS, DEFAULTS, REQUIRED, storage, "arman").visualization).toBe("compare");
+    expect(loadScannerWorkspace("basis", COLUMNS, DEFAULTS, REQUIRED, storage, "roman").visualization).toBe("heatmap");
+  });
+
+  it("fails closed for an empty database-auth owner", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(SCANNER_WORKSPACE_STORAGE_KEY, JSON.stringify({ version: 2, modes: { basis: { columns: ["route", "net", "actions"], visualization: "heatmap" } } }));
+
+    const unavailable = loadScannerWorkspace("basis", COLUMNS, DEFAULTS, REQUIRED, storage, "");
+    storeScannerWorkspace("basis", { ...unavailable, visualization: "compare" }, COLUMNS, DEFAULTS, REQUIRED, storage, "");
+
+    expect(unavailable.visualization).toBe("table");
+    expect(storage.getItem(TENANT_LOCAL_LEGACY_OWNER_KEY)).toBeNull();
+    expect(loadScannerWorkspace("basis", COLUMNS, DEFAULTS, REQUIRED, storage).visualization).toBe("heatmap");
   });
 });
 

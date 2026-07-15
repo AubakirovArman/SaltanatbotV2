@@ -22,6 +22,20 @@ function tableNames(database: DatabaseSync) {
 function createV4OwnershipTables(database: DatabaseSync) {
   database.exec(`
     CREATE TABLE bots (id TEXT PRIMARY KEY, config TEXT NOT NULL, updatedAt INTEGER NOT NULL);
+    CREATE TABLE fills (
+      id TEXT PRIMARY KEY, botId TEXT NOT NULL, data TEXT NOT NULL, ts INTEGER NOT NULL
+    );
+    CREATE INDEX idx_fills_bot ON fills(botId, ts);
+    CREATE TABLE orders (
+      id TEXT PRIMARY KEY, botId TEXT NOT NULL, status TEXT NOT NULL,
+      data TEXT NOT NULL, ts INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+    );
+    CREATE TABLE order_events (
+      id TEXT PRIMARY KEY, orderId TEXT NOT NULL, botId TEXT NOT NULL,
+      type TEXT NOT NULL, data TEXT NOT NULL, ts INTEGER NOT NULL
+    );
+    CREATE INDEX idx_orders_bot ON orders(botId, updatedAt);
+    CREATE INDEX idx_order_events_order ON order_events(orderId, ts);
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, encrypted INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE audit_log (
       id TEXT PRIMARY KEY, actor TEXT NOT NULL, role TEXT NOT NULL, action TEXT NOT NULL,
@@ -65,11 +79,12 @@ describe("trading store schema migrations", () => {
         { version: 3, name: "arbitrage_opportunity_history" },
         { version: 4, name: "append_only_paper_trading_ledger" },
         { version: 5, name: "durable_trading_account_registry" },
-        { version: 6, name: "tenant_owned_trading_resources_and_credentials" }
+        { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
+        { version: 7, name: "tenant_safe_execution_journal_identity" }
       ]
     });
     expect(tableNames(database)).toEqual(["arbitrage_history", "audit_log", "bots", "fills", "logs", "order_events", "orders", "paper_events", "positions", "schema_migrations", "settings", "strategy_runs", "trading_account_credentials", "trading_accounts"]);
-    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 6 });
+    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 7 });
   });
 
   it("upgrades an unversioned legacy database without deleting existing records", () => {
@@ -100,11 +115,86 @@ describe("trading store schema migrations", () => {
 
     expect(result).toEqual({
       fromVersion: 5,
-      toVersion: 6,
-      applied: [{ version: 6, name: "tenant_owned_trading_resources_and_credentials" }]
+      toVersion: 7,
+      applied: [
+        { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
+        { version: 7, name: "tenant_safe_execution_journal_identity" }
+      ]
     });
     expect(database.prepare("SELECT ownerUserId FROM bots WHERE id = 'legacy-bot'").get()).toEqual({ ownerUserId: "admin-user" });
     expect(database.prepare("SELECT ownerUserId FROM audit_log WHERE id = 'audit-1'").get()).toEqual({ ownerUserId: "admin-user" });
+  });
+
+  it("upgrades v6 order identity without losing journal data", () => {
+    const database = memoryDatabase();
+    database.exec(`
+      CREATE TABLE fills (
+        id TEXT PRIMARY KEY, botId TEXT NOT NULL, data TEXT NOT NULL, ts INTEGER NOT NULL
+      );
+      CREATE INDEX idx_fills_bot ON fills(botId, ts);
+      CREATE TABLE orders (
+        id TEXT PRIMARY KEY, botId TEXT NOT NULL, status TEXT NOT NULL,
+        data TEXT NOT NULL, ts INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+      );
+      CREATE TABLE order_events (
+        id TEXT PRIMARY KEY, orderId TEXT NOT NULL, botId TEXT NOT NULL,
+        type TEXT NOT NULL, data TEXT NOT NULL, ts INTEGER NOT NULL
+      );
+      CREATE INDEX idx_orders_bot ON orders(botId, updatedAt);
+      CREATE INDEX idx_order_events_order ON order_events(orderId, ts);
+      PRAGMA user_version = 6;
+    `);
+    const legacyFill = JSON.stringify({ id: "shared-fill", botId: "bot-a", marker: "preserved" });
+    database.prepare(`
+      INSERT INTO fills (id, botId, data, ts)
+      VALUES (?, ?, ?, ?)
+    `).run("shared-fill", "bot-a", legacyFill, 9);
+    const legacy = JSON.stringify({ id: "shared-client", botId: "bot-a", status: "accepted", marker: "preserved" });
+    database.prepare(`
+      INSERT INTO orders (id, botId, status, data, ts, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run("shared-client", "bot-a", "accepted", legacy, 10, 11);
+    database.prepare(`
+      INSERT INTO order_events (id, orderId, botId, type, data, ts)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run("shared-event", "shared-client", "bot-a", "intent", '{"marker":"preserved"}', 10);
+
+    expect(migrateTradingStore(database, () => 20)).toEqual({
+      fromVersion: 6,
+      toVersion: 7,
+      applied: [{ version: 7, name: "tenant_safe_execution_journal_identity" }]
+    });
+    expect(database.prepare("SELECT data, ts, updatedAt FROM orders WHERE botId = ? AND id = ?").get("bot-a", "shared-client"))
+      .toEqual({ data: legacy, ts: 10, updatedAt: 11 });
+    expect(database.prepare("SELECT data, ts FROM order_events WHERE botId = ? AND id = ?").get("bot-a", "shared-event"))
+      .toEqual({ data: '{"marker":"preserved"}', ts: 10 });
+    expect(database.prepare("SELECT data, ts FROM fills WHERE botId = ? AND id = ?").get("bot-a", "shared-fill"))
+      .toEqual({ data: legacyFill, ts: 9 });
+
+    expect(() => database.prepare(`
+      INSERT INTO fills (id, botId, data, ts)
+      VALUES (?, ?, ?, ?)
+    `).run("shared-fill", "bot-b", "{}", 20)).not.toThrow();
+    expect(() => database.prepare(`
+      INSERT INTO fills (id, botId, data, ts)
+      VALUES (?, ?, ?, ?)
+    `).run("shared-fill", "bot-a", "{}", 20)).toThrow(/unique/i);
+    expect(() => database.prepare(`
+      INSERT INTO orders (id, botId, status, data, ts, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run("shared-client", "bot-b", "intent", "{}", 20, 20)).not.toThrow();
+    expect(() => database.prepare(`
+      INSERT INTO orders (id, botId, status, data, ts, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run("shared-client", "bot-a", "intent", "{}", 20, 20)).toThrow(/unique/i);
+    expect(() => database.prepare(`
+      INSERT INTO order_events (id, orderId, botId, type, data, ts)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run("shared-event", "shared-client", "bot-b", "intent", "{}", 20)).not.toThrow();
+    expect(() => database.prepare(`
+      INSERT INTO order_events (id, orderId, botId, type, data, ts)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run("shared-event", "shared-client", "bot-a", "intent", "{}", 20)).toThrow(/unique/i);
   });
 
   it("is idempotent after the current schema has been applied", () => {
@@ -112,8 +202,8 @@ describe("trading store schema migrations", () => {
     migrateTradingStore(database, () => 1);
     const result = migrateTradingStore(database, () => 2);
 
-    expect(result).toEqual({ fromVersion: 6, toVersion: 6, applied: [] });
-    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 6 });
+    expect(result).toEqual({ fromVersion: 7, toVersion: 7, applied: [] });
+    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 7 });
   });
 
   it("seeds legacy exchange accounts from stored keys and backfills bot account ids", () => {
@@ -158,10 +248,11 @@ describe("trading store schema migrations", () => {
 
     expect(result).toEqual({
       fromVersion: 4,
-      toVersion: 6,
+      toVersion: 7,
       applied: [
         { version: 5, name: "durable_trading_account_registry" },
-        { version: 6, name: "tenant_owned_trading_resources_and_credentials" }
+        { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
+        { version: 7, name: "tenant_safe_execution_journal_identity" }
       ]
     });
     expect(database.prepare("SELECT id, ownerUserId, exchange, ownership, enabled, createdAt FROM trading_accounts").all()).toEqual([

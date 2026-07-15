@@ -1,4 +1,5 @@
 import { TOOL_POINT_COUNT, type DrawingObject, type DrawingStyle, type ShapeTool } from "./drawings";
+import { readTenantLocalItem, removeTenantLocalItem, writeTenantLocalItem } from "../app/tenantLocalStorage";
 
 const LEGACY_PREFIX = "mf:drawings:";
 const STORAGE_PREFIX = "sbv2:drawings:v2:";
@@ -9,22 +10,22 @@ export function drawingStorageKey(symbol: string, chartId = "chart-1"): string {
   return `${STORAGE_PREFIX}${encodeURIComponent(validSegment(chartId, "chart-1"))}:${encodeURIComponent(validSegment(symbol, "unknown"))}`;
 }
 
-export function loadDrawings(symbol: string, chartId = "chart-1"): DrawingObject[] {
+export function loadDrawings(symbol: string, chartId = "chart-1", ownerId?: string): DrawingObject[] {
   try {
     const key = drawingStorageKey(symbol, chartId);
-    const current = window.localStorage.getItem(key);
+    const current = readTenantLocalItem(window.localStorage, key, ownerId);
     if (current) return parseDrawings(current);
 
     // Version 1 stored one set per symbol. Preserve it only in the primary pane;
     // secondary panes intentionally start empty instead of inheriting drawings.
     if (chartId !== "chart-1") return [];
     const legacyKey = `${LEGACY_PREFIX}${symbol}`;
-    const legacy = window.localStorage.getItem(legacyKey);
+    const legacy = readTenantLocalItem(window.localStorage, legacyKey, ownerId);
     if (!legacy) return [];
     const migrated = parseDrawings(legacy);
     try {
-      if (migrated.length > 0) window.localStorage.setItem(key, JSON.stringify(migrated));
-      window.localStorage.removeItem(legacyKey);
+      if (migrated.length > 0) writeTenantLocalItem(window.localStorage, key, JSON.stringify(migrated), ownerId);
+      removeTenantLocalItem(window.localStorage, legacyKey, ownerId);
     } catch {
       // Keep the validated runtime snapshot when migration persistence is unavailable.
     }
@@ -34,12 +35,12 @@ export function loadDrawings(symbol: string, chartId = "chart-1"): DrawingObject
   }
 }
 
-export function saveDrawings(symbol: string, drawings: DrawingObject[], chartId = "chart-1") {
+export function saveDrawings(symbol: string, drawings: DrawingObject[], chartId = "chart-1", ownerId?: string) {
   try {
     const key = drawingStorageKey(symbol, chartId);
     const normalized = normalizeDrawings(drawings);
-    if (normalized.length === 0) window.localStorage.removeItem(key);
-    else window.localStorage.setItem(key, JSON.stringify(normalized));
+    if (normalized.length === 0) removeTenantLocalItem(window.localStorage, key, ownerId);
+    else writeTenantLocalItem(window.localStorage, key, JSON.stringify(normalized), ownerId);
   } catch {
     // Non-fatal: private mode etc.
   }

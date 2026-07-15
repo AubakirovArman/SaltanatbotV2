@@ -4,6 +4,7 @@ import { normalizeCompareOverlays } from "../chart/compareConfig";
 import type { CompareOverlayConfig } from "../chart/types";
 import type { ChartType, DataExchange, DataMarketType, PriceType, Timeframe } from "../types";
 import { DEFAULT_CHART_TIME_ZONE, LEGACY_CHART_TIME_ZONE, normalizeChartTimeZone, type ChartTimeZone } from "../chart/timeAxis";
+import { claimLegacyTenantLocalData } from "../app/tenantLocalStorage";
 
 const WORKSPACES_KEY = "sbv2:workspaces";
 const WORKSPACES_CLAIM_KEY = `${WORKSPACES_KEY}:legacy-owner`;
@@ -128,7 +129,7 @@ export function saveWorkspaces(workspaces: Workspace[], ownerId?: string) {
 
 function claimLegacyWorkspaces(ownerId: string, scopedKey: string): void {
   try {
-    if (localStorage.getItem(WORKSPACES_CLAIM_KEY) === null) localStorage.setItem(WORKSPACES_CLAIM_KEY, ownerId);
+    if (!claimLegacyTenantLocalData(localStorage, ownerId)) return;
     if (localStorage.getItem(WORKSPACES_CLAIM_KEY) !== ownerId || localStorage.getItem(scopedKey) !== null) return;
     localStorage.setItem(scopedKey, JSON.stringify(readWorkspaces(WORKSPACES_KEY)));
   } catch {
@@ -205,7 +206,7 @@ export async function parseWorkspaceFile(raw: string): Promise<Workspace | undef
   if (file.format !== WORKSPACE_FILE_FORMAT || file.version !== WORKSPACE_FILE_VERSION || file.algorithm !== "SHA-256") return undefined;
   if (typeof file.checksum !== "string") return undefined;
   const workspace = normalizeWorkspace(file.workspace);
-  if (!workspace || await sha256(canonicalStringify(file.workspace)) !== file.checksum) return undefined;
+  if (!workspace || (await sha256(canonicalStringify(file.workspace))) !== file.checksum) return undefined;
   return workspace;
 }
 
@@ -223,9 +224,7 @@ export async function downloadWorkspaceFile(workspace: Workspace) {
 
 function snapshotFromContext(context: WorkspaceContext, revision: number, savedAt: number): WorkspaceRevision {
   const layout = normalizeLayout(context.layout);
-  const charts = context.charts?.length
-    ? context.charts.map(cloneChart)
-    : [defaultChart(context.symbol, context.timeframe, context.chartType)];
+  const charts = context.charts?.length ? context.charts.map(cloneChart) : [defaultChart(context.symbol, context.timeframe, context.chartType)];
   return {
     revision,
     savedAt,
@@ -273,7 +272,10 @@ export function normalizeWorkspace(value: unknown): Workspace | undefined {
     history: []
   };
   base.history = Array.isArray(item.history)
-    ? item.history.map((entry) => normalizeRevision(entry, base)).filter((entry): entry is WorkspaceRevision => entry !== undefined).slice(-MAX_WORKSPACE_REVISIONS)
+    ? item.history
+        .map((entry) => normalizeRevision(entry, base))
+        .filter((entry): entry is WorkspaceRevision => entry !== undefined)
+        .slice(-MAX_WORKSPACE_REVISIONS)
     : [];
   return base;
 }
@@ -374,7 +376,11 @@ function canonicalStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalStringify).join(",")}]`;
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort().filter((key) => record[key] !== undefined).map((key) => `${JSON.stringify(key)}:${canonicalStringify(record[key])}`).join(",")}}`;
+    return `{${Object.keys(record)
+      .sort()
+      .filter((key) => record[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalStringify(record[key])}`)
+      .join(",")}}`;
   }
   return JSON.stringify(value);
 }
@@ -394,5 +400,10 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function slugify(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
 }

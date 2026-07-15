@@ -148,7 +148,7 @@ export class EngineOrderCoordinator {
     return true;
   }
 
-  async confirmResume(bot: RunningBot): Promise<boolean> {
+  async confirmResume(bot: RunningBot, validateCurrent?: () => boolean): Promise<boolean> {
     const result = await this.inspectLiveState(bot, bot.managed, true).catch((error) => ({
       safe: false,
       messages: [`Fresh resume confirmation failed: ${messageOf(error)}`]
@@ -161,6 +161,7 @@ export class EngineOrderCoordinator {
       }
       return false;
     }
+    if (validateCurrent && !validateCurrent()) return false;
     const previousReason = bot.pauseReason;
     bot.paused = false;
     bot.pauseReason = undefined;

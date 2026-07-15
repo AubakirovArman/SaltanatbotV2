@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Request, RequestHandler, Response, Router } from "express";
 import { z } from "zod";
 import { AccountTelemetryService, createAccountTelemetryHandler } from "../arbitrage/telemetry/index.js";
-import { isDemoMode } from "../auth.js";
+import { isDemoMode, revalidateTradingAuthorization } from "../auth.js";
 import { requireSecureTradingOrigin } from "../secureTradingOrigin.js";
 import { createBybitUtaHandlers, type BybitUtaHandlers } from "./bybitUtaRoutes.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
@@ -21,6 +21,7 @@ import {
 import { botTradingAccountId, describeTradingAccount } from "./tradingAccounts.js";
 import type { ExchangeId, TradingAccount } from "./types.js";
 import { tradingOwnerFromResponse } from "./ownership.js";
+import { isTradingResourceQuotaError } from "./resourceQuotas.js";
 
 const accountCreateSchema = z.object({
   label: z.string().trim().min(1).max(120),
@@ -46,22 +47,15 @@ const keysBodySchema = z.object({
 
 export interface TradingAccountRegistryRouteOptions {
   isBotRunning?: (ownerUserId: string, botId: string) => boolean;
-  withAccountLifecycleLock?: <T>(
-    ownerUserId: string,
-    accountId: string,
-    operation: () => Promise<T>
-  ) => Promise<T>;
+  maxAccountsPerOwner?: number;
+  withAccountLifecycleLock?: <T>(ownerUserId: string, accountId: string, operation: () => Promise<T>) => Promise<T>;
 }
 
 /**
  * Registers the durable, non-secret account registry at its original position
  * in the authenticated trading route stack.
  */
-export function registerTradingAccountRegistryRoutes(
-  router: Router,
-  requireLiveRole: RequestHandler,
-  options: TradingAccountRegistryRouteOptions = {}
-): void {
+export function registerTradingAccountRegistryRoutes(router: Router, requireLiveRole: RequestHandler, options: TradingAccountRegistryRouteOptions = {}): void {
   router.get("/accounts", (_req, res) => {
     const ownerUserId = tradingOwnerFromResponse(res);
     res.json({ accounts: listTradingAccountsForOwner(ownerUserId).map((account) => accountView(ownerUserId, account)) });
@@ -98,8 +92,13 @@ export function registerTradingAccountRegistryRoutes(
       createdAt: now,
       updatedAt: now
     };
-    insertTradingAccountForOwner(ownerUserId, account);
-    res.status(201).json({ account: accountView(ownerUserId, account) });
+    try {
+      insertTradingAccountForOwner(ownerUserId, account, options.maxAccountsPerOwner);
+      res.status(201).json({ account: accountView(ownerUserId, account) });
+    } catch (error) {
+      if (!isTradingResourceQuotaError(error)) throw error;
+      res.status(429).json({ error: error.message, code: error.code, limit: error.limit });
+    }
   });
 
   router.patch("/accounts/:id", requireLiveRole, requireSecureTradingOrigin, (req, res, next) => {
@@ -111,6 +110,8 @@ export function registerTradingAccountRegistryRoutes(
     const ownerUserId = tradingOwnerFromResponse(res);
     const accountId = routeParam(req, "id");
     void withAccountLifecycleLock(options, ownerUserId, accountId, async () => {
+      const authorization = await revalidateTradingAuthorization(res, "live-trade");
+      if (!authorization?.assertCurrent()) return;
       const current = getTradingAccountForOwner(ownerUserId, accountId);
       if (!current) return accountNotFound(res);
       const botIds = boundBotIds(ownerUserId, current.id);
@@ -138,6 +139,8 @@ export function registerTradingAccountRegistryRoutes(
     const ownerUserId = tradingOwnerFromResponse(res);
     const id = routeParam(req, "id");
     void withAccountLifecycleLock(options, ownerUserId, id, async () => {
+      const authorization = await revalidateTradingAuthorization(res, "live-trade");
+      if (!authorization?.assertCurrent()) return;
       const current = getTradingAccountForOwner(ownerUserId, id);
       if (!current) return accountNotFound(res);
       const botIds = boundBotIds(ownerUserId, current.id);
@@ -179,10 +182,11 @@ export function registerTradingAccountRegistryRoutes(
     const ownerUserId = tradingOwnerFromResponse(res);
     const accountId = routeParam(req, "id");
     void withAccountLifecycleLock(options, ownerUserId, accountId, async () => {
+      const authorization = await revalidateTradingAuthorization(res, "live-trade");
+      if (!authorization?.assertCurrent()) return;
       const account = getTradingAccountForOwner(ownerUserId, accountId);
       if (!account) return accountNotFound(res);
-      const runningBotIds = boundBotIds(ownerUserId, account.id)
-        .filter((botId) => options.isBotRunning?.(ownerUserId, botId));
+      const runningBotIds = boundBotIds(ownerUserId, account.id).filter((botId) => options.isBotRunning?.(ownerUserId, botId));
       if (runningBotIds.length > 0) {
         res.status(409).json({
           error: "Stop every robot using this account before rotating its credentials.",
@@ -200,6 +204,8 @@ export function registerTradingAccountRegistryRoutes(
     const ownerUserId = tradingOwnerFromResponse(res);
     const accountId = routeParam(req, "id");
     void withAccountLifecycleLock(options, ownerUserId, accountId, async () => {
+      const authorization = await revalidateTradingAuthorization(res, "live-trade");
+      if (!authorization?.assertCurrent()) return;
       const account = getTradingAccountForOwner(ownerUserId, accountId);
       if (!account) return accountNotFound(res);
       const botIds = boundBotIds(ownerUserId, account.id);
@@ -225,11 +231,7 @@ export interface TradingAccountIntegrationRouteOptions {
   liveEnabled(ownerUserId: string): boolean;
 }
 
-export function registerTradingAccountIntegrationRoutes(
-  router: Router,
-  requireLiveRole: RequestHandler,
-  options: TradingAccountIntegrationRouteOptions
-): void {
+export function registerTradingAccountIntegrationRoutes(router: Router, requireLiveRole: RequestHandler, options: TradingAccountIntegrationRouteOptions): void {
   // Compatibility status contains booleans only and is scoped to the current
   // tenant. New clients manage credentials on a concrete account resource.
   router.get("/keys", requireLiveRole, (_req, res) => {
@@ -255,18 +257,21 @@ export function registerTradingAccountIntegrationRoutes(
     return createAccountTelemetryHandler(accountTelemetry)(req, res, next);
   });
 
-  const uta = (kind: keyof BybitUtaHandlers): RequestHandler => (req, res, next) => {
-    const ownerUserId = tradingOwnerFromResponse(res);
-    const selected = selectedAccountCredentials(req, ownerUserId, "bybit");
-    if (selected === "not-found") return accountNotFound(res);
-    if (selected === "disabled") return accountDisabled(res);
-    const handlers = createBybitUtaHandlers({
-      demo: isDemoMode,
-      liveEnabled: () => options.liveEnabled(ownerUserId),
-      keys: () => selected?.keys
-    });
-    return handlers[kind](req, res, next);
-  };
+  const uta =
+    (kind: keyof BybitUtaHandlers): RequestHandler =>
+    (req, res, next) => {
+      const ownerUserId = tradingOwnerFromResponse(res);
+      const selected = selectedAccountCredentials(req, ownerUserId, "bybit");
+      if (selected === "not-found") return accountNotFound(res);
+      if (selected === "disabled") return accountDisabled(res);
+      const handlers = createBybitUtaHandlers({
+        demo: isDemoMode,
+        liveEnabled: () => options.liveEnabled(ownerUserId),
+        keys: () => selected?.keys,
+        authorizeMutation: () => revalidateTradingAuthorization(res, "live-trade")
+      });
+      return handlers[kind](req, res, next);
+    };
 
   router.get("/bybit/uta", requireLiveRole, uta("status"));
   router.post("/bybit/uta/borrow", requireLiveRole, requireSecureTradingOrigin, uta("borrow"));
@@ -289,15 +294,8 @@ function boundBotIds(ownerUserId: string, accountId: string): string[] {
     .map((bot) => bot.id);
 }
 
-function withAccountLifecycleLock<T>(
-  options: TradingAccountRegistryRouteOptions,
-  ownerUserId: string,
-  accountId: string,
-  operation: () => Promise<T>
-): Promise<T> {
-  return options.withAccountLifecycleLock
-    ? options.withAccountLifecycleLock(ownerUserId, accountId, operation)
-    : operation();
+function withAccountLifecycleLock<T>(options: TradingAccountRegistryRouteOptions, ownerUserId: string, accountId: string, operation: () => Promise<T>): Promise<T> {
+  return options.withAccountLifecycleLock ? options.withAccountLifecycleLock(ownerUserId, accountId, operation) : operation();
 }
 
 function firstConfiguredAccount(ownerUserId: string, exchange: Exclude<ExchangeId, "paper">) {
@@ -309,11 +307,7 @@ function firstConfiguredAccount(ownerUserId: string, exchange: Exclude<ExchangeI
   return undefined;
 }
 
-function selectedAccountCredentials(
-  req: Request,
-  ownerUserId: string,
-  exchange: Exclude<ExchangeId, "paper">
-): ReturnType<typeof firstConfiguredAccount> | "not-found" | "disabled" {
+function selectedAccountCredentials(req: Request, ownerUserId: string, exchange: Exclude<ExchangeId, "paper">): ReturnType<typeof firstConfiguredAccount> | "not-found" | "disabled" {
   const requested = queryParam(req, "accountId");
   if (!requested) return firstConfiguredAccount(ownerUserId, exchange);
   const account = getTradingAccountForOwner(ownerUserId, requested);

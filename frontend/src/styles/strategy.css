@@ -50,7 +50,8 @@
 .strategy-library-groups { min-block-size: 0; display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 8px; }
 
 .strategy-library-actions button,
-.strategy-actions button {
+.strategy-actions button,
+.blockly-mobile-toolbox-toggle {
   min-block-size: var(--ctl-h-sm);
   display: inline-flex;
   align-items: center;
@@ -66,7 +67,10 @@
 }
 
 .strategy-library-actions button:hover,
-.strategy-actions button:hover {
+.strategy-actions button:hover,
+.blockly-mobile-toolbox-toggle:hover,
+.blockly-mobile-toolbox-toggle:focus-visible,
+.blockly-mobile-toolbox-toggle[aria-expanded="true"] {
   border-color: var(--line);
   background: var(--hover);
   color: var(--text);
@@ -1078,6 +1082,10 @@
   color: var(--muted);
   font-size: var(--fs-xs);
   pointer-events: none;
+}
+
+.blockly-mobile-toolbox-toggle {
+  display: none;
 }
 
 .blockly-host {
@@ -2760,5 +2768,21 @@
   .pine-source-comparison {
     border-inline-end: 0;
     border-block-end: 1px solid var(--line);
+  }
+
+  .blockly-mobile-toolbox-toggle {
+    position: absolute;
+    inset-block-start: 8px;
+    inset-inline-start: 8px;
+    z-index: 50;
+    display: inline-flex;
+    min-block-size: 44px;
+    padding: 0 12px;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 24%);
+    font-size: var(--fs-sm);
+  }
+
+  .blockly-mobile-toolbox-toggle[aria-expanded="true"] {
+    inset-inline: auto 8px;
   }
 }

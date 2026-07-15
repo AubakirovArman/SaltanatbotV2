@@ -33,14 +33,17 @@ export function mergeWorkspaceUpdates(local: Workspace[], incoming: Workspace[])
 }
 
 export function mergeRemoteWorkspaces(local: Workspace[], remote: RemoteWorkspace[]): Workspace[] {
-  return mergeWorkspaceUpdates(local, remote.map((item) => {
-    const id = local.find((workspace) => workspace.id === item.clientId || workspace.id === item.workspace.id)?.id;
-    return id && id !== item.workspace.id ? { ...item.workspace, id } : item.workspace;
-  }));
+  return mergeWorkspaceUpdates(
+    local,
+    remote.map((item) => {
+      const id = local.find((workspace) => workspace.id === item.clientId || workspace.id === item.workspace.id)?.id;
+      return id && id !== item.workspace.id ? { ...item.workspace, id } : item.workspace;
+    })
+  );
 }
 
 /** Local state is authoritative while this owner-scoped, authenticated sync runs in the background. */
-export function createWorkspaceRemoteSync(onRemote: (workspaces: Workspace[]) => void): WorkspaceRemoteSync {
+export function createWorkspaceRemoteSync(expectedUserId: string, onRemote: (workspaces: Workspace[]) => void): WorkspaceRemoteSync {
   const documents = new Map<string, RemoteWorkspace>();
   const deleted = new Set<string>();
   let workspaces: Workspace[] = [];
@@ -50,12 +53,9 @@ export function createWorkspaceRemoteSync(onRemote: (workspaces: Workspace[]) =>
   let queue = Promise.resolve();
 
   const parse = (value: unknown): RemoteWorkspace | undefined => {
-    const item = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    const item = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
     const workspace = normalizeWorkspace(item.payload);
-    return workspace && typeof item.id === "string" && typeof item.clientId === "string"
-      && typeof item.revision === "number" && Number.isSafeInteger(item.revision) && item.revision > 0
-      ? { id: item.id, clientId: item.clientId, revision: item.revision, workspace }
-      : undefined;
+    return workspace && typeof item.id === "string" && typeof item.clientId === "string" && typeof item.revision === "number" && Number.isSafeInteger(item.revision) && item.revision > 0 ? { id: item.id, clientId: item.clientId, revision: item.revision, workspace } : undefined;
   };
   const keep = (document: RemoteWorkspace) => {
     documents.set(document.clientId, document);
@@ -71,9 +71,13 @@ export function createWorkspaceRemoteSync(onRemote: (workspaces: Workspace[]) =>
       ...init,
       credentials: "same-origin",
       cache: "no-store",
-      headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) }
+      headers: {
+        "Content-Type": "application/json",
+        "X-SBV2-Expected-User": expectedUserId,
+        ...(csrf ? { "X-CSRF-Token": csrf } : {})
+      }
     });
-    return [response, await response.json().catch(() => ({})) as RemoteBody];
+    return [response, (await response.json().catch(() => ({}))) as RemoteBody];
   };
 
   const remove = async (clientId: string, retry = true): Promise<void> => {
@@ -94,8 +98,7 @@ export function createWorkspaceRemoteSync(onRemote: (workspaces: Workspace[]) =>
   const save = async (workspace: Workspace, document?: RemoteWorkspace, retry = true): Promise<void> => {
     const [response, body] = await send(document ? `${API}/${encodeURIComponent(document.id)}` : API, {
       method: document ? "PUT" : "POST",
-      body: JSON.stringify({ clientId: workspace.id, name: workspace.name, schemaVersion: workspace.schemaVersion,
-        payload: workspace, ...(document ? { revision: document.revision } : {}) })
+      body: JSON.stringify({ clientId: workspace.id, name: workspace.name, schemaVersion: workspace.schemaVersion, payload: workspace, ...(document ? { revision: document.revision } : {}) })
     });
     const current = parse(response.ok ? body.workspace : response.status === 409 ? body.current : undefined);
     if (!current) return;
@@ -136,7 +139,10 @@ export function createWorkspaceRemoteSync(onRemote: (workspaces: Workspace[]) =>
       const remote = body.workspaces.map(parse).filter((item): item is RemoteWorkspace => item !== undefined);
       remote.forEach(keep);
       ready = true;
-      workspaces = mergeRemoteWorkspaces(workspaces, remote.filter((item) => !deleted.has(item.clientId) && !deleted.has(item.workspace.id)));
+      workspaces = mergeRemoteWorkspaces(
+        workspaces,
+        remote.filter((item) => !deleted.has(item.clientId) && !deleted.has(item.workspace.id))
+      );
       onRemote(workspaces);
       schedule();
     } catch {

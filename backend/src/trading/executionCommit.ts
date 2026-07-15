@@ -18,7 +18,7 @@ export function commitExecutionFill(record: OrderJournalRecord, fill: FillRecord
   return withStoreTransaction(() => {
     assertExecutionMatchesRecord(record, fill);
     if (!recordConfirmedFill(fill, record.market)) {
-      const duplicate = listOrderEvents(record.id, 1_000).find((event) => (
+      const duplicate = listOrderEvents(record.botId, record.id, 1_000).find((event) => (
         event.type === "fill"
         && typeof event.data === "object"
         && event.data !== null
@@ -27,7 +27,7 @@ export function commitExecutionFill(record: OrderJournalRecord, fill: FillRecord
       if (!duplicate || !sameExecution(duplicate.data, fill)) {
         throw new Error(`Execution ${fill.id} is duplicated without matching durable accounting for order ${record.id}`);
       }
-      return { inserted: false, alreadyAccounted: true, record: getOrderJournal(record.id) ?? record };
+      return { inserted: false, alreadyAccounted: true, record: getOrderJournal(record.botId, record.id) ?? record };
     }
     return { inserted: true, alreadyAccounted: false, record: orderLifecycle.recordFill(record, fill) };
   });

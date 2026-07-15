@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
+import { TENANT_LOCAL_LEGACY_OWNER_KEY } from "../src/app/tenantLocalStorage";
 import { drawingStorageKey, loadDrawings, MAX_DRAWINGS_PER_PANE, normalizeDrawings, saveDrawings } from "../src/chart/drawingStore";
 import type { DrawingObject } from "../src/chart/drawings";
 
@@ -45,5 +46,25 @@ describe("pane drawing storage", () => {
     saveDrawings("SOLUSDT", [line("one")], "chart-3");
     saveDrawings("SOLUSDT", [], "chart-3");
     expect(localStorage.getItem(drawingStorageKey("SOLUSDT", "chart-3"))).toBeNull();
+  });
+
+  it("isolates authenticated owners and fails closed while the owner id is unresolved", () => {
+    saveDrawings("BTCUSDT", [line("owner-a")], "chart-1", "user-a");
+    saveDrawings("BTCUSDT", [line("owner-b")], "chart-1", "user-b");
+    saveDrawings("BTCUSDT", [line("unresolved")], "chart-1", "");
+
+    expect(loadDrawings("BTCUSDT", "chart-1", "user-a").map(({ id }) => id)).toEqual(["owner-a"]);
+    expect(loadDrawings("BTCUSDT", "chart-1", "user-b").map(({ id }) => id)).toEqual(["owner-b"]);
+    expect(loadDrawings("BTCUSDT", "chart-1", "")).toEqual([]);
+    expect(localStorage.getItem(drawingStorageKey("BTCUSDT", "chart-1"))).toBeNull();
+  });
+
+  it("allows only one authenticated owner to claim legacy pane drawings", () => {
+    const key = drawingStorageKey("ETHUSDT", "chart-1");
+    localStorage.setItem(TENANT_LOCAL_LEGACY_OWNER_KEY, "user-a");
+    localStorage.setItem(key, JSON.stringify([line("legacy-pane")]));
+
+    expect(loadDrawings("ETHUSDT", "chart-1", "user-a").map(({ id }) => id)).toEqual(["legacy-pane"]);
+    expect(loadDrawings("ETHUSDT", "chart-1", "user-b")).toEqual([]);
   });
 });

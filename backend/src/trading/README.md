@@ -130,7 +130,9 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - Schema v2 durably records orders, events, fills, current positions and logical strategy runs;
   schema v4 adds the paper event source; schema v5 adds account metadata and backfills legacy bot
   bindings; schema v6 assigns legacy rows to one explicit administrator and transactionally moves
-  legacy exchange keys into owner/account-bound credential envelopes while disarming live trading.
+  legacy exchange keys into owner/account-bound credential envelopes while disarming live trading;
+  schema v7 scopes fill, order and order-event identifiers by bot so equal venue/client identifiers
+  cannot collide across tenant journals.
 
 ## Testing
 

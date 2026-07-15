@@ -33,6 +33,7 @@ import { botTradingAccountId } from "./tradingAccounts.js";
 import { botBelongsToOwner, tradingOwnerForBot } from "./ownership.js";
 import { EngineTenantRuntime } from "./engineTenantRuntime.js";
 import { resumePersistedBots, type ResumeAuthorization } from "./engineResume.js";
+import type { TradingResourceLimits } from "./resourceQuotas.js";
 const BUFFER_CAP = 1500;
 const SEED_BARS = 500;
 type EngineStartOptions = { override?: boolean; resumed?: boolean; preflight?: () => Promise<void>; validateCurrent?: () => void };
@@ -45,9 +46,9 @@ export class TradingEngine {
   private readonly orderCoordinator: EngineOrderCoordinator;
   private readonly stopCoordinator: EngineStopCoordinator;
   private readonly tenants: EngineTenantRuntime;
-  constructor(private readonly provider: ProviderRouter, broadcast: (event: TradeEvent) => void, emergencyAdapters: (ownerUserId: string) => Iterable<ExchangeAdapter> = buildEmergencyAdapters) {
+  constructor(private readonly provider: ProviderRouter, broadcast: (event: TradeEvent) => void, emergencyAdapters: (ownerUserId: string) => Iterable<ExchangeAdapter> = buildEmergencyAdapters, resourceLimits?: TradingResourceLimits) {
     this.muted = new Set(getSetting<string[]>("mutedBots") ?? []);
-    this.tenants = new EngineTenantRuntime((id) => this.running.get(id), () => this.running.values(), (id) => this.stop(id), broadcast, emergencyAdapters);
+    this.tenants = new EngineTenantRuntime((id) => this.running.get(id), () => this.running.values(), (id) => this.stop(id), broadcast, emergencyAdapters, resourceLimits);
     this.orderCoordinator = new EngineOrderCoordinator(
       (id) => this.running.get(id),
       (botId, level, message) => this.log(botId, level, message),
@@ -127,7 +128,7 @@ export class TradingEngine {
     this.tenants.remember(config);
     const lease = this.tenants.beginStart(config.ownerUserId, config.id);
     const accountId = config.exchange === "paper" ? undefined : botTradingAccountId(config);
-    return this.tenants.runStart(lease, accountId, () => this.botStartLock.run(config.id, () => this.startUnlocked(config, options, lease.assertCurrent)), options.validateCurrent);
+    return this.tenants.runStart(lease, accountId, config.exchange, () => this.botStartLock.run(config.id, () => this.startUnlocked(config, options, () => { lease.assertCurrent(); options.validateCurrent?.(); })), options.validateCurrent);
   }
   async startForOwner(ownerUserId: string, config: BotConfig, options: EngineStartOptions = {}) {
     if (!botBelongsToOwner(config, ownerUserId)) throw new Error("Bot not found");
@@ -226,13 +227,14 @@ export class TradingEngine {
   }
 
   /** Reconcile fresh live state before clearing a fail-closed pause. */
-  async confirmResume(id: string): Promise<boolean> {
+  async confirmResume(id: string, validateCurrent?: () => boolean): Promise<boolean> {
     const bot = this.running.get(id);
     if (!bot?.paused) return false;
     let confirmed = false;
     bot.eventQueue = bot.eventQueue.then(async () => {
       if (this.running.get(id) !== bot || !bot.paused) return;
-      confirmed = bot.config.exchange === "paper" ? clearPausedRuntime(bot) : await this.orderCoordinator.confirmResume(bot);
+      if (validateCurrent && !validateCurrent()) return;
+      confirmed = bot.config.exchange === "paper" ? clearPausedRuntime(bot) : await this.orderCoordinator.confirmResume(bot, validateCurrent);
     });
     await bot.eventQueue;
     if (!confirmed) return false;
@@ -241,7 +243,7 @@ export class TradingEngine {
     return true;
   }
 
-  async confirmResumeForOwner(ownerUserId: string, id: string): Promise<boolean> { return this.ownedRuntime(ownerUserId, id) ? this.confirmResume(id) : false; }
+  async confirmResumeForOwner(ownerUserId: string, id: string, validateCurrent?: () => boolean): Promise<boolean> { return this.ownedRuntime(ownerUserId, id) ? this.confirmResume(id, validateCurrent) : false; }
   isPaused(id: string): boolean { return this.running.get(id)?.paused === true; }
   isPausedForOwner(ownerUserId: string, id: string): boolean { return this.ownedRuntime(ownerUserId, id)?.paused === true; }
   stop(id: string) { this.stopCoordinator.stopNow(id); }
@@ -293,7 +295,7 @@ export class TradingEngine {
    * With `dryRun`, nothing is sent to the exchange — each command is parsed and
    * echoed back as a resolved order so the operator can preview it first.
    */
-  async manualCommand(id: string, input: string, dryRun = false): Promise<{ ok: boolean; message: string }> {
+  async manualCommand(id: string, input: string, dryRun = false, authorize?: (order: ExecOrder) => boolean): Promise<{ ok: boolean; message: string }> {
     const bot = this.running.get(id);
     if (!bot || this.stopCoordinator.isStopping(id)) return { ok: false, message: "Bot is not running" };
     return this.manualCommandLock.run(id, async () => {
@@ -302,14 +304,15 @@ export class TradingEngine {
         bot,
         input,
         dryRun,
+        authorize,
         execute: (order) => this.executeOrder(bot, order),
         applyResult: (result, reason, order) => this.applyResult(bot, result, reason, order)
       });
     });
   }
 
-  async manualCommandForOwner(ownerUserId: string, id: string, input: string, dryRun = false): Promise<{ ok: boolean; message: string }> {
-    return this.ownedRuntime(ownerUserId, id) ? this.manualCommand(id, input, dryRun) : { ok: false, message: "Bot is not running" };
+  async manualCommandForOwner(ownerUserId: string, id: string, input: string, dryRun = false, authorize?: (order: ExecOrder) => boolean): Promise<{ ok: boolean; message: string }> {
+    return this.ownedRuntime(ownerUserId, id) ? this.manualCommand(id, input, dryRun, authorize) : { ok: false, message: "Bot is not running" };
   }
 
   private onCandle(id: string, candle: Candle) {

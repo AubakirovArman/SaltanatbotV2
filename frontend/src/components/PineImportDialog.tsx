@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, FileCode2, Upload, X, XCircle } from "lucide-react";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { importPineScript, type PineImport } from "../strategy/pine";
 import type { Locale } from "../i18n";
 import { strategyText } from "../i18n/strategy";
@@ -33,12 +33,11 @@ const MAX_BYTES = 1_000_000;
 export function PineImportDialog({ locale, onClose, onImportMany, initialFiles }: PineImportDialogProps) {
   const t = (key: Parameters<typeof strategyText>[1]) => strategyText(locale, key);
   const [source, setSource] = useState("");
-  const [files, setFiles] = useState<{ name: string; text: string }[]>(() =>
-    (initialFiles ?? []).slice(0, MAX_FILES).map((file) => ({ name: file.name, text: file.text }))
-  );
+  const [files, setFiles] = useState<{ name: string; text: string }[]>(() => (initialFiles ?? []).slice(0, MAX_FILES).map((file) => ({ name: file.name, text: file.text })));
   const [results, setResults] = useState<Converted[]>();
   const [readNote, setReadNote] = useState<string>();
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const sourceId = useId();
   const modal = useModalFocus<HTMLDivElement>(onClose, "textarea");
 
   // Read selected files resiliently: skip oversized picks, respect MAX_FILES, and
@@ -51,12 +50,8 @@ export function PineImportDialog({ locale, onClose, onImportMany, initialFiles }
     const remaining = Math.max(0, MAX_FILES - files.length);
     const picked = sized.slice(0, remaining);
     const overflow = sized.length - picked.length;
-    const settled = await Promise.allSettled(
-      picked.map(async (file) => ({ name: file.name.replace(/\.[^.]+$/, ""), text: await file.text() }))
-    );
-    const read = settled
-      .filter((entry): entry is PromiseFulfilledResult<{ name: string; text: string }> => entry.status === "fulfilled")
-      .map((entry) => entry.value);
+    const settled = await Promise.allSettled(picked.map(async (file) => ({ name: file.name.replace(/\.[^.]+$/, ""), text: await file.text() })));
+    const read = settled.filter((entry): entry is PromiseFulfilledResult<{ name: string; text: string }> => entry.status === "fulfilled").map((entry) => entry.value);
     const unreadable = settled.length - read.length;
     if (read.length) {
       setFiles((current) => [...current, ...read].slice(0, MAX_FILES));
@@ -92,135 +87,146 @@ export function PineImportDialog({ locale, onClose, onImportMany, initialFiles }
           </button>
         </div>
         <div className="gallery-body pine-body">
-        <p className="pine-hint">
-          {t("pineHint")}
-        </p>
-        <textarea
-          value={source}
-          onChange={(event) => {
-            setSource(event.target.value);
-            setResults(undefined);
-          }}
-          placeholder={'//@version=6\nstrategy("My strategy", overlay=true)\n...'}
-          rows={7}
-          spellCheck={false}
-        />
-        <div className="pine-files">
-          <button type="button" className="pine-upload" onClick={() => fileRef.current?.click()}>
-            <Upload size={13} aria-hidden="true" /> {t("loadPineFiles")}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            multiple
-            accept=".pine,.pinescript,.txt,text/plain"
-            hidden
+          <p className="pine-hint">{t("pineHint")}</p>
+          <label className="sr-only" htmlFor={sourceId}>
+            {t("pineSource")}
+          </label>
+          <textarea
+            id={sourceId}
+            name="pine-source"
+            value={source}
             onChange={(event) => {
-              const list = event.target.files;
-              if (list && list.length) void addFiles(list).catch(() => setReadNote(t("someFilesUnreadable")));
-              event.target.value = "";
+              setSource(event.target.value);
+              setResults(undefined);
             }}
+            placeholder={'//@version=6\nstrategy("My strategy", overlay=true)\n...'}
+            rows={7}
+            spellCheck={false}
           />
-          {files.map((file, index) => (
-            <span key={`${file.name}-${index}`} className="pine-file-chip">
-              {file.name}
-              <button
-                type="button"
-                aria-label={`${t("remove")} ${file.name}`}
-                onClick={() => {
-                  setFiles((current) => current.filter((_, position) => position !== index));
-                  setResults(undefined);
-                }}
-              >
-                <X size={11} aria-hidden="true" />
-              </button>
-            </span>
-          ))}
-        </div>
-        {readNote && (
-          <div className="pine-read-note" role="alert">
-            <AlertTriangle size={12} aria-hidden="true" /> {readNote}
-          </div>
-        )}
-        <div className="pine-actions">
-          <button type="button" className="run-button" onClick={convert} disabled={!canConvert}>
-            {t("convert")}{files.length ? ` (${files.length + (source.trim() ? 1 : 0)})` : ""}
-          </button>
-          {results && ok.length > 0 && (
-            <button type="button" className="run-button" onClick={() => onImportMany(ok.map((entry) => entry.res))}>
-              {t("add")} {ok.length} {t(ok.length === 1 ? "artifact" : "artifacts")}
+          <div className="pine-files">
+            <button type="button" className="pine-upload" onClick={() => fileRef.current?.click()}>
+              <Upload size={13} aria-hidden="true" /> {t("loadPineFiles")}
             </button>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              accept=".pine,.pinescript,.txt,text/plain"
+              hidden
+              onChange={(event) => {
+                const list = event.target.files;
+                if (list && list.length) void addFiles(list).catch(() => setReadNote(t("someFilesUnreadable")));
+                event.target.value = "";
+              }}
+            />
+            {files.map((file, index) => (
+              <span key={`${file.name}-${index}`} className="pine-file-chip">
+                {file.name}
+                <button
+                  type="button"
+                  aria-label={`${t("remove")} ${file.name}`}
+                  onClick={() => {
+                    setFiles((current) => current.filter((_, position) => position !== index));
+                    setResults(undefined);
+                  }}
+                >
+                  <X size={11} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+          {readNote && (
+            <div className="pine-read-note" role="alert">
+              <AlertTriangle size={12} aria-hidden="true" /> {readNote}
+            </div>
           )}
-        </div>
-        <div className="pine-results" role="status" aria-live="polite">
-          {results && (
-            <>
-              {results.length > 1 && (
-                <div className="pine-results-summary">
-                  {ok.length} {t("converted")}{failed ? `, ${failed} ${t("rejected")}` : ""}.
-                </div>
-              )}
-              {results.map((entry, index) => (
-                <div key={`${entry.label}-${index}`} className={`pine-result ${entry.res.ok ? "is-ok" : "is-err"}`}>
-                  <div className="pine-result-head">
-                    {entry.res.ok ? <CheckCircle2 size={13} aria-hidden="true" /> : <XCircle size={13} aria-hidden="true" />}
-                    <span className="pine-result-label">{entry.label}</span>
-                    {entry.res.ok ? (
-                      <span className="pine-result-kind">
-                        {t(entry.res.kind === "indicator" ? "indicator" : "strategy")} · “{entry.res.name}”
-                      </span>
-                    ) : (
-                      <span className="pine-result-error">{entry.res.error}</span>
+          <div className="pine-actions">
+            <button type="button" className="run-button" onClick={convert} disabled={!canConvert}>
+              {t("convert")}
+              {files.length ? ` (${files.length + (source.trim() ? 1 : 0)})` : ""}
+            </button>
+            {results && ok.length > 0 && (
+              <button type="button" className="run-button" onClick={() => onImportMany(ok.map((entry) => entry.res))}>
+                {t("add")} {ok.length} {t(ok.length === 1 ? "artifact" : "artifacts")}
+              </button>
+            )}
+          </div>
+          <div className="pine-results" role="status" aria-live="polite">
+            {results && (
+              <>
+                {results.length > 1 && (
+                  <div className="pine-results-summary">
+                    {ok.length} {t("converted")}
+                    {failed ? `, ${failed} ${t("rejected")}` : ""}.
+                  </div>
+                )}
+                {results.map((entry, index) => (
+                  <div key={`${entry.label}-${index}`} className={`pine-result ${entry.res.ok ? "is-ok" : "is-err"}`}>
+                    <div className="pine-result-head">
+                      {entry.res.ok ? <CheckCircle2 size={13} aria-hidden="true" /> : <XCircle size={13} aria-hidden="true" />}
+                      <span className="pine-result-label">{entry.label}</span>
+                      {entry.res.ok ? (
+                        <span className="pine-result-kind">
+                          {t(entry.res.kind === "indicator" ? "indicator" : "strategy")} · “{entry.res.name}”
+                        </span>
+                      ) : (
+                        <span className="pine-result-error">{entry.res.error}</span>
+                      )}
+                    </div>
+                    {entry.res.report && (
+                      <dl className="pine-fidelity" aria-label={t("fidelity")}>
+                        <div>
+                          <dt>{t("fidelity")}</dt>
+                          <dd>{t(entry.res.report.overall === "display-only" ? "displayOnly" : entry.res.report.overall)}</dd>
+                        </div>
+                        {entry.res.ok && (
+                          <div>
+                            <dt>{t("profile")}</dt>
+                            <dd>{entry.res.language.profile}</dd>
+                          </div>
+                        )}
+                        <div>
+                          <dt>{t("exact")}</dt>
+                          <dd>{entry.res.report.counts.exact}</dd>
+                        </div>
+                        <div>
+                          <dt>{t("approximation")}</dt>
+                          <dd>{entry.res.report.counts.approximation}</dd>
+                        </div>
+                        <div>
+                          <dt>{t("displayOnly")}</dt>
+                          <dd>{entry.res.report.counts["display-only"]}</dd>
+                        </div>
+                      </dl>
+                    )}
+                    {entry.res.ok && entry.res.diagnostics.length > 0 && (
+                      <ul className="pine-result-warnings">
+                        <li className="pine-result-warnings-head">
+                          <AlertTriangle size={11} aria-hidden="true" /> {t("approximations")}
+                        </li>
+                        {entry.res.diagnostics.map((diagnostic, diagnosticIndex) => (
+                          <li key={`${diagnostic.code}-${diagnosticIndex}`}>
+                            <code>{diagnostic.code}</code>
+                            {diagnostic.span ? ` · ${t("sourceLine")} ${diagnostic.span.start.line}` : ""}: {diagnostic.message}
+                            {diagnostic.remediation && (
+                              <small>
+                                <strong>{t("remediation")}:</strong> {diagnostic.remediation}
+                              </small>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {!entry.res.ok && entry.res.diagnostic?.remediation && (
+                      <p className="pine-result-remediation">
+                        <strong>{t("remediation")}:</strong> {entry.res.diagnostic.remediation}
+                      </p>
                     )}
                   </div>
-                  {entry.res.report && (
-                    <dl className="pine-fidelity" aria-label={t("fidelity")}>
-                      <div>
-                        <dt>{t("fidelity")}</dt>
-                        <dd>{t(entry.res.report.overall === "display-only" ? "displayOnly" : entry.res.report.overall)}</dd>
-                      </div>
-                      {entry.res.ok && (
-                        <div>
-                          <dt>{t("profile")}</dt>
-                          <dd>{entry.res.language.profile}</dd>
-                        </div>
-                      )}
-                      <div>
-                        <dt>{t("exact")}</dt>
-                        <dd>{entry.res.report.counts.exact}</dd>
-                      </div>
-                      <div>
-                        <dt>{t("approximation")}</dt>
-                        <dd>{entry.res.report.counts.approximation}</dd>
-                      </div>
-                      <div>
-                        <dt>{t("displayOnly")}</dt>
-                        <dd>{entry.res.report.counts["display-only"]}</dd>
-                      </div>
-                    </dl>
-                  )}
-                  {entry.res.ok && entry.res.diagnostics.length > 0 && (
-                    <ul className="pine-result-warnings">
-                      <li className="pine-result-warnings-head">
-                        <AlertTriangle size={11} aria-hidden="true" /> {t("approximations")}
-                      </li>
-                      {entry.res.diagnostics.map((diagnostic, diagnosticIndex) => (
-                        <li key={`${diagnostic.code}-${diagnosticIndex}`}>
-                          <code>{diagnostic.code}</code>
-                          {diagnostic.span ? ` · ${t("sourceLine")} ${diagnostic.span.start.line}` : ""}: {diagnostic.message}
-                          {diagnostic.remediation && <small><strong>{t("remediation")}:</strong> {diagnostic.remediation}</small>}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {!entry.res.ok && entry.res.diagnostic?.remediation && (
-                    <p className="pine-result-remediation"><strong>{t("remediation")}:</strong> {entry.res.diagnostic.remediation}</p>
-                  )}
-                </div>
-              ))}
-            </>
-          )}
-        </div>
+                ))}
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

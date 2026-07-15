@@ -160,9 +160,11 @@ npm run dev
 # frontend → http://localhost:4180   backend/API → http://localhost:4181
 ```
 
-> Existing `backend/data/trading.db`, candle data and encrypted keys are left untouched. The current
-> shared Trade/Robots state is administrator-only until every bot, account and event path has an
-> owner. Do not start two API processes against that SQLite file. See the complete
+> Existing `backend/data/trading.db`, candle data and encrypted keys are preserved. The schema-v6
+> migration assigns legacy trading rows to one selected administrator; every account, credential,
+> bot, order, fill, event, log and private stream is owner-scoped after migration. Application
+> administrators manage access but cannot browse another user's trading resources or exchange
+> secrets. Do not start two API processes against that SQLite file. See the complete
 > [self-hosting guide](docs/SELF_HOSTING.md).
 
 ### …or with Docker

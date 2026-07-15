@@ -32,6 +32,7 @@ export interface ScannerVisualRow {
 
 interface Props {
   mode: ScannerMode;
+  storageOwner?: string;
   locale: Locale;
   filters: Record<string, ScannerFilterValue>;
   columns: readonly ScannerColumn[];
@@ -42,17 +43,22 @@ interface Props {
   statusSlot?: ReactNode;
 }
 
-export function ScannerWorkbench({ mode, locale, filters, columns, defaultColumns, rows, onApplyFilters, children, statusSlot }: Props) {
+export function ScannerWorkbench({ mode, storageOwner, locale, filters, columns, defaultColumns, rows, onApplyFilters, children, statusSlot }: Props) {
   const allowedColumns = useMemo(() => columns.map((column) => column.id), [columns]);
   const requiredColumns = useMemo(() => columns.filter((column) => column.required).map((column) => column.id), [columns]);
-  const [preferences, setPreferences] = useState(() => loadScannerWorkspace(mode, allowedColumns, defaultColumns, requiredColumns));
+  const [preferences, setPreferences] = useState(() => loadScannerWorkspace(mode, allowedColumns, defaultColumns, requiredColumns, undefined, storageOwner));
   const [presetName, setPresetName] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const controlId = useId();
   const bufferedRows = useVisibleRows(rows);
 
+  useEffect(() => {
+    setPreferences(loadScannerWorkspace(mode, allowedColumns, defaultColumns, requiredColumns, undefined, storageOwner));
+    setPresetName("");
+  }, [allowedColumns, defaultColumns, mode, requiredColumns, storageOwner]);
+
   const persist = (next: ScannerWorkspacePreferences) => {
-    setPreferences(storeScannerWorkspace(mode, next, allowedColumns, defaultColumns, requiredColumns));
+    setPreferences(storeScannerWorkspace(mode, next, allowedColumns, defaultColumns, requiredColumns, undefined, storageOwner));
   };
   const setVisualization = (visualization: ScannerVisualization) => persist({ ...preferences, visualization });
   const toggleColumn = (column: ScannerColumn) => {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Response, Router } from "express";
 import { z } from "zod";
-import { isDemoMode, roleAllows } from "../auth.js";
+import { isDemoMode, revalidateTradingAuthorization, roleAllows } from "../auth.js";
 import { timeframes } from "../market/timeframes.js";
 import { ensureSecureTradingOrigin } from "../secureTradingOrigin.js";
 import type { Timeframe } from "../types.js";
@@ -9,17 +9,11 @@ import { mutationAuthority, roleForBot } from "./botRouteIdentity.js";
 import type { TradingEngine } from "./engine.js";
 import { liveRiskValidationErrors } from "./liveRisk.js";
 import { tradingOwnerFromResponse } from "./ownership.js";
-import {
-  deleteBotForOwner,
-  deleteSetting,
-  getBotForOwner,
-  getBotOwnerUserId,
-  getTradingAccountForOwner,
-  upsertBotForOwner
-} from "./store.js";
+import { deleteBotForOwner, deleteSetting, getBotForOwner, getBotOwnerUserId, getTradingAccountForOwner, upsertBotForOwner } from "./store.js";
 import { parseStrategyIR } from "./strategy/irSchema.js";
 import { paperTradingAccountId, tradingAccountBindingIssue } from "./tradingAccounts.js";
 import type { AuthRole, BotConfig, ExchangeId } from "./types.js";
+import { isTradingResourceQuotaError } from "./resourceQuotas.js";
 
 const botBodySchema = z.object({
   id: z.string().optional(),
@@ -44,6 +38,7 @@ const botBodySchema = z.object({
 
 interface BotLifecycleRouteOptions {
   view(ownerUserId: string, bot: BotConfig): Omit<BotConfig, "ownerUserId">;
+  maxBotsPerOwner: number;
 }
 
 export function registerBotLifecycleMutationRoutes(router: Router, engine: TradingEngine, options: BotLifecycleRouteOptions): void {
@@ -67,6 +62,8 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
       const irResult = parseStrategyIR(body.ir);
       if (!irResult.ok) return void res.status(400).json({ error: `Invalid strategy IR: ${irResult.error}` });
       const persist = async () => {
+        const authorization = await revalidateTradingAuthorization(res, role);
+        if (!authorization?.assertCurrent()) return;
         const accountId = resolveAccountId(res, ownerUserId, id, body, existing);
         if (!accountId) return;
         const now = Date.now();
@@ -94,15 +91,20 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
           createdAt: existing?.createdAt ?? now,
           updatedAt: Math.max(now, (existing?.updatedAt ?? 0) + 1)
         };
-        upsertBotForOwner(ownerUserId, bot);
+        upsertBotForOwner(ownerUserId, bot, { maxBots: options.maxBotsPerOwner });
         res.json({ bot: options.view(ownerUserId, bot) });
       };
       const targetAccountId = body.exchange === "paper" ? undefined : (body.accountId ?? (existing?.exchange === body.exchange ? existing.accountId : undefined));
       if (targetAccountId) await engine.withAccountLifecycleLock(ownerUserId, targetAccountId, persist);
       else await persist();
     };
-    if (body.id) await engine.withBotLifecycleLock(ownerUserId, id, mutation);
-    else await mutation();
+    try {
+      if (body.id) await engine.withBotLifecycleLock(ownerUserId, id, mutation);
+      else await mutation();
+    } catch (error) {
+      if (!isTradingResourceQuotaError(error)) throw error;
+      res.status(429).json({ error: error.message, code: error.code, limit: error.limit });
+    }
   });
 
   router.delete("/bots/:id", async (req, res) => {
@@ -112,10 +114,13 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
     if (!initial) return void res.status(404).json({ error: "Bot not found" });
     if (!ensureRole(res, roleForBot(initial))) return;
     try {
-      await engine.deleteSafelyForOwner(ownerUserId, id, () => {
+      await engine.deleteSafelyForOwner(ownerUserId, id, async () => {
         const current = getBotForOwner(ownerUserId, id);
         if (!current) return void res.status(404).json({ error: "Bot not found" });
-        if (!ensureRole(res, roleForBot(current))) return;
+        const role = roleForBot(current);
+        if (!ensureRole(res, role)) return;
+        const authorization = await revalidateTradingAuthorization(res, role);
+        if (!authorization?.assertCurrent()) return;
         deleteBotForOwner(ownerUserId, id);
         res.json({ ok: true });
       });
@@ -130,21 +135,18 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
     await engine.withBotLifecycleLock(ownerUserId, id, async () => {
       const bot = ownedBot(engine, ownerUserId, id);
       if (!bot) return void res.status(404).json({ error: "Bot not found" });
-      if (!ensureRole(res, roleForBot(bot))) return;
+      const role = roleForBot(bot);
+      if (!ensureRole(res, role)) return;
       if (engine.isRunningForOwner(ownerUserId, id)) return void res.status(409).json({ error: "Stop the bot before resetting its state." });
+      const authorization = await revalidateTradingAuthorization(res, role);
+      if (!authorization?.assertCurrent()) return;
       deleteSetting(`state:${id}`);
       res.json({ ok: true });
     });
   });
 }
 
-function resolveAccountId(
-  res: Response,
-  ownerUserId: string,
-  id: string,
-  body: z.infer<typeof botBodySchema>,
-  existing: BotConfig | undefined
-): string | undefined {
+function resolveAccountId(res: Response, ownerUserId: string, id: string, body: z.infer<typeof botBodySchema>, existing: BotConfig | undefined): string | undefined {
   if (body.exchange === "paper") return paperTradingAccountId(id);
   const accountId = body.accountId ?? (existing?.exchange === body.exchange ? existing.accountId : undefined);
   if (!accountId) {

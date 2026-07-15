@@ -57,7 +57,11 @@ test("keeps the RU/KK arbitrage screener keyboard and screen-reader operable on 
   await expect(page.getByText("Bybit · спред-торговля · публичный API", { exact: true })).toBeVisible();
   await expect(page.locator(".arb-workspace")).not.toContainText("Bybit · Spread Trading · public API");
 
+  const mobileTools = page.getByRole("button", { name: "Дополнительные инструменты" });
+  await mobileTools.click();
+  await expect(mobileTools).toHaveAttribute("aria-expanded", "true");
   const locale = page.getByRole("button", { name: "Переключить язык интерфейса на казахский" });
+  await expect(locale).toBeVisible();
   await locale.focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("html")).toHaveAttribute("lang", "kk");

@@ -12,6 +12,8 @@ import type { ArbitrageOpportunity } from "../arbitrage/types.js";
 import { withResolvedBotAccountId } from "./tradingAccounts.js";
 import { configureTradingAccountStore, credentialAad, normalizeOwnerUserId } from "./tradingAccountStore.js";
 import { openCredentialPayload, sealCredentialPayload } from "./credentialCrypto.js";
+import { assertBotCapacity } from "./resourceQuotas.js";
+import { getOrderJournalFrom, insertOrderEventInto, listOrderEventsForOwnerFrom, listOrderEventsFrom, listOrderJournalForOwnerFrom, listOrderJournalFrom, upsertOrderJournalInto } from "./orderJournalStore.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../../data");
@@ -101,28 +103,45 @@ export function upsertBot(bot: BotConfig) {
   return upsertBotForOwner(owner, bot);
 }
 
-export function upsertBotForOwner(ownerUserId: string, bot: BotConfig) {
+export interface BotWriteOptions {
+  /** Applied only when the bot id is new. Existing bots remain editable and
+   * stoppable even if an operator later lowers the quota. */
+  maxBots?: number;
+}
+
+export function upsertBotForOwner(ownerUserId: string, bot: BotConfig, options: BotWriteOptions = {}) {
+  return upsertBotIntoForOwner(db, ownerUserId, bot, options);
+}
+
+export function upsertBotIntoForOwner(database: DatabaseSync, ownerUserId: string, bot: BotConfig, options: BotWriteOptions = {}) {
   const owner = normalizeOwnerUserId(ownerUserId);
-  const existingOwner = getBotOwnerUserId(bot.id);
+  const ownerRow = database.prepare("SELECT ownerUserId FROM bots WHERE id = ?").get(bot.id) as { ownerUserId: string } | undefined;
+  const existingOwner = ownerRow?.ownerUserId;
   if (existingOwner !== undefined && existingOwner !== owner) {
     throw new Error(`Bot ${bot.id} belongs to another owner`);
   }
   const normalized = withResolvedBotAccountId({ ...bot, ownerUserId: owner });
-  db.exec("BEGIN IMMEDIATE");
+  database.exec("BEGIN IMMEDIATE");
   try {
-    const previous = db.prepare("SELECT config FROM bots WHERE ownerUserId = ? AND id = ?").get(owner, normalized.id) as { config: string } | undefined;
+    const previous = database.prepare("SELECT config FROM bots WHERE ownerUserId = ? AND id = ?").get(owner, normalized.id) as { config: string } | undefined;
+    if (!previous && options.maxBots !== undefined) {
+      const row = database.prepare("SELECT count(*) AS count FROM bots WHERE ownerUserId = ?").get(owner) as { count: number };
+      assertBotCapacity(Number(row.count), options.maxBots);
+    }
     const previousStatus = previous ? (JSON.parse(previous.config) as BotConfig).status : undefined;
-    db.prepare(`
+    database
+      .prepare(`
       INSERT INTO bots (id, ownerUserId, config, updatedAt) VALUES (?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         config = excluded.config,
         updatedAt = excluded.updatedAt
       WHERE bots.ownerUserId = excluded.ownerUserId
-    `).run(normalized.id, owner, JSON.stringify(normalized), normalized.updatedAt);
-    recordBotStatusTransition(db, normalized, previousStatus);
-    db.exec("COMMIT");
+    `)
+      .run(normalized.id, owner, JSON.stringify(normalized), normalized.updatedAt);
+    recordBotStatusTransition(database, normalized, previousStatus);
+    database.exec("COMMIT");
   } catch (error) {
-    db.exec("ROLLBACK");
+    database.exec("ROLLBACK");
     throw error;
   }
 }
@@ -175,7 +194,18 @@ export function deleteSetting(key: string) {
 // ---------- fills (trade journal) ----------
 
 export function insertFill(fill: FillRecord) {
-  return db.prepare("INSERT OR IGNORE INTO fills (id, botId, data, ts) VALUES (?, ?, ?, ?)").run(fill.id, fill.botId, JSON.stringify(fill), fill.ts).changes > 0;
+  return insertFillInto(db, fill);
+}
+
+/** Fill identifiers are only unique inside one bot/tenant journal. */
+export function insertFillInto(database: DatabaseSync, fill: FillRecord): boolean {
+  return database
+    .prepare(`
+      INSERT INTO fills (id, botId, data, ts)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(botId, id) DO NOTHING
+    `)
+    .run(fill.id, fill.botId, JSON.stringify(fill), fill.ts).changes > 0;
 }
 
 /** Keep a fill and its durable order event all-or-nothing across process crashes. */
@@ -248,34 +278,23 @@ export function listStrategyRuns(botId: string, limit = 200): StrategyRunRecord[
 // ---------- orders (durable lifecycle journal) ----------
 
 export function upsertOrderJournal(order: OrderJournalRecord) {
-  db.prepare(`
-    INSERT INTO orders (id, botId, status, data, ts, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      status = excluded.status,
-      data = excluded.data,
-      updatedAt = excluded.updatedAt
-  `).run(order.id, order.botId, order.status, JSON.stringify(order), order.ts, order.updatedAt);
+  upsertOrderJournalInto(db, order);
 }
 
 export function insertOrderEvent(event: OrderEventRecord) {
-  db.prepare("INSERT INTO order_events (id, orderId, botId, type, data, ts) VALUES (?, ?, ?, ?, ?, ?)").run(event.id, event.orderId, event.botId, event.type, JSON.stringify(event.data), event.ts);
+  insertOrderEventInto(db, event);
 }
 
 export function listOrderJournal(botId: string, limit = 200): OrderJournalRecord[] {
-  return db
-    .prepare("SELECT data FROM orders WHERE botId = ? ORDER BY updatedAt DESC LIMIT ?")
-    .all(botId, limit)
-    .map((row) => JSON.parse((row as { data: string }).data) as OrderJournalRecord);
+  return listOrderJournalFrom(db, botId, limit);
 }
 
 export function listOrderJournalForOwner(ownerUserId: string, botId: string, limit = 200): OrderJournalRecord[] {
-  return getBotForOwner(ownerUserId, botId) ? listOrderJournal(botId, limit) : [];
+  return listOrderJournalForOwnerFrom(db, normalizeOwnerUserId(ownerUserId), botId, limit);
 }
 
-export function getOrderJournal(id: string): OrderJournalRecord | undefined {
-  const row = db.prepare("SELECT data FROM orders WHERE id = ?").get(id) as { data: string } | undefined;
-  return row ? (JSON.parse(row.data) as OrderJournalRecord) : undefined;
+export function getOrderJournal(botId: string, id: string): OrderJournalRecord | undefined {
+  return getOrderJournalFrom(db, botId, id);
 }
 
 /**
@@ -415,19 +434,12 @@ export function listExecutionReconciliationJournal(botId: string, limit = 1_001)
     .map((row) => JSON.parse((row as { data: string }).data) as OrderJournalRecord);
 }
 
-export function listOrderEvents(orderId: string, limit = 200): OrderEventRecord[] {
-  return db
-    .prepare("SELECT id, orderId, botId, type, data, ts FROM order_events WHERE orderId = ? ORDER BY ts ASC LIMIT ?")
-    .all(orderId, limit)
-    .map((row) => {
-      const typed = row as { id: string; orderId: string; botId: string; type: OrderEventRecord["type"]; data: string; ts: number };
-      return { ...typed, data: JSON.parse(typed.data) } satisfies OrderEventRecord;
-    });
+export function listOrderEvents(botId: string, orderId: string, limit = 200): OrderEventRecord[] {
+  return listOrderEventsFrom(db, botId, orderId, limit);
 }
 
 export function listOrderEventsForOwner(ownerUserId: string, botId: string, orderId: string, limit = 200): OrderEventRecord[] {
-  if (!getBotForOwner(ownerUserId, botId)) return [];
-  return listOrderEvents(orderId, limit).filter((event) => event.botId === botId);
+  return listOrderEventsForOwnerFrom(db, normalizeOwnerUserId(ownerUserId), botId, orderId, limit);
 }
 
 // ---------- logs ----------
