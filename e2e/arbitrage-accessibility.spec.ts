@@ -30,19 +30,29 @@ test("keeps the RU/KK arbitrage screener keyboard and screen-reader operable on 
   await expect(page.locator(".arb-workspace")).not.toContainText("Binance spot");
   await expect(page.locator(".arb-workspace")).not.toContainText("Binance perpetual");
 
+  const modeTrigger = page.locator(".arb-mode-trigger");
+  await expect(modeTrigger).toBeVisible();
+  await expect(modeTrigger).toHaveAttribute("aria-expanded", "false");
+  expect(await page.locator(".arb-mode-bar").evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(100);
+
   const ruModes = page.getByRole("group", { name: "Режим арбитражного скринера" });
+  await modeTrigger.click();
+  await expect(modeTrigger).toHaveAttribute("aria-expanded", "true");
   const triangular = ruModes.getByRole("button", { name: "Треугольный", exact: true });
   await triangular.focus();
   await page.keyboard.press("Enter");
-  await expect(triangular).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".arb-mode-switch button[aria-pressed=true]")).toHaveText("Треугольный");
+  await expect(modeTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(modeTrigger).toBeFocused();
   await expect(page.getByRole("table", { name: "Top-book симуляции маршрутов из трёх ног" })).toBeVisible();
   await expect(page.getByText("Binance · спот · 3 ноги", { exact: true })).toBeVisible();
   await expect(page.locator(".arb-workspace")).not.toContainText("Binance · spot · 3 legs");
 
+  await modeTrigger.click();
   const native = ruModes.getByRole("button", { name: "Нативные спреды Bybit", exact: true });
   await native.focus();
   await page.keyboard.press("Enter");
-  await expect(native).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".arb-mode-switch button[aria-pressed=true]")).toHaveText("Нативные спреды Bybit");
   await expect(page.getByRole("table", { name: "Биржевые котировки двухногих комбинаций" })).toBeVisible();
   await expect(page.getByText("Bybit · спред-торговля · публичный API", { exact: true })).toBeVisible();
   await expect(page.locator(".arb-workspace")).not.toContainText("Bybit · Spread Trading · public API");
@@ -56,15 +66,17 @@ test("keeps the RU/KK arbitrage screener keyboard and screen-reader operable on 
   await expect(page.getByText("Bybit · спред саудасы · ашық API", { exact: true })).toBeVisible();
 
   const kkModes = page.getByRole("group", { name: "Арбитраж скринерінің режимі" });
+  await modeTrigger.click();
   const kkTriangular = kkModes.getByRole("button", { name: "Үшбұрышты", exact: true });
   await kkTriangular.click();
   await expect(page.getByText("Binance · спот · 3 аяқ", { exact: true })).toBeVisible();
   await expect(page.locator(".arb-workspace")).not.toContainText("Binance · spot · 3 legs");
 
+  await modeTrigger.click();
   const kkBasis = kkModes.getByRole("button", { name: "Spot ↔ perpetual", exact: true });
   await kkBasis.focus();
   await page.keyboard.press("Enter");
-  await expect(kkBasis).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".arb-mode-switch button[aria-pressed=true]")).toHaveText("Spot ↔ perpetual");
   await expect(page.getByRole("heading", { name: "Spot/perpetual арбитраж скринері" })).toBeVisible();
   const kkBasisTable = page.getByRole("table", { name: "Биржаішілік және биржааралық spot/perpetual зерттеу кандидаттары" });
   await expect(kkBasisTable.getByRole("row").filter({ hasText: "BTCUSDT" })).toBeVisible();

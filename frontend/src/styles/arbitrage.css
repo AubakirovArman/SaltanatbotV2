@@ -22,6 +22,11 @@
   padding: 8px clamp(16px, 2.5cqi, 30px);
   background: var(--panel);
 }
+
+.arb-mode-trigger {
+  display: none;
+}
+
 .arb-mode-switch button {
   min-height: 44px;
   padding: 0 12px;
@@ -1927,9 +1932,59 @@
   .arb-live-routes {
     padding: 12px;
   }
+  .arb-mode-trigger {
+    display: flex;
+    width: calc(100% - 24px);
+    min-height: 48px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 8px 12px;
+    padding: 0 14px;
+    border: 1px solid var(--accent-line);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+    color: var(--accent);
+    font-size: 0.82rem;
+    font-weight: 750;
+    text-align: start;
+  }
+  .arb-mode-trigger span {
+    min-width: 0;
+  }
+  .arb-mode-trigger svg {
+    flex: none;
+    transition: transform 160ms ease;
+  }
+  .arb-mode-trigger[aria-expanded="true"] svg {
+    transform: rotate(180deg);
+  }
+  .arb-mode-trigger:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .arb-mode-options {
+    display: none;
+  }
+  .arb-mode-options.is-open {
+    display: block;
+  }
   .arb-mode-switch {
-    padding-inline: 12px;
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 0 12px 8px;
+    overflow: visible;
+  }
+  .arb-mode-switch button {
+    min-width: 0;
+    height: auto;
+    min-height: 44px;
+    padding: 8px 10px;
+    text-align: start;
+  }
+  .arb-fork-guide > summary small {
+    display: none;
   }
   .arb-hero {
     align-items: stretch;
@@ -1995,6 +2050,9 @@
   .arb-screener .spin,
   .arb-live-routes .spin {
     animation: none;
+  }
+  .arb-mode-trigger svg {
+    transition: none;
   }
 }
 

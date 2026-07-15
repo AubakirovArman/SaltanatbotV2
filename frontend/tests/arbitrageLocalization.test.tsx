@@ -55,7 +55,10 @@ describe("arbitrage screener localization", () => {
     const html = renderToStaticMarkup(<ScannerModeNav locale={locale} mode="basis" onMode={() => {}} />);
 
     expect(html).toContain(summary);
-    expect(html.match(/<button/g)).toHaveLength(7);
+    expect(html.match(/aria-pressed=/g)).toHaveLength(7);
+    expect(html).toContain('class="arb-mode-trigger"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-controls=');
     expect(html).toContain("<details");
     expect(html).toContain('aria-pressed="true"');
   });
