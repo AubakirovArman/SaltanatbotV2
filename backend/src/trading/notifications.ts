@@ -1,4 +1,6 @@
 import { getSetting } from "./store.js";
+import { LEGACY_TRADING_OWNER_ID } from "./storeSchema.js";
+import { tenantSettingKey } from "./ownership.js";
 
 export interface TelegramConfig {
   enabled: boolean;
@@ -29,8 +31,10 @@ export const DEFAULT_NOTIFY: NotifyConfig = {
   vk: { enabled: false, token: "", peerId: "" }
 };
 
-export function getNotifyConfig(): NotifyConfig {
-  return getSetting<NotifyConfig>("notify") ?? DEFAULT_NOTIFY;
+export function getNotifyConfig(ownerUserId = LEGACY_TRADING_OWNER_ID): NotifyConfig {
+  return getSetting<NotifyConfig>(tenantSettingKey(ownerUserId, "notify"))
+    ?? (ownerUserId === LEGACY_TRADING_OWNER_ID ? getSetting<NotifyConfig>("notify") : undefined)
+    ?? DEFAULT_NOTIFY;
 }
 
 /**
@@ -47,6 +51,8 @@ export function isTelegramControlEnabled(config: TelegramConfig = getNotifyConfi
 export type NotifyEvent = "start" | "stop" | "open" | "close" | "error" | "signal";
 
 export interface NotifyPayload {
+  /** Internal tenant routing metadata; never included in the delivered text. */
+  ownerUserId?: string;
   event: NotifyEvent;
   bot: string;
   symbol?: string;
@@ -89,7 +95,7 @@ export async function notifyChecked(payload: NotifyPayload): Promise<NotifyDeliv
 }
 
 async function dispatchNotification(payload: NotifyPayload): Promise<NotifyDeliveryReport> {
-  const config = getNotifyConfig();
+  const config = getNotifyConfig(payload.ownerUserId);
   const icon = ICONS[payload.event];
   const message = `${icon} <b>${escapeHtml(payload.bot)}</b>${payload.symbol ? ` · ${escapeHtml(payload.symbol)}` : ""}\n${escapeHtml(payload.text)}`;
   const jobs: Array<{ channel: "telegram" | "vk"; promise: Promise<unknown> }> = [];
@@ -137,39 +143,42 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 /** Serialize + throttle Telegram sends per chat so bursts don't get 429'd/dropped. */
 function enqueueTelegram(config: TelegramConfig, text: string): Promise<void> {
   const chatId = config.chatId;
-  const pending = chatPending.get(chatId) ?? 0;
+  // A chat id is not globally unique across Telegram bot tokens. Keep queue,
+  // drop counters and throttling isolated per credential+chat pair.
+  const queueId = `${config.token}\0${chatId}`;
+  const pending = chatPending.get(queueId) ?? 0;
   if (pending >= MAX_PENDING_PER_CHAT) {
     // Backlog full — drop this message but remember we did, so the next one that
     // gets through can report the flood instead of failing silently.
-    chatDropped.set(chatId, (chatDropped.get(chatId) ?? 0) + 1);
+    chatDropped.set(queueId, (chatDropped.get(queueId) ?? 0) + 1);
     return Promise.reject(new Error(`Telegram queue for chat ${chatId} is full`));
   }
-  chatPending.set(chatId, pending + 1);
-  const prev = chatQueues.get(chatId) ?? Promise.resolve();
+  chatPending.set(queueId, pending + 1);
+  const prev = chatQueues.get(queueId) ?? Promise.resolve();
   const next = prev
     .catch(() => {})
     .then(async () => {
-      const dropped = chatDropped.get(chatId) ?? 0;
+      const dropped = chatDropped.get(queueId) ?? 0;
       const body = dropped > 0 ? `${text}\n<i>(${dropped} earlier alert${dropped === 1 ? "" : "s"} dropped — rate limited)</i>` : text;
-      if (dropped > 0) chatDropped.delete(chatId);
-      await throttledSend(config, body);
+      if (dropped > 0) chatDropped.delete(queueId);
+      await throttledSend(config, body, queueId);
     })
     .finally(() => {
-      chatPending.set(chatId, Math.max(0, (chatPending.get(chatId) ?? 1) - 1));
+      chatPending.set(queueId, Math.max(0, (chatPending.get(queueId) ?? 1) - 1));
     });
-  chatQueues.set(chatId, next);
+  chatQueues.set(queueId, next);
   return next;
 }
 
-async function throttledSend(config: TelegramConfig, text: string) {
+async function throttledSend(config: TelegramConfig, text: string, queueId: string) {
   const now = Date.now();
-  const wait = Math.max(0, (lastSentAt.get(config.chatId) ?? 0) + CHAT_MIN_INTERVAL_MS - now);
+  const wait = Math.max(0, (lastSentAt.get(queueId) ?? 0) + CHAT_MIN_INTERVAL_MS - now);
   if (wait > 0) await sleep(wait);
-  lastSentAt.set(config.chatId, Date.now());
-  await sendTelegram(config, text);
+  lastSentAt.set(queueId, Date.now());
+  await sendTelegram(config, text, queueId);
 }
 
-async function sendTelegram(config: TelegramConfig, text: string, attempt = 0) {
+async function sendTelegram(config: TelegramConfig, text: string, queueId: string, attempt = 0) {
   const res = await fetch(`https://api.telegram.org/bot${config.token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -179,8 +188,8 @@ async function sendTelegram(config: TelegramConfig, text: string, attempt = 0) {
     const info = (await res.json().catch(() => ({}))) as { parameters?: { retry_after?: number } };
     const retryMs = Math.min(60_000, ((info.parameters?.retry_after ?? 1) + 0.5) * 1000);
     await sleep(retryMs);
-    lastSentAt.set(config.chatId, Date.now());
-    return sendTelegram(config, text, attempt + 1);
+    lastSentAt.set(queueId, Date.now());
+    return sendTelegram(config, text, queueId, attempt + 1);
   }
   if (!res.ok) throw new Error(`Telegram HTTP ${res.status}`);
   const body = (await res.json().catch(() => undefined)) as { ok?: boolean; description?: string } | undefined;
@@ -202,9 +211,9 @@ async function sendVk(config: VkConfig, text: string) {
 }
 
 /** Send a test message to verify configuration. */
-export async function testNotify(): Promise<{ ok: boolean; message: string }> {
+export async function testNotify(ownerUserId = LEGACY_TRADING_OWNER_ID): Promise<{ ok: boolean; message: string }> {
   try {
-    await notifyChecked({ event: "signal", bot: "SaltanatbotV2", text: "Test notification — channel is working." });
+    await notifyChecked({ ownerUserId, event: "signal", bot: "SaltanatbotV2", text: "Test notification — channel is working." });
     return { ok: true, message: "Sent" };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Failed" };

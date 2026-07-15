@@ -105,7 +105,12 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
   }, [accountAuth.authRequired, accountAuth.tradingAvailable]);
 
   const authed = !!auth?.ok;
-  const canUsePaperMultiLeg = auth?.role === "paper-trade" || auth?.role === "live-trade" || auth?.role === "admin";
+  const canUsePaperTrading = auth?.role === "paper-trade" || auth?.role === "live-trade" || auth?.role === "admin";
+  const canUseLiveTrading = auth?.role === "live-trade" || auth?.role === "admin";
+  // The current paper multi-leg runtime is a single administrator research
+  // journal, not a tenant-owned resource yet. Keep the UI aligned with the API.
+  const canUsePaperMultiLeg = auth?.role === "admin";
+  const canReadTradingAccounts = canUseLiveTrading;
 
   const acceptOpportunityHandoff = useCallback(() => {
     const record = consumeMarketOpportunityHandoff();
@@ -315,12 +320,16 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
     <section className="trading">
       <aside className="trade-sidebar" aria-label={automationText(locale, "robotsNavigation")}>
         <div className="trade-sidebar-actions">
-          <button type="button" className="run-button" onClick={() => setView({ kind: "new" })}>
-            <Plus size={14} aria-hidden="true" /> {tradingText(locale, "newBot")}
-          </button>
-          <button type="button" className={`icon-button ${view.kind === "settings" ? "active" : ""}`} title={tradingText(locale, "settings")} aria-label={tradingText(locale, "settings")} onClick={() => setView({ kind: "settings" })}>
-            <Settings2 size={15} aria-hidden="true" />
-          </button>
+          {canUsePaperTrading && (
+            <>
+              <button type="button" className="run-button" onClick={() => setView({ kind: "new" })}>
+                <Plus size={14} aria-hidden="true" /> {tradingText(locale, "newBot")}
+              </button>
+              <button type="button" className={`icon-button ${view.kind === "settings" ? "active" : ""}`} title={tradingText(locale, "settings")} aria-label={tradingText(locale, "settings")} onClick={() => setView({ kind: "settings" })}>
+                <Settings2 size={15} aria-hidden="true" />
+              </button>
+            </>
+          )}
         </div>
         <nav className="trade-bot-nav" aria-label={automationText(locale, "robotsNavigation")}>
           <ul className="trade-bot-list">
@@ -404,26 +413,27 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
           <PortfolioCenter
             bots={bots}
             locale={locale}
-            canReadAccounts={auth?.role === "admin"}
+            canReadAccounts={canReadTradingAccounts}
+            canCreate={canUsePaperTrading}
             onNew={() => setView({ kind: "new" })}
             onOpenBot={openBot}
             onOpenSettings={() => setView({ kind: "settings" })}
           />
         )}
-        {view.kind === "new" && (
+        {view.kind === "new" && canUsePaperTrading && (
           <CreateBotForm
             strategies={strategies}
             catalog={catalog}
             locale={locale}
-            canReadAccounts={auth?.role === "admin"}
+            canReadAccounts={canReadTradingAccounts}
             onCreated={(bot) => {
               refreshBots();
               openBot(bot.id);
             }}
           />
         )}
-        {view.kind === "settings" && <TradingSettings locale={locale} />}
-        {view.kind === "paper-multi-leg" && (
+        {view.kind === "settings" && canUsePaperTrading && <TradingSettings locale={locale} />}
+        {view.kind === "paper-multi-leg" && canUsePaperMultiLeg && (
           <Suspense fallback={<p className="empty-note" role="status">{paperMultiLegText(locale, "refreshing")}</p>}>
             <PaperMultiLegPanel locale={locale} />
           </Suspense>
@@ -451,6 +461,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
             fills={fills[selectedBot.id] ?? []}
             logs={logs[selectedBot.id] ?? []}
             locale={locale}
+            canControl={selectedBot.exchange === "paper" ? canUsePaperTrading : canUseLiveTrading}
             onChanged={refreshBots}
             onDeleted={() => {
               refreshBots();

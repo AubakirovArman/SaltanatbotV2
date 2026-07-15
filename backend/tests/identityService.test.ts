@@ -53,7 +53,7 @@ describe("database identity service", () => {
     expect((await service.login("root-admin", "permanent-Admin-password-2026")).user.mustChangePassword).toBe(false);
   });
 
-  it("keeps non-admin trading roles disabled before ownership migration", async () => {
+  it("assigns non-admin trading roles after owner isolation is available", async () => {
     const repository = new MemoryIdentityRepository();
     const service = new IdentityService(repository);
     const admin = await service.bootstrapAdmin("admin", "temporary-Secure-password-2026");
@@ -61,9 +61,14 @@ describe("database identity service", () => {
     const credentials = await service.login(admin.login, "temporary-Secure-password-2026");
     const principal = (await service.authenticate(credentials.sessionToken))!;
 
-    await expect(service.updatePermissions(principal, user.id, { tradingRole: "read-only" })).rejects.toMatchObject({
-      code: "trading_ownership_pending"
+    await service.activateUser(principal, user.id);
+    await expect(service.updatePermissions(principal, user.id, { tradingRole: "read-only" })).resolves.toMatchObject({
+      id: user.id,
+      tradingRole: "read-only"
     });
+    expect(await service.tradingRoleForUser(user.id)).toBe("read-only");
+    await service.disableUser(principal, user.id);
+    expect(await service.tradingRoleForUser(user.id)).toBeUndefined();
   });
 
   it("ignores a persisted non-admin trading role when the migration flag is off", async () => {
@@ -78,5 +83,29 @@ describe("database identity service", () => {
 
     const disabled = new IdentityService(repository, { allowNonAdminTrading: false });
     expect((await disabled.authenticate(userSession.sessionToken))?.effectiveTradingRole).toBeUndefined();
+  });
+
+  it("invokes the runtime fail-closed hook on permission changes and disable", async () => {
+    const repository = new MemoryIdentityRepository();
+    const service = new IdentityService(repository);
+    const actions: string[] = [];
+    service.setTradingAccessChangeHandler((userId, action) => {
+      actions.push(`${action}:${userId}`);
+    });
+    const admin = await service.bootstrapAdmin("admin", "temporary-Secure-password-2026");
+    const user = await service.register("client", "correct-horse-battery-staple");
+    const principal = (await service.authenticate((await service.login(admin.login, "temporary-Secure-password-2026")).sessionToken))!;
+
+    await service.activateUser(principal, user.id);
+    await service.updatePermissions(principal, user.id, { tradingRole: "paper-trade" });
+    await service.updatePermissions(principal, user.id, { tradingRole: "read-only" });
+    await service.disableUser(principal, user.id);
+
+    expect(actions).toEqual([
+      `revoke:${user.id}`,
+      `restore:${user.id}`,
+      `revoke:${user.id}`,
+      `revoke:${user.id}`
+    ]);
   });
 });

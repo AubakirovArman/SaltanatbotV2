@@ -1,9 +1,10 @@
 # Configuration & deployment
 
 SaltanatbotV2 is configured mostly at runtime through the app itself. PostgreSQL stores accounts,
-revocable sessions, workspaces and research jobs; the pre-existing SQLite store continues to hold
-legacy robots and AES-256-GCM-encrypted exchange/notification credentials. This split preserves
-existing trading state while making authentication and user-owned research durable.
+revocable sessions, workspaces and research jobs. SQLite stores owner-scoped trading accounts,
+robots and journals plus AES-256-GCM-encrypted per-account exchange credentials and owner-scoped
+notification configuration. This split preserves existing trading state while keeping every
+authenticated user's private trading surface separate.
 
 ## Environment variables
 
@@ -17,7 +18,8 @@ The backend reads these environment variables in `backend/src/server.ts` / `back
 | `AUTH_REGISTRATION_ENABLED` | `1` | Set `0` to hide/disable new registration. Registrations are pending until admin approval. |
 | `AUTH_SESSION_TTL_MS` | `43200000` | HttpOnly browser session TTL (default 12 hours). |
 | `AUTH_WS_TICKET_TTL_MS` | `30000` | One-time `/trade-stream` ticket TTL. |
-| `AUTH_ENABLE_SHARED_TRADING_ROLES` | *(off)* | Unsafe migration flag. Keep off until every legacy bot/account/event is owner-scoped. |
+| `AUTH_TRADING_ROLES_ENABLED` | `1` | Allows non-admin trading-role grants. Set `0` only as a maintenance switch; owner isolation remains enforced. |
+| `TRADING_LEGACY_OWNER_USER_ID` | *(automatic)* | Admin UUID that receives pre-v6 SQLite trading rows. Required before the first v6 start when PostgreSQL contains multiple admins. |
 | `COOKIE_SECURE`   | *(off)*       | Set to `1` behind HTTPS so session cookies are marked `Secure`. |
 | `DATABASE_URL` | *(unset)* | PostgreSQL URL. Takes precedence over individual `PG*` parameters and cannot be combined with `PGPASSWORD_FILE`. |
 | `PGHOST` / `PGPORT` | `127.0.0.1` / `55434` | Isolated project PostgreSQL address. Compose uses `postgres:5432` internally. |
@@ -51,8 +53,9 @@ If you bind to a non-loopback address, the server prints a warning to put it beh
 > **Database mode protects the application API and market WebSockets.** `POST /api/auth/login`
 > creates an HttpOnly `sbv2_session` plus a readable SameSite CSRF cookie; unsafe requests must copy
 > that CSRF value into `X-CSRF-Token`. `/trade-stream` additionally uses a short-lived, session-bound,
-> one-time ticket. Exchange keys and notification tokens remain encrypted in SQLite and are never
-> placed in PostgreSQL or returned to the browser.
+> one-time ticket. Trading resources and the private stream are owner-scoped. Exchange keys and
+> notification tokens remain encrypted in SQLite, are never placed in PostgreSQL and are never
+> returned to the browser.
 
 > **`.env` and `.secrets/` are git-ignored.** Database passwords, dumps and runtime data must never
 > be committed. See [Self-hosting](./SELF_HOSTING.md) for Docker and direct-host recipes.
@@ -178,7 +181,10 @@ const secretPath = path.join(dataDir, ".secret");
 | `backend/data/trading.db`  | SQLite database (`node:sqlite`) holding bots, fills, logs, and encrypted settings. |
 | `backend/data/arbitrage-paper-multi-leg.sqlite` | Bounded append-only deterministic multi-leg paper runs and restart-recovery journal. |
 
-Both are **created automatically at runtime** the first time the store initializes — `initStore()` calls `mkdirSync(dataDir, { recursive: true })` if the directory is missing, generates `.secret` if absent, and runs `CREATE TABLE IF NOT EXISTS` for every table. You do not create these by hand.
+Both are **created automatically at runtime** the first time the store initializes. `initStore()`
+creates the data directory when needed, enforces mode `0700` on it and `0600` on `trading.db` and
+`.secret`, generates the secret if absent, and runs the schema migrations. You do not create these
+by hand.
 
 Both are **gitignored and must never be committed.** The repository's `.gitignore` explicitly excludes `backend/data/`, `data/`, `*.secret`, `*.db`, and `*.sqlite*`.
 
@@ -193,53 +199,70 @@ changes. It includes the default multi-leg paper journal when present. A backup 
 
 | Table      | Holds                                                                 |
 | ---------- | --------------------------------------------------------------------- |
-| `bots`     | Bot configurations (JSON), keyed by `id`.                             |
+| `bots`     | Bot configurations (JSON) with a mandatory server-owned `ownerUserId`. |
+| `trading_accounts` | Owner-scoped Binance/Bybit account metadata; secrets are not stored in this table. |
+| `trading_account_credentials` | One authenticated ciphertext per `(ownerUserId, accountId)`. |
 | `fills`    | Trade journal / fill records per bot.                                 |
 | `logs`     | Per-bot log lines (`info` / `warn` / `error`).                        |
 | `orders`   | Durable order-intent/result journal keyed by `clientOrderId` / exchange order id. |
 | `order_events` | Per-order lifecycle events, including intent, result, fill, and reconciliation records. |
-| `audit_log` | Mutating trade API calls with role, status, target, and redacted request data. |
-| `settings` | Key/value store with an `encrypted` flag — exchange keys and notification config live here. |
+| `audit_log` | Owner-scoped mutating trade API calls with actor, role, status, target and redacted request data. |
+| `settings` | Internal state and encrypted owner-scoped notification configuration; new exchange credentials do not live here. |
 | `schema_migrations` | Applied forward migration versions, names and timestamps. |
 
 The trading database uses SQLite `PRAGMA user_version`. Startup upgrades an older/unversioned schema
 inside one transaction and preserves existing records. If the database was created by a newer
 application schema, startup fails closed instead of attempting to run against unknown columns or
-semantics. Create and verify a backup before upgrading.
+semantics. Schema v6 assigns legacy bots/accounts/audit rows to exactly one administrator,
+re-encrypts old exchange keys into `trading_account_credentials`, deletes the old key rows only
+after successful re-encryption, and clears the former server-wide live arm. Create and verify a
+backup before upgrading. If multiple administrators exist, set `TRADING_LEGACY_OWNER_USER_ID`
+before that first v6 start or migration fails closed.
 
 ## Configuring exchange API keys
 
-Exchange API keys are **never** placed in environment variables or plaintext files. They are submitted through the app and stored encrypted in the `settings` table.
+Exchange API keys are **never** placed in environment variables or plaintext files. A user first
+creates a Binance or Bybit account in Trade → Accounts, then submits credentials for that exact
+account. The server takes ownership only from the authenticated session; no request field can select
+another user.
 
-Submit keys with:
+Create account metadata (requires `live-trade`, CSRF and a secure trading origin):
 
 ```
-POST /api/trade/keys
+POST /api/trade/accounts
 Content-Type: application/json
 
-{ "exchange": "binance", "apiKey": "<your-key>", "apiSecret": "<your-secret>" }
+{ "label": "My Binance", "exchange": "binance", "ownership": "own", "enabled": true }
 ```
 
-`exchange` must be `binance` or `bybit`. The handler in `backend/src/trading/routes.ts` stores them encrypted under the setting key `keys:<exchange>`:
-
-```ts
-setSetting(`keys:${body.exchange}`, { apiKey: body.apiKey ?? "", apiSecret: body.apiSecret ?? "" }, true);
-```
-
-The third argument (`true`) means the value is encrypted at rest. Keys are **never returned in plaintext.** The status endpoint reports only whether keys are present:
+Store or rotate that account's credentials:
 
 ```
-GET /api/trade/keys
-→ { "binance": true, "bybit": false }
+PUT /api/trade/accounts/<account-id>/credentials
+Content-Type: application/json
+
+{ "apiKey": "<your-key>", "apiSecret": "<your-secret>" }
 ```
 
-Presence is computed by `hasKeys()`, which returns `true` only when both `apiKey` and `apiSecret` are set.
+Both values are required and bounded. Keys are encrypted in `trading_account_credentials` with
+AES-GCM authenticated context containing the owner, account and exchange. Plaintext is never
+returned. `GET /api/trade/accounts` reports only `credential.status` as `configured` or `missing`:
+
+```
+GET /api/trade/accounts
+→ { "accounts": [{ "id": "…", "exchange": "binance", "credential": { "status": "configured" } }] }
+```
+
+Rotation is blocked while a bound robot is running. Credential removal is blocked until every bot
+is unbound/deleted. `DELETE /api/trade/accounts/:id/credentials` removes only the current user's
+credentials. The old `GET /api/trade/keys` endpoint is a tenant-scoped boolean compatibility view;
+`POST /api/trade/keys` returns `410 ACCOUNT_CREDENTIAL_ENDPOINT_REQUIRED`.
 
 ## Configuring Telegram / VK notifications
 
 Telegram notifications can be configured in the web application. VK notification configuration is
-currently API-only. Both configurations are stored encrypted under the `notify` setting key and are
-disabled by default. From `backend/src/trading/notifications.ts`:
+currently API-only. Each configuration is stored encrypted under its owner's namespaced setting and
+is disabled by default. From `backend/src/trading/notifications.ts`:
 
 ```ts
 export const DEFAULT_NOTIFY: NotifyConfig = {
@@ -260,7 +283,9 @@ Content-Type: application/json
 }
 ```
 
-This is persisted encrypted (`setSetting("notify", next, true)`). As with exchange keys, tokens are never returned in plaintext — `GET /api/trade/notify` reports only the enabled flag, the chat/peer id, and a `hasToken` boolean:
+This is persisted under `owner:<authenticated-user-id>:notify`. As with exchange keys, tokens are
+never returned in plaintext — `GET /api/trade/notify` reports only the enabled flag, target id and a
+`hasToken` boolean for the current user:
 
 ```
 GET /api/trade/notify
@@ -279,9 +304,16 @@ POST /api/trade/notify/test
 
 Telegram messages are sent via the Bot API (`api.telegram.org/bot<token>/sendMessage`, HTML parse mode); VK via `api.vk.com/method/messages.send` (API version `5.199`, HTML stripped). Delivery failures are settled independently and do not crash the caller.
 
+In database/multi-user auth mode these channels are outbound-only. The existing Telegram command
+poller is a single-operator control plane and is therefore enabled only in explicit legacy auth
+mode; it must not bypass a user's durable trading role. A future tenant-aware poller must bind each
+chat to an application user and re-check that user's current role for every command.
+
 ## At-rest encryption (AES-256-GCM)
 
-Sensitive settings are encrypted with **AES-256-GCM** using a key derived by **scrypt**. The scheme lives entirely in `backend/src/trading/store.ts`.
+Sensitive settings are encrypted with **AES-256-GCM** using a key derived by **scrypt**. The
+envelope implementation lives in `backend/src/trading/credentialCrypto.ts`; the store supplies the
+installation key and per-record context.
 
 **Key derivation.** On first run a random 32-byte value is generated, hex-encoded, and written to `backend/data/.secret` with mode `0600`. The actual 32-byte AES key is derived from that seed via `scryptSync` (with a fixed salt) and never leaves memory:
 
@@ -296,17 +328,18 @@ function loadOrCreateSecret(): Buffer {
 }
 ```
 
-**Encryption.** Each value gets a fresh random 12-byte IV. The stored payload is `iv.tag.ciphertext`, each part base64-encoded and dot-joined, with the GCM authentication tag verified on decrypt:
+**Encryption.** Each value gets a fresh random 12-byte IV. The stored payload is
+`iv.tag.ciphertext`, each part base64-encoded and dot-joined, with the GCM authentication tag
+verified on decrypt. Account credentials also authenticate an unambiguous JSON tuple containing
+the schema label, owner UUID, account UUID and exchange:
 
 ```ts
-function encrypt(plain: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encKey, iv);
-  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `${iv.toString("base64")}.${tag.toString("base64")}.${enc.toString("base64")}`;
-}
+credentialAad(ownerUserId, accountId, exchange)
+// JSON.stringify(["trading-credentials", 1, ownerUserId, accountId, exchange])
 ```
+
+Copying a valid ciphertext to another owner, account or exchange therefore fails authentication
+instead of decrypting under the wrong tenant.
 
 **Consequences to understand:**
 
@@ -434,8 +467,13 @@ headers. Live trading is disarmed by default. Before exposing the server, comple
 - [ ] **Protect account and database credentials.** Change the one-time administrator password,
   keep the PostgreSQL password file owner-only, review pending registrations, and disable departed
   users. Never expose a dump, cookie or CSRF value in logs/screenshots.
-- [ ] **Keep legacy trading administrator-only.** Do not set `AUTH_ENABLE_SHARED_TRADING_ROLES` until
-  bots, account keys and REST/WebSocket events have owner filtering and a verified migration.
+- [ ] **Verify tenant ownership after the first schema-v6 upgrade.** Back up PostgreSQL plus
+  `trading.db`/`.secret`, set `TRADING_LEGACY_OWNER_USER_ID` when multiple admins exist, and confirm
+  that migrated robots appear only for the selected administrator. Live trading is disarmed by the
+  migration and must be rearmed manually.
+- [ ] **Grant the minimum trading role.** New users start with no trading access. Use `read-only` or
+  `paper-trade` unless live exchange access is actually required; disabling/changing a user revokes
+  sessions and stops that user's runtimes.
 - [ ] **Set `COOKIE_SECURE=1` behind HTTPS.** Local plain HTTP cannot use Secure cookies, so this is operator-controlled. For a public TLS deployment, enable it.
 - [ ] **Set `ALLOWED_ORIGINS` if the API is reached cross-origin.** Same-origin (the bundled SPA) needs nothing. Leave it unset for the default same-origin deployment.
 - [ ] **Never commit `backend/data/`.** It contains `.secret` (the encryption key seed) and `trading.db` (encrypted API keys and tokens). It is gitignored — keep it that way, and treat backups of it as secret material.

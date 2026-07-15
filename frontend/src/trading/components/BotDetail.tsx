@@ -27,9 +27,10 @@ interface BotDetailProps {
   onChanged: () => void;
   onDeleted: () => void;
   locale: Locale;
+  canControl?: boolean;
 }
 
-export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChanged, onDeleted, locale }: BotDetailProps) {
+export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChanged, onDeleted, locale, canControl = true }: BotDetailProps) {
   const [commandOutput, setCommandOutput] = useState<string>();
   const position = live?.position;
   const unrealizedPnl = position && live
@@ -72,13 +73,15 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
           <span>{bot.exchange} · {bot.market} · {bot.symbol} · {bot.timeframe} · {bot.strategyName}</span>
           {live?.runtimeStatus === "requires_manual_action" && <span className="trade-runtime-badge" title={live.pauseReason ?? tradingText(locale, "operatorConfirmation")}>{tradingText(locale, "requiresAction")}</span>}
         </div>
-        <div className="trade-detail-actions">
-          <button type="button" className={bot.status === "running" ? "danger" : "run-button"} onClick={() => void toggle()}>
-            {bot.status === "running" ? <><Square size={13} aria-hidden="true" /> {tradingText(locale, "stop")}</> : <><Play size={13} aria-hidden="true" /> {tradingText(locale, "start")}</>}
-          </button>
-          <button type="button" className="icon-button" aria-label={tradingText(locale, "flatten")} title={tradingText(locale, "flatten")} onClick={() => void runCommand(`exit=${bot.symbol}`)} disabled={bot.status !== "running"}><XOctagon size={15} aria-hidden="true" /></button>
-          <button type="button" className="icon-button" aria-label={tradingText(locale, "deleteBot")} title={tradingText(locale, "deleteBot")} onClick={() => void deleteBot(bot.id).then(onDeleted)}><Trash2 size={15} aria-hidden="true" /></button>
-        </div>
+        {canControl && (
+          <div className="trade-detail-actions">
+            <button type="button" className={bot.status === "running" ? "danger" : "run-button"} onClick={() => void toggle()}>
+              {bot.status === "running" ? <><Square size={13} aria-hidden="true" /> {tradingText(locale, "stop")}</> : <><Play size={13} aria-hidden="true" /> {tradingText(locale, "start")}</>}
+            </button>
+            <button type="button" className="icon-button" aria-label={tradingText(locale, "flatten")} title={tradingText(locale, "flatten")} onClick={() => void runCommand(`exit=${bot.symbol}`)} disabled={bot.status !== "running"}><XOctagon size={15} aria-hidden="true" /></button>
+            <button type="button" className="icon-button" aria-label={tradingText(locale, "deleteBot")} title={tradingText(locale, "deleteBot")} onClick={() => void deleteBot(bot.id).then(onDeleted)}><Trash2 size={15} aria-hidden="true" /></button>
+          </div>
+        )}
       </header>
 
       <section className="trade-cards" aria-label={tradingText(locale, "runtimeSummary")}>
@@ -99,8 +102,8 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
         </section>
       )}
 
-      <BotCommandConsole bot={bot} output={commandOutput} onRun={runCommand} locale={locale} />
-      <BotActivity symbol={bot.symbol} orders={orders} orderJournal={orderJournal} fills={fills} logs={logs} onCommand={runCommand} locale={locale} />
+      {canControl && <BotCommandConsole bot={bot} output={commandOutput} onRun={runCommand} locale={locale} />}
+      <BotActivity symbol={bot.symbol} orders={orders} orderJournal={orderJournal} fills={fills} logs={logs} onCommand={runCommand} locale={locale} canControl={canControl} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
-import { Pencil, Plus, Power, Trash2, WalletCards } from "lucide-react";
-import { useEffect, useState } from "react";
+import { KeyRound, Pencil, Plus, Power, Trash2, WalletCards } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import type { Locale } from "../../i18n";
-import { createTradingAccount, deleteTradingAccount, listTradingAccounts, updateTradingAccount, type CreateTradingAccountInput, type TradingAccountOwnership, type TradingAccountStatus, type TradingAccountView, type UpdateTradingAccountInput } from "../accountClient";
+import { createTradingAccount, deleteTradingAccount, deleteTradingAccountCredentials, listTradingAccounts, setTradingAccountCredentials, updateTradingAccount, type CreateTradingAccountInput, type TradingAccountCredentialsInput, type TradingAccountOwnership, type TradingAccountStatus, type TradingAccountView, type UpdateTradingAccountInput } from "../accountClient";
 import { accountRegistryText as text } from "../accountRegistryText";
 
 interface AccountRegistryPanelProps {
@@ -11,7 +11,10 @@ interface AccountRegistryPanelProps {
   createAccount?: (input: CreateTradingAccountInput) => Promise<TradingAccountView>;
   updateAccount?: (id: string, input: UpdateTradingAccountInput) => Promise<TradingAccountView>;
   removeAccount?: (id: string) => Promise<void>;
+  saveCredentials?: (id: string, input: TradingAccountCredentialsInput) => Promise<TradingAccountView>;
+  clearCredentials?: (id: string) => Promise<TradingAccountView>;
   confirmAction?: (message: string) => boolean;
+  onAccountsChange?: (accounts: TradingAccountView[]) => void;
 }
 
 interface EditState {
@@ -20,7 +23,7 @@ interface EditState {
   ownership: TradingAccountOwnership;
 }
 
-export function AccountRegistryPanel({ locale, secureTradingOrigin, loadAccounts = listTradingAccounts, createAccount = createTradingAccount, updateAccount = updateTradingAccount, removeAccount = deleteTradingAccount, confirmAction = (message) => window.confirm(message) }: AccountRegistryPanelProps) {
+export function AccountRegistryPanel({ locale, secureTradingOrigin, loadAccounts = listTradingAccounts, createAccount = createTradingAccount, updateAccount = updateTradingAccount, removeAccount = deleteTradingAccount, saveCredentials = setTradingAccountCredentials, clearCredentials = deleteTradingAccountCredentials, confirmAction = (message) => window.confirm(message), onAccountsChange }: AccountRegistryPanelProps) {
   const [accounts, setAccounts] = useState<TradingAccountView[]>();
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState<string>();
@@ -41,6 +44,10 @@ export function AccountRegistryPanel({ locale, secureTradingOrigin, loadAccounts
       active = false;
     };
   }, [loadAccounts, locale]);
+
+  useEffect(() => {
+    if (accounts) onAccountsChange?.(accounts);
+  }, [accounts, onAccountsChange]);
 
   const create = async (input: CreateTradingAccountInput) => {
     setBusy("create");
@@ -90,6 +97,39 @@ export function AccountRegistryPanel({ locale, secureTradingOrigin, loadAccounts
       setAccounts((current) => (current ?? []).filter((item) => item.id !== account.id));
       if (editing?.id === account.id) setEditing(undefined);
       setAnnouncement(text(locale, "deleted"));
+    } catch (cause) {
+      setError(errorMessage(cause, locale));
+    } finally {
+      setBusy(undefined);
+    }
+  };
+
+  const saveAccountCredentials = async (account: TradingAccountView, input: TradingAccountCredentialsInput) => {
+    setBusy(account.id);
+    setError(undefined);
+    setAnnouncement("");
+    try {
+      const next = await saveCredentials(account.id, input);
+      setAccounts((current) => sortAccounts((current ?? []).map((item) => (item.id === next.id ? next : item))));
+      setAnnouncement(text(locale, account.credential.status === "configured" ? "credentialsRotated" : "credentialsSaved"));
+      return true;
+    } catch (cause) {
+      setError(errorMessage(cause, locale));
+      return false;
+    } finally {
+      setBusy(undefined);
+    }
+  };
+
+  const clearAccountCredentials = async (account: TradingAccountView) => {
+    if (!confirmAction(`${text(locale, "credentialsDeleteConfirm")}\n\n${account.label} · ${account.exchange}`)) return;
+    setBusy(account.id);
+    setError(undefined);
+    setAnnouncement("");
+    try {
+      const next = await clearCredentials(account.id);
+      setAccounts((current) => sortAccounts((current ?? []).map((item) => (item.id === next.id ? next : item))));
+      setAnnouncement(text(locale, "credentialsDeleted"));
     } catch (cause) {
       setError(errorMessage(cause, locale));
     } finally {
@@ -171,12 +211,22 @@ export function AccountRegistryPanel({ locale, secureTradingOrigin, loadAccounts
                       <dd>{account.botIds.length ? account.botIds.join(", ") : text(locale, "none")}</dd>
                     </div>
                     <div>
-                      <dt>{text(locale, "sharedCredentials")}</dt>
+                      <dt>{text(locale, "accountCredentials")}</dt>
                       <dd>{credentialText(locale, account)}</dd>
                     </div>
                   </dl>
 
                   {inUse && <p className="account-registry-in-use">{text(locale, "inUse")}</p>}
+
+                  <AccountCredentialForm
+                    locale={locale}
+                    account={account}
+                    disabled={mutationDisabled}
+                    busy={isBusy}
+                    removeDisabled={inUse}
+                    onSave={(input) => saveAccountCredentials(account, input)}
+                    onClear={() => void clearAccountCredentials(account)}
+                  />
 
                   {editing?.id === account.id ? (
                     <EditAccountForm locale={locale} value={editing} disabled={mutationDisabled} onChange={setEditing} onCancel={() => setEditing(undefined)} onSave={() => void update(account, { label: editing.label, ownership: editing.ownership }, "updated")} />
@@ -201,6 +251,52 @@ export function AccountRegistryPanel({ locale, secureTradingOrigin, loadAccounts
         </ul>
       )}
     </section>
+  );
+}
+
+function AccountCredentialForm({ locale, account, disabled, busy, removeDisabled, onSave, onClear }: { locale: Locale; account: TradingAccountView; disabled: boolean; busy: boolean; removeDisabled: boolean; onSave: (input: TradingAccountCredentialsInput) => Promise<boolean>; onClear: () => void }) {
+  const keyId = useId();
+  const secretId = useId();
+  const hintId = useId();
+  const [apiKey, setApiKey] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
+
+  return (
+    <form
+      className="account-registry-form account-credential-form"
+      method="post"
+      action={`/api/trade/accounts/${encodeURIComponent(account.id)}/credentials`}
+      autoComplete="off"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onSave({ apiKey, apiSecret }).then((saved) => {
+          if (!saved) return;
+          setApiKey("");
+          setApiSecret("");
+        });
+      }}
+    >
+      <fieldset disabled={disabled}>
+        <legend><KeyRound size={13} aria-hidden="true" /> {text(locale, account.credential.status === "configured" ? "rotateCredentials" : "setCredentials")}</legend>
+        <p id={hintId} className="field-help">{text(locale, "credentialsHint")}</p>
+        <label htmlFor={keyId}>
+          <span>{text(locale, "apiKey")}</span>
+          <input id={keyId} name="apiKey" type="password" value={apiKey} autoComplete="off" minLength={8} maxLength={256} required aria-describedby={hintId} onChange={(event) => setApiKey(event.target.value)} />
+        </label>
+        <label htmlFor={secretId}>
+          <span>{text(locale, "apiSecret")}</span>
+          <input id={secretId} name="apiSecret" type="password" value={apiSecret} autoComplete="off" minLength={8} maxLength={256} required aria-describedby={hintId} onChange={(event) => setApiSecret(event.target.value)} />
+        </label>
+        <div className="account-registry-actions">
+          <button type="submit">{text(locale, busy ? "savingCredentials" : account.credential.status === "configured" ? "rotateCredentials" : "setCredentials")}</button>
+          {account.credential.status === "configured" && (
+            <button type="button" className="danger" disabled={removeDisabled} onClick={onClear}>
+              <Trash2 size={13} aria-hidden="true" /> {text(locale, "deleteCredentials")}
+            </button>
+          )}
+        </div>
+      </fieldset>
+    </form>
   );
 }
 
@@ -294,12 +390,10 @@ function sortAccounts(accounts: TradingAccountView[]): TradingAccountView[] {
 function statusText(locale: Locale, status: TradingAccountStatus): string {
   if (status === "ready") return text(locale, "ready");
   if (status === "credentials_missing") return text(locale, "credentialsMissing");
-  if (status === "metadata_only") return text(locale, "metadataOnly");
   return text(locale, "disabled");
 }
 
 function credentialText(locale: Locale, account: TradingAccountView): string {
-  if (account.credential.mode !== "legacy_exchange_shared") return text(locale, "unsupportedCredentials");
   return text(locale, account.credential.status === "configured" ? "configuredCredentials" : "missingCredentials");
 }
 

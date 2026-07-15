@@ -3,6 +3,15 @@ import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getAuthToken } from "../src/auth.js";
 import { createTradingApi } from "../src/trading/routes.js";
+import {
+  getBotForOwner,
+  getSetting,
+  getTradingAccountForOwner,
+  getTradingAccountCredentialsForOwner,
+  LEGACY_TRADING_OWNER_ID,
+  setSetting,
+  upsertBotForOwner
+} from "../src/trading/store.js";
 import { PaperMultiLegJournal, PaperMultiLegService, type PaperMultiLegPlan } from "../src/arbitrage/paperMultiLeg/index.js";
 
 // The HTTP tests never start a bot, so a no-op provider is enough — and it avoids
@@ -28,8 +37,10 @@ vi.mock("../src/trading/store.js", () => {
   const bots = new Map<string, unknown>();
   const settings = new Map<string, unknown>();
   const accounts = new Map<string, unknown>();
+  const credentials = new Map<string, unknown>();
   const audit: unknown[] = [];
-  const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
+  const LEGACY_TRADING_OWNER_ID = "legacy-operator";
+  const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
   class TradingAccountInUseError extends Error {
     constructor(readonly accountId: string, readonly botIds: readonly string[]) {
       super(`Trading account ${accountId} is used by ${botIds.length} bot(s).`);
@@ -46,21 +57,45 @@ vi.mock("../src/trading/store.js", () => {
     return clone(account);
   };
   return {
+    LEGACY_TRADING_OWNER_ID,
     initStore: () => {},
     listBots: () => [...bots.values()].map((b) => clone(b)),
-    upsertBot: (b: { id: string }) => bots.set(b.id, clone(b)),
+    listBotsForOwner: (owner: string) => [...bots.values()].map((b) => clone(b as { ownerUserId?: string })).filter((b) => (b.ownerUserId ?? LEGACY_TRADING_OWNER_ID) === owner),
+    getBotForOwner: (owner: string, id: string) => {
+      const bot = bots.get(id) as { ownerUserId?: string } | undefined;
+      return bot && (bot.ownerUserId ?? LEGACY_TRADING_OWNER_ID) === owner ? clone(bot) : undefined;
+    },
+    getBotOwnerUserId: (id: string) => (bots.get(id) as { ownerUserId?: string } | undefined)?.ownerUserId ?? (bots.has(id) ? LEGACY_TRADING_OWNER_ID : undefined),
+    upsertBot: (b: { id: string; ownerUserId?: string }) => bots.set(b.id, clone({ ...b, ownerUserId: b.ownerUserId ?? LEGACY_TRADING_OWNER_ID })),
+    upsertBotForOwner: (owner: string, b: { id: string }) => bots.set(b.id, clone({ ...b, ownerUserId: owner })),
     deleteBot: (id: string) => {
       bots.delete(id);
       settings.delete(`paper:${id}`);
       settings.delete(`state:${id}`);
     },
+    deleteBotForOwner: (owner: string, id: string) => {
+      const bot = bots.get(id) as { ownerUserId?: string } | undefined;
+      if (bot && (bot.ownerUserId ?? LEGACY_TRADING_OWNER_ID) === owner) bots.delete(id);
+    },
     deleteSetting: (k: string) => settings.delete(k),
     listTradingAccounts: () => [...accounts.values()].map((account) => clone(account)),
+    listTradingAccountsForOwner: (owner: string) => [...accounts.values()].map((account) => clone(account as { ownerUserId?: string })).filter((account) => (account.ownerUserId ?? LEGACY_TRADING_OWNER_ID) === owner),
     getTradingAccount: (id: string) => (accounts.has(id) ? clone(accounts.get(id)) : undefined),
+    getTradingAccountForOwner: (owner: string, id: string) => {
+      const account = accounts.get(id) as { ownerUserId?: string } | undefined;
+      return account && (account.ownerUserId ?? LEGACY_TRADING_OWNER_ID) === owner ? clone(account) : undefined;
+    },
     insertTradingAccount: (account: { id: string }) => accounts.set(account.id, clone(account)),
+    insertTradingAccountForOwner: (owner: string, account: { id: string }) => accounts.set(account.id, clone({ ...account, ownerUserId: owner })),
     updateTradingAccount: (account: { id: string }) => {
       if (!accounts.has(account.id)) return false;
       accounts.set(account.id, clone(account));
+      return true;
+    },
+    updateTradingAccountForOwner: (owner: string, account: { id: string }) => {
+      const current = accounts.get(account.id) as { ownerUserId?: string } | undefined;
+      if (!current || (current.ownerUserId ?? LEGACY_TRADING_OWNER_ID) !== owner) return false;
+      accounts.set(account.id, clone({ ...account, ownerUserId: owner }));
       return true;
     },
     ensureLegacyTradingAccount,
@@ -72,20 +107,33 @@ vi.mock("../src/trading/store.js", () => {
       if (botIds.length) throw new TradingAccountInUseError(id, botIds);
       return accounts.delete(id);
     },
+    deleteTradingAccountForOwner: (owner: string, id: string) => {
+      const account = accounts.get(id) as { ownerUserId?: string } | undefined;
+      return !!account && (account.ownerUserId ?? LEGACY_TRADING_OWNER_ID) === owner && accounts.delete(id);
+    },
+    getTradingAccountCredentialsForOwner: (owner: string, id: string) => clone(credentials.get(`${owner}:${id}`)),
+    setTradingAccountCredentialsForOwner: (owner: string, id: string, value: unknown) => credentials.set(`${owner}:${id}`, clone(value)),
+    deleteTradingAccountCredentialsForOwner: (owner: string, id: string) => credentials.delete(`${owner}:${id}`),
     TradingAccountInUseError,
     insertFill: () => true,
     withStoreTransaction: <T>(operation: () => T) => operation(),
     listFills: () => [],
+    listFillsForOwner: () => [],
     upsertOrderJournal: () => {},
     insertOrderEvent: () => {},
     listOrderJournal: () => [],
+    listOrderJournalForOwner: () => [],
     listRiskOrderJournal: () => [],
     listExecutionReconciliationJournal: () => [],
     listOrderEvents: () => [],
+    listOrderEventsForOwner: () => [],
     insertLog: () => {},
     listLogs: () => [],
+    listLogsForOwner: () => [],
     insertAuditLog: (row: unknown) => audit.unshift(clone(row)),
+    insertAuditLogForOwner: (owner: string, row: unknown) => audit.unshift(clone({ ...(row as object), ownerUserId: owner })),
     listAuditLog: (limit: number) => audit.slice(0, limit).map((row) => clone(row)),
+    listAuditLogForOwner: (owner: string, limit: number) => audit.filter((row) => (row as { ownerUserId?: string }).ownerUserId === owner).slice(0, limit).map((row) => clone(row)),
     getSetting: (k: string) => (settings.has(k) ? clone(settings.get(k)) : undefined),
     setSetting: (k: string, v: unknown) => settings.set(k, clone(v))
   };
@@ -101,23 +149,29 @@ let readOnlyCsrf: string;
 let paperCookie: string;
 let paperCsrf: string;
 let paperMultiLegJournal: PaperMultiLegJournal;
+let binanceAccountId: string;
+let bybitAccountId: string;
 const startupRecoveryRunId = "api-startup-recovery-run";
 
-const validBody = (over: Record<string, unknown> = {}) => ({
-  name: "E2E",
-  ir: { name: "t", inputs: [], body: [{ k: "entry", direction: "long", when: { k: "bool", v: true } }] },
-  symbol: "BTCUSDT",
-  timeframe: "1m",
-  exchange: "paper",
-  market: "spot",
-  sizeMode: "quote",
-  sizeValue: 1000,
-  maxPositionQuote: 5_000,
-  maxOrderQuote: 1_000,
-  maxDailyLossQuote: 500,
-  maxOpenOrders: 10,
-  ...over
-});
+const validBody = (over: Record<string, unknown> = {}) => {
+  const exchange = (over.exchange as string | undefined) ?? "paper";
+  return {
+    name: "E2E",
+    ir: { name: "t", inputs: [], body: [{ k: "entry", direction: "long", when: { k: "bool", v: true } }] },
+    symbol: "BTCUSDT",
+    timeframe: "1m",
+    exchange,
+    ...(exchange === "binance" ? { accountId: binanceAccountId } : exchange === "bybit" ? { accountId: bybitAccountId } : {}),
+    market: "spot",
+    sizeMode: "quote",
+    sizeValue: 1000,
+    maxPositionQuote: 5_000,
+    maxOrderQuote: 1_000,
+    maxDailyLossQuote: 500,
+    maxOpenOrders: 10,
+    ...over
+  };
+};
 
 beforeAll(async () => {
   process.env.AUTH_READONLY_TOKEN = "readonly-test-token";
@@ -131,6 +185,11 @@ beforeAll(async () => {
   tradingApi = createTradingApi(fakeProvider, undefined, { emergencyAdapters: () => [], paperMultiLeg });
   const app = express();
   app.use(express.json());
+  app.use((req, res, next) => {
+    const owner = req.headers["x-test-owner"];
+    if (typeof owner === "string") res.locals.authUserId = owner;
+    next();
+  });
   app.use("/api/trade", tradingApi.router);
   await new Promise<void>((resolve) => {
     server = app.listen(0, () => resolve());
@@ -142,6 +201,8 @@ beforeAll(async () => {
   ({ cookie: paperCookie, csrf: paperCsrf } = await loginAs("paper-test-token"));
   expect(sessionCookie).toMatch(/^sbv2_session=/);
   expect(csrfToken).toBeTruthy();
+  binanceAccountId = ((await (await post("/accounts", { label: "Binance E2E", exchange: "binance" })).json()) as { account: { id: string } }).account.id;
+  bybitAccountId = ((await (await post("/accounts", { label: "Bybit E2E", exchange: "bybit" })).json()) as { account: { id: string } }).account.id;
 });
 
 afterAll(() => {
@@ -169,6 +230,14 @@ async function loginAs(token: string): Promise<{ cookie: string; csrf: string; r
   const body = (await login.json()) as { csrfToken: string; role: string };
   return { cookie, csrf: body.csrfToken, role: body.role };
 }
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+const flushPendingHttp = () => new Promise<void>((resolve) => setTimeout(resolve, 25));
 
 describe("trading API E2E (real router, in-memory store)", () => {
   it("rejects unauthenticated and session requests without CSRF", async () => {
@@ -208,10 +277,10 @@ describe("trading API E2E (real router, in-memory store)", () => {
     expect(readOnlyUta.status).toBe(403);
     const readOnlyAccountTelemetry = await fetch(base + "/account-telemetry", { headers: { cookie: readOnlyCookie } });
     expect(readOnlyAccountTelemetry.status).toBe(403);
-    expect((await fetch(base + "/accounts", { headers: { cookie: readOnlyCookie } })).status).toBe(403);
+    expect((await fetch(base + "/accounts", { headers: { cookie: readOnlyCookie } })).status).toBe(200);
   });
 
-  it("exposes honest metadata-only capabilities for additional accounts", async () => {
+  it("exposes account-isolated capabilities for additional accounts", async () => {
     const createdResponse = await post("/accounts", { label: "Managed desk", exchange: "bybit", ownership: "managed" });
     expect(createdResponse.status).toBe(201);
     const created = await createdResponse.json();
@@ -219,19 +288,18 @@ describe("trading API E2E (real router, in-memory store)", () => {
       label: "Managed desk",
       exchange: "bybit",
       ownership: "managed",
-      status: "metadata_only",
-      credential: { mode: "unsupported", status: "unsupported", isolated: false },
-      capabilities: { liveExecution: false, credentialIsolation: false, multipleCredentialAccounts: false }
+      status: "credentials_missing",
+      credential: { mode: "account_isolated", status: "missing", isolated: true },
+      capabilities: { liveExecution: false, credentialIsolation: true, multipleCredentialAccounts: true }
     });
-
-    const unsupportedBot = await post("/bots", validBody({ exchange: "bybit", market: "futures", accountId: created.account.id }));
-    expect(unsupportedBot.status).toBe(409);
-    expect(await unsupportedBot.json()).toMatchObject({ code: "MULTI_ACCOUNT_CREDENTIALS_UNSUPPORTED" });
-
-    const updated = await patch(`/accounts/${created.account.id}`, { label: "Managed desk paused", enabled: false });
-    expect(updated.status).toBe(200);
-    expect((await updated.json()).account).toMatchObject({ label: "Managed desk paused", enabled: false, status: "disabled" });
-
+    const configured = await fetch(`${base}/accounts/${created.account.id}/credentials`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...authHeaders(true) },
+      body: JSON.stringify({ apiKey: "abcdefgh", apiSecret: "supersecret" })
+    });
+    expect(configured.status).toBe(200);
+    expect((await configured.json()).account).toMatchObject({ status: "ready", credential: { status: "configured", isolated: true } });
+    expect((await fetch(`${base}/accounts/${created.account.id}/credentials`, { method: "DELETE", headers: authHeaders(true) })).status).toBe(200);
     expect((await del(`/accounts/${created.account.id}`)).status).toBe(200);
   });
 
@@ -261,26 +329,27 @@ describe("trading API E2E (real router, in-memory store)", () => {
     expect((await fetch(base + "/paper-multi-leg/runs", { headers: { cookie: readOnlyCookie } })).status).toBe(403);
     expect((await fetch(base.replace(/\/api\/trade$/, "") + "/paper-multi-leg/runs")).status).toBe(404);
 
-    const recovery = await fetch(base + "/paper-multi-leg/recovery", { headers: { cookie: paperCookie } });
+    expect((await fetch(base + "/paper-multi-leg/recovery", { headers: { cookie: paperCookie } })).status).toBe(403);
+    const recovery = await get("/paper-multi-leg/recovery");
     expect(recovery.status).toBe(200);
     expect(await recovery.json()).toMatchObject({
       safety: { executionMode: "paper-only", liveOrders: false, privateRequests: false, credentialsAccepted: false },
       recovery: { status: "ready", recoveredRuns: 1 }
     });
-    const recovered = await fetch(`${base}/paper-multi-leg/runs/${startupRecoveryRunId}`, { headers: { cookie: paperCookie } });
+    const recovered = await get(`/paper-multi-leg/runs/${startupRecoveryRunId}`);
     expect(await recovered.json()).toMatchObject({ run: { state: { status: "compensated", lastSequence: 7 } } });
 
     const plan = paperMultiLegPlan(`api-paper-run-${Date.now()}`, [10_000, 4_000, 10_000, 10_000]);
     const withoutCsrf = await fetch(base + "/paper-multi-leg/runs", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie: paperCookie, "idempotency-key": `idem-${plan.runId}` },
+      headers: { "content-type": "application/json", cookie: sessionCookie, "idempotency-key": `idem-${plan.runId}` },
       body: JSON.stringify({ plan })
     });
     expect(withoutCsrf.status).toBe(403);
 
     const created = await fetch(base + "/paper-multi-leg/runs", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie: paperCookie, "x-csrf-token": paperCsrf, "idempotency-key": `idem-${plan.runId}` },
+      headers: { "content-type": "application/json", ...authHeaders(true), "idempotency-key": `idem-${plan.runId}` },
       body: JSON.stringify({ plan })
     });
     expect(created.status).toBe(201);
@@ -333,6 +402,132 @@ describe("trading API E2E (real router, in-memory store)", () => {
     expect((await borrow.json()).error).toMatch(/keys are not configured/i);
   });
 
+  it("never selects a disabled configured account for telemetry or direct Bybit UTA mutations", async () => {
+    const created = await (await post("/accounts", {
+      label: "Disabled Bybit",
+      exchange: "bybit",
+      enabled: false
+    })).json() as { account: { id: string } };
+    const id = created.account.id;
+    const credentials = await fetch(`${base}/accounts/${id}/credentials`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...authHeaders(true) },
+      body: JSON.stringify({ apiKey: "disabled-api-key", apiSecret: "disabled-api-secret" })
+    });
+    expect(credentials.status).toBe(200);
+    expect(await (await get("/keys")).json()).toMatchObject({ bybit: false });
+
+    const mutations = [
+      ["borrow", { coin: "USDT", amount: 1, confirm: true }],
+      ["repay", { coin: "USDT", repaymentType: "ALL", convertCollateral: false, confirm: true }],
+      ["collateral", { coin: "BTC", enabled: false, confirm: true }]
+    ] as const;
+    for (const [operation, body] of mutations) {
+      const response = await post(`/bybit/uta/${operation}?accountId=${encodeURIComponent(id)}`, body);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ code: "TRADING_ACCOUNT_DISABLED" });
+    }
+
+    expect((await fetch(`${base}/accounts/${id}/credentials`, {
+      method: "DELETE",
+      headers: authHeaders(true)
+    })).status).toBe(200);
+    expect((await del(`/accounts/${id}`)).status).toBe(200);
+  });
+
+  it("serializes credential rotation and removal with account-bound bot lifecycle checks", async () => {
+    const createdAccount = await (await post("/accounts", {
+      label: "Lifecycle locked Bybit",
+      exchange: "bybit"
+    })).json() as { account: { id: string } };
+    const accountId = createdAccount.account.id;
+    const originalKeys = { apiKey: "original-api-key", apiSecret: "original-api-secret" };
+    expect((await fetch(`${base}/accounts/${accountId}/credentials`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...authHeaders(true) },
+      body: JSON.stringify(originalKeys)
+    })).status).toBe(200);
+    const createdBot = await (await post("/bots", validBody({
+      exchange: "bybit",
+      market: "futures",
+      accountId
+    }))).json() as { bot: Record<string, unknown> & { id: string } };
+    const running = (tradingApi.engine as unknown as {
+      running: Map<string, { config: typeof createdBot.bot }>;
+    }).running;
+
+    const rotationGate = deferred();
+    const rotationEntered = deferred();
+    const rotationBlocker = tradingApi.engine.withAccountLifecycleLock(
+      LEGACY_TRADING_OWNER_ID,
+      accountId,
+      async () => {
+        rotationEntered.resolve();
+        await rotationGate.promise;
+      }
+    );
+    await rotationEntered.promise;
+    const rotation = fetch(`${base}/accounts/${accountId}/credentials`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...authHeaders(true) },
+      body: JSON.stringify({ apiKey: "replacement-api-key", apiSecret: "replacement-api-secret" })
+    });
+    let rotationSettled = false;
+    void rotation.then(
+      () => { rotationSettled = true; },
+      () => { rotationSettled = true; }
+    );
+    await flushPendingHttp();
+    expect(rotationSettled).toBe(false);
+    running.set(createdBot.bot.id, { config: { ...createdBot.bot, status: "running" } });
+    rotationGate.resolve();
+    await rotationBlocker;
+    const rotationResponse = await rotation;
+    expect(rotationResponse.status).toBe(409);
+    expect(await rotationResponse.json()).toMatchObject({ code: "TRADING_ACCOUNT_RUNNING" });
+    expect(getTradingAccountCredentialsForOwner(LEGACY_TRADING_OWNER_ID, accountId)).toEqual(originalKeys);
+    running.delete(createdBot.bot.id);
+    expect((await del(`/bots/${createdBot.bot.id}`)).status).toBe(200);
+
+    const removalGate = deferred();
+    const removalEntered = deferred();
+    const removalBlocker = tradingApi.engine.withAccountLifecycleLock(
+      LEGACY_TRADING_OWNER_ID,
+      accountId,
+      async () => {
+        removalEntered.resolve();
+        await removalGate.promise;
+      }
+    );
+    await removalEntered.promise;
+    const removal = fetch(`${base}/accounts/${accountId}/credentials`, {
+      method: "DELETE",
+      headers: authHeaders(true)
+    });
+    let removalSettled = false;
+    void removal.then(
+      () => { removalSettled = true; },
+      () => { removalSettled = true; }
+    );
+    await flushPendingHttp();
+    expect(removalSettled).toBe(false);
+    const reboundBotId = `${createdBot.bot.id}-rebound`;
+    upsertBotForOwner(LEGACY_TRADING_OWNER_ID, { ...createdBot.bot, id: reboundBotId, accountId, status: "stopped" } as never);
+    removalGate.resolve();
+    await removalBlocker;
+    const removalResponse = await removal;
+    expect(removalResponse.status).toBe(409);
+    expect(await removalResponse.json()).toMatchObject({ code: "TRADING_ACCOUNT_IN_USE" });
+    expect(getTradingAccountCredentialsForOwner(LEGACY_TRADING_OWNER_ID, accountId)).toEqual(originalKeys);
+
+    expect((await del(`/bots/${reboundBotId}`)).status).toBe(200);
+    expect((await fetch(`${base}/accounts/${accountId}/credentials`, {
+      method: "DELETE",
+      headers: authHeaders(true)
+    })).status).toBe(200);
+    expect((await del(`/accounts/${accountId}`)).status).toBe(200);
+  });
+
   it("creates a paper bot with valid IR and lists it", async () => {
     const res = await post("/bots", validBody());
     expect(res.status).toBe(200);
@@ -341,6 +536,35 @@ describe("trading API E2E (real router, in-memory store)", () => {
     expect(bot.status).toBe("stopped");
     const list = await (await get("/bots")).json();
     expect(list.bots.some((b: { id: string }) => b.id === bot.id)).toBe(true);
+  });
+
+  it("isolates bot REST resources by authenticated owner, including admin sessions", async () => {
+    const ownerA = "11111111-1111-4111-8111-111111111111";
+    const ownerB = "22222222-2222-4222-8222-222222222222";
+    const create = await fetch(base + "/bots", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders(true), "x-test-owner": ownerA },
+      body: JSON.stringify(validBody({ name: "Only A" }))
+    });
+    expect(create.status).toBe(200);
+    const created = (await create.json()) as { bot: { id: string; ownerUserId?: string } };
+    expect(created.bot.ownerUserId).toBeUndefined();
+
+    const listA = await fetch(base + "/bots", { headers: { ...authHeaders(), "x-test-owner": ownerA } });
+    const listB = await fetch(base + "/bots", { headers: { ...authHeaders(), "x-test-owner": ownerB } });
+    expect((await listA.json()).bots).toEqual(expect.arrayContaining([expect.objectContaining({ id: created.bot.id })]));
+    expect((await listB.json()).bots).toEqual([]);
+    expect((await get("/bots")).status).toBe(200);
+    expect(((await (await get("/bots")).json()).bots as Array<{ id: string }>).some((bot) => bot.id === created.bot.id)).toBe(false);
+
+    const foreignRead = await fetch(`${base}/bots/${created.bot.id}/fills`, { headers: { ...authHeaders(), "x-test-owner": ownerB } });
+    expect(foreignRead.status).toBe(404);
+    const foreignMutation = await fetch(base + "/bots", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders(true), "x-test-owner": ownerB },
+      body: JSON.stringify(validBody({ id: created.bot.id, name: "Stolen" }))
+    });
+    expect(foreignMutation.status).toBe(404);
   });
 
   it("requires every positive risk cap for live bots but not paper bots", async () => {
@@ -356,11 +580,11 @@ describe("trading API E2E (real router, in-memory store)", () => {
 
   it("refuses to delete an account while a bot is bound to it", async () => {
     const created = await (await post("/bots", validBody({ exchange: "bybit", market: "futures" }))).json();
-    expect(created.bot.accountId).toBe("bybit:default");
-    const disabled = await patch("/accounts/bybit:default", { enabled: false });
+    expect(created.bot.accountId).toBe(bybitAccountId);
+    const disabled = await patch(`/accounts/${bybitAccountId}`, { enabled: false });
     expect(disabled.status).toBe(409);
     expect(await disabled.json()).toMatchObject({ code: "TRADING_ACCOUNT_IN_USE", botIds: expect.arrayContaining([created.bot.id]) });
-    const response = await del("/accounts/bybit:default");
+    const response = await del(`/accounts/${bybitAccountId}`);
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ code: "TRADING_ACCOUNT_IN_USE", botIds: expect.arrayContaining([created.bot.id]) });
   });
@@ -441,6 +665,132 @@ describe("trading API E2E (real router, in-memory store)", () => {
     expect((await res.json()).ok).toBe(true);
   });
 
+  it("re-checks runtime state inside config-update and reset lifecycle locks", async () => {
+    const created = await (await post("/bots", validBody({ name: "Before race" }))).json() as { bot: { id: string } };
+    const id = created.bot.id;
+    const persisted = getBotForOwner(LEGACY_TRADING_OWNER_ID, id)!;
+    const running = (tradingApi.engine as unknown as { running: Map<string, { config: typeof persisted }> }).running;
+
+    const updateGate = deferred();
+    const updateEntered = deferred();
+    const updateBlocker = tradingApi.engine.withBotLifecycleLock(LEGACY_TRADING_OWNER_ID, id, async () => {
+      updateEntered.resolve();
+      await updateGate.promise;
+    });
+    await updateEntered.promise;
+    const update = post("/bots", validBody({ id, name: "Raced update" }));
+    let updateSettled = false;
+    void update.then(() => { updateSettled = true; }, () => { updateSettled = true; });
+    await flushPendingHttp();
+    expect(updateSettled).toBe(false);
+    running.set(id, { config: { ...persisted, status: "running" } });
+    updateGate.resolve();
+    await updateBlocker;
+    expect((await update).status).toBe(409);
+    expect(getBotForOwner(LEGACY_TRADING_OWNER_ID, id)?.name).toBe("Before race");
+    running.delete(id);
+
+    setSetting(`state:${id}`, { vars: { count: 7 } });
+    const resetGate = deferred();
+    const resetEntered = deferred();
+    const resetBlocker = tradingApi.engine.withBotLifecycleLock(LEGACY_TRADING_OWNER_ID, id, async () => {
+      resetEntered.resolve();
+      await resetGate.promise;
+    });
+    await resetEntered.promise;
+    const reset = post(`/bots/${id}/reset-state`, {});
+    let resetSettled = false;
+    void reset.then(() => { resetSettled = true; }, () => { resetSettled = true; });
+    await flushPendingHttp();
+    expect(resetSettled).toBe(false);
+    running.set(id, { config: { ...persisted, status: "running" } });
+    resetGate.resolve();
+    await resetBlocker;
+    expect((await reset).status).toBe(409);
+    expect(getSetting(`state:${id}`)).toEqual({ vars: { count: 7 } });
+    running.delete(id);
+    expect((await del(`/bots/${id}`)).status).toBe(200);
+  });
+
+  it("rejects a queued start when a same-millisecond config edit changed its captured revision", async () => {
+    const created = await (await post("/bots", validBody({ name: "Old revision" }))).json() as { bot: { id: string } };
+    const id = created.bot.id;
+    const originalRevision = getBotForOwner(LEGACY_TRADING_OWNER_ID, id)!.updatedAt;
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(originalRevision);
+    const gate = deferred();
+    const entered = deferred();
+    const blocker = tradingApi.engine.withBotLifecycleLock(LEGACY_TRADING_OWNER_ID, id, async () => {
+      entered.resolve();
+      await gate.promise;
+    });
+    await entered.promise;
+    const originalLifecycle = tradingApi.engine.withBotLifecycleLock.bind(tradingApi.engine);
+    const editQueued = deferred();
+    const lifecycleSpy = vi.spyOn(tradingApi.engine, "withBotLifecycleLock").mockImplementation((...args) => {
+      editQueued.resolve();
+      return originalLifecycle(...args);
+    });
+    let restoreStartSpy = () => {};
+    try {
+      const edit = post("/bots", validBody({ id, name: "New revision" }));
+      await editQueued.promise;
+      const originalStart = tradingApi.engine.startForOwner.bind(tradingApi.engine);
+      const startQueued = deferred();
+      const startSpy = vi.spyOn(tradingApi.engine, "startForOwner").mockImplementation((...args) => {
+        startQueued.resolve();
+        return originalStart(...args);
+      });
+      restoreStartSpy = () => startSpy.mockRestore();
+      const start = post(`/bots/${id}/start`, {});
+      await startQueued.promise;
+
+      gate.resolve();
+      await blocker;
+      expect((await edit).status).toBe(200);
+      const startResponse = await start;
+      expect(startResponse.status).toBe(400);
+      expect((await startResponse.json()).error).toMatch(/configuration changed/i);
+      expect(getBotForOwner(LEGACY_TRADING_OWNER_ID, id)?.name).toBe("New revision");
+      expect(getBotForOwner(LEGACY_TRADING_OWNER_ID, id)?.updatedAt).toBe(originalRevision + 1);
+      expect(tradingApi.engine.isRunningForOwner(LEGACY_TRADING_OWNER_ID, id)).toBe(false);
+    } finally {
+      gate.resolve();
+      await blocker;
+      restoreStartSpy();
+      lifecycleSpy.mockRestore();
+      nowSpy.mockRestore();
+      await del(`/bots/${id}`);
+    }
+  });
+
+  it("tombstones a bot before a queued HTTP delete can be overtaken by stale start", async () => {
+    const created = await (await post("/bots", validBody({ name: "Delete race" }))).json() as { bot: { id: string } };
+    const id = created.bot.id;
+    const stale = getBotForOwner(LEGACY_TRADING_OWNER_ID, id)!;
+    const gate = deferred();
+    const entered = deferred();
+    const blocker = tradingApi.engine.withBotLifecycleLock(LEGACY_TRADING_OWNER_ID, id, async () => {
+      entered.resolve();
+      await gate.promise;
+    });
+    await entered.promise;
+    const originalDelete = tradingApi.engine.deleteSafelyForOwner.bind(tradingApi.engine);
+    const deleteEntered = deferred();
+    const deleteSpy = vi.spyOn(tradingApi.engine, "deleteSafelyForOwner").mockImplementation((...args) => {
+      deleteEntered.resolve();
+      return originalDelete(...args);
+    });
+    const deletion = del(`/bots/${id}`);
+    await deleteEntered.promise;
+
+    await expect(tradingApi.engine.start(stale)).rejects.toThrow(/access changed/i);
+    gate.resolve();
+    await blocker;
+    expect((await deletion).status).toBe(200);
+    expect(getBotForOwner(LEGACY_TRADING_OWNER_ID, id)).toBeUndefined();
+    deleteSpy.mockRestore();
+  });
+
   it("exposes the durable order journal endpoints", async () => {
     const created = await (await post("/bots", validBody())).json();
     const journal = await get(`/bots/${created.bot.id}/order-journal`);
@@ -452,19 +802,23 @@ describe("trading API E2E (real router, in-memory store)", () => {
   });
 
   it("writes an audit log with redacted secrets for mutating routes", async () => {
-    const res = await post("/keys", { exchange: "binance", apiKey: "abcdefgh", apiSecret: "supersecret" });
+    const res = await fetch(`${base}/accounts/${binanceAccountId}/credentials`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...authHeaders(true) },
+      body: JSON.stringify({ apiKey: "abcdefgh", apiSecret: "supersecret" })
+    });
     expect(res.status).toBe(200);
     const audit = await (await get("/audit?limit=20")).json();
-    const event = audit.events.find((item: { action: string }) => item.action.includes("/keys"));
+    const event = audit.events.find((item: { action: string }) => item.action.includes("/credentials"));
     expect(event).toBeTruthy();
     expect(event.role).toBe("admin");
     expect(event.data.body.apiKey).toBe("[redacted]");
     expect(event.data.body.apiSecret).toBe("[redacted]");
     const accounts = await (await get("/accounts")).json();
-    expect(accounts.accounts.find((account: { id: string }) => account.id === "binance:default")).toMatchObject({
+    expect(accounts.accounts.find((account: { id: string }) => account.id === binanceAccountId)).toMatchObject({
       status: "ready",
-      credential: { mode: "legacy_exchange_shared", status: "configured", isolated: false },
-      capabilities: { liveExecution: true, credentialIsolation: false, multipleCredentialAccounts: false }
+      credential: { mode: "account_isolated", status: "configured", isolated: true },
+      capabilities: { liveExecution: true, credentialIsolation: true, multipleCredentialAccounts: true }
     });
     expect(JSON.stringify(accounts)).not.toContain("supersecret");
   });

@@ -1580,7 +1580,9 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
   await page.getByRole("button", { name: "Құлыпты ашу", exact: true }).click();
   await page.getByRole("button", { name: "Параметрлер", exact: true }).click();
   await expect(page.getByText("Demo режимі қосулы — тек paper сауда қолжетімді.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "binance кілттерін сақтау" })).toBeVisible();
+  const accountRegistry = page.getByRole("region", { name: "Сауда аккаунттарының тізілімі" });
+  await expect(accountRegistry).toBeVisible();
+  await expect(accountRegistry.getByRole("button", { name: "Аккаунт қосу", exact: true })).toBeVisible();
   await expect(page.getByLabel("Бот token-і")).toBeVisible();
 });
 
@@ -1747,6 +1749,11 @@ test("creates, starts, journals and stops a paper bot", { tag: "@smoke" }, async
 });
 
 test("exposes safe demo trading settings and labeled secret forms", async ({ page }) => {
+  await page.route("**/api/trade/accounts", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ json: { accounts: [tradingAccountFixture("binance", false), tradingAccountFixture("bybit", true)] } });
+    } else await route.continue();
+  });
   const workspaceModes = page.getByRole("navigation", { name: "Primary workspaces" });
   await workspaceModes.getByRole("button", { name: "Robots", exact: true }).click();
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
@@ -1754,8 +1761,12 @@ test("exposes safe demo trading settings and labeled secret forms", async ({ pag
   await page.getByRole("button", { name: "Settings", exact: true }).click();
 
   await expect(page.getByText("Running in demo mode — only paper trading is available.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save binance keys" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save bybit keys" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Demo binance account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Demo bybit account" })).toBeVisible();
+  await expect(page.getByLabel("API key").first()).toHaveAttribute("type", "password");
+  await expect(page.getByLabel("API secret").first()).toHaveAttribute("autocomplete", "off");
+  await expect(page.getByRole("button", { name: "Set credentials" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Rotate credentials" })).toBeVisible();
   await expect(page.getByLabel("Bot token")).toHaveAttribute("autocomplete", "new-password");
   await expect(page.getByLabel("Chat ID")).toHaveAttribute("inputmode", "numeric");
 });
@@ -1766,8 +1777,8 @@ test("shows protected account economics as read-only admin evidence", async ({ p
     if (route.request().method() === "GET") await route.fulfill({ json: { ok: true, demo: false, liveTradingEnabled: false, secureTradingOrigin: true, role: "admin" } });
     else await route.continue();
   });
-  await page.route("**/api/trade/keys", async (route) => {
-    if (route.request().method() === "GET") await route.fulfill({ json: { binance: true, bybit: true } });
+  await page.route("**/api/trade/accounts", async (route) => {
+    if (route.request().method() === "GET") await route.fulfill({ json: { accounts: [tradingAccountFixture("binance", true), tradingAccountFixture("bybit", true)] } });
     else await route.continue();
   });
   await page.route("**/api/trade/account-telemetry?**", async (route) => {
@@ -1795,11 +1806,11 @@ test("shows protected account economics as read-only admin evidence", async ({ p
 test("confirms account emergency stop and requires a separate flatten confirmation", async ({ page }) => {
   const mutations: Array<Record<string, unknown>> = [];
   await page.route("**/api/trade/settings", async (route) => {
-    if (route.request().method() === "GET") await route.fulfill({ json: { demo: false, liveTradingEnabled: true, secureTradingOrigin: true } });
+    if (route.request().method() === "GET") await route.fulfill({ json: { demo: false, liveTradingEnabled: true, secureTradingOrigin: true, role: "admin" } });
     else await route.continue();
   });
-  await page.route("**/api/trade/keys", async (route) => {
-    if (route.request().method() === "GET") await route.fulfill({ json: { binance: false, bybit: false } });
+  await page.route("**/api/trade/accounts", async (route) => {
+    if (route.request().method() === "GET") await route.fulfill({ json: { accounts: [] } });
     else await route.continue();
   });
   await page.route("**/api/trade/kill", async (route) => {
@@ -1846,11 +1857,11 @@ test("shows Bybit UTA collateral risk and requires explicit debt confirmations",
   const mutations: Array<{ url: string; body: Record<string, unknown> }> = [];
   const snapshot = bybitUtaFixture();
   await page.route("**/api/trade/settings", async (route) => {
-    if (route.request().method() === "GET") await route.fulfill({ json: { demo: false, liveTradingEnabled: true, secureTradingOrigin: true } });
+    if (route.request().method() === "GET") await route.fulfill({ json: { demo: false, liveTradingEnabled: true, secureTradingOrigin: true, role: "admin" } });
     else await route.continue();
   });
-  await page.route("**/api/trade/keys", async (route) => {
-    if (route.request().method() === "GET") await route.fulfill({ json: { binance: false, bybit: true } });
+  await page.route("**/api/trade/accounts", async (route) => {
+    if (route.request().method() === "GET") await route.fulfill({ json: { accounts: [tradingAccountFixture("bybit", true)] } });
     else await route.continue();
   });
   await page.route("**/api/trade/bybit/uta**", async (route) => {
@@ -2537,6 +2548,23 @@ async function installTradeFlowSocketMock(page: Page) {
       }
     });
   });
+}
+
+function tradingAccountFixture(exchange: "binance" | "bybit", configured: boolean) {
+  const status = configured ? "ready" : "credentials_missing";
+  return {
+    id: `${exchange}-e2e-account`,
+    label: `Demo ${exchange} account`,
+    exchange,
+    ownership: "own",
+    enabled: true,
+    createdAt: 1_780_000_000_000,
+    updatedAt: 1_780_000_000_000,
+    status,
+    credential: { mode: "account_isolated", status: configured ? "configured" : "missing", isolated: true },
+    capabilities: { liveExecution: configured, credentialIsolation: true, multipleCredentialAccounts: true },
+    botIds: []
+  };
 }
 
 function accountTelemetryFixture() {

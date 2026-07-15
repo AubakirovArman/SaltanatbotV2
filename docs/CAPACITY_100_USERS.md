@@ -6,13 +6,16 @@ Last measured: 2026-07-15
 The practical target is a bounded modular monolith, not a ChatGPT-scale microservice fleet. One
 light API process serves the SPA, authenticated REST and shared market WebSockets. PostgreSQL owns
 identity, workspaces and the durable research queue. CPU-heavy backtests run in a separate worker
-process and then in a memory-limited worker thread. The legacy trading engine remains in the API
-process until an explicit ownership migration and executor split can be performed safely.
+process and then in a memory-limited worker thread. The trading engine remains a single in-process
+executor, but every private resource, account credential, runtime, emergency state and event stream
+is partitioned by authenticated owner.
 
 ```text
 TLS reverse proxy
         |
-Web/API + shared market WebSockets ---- legacy trading engine (admin only)
+Web/API + shared market WebSockets ---- owner-partitioned trading executor
+        |                                      |
+        |                              per-owner accounts/robots/events
         |
 PostgreSQL: identity + workspaces + durable jobs
         |
@@ -49,6 +52,10 @@ These figures are a point-in-time observation on a shared machine, not reserved 
   buffer becomes unsafe.
 - Research jobs are owner-scoped, deduplicated, durable and claimed with
   `FOR UPDATE SKIP LOCKED` leases.
+- Trading accounts, AES-GCM credential envelopes, bots, REST reads, audit rows, emergency state and
+  private WebSocket events are owner-scoped. Application admin role does not bypass that boundary.
+- Disabling a user or changing trading permission revokes sessions, disconnects private streams and
+  quiesces only that user's active runtimes.
 - A user may have at most five queued/running jobs and only one running job.
 - The supplied worker starts at two concurrent tasks, a 120-second wall timeout and 512 MiB old-gen
   limit per task. Compose caps the API at 4 CPU/4 GiB, PostgreSQL at 2 CPU/2 GiB and the research
@@ -81,12 +88,13 @@ backup success.
 
 1. Add metrics dashboards and a repeatable 100-session load scenario.
 2. Tune the existing API, database pool and two research slots from measured results.
-3. Extract per-user trading ownership and credentials; migrate legacy bots offline with counts and
-   hashes, retaining read-only SQLite rollback data.
-4. Make a single durable trading executor the only process allowed to resume bots or use exchange
+3. Keep verifying the completed per-user ownership/credential boundary with two-tenant API/WS and
+   migration-count tests; retain verified SQLite/PostgreSQL rollback backups.
+4. Extract the current single durable trading executor so it remains the only process allowed to resume bots or use exchange
    credentials. Use leases/fencing and idempotent client order IDs.
 5. Only then add a second stateless API process and cross-process event fan-out.
 6. Add Redis/object storage only when PostgreSQL queue/result size or fan-out measurements justify it.
 
-Starting another copy of the present API for “scaling” is explicitly unsafe because the current
-SQLite trading engine can resume the same bots twice.
+Starting another copy of the present API for “scaling” is still unsafe: tenant isolation prevents
+cross-user reads, but the shared SQLite executor has no cross-process lease and could resume the same
+owner's bots twice.

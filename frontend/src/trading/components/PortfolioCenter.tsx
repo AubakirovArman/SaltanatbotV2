@@ -21,6 +21,7 @@ interface PortfolioCenterProps {
   onOpenSettings: () => void;
   loadPortfolio?: () => Promise<PortfolioSummary>;
   canReadAccounts?: boolean;
+  canCreate?: boolean;
   loadAccounts?: () => Promise<TradingAccountView[]>;
 }
 
@@ -34,6 +35,7 @@ export function PortfolioCenter({
   onOpenSettings,
   loadPortfolio = getPortfolio,
   canReadAccounts = false,
+  canCreate = true,
   loadAccounts = listTradingAccounts
 }: PortfolioCenterProps) {
   const [summary, setSummary] = useState<PortfolioSummary>();
@@ -100,10 +102,12 @@ export function PortfolioCenter({
           <p>{automationText(locale, "robotsCenterDescription")}</p>
         </div>
         <div className="robots-center-actions">
-          <button type="button" className="secondary-button" onClick={onOpenSettings}>
-            <Settings2 size={14} aria-hidden="true" />
-            {automationText(locale, "openSettings")}
-          </button>
+          {canCreate && (
+            <button type="button" className="secondary-button" onClick={onOpenSettings}>
+              <Settings2 size={14} aria-hidden="true" />
+              {automationText(locale, "openSettings")}
+            </button>
+          )}
           <button type="button" className="icon-button" onClick={() => void refresh()} disabled={loadState !== "ready"} aria-label={automationText(locale, "refresh")} title={automationText(locale, "refresh")}>
             <RefreshCw size={15} aria-hidden="true" />
           </button>
@@ -145,7 +149,7 @@ export function PortfolioCenter({
           <h2>{automationText(locale, "noRunning")}</h2>
           <p><strong>{tradingText(locale, "livePaperTitle")}</strong></p>
           <p>{automationText(locale, "noRunningHint")}</p>
-          <button type="button" className="run-button" onClick={onNew}>{tradingText(locale, "createPaperBot")}</button>
+          {canCreate && <button type="button" className="run-button" onClick={onNew}>{tradingText(locale, "createPaperBot")}</button>}
         </div>
       )}
 
@@ -309,8 +313,8 @@ function LiveAccountCard({
 
       {accountMetadata && (
         <div className="portfolio-credential-truth">
-          <strong>{automationText(locale, accountMetadata.credential.mode === "legacy_exchange_shared" ? "sharedCredentials" : "accountMetadataOnly")}</strong>
-          {!accountMetadata.capabilities.credentialIsolation && <span>{automationText(locale, "credentialIsolationUnavailable")}</span>}
+          <strong>{automationText(locale, "isolatedCredentials")}: {automationText(locale, accountMetadata.credential.status === "configured" ? "accountReady" : "accountCredentialsMissing")}</strong>
+          <span>{automationText(locale, "credentialsNeverReturned")}</span>
         </div>
       )}
 
@@ -417,6 +421,5 @@ function liveBotAccountId(bot: TradingBot): string | undefined {
 function accountStatusText(locale: Locale, status: TradingAccountStatus): string {
   if (status === "ready") return automationText(locale, "accountReady");
   if (status === "credentials_missing") return automationText(locale, "accountCredentialsMissing");
-  if (status === "metadata_only") return automationText(locale, "accountMetadataOnly");
   return automationText(locale, "accountDisabled");
 }

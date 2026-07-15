@@ -1,8 +1,8 @@
 import { tradeApiRequest } from "./tradeClient";
 
 export type TradingAccountOwnership = "own" | "managed";
-export type TradingAccountStatus = "ready" | "credentials_missing" | "metadata_only" | "disabled";
-export type TradingAccountCredentialStatus = "configured" | "missing" | "unsupported";
+export type TradingAccountStatus = "ready" | "credentials_missing" | "disabled";
+export type TradingAccountCredentialStatus = "configured" | "missing";
 
 export interface CreateTradingAccountInput {
   label: string;
@@ -17,6 +17,11 @@ export interface UpdateTradingAccountInput {
   enabled?: boolean;
 }
 
+export interface TradingAccountCredentialsInput {
+  apiKey: string;
+  apiSecret: string;
+}
+
 export interface TradingAccountView {
   id: string;
   label: string;
@@ -27,20 +32,20 @@ export interface TradingAccountView {
   updatedAt: number;
   status: TradingAccountStatus;
   credential: {
-    mode: "legacy_exchange_shared" | "unsupported";
+    mode: "account_isolated";
     status: TradingAccountCredentialStatus;
-    isolated: false;
+    isolated: true;
   };
   capabilities: {
     liveExecution: boolean;
-    credentialIsolation: false;
-    multipleCredentialAccounts: false;
+    credentialIsolation: true;
+    multipleCredentialAccounts: true;
   };
   botIds: string[];
 }
 
-const accountStatuses = new Set<TradingAccountStatus>(["ready", "credentials_missing", "metadata_only", "disabled"]);
-const credentialStatuses = new Set<TradingAccountCredentialStatus>(["configured", "missing", "unsupported"]);
+const accountStatuses = new Set<TradingAccountStatus>(["ready", "credentials_missing", "disabled"]);
+const credentialStatuses = new Set<TradingAccountCredentialStatus>(["configured", "missing"]);
 
 function asRecord(value: unknown, path: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${path} must be an object`);
@@ -66,6 +71,8 @@ function parseAccount(value: unknown, path: string): TradingAccountView {
   const item = asRecord(value, path);
   const credential = asRecord(item.credential, `${path}.credential`);
   const capabilities = asRecord(item.capabilities, `${path}.capabilities`);
+  rejectSecretFields(item, path);
+  rejectSecretFields(credential, `${path}.credential`);
   const exchange = asString(item.exchange, `${path}.exchange`);
   const ownership = asString(item.ownership, `${path}.ownership`);
   const status = asString(item.status, `${path}.status`);
@@ -77,18 +84,14 @@ function parseAccount(value: unknown, path: string): TradingAccountView {
   if (exchange !== "binance" && exchange !== "bybit") throw new Error(`${path}.exchange is invalid`);
   if (ownership !== "own" && ownership !== "managed") throw new Error(`${path}.ownership is invalid`);
   if (!accountStatuses.has(status as TradingAccountStatus)) throw new Error(`${path}.status is invalid`);
-  if (credentialMode !== "legacy_exchange_shared" && credentialMode !== "unsupported") throw new Error(`${path}.credential.mode is invalid`);
+  if (credentialMode !== "account_isolated") throw new Error(`${path}.credential.mode is invalid`);
   if (!credentialStatuses.has(credentialStatus as TradingAccountCredentialStatus)) throw new Error(`${path}.credential.status is invalid`);
   if (!Array.isArray(item.botIds) || item.botIds.some((id) => typeof id !== "string" || !id)) throw new Error(`${path}.botIds must be a string array`);
-  if (credential.isolated !== false || capabilities.credentialIsolation !== false || capabilities.multipleCredentialAccounts !== false) {
-    throw new Error(`${path} overstates account credential capabilities`);
+  if (credential.isolated !== true || capabilities.credentialIsolation !== true || capabilities.multipleCredentialAccounts !== true) {
+    throw new Error(`${path} understates account credential capabilities`);
   }
-  if ((credentialMode === "unsupported") !== (credentialStatus === "unsupported")) throw new Error(`${path} credential mode and status are inconsistent`);
-  if ((credentialMode === "legacy_exchange_shared") !== (id === `${exchange}:default`)) {
-    throw new Error(`${path} overstates the legacy shared credential binding`);
-  }
-  const expectedStatus: TradingAccountStatus = !enabled ? "disabled" : credentialMode === "unsupported" ? "metadata_only" : credentialStatus === "configured" ? "ready" : "credentials_missing";
-  if (status !== expectedStatus || liveExecution !== (expectedStatus === "ready")) throw new Error(`${path} overstates account runtime capabilities`);
+  const expectedStatus: TradingAccountStatus = !enabled ? "disabled" : credentialStatus === "configured" ? "ready" : "credentials_missing";
+  if (status !== expectedStatus || liveExecution !== (expectedStatus === "ready")) throw new Error(`${path} has inconsistent runtime capabilities`);
   return {
     id,
     label: asString(item.label, `${path}.label`),
@@ -101,12 +104,12 @@ function parseAccount(value: unknown, path: string): TradingAccountView {
     credential: {
       mode: credentialMode,
       status: credentialStatus as TradingAccountCredentialStatus,
-      isolated: false
+      isolated: true
     },
     capabilities: {
       liveExecution,
-      credentialIsolation: false,
-      multipleCredentialAccounts: false
+      credentialIsolation: true,
+      multipleCredentialAccounts: true
     },
     botIds: item.botIds as string[]
   };
@@ -162,6 +165,23 @@ export async function deleteTradingAccount(id: string): Promise<void> {
   if (response.ok !== true) throw new Error("Invalid delete trading account response");
 }
 
+export function setTradingAccountCredentials(id: string, input: TradingAccountCredentialsInput): Promise<TradingAccountView> {
+  const body = {
+    apiKey: normalizedCredential(input.apiKey, "API key"),
+    apiSecret: normalizedCredential(input.apiSecret, "API secret")
+  };
+  return tradeApiRequest<unknown>(`/accounts/${encodeURIComponent(normalizedId(id))}/credentials`, {
+    method: "PUT",
+    body: JSON.stringify(body)
+  }).then(parseTradingAccount);
+}
+
+export function deleteTradingAccountCredentials(id: string): Promise<TradingAccountView> {
+  return tradeApiRequest<unknown>(`/accounts/${encodeURIComponent(normalizedId(id))}/credentials`, {
+    method: "DELETE"
+  }).then(parseTradingAccount);
+}
+
 function normalizedId(value: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error("account id must be a non-empty string");
   return value.trim();
@@ -172,6 +192,17 @@ function normalizedLabel(value: string): string {
   const label = value.trim();
   if (!label || label.length > 120) throw new Error("label must contain 1 to 120 characters");
   return label;
+}
+
+function normalizedCredential(value: string, label: string): string {
+  if (typeof value !== "string") throw new Error(`${label} must be a string`);
+  const normalized = value.trim();
+  if (normalized.length < 8 || normalized.length > 256) throw new Error(`${label} must contain 8 to 256 characters`);
+  return normalized;
+}
+
+function rejectSecretFields(value: Record<string, unknown>, path: string): void {
+  if ("apiKey" in value || "apiSecret" in value) throw new Error(`${path} must not contain exchange secrets`);
 }
 
 function assertedExchange(value: string): "binance" | "bybit" {

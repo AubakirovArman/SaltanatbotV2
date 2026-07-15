@@ -1496,14 +1496,14 @@
   background: var(--bg);
 }
 
-.account-registry-form > label,
+.account-registry-form label,
 .account-registry-edit > label {
   display: grid;
   gap: 4px;
 }
 
 .account-registry-form input[type="text"],
-.account-registry-form > label input,
+.account-registry-form label input,
 .account-registry-edit > label input {
   min-block-size: var(--ctl-h);
   padding-inline: 8px;
@@ -1528,6 +1528,11 @@
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.account-credential-form fieldset {
+  display: grid;
+  gap: 7px;
 }
 
 .account-registry-form legend,
@@ -1614,7 +1619,6 @@
   border-inline-start-color: var(--dim);
 }
 
-.account-registry-card.status-metadata_only,
 .account-registry-card.status-credentials_missing {
   border-inline-start-color: var(--warn, #f0a000);
 }

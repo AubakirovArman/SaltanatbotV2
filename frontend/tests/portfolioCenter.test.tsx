@@ -67,8 +67,8 @@ describe("running robots portfolio center", () => {
           createdAt: 1,
           updatedAt: 2,
           status: "ready",
-          credential: { mode: "legacy_exchange_shared", status: "configured", isolated: false },
-          capabilities: { liveExecution: true, credentialIsolation: false, multipleCredentialAccounts: false },
+          credential: { mode: "account_isolated", status: "configured", isolated: true },
+          capabilities: { liveExecution: true, credentialIsolation: true, multipleCredentialAccounts: true },
           botIds: ["live-1"]
         }]}
       />
@@ -78,7 +78,8 @@ describe("running robots portfolio center", () => {
     expect(container.textContent).toContain("10 000 USDT");
     expect(container.textContent).toContain("Основной Bybit");
     expect(container.textContent).toContain("Свой");
-    expect(container.textContent).toContain("Независимые ключи для нескольких аккаунтов пока не поддерживаются");
+    expect(container.textContent).toContain("Изолированные ключи биржи для аккаунта");
+    expect(container.textContent).toContain("API key и secret никогда не возвращаются в браузер");
     expect(container.textContent).toContain("BTCUSDT");
     expect([...container.querySelectorAll("caption")].map((caption) => caption.textContent)).toEqual(expect.arrayContaining(["Открытые позиции", "Открытые ордера", "Paper-роботы"]));
     expect(container.textContent).toContain("Маржа / заимствования: Недоступно");

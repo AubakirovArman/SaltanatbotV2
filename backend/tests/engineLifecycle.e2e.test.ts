@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  */
 
 vi.mock("../src/trading/store.js", () => {
+  const LEGACY_TRADING_OWNER_ID = "legacy-operator";
   const bots = new Map<string, unknown>();
   const settings = new Map<string, unknown>();
   const orders = new Map<string, unknown>();
@@ -19,9 +20,11 @@ vi.mock("../src/trading/store.js", () => {
   const paperEvents = new Map<string, { id: string; botId: string; sequence: number }>();
   const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
   return {
+    LEGACY_TRADING_OWNER_ID,
     initStore: () => {},
     listBots: () => [...bots.values()].map((b) => clone(b)),
     upsertBot: (b: { id: string }) => bots.set(b.id, clone(b)),
+    upsertBotForOwner: (owner: string, b: { id: string }) => bots.set(b.id, clone({ ...b, ownerUserId: owner })),
     deleteBot: (id: string) => {
       bots.delete(id);
       settings.delete(`paper:${id}`);
@@ -96,6 +99,12 @@ vi.mock("../src/trading/store.js", () => {
       const exchange = id === "binance:default" ? "binance" : id === "bybit:default" ? "bybit" : undefined;
       return exchange ? { id, label: `${exchange} test`, exchange, ownership: "own", enabled: true, createdAt: 1, updatedAt: 1 } : undefined;
     },
+    getTradingAccountForOwner: (owner: string, id: string) => {
+      const exchange = id === "binance:default" ? "binance" : id === "bybit:default" ? "bybit" : undefined;
+      return exchange ? { id, ownerUserId: owner, label: `${exchange} test`, exchange, ownership: "own", enabled: true, createdAt: 1, updatedAt: 1 } : undefined;
+    },
+    listTradingAccountsForOwner: (owner: string) => (["binance", "bybit"] as const).map((exchange) => ({ id: `${exchange}:default`, ownerUserId: owner, label: `${exchange} test`, exchange, ownership: "own", enabled: true, createdAt: 1, updatedAt: 1 })),
+    getTradingAccountCredentialsForOwner: () => ({ apiKey: "test-api-key", apiSecret: "test-api-secret" }),
     setSetting: (k: string, v: unknown) => settings.set(k, clone(v)),
     __reset: () => {
       bots.clear();
@@ -109,6 +118,11 @@ vi.mock("../src/trading/store.js", () => {
     __orderEvents: () => orderEvents.map((item) => clone(item))
   };
 });
+
+const notificationState = vi.hoisted(() => ({ gate: undefined as Promise<void> | undefined }));
+vi.mock("../src/trading/notifications.js", () => ({
+  notify: vi.fn(async () => { await notificationState.gate; })
+}));
 
 import { TradingEngine } from "../src/trading/engine.js";
 import type { RunningBot } from "../src/trading/engineRuntime.js";
@@ -172,6 +186,7 @@ const flush = () => new Promise((r) => setTimeout(r, 5));
 function baseConfig(id: string, over: Partial<BotConfig> = {}): BotConfig {
   return {
     id,
+    ownerUserId: "legacy-operator",
     name: id,
     strategyName: "s",
     ir: counterIR as unknown as BotConfig["ir"],
@@ -194,9 +209,259 @@ function baseConfig(id: string, over: Partial<BotConfig> = {}): BotConfig {
   };
 }
 
-afterEach(() => (store as unknown as { __reset: () => void }).__reset());
+afterEach(() => {
+  notificationState.gate = undefined;
+  (store as unknown as { __reset: () => void }).__reset();
+});
 
 describe("engine lifecycle E2E", () => {
+  it("quiesces running bots before waiting for another owner start to drain", async () => {
+    const f = fakeProvider();
+    const originalGetCandles = f.provider.getCandles.bind(f.provider);
+    let blockedSeedStarted = false;
+    let releaseSeed = () => {};
+    const seedGate = new Promise<void>((resolve) => { releaseSeed = resolve; });
+    f.provider.getCandles = async (...args: Parameters<typeof originalGetCandles>) => {
+      if ((args[0] as { symbol?: string }).symbol === "ETHUSDT") {
+        blockedSeedStarted = true;
+        await seedGate;
+      }
+      return originalGetCandles(...args);
+    };
+    const engine = new TradingEngine(f.provider as never, () => {}, () => []);
+    const ownerUserId = "two-phase-owner";
+    const running = baseConfig("two-phase-running", { ownerUserId });
+    await engine.start(running);
+    const startingConfig = baseConfig("two-phase-starting", { ownerUserId, symbol: "ETHUSDT" });
+    const starting = engine.start(startingConfig);
+    while (!blockedSeedStarted) await Promise.resolve();
+
+    const revocation = engine.stopOwnerSafely(ownerUserId);
+    await flush();
+    expect(engine.isRunningForOwner(ownerUserId, running.id)).toBe(false);
+    releaseSeed();
+
+    await expect(starting).rejects.toThrow(/access changed/i);
+    await revocation;
+    expect(engine.isRunningForOwner(ownerUserId, startingConfig.id)).toBe(false);
+  });
+
+  it("holds the bot lifecycle lock across an asynchronous start preflight", async () => {
+    const f = fakeProvider();
+    const engine = new TradingEngine(f.provider as never, () => {}, () => []);
+    const config = baseConfig("locked-preflight", { ownerUserId: "preflight-owner", exchange: "bybit", market: "futures" });
+    let preflightEntered = false;
+    let releasePreflight = () => {};
+    const preflightGate = new Promise<void>((resolve) => { releasePreflight = resolve; });
+    const start = engine.start(config, { preflight: async () => { preflightEntered = true; await preflightGate; } });
+    while (!preflightEntered) await Promise.resolve();
+    let mutationEntered = false;
+    const mutation = engine.withBotLifecycleLock("preflight-owner", config.id, async () => {
+      mutationEntered = true;
+      return engine.isRunningForOwner("preflight-owner", config.id);
+    });
+
+    await flush();
+    expect(mutationEntered).toBe(false);
+    releasePreflight();
+    await start;
+    await expect(mutation).resolves.toBe(true);
+    engine.shutdown();
+  });
+
+  it("does not invalidate an authorized in-flight start when start suspension is merely cleared", async () => {
+    const f = fakeProvider();
+    const originalGetCandles = f.provider.getCandles.bind(f.provider);
+    let seedStarted = false;
+    let releaseSeed = () => {};
+    const seedGate = new Promise<void>((resolve) => { releaseSeed = resolve; });
+    f.provider.getCandles = async (...args: Parameters<typeof originalGetCandles>) => {
+      seedStarted = true;
+      await seedGate;
+      return originalGetCandles(...args);
+    };
+    const engine = new TradingEngine(f.provider as never, () => {}, () => []);
+    const config = baseConfig("restore-during-start", { ownerUserId: "restore-owner" });
+    const start = engine.start(config);
+    while (!seedStarted) await Promise.resolve();
+
+    engine.resumeOwnerStarts("restore-owner");
+    releaseSeed();
+
+    await expect(start).resolves.toBeUndefined();
+    expect(engine.isRunningForOwner("restore-owner", config.id)).toBe(true);
+    engine.shutdown();
+  });
+
+  it("tombstones a deleting bot before waiting for its lifecycle lock", async () => {
+    const engine = new TradingEngine(fakeProvider().provider as never, () => {}, () => []);
+    const config = baseConfig("delete-tombstone", { ownerUserId: "delete-owner" });
+    let lockEntered = false;
+    let releaseLock = () => {};
+    const lockGate = new Promise<void>((resolve) => { releaseLock = resolve; });
+    const blocker = engine.withBotLifecycleLock("delete-owner", config.id, async () => { lockEntered = true; await lockGate; });
+    while (!lockEntered) await Promise.resolve();
+    let removed = false;
+    const deletion = engine.deleteSafelyForOwner("delete-owner", config.id, () => { removed = true; });
+
+    await expect(engine.start(config)).rejects.toThrow(/access changed/i);
+    releaseLock();
+    await blocker;
+    await deletion;
+    expect(removed).toBe(true);
+    expect(engine.isRunningForOwner("delete-owner", config.id)).toBe(false);
+  });
+
+  it("does not hold lifecycle locks while outbound start notifications are pending", async () => {
+    const f = fakeProvider();
+    const engine = new TradingEngine(f.provider as never, () => {}, () => []);
+    const config = baseConfig("slow-start-notification", { ownerUserId: "notify-owner" });
+    let releaseNotification = () => {};
+    notificationState.gate = new Promise<void>((resolve) => { releaseNotification = resolve; });
+    let startSettled = false;
+    const start = engine.start(config).then(() => { startSettled = true; });
+
+    await flush();
+    expect(startSettled).toBe(true);
+    const revocation = engine.stopOwnerSafely("notify-owner");
+    await flush();
+    expect(engine.isRunningForOwner("notify-owner", config.id)).toBe(false);
+    releaseNotification();
+    await Promise.all([start, revocation]);
+  });
+
+  it("cancels and drains an in-flight owner start before access revocation completes", async () => {
+    const f = fakeProvider();
+    const originalGetCandles = f.provider.getCandles.bind(f.provider);
+    let seedStarted = false;
+    let releaseSeed = () => {};
+    const seedGate = new Promise<void>((resolve) => { releaseSeed = resolve; });
+    f.provider.getCandles = async (...args: Parameters<typeof originalGetCandles>) => {
+      seedStarted = true;
+      await seedGate;
+      return originalGetCandles(...args);
+    };
+    const engine = new TradingEngine(f.provider as never, () => {}, () => []);
+    const config = baseConfig("revoked-in-flight-start", { ownerUserId: "owner-revoked", exchange: "bybit", market: "futures" });
+    const start = engine.start(config);
+    while (!seedStarted) await Promise.resolve();
+
+    const revoke = engine.stopOwnerSafely("owner-revoked");
+    await flush();
+    expect(engine.isRunningForOwner("owner-revoked", config.id)).toBe(false);
+    releaseSeed();
+
+    await expect(start).rejects.toThrow(/access changed/i);
+    await expect(revoke).resolves.toBe(0);
+    await expect(engine.start(config)).rejects.toThrow(/access changed/i);
+    engine.resumeOwnerStarts("owner-revoked");
+    await expect(engine.start(config)).resolves.toBeUndefined();
+    engine.shutdown();
+  });
+
+  it("closes a subscription created concurrently with owner access revocation", async () => {
+    const f = fakeProvider();
+    let subscribeStarted = false;
+    let releaseSubscribe = () => {};
+    let closes = 0;
+    const subscribeGate = new Promise<void>((resolve) => { releaseSubscribe = resolve; });
+    f.provider.subscribeMarket = vi.fn(async () => {
+      subscribeStarted = true;
+      await subscribeGate;
+      return { close: () => { closes += 1; } };
+    });
+    const engine = new TradingEngine(f.provider as never, () => {}, () => []);
+    const config = baseConfig("revoked-subscribe-start", { ownerUserId: "owner-subscribe", exchange: "bybit", market: "futures" });
+    const start = engine.start(config);
+    while (!subscribeStarted) await Promise.resolve();
+
+    const revoke = engine.stopOwnerSafely("owner-subscribe");
+    releaseSubscribe();
+
+    await expect(start).rejects.toThrow(/access changed/i);
+    await revoke;
+    expect(closes).toBe(1);
+    expect(engine.isRunningForOwner("owner-subscribe", config.id)).toBe(false);
+  });
+
+  it("waits for an in-flight start before an owner-scoped interactive stop returns", async () => {
+    const f = fakeProvider();
+    const originalGetCandles = f.provider.getCandles.bind(f.provider);
+    let seedStarted = false;
+    let releaseSeed = () => {};
+    const seedGate = new Promise<void>((resolve) => { releaseSeed = resolve; });
+    f.provider.getCandles = async (...args: Parameters<typeof originalGetCandles>) => {
+      seedStarted = true;
+      await seedGate;
+      return originalGetCandles(...args);
+    };
+    const engine = new TradingEngine(f.provider as never, () => {}, () => []);
+    const config = baseConfig("interactive-stop-start", { ownerUserId: "owner-stop", exchange: "bybit", market: "futures" });
+    const start = engine.start(config);
+    while (!seedStarted) await Promise.resolve();
+    const stop = engine.stopSafelyForOwner("owner-stop", config.id);
+
+    releaseSeed();
+    await start;
+    await stop;
+    expect(engine.isRunningForOwner("owner-stop", config.id)).toBe(false);
+  });
+
+  it("prevents an in-flight start from surviving an emergency stop and re-arm", async () => {
+    const f = fakeProvider();
+    const originalGetCandles = f.provider.getCandles.bind(f.provider);
+    let seedStarted = false;
+    let releaseSeed = () => {};
+    const seedGate = new Promise<void>((resolve) => { releaseSeed = resolve; });
+    f.provider.getCandles = async (...args: Parameters<typeof originalGetCandles>) => {
+      seedStarted = true;
+      await seedGate;
+      return originalGetCandles(...args);
+    };
+    const engine = new TradingEngine(f.provider as never, () => {}, () => []);
+    const config = baseConfig("kill-in-flight-start", { ownerUserId: "owner-kill", exchange: "bybit", market: "futures" });
+    const start = engine.start(config);
+    while (!seedStarted) await Promise.resolve();
+
+    const killed = engine.emergencyStopForOwner("owner-kill");
+    releaseSeed();
+
+    await expect(start).rejects.toThrow(/access changed/i);
+    await expect(killed).resolves.toMatchObject({ phase: "terminal", ok: true });
+    engine.resetEmergencyAfterTerminal("owner-kill");
+    expect(engine.isRunningForOwner("owner-kill", config.id)).toBe(false);
+    engine.shutdown();
+  });
+
+  it("serializes account credential mutations behind in-flight starts", async () => {
+    const f = fakeProvider();
+    const originalGetCandles = f.provider.getCandles.bind(f.provider);
+    let seedStarted = false;
+    let releaseSeed = () => {};
+    const seedGate = new Promise<void>((resolve) => { releaseSeed = resolve; });
+    f.provider.getCandles = async (...args: Parameters<typeof originalGetCandles>) => {
+      seedStarted = true;
+      await seedGate;
+      return originalGetCandles(...args);
+    };
+    const engine = new TradingEngine(f.provider as never, () => {}, () => []);
+    const config = baseConfig("credential-start-race", { ownerUserId: "owner-keys", exchange: "bybit", market: "futures" });
+    const start = engine.start(config);
+    while (!seedStarted) await Promise.resolve();
+    let mutationEntered = false;
+    const mutation = engine.withAccountLifecycleLock("owner-keys", "bybit:default", async () => {
+      mutationEntered = true;
+      return engine.isRunningForOwner("owner-keys", config.id) ? "blocked" : "rotated";
+    });
+
+    await flush();
+    expect(mutationEntered).toBe(false);
+    releaseSeed();
+    await start;
+    await expect(mutation).resolves.toBe("blocked");
+    engine.shutdown();
+  });
+
   it("serializes concurrent live starts on the same account instrument", async () => {
     const f = fakeProvider();
     const originalGetCandles = f.provider.getCandles.bind(f.provider);
@@ -935,6 +1200,17 @@ describe("engine lifecycle E2E", () => {
     await flush();
     expect(store.getSetting<{ vars: Record<string, number> }>(`state:${cfg.id}`)?.vars.count).toBe(4);
     engine2.shutdown();
+  });
+
+  it("fails closed instead of resuming a bot whose owner permission was revoked", async () => {
+    const engine = new TradingEngine(fakeProvider().provider as never, () => {});
+    const cfg = baseConfig("e2e-revoked-owner", { status: "running", ownerUserId: "revoked-owner" });
+    store.upsertBot(cfg);
+
+    await engine.resume(async (candidate) => candidate.ownerUserId !== "revoked-owner");
+
+    expect(engine.isRunning(cfg.id)).toBe(false);
+    expect(store.listBots().find((candidate) => candidate.id === cfg.id)?.status).toBe("stopped");
   });
 
   it("pauses a bot resumed with stale risky state until an operator confirms", async () => {

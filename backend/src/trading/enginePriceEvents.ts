@@ -2,6 +2,7 @@ import { commitExecutionFill } from "./executionCommit.js";
 import type { RunningBot } from "./engineRuntime.js";
 import { persistPaper, roundTradingValue as round } from "./engineState.js";
 import { notify } from "./notifications.js";
+import { tradingOwnerForBot } from "./ownership.js";
 import { recordConfirmedFill } from "./spotInventory.js";
 import { listOrderJournal, withStoreTransaction } from "./store.js";
 import type { FillRecord } from "./types.js";
@@ -20,7 +21,7 @@ export function applyPriceTriggeredFills(bot: RunningBot, price: number, callbac
     callbacks.log(`Order ${fill.kind} ${fill.qty} @ ${fill.price}${fill.kind === "close" ? ` · PnL ${round(fill.realizedPnl)}` : ""}`);
     callbacks.broadcast(fill);
     if (fill.kind === "close") {
-      void notify({ event: "close", bot: bot.config.name, symbol: bot.config.symbol, text: `Order fill · PnL ${round(fill.realizedPnl)}` });
+      void notify({ ownerUserId: tradingOwnerForBot(bot.config), event: "close", bot: bot.config.name, symbol: bot.config.symbol, text: `Order fill · PnL ${round(fill.realizedPnl)}` });
     }
   }
   if (fills.length && bot.paper) persistPaper(bot);

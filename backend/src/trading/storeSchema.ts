@@ -2,13 +2,32 @@ import type { DatabaseSync } from "node:sqlite";
 import { legacyTradingAccountId, paperTradingAccountId } from "./tradingAccounts.js";
 import type { TradingAccountExchange } from "./types.js";
 
-export const TRADING_SCHEMA_VERSION = 5;
+export const TRADING_SCHEMA_VERSION = 6;
+
+/** Stable standalone/legacy tenant. Database-auth deployments should pass the
+ * real administrator id through `legacyOwnerUserId` during first migration. */
+export const LEGACY_TRADING_OWNER_ID = "legacy-operator";
+
+export interface TradingStoreMigrationOptions {
+  legacyOwnerUserId?: string;
+  /** Re-encrypts a legacy settings ciphertext with per-account AEAD context.
+   * Required only when a `keys:*` row exists during the v6 migration. */
+  reencryptLegacyCredential?: (
+    encryptedPayload: string,
+    context: { ownerUserId: string; accountId: string; exchange: TradingAccountExchange }
+  ) => string;
+}
+
+interface MigrationContext {
+  legacyOwnerUserId: string;
+  reencryptLegacyCredential?: TradingStoreMigrationOptions["reencryptLegacyCredential"];
+}
 
 interface Migration {
   version: number;
   name: string;
   sql: string;
-  apply?: (database: DatabaseSync, appliedAt: number) => void;
+  apply?: (database: DatabaseSync, appliedAt: number, context: MigrationContext) => void;
 }
 
 const migrations: Migration[] = [
@@ -164,8 +183,162 @@ const migrations: Migration[] = [
         ON trading_accounts(exchange, enabled, updatedAt DESC);
     `,
     apply: seedLegacyTradingAccountsAndBackfillBots
+  },
+  {
+    version: 6,
+    name: "tenant_owned_trading_resources_and_credentials",
+    sql: "",
+    apply: migrateTenantOwnership
   }
 ];
+
+function migrateTenantOwnership(database: DatabaseSync, appliedAt: number, context: MigrationContext): void {
+  const ownerUserId = normalizeOwnerUserId(context.legacyOwnerUserId);
+
+  // Make sure every legacy key/config has an account row before rebuilding the
+  // registry with composite tenant identity.
+  seedLegacyTradingAccountsAndBackfillBots(database, appliedAt);
+
+  database.exec(`
+    CREATE TABLE bots_v6 (
+      id TEXT PRIMARY KEY,
+      ownerUserId TEXT NOT NULL CHECK (length(trim(ownerUserId)) BETWEEN 1 AND 160),
+      config TEXT NOT NULL,
+      updatedAt INTEGER NOT NULL,
+      UNIQUE (ownerUserId, id)
+    );
+    CREATE TABLE trading_accounts_v6 (
+      id TEXT PRIMARY KEY,
+      ownerUserId TEXT NOT NULL CHECK (length(trim(ownerUserId)) BETWEEN 1 AND 160),
+      label TEXT NOT NULL,
+      exchange TEXT NOT NULL CHECK (exchange IN ('binance', 'bybit')),
+      ownership TEXT NOT NULL CHECK (ownership IN ('own', 'managed')),
+      enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL,
+      UNIQUE (ownerUserId, id)
+    );
+    CREATE TABLE audit_log_v6 (
+      id TEXT PRIMARY KEY,
+      ownerUserId TEXT NOT NULL CHECK (length(trim(ownerUserId)) BETWEEN 1 AND 160),
+      actorUserId TEXT,
+      actor TEXT NOT NULL,
+      role TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target TEXT,
+      statusCode INTEGER NOT NULL,
+      ip TEXT,
+      data TEXT,
+      ts INTEGER NOT NULL
+    );
+
+    INSERT INTO bots_v6 (id, ownerUserId, config, updatedAt)
+      SELECT id, ${sqlLiteral(ownerUserId)}, config, updatedAt FROM bots;
+    INSERT INTO trading_accounts_v6
+      (id, ownerUserId, label, exchange, ownership, enabled, createdAt, updatedAt)
+      SELECT id, ${sqlLiteral(ownerUserId)}, label, exchange, ownership, enabled, createdAt, updatedAt
+      FROM trading_accounts;
+    INSERT INTO audit_log_v6
+      (id, ownerUserId, actorUserId, actor, role, action, target, statusCode, ip, data, ts)
+      SELECT id, ${sqlLiteral(ownerUserId)}, NULL, actor, role, action, target, statusCode, ip, data, ts
+      FROM audit_log;
+
+    DROP TABLE bots;
+    ALTER TABLE bots_v6 RENAME TO bots;
+    DROP TABLE trading_accounts;
+    ALTER TABLE trading_accounts_v6 RENAME TO trading_accounts;
+    DROP TABLE audit_log;
+    ALTER TABLE audit_log_v6 RENAME TO audit_log;
+
+    CREATE INDEX idx_bots_owner_updated
+      ON bots(ownerUserId, updatedAt DESC);
+    CREATE INDEX idx_trading_accounts_owner_exchange_enabled
+      ON trading_accounts(ownerUserId, exchange, enabled, updatedAt DESC);
+    CREATE INDEX idx_audit_log_owner_ts
+      ON audit_log(ownerUserId, ts DESC);
+    CREATE INDEX idx_audit_log_ts
+      ON audit_log(ts DESC);
+
+    UPDATE trading_accounts
+      SET label = CASE exchange
+        WHEN 'binance' THEN 'Binance default (migrated)'
+        ELSE 'Bybit default (migrated)'
+      END
+      WHERE id IN ('binance:default', 'bybit:default');
+
+    CREATE TABLE trading_account_credentials (
+      ownerUserId TEXT NOT NULL,
+      accountId TEXT NOT NULL,
+      encryptedValue TEXT NOT NULL,
+      updatedAt INTEGER NOT NULL,
+      PRIMARY KEY (ownerUserId, accountId),
+      FOREIGN KEY (ownerUserId, accountId)
+        REFERENCES trading_accounts(ownerUserId, id) ON DELETE CASCADE
+    );
+  `);
+
+  const legacyKeys = database.prepare(`
+    SELECT key, value, encrypted FROM settings
+    WHERE key IN ('keys:binance', 'keys:bybit')
+    ORDER BY key
+  `).all() as Array<{ key: string; value: string; encrypted: number }>;
+  const insertCredential = database.prepare(`
+    INSERT INTO trading_account_credentials (ownerUserId, accountId, encryptedValue, updatedAt)
+    VALUES (?, ?, ?, ?)
+  `);
+  for (const row of legacyKeys) {
+    if (row.encrypted !== 1) {
+      throw new Error(`Legacy credential ${row.key} is not encrypted; refusing tenant migration`);
+    }
+    const exchange: TradingAccountExchange = row.key === "keys:binance" ? "binance" : "bybit";
+    const accountId = legacyTradingAccountId(exchange);
+    const transform = context.reencryptLegacyCredential;
+    if (!transform) {
+      throw new Error(`Legacy credential ${row.key} requires an AEAD re-encryption callback`);
+    }
+    const encryptedValue = transform(row.value, { ownerUserId, accountId, exchange });
+    if (!encryptedValue.trim()) throw new Error(`Legacy credential ${row.key} re-encryption returned an empty payload`);
+    insertCredential.run(ownerUserId, accountId, encryptedValue, appliedAt);
+  }
+  if (legacyKeys.length > 0) {
+    database.prepare("DELETE FROM settings WHERE key IN ('keys:binance', 'keys:bybit')").run();
+  }
+
+  // A process restart must never inherit a server-wide live arm into the new
+  // tenant model. Every owner explicitly re-arms after migration.
+  database.prepare("DELETE FROM settings WHERE key = 'liveTradingEnabled'").run();
+
+  // Preserve the legacy global row for Telegram/research compatibility while
+  // seeding the new owner's isolated notification configuration.
+  database.prepare(`
+    INSERT OR IGNORE INTO settings (key, value, encrypted)
+    SELECT ?, value, encrypted FROM settings WHERE key = 'notify'
+  `).run(`owner:${ownerUserId}:notify`);
+
+  // The emergency-stop gate is a safety lock, not a preference. Move it to
+  // the migrated owner's namespace in the same transaction so a restart can
+  // never silently re-enable live starts for the inherited accounts.
+  database.prepare(`
+    INSERT INTO settings (key, value, encrypted)
+    SELECT ?, value, encrypted FROM settings WHERE key = 'tradingEmergencyStop'
+    ON CONFLICT(key) DO UPDATE SET
+      value = excluded.value,
+      encrypted = excluded.encrypted
+  `).run(`owner:${ownerUserId}:tradingEmergencyStop`);
+  database.prepare("DELETE FROM settings WHERE key = 'tradingEmergencyStop'").run();
+}
+
+function normalizeOwnerUserId(value: string): string {
+  const normalized = value.trim();
+  if (normalized.length < 1 || normalized.length > 160) {
+    throw new Error("legacyOwnerUserId must contain from 1 through 160 characters");
+  }
+  return normalized;
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
 
 function seedLegacyTradingAccountsAndBackfillBots(database: DatabaseSync, appliedAt: number): void {
   const exchanges = new Set<TradingAccountExchange>();
@@ -222,7 +395,12 @@ export interface MigrationResult {
   applied: ReadonlyArray<{ version: number; name: string }>;
 }
 
-export function migrateTradingStore(database: DatabaseSync, now = Date.now): MigrationResult {
+export function migrateTradingStore(
+  database: DatabaseSync,
+  now = Date.now,
+  options: TradingStoreMigrationOptions = {}
+): MigrationResult {
+  database.exec("PRAGMA foreign_keys = ON");
   const fromVersion = readUserVersion(database);
   if (!Number.isSafeInteger(fromVersion) || fromVersion < 0) {
     throw new Error(`Invalid trading database schema version: ${fromVersion}`);
@@ -235,6 +413,10 @@ export function migrateTradingStore(database: DatabaseSync, now = Date.now): Mig
   if (pending.length === 0) return { fromVersion, toVersion: fromVersion, applied: [] };
 
   const applied: Array<{ version: number; name: string }> = [];
+  const context: MigrationContext = {
+    legacyOwnerUserId: options.legacyOwnerUserId ?? LEGACY_TRADING_OWNER_ID,
+    reencryptLegacyCredential: options.reencryptLegacyCredential
+  };
   database.exec("BEGIN IMMEDIATE");
   try {
     database.exec(`
@@ -248,7 +430,7 @@ export function migrateTradingStore(database: DatabaseSync, now = Date.now): Mig
     for (const migration of pending) {
       const appliedAt = now();
       database.exec(migration.sql);
-      migration.apply?.(database, appliedAt);
+      migration.apply?.(database, appliedAt, context);
       record.run(migration.version, migration.name, appliedAt);
       database.exec(`PRAGMA user_version = ${migration.version}`);
       applied.push({ version: migration.version, name: migration.name });

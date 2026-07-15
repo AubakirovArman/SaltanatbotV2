@@ -1,25 +1,33 @@
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
+import { describeTradingAccount, legacyTradingAccountId, tradingAccountBindingIssue, withResolvedBotAccountId } from "../src/trading/tradingAccounts.js";
 import {
-  describeTradingAccount,
-  legacyTradingAccountId,
-  tradingAccountBindingIssue,
-  withResolvedBotAccountId
-} from "../src/trading/tradingAccounts.js";
-import {
+  configureTradingAccountStore,
+  credentialAad,
+  deleteTradingAccountCredentialsForOwner,
   deleteTradingAccountFrom,
+  deleteTradingAccountFromForOwner,
+  getTradingAccountCredentialsForOwner,
   getTradingAccountFrom,
+  getTradingAccountFromForOwner,
   insertTradingAccountInto,
+  insertTradingAccountIntoForOwner,
   listTradingAccountsFrom,
+  listTradingAccountsFromForOwner,
+  setTradingAccountCredentialsForOwner,
   TradingAccountInUseError,
-  updateTradingAccountIn
+  updateTradingAccountIn,
+  updateTradingAccountInForOwner
 } from "../src/trading/store.js";
+import { openCredentialPayload, sealCredentialPayload } from "../src/trading/credentialCrypto.js";
 import { migrateTradingStore } from "../src/trading/storeSchema.js";
 import { buildPortfolioSummary } from "../src/trading/enginePortfolio.js";
 import type { RunningBot } from "../src/trading/engineRuntime.js";
 import type { BotConfig, ExchangeAdapter, PendingOrder, PositionState, TradingAccount } from "../src/trading/types.js";
 
 const databases: DatabaseSync[] = [];
+const OWNER_A = "owner-a";
+const OWNER_B = "owner-b";
 
 function database() {
   const db = new DatabaseSync(":memory:");
@@ -31,6 +39,7 @@ function database() {
 function account(overrides: Partial<TradingAccount> = {}): TradingAccount {
   return {
     id: "metadata-account",
+    ownerUserId: OWNER_A,
     label: "Desk",
     exchange: "bybit",
     ownership: "managed",
@@ -84,11 +93,7 @@ describe("trading account registry", () => {
     const db = database();
     const legacy = account({ id: "bybit:default", ownership: "own" });
     insertTradingAccountInto(db, legacy);
-    db.prepare("INSERT INTO bots (id, config, updatedAt) VALUES (?, ?, ?)").run(
-      "legacy-bot",
-      JSON.stringify(bot({ id: "legacy-bot", accountId: undefined })),
-      1
-    );
+    db.prepare("INSERT INTO bots (id, ownerUserId, config, updatedAt) VALUES (?, ?, ?, ?)").run("legacy-bot", OWNER_A, JSON.stringify(bot({ id: "legacy-bot", accountId: undefined })), 1);
 
     expect(() => deleteTradingAccountFrom(db, legacy.id)).toThrow(TradingAccountInUseError);
     expect(getTradingAccountFrom(db, legacy.id)).toEqual(legacy);
@@ -98,19 +103,81 @@ describe("trading account registry", () => {
     expect(getTradingAccountFrom(db, legacy.id)).toBeUndefined();
   });
 
+  it("scopes every account read and mutation to its explicit owner", () => {
+    const db = database();
+    const initial = account();
+    insertTradingAccountIntoForOwner(db, OWNER_A, initial);
+
+    expect(getTradingAccountFromForOwner(db, OWNER_A, initial.id)).toEqual(initial);
+    expect(getTradingAccountFromForOwner(db, OWNER_B, initial.id)).toBeUndefined();
+    expect(listTradingAccountsFromForOwner(db, OWNER_B)).toEqual([]);
+    expect(updateTradingAccountInForOwner(db, OWNER_B, { ...initial, label: "stolen" })).toBe(false);
+    expect(deleteTradingAccountFromForOwner(db, OWNER_B, initial.id)).toBe(false);
+    expect(getTradingAccountFromForOwner(db, OWNER_A, initial.id)?.label).toBe("Desk");
+    db.prepare(`
+      INSERT INTO trading_account_credentials (ownerUserId, accountId, encryptedValue, updatedAt)
+      VALUES (?, ?, 'opaque-aead', 1)
+    `).run(OWNER_A, initial.id);
+    expect(deleteTradingAccountFromForOwner(db, OWNER_A, initial.id)).toBe(true);
+    expect(db.prepare("SELECT count(*) AS count FROM trading_account_credentials").get()).toEqual({ count: 0 });
+  });
+
+  it("binds encrypted credentials to owner, account and exchange AAD", () => {
+    const key = Buffer.alloc(32, 7);
+    const aad = credentialAad(OWNER_A, "account-a", "bybit");
+    const payload = sealCredentialPayload(key, JSON.stringify({ apiKey: "key", apiSecret: "secret" }), aad);
+
+    expect(JSON.parse(openCredentialPayload(key, payload, aad))).toEqual({ apiKey: "key", apiSecret: "secret" });
+    expect(() => openCredentialPayload(key, payload, credentialAad(OWNER_B, "account-a", "bybit"))).toThrow();
+    expect(() => openCredentialPayload(key, payload, credentialAad(OWNER_A, "account-b", "bybit"))).toThrow();
+    expect(() => openCredentialPayload(key, payload, credentialAad(OWNER_A, "account-a", "binance"))).toThrow();
+  });
+
+  it("persists encrypted credentials behind owner-scoped account access", () => {
+    const db = database();
+    const key = Buffer.alloc(32, 9);
+    configureTradingAccountStore(db, {
+      seal: (plain, aad) => sealCredentialPayload(key, plain, aad),
+      open: (payload, aad) => openCredentialPayload(key, payload, aad)
+    });
+    const accountA = account({ id: "account-a", ownerUserId: OWNER_A });
+    const accountB = account({ id: "account-b", ownerUserId: OWNER_B });
+    insertTradingAccountIntoForOwner(db, OWNER_A, accountA);
+    insertTradingAccountIntoForOwner(db, OWNER_B, accountB);
+
+    setTradingAccountCredentialsForOwner(OWNER_A, accountA.id, { apiKey: "public-a", apiSecret: "secret-a" });
+
+    expect(getTradingAccountCredentialsForOwner(OWNER_A, accountA.id)).toEqual({
+      apiKey: "public-a",
+      apiSecret: "secret-a"
+    });
+    expect(getTradingAccountCredentialsForOwner(OWNER_B, accountA.id)).toBeUndefined();
+    expect(() => setTradingAccountCredentialsForOwner(OWNER_B, accountA.id, { apiKey: "stolen" })).toThrow("does not belong to owner");
+    expect(deleteTradingAccountCredentialsForOwner(OWNER_B, accountA.id)).toBe(false);
+    const stored = db
+      .prepare(`
+      SELECT encryptedValue FROM trading_account_credentials
+      WHERE ownerUserId = ? AND accountId = ?
+    `)
+      .get(OWNER_A, accountA.id) as { encryptedValue: string };
+    expect(stored.encryptedValue).not.toContain("secret-a");
+    expect(deleteTradingAccountCredentialsForOwner(OWNER_A, accountA.id)).toBe(true);
+    expect(getTradingAccountCredentialsForOwner(OWNER_A, accountA.id)).toBeUndefined();
+  });
+
   it("maps legacy bot configs to deterministic account ids", () => {
     expect(withResolvedBotAccountId(bot({ accountId: undefined })).accountId).toBe("bybit:default");
     expect(withResolvedBotAccountId(bot({ exchange: "paper", accountId: undefined })).accountId).toBe("paper:bot");
   });
 
-  it("reports credential truth and rejects metadata-only execution", () => {
+  it("reports account-isolated credential capabilities", () => {
     const metadata = account();
     expect(describeTradingAccount(metadata, true)).toMatchObject({
-      status: "metadata_only",
-      credential: { mode: "unsupported", status: "unsupported", isolated: false },
-      capabilities: { liveExecution: false, credentialIsolation: false, multipleCredentialAccounts: false }
+      status: "ready",
+      credential: { mode: "account_isolated", status: "configured", isolated: true },
+      capabilities: { liveExecution: true, credentialIsolation: true, multipleCredentialAccounts: true }
     });
-    expect(tradingAccountBindingIssue(bot({ accountId: metadata.id }), metadata)?.code).toBe("MULTI_ACCOUNT_CREDENTIALS_UNSUPPORTED");
+    expect(tradingAccountBindingIssue(bot({ accountId: metadata.id }), metadata)).toBeUndefined();
 
     const legacy = account({ id: legacyTradingAccountId("bybit"), ownership: "own" });
     expect(describeTradingAccount(legacy, false)).toMatchObject({ status: "credentials_missing", credential: { status: "missing" } });
@@ -125,21 +192,24 @@ describe("trading account registry", () => {
         id: "bybit",
         market: "futures",
         accountId,
-        async price() { return 100; },
+        async price() {
+          return 100;
+        },
         async account() {
           accountCalls.push(accountId);
           return { balance, equity: balance, currency: "USDT" };
         },
-        async position() { return null; },
-        async execute() { return { ok: true, message: "ok", fills: [] }; }
+        async position() {
+          return null;
+        },
+        async execute() {
+          return { ok: true, message: "ok", fills: [] };
+        }
       };
       return { config: bot({ id, accountId }), adapter } as unknown as RunningBot;
     };
 
-    const summary = await buildPortfolioSummary(
-      [running("a-1", "account-a", 100), running("a-2", "account-a", 100), running("b-1", "account-b", 200)],
-      () => 0
-    );
+    const summary = await buildPortfolioSummary([running("a-1", "account-a", 100), running("a-2", "account-a", 100), running("b-1", "account-b", 200)], () => 0);
 
     expect(summary.exchanges.map((entry) => entry.id).sort()).toEqual(["account-a:futures", "account-b:futures"]);
     expect(summary.exchanges.map((entry) => entry.accountId).sort()).toEqual(["account-a", "account-b"]);
@@ -159,18 +229,30 @@ describe("trading account registry", () => {
       id: "bybit",
       market: "futures",
       accountId: "bybit:default",
-      async price() { return 100; },
-      async account() { return { balance: 1_000, equity: 1_050, currency: "USDT" }; },
-      async position() { throw new Error("symbol fallback must not run"); },
-      async positions() { positionsCalls += 1; return positions; },
-      async orders(symbol) { ordersCalls += 1; if (symbol) throw new Error("symbol fallback must not run"); return orders; },
-      async execute() { return { ok: true, message: "ok", fills: [] }; }
+      async price() {
+        return 100;
+      },
+      async account() {
+        return { balance: 1_000, equity: 1_050, currency: "USDT" };
+      },
+      async position() {
+        throw new Error("symbol fallback must not run");
+      },
+      async positions() {
+        positionsCalls += 1;
+        return positions;
+      },
+      async orders(symbol) {
+        ordersCalls += 1;
+        if (symbol) throw new Error("symbol fallback must not run");
+        return orders;
+      },
+      async execute() {
+        return { ok: true, message: "ok", fills: [] };
+      }
     };
 
-    const summary = await buildPortfolioSummary(
-      [{ config: bot({ id: "btc-bot", accountId: "bybit:default", symbol: "BTCUSDT" }), adapter } as unknown as RunningBot],
-      () => 0
-    );
+    const summary = await buildPortfolioSummary([{ config: bot({ id: "btc-bot", accountId: "bybit:default", symbol: "BTCUSDT" }), adapter } as unknown as RunningBot], () => 0);
 
     expect(positionsCalls).toBe(1);
     expect(ordersCalls).toBe(1);
@@ -187,18 +269,27 @@ describe("trading account registry", () => {
       id: "binance",
       market: "futures",
       accountId: "binance:default",
-      async price() { return 100; },
-      async account() { return { balance: 500, equity: 500, currency: "USDT" }; },
-      async position() { throw new Error("position unavailable"); },
-      async positions() { throw new Error("positions unavailable"); },
-      async orders() { throw new Error("orders unavailable"); },
-      async execute() { return { ok: true, message: "ok", fills: [] }; }
+      async price() {
+        return 100;
+      },
+      async account() {
+        return { balance: 500, equity: 500, currency: "USDT" };
+      },
+      async position() {
+        throw new Error("position unavailable");
+      },
+      async positions() {
+        throw new Error("positions unavailable");
+      },
+      async orders() {
+        throw new Error("orders unavailable");
+      },
+      async execute() {
+        return { ok: true, message: "ok", fills: [] };
+      }
     };
 
-    const summary = await buildPortfolioSummary(
-      [{ config: bot({ id: "unavailable", exchange: "binance", accountId: "binance:default" }), adapter } as unknown as RunningBot],
-      () => 0
-    );
+    const summary = await buildPortfolioSummary([{ config: bot({ id: "unavailable", exchange: "binance", accountId: "binance:default" }), adapter } as unknown as RunningBot], () => 0);
 
     expect(summary.exchanges[0]).toMatchObject({
       positions: [],

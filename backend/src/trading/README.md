@@ -8,7 +8,12 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - `engine.ts`: trading orchestration facade.
 - `engineRuntime.ts`: in-memory bot/runtime state contracts.
 - `engineAdapters.ts`: exchange/paper adapter construction and market routing.
-- `tradingAccounts.ts`: legacy account-id mapping, capability truth and fail-closed bot binding checks.
+- `tradingAccounts.ts`: public account capability truth and fail-closed bot binding checks.
+- `tradingAccountStore.ts`: owner-scoped account metadata and encrypted per-account credential access.
+- `credentialCrypto.ts`: AES-256-GCM envelope used by the tenant credential store.
+- `ownership.ts`: authenticated owner resolution and namespaced settings.
+- `tradeStreamHub.ts`: owner-partitioned private WebSocket fan-out.
+- `engineTenantRuntime.ts`: owner-aware runtime/event/emergency partition inside the shared scheduler.
 - `engineState.ts`: durable state, equity and evaluator-context helpers.
 - `paperLedger.ts`: paper event contracts and deterministic replay reducer.
 - `paperLedgerController.ts`: transition-to-event accounting, verified funding and atomic in-memory commit boundary.
@@ -25,8 +30,8 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - `emergencyStop.ts`: durable account-level stop/cancel/optional reduce-only flatten reconciliation and live-order gate.
 - `emergencyStopRoutes.ts`: emergency HTTP validation, explicit flatten confirmation and re-arm policy.
 - `bybitUta.ts`: normalized Unified Trading Account collateral/debt snapshot, hard borrow guards and explicit borrow/repay/collateral mutations.
-- `../arbitrage/telemetry/`: admin-session-only, GET-only account economics telemetry. It reads keys
-  from encrypted settings, exposes no credential material and remains separate from every order,
+- `../arbitrage/telemetry/`: live-trade-session, GET-only account economics telemetry. It reads only
+  the caller's selected encrypted account credentials, exposes no credential material and remains separate from every order,
   borrow, repayment and transfer mutation.
 - `../arbitrage/paperMultiLeg/`: authenticated `paper-trade`-role deterministic multi-leg plan,
   compensation, append-only journal and restart-recovery surface; it has no private exchange client.
@@ -76,12 +81,20 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - Live Binance/Bybit non-terminal orders use bounded, sequential signed-REST polling as a private-stream fallback.
 - Connected private streams suppress periodic polling; disconnect and reconnect edges trigger an immediate signed-REST gap reconciliation.
 - Replayed, duplicate, identity-conflicting and state-regressing exchange events never mutate a durable order.
-- Paper is the default; live requires explicit global and per-bot authorization.
-- Trading-account metadata is durable and non-secret. The current credential store remains one
-  shared encrypted key pair per exchange: only `binance:default` and `bybit:default` can execute;
-  additional registry rows are explicitly `metadata_only` and cannot be bound to a live bot.
-- Account create/update/delete requires admin access and a secure trading origin. Bound accounts
-  cannot be disabled or deleted, and emergency cancellation remains available for disabled metadata.
+- Paper is the default; live requires an owner-scoped arm plus explicit per-bot authorization.
+- The authenticated session is the only source of trading ownership. Request fields cannot select
+  another tenant, and foreign bot/account/order IDs fail as not found even for an application admin.
+- Trading-account metadata is durable and owner-scoped. Every enabled Binance/Bybit account may
+  hold its own AES-256-GCM credential envelope; its authenticated-data context binds owner, account
+  and exchange, and no secret is serialized into an HTTP or WebSocket response.
+- Account create/update/delete and credential rotation require `live-trade` access plus a secure
+  trading origin. Running/bound robots block unsafe credential/account changes, while emergency
+  cancellation remains available for disabled metadata.
+- Bot lists, fills, logs, journals, audit rows, portfolio snapshots, emergency state, notifications
+  and private trade events are owner-filtered. Permission changes revoke sessions, close that
+  owner's private sockets and quiesce only that owner's runtimes.
+- Database-auth notification channels are outbound-only. The inbound Telegram command poller stays
+  disabled outside explicit legacy single-operator mode so it cannot bypass durable tenant roles.
 - Emergency intent is persisted before exchange I/O; new live orders stay blocked until every requested account action is reconciled, and partial failures can never re-arm live trading.
 - Every live bot has positive position, order, daily-loss and open-order caps; missing legacy caps block start/resume, and exits/cancels remain available.
 - Live preflight binds every command to the bot's exact symbol/market, re-reads the venue price,
@@ -115,7 +128,9 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - Store startup migrates legacy schemas transactionally and refuses databases from a newer,
   unsupported application version.
 - Schema v2 durably records orders, events, fills, current positions and logical strategy runs;
-  schema v4 adds the paper event source; schema v5 adds account metadata and backfills legacy bot bindings.
+  schema v4 adds the paper event source; schema v5 adds account metadata and backfills legacy bot
+  bindings; schema v6 assigns legacy rows to one explicit administrator and transactionally moves
+  legacy exchange keys into owner/account-bound credential envelopes while disarming live trading.
 
 ## Testing
 

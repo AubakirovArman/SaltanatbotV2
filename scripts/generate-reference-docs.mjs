@@ -6,8 +6,10 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const serverPath = path.join(root, "backend/src/server.ts");
 const tradingPath = path.join(root, "backend/src/trading/routes.ts");
+const botLifecycleMutationRoutesPath = path.join(root, "backend/src/trading/botLifecycleMutationRoutes.ts");
 const tradingAccountRoutesPath = path.join(root, "backend/src/trading/tradingAccountRoutes.ts");
 const emergencyStopRoutesPath = path.join(root, "backend/src/trading/emergencyStopRoutes.ts");
+const notificationRoutesPath = path.join(root, "backend/src/trading/notificationRoutes.ts");
 const arbitrageAlertRoutesPath = path.join(root, "backend/src/arbitrage/alertRoutes.ts");
 const researchAlertRoutesPath = path.join(root, "backend/src/arbitrage/researchAlerts/routes.ts");
 const paperMultiLegRoutesPath = path.join(root, "backend/src/arbitrage/paperMultiLeg/routes.ts");
@@ -23,8 +25,10 @@ const blocksDocPath = path.join(root, "docs/BLOCK_CATALOG.generated.md");
 
 const serverSource = readFileSync(serverPath, "utf8");
 const tradingSource = readFileSync(tradingPath, "utf8");
+const botLifecycleMutationRoutesSource = readFileSync(botLifecycleMutationRoutesPath, "utf8");
 const tradingAccountRoutesSource = readFileSync(tradingAccountRoutesPath, "utf8");
 const emergencyStopRoutesSource = readFileSync(emergencyStopRoutesPath, "utf8");
+const notificationRoutesSource = readFileSync(notificationRoutesPath, "utf8");
 const arbitrageAlertRoutesSource = readFileSync(arbitrageAlertRoutesPath, "utf8");
 const researchAlertRoutesSource = readFileSync(researchAlertRoutesPath, "utf8");
 const paperMultiLegRoutesSource = readFileSync(paperMultiLegRoutesPath, "utf8");
@@ -49,11 +53,21 @@ const endpoints = uniqueEndpoints([
   ...extractRoutes(workspaceRoutesSource, "router", "/api/workspaces", 0, "Public", "backend/src/workspaces/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped" })),
   ...extractRoutes(computeJobRoutesSource, "router", "/api/jobs", 0, "Public", "backend/src/jobs/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped" })),
   ...extractRoutes(tradingSource, "router", "/api/trade", tradingSource.indexOf("router.use(requireAuth)"), "Public"),
-  ...extractRoutes(tradingAccountRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/tradingAccountRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin" })),
+  ...extractRoutes(botLifecycleMutationRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/botLifecycleMutationRoutes.ts").map((endpoint) => ({
+    ...endpoint,
+    access: "Authenticated · paper/live role by bot"
+  })),
+  ...extractRoutes(tradingAccountRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/tradingAccountRoutes.ts").map((endpoint) => ({
+    ...endpoint,
+    access: endpoint.method === "GET" && (endpoint.path === "/api/trade/accounts" || endpoint.path === "/api/trade/accounts/:id")
+      ? "Authenticated · read-only+ · owner-scoped"
+      : "Authenticated · live-trade · owner-scoped"
+  })),
   ...extractRoutes(emergencyStopRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/emergencyStopRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · live-trade" })),
-  ...extractRoutes(arbitrageAlertRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/arbitrage/alertRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" })),
-  ...extractRoutes(researchAlertRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/arbitrage/researchAlerts/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" })),
-  ...extractRoutes(paperMultiLegRoutesSource, "router", "/api/trade/paper-multi-leg", 0, "Public", "backend/src/arbitrage/paperMultiLeg/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade" })),
+  ...extractRoutes(notificationRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/notificationRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · paper-trade · owner-scoped" })),
+  ...extractRoutes(arbitrageAlertRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/arbitrage/alertRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin" })),
+  ...extractRoutes(researchAlertRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/arbitrage/researchAlerts/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin" })),
+  ...extractRoutes(paperMultiLegRoutesSource, "router", "/api/trade/paper-multi-leg", 0, "Public", "backend/src/arbitrage/paperMultiLeg/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin" })),
   ...extractRoutes(publicVenueRoutesSource, "router", "/api/market-data", Number.POSITIVE_INFINITY, "Authenticated account · public-market read-only", "backend/src/venues/publicRoutes.ts"),
   ...extractRoutes(orderBookMlResearchRoutesSource, "router", "/api/orderbook-ml/research", 0, "Public", "backend/src/orderbook/ml/researchRoutes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin · research-only" }))
 ]).sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
@@ -138,7 +152,7 @@ function extractRoutes(source, receiver, prefix, publicBoundary, publicAccess, s
     const signature = source.slice(match.index, lineEnd === -1 ? undefined : lineEnd);
     const role = signature.match(/requireRole\("([^"]+)"\)/)?.[1];
     const fullPath = joinRoute(prefix, match[2]);
-    const runtimeRole = new Set(["POST /api/trade/bots", "POST /api/trade/bots/:id/start", "POST /api/trade/bots/:id/stop", "POST /api/trade/bots/:id/confirm-resume", "POST /api/trade/bots/:id/command"]).has(`${match[1].toUpperCase()} ${fullPath}`);
+    const runtimeRole = new Set(["POST /api/trade/bots", "DELETE /api/trade/bots/:id", "POST /api/trade/bots/:id/start", "POST /api/trade/bots/:id/stop", "POST /api/trade/bots/:id/confirm-resume", "POST /api/trade/bots/:id/reset-state", "POST /api/trade/bots/:id/command"]).has(`${match[1].toUpperCase()} ${fullPath}`);
     routes.push({
       method: match[1].toUpperCase(),
       path: fullPath,

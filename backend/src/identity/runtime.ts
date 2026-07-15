@@ -43,7 +43,7 @@ export async function initializeIdentityRuntime(env: NodeJS.ProcessEnv = process
       sessionTtlMs: optionalNumber(env.AUTH_SESSION_TTL_MS),
       wsTicketTtlMs: optionalNumber(env.AUTH_WS_TICKET_TTL_MS),
       allowRegistration: env.AUTH_REGISTRATION_ENABLED !== "0" && env.AUTH_REGISTRATION_ENABLED !== "false",
-      allowNonAdminTrading: env.AUTH_ENABLE_SHARED_TRADING_ROLES === "1" || env.AUTH_ENABLE_SHARED_TRADING_ROLES === "true"
+      allowNonAdminTrading: env.AUTH_TRADING_ROLES_ENABLED !== "0" && env.AUTH_TRADING_ROLES_ENABLED !== "false"
     });
     configureIdentityAuth(service);
     console.log(

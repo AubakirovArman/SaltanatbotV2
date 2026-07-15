@@ -2,8 +2,9 @@ import { notify } from "./notifications.js";
 import { persistPaper, persistRuntimeState } from "./engineState.js";
 import type { RunningBot } from "./engineRuntime.js";
 import type { KeyedExclusiveLock } from "./keyedExclusiveLock.js";
-import { upsertBot } from "./store.js";
+import { upsertBotForOwner } from "./store.js";
 import { botTradingAccountId } from "./tradingAccounts.js";
+import { tradingOwnerForBot } from "./ownership.js";
 
 interface StopDependencies {
   current(id: string): RunningBot | undefined;
@@ -69,15 +70,15 @@ export class EngineStopCoordinator {
     this.deps.remove(id);
     bot.config.status = "stopped";
     bot.config.updatedAt = Date.now();
-    upsertBot(bot.config);
+    upsertBotForOwner(tradingOwnerForBot(bot.config), bot.config);
     this.deps.log(id, "Bot stopped");
     this.deps.emit(id);
-    void notify({ event: "stop", bot: bot.config.name, symbol: bot.config.symbol, text: "Stopped" });
+    void notify({ ownerUserId: tradingOwnerForBot(bot.config), event: "stop", bot: bot.config.name, symbol: bot.config.symbol, text: "Stopped" });
   }
 }
 
 export function engineOrderLockKey(bot: RunningBot): string {
-  return `${botTradingAccountId(bot.config)}:${bot.config.market}:${bot.config.symbol}`;
+  return `${tradingOwnerForBot(bot.config)}:${botTradingAccountId(bot.config)}:${bot.config.market}:${bot.config.symbol}`;
 }
 
 function quiesce(bot: RunningBot): void {

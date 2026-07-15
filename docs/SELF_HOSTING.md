@@ -5,8 +5,12 @@ Last verified: 2026-07-15
 
 SaltanatbotV2 remains self-hostable and does not require an OpenAI account, an OpenAI package, or
 any project-owned cloud service. PostgreSQL stores users, browser sessions, named workspaces and
-research jobs. The existing SQLite files continue to store legacy trading/bot state, encrypted
-exchange settings, candles and paper journals; installation never converts or deletes them.
+research jobs. SQLite stores owner-partitioned trading accounts, robots, journals and encrypted
+per-account exchange credentials, plus candles and paper journals. Forward migrations preserve
+existing records; make a verified backup before every upgrade.
+
+At startup the trading store enforces mode `0700` on `backend/data/` and `0600` on both
+`trading.db` and its `.secret`, including files created by older versions with broader modes.
 
 ## Docker Compose installation
 
@@ -85,7 +89,7 @@ processes cannot apply a migration concurrently.
 | Storage | Data | Backup tool |
 | --- | --- | --- |
 | PostgreSQL | users, hashed passwords, sessions, WS tickets, auth audit, workspaces/revisions, research jobs | `pg_dump` / `pg_restore` |
-| `backend/data/trading.db` | legacy bots, orders, fills, logs, encrypted exchange/notification settings | `npm run data:backup` |
+| `backend/data/trading.db` | owner-scoped trading accounts, bots, orders, fills, logs, audit rows and encrypted account credentials/notifications | `npm run data:backup` |
 | `backend/data/.secret` | AES root secret for encrypted SQLite settings | `npm run data:backup` |
 | `backend/data/candles.db` | optional candle cache | `npm run data:backup` |
 | paper-journal SQLite files | paper multi-leg history | `npm run data:backup` at the default path |
@@ -94,22 +98,55 @@ The browser keeps an offline/local copy of chart preferences and exportable arti
 workspace sync is additive and owner-scoped; file export/import remains available so a fork is not
 locked to one server.
 
-## Current multi-user safety boundary
+## Multi-user trading boundary
 
-Activated users may use monitoring, charts, screeners, strategy research, workspaces and their own
-research jobs. The existing Trade/Robots database remains administrator-only because its bots,
-exchange credentials and event stream predate per-user ownership. Do not enable
-`AUTH_ENABLE_SHARED_TRADING_ROLES` on a shared deployment. A safe future migration must add owner
-IDs, filter every REST/WebSocket path, migrate credentials per account and assign legacy bots during
-a maintenance window before a separate trading executor can be started.
+Each authenticated user is a separate trading tenant. The server derives the tenant ID from the
+validated session; request bodies and query parameters cannot select another owner. Accounts,
+credentials, bots, fills, orders, logs, audit rows, portfolio state, emergency state, notifications
+and `/trade-stream` events are filtered by that owner. A guessed foreign resource ID returns `404`.
+Application administrators can activate users and assign `read-only`, `paper-trade` or `live-trade`
+access, but the admin API does not expose another user's trading resources or exchange secrets.
+
+Exchange credentials belong to one concrete trading account. They are encrypted with AES-256-GCM
+and account/owner-specific authenticated context, are never returned to the browser, and cannot be
+rotated while a bound robot is running. This is logical application isolation inside one deployment,
+not a claim that the machine's root operator cannot read process memory or the SQLite root secret.
+Protect `trading.db` and `.secret` as if they contained plaintext credentials.
+
+Trading-role assignment is enabled by default after the owner migration. Set
+`AUTH_TRADING_ROLES_ENABLED=0` only as a maintenance kill switch for non-admin trading access;
+changing or removing a user's permission revokes sessions, disconnects private streams and stops
+that user's running robots.
+
+Per-user Telegram/VK notifications are outbound-only in database auth mode. Inbound Telegram bot
+commands remain available only in explicit legacy single-operator mode until the poller can bind a
+chat to a durable user and verify the current trading role on every command.
+
+### Upgrading a pre-tenant trading database
+
+Schema v6 transactionally assigns every pre-v6 trading row to one administrator, re-encrypts each
+legacy `keys:binance`/`keys:bybit` value for its concrete migrated account and clears the old
+server-wide live arm. Nothing is assigned to newly registered users. Before the first v6 start:
+
+1. Stop the application and run both the PostgreSQL and `npm run data:backup` backups.
+2. Ensure the intended owner already exists in PostgreSQL with `appRole=admin`.
+3. If there is more than one administrator, set `TRADING_LEGACY_OWNER_USER_ID` to the intended
+   administrator UUID. Startup deliberately refuses an ambiguous migration.
+4. Start exactly one API process, inspect the migration log and verify the old robots under that
+   administrator before manually rearming live trading.
+
+With exactly one administrator the server selects that account automatically. On a brand-new empty
+installation `TRADING_LEGACY_OWNER_USER_ID` is unnecessary.
 
 ## Updating a fork
 
 1. Verify PostgreSQL and SQLite backups.
 2. Pull or merge the desired commit.
 3. Run `npm ci`, tests and `npm run build` (or rebuild the Compose image).
-4. Restart one API instance; migrations run automatically.
-5. Check `/api/ready`, pending jobs and current robots before rearming live trading.
+4. Restart one API instance; migrations run automatically. For the first schema-v6 upgrade, follow
+   the legacy-owner procedure above.
+5. Check `/api/ready`, pending jobs, per-user account visibility and current robots before rearming
+   live trading.
 
 Never start a second copy of the current trading backend against the same `trading.db`: both copies
 could restore the same bot. Horizontal API replicas become safe only after the trading executor and

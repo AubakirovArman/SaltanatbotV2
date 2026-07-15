@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatBotDetail, formatPortfolio, formatStatus, parseCommand, type StatusRow } from "../src/trading/telegramCommands.js";
+import { TelegramControl } from "../src/trading/telegramControl.js";
 
 /**
  * The Telegram control channel is unit-tested through its two PURE functions —
@@ -48,6 +49,15 @@ describe("parseCommand", () => {
 
   it("normalizes tab-separated argument", () => {
     expect(parseCommand("/start\tAlpha")).toEqual({ cmd: "start", arg: "Alpha" });
+  });
+});
+
+describe("TelegramControl safety mode", () => {
+  it("does not inspect notification state or start polling when inbound control is disabled", () => {
+    const control = new TelegramControl({} as never, "database-tenant", false);
+    expect(() => control.start()).not.toThrow();
+    expect(() => control.refresh()).not.toThrow();
+    control.stop();
   });
 });
 

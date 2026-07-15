@@ -10,9 +10,10 @@ interface BotActivityProps {
   logs: LogRow[];
   onCommand: (command: string) => Promise<void>;
   locale: Locale;
+  canControl?: boolean;
 }
 
-export function BotActivity({ symbol, orders, orderJournal, fills, logs, onCommand, locale }: BotActivityProps) {
+export function BotActivity({ symbol, orders, orderJournal, fills, logs, onCommand, locale, canControl = true }: BotActivityProps) {
   return (
     <>
       {orders.length > 0 && (
@@ -24,7 +25,7 @@ export function BotActivity({ symbol, orders, orderJournal, fills, logs, onComma
                 <span className={`order-type ${order.type.includes("stop") ? "down" : order.type.includes("tp") ? "up" : ""}`}>{tradingTerm(locale, order.type)}</span>
                 <span className={order.side === "buy" ? "up" : "down"}>{tradingTerm(locale, order.side)}</span>
                 <span className="num">{order.qty}</span><span className="num">{order.price ?? order.trgPrice ?? "—"}</span>
-                <button type="button" className="order-cancel" aria-label={tradingCancelOrder(locale, tradingTerm(locale, order.type), order.id)} onClick={() => void onCommand(`action=cancelorder;by=id;orderid=${order.id};symbol=${symbol}`)}>×</button>
+                {canControl && <button type="button" className="order-cancel" aria-label={tradingCancelOrder(locale, tradingTerm(locale, order.type), order.id)} onClick={() => void onCommand(`action=cancelorder;by=id;orderid=${order.id};symbol=${symbol}`)}>×</button>}
               </div>
             ))}
           </div>

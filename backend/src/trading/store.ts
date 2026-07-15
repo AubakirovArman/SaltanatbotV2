@@ -1,15 +1,17 @@
 import { DatabaseSync } from "node:sqlite";
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes, scryptSync } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { migrateTradingStore } from "./storeSchema.js";
+import { LEGACY_TRADING_OWNER_ID, migrateTradingStore } from "./storeSchema.js";
 import { appendPaperLedgerEventsTo, listPaperLedgerEventsFrom } from "./paperLedgerStore.js";
 import type { PaperLedgerEvent } from "./paperLedger.js";
 import { recordBotStatusTransition, writePositionSnapshot, type PositionSnapshotRecord, type StrategyRunRecord } from "./storeLifecycle.js";
-import type { AuditLogRecord, BotConfig, FillRecord, OrderEventRecord, OrderJournalRecord, TradingAccount, TradingAccountExchange } from "./types.js";
+import type { AuditLogRecord, BotConfig, FillRecord, OrderEventRecord, OrderJournalRecord } from "./types.js";
 import type { ArbitrageOpportunity } from "../arbitrage/types.js";
-import { botTradingAccountId, legacyTradingAccountId, withResolvedBotAccountId } from "./tradingAccounts.js";
+import { withResolvedBotAccountId } from "./tradingAccounts.js";
+import { configureTradingAccountStore, credentialAad, normalizeOwnerUserId } from "./tradingAccountStore.js";
+import { openCredentialPayload, sealCredentialPayload } from "./credentialCrypto.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../../data");
@@ -19,30 +21,104 @@ const secretPath = path.join(dataDir, ".secret");
 let db: DatabaseSync;
 let encKey: Buffer;
 
-export function initStore() {
-  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+export { LEGACY_TRADING_OWNER_ID } from "./storeSchema.js";
+export * from "./tradingAccountStore.js";
+
+export interface InitStoreOptions {
+  /** Owner assigned to every pre-v6 trading row. Database-auth deployments
+   * should pass the bootstrap/legacy administrator UUID. */
+  legacyOwnerUserId?: string;
+}
+
+export function initStore(options: InitStoreOptions = {}) {
+  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  chmodSync(dataDir, 0o700);
   encKey = loadOrCreateSecret();
   db = new DatabaseSync(dbPath);
-  migrateTradingStore(db);
+  chmodSync(dbPath, 0o600);
+  db.exec("PRAGMA foreign_keys = ON");
+  migrateTradingStore(db, Date.now, {
+    legacyOwnerUserId: options.legacyOwnerUserId ?? LEGACY_TRADING_OWNER_ID,
+    reencryptLegacyCredential: (payload, context) => encrypt(decrypt(payload), credentialAad(context.ownerUserId, context.accountId, context.exchange))
+  });
+  configureTradingAccountStore(db, {
+    seal: (plain, aad) => encrypt(plain, aad),
+    open: (payload, aad) => decrypt(payload, aad)
+  });
   return db;
 }
 
 // ---------- bots ----------
 
-export function listBots(): BotConfig[] {
-  return db
-    .prepare("SELECT config FROM bots ORDER BY updatedAt DESC")
-    .all()
-    .map((row) => withResolvedBotAccountId(JSON.parse((row as { config: string }).config) as BotConfig));
+interface BotRow {
+  ownerUserId: string;
+  config: string;
 }
 
+function botFromRow(row: BotRow): BotConfig {
+  return {
+    ...withResolvedBotAccountId(JSON.parse(row.config) as BotConfig),
+    ownerUserId: row.ownerUserId
+  };
+}
+
+/** Internal engine view across every owner. HTTP handlers must use
+ * `listBotsForOwner` instead. */
+export function listBots(): BotConfig[] {
+  return db
+    .prepare("SELECT ownerUserId, config FROM bots ORDER BY updatedAt DESC")
+    .all()
+    .map((row) => botFromRow(row as unknown as BotRow));
+}
+
+export function listBotsForOwner(ownerUserId: string): BotConfig[] {
+  const owner = normalizeOwnerUserId(ownerUserId);
+  return (
+    db
+      .prepare(`
+    SELECT ownerUserId, config FROM bots
+    WHERE ownerUserId = ? ORDER BY updatedAt DESC
+  `)
+      .all(owner) as unknown as BotRow[]
+  ).map(botFromRow);
+}
+
+export function getBotForOwner(ownerUserId: string, id: string): BotConfig | undefined {
+  const owner = normalizeOwnerUserId(ownerUserId);
+  const row = db.prepare("SELECT ownerUserId, config FROM bots WHERE ownerUserId = ? AND id = ?").get(owner, id) as unknown as BotRow | undefined;
+  return row ? botFromRow(row) : undefined;
+}
+
+export function getBotOwnerUserId(id: string): string | undefined {
+  const row = db.prepare("SELECT ownerUserId FROM bots WHERE id = ?").get(id) as { ownerUserId: string } | undefined;
+  return row?.ownerUserId;
+}
+
+/** Internal compatibility write. New request paths must call
+ * `upsertBotForOwner` with the authenticated owner. */
 export function upsertBot(bot: BotConfig) {
-  const normalized = withResolvedBotAccountId(bot);
+  const owner = bot.ownerUserId ?? getBotOwnerUserId(bot.id) ?? LEGACY_TRADING_OWNER_ID;
+  return upsertBotForOwner(owner, bot);
+}
+
+export function upsertBotForOwner(ownerUserId: string, bot: BotConfig) {
+  const owner = normalizeOwnerUserId(ownerUserId);
+  const existingOwner = getBotOwnerUserId(bot.id);
+  if (existingOwner !== undefined && existingOwner !== owner) {
+    throw new Error(`Bot ${bot.id} belongs to another owner`);
+  }
+  const normalized = withResolvedBotAccountId({ ...bot, ownerUserId: owner });
   db.exec("BEGIN IMMEDIATE");
   try {
-    const previous = db.prepare("SELECT config FROM bots WHERE id = ?").get(normalized.id) as { config: string } | undefined;
+    const previous = db.prepare("SELECT config FROM bots WHERE ownerUserId = ? AND id = ?").get(owner, normalized.id) as { config: string } | undefined;
     const previousStatus = previous ? (JSON.parse(previous.config) as BotConfig).status : undefined;
-    db.prepare("INSERT INTO bots (id, config, updatedAt) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET config = excluded.config, updatedAt = excluded.updatedAt").run(normalized.id, JSON.stringify(normalized), normalized.updatedAt);
+    db.prepare(`
+      INSERT INTO bots (id, ownerUserId, config, updatedAt) VALUES (?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        config = excluded.config,
+        updatedAt = excluded.updatedAt
+      WHERE bots.ownerUserId = excluded.ownerUserId
+    `).run(normalized.id, owner, JSON.stringify(normalized), normalized.updatedAt);
     recordBotStatusTransition(db, normalized, previousStatus);
     db.exec("COMMIT");
   } catch (error) {
@@ -51,109 +127,19 @@ export function upsertBot(bot: BotConfig) {
   }
 }
 
-// ---------- trading account metadata (credentials remain in legacy settings) ----------
-
-type TradingAccountRow = Omit<TradingAccount, "enabled"> & { enabled: number };
-
-function accountFromRow(row: TradingAccountRow): TradingAccount {
-  return { ...row, enabled: row.enabled === 1 };
-}
-
-export function listTradingAccounts(): TradingAccount[] {
-  return listTradingAccountsFrom(db);
-}
-
-export function listTradingAccountsFrom(database: DatabaseSync): TradingAccount[] {
-  return (database.prepare(`
-    SELECT id, label, exchange, ownership, enabled, createdAt, updatedAt
-    FROM trading_accounts ORDER BY updatedAt DESC, id ASC
-  `).all() as unknown as TradingAccountRow[]).map(accountFromRow);
-}
-
-export function getTradingAccount(id: string): TradingAccount | undefined {
-  return getTradingAccountFrom(db, id);
-}
-
-export function getTradingAccountFrom(database: DatabaseSync, id: string): TradingAccount | undefined {
-  const row = database.prepare(`
-    SELECT id, label, exchange, ownership, enabled, createdAt, updatedAt
-    FROM trading_accounts WHERE id = ?
-  `).get(id) as TradingAccountRow | undefined;
-  return row ? accountFromRow(row) : undefined;
-}
-
-export function insertTradingAccount(account: TradingAccount): void {
-  insertTradingAccountInto(db, account);
-}
-
-export function insertTradingAccountInto(database: DatabaseSync, account: TradingAccount): void {
-  database.prepare(`
-    INSERT INTO trading_accounts (id, label, exchange, ownership, enabled, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(account.id, account.label, account.exchange, account.ownership, account.enabled ? 1 : 0, account.createdAt, account.updatedAt);
-}
-
-export function updateTradingAccount(account: TradingAccount): boolean {
-  return updateTradingAccountIn(db, account);
-}
-
-export function updateTradingAccountIn(database: DatabaseSync, account: TradingAccount): boolean {
-  return database.prepare(`
-    UPDATE trading_accounts
-    SET label = ?, ownership = ?, enabled = ?, updatedAt = ?
-    WHERE id = ? AND exchange = ?
-  `).run(account.label, account.ownership, account.enabled ? 1 : 0, account.updatedAt, account.id, account.exchange).changes > 0;
-}
-
-export function ensureLegacyTradingAccount(exchange: TradingAccountExchange, now = Date.now()): TradingAccount {
-  const id = legacyTradingAccountId(exchange);
-  const existing = getTradingAccount(id);
-  if (existing) return existing;
-  const account: TradingAccount = {
-    id,
-    label: `${exchange === "binance" ? "Binance" : "Bybit"} default (shared legacy credentials)`,
-    exchange,
-    ownership: "own",
-    enabled: true,
-    createdAt: now,
-    updatedAt: now
-  };
-  db.prepare(`
-    INSERT OR IGNORE INTO trading_accounts (id, label, exchange, ownership, enabled, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, 1, ?, ?)
-  `).run(account.id, account.label, account.exchange, account.ownership, account.createdAt, account.updatedAt);
-  return getTradingAccount(id) ?? account;
-}
-
-export class TradingAccountInUseError extends Error {
-  constructor(readonly accountId: string, readonly botIds: readonly string[]) {
-    super(`Trading account ${accountId} is used by ${botIds.length} bot(s).`);
-  }
-}
-
-export function deleteTradingAccount(id: string): boolean {
-  return deleteTradingAccountFrom(db, id);
-}
-
-export function deleteTradingAccountFrom(database: DatabaseSync, id: string): boolean {
-  database.exec("BEGIN IMMEDIATE");
+export function deleteBot(id: string) {
+  db.exec("BEGIN IMMEDIATE");
   try {
-    const botIds = (database.prepare("SELECT config FROM bots").all() as Array<{ config: string }>)
-      .map((row) => withResolvedBotAccountId(JSON.parse(row.config) as BotConfig))
-      .filter((bot) => botTradingAccountId(bot) === id)
-      .map((bot) => bot.id);
-    if (botIds.length > 0) throw new TradingAccountInUseError(id, botIds);
-    const deleted = database.prepare("DELETE FROM trading_accounts WHERE id = ?").run(id).changes > 0;
-    database.exec("COMMIT");
-    return deleted;
+    db.prepare("DELETE FROM bots WHERE id = ?").run(id);
+    deleteBotRecords(id);
+    db.exec("COMMIT");
   } catch (error) {
-    database.exec("ROLLBACK");
+    db.exec("ROLLBACK");
     throw error;
   }
 }
 
-export function deleteBot(id: string) {
-  db.prepare("DELETE FROM bots WHERE id = ?").run(id);
+function deleteBotRecords(id: string): void {
   db.prepare("DELETE FROM fills WHERE botId = ?").run(id);
   db.prepare("DELETE FROM order_events WHERE botId = ?").run(id);
   db.prepare("DELETE FROM orders WHERE botId = ?").run(id);
@@ -165,6 +151,20 @@ export function deleteBot(id: string) {
   db.prepare("DELETE FROM settings WHERE key = ? OR key = ?").run(`paper:${id}`, `state:${id}`);
   db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`inventory:${id}:%`);
   db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`futures-exposure:${id}:%`);
+}
+
+export function deleteBotForOwner(ownerUserId: string, id: string): boolean {
+  const owner = normalizeOwnerUserId(ownerUserId);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const deleted = db.prepare("DELETE FROM bots WHERE ownerUserId = ? AND id = ?").run(owner, id).changes > 0;
+    if (deleted) deleteBotRecords(id);
+    db.exec("COMMIT");
+    return deleted;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 /** Remove a single setting (e.g. resetting a bot's durable strategy state). */
@@ -201,6 +201,10 @@ export function listFills(botId: string, limit = 200): FillRecord[] {
     .prepare("SELECT data FROM fills WHERE botId = ? ORDER BY ts DESC LIMIT ?")
     .all(botId, limit)
     .map((row) => JSON.parse((row as { data: string }).data) as FillRecord);
+}
+
+export function listFillsForOwner(ownerUserId: string, botId: string, limit = 200): FillRecord[] {
+  return getBotForOwner(ownerUserId, botId) ? listFills(botId, limit) : [];
 }
 
 // ---------- append-only paper-trading ledger ----------
@@ -265,9 +269,13 @@ export function listOrderJournal(botId: string, limit = 200): OrderJournalRecord
     .map((row) => JSON.parse((row as { data: string }).data) as OrderJournalRecord);
 }
 
+export function listOrderJournalForOwner(ownerUserId: string, botId: string, limit = 200): OrderJournalRecord[] {
+  return getBotForOwner(ownerUserId, botId) ? listOrderJournal(botId, limit) : [];
+}
+
 export function getOrderJournal(id: string): OrderJournalRecord | undefined {
   const row = db.prepare("SELECT data FROM orders WHERE id = ?").get(id) as { data: string } | undefined;
-  return row ? JSON.parse(row.data) as OrderJournalRecord : undefined;
+  return row ? (JSON.parse(row.data) as OrderJournalRecord) : undefined;
 }
 
 /**
@@ -417,6 +425,11 @@ export function listOrderEvents(orderId: string, limit = 200): OrderEventRecord[
     });
 }
 
+export function listOrderEventsForOwner(ownerUserId: string, botId: string, orderId: string, limit = 200): OrderEventRecord[] {
+  if (!getBotForOwner(ownerUserId, botId)) return [];
+  return listOrderEvents(orderId, limit).filter((event) => event.botId === botId);
+}
+
 // ---------- logs ----------
 
 export interface LogRecord {
@@ -435,30 +448,57 @@ export function listLogs(botId: string, limit = 200): LogRecord[] {
   return db.prepare("SELECT botId, level, message, ts FROM logs WHERE botId = ? ORDER BY ts DESC LIMIT ?").all(botId, limit) as unknown as LogRecord[];
 }
 
+export function listLogsForOwner(ownerUserId: string, botId: string, limit = 200): LogRecord[] {
+  return getBotForOwner(ownerUserId, botId) ? listLogs(botId, limit) : [];
+}
+
 // ---------- audit log ----------
 
 export function insertAuditLog(record: AuditLogRecord) {
-  db.prepare("INSERT INTO audit_log (id, actor, role, action, target, statusCode, ip, data, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
-    record.id,
-    record.actor,
-    record.role,
-    record.action,
-    record.target ?? null,
-    record.statusCode,
-    record.ip ?? null,
-    record.data === undefined ? null : JSON.stringify(record.data),
-    record.ts
-  );
+  return insertAuditLogForOwner(record.ownerUserId ?? record.actorUserId ?? LEGACY_TRADING_OWNER_ID, record);
+}
+
+export function insertAuditLogForOwner(ownerUserId: string, record: AuditLogRecord) {
+  const owner = normalizeOwnerUserId(ownerUserId);
+  db.prepare(`
+    INSERT INTO audit_log
+      (id, ownerUserId, actorUserId, actor, role, action, target, statusCode, ip, data, ts)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(record.id, owner, record.actorUserId ?? null, record.actor, record.role, record.action, record.target ?? null, record.statusCode, record.ip ?? null, record.data === undefined ? null : JSON.stringify(record.data), record.ts);
 }
 
 export function listAuditLog(limit = 200): AuditLogRecord[] {
-  return db
-    .prepare("SELECT id, actor, role, action, target, statusCode, ip, data, ts FROM audit_log ORDER BY ts DESC LIMIT ?")
-    .all(limit)
-    .map((row) => {
-      const typed = row as Omit<AuditLogRecord, "data"> & { data: string | null };
-      return { ...typed, data: typed.data ? JSON.parse(typed.data) : undefined } satisfies AuditLogRecord;
-    });
+  return mapAuditRows(
+    db
+      .prepare(`
+    SELECT id, ownerUserId, actorUserId, actor, role, action, target, statusCode, ip, data, ts
+    FROM audit_log ORDER BY ts DESC LIMIT ?
+  `)
+      .all(limit)
+  );
+}
+
+export function listAuditLogForOwner(ownerUserId: string, limit = 200): AuditLogRecord[] {
+  const owner = normalizeOwnerUserId(ownerUserId);
+  return mapAuditRows(
+    db
+      .prepare(`
+    SELECT id, ownerUserId, actorUserId, actor, role, action, target, statusCode, ip, data, ts
+    FROM audit_log WHERE ownerUserId = ? ORDER BY ts DESC LIMIT ?
+  `)
+      .all(owner, limit)
+  );
+}
+
+function mapAuditRows(rows: unknown[]): AuditLogRecord[] {
+  return rows.map((row) => {
+    const typed = row as Omit<AuditLogRecord, "data" | "actorUserId"> & { actorUserId: string | null; data: string | null };
+    return {
+      ...typed,
+      actorUserId: typed.actorUserId ?? undefined,
+      data: typed.data ? JSON.parse(typed.data) : undefined
+    } satisfies AuditLogRecord;
+  });
 }
 
 // ---------- settings (exchange keys, notifications) ----------
@@ -521,6 +561,7 @@ export function pruneArbitrageHistory(before: number) {
 
 function loadOrCreateSecret(): Buffer {
   if (existsSync(secretPath)) {
+    chmodSync(secretPath, 0o600);
     return scryptSync(readFileSync(secretPath, "utf8"), "marketforge", 32);
   }
   const secret = randomBytes(32).toString("hex");
@@ -528,17 +569,10 @@ function loadOrCreateSecret(): Buffer {
   return scryptSync(secret, "marketforge", 32);
 }
 
-function encrypt(plain: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encKey, iv);
-  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `${iv.toString("base64")}.${tag.toString("base64")}.${enc.toString("base64")}`;
+function encrypt(plain: string, aad?: string): string {
+  return sealCredentialPayload(encKey, plain, aad);
 }
 
-function decrypt(payload: string): string {
-  const [ivB64, tagB64, dataB64] = payload.split(".");
-  const decipher = createDecipheriv("aes-256-gcm", encKey, Buffer.from(ivB64, "base64"));
-  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
-  return Buffer.concat([decipher.update(Buffer.from(dataB64, "base64")), decipher.final()]).toString("utf8");
+function decrypt(payload: string, aad?: string): string {
+  return openCredentialPayload(encKey, payload, aad);
 }

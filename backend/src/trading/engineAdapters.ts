@@ -2,16 +2,18 @@ import type { DataMarketType } from "../providers/provider.js";
 import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
 import { BybitAdapter } from "./exchange/bybit.js";
 import { PaperAdapter } from "./exchange/paper.js";
-import { getSetting, getTradingAccount } from "./store.js";
+import { getTradingAccountCredentialsForOwner, getTradingAccountForOwner, listTradingAccountsForOwner } from "./store.js";
 import type { BotConfig, ExchangeAdapter } from "./types.js";
-import { botTradingAccountId, legacyTradingAccountId, tradingAccountBindingIssue } from "./tradingAccounts.js";
+import { botTradingAccountId, tradingAccountBindingIssue } from "./tradingAccounts.js";
 
 export function buildEngineAdapter(config: BotConfig, getPrice: () => number): ExchangeAdapter {
   if (config.exchange === "binance" || config.exchange === "bybit") {
+    const ownerUserId = config.ownerUserId?.trim();
+    if (!ownerUserId) throw new Error("Live bot owner is missing; refusing to load trading credentials.");
     const accountId = botTradingAccountId(config);
-    const issue = tradingAccountBindingIssue(config, getTradingAccount(accountId));
+    const issue = tradingAccountBindingIssue(config, getTradingAccountForOwner(ownerUserId, accountId));
     if (issue) throw new Error(`${issue.code}: ${issue.message}`);
-    const keys = getSetting<ExchangeKeys>(`keys:${config.exchange}`) ?? { apiKey: "", apiSecret: "" };
+    const keys = getTradingAccountCredentialsForOwner<ExchangeKeys>(ownerUserId, accountId) ?? { apiKey: "", apiSecret: "" };
     if (!keys.apiKey || !keys.apiSecret) throw new Error(`Credentials are not configured for trading account ${accountId}.`);
     return config.exchange === "binance"
       ? new BinanceAdapter(config.id, keys, config.market, accountId)
@@ -28,19 +30,18 @@ export function buildEngineAdapter(config: BotConfig, getPrice: () => number): E
   });
 }
 
-/** Signed account adapters used by the global emergency stop even if no bot is running. */
-export function buildEmergencyAdapters(): ExchangeAdapter[] {
+/** Signed account adapters for one owner, including accounts with no running bot. */
+export function buildEmergencyAdapters(ownerUserId: string): ExchangeAdapter[] {
   const adapters: ExchangeAdapter[] = [];
-  for (const exchange of ["binance", "bybit"] as const) {
-    const keys = getSetting<ExchangeKeys>(`keys:${exchange}`);
+  for (const account of listTradingAccountsForOwner(ownerUserId)) {
+    const keys = getTradingAccountCredentialsForOwner<ExchangeKeys>(ownerUserId, account.id);
     if (!keys?.apiKey || !keys.apiSecret) continue;
-    const accountId = legacyTradingAccountId(exchange);
     // Emergency cancellation/flattening remains available even when account
     // metadata is disabled: old venue exposure may still exist.
     for (const market of ["spot", "futures"] as const) {
-      adapters.push(exchange === "binance"
-        ? new BinanceAdapter(`emergency-${market}`, keys, market, accountId)
-        : new BybitAdapter(`emergency-${market}`, keys, market, accountId));
+      adapters.push(account.exchange === "binance"
+        ? new BinanceAdapter(`emergency-${market}`, keys, market, account.id)
+        : new BybitAdapter(`emergency-${market}`, keys, market, account.id));
     }
   }
   return adapters;

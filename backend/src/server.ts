@@ -40,6 +40,8 @@ import { TradeFlowHub } from "./tradeflow/hub.js";
 import type { Candle, OrderBookStreamMessage, QuoteStreamMessage, StreamMessage, Timeframe, TradeFlowStreamMessage } from "./types.js";
 import { createPublicVenueRouter, publicVenueAdapters } from "./venues/index.js";
 import { initializeIdentityRuntime } from "./identity/runtime.js";
+import { resolveLegacyTradingOwnerUserId } from "./identity/legacyTradingOwner.js";
+import { createTradingResumeAuthorization } from "./identity/tradingResumePolicy.js";
 import { registerIdentityServerRoutes } from "./identity/serverRoutes.js";
 import { apiErrorHandler } from "./http/apiErrorHandler.js";
 import { installGracefulShutdown } from "./http/gracefulShutdown.js";
@@ -49,6 +51,7 @@ const port = Number(process.env.PORT ?? 4180);
 // Fail safe: bind to loopback unless the operator explicitly opts into a wider bind.
 const host = process.env.HOST ?? "127.0.0.1";
 const identityRuntime = await initializeIdentityRuntime();
+const legacyTradingOwnerUserId = await resolveLegacyTradingOwnerUserId(identityRuntime);
 const provider = new ProviderRouter();
 const marketDataGate = new SingleFlightGate(24, 128);
 const app = express();
@@ -65,7 +68,9 @@ const tradeFlowHub = new TradeFlowHub();
 const venueClockCalibration = new VenueClockCalibrationService();
 const arbitrageAlerts = new ArbitrageAlertService({ clockCalibration: venueClockCalibration });
 const researchAlerts = new ResearchAlertService();
-const trading = createTradingApi(provider, arbitrageAlerts, { researchAlerts });
+const trading = createTradingApi(provider, arbitrageAlerts, { researchAlerts, legacyOwnerUserId: legacyTradingOwnerUserId, telegramControlEnabled: identityRuntime.mode === "legacy" });
+identityRuntime.service?.setTradingAccessChangeHandler((ownerUserId, action) => action === "restore" ? trading.restoreOwnerAccess(ownerUserId) : trading.revokeOwnerAccess(ownerUserId));
+identityRuntime.service?.setSessionRevocationHandler(({ userId, sessionIdHash, reason }) => sessionIdHash ? trading.disconnectSession(sessionIdHash, `Session ${reason.replaceAll("_", " ")}`) : trading.disconnectOwner(userId, `Session ${reason.replaceAll("_", " ")}`));
 const arbitrageScanner = new ArbitrageScannerService({ clockCalibration: venueClockCalibration });
 const arbitrageStream = new ArbitrageStreamHub(arbitrageWss, arbitrageScanner, 30_000, venueClockCalibration);
 const opportunityLifecycle = new OpportunityLifecycleCoordinator();
@@ -259,7 +264,7 @@ server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url ?? "", `http://${request.headers.host}`);
   if (url.pathname === "/trade-stream") {
     // Trade events reveal positions/PnL. Authenticate a one-use, session-bound
-    // ticket before handing the socket to the global admin-only trading engine.
+    // ticket before attaching the socket to its owner-partitioned event stream.
     socket.pause();
     void verifyTradeWsRequest(request.headers["sec-websocket-protocol"])
       .then((principal) => {
@@ -556,7 +561,7 @@ server.listen(port, host, () => {
     console.log(`⚠️  Bound to ${host} (reachable off-machine). Put this behind a reverse proxy with TLS,\n` + "   restrict access, and keep account/database secrets private. See docs/CONFIGURATION.md.");
   }
   // Bring back bots that were running before the last shutdown/crash.
-  void trading.engine.resume();
+  void trading.engine.resume(createTradingResumeAuthorization(identityRuntime));
   // Start the inbound Telegram control poller. No-op unless a token+chatId are
   // configured and Telegram is enabled; it can also be activated later from the
   // UI (POST /notify calls refresh()).
@@ -586,12 +591,7 @@ installGracefulShutdown(server, {
 
 function continuousRouteConfigurationFromEnvironment() {
   try {
-    return {
-      configuration: loadContinuousRouteConfiguration({
-        json: process.env.ARBITRAGE_CONTINUOUS_ROUTES_JSON,
-        file: process.env.ARBITRAGE_CONTINUOUS_ROUTES_FILE
-      })
-    };
+    return { configuration: loadContinuousRouteConfiguration({ json: process.env.ARBITRAGE_CONTINUOUS_ROUTES_JSON, file: process.env.ARBITRAGE_CONTINUOUS_ROUTES_FILE }) };
   } catch (error) {
     return { configuration: [], error: error instanceof Error ? error.message : "Continuous route allowlist is invalid" };
   }

@@ -49,14 +49,19 @@ Identity endpoints:
 | `PATCH /api/admin/users/:id/permissions` | Admin + CSRF | Changes application/trading roles |
 
 `appRole` is `user` or `admin`. `tradingRole` is `none`, `read-only`, `paper-trade` or
-`live-trade`. New registrations always receive `user + none`. In the current migration release only
-the administrator receives effective trading access because legacy bots, credentials and trade
-events are not owner-scoped yet. The server rejects non-admin trading grants unless the explicit
-unsafe migration flag is enabled.
+`live-trade`. New registrations always receive `user + none`; an administrator explicitly grants
+the minimum required trading role. A grant changes authorization only: it does not give the admin
+access to that user's trading data. Every database-auth trading request derives its owner from the
+server-validated session, and trading resources/private events are filtered to that owner. Foreign
+resource IDs return `404`, including when requested by another application administrator.
 
-Every auth state change enters PostgreSQL `audit_events`; every mutating legacy trade call also enters
-the redacted SQLite `audit_log`. Token/bearer login exists only in explicit `AUTH_MODE=legacy` test or
-private-demo compatibility mode and is not a production API contract.
+`AUTH_TRADING_ROLES_ENABLED=0` can temporarily disable effective non-admin trading roles during
+maintenance. Permission changes and user disablement revoke sessions, disconnect the user's private
+trading stream and stop that user's active robot runtimes.
+
+Every auth state change enters PostgreSQL `audit_events`; every mutating trade call also enters the
+caller's owner-scoped, redacted SQLite `audit_log`. Token/bearer login exists only in explicit
+`AUTH_MODE=legacy` test or private-demo compatibility mode and is not a production API contract.
 
 ### Workspaces and research jobs
 
@@ -893,7 +898,12 @@ For Binance, `m=true` means the buyer was the maker and is normalized to an aggr
 
 ## Trading REST endpoints
 
-All trading endpoints are mounted under `/api/trade`. A bot's `status` field in responses is computed live from the engine (`running` when the engine reports the bot as running, otherwise `stopped`).
+All trading endpoints are mounted under `/api/trade`. In database-auth mode, the authenticated
+session is the owner boundary for bots, accounts, credentials, portfolio data, journals, logs,
+audit rows, emergency state, notifications and private events. There is no `ownerUserId` request
+parameter, and internal ownership fields are not serialized. A bot's `status` field in responses is
+computed live from that owner's runtime (`running` when the engine reports it running, otherwise
+`stopped`).
 
 Live execution remains experimental and disarmed by default. Binance live spot is disabled until an
 authenticated spot execution-accounting stream exists. Bybit spot is experimental behind
@@ -910,7 +920,7 @@ pauses the bot after polling/reconnect reconciliation.
 
 ### `/api/trade/paper-multi-leg/*`
 
-This authenticated `paper-trade`-role surface runs deterministic failure/recovery scenarios for an
+This administrator-only singleton research surface runs deterministic failure/recovery scenarios for an
 already validated two-leg route-family or four-to-eight-leg N-leg research plan. It is paper-only:
 every successful envelope contains `safety.executionMode: "paper-only"`, `liveOrders: false`,
 `privateRequests: false` and `credentialsAccepted: false`. The module imports no private exchange
@@ -944,6 +954,7 @@ The core object accepted and returned by the bot endpoints.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | `string` | UUID; generated if omitted on create |
+| `accountId` | `string` | Required for Binance/Bybit; must name the caller's enabled account. Paper receives a server-derived simulation account ID. |
 | `name` | `string` | Falls back to `strategyName` then `"Bot"` |
 | `strategyName` | `string` | Defaults to `"Strategy"` |
 | `ir` | `StrategyIR` | Compiled strategy intermediate representation (required) |
@@ -967,7 +978,7 @@ The core object accepted and returned by the bot endpoints.
 
 ### `GET /api/trade/bots`
 
-Lists all configured bots with live status.
+Lists the current user's configured bots with live status. Another user's bots are never included.
 
 **Response `200`**
 
@@ -983,7 +994,9 @@ curl http://localhost:4180/api/trade/bots
 
 ### `POST /api/trade/bots`
 
-Creates or upserts a bot. The request body is a partial `BotConfig`. If `id` matches an existing bot, its `createdAt` is preserved.
+Creates or updates one of the current user's bots. If `id` matches the caller's existing bot, its
+`createdAt` is preserved. A foreign existing ID returns `404` rather than revealing ownership. A
+live bot must include `accountId` for an enabled, exchange-matching account owned by the caller.
 
 **Required body fields:** `symbol`, `timeframe`, `ir`. If any is missing the endpoint returns `400`.
 
@@ -996,6 +1009,7 @@ Creates or upserts a bot. The request body is a partial `BotConfig`. If `id` mat
 | `name` | `string` | `strategyName` or `"Bot"` |
 | `strategyName` | `string` | `"Strategy"` |
 | `exchange` | `"paper" \| "binance" \| "bybit"` | `paper` |
+| `accountId` | `string` | Required for Binance/Bybit; ignored/replaced for paper |
 | `market` | `"spot" \| "futures"` | `futures`; Binance live spot is rejected and Bybit spot requires `ENABLE_LIVE_SPOT` |
 | `sizeMode` | `"quote" \| "base" \| "equity_pct" \| "risk_pct"` | `quote` |
 | `sizeValue` | `number` | `100` |
@@ -1087,8 +1101,9 @@ curl -X POST http://localhost:4180/api/trade/bots/<bot-id>/stop
 
 ### `GET /api/trade/kill` and `POST /api/trade/kill`
 
-The authenticated `live-trade` emergency endpoint persists a global operation, blocks new live
-orders, stops bot runtimes, cancels all account orders and reconciles the exchange state. `GET`
+The authenticated `live-trade` emergency endpoint persists an owner-scoped operation, blocks that
+owner's new live orders, stops that owner's bot runtimes, cancels that owner's account orders and
+reconciles their exchange state. It cannot enumerate or stop another tenant. `GET`
 returns the current `idle`, `stopping`, `terminal` or `partial_failure` status.
 
 ```json
@@ -1281,28 +1296,58 @@ Both routes are available through the strict public arbitrage SDK as
 
 ---
 
-### `GET /api/trade/keys`
+### `/api/trade/accounts` and per-account credentials
 
-Reports whether API keys are stored for each exchange. Keys themselves are never returned.
+Trading accounts are private resources owned by the authenticated user. `GET` requires any effective
+trading role; create/update/delete and credential changes require `live-trade`, CSRF and a secure
+localhost/HTTPS origin. Account responses contain metadata, bound bot IDs and credential status but
+never API key material or `ownerUserId`.
 
-**Response `200`**
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/trade/accounts` | List only the caller's accounts. |
+| `GET` | `/api/trade/accounts/:id` | Read one owned account; foreign/unknown is `404`. |
+| `POST` | `/api/trade/accounts` | Create `{ label, exchange, ownership?, enabled? }`. |
+| `PATCH` | `/api/trade/accounts/:id` | Change `label`, `ownership` or `enabled`. |
+| `DELETE` | `/api/trade/accounts/:id` | Delete unbound metadata after credentials are removed. |
+| `PUT` | `/api/trade/accounts/:id/credentials` | Store or rotate `{ apiKey, apiSecret }` on this account. |
+| `DELETE` | `/api/trade/accounts/:id/credentials` | Remove credentials after every bot is unbound/deleted. |
+
+`exchange` is `binance` or `bybit`; `ownership` is `own` or `managed`. A representative response is:
 
 ```json
-{ "binance": true, "bybit": false }
+{
+  "account": {
+    "id": "f1ed5bf5-6dc8-4e0a-a51d-5795af08c4a8",
+    "label": "My Bybit",
+    "exchange": "bybit",
+    "ownership": "own",
+    "enabled": true,
+    "credential": { "mode": "account_isolated", "status": "configured", "isolated": true },
+    "status": "ready",
+    "botIds": []
+  }
+}
 ```
 
-```bash
-curl http://localhost:4180/api/trade/keys
-```
+Credential rotation is rejected while any bound robot is running. Disabling/deleting a bound
+account and removing credentials from a bound account return `409`. Ciphertext is AES-256-GCM
+authenticated against owner, account and exchange, so moving it to another tenant/account fails
+decryption.
+
+`GET /api/trade/keys` remains a tenant-scoped compatibility status and returns only exchange
+booleans. `POST /api/trade/keys` is retired and returns `410` with
+`code: "ACCOUNT_CREDENTIAL_ENDPOINT_REQUIRED"`.
 
 ---
 
 ### `GET /api/trade/account-telemetry`
 
-Returns protected, read-only Binance/Bybit economics evidence for the current configured accounts:
+Returns protected, read-only Binance/Bybit economics evidence for the current user's configured accounts:
 signed Spot/perpetual fee rates, Binance USDⓈ-M tier/BNB-burn state, current borrow capacity/rate,
 deposit/withdraw network state and public stablecoin-FX provenance. The route requires an
-authenticated `admin` session, never accepts or returns credentials, and sends
+authenticated `live-trade` session, uses only accounts owned by that session, never accepts or
+returns credentials, and sends
 `Cache-Control: private, no-store`.
 
 Bounded query parameters:
@@ -1326,41 +1371,10 @@ curl 'http://localhost:4180/api/trade/account-telemetry?symbols=BTCUSDT,ETHUSDT&
 
 ---
 
-### `POST /api/trade/keys`
-
-Stores (encrypted) API credentials for an exchange.
-
-**Body**
-
-| Field | Type | Required | Notes |
-| --- | --- | --- | --- |
-| `exchange` | `"binance" \| "bybit"` | yes | Any other value returns `400` |
-| `apiKey` | `string` | no | Stored as empty string if omitted |
-| `apiSecret` | `string` | no | Stored as empty string if omitted |
-
-**Response `200`**
-
-```json
-{ "ok": true }
-```
-
-**Error `400`**
-
-```json
-{ "error": "exchange must be binance or bybit" }
-```
-
-```bash
-curl -X POST http://localhost:4180/api/trade/keys \
-  -H "Content-Type: application/json" \
-  -d '{"exchange":"binance","apiKey":"<key>","apiSecret":"<secret>"}'
-```
-
----
-
 ### `GET /api/trade/notify`
 
-Returns the current notification configuration. Tokens are never returned in plaintext; only a `hasToken` boolean is exposed.
+Returns the current user's notification configuration. Tokens are never returned in plaintext;
+only a `hasToken` boolean is exposed, and another tenant's targets/tokens are never read.
 
 **Response `200`**
 
@@ -1379,7 +1393,8 @@ curl http://localhost:4180/api/trade/notify
 
 ### `POST /api/trade/notify`
 
-Updates notification configuration. Any omitted field keeps its current value; a blank `token` also keeps the existing token.
+Updates only the current user's notification configuration. Any omitted field keeps its current
+value; a blank `token` also keeps that user's existing token.
 
 **Body** (`Partial<NotifyConfig>`)
 
@@ -1420,9 +1435,9 @@ curl -X POST http://localhost:4180/api/trade/notify/test
 
 ## Trading WebSocket: `/trade-stream`
 
-An administrator-only WebSocket that pushes `TradeEvent` values from the current global legacy
-engine. It takes no query parameters and rejects token-in-URL auth. Browser clients first request a
-short-lived one-time ticket:
+An owner-partitioned WebSocket that pushes only the authenticated user's `TradeEvent` values. It
+takes no query parameters and rejects token-in-URL auth. Browser clients first request a
+short-lived, single-use ticket bound to the active database session and trading permission:
 
 ```
 POST /api/trade/ws-ticket
@@ -1439,8 +1454,11 @@ ws://localhost:4180/trade-stream
 Sec-WebSocket-Protocol: sbv2.ticket.<base64url(ticket)>
 ```
 
-Each message is a JSON-serialized `TradeEvent` produced by the engine (fills, order updates, log
-lines and status changes). Token subprotocol and bearer fallbacks are disabled in database mode.
+Each message is a JSON-serialized `TradeEvent` produced by that owner's engine runtimes (fills,
+order updates, log lines and status changes). Internal event and nested bot `ownerUserId` fields are
+removed before serialization. An event without a resolved owner is dropped; a permission change or
+account disable closes that owner's sockets. Token subprotocol and bearer fallbacks are disabled in
+database mode.
 
 ---
 

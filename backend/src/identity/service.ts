@@ -21,6 +21,25 @@ export interface IdentityServiceOptions {
   now?: () => Date;
 }
 
+export type TradingAccessChangeAction = "revoke" | "restore";
+export type TradingAccessChangeHandler = (userId: string, action: TradingAccessChangeAction) => void | Promise<void>;
+
+export type SessionRevocationReason =
+  | "logout"
+  | "password_changed"
+  | "user_activated"
+  | "user_disabled"
+  | "permissions_changed";
+
+export interface SessionRevocationNotice {
+  userId: string;
+  /** Present when only one session was revoked (normal logout). */
+  sessionIdHash?: string;
+  reason: SessionRevocationReason;
+}
+
+export type SessionRevocationHandler = (notice: SessionRevocationNotice) => void | Promise<void>;
+
 export interface RequestMetadata {
   ipAddress?: string;
   userAgent?: string;
@@ -39,13 +58,26 @@ export class IdentityService {
   private readonly wsTicketTtlMs: number;
   private readonly now: () => Date;
   private readonly fallbackPasswordHash = hashPassword("saltanatbotv2-invalid-account-timing-sentinel");
+  private tradingAccessChangeHandler?: TradingAccessChangeHandler;
+  private sessionRevocationHandler?: SessionRevocationHandler;
 
   constructor(readonly repository: IdentityRepository, options: IdentityServiceOptions = {}) {
     this.sessionTtlMs = boundedPositive(options.sessionTtlMs, 12 * 60 * 60_000, 15 * 60_000, 30 * 24 * 60 * 60_000);
     this.wsTicketTtlMs = boundedPositive(options.wsTicketTtlMs, 30_000, 5_000, 120_000);
     this.allowRegistration = options.allowRegistration ?? true;
-    this.allowNonAdminTrading = options.allowNonAdminTrading ?? false;
+    // Trading resources are owner-scoped. Deployments may still disable role
+    // assignment explicitly during maintenance, but the safe default no longer
+    // relies on the former shared-account escape hatch.
+    this.allowNonAdminTrading = options.allowNonAdminTrading ?? true;
     this.now = options.now ?? (() => new Date());
+  }
+
+  setTradingAccessChangeHandler(handler: TradingAccessChangeHandler | undefined): void {
+    this.tradingAccessChangeHandler = handler;
+  }
+
+  setSessionRevocationHandler(handler: SessionRevocationHandler | undefined): void {
+    this.sessionRevocationHandler = handler;
   }
 
   async register(login: string, password: string, metadata: RequestMetadata = {}): Promise<PublicIdentityUser> {
@@ -143,6 +175,11 @@ export class IdentityService {
     if (!principal) return;
     const now = this.now();
     await this.repository.revokeSession(principal.sessionIdHash, now);
+    await this.sessionRevocationHandler?.({
+      userId: principal.user.id,
+      sessionIdHash: principal.sessionIdHash,
+      reason: "logout"
+    });
     await this.audit("logout", metadata, principal.user.id, principal.user.id);
   }
 
@@ -155,12 +192,14 @@ export class IdentityService {
     if (passwordError) throw new IdentityError(400, "password_policy", passwordError);
     if (await verifyPassword(newPassword, user.passwordHash)) throw new IdentityError(400, "password_reused", "Choose a different password.");
     const now = this.now();
-    await this.repository.updateUser(user.id, {
+    const updated = await this.repository.updateUser(user.id, {
       passwordHash: await hashPassword(newPassword),
       mustChangePassword: false,
       updatedAt: now
     });
     await this.repository.revokeUserSessions(user.id, now);
+    await this.sessionRevocationHandler?.({ userId: user.id, reason: "password_changed" });
+    if (updated && this.userHasTradingAccess(updated)) await this.tradingAccessChangeHandler?.(user.id, "restore");
     await this.audit("password.changed", metadata, user.id, user.id);
   }
 
@@ -180,6 +219,8 @@ export class IdentityService {
     });
     if (!user) throw new IdentityError(404, "user_not_found", "User not found.");
     await this.repository.revokeUserSessions(subjectId, now);
+    await this.sessionRevocationHandler?.({ userId: subjectId, reason: "user_activated" });
+    if (this.userHasTradingAccess(user)) await this.tradingAccessChangeHandler?.(subjectId, "restore");
     await this.audit("user.activated", metadata, actor.user.id, subjectId);
     return publicIdentityUser(user);
   }
@@ -191,6 +232,8 @@ export class IdentityService {
     const user = await this.repository.updateUser(subjectId, { status: "disabled", updatedAt: now });
     if (!user) throw new IdentityError(404, "user_not_found", "User not found.");
     await this.repository.revokeUserSessions(subjectId, now);
+    await this.sessionRevocationHandler?.({ userId: subjectId, reason: "user_disabled" });
+    await this.tradingAccessChangeHandler?.(subjectId, "revoke");
     await this.audit("user.disabled", metadata, actor.user.id, subjectId);
     return publicIdentityUser(user);
   }
@@ -212,6 +255,11 @@ export class IdentityService {
     const user = await this.repository.updateUser(subjectId, { ...input, updatedAt: now });
     if (!user) throw new IdentityError(404, "user_not_found", "User not found.");
     await this.repository.revokeUserSessions(subjectId, now);
+    await this.sessionRevocationHandler?.({ userId: subjectId, reason: "permissions_changed" });
+    // Every permission mutation first stops/disarms the old authority. A grant
+    // re-opens starts only after that revocation has completed.
+    await this.tradingAccessChangeHandler?.(subjectId, "revoke");
+    if (this.userHasTradingAccess(user)) await this.tradingAccessChangeHandler?.(subjectId, "restore");
     await this.audit("user.permissions_changed", metadata, actor.user.id, subjectId, input);
     return publicIdentityUser(user);
   }
@@ -245,6 +293,13 @@ export class IdentityService {
     };
   }
 
+  /** Current durable role used by crash-recovery before any browser session exists. */
+  async tradingRoleForUser(userId: string): Promise<ReturnType<typeof effectiveTradingRole>> {
+    const user = await this.repository.findUserById(userId);
+    if (!user || user.status !== "active" || user.mustChangePassword) return undefined;
+    return this.roleForUser(user);
+  }
+
   async cleanup(): Promise<void> {
     const now = this.now();
     await Promise.all([this.repository.deleteExpiredSessions(now), this.repository.deleteExpiredWsTickets(now)]);
@@ -271,6 +326,15 @@ export class IdentityService {
   private roleForUser(user: IdentityUser): ReturnType<typeof effectiveTradingRole> {
     if (user.appRole === "admin") return "admin";
     return this.allowNonAdminTrading ? effectiveTradingRole(user) : undefined;
+  }
+
+  private userHasTradingAccess(user: IdentityUser): boolean {
+    if (user.status !== "active" || user.mustChangePassword) return false;
+    const role = this.roleForUser(user);
+    // Restoring engine starts is stronger than allowing read-only inspection.
+    // Keep direct control planes (for example Telegram) suspended unless the
+    // durable role may actually start at least a paper bot.
+    return role === "paper-trade" || role === "live-trade" || role === "admin";
   }
 
   private async audit(

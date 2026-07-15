@@ -20,51 +20,42 @@ const strategy: StrategyArtifact = {
 };
 
 const bybitReady = account({
-  id: "bybit:default",
+  id: "bybit:primary",
   label: "Primary Bybit",
   exchange: "bybit",
   ownership: "own",
   status: "ready",
-  credential: { mode: "legacy_exchange_shared", status: "configured", isolated: false },
-  capabilities: { liveExecution: true, credentialIsolation: false, multipleCredentialAccounts: false }
+  credential: { mode: "account_isolated", status: "configured", isolated: true },
+  capabilities: { liveExecution: true, credentialIsolation: true, multipleCredentialAccounts: true }
 });
 
 const bybitMissing = account({
-  id: "bybit:default",
+  id: "bybit:missing",
   label: "Bybit without keys",
   exchange: "bybit",
   ownership: "managed",
   status: "credentials_missing",
-  credential: { mode: "legacy_exchange_shared", status: "missing", isolated: false }
-});
-
-const bybitMetadata = account({
-  id: "bybit:metadata",
-  label: "Metadata desk",
-  exchange: "bybit",
-  ownership: "managed",
-  status: "metadata_only",
-  credential: { mode: "unsupported", status: "unsupported", isolated: false }
+  credential: { mode: "account_isolated", status: "missing", isolated: true }
 });
 
 const bybitDisabled = account({
   id: "bybit:disabled",
-  label: "Disabled legacy",
+  label: "Disabled account",
   exchange: "bybit",
   ownership: "own",
   enabled: false,
   status: "disabled",
-  credential: { mode: "legacy_exchange_shared", status: "configured", isolated: false }
+  credential: { mode: "account_isolated", status: "configured", isolated: true }
 });
 
 const binanceReady = account({
-  id: "binance:default",
+  id: "binance:primary",
   label: "Primary Binance",
   exchange: "binance",
   ownership: "own",
   status: "ready",
-  credential: { mode: "legacy_exchange_shared", status: "configured", isolated: false },
-  capabilities: { liveExecution: true, credentialIsolation: false, multipleCredentialAccounts: false }
+  credential: { mode: "account_isolated", status: "configured", isolated: true },
+  capabilities: { liveExecution: true, credentialIsolation: true, multipleCredentialAccounts: true }
 });
 
 afterEach(() => {
@@ -72,20 +63,18 @@ afterEach(() => {
 });
 
 describe("live account selection when creating a bot", () => {
-  it("shows only the selected exchange and disables metadata-only or disabled records", async () => {
-    const loadAccounts = vi.fn(async () => [binanceReady, bybitMissing, bybitMetadata, bybitDisabled]);
+  it("shows only the selected exchange and disables accounts without live-ready isolated credentials", async () => {
+    const loadAccounts = vi.fn(async () => [binanceReady, bybitMissing, bybitDisabled]);
     const { container, root } = await render({ locale: "ru", canReadAccounts: true, loadAccounts });
     expect(loadAccounts).toHaveBeenCalledOnce();
 
     await changeSelect(container.querySelector<HTMLSelectElement>('select[name="exchange"]')!, "bybit");
     const options = [...container.querySelectorAll<HTMLOptionElement>('select[name="account-id"] option')];
-    expect(options.map((option) => option.value)).toEqual(["", "bybit:default", "bybit:metadata", "bybit:disabled"]);
-    expect(option(options, "bybit:default").disabled).toBe(false);
-    expect(option(options, "bybit:metadata").disabled).toBe(true);
+    expect(options.map((option) => option.value)).toEqual(["", "bybit:missing", "bybit:disabled"]);
+    expect(option(options, "bybit:missing").disabled).toBe(true);
     expect(option(options, "bybit:disabled").disabled).toBe(true);
-    expect(option(options, "bybit:default").textContent).toContain("под управлением · нет ключей");
-    expect(option(options, "bybit:metadata").textContent).toContain("только метаданные");
-    expect(container.textContent).toContain("ключи общие для биржи, а не изолированы по аккаунтам");
+    expect(option(options, "bybit:missing").textContent).toContain("под управлением · нет ключей");
+    expect(container.textContent).toContain("У каждого аккаунта собственные ключи");
     await act(async () => root.unmount());
   });
 
@@ -94,36 +83,33 @@ describe("live account selection when creating a bot", () => {
     const { container, root } = await render({
       locale: "en",
       canReadAccounts: true,
-      loadAccounts: async () => [bybitReady, bybitMetadata],
+      loadAccounts: async () => [bybitReady],
       saveTradingBot
     });
 
     await changeSelect(container.querySelector<HTMLSelectElement>('select[name="exchange"]')!, "bybit");
-    await changeSelect(container.querySelector<HTMLSelectElement>('select[name="account-id"]')!, "bybit:default");
+    await changeSelect(container.querySelector<HTMLSelectElement>('select[name="account-id"]')!, "bybit:primary");
     await submit(container.querySelector<HTMLFormElement>("form")!);
 
-    expect(saveTradingBot).toHaveBeenCalledWith(expect.objectContaining({ exchange: "bybit", accountId: "bybit:default" }));
+    expect(saveTradingBot).toHaveBeenCalledWith(expect.objectContaining({ exchange: "bybit", accountId: "bybit:primary" }));
     await act(async () => root.unmount());
   });
 
-  it("does not request the admin list for other roles and keeps the server-default fallback", async () => {
+  it("does not request account data or offer live exchanges without live-trade access", async () => {
     const loadAccounts = vi.fn(async () => [bybitReady]);
     const saveTradingBot = vi.fn(async (input: Partial<TradingBot>) => savedBot(input));
     const { container, root } = await render({ locale: "kk", canReadAccounts: false, loadAccounts, saveTradingBot });
 
     expect(container.textContent).toContain(tradingText("kk", "paperAccountHelp"));
-    await changeSelect(container.querySelector<HTMLSelectElement>('select[name="exchange"]')!, "bybit");
+    expect([...container.querySelectorAll<HTMLOptionElement>('select[name="exchange"] option')].map((item) => item.value)).toEqual(["paper"]);
     expect(loadAccounts).not.toHaveBeenCalled();
     expect(container.querySelector('select[name="account-id"]')).toBeNull();
-    expect(container.textContent).toContain("Аккаунтты тек әкімші таңдай алады");
     await submit(container.querySelector<HTMLFormElement>("form")!);
 
-    expect(saveTradingBot).toHaveBeenCalledOnce();
-    expect(saveTradingBot.mock.calls[0]?.[0]).not.toHaveProperty("accountId");
+    expect(saveTradingBot).toHaveBeenCalledWith(expect.objectContaining({ exchange: "paper" }));
     for (const locale of ["en", "ru", "kk"] as const) {
       expect(tradingText(locale, "liveAccountSharedHelp")).toBeTruthy();
       expect(tradingText(locale, "liveAccountAdminFallback")).toBeTruthy();
-      expect(tradingText(locale, "accountMetadataOnly")).toBeTruthy();
     }
     await act(async () => root.unmount());
   });
@@ -149,9 +135,9 @@ function account(overrides: Partial<TradingAccountView>): TradingAccountView {
     enabled: true,
     createdAt: 1,
     updatedAt: 1,
-    status: "metadata_only",
-    credential: { mode: "unsupported", status: "unsupported", isolated: false },
-    capabilities: { liveExecution: false, credentialIsolation: false, multipleCredentialAccounts: false },
+    status: "credentials_missing",
+    credential: { mode: "account_isolated", status: "missing", isolated: true },
+    capabilities: { liveExecution: false, credentialIsolation: true, multipleCredentialAccounts: true },
     botIds: [],
     ...overrides
   };

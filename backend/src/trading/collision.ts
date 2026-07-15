@@ -17,6 +17,7 @@ export function findLiveCollision(config: BotConfig, running: BotConfig[]): BotC
   return running.find(
     (other) =>
       other.id !== config.id &&
+      (other.ownerUserId ?? "") === (config.ownerUserId ?? "") &&
       other.exchange !== "paper" &&
       other.exchange === config.exchange &&
       botTradingAccountId(other) === botTradingAccountId(config) &&

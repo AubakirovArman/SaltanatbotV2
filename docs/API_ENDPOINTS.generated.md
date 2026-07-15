@@ -62,25 +62,27 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `GET` | `/api/orderbook-ml/research/status` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
 | `GET` | `/api/ready` | Public | `backend/src/identity/serverRoutes.ts` |
 | `GET` | `/api/sparklines` | Authenticated account | `backend/src/server.ts` |
-| `GET` | `/api/trade/account-telemetry` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `GET` | `/api/trade/accounts` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `POST` | `/api/trade/accounts` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `DELETE` | `/api/trade/accounts/:id` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `GET` | `/api/trade/accounts/:id` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `PATCH` | `/api/trade/accounts/:id` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `GET` | `/api/trade/arbitrage-alerts` | Authenticated · paper-trade | `backend/src/arbitrage/alertRoutes.ts` |
-| `POST` | `/api/trade/arbitrage-alerts` | Authenticated · paper-trade | `backend/src/arbitrage/alertRoutes.ts` |
-| `DELETE` | `/api/trade/arbitrage-alerts/:id` | Authenticated · paper-trade | `backend/src/arbitrage/alertRoutes.ts` |
-| `GET` | `/api/trade/arbitrage-alerts/deliveries` | Authenticated · paper-trade | `backend/src/arbitrage/alertRoutes.ts` |
-| `GET` | `/api/trade/arbitrage-alerts/research` | Authenticated · paper-trade | `backend/src/arbitrage/researchAlerts/routes.ts` |
-| `POST` | `/api/trade/arbitrage-alerts/research` | Authenticated · paper-trade | `backend/src/arbitrage/researchAlerts/routes.ts` |
-| `DELETE` | `/api/trade/arbitrage-alerts/research/:id` | Authenticated · paper-trade | `backend/src/arbitrage/researchAlerts/routes.ts` |
-| `GET` | `/api/trade/arbitrage-alerts/research/deliveries` | Authenticated · paper-trade | `backend/src/arbitrage/researchAlerts/routes.ts` |
-| `GET` | `/api/trade/audit` | Authenticated · admin | `backend/src/trading/routes.ts` |
+| `GET` | `/api/trade/account-telemetry` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `GET` | `/api/trade/accounts` | Authenticated · read-only+ · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `POST` | `/api/trade/accounts` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `DELETE` | `/api/trade/accounts/:id` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `GET` | `/api/trade/accounts/:id` | Authenticated · read-only+ · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `PATCH` | `/api/trade/accounts/:id` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `DELETE` | `/api/trade/accounts/:id/credentials` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `PUT` | `/api/trade/accounts/:id/credentials` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `GET` | `/api/trade/arbitrage-alerts` | Authenticated · admin | `backend/src/arbitrage/alertRoutes.ts` |
+| `POST` | `/api/trade/arbitrage-alerts` | Authenticated · admin | `backend/src/arbitrage/alertRoutes.ts` |
+| `DELETE` | `/api/trade/arbitrage-alerts/:id` | Authenticated · admin | `backend/src/arbitrage/alertRoutes.ts` |
+| `GET` | `/api/trade/arbitrage-alerts/deliveries` | Authenticated · admin | `backend/src/arbitrage/alertRoutes.ts` |
+| `GET` | `/api/trade/arbitrage-alerts/research` | Authenticated · admin | `backend/src/arbitrage/researchAlerts/routes.ts` |
+| `POST` | `/api/trade/arbitrage-alerts/research` | Authenticated · admin | `backend/src/arbitrage/researchAlerts/routes.ts` |
+| `DELETE` | `/api/trade/arbitrage-alerts/research/:id` | Authenticated · admin | `backend/src/arbitrage/researchAlerts/routes.ts` |
+| `GET` | `/api/trade/arbitrage-alerts/research/deliveries` | Authenticated · admin | `backend/src/arbitrage/researchAlerts/routes.ts` |
+| `GET` | `/api/trade/audit` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
 | `GET` | `/api/trade/auth` | Public | `backend/src/trading/routes.ts` |
 | `GET` | `/api/trade/bots` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
-| `POST` | `/api/trade/bots` | Authenticated · paper/live role by bot | `backend/src/trading/routes.ts` |
-| `DELETE` | `/api/trade/bots/:id` | Authenticated · admin | `backend/src/trading/routes.ts` |
+| `POST` | `/api/trade/bots` | Authenticated · paper/live role by bot | `backend/src/trading/botLifecycleMutationRoutes.ts` |
+| `DELETE` | `/api/trade/bots/:id` | Authenticated · paper/live role by bot | `backend/src/trading/botLifecycleMutationRoutes.ts` |
 | `POST` | `/api/trade/bots/:id/command` | Authenticated · paper/live role by bot | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/bots/:id/confirm-resume` | Authenticated · paper/live role by bot | `backend/src/trading/routes.ts` |
 | `GET` | `/api/trade/bots/:id/fills` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
@@ -89,31 +91,31 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `GET` | `/api/trade/bots/:id/order-journal` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
 | `GET` | `/api/trade/bots/:id/order-journal/:orderId/events` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
 | `GET` | `/api/trade/bots/:id/orders` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
-| `POST` | `/api/trade/bots/:id/reset-state` | Authenticated · admin | `backend/src/trading/routes.ts` |
+| `POST` | `/api/trade/bots/:id/reset-state` | Authenticated · paper/live role by bot | `backend/src/trading/botLifecycleMutationRoutes.ts` |
 | `POST` | `/api/trade/bots/:id/start` | Authenticated · paper/live role by bot | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/bots/:id/stop` | Authenticated · paper/live role by bot | `backend/src/trading/routes.ts` |
-| `GET` | `/api/trade/bybit/uta` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `POST` | `/api/trade/bybit/uta/borrow` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `POST` | `/api/trade/bybit/uta/collateral` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `POST` | `/api/trade/bybit/uta/repay` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `GET` | `/api/trade/keys` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
-| `POST` | `/api/trade/keys` | Authenticated · admin | `backend/src/trading/tradingAccountRoutes.ts` |
+| `GET` | `/api/trade/bybit/uta` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `POST` | `/api/trade/bybit/uta/borrow` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `POST` | `/api/trade/bybit/uta/collateral` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `POST` | `/api/trade/bybit/uta/repay` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `GET` | `/api/trade/keys` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
+| `POST` | `/api/trade/keys` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
 | `GET` | `/api/trade/kill` | Authenticated · live-trade | `backend/src/trading/emergencyStopRoutes.ts` |
 | `POST` | `/api/trade/kill` | Authenticated · live-trade | `backend/src/trading/emergencyStopRoutes.ts` |
-| `GET` | `/api/trade/notify` | Authenticated · admin | `backend/src/trading/routes.ts` |
-| `POST` | `/api/trade/notify` | Authenticated · admin | `backend/src/trading/routes.ts` |
-| `POST` | `/api/trade/notify-alert` | Authenticated · paper-trade | `backend/src/trading/routes.ts` |
-| `POST` | `/api/trade/notify-arbitrage` | Authenticated · paper-trade | `backend/src/trading/routes.ts` |
-| `POST` | `/api/trade/notify/test` | Authenticated · admin | `backend/src/trading/routes.ts` |
-| `GET` | `/api/trade/paper-multi-leg/recovery` | Authenticated · paper-trade | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
-| `GET` | `/api/trade/paper-multi-leg/runs` | Authenticated · paper-trade | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
-| `POST` | `/api/trade/paper-multi-leg/runs` | Authenticated · paper-trade | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
-| `GET` | `/api/trade/paper-multi-leg/runs/:runId` | Authenticated · paper-trade | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
+| `GET` | `/api/trade/notify` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/notificationRoutes.ts` |
+| `POST` | `/api/trade/notify` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/notificationRoutes.ts` |
+| `POST` | `/api/trade/notify-alert` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/notificationRoutes.ts` |
+| `POST` | `/api/trade/notify-arbitrage` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/notificationRoutes.ts` |
+| `POST` | `/api/trade/notify/test` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/notificationRoutes.ts` |
+| `GET` | `/api/trade/paper-multi-leg/recovery` | Authenticated · admin | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
+| `GET` | `/api/trade/paper-multi-leg/runs` | Authenticated · admin | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
+| `POST` | `/api/trade/paper-multi-leg/runs` | Authenticated · admin | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
+| `GET` | `/api/trade/paper-multi-leg/runs/:runId` | Authenticated · admin | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
 | `GET` | `/api/trade/portfolio` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
 | `DELETE` | `/api/trade/session` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/session` | Public | `backend/src/trading/routes.ts` |
 | `GET` | `/api/trade/settings` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
-| `POST` | `/api/trade/settings` | Authenticated · admin | `backend/src/trading/routes.ts` |
+| `POST` | `/api/trade/settings` | Authenticated · live-trade | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/ws-ticket` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
 | `GET` | `/api/venues` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/workspaces` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
@@ -135,4 +137,4 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **115 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **117 HTTP endpoints** and **6 WebSocket endpoints**.

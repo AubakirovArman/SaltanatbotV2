@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { migrateTradingStore, TRADING_SCHEMA_VERSION } from "../src/trading/storeSchema.js";
 import { EXECUTION_RECONCILIATION_JOURNAL_SQL, RISK_ORDER_JOURNAL_SQL, withDatabaseTransaction } from "../src/trading/store.js";
+import { EmergencyStopCoordinator, type EmergencyStopResult } from "../src/trading/emergencyStop.js";
 
 const databases: DatabaseSync[] = [];
 
@@ -16,6 +17,34 @@ function tableNames(database: DatabaseSync) {
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
     .all()
     .map((row) => String(row.name));
+}
+
+function createV4OwnershipTables(database: DatabaseSync) {
+  database.exec(`
+    CREATE TABLE bots (id TEXT PRIMARY KEY, config TEXT NOT NULL, updatedAt INTEGER NOT NULL);
+    CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, encrypted INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE audit_log (
+      id TEXT PRIMARY KEY, actor TEXT NOT NULL, role TEXT NOT NULL, action TEXT NOT NULL,
+      target TEXT, statusCode INTEGER NOT NULL, ip TEXT, data TEXT, ts INTEGER NOT NULL
+    );
+    PRAGMA user_version = 4;
+  `);
+}
+
+function createV5OwnershipTables(database: DatabaseSync) {
+  createV4OwnershipTables(database);
+  database.exec(`
+    CREATE TABLE trading_accounts (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      exchange TEXT NOT NULL CHECK (exchange IN ('binance', 'bybit')),
+      ownership TEXT NOT NULL CHECK (ownership IN ('own', 'managed')),
+      enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+    PRAGMA user_version = 5;
+  `);
 }
 
 afterEach(() => {
@@ -35,11 +64,12 @@ describe("trading store schema migrations", () => {
         { version: 2, name: "durable_positions_and_strategy_runs" },
         { version: 3, name: "arbitrage_opportunity_history" },
         { version: 4, name: "append_only_paper_trading_ledger" },
-        { version: 5, name: "durable_trading_account_registry" }
+        { version: 5, name: "durable_trading_account_registry" },
+        { version: 6, name: "tenant_owned_trading_resources_and_credentials" }
       ]
     });
-    expect(tableNames(database)).toEqual(["arbitrage_history", "audit_log", "bots", "fills", "logs", "order_events", "orders", "paper_events", "positions", "schema_migrations", "settings", "strategy_runs", "trading_accounts"]);
-    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 5 });
+    expect(tableNames(database)).toEqual(["arbitrage_history", "audit_log", "bots", "fills", "logs", "order_events", "orders", "paper_events", "positions", "schema_migrations", "settings", "strategy_runs", "trading_account_credentials", "trading_accounts"]);
+    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 6 });
   });
 
   it("upgrades an unversioned legacy database without deleting existing records", () => {
@@ -58,28 +88,23 @@ describe("trading store schema migrations", () => {
     });
   });
 
-  it("upgrades v1 transactionally with durable positions and strategy runs", () => {
+  it("upgrades v5 transactionally with tenant ownership", () => {
     const database = memoryDatabase();
-    migrateTradingStore(database, () => 10);
-    database.exec("PRAGMA user_version = 1");
-    database.prepare("DELETE FROM schema_migrations WHERE version = 2").run();
-    database.exec("DROP TABLE strategy_runs; DROP TABLE positions");
-    database.prepare("INSERT INTO fills (id, botId, data, ts) VALUES (?, ?, ?, ?)").run("fill-1", "bot", "{}", 11);
+    createV5OwnershipTables(database);
+    database.prepare("INSERT INTO bots (id, config, updatedAt) VALUES (?, ?, ?)")
+      .run("legacy-bot", JSON.stringify({ id: "legacy-bot", exchange: "paper", status: "stopped" }), 11);
+    database.prepare("INSERT INTO audit_log (id, actor, role, action, statusCode, ts) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("audit-1", "session", "admin", "POST /bots", 200, 12);
 
-    const result = migrateTradingStore(database, () => 20);
+    const result = migrateTradingStore(database, () => 20, { legacyOwnerUserId: "admin-user" });
 
     expect(result).toEqual({
-      fromVersion: 1,
-      toVersion: 5,
-      applied: [
-        { version: 2, name: "durable_positions_and_strategy_runs" },
-        { version: 3, name: "arbitrage_opportunity_history" },
-        { version: 4, name: "append_only_paper_trading_ledger" },
-        { version: 5, name: "durable_trading_account_registry" }
-      ]
+      fromVersion: 5,
+      toVersion: 6,
+      applied: [{ version: 6, name: "tenant_owned_trading_resources_and_credentials" }]
     });
-    expect(tableNames(database)).toEqual(expect.arrayContaining(["positions", "strategy_runs"]));
-    expect(database.prepare("SELECT id FROM fills").get()).toMatchObject({ id: "fill-1" });
+    expect(database.prepare("SELECT ownerUserId FROM bots WHERE id = 'legacy-bot'").get()).toEqual({ ownerUserId: "admin-user" });
+    expect(database.prepare("SELECT ownerUserId FROM audit_log WHERE id = 'audit-1'").get()).toEqual({ ownerUserId: "admin-user" });
   });
 
   it("is idempotent after the current schema has been applied", () => {
@@ -87,17 +112,30 @@ describe("trading store schema migrations", () => {
     migrateTradingStore(database, () => 1);
     const result = migrateTradingStore(database, () => 2);
 
-    expect(result).toEqual({ fromVersion: 5, toVersion: 5, applied: [] });
-    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 5 });
+    expect(result).toEqual({ fromVersion: 6, toVersion: 6, applied: [] });
+    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 6 });
   });
 
   it("seeds legacy exchange accounts from stored keys and backfills bot account ids", () => {
     const database = memoryDatabase();
-    migrateTradingStore(database, () => 10);
-    database.exec("PRAGMA user_version = 4");
-    database.prepare("DELETE FROM schema_migrations WHERE version = 5").run();
-    database.exec("DROP TABLE trading_accounts");
+    createV4OwnershipTables(database);
+    const emergency: EmergencyStopResult = {
+      operationId: "legacy-emergency",
+      phase: "terminal",
+      ok: true,
+      flattenRequested: false,
+      startedAt: 1,
+      completedAt: 2,
+      botsStopped: 1,
+      accounts: [],
+      errors: []
+    };
     database.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, 1)").run("keys:binance", "opaque-encrypted-value");
+    database.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, 0)").run("liveTradingEnabled", "true");
+    database.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, 1)").run("notify", "encrypted-notify");
+    database.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, 0)").run("tradingEmergencyStop", JSON.stringify(emergency));
+    database.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, 1)")
+      .run("owner:admin-user:tradingEmergencyStop", "stale-namespaced-state");
     database.prepare("INSERT INTO bots (id, config, updatedAt) VALUES (?, ?, ?)").run(
       "legacy-live",
       JSON.stringify({ id: "legacy-live", exchange: "binance", status: "stopped" }),
@@ -109,16 +147,83 @@ describe("trading store schema migrations", () => {
       12
     );
 
-    const result = migrateTradingStore(database, () => 20);
+    const contexts: unknown[] = [];
+    const result = migrateTradingStore(database, () => 20, {
+      legacyOwnerUserId: "admin-user",
+      reencryptLegacyCredential(payload, context) {
+        contexts.push(context);
+        return `aad-bound:${payload}`;
+      }
+    });
 
-    expect(result).toEqual({ fromVersion: 4, toVersion: 5, applied: [{ version: 5, name: "durable_trading_account_registry" }] });
-    expect(database.prepare("SELECT id, exchange, ownership, enabled, createdAt FROM trading_accounts").all()).toEqual([
-      expect.objectContaining({ id: "binance:default", exchange: "binance", ownership: "own", enabled: 1, createdAt: 20 })
+    expect(result).toEqual({
+      fromVersion: 4,
+      toVersion: 6,
+      applied: [
+        { version: 5, name: "durable_trading_account_registry" },
+        { version: 6, name: "tenant_owned_trading_resources_and_credentials" }
+      ]
+    });
+    expect(database.prepare("SELECT id, ownerUserId, exchange, ownership, enabled, createdAt FROM trading_accounts").all()).toEqual([
+      expect.objectContaining({ id: "binance:default", ownerUserId: "admin-user", exchange: "binance", ownership: "own", enabled: 1, createdAt: 20 })
     ]);
+    expect(contexts).toEqual([{ ownerUserId: "admin-user", accountId: "binance:default", exchange: "binance" }]);
+    expect(database.prepare("SELECT ownerUserId, accountId, encryptedValue FROM trading_account_credentials").get()).toEqual({
+      ownerUserId: "admin-user",
+      accountId: "binance:default",
+      encryptedValue: "aad-bound:opaque-encrypted-value"
+    });
+    expect(database.prepare("SELECT key FROM settings WHERE key = 'keys:binance'").get()).toBeUndefined();
+    expect(database.prepare("SELECT key FROM settings WHERE key = 'liveTradingEnabled'").get()).toBeUndefined();
+    expect(database.prepare("SELECT value, encrypted FROM settings WHERE key = 'notify'").get()).toEqual({ value: "encrypted-notify", encrypted: 1 });
+    expect(database.prepare("SELECT value, encrypted FROM settings WHERE key = 'owner:admin-user:notify'").get()).toEqual({ value: "encrypted-notify", encrypted: 1 });
+    expect(database.prepare("SELECT key FROM settings WHERE key = 'tradingEmergencyStop'").get()).toBeUndefined();
+    const emergencyKey = "owner:admin-user:tradingEmergencyStop";
+    const migratedEmergency = database.prepare("SELECT value, encrypted FROM settings WHERE key = ?").get(emergencyKey) as {
+      value: string;
+      encrypted: number;
+    };
+    expect(migratedEmergency.encrypted).toBe(0);
+    expect(migratedEmergency.value).toBe(JSON.stringify(emergency));
+    let storedEmergency = JSON.parse(migratedEmergency.value) as EmergencyStopResult | undefined;
+    const coordinator = new EmergencyStopCoordinator({
+      running: () => [],
+      stop: () => undefined,
+      load: () => storedEmergency,
+      save: (value) => { storedEmergency = structuredClone(value); },
+      clear: () => {
+        storedEmergency = undefined;
+        database.prepare("DELETE FROM settings WHERE key = ?").run(emergencyKey);
+      }
+    });
+    expect(() => coordinator.assertLiveStartAllowed()).toThrow(/blocked/i);
+    coordinator.resetAfterTerminal();
+    expect(coordinator.status()).toMatchObject({ phase: "idle", ok: true });
+    expect(database.prepare("SELECT key FROM settings WHERE key = ?").get(emergencyKey)).toBeUndefined();
     const live = JSON.parse(String((database.prepare("SELECT config FROM bots WHERE id = ?").get("legacy-live") as { config: string }).config));
     const paper = JSON.parse(String((database.prepare("SELECT config FROM bots WHERE id = ?").get("legacy-paper") as { config: string }).config));
     expect(live.accountId).toBe("binance:default");
     expect(paper.accountId).toBe("paper:legacy-paper");
+  });
+
+  it("rolls back ownership and preserves legacy credentials when AEAD migration fails", () => {
+    const database = memoryDatabase();
+    createV5OwnershipTables(database);
+    database.prepare(`
+      INSERT INTO trading_accounts (id, label, exchange, ownership, enabled, createdAt, updatedAt)
+      VALUES ('bybit:default', 'Bybit', 'bybit', 'own', 1, 1, 1)
+    `).run();
+    database.prepare("INSERT INTO settings (key, value, encrypted) VALUES ('keys:bybit', 'ciphertext', 1)").run();
+
+    expect(() => migrateTradingStore(database, () => 20, {
+      legacyOwnerUserId: "admin-user",
+      reencryptLegacyCredential() { throw new Error("authentication failed"); }
+    })).toThrow("authentication failed");
+
+    expect(database.prepare("PRAGMA user_version").get()).toEqual({ user_version: 5 });
+    expect(database.prepare("SELECT value FROM settings WHERE key = 'keys:bybit'").get()).toEqual({ value: "ciphertext" });
+    expect((database.prepare("PRAGMA table_info(bots)").all() as Array<{ name: string }>).some((column) => column.name === "ownerUserId")).toBe(false);
+    expect(tableNames(database)).not.toContain("trading_account_credentials");
   });
 
   it("enforces append-only paper events while allowing explicit bot deletion", () => {

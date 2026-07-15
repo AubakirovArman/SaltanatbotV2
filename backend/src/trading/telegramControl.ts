@@ -19,9 +19,10 @@
 
 import type { TradingEngine } from "./engine.js";
 import { getNotifyConfig, isTelegramControlEnabled, type TelegramConfig } from "./notifications.js";
-import { getSetting, listBots, listLogs, setSetting } from "./store.js";
+import { LEGACY_TRADING_OWNER_ID, getSetting, listBotsForOwner, listLogsForOwner, setSetting } from "./store.js";
 import { type BotDetail, escapeHtml, formatBotDetail, formatPortfolio, formatStatus, HELP_TEXT, parseCommand, type StatusRow } from "./telegramCommands.js";
 import type { BotConfig } from "./types.js";
+import { tenantSettingKey } from "./ownership.js";
 
 /** An inline-keyboard reply: rows of buttons carrying callback `data`. */
 type Keyboard = { text: string; data: string }[][];
@@ -54,7 +55,11 @@ export class TelegramControl {
   private readonly warnedChats = new Set<string>();
   private loopPromise?: Promise<void>;
 
-  constructor(private readonly engine: TradingEngine) {}
+  constructor(
+    private readonly engine: TradingEngine,
+    private readonly ownerUserId = LEGACY_TRADING_OWNER_ID,
+    private readonly inboundEnabled = true
+  ) {}
 
   /**
    * Start the poll loop if Telegram control is configured. Safe to call multiple
@@ -62,8 +67,9 @@ export class TelegramControl {
    * configured this returns immediately (the default no-op path).
    */
   start(): void {
+    if (!this.inboundEnabled) return;
     if (this.running) return;
-    if (!isTelegramControlEnabled()) return;
+    if (!isTelegramControlEnabled(getNotifyConfig(this.ownerUserId).telegram)) return;
     this.running = true;
     this.backoff = MIN_BACKOFF_MS;
     this.loopPromise = this.loop().catch((error) => {
@@ -83,14 +89,18 @@ export class TelegramControl {
    * activates control without a restart; disabling it stops the loop.
    */
   refresh(): void {
-    if (isTelegramControlEnabled()) this.start();
+    if (!this.inboundEnabled) {
+      this.stop();
+      return;
+    }
+    if (isTelegramControlEnabled(getNotifyConfig(this.ownerUserId).telegram)) this.start();
     else this.stop();
   }
 
   private async loop(): Promise<void> {
     while (this.running) {
       // Re-read config each iteration so a UI toggle takes effect live.
-      const telegram = getNotifyConfig().telegram;
+      const telegram = getNotifyConfig(this.ownerUserId).telegram;
       if (!isTelegramControlEnabled(telegram)) {
         this.running = false;
         break;
@@ -208,25 +218,28 @@ export class TelegramControl {
     const [action, id] = data.split(":");
     switch (action) {
       case "kill":
-        setSetting("liveTradingEnabled", false);
+        setSetting(tenantSettingKey(this.ownerUserId, "liveTradingEnabled"), false);
         {
-          const result = await this.engine.emergencyStop();
+          const result = await this.engine.emergencyStopForOwner(this.ownerUserId);
           if (!result.ok) {
             return { toast: "Partial failure", text: `⚠️ Emergency stop is incomplete. Live trading remains disarmed.\n${result.errors.map(escapeHtml).join("\n")}` };
           }
           return { toast: "Confirmed", text: "🛑 Emergency stop confirmed — bots stopped, open orders cancelled, live trading disarmed." };
         }
       case "resume":
-        return { toast: (await this.engine.confirmResume(id)) ? "Resumed" : "Not paused" };
+        return { toast: (await this.engine.confirmResumeForOwner(this.ownerUserId, id)) ? "Resumed" : "Not paused" };
       case "stop":
         try {
-          await this.engine.stopSafely(id);
+          if (!this.engine.runtimeConfigForOwner(this.ownerUserId, id)) return { toast: "Not found" };
+          await this.engine.stopSafelyForOwner(this.ownerUserId, id);
           return { toast: "Stopped" };
         } catch {
           return { toast: "Stop failed" };
         }
       case "close": {
-        const ok = await this.engine.closeNow(id).catch(() => false);
+        const ok = this.engine.runtimeConfigForOwner(this.ownerUserId, id)
+          ? await this.engine.closeNow(id).catch(() => false)
+          : false;
         return { toast: ok ? "Closed" : "No position" };
       }
       default:
@@ -235,10 +248,10 @@ export class TelegramControl {
   }
 
   private botKeyboard(arg: string): Keyboard | undefined {
-    const bot = findBotByName(arg);
-    if (!bot || !this.engine.isRunning(bot.id)) return undefined;
+    const bot = findBotByName(arg, this.ownerUserId);
+    if (!bot || !this.engine.isRunningForOwner(this.ownerUserId, bot.id)) return undefined;
     const row: { text: string; data: string }[] = [];
-    if (this.engine.isPaused(bot.id)) row.push({ text: "▶️ Resume", data: `resume:${bot.id}` });
+    if (this.engine.isPausedForOwner(this.ownerUserId, bot.id)) row.push({ text: "▶️ Resume", data: `resume:${bot.id}` });
     row.push({ text: "✋ Close", data: `close:${bot.id}` }, { text: "⏹️ Stop", data: `stop:${bot.id}` });
     return [row];
   }
@@ -246,12 +259,12 @@ export class TelegramControl {
   private async botReply(arg: string): Promise<string> {
     const target = arg.trim();
     if (!target) return "Usage: /bot &lt;name&gt;";
-    const bot = findBotByName(target);
+    const bot = findBotByName(target, this.ownerUserId);
     if (!bot) return `No bot named "${escapeHtml(target)}".`;
-    const running = this.engine.isRunning(bot.id);
+    const running = this.engine.isRunningForOwner(this.ownerUserId, bot.id);
     const detail: BotDetail = { name: bot.name, exchange: bot.exchange, symbol: bot.symbol, running, muted: this.engine.isMuted(bot.id) };
     if (running) {
-      const live = await this.engine.liveState(bot.id).catch(() => null);
+      const live = await this.engine.liveStateForOwner(this.ownerUserId, bot.id).catch(() => null);
       detail.paused = live?.paused;
       detail.vars = live?.vars;
       const pos = live?.position;
@@ -262,7 +275,7 @@ export class TelegramControl {
         detail.unrealizedPct = pos.entryPrice ? (move / pos.entryPrice) * 100 : 0;
       }
       try {
-        detail.realizedToday = (await this.engine.portfolio()).realizedTodayByBot[bot.id];
+        detail.realizedToday = (await this.engine.portfolio(this.ownerUserId)).realizedTodayByBot[bot.id];
       } catch {
         // ignore portfolio read failure
       }
@@ -273,33 +286,35 @@ export class TelegramControl {
   private async pnlReply(): Promise<string> {
     let portfolio: Awaited<ReturnType<TradingEngine["portfolio"]>>;
     try {
-      portfolio = await this.engine.portfolio();
+      portfolio = await this.engine.portfolio(this.ownerUserId);
     } catch {
       return "Couldn't read portfolio.";
     }
-    const perBot = listBots()
-      .filter((bot) => this.engine.isRunning(bot.id))
+    const perBot = listBotsForOwner(this.ownerUserId)
+      .filter((bot) => this.engine.isRunningForOwner(this.ownerUserId, bot.id))
       .map((bot) => ({ name: bot.name, realized: portfolio.realizedTodayByBot[bot.id] ?? 0 }));
     return formatPortfolio(portfolio.totalRealizedToday, perBot);
   }
 
   private async closeReply(arg: string): Promise<string> {
-    const bot = findBotByName(arg.trim());
+    const bot = findBotByName(arg.trim(), this.ownerUserId);
     if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
-    const ok = await this.engine.closeNow(bot.id).catch(() => false);
+    const ok = this.engine.runtimeConfigForOwner(this.ownerUserId, bot.id)
+      ? await this.engine.closeNow(bot.id).catch(() => false)
+      : false;
     return ok ? `✋ Closed <b>${escapeHtml(bot.name)}</b>'s position.` : `<b>${escapeHtml(bot.name)}</b> has no open position.`;
   }
 
   private async resumeReply(arg: string): Promise<string> {
-    const bot = findBotByName(arg.trim());
+    const bot = findBotByName(arg.trim(), this.ownerUserId);
     if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
-    return (await this.engine.confirmResume(bot.id)) ? `▶️ Resumed <b>${escapeHtml(bot.name)}</b>.` : `<b>${escapeHtml(bot.name)}</b> isn't paused.`;
+    return (await this.engine.confirmResumeForOwner(this.ownerUserId, bot.id)) ? `▶️ Resumed <b>${escapeHtml(bot.name)}</b>.` : `<b>${escapeHtml(bot.name)}</b> isn't paused.`;
   }
 
   private logsReply(arg: string): string {
-    const bot = findBotByName(arg.trim());
+    const bot = findBotByName(arg.trim(), this.ownerUserId);
     if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
-    const logs = listLogs(bot.id, 8);
+    const logs = listLogsForOwner(this.ownerUserId, bot.id, 8);
     if (!logs.length) return `No logs for <b>${escapeHtml(bot.name)}</b>.`;
     return [...logs]
       .reverse()
@@ -308,23 +323,23 @@ export class TelegramControl {
   }
 
   private muteReply(arg: string, muted: boolean): string {
-    const bot = findBotByName(arg.trim());
+    const bot = findBotByName(arg.trim(), this.ownerUserId);
     if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
     this.engine.setMuted(bot.id, muted);
     return muted ? `🔕 Muted <b>${escapeHtml(bot.name)}</b>'s alerts.` : `🔔 Unmuted <b>${escapeHtml(bot.name)}</b>.`;
   }
 
   private async statusReply(): Promise<string> {
-    const bots = listBots();
+    const bots = listBotsForOwner(this.ownerUserId);
     let portfolio: Awaited<ReturnType<TradingEngine["portfolio"]>> | undefined;
     try {
-      portfolio = await this.engine.portfolio();
+      portfolio = await this.engine.portfolio(this.ownerUserId);
     } catch {
       portfolio = undefined;
     }
     const rows: StatusRow[] = [];
     for (const bot of bots) {
-      const running = this.engine.isRunning(bot.id);
+      const running = this.engine.isRunningForOwner(this.ownerUserId, bot.id);
       const row: StatusRow = { name: bot.name, exchange: bot.exchange, symbol: bot.symbol, running };
       if (running) {
         row.position = await this.positionFor(bot).catch(() => null);
@@ -336,7 +351,7 @@ export class TelegramControl {
   }
 
   private async positionFor(bot: BotConfig): Promise<{ side: string; qty: number } | null> {
-    const live = await this.engine.liveState(bot.id);
+    const live = await this.engine.liveStateForOwner(this.ownerUserId, bot.id);
     const pos = live?.position;
     if (!pos) return null;
     return { side: pos.side, qty: pos.qty };
@@ -347,9 +362,9 @@ export class TelegramControl {
     if (!target) return "Usage: /stop &lt;name|all&gt;";
     if (target.toLowerCase() === "all") {
       const failures: string[] = [];
-      for (const bot of listBots().filter((candidate) => this.engine.isRunning(candidate.id))) {
+      for (const bot of listBotsForOwner(this.ownerUserId).filter((candidate) => this.engine.isRunningForOwner(this.ownerUserId, candidate.id))) {
         try {
-          await this.engine.stopSafely(bot.id);
+          await this.engine.stopSafelyForOwner(this.ownerUserId, bot.id);
         } catch {
           failures.push(bot.name);
         }
@@ -357,11 +372,11 @@ export class TelegramControl {
       if (failures.length) return `⚠️ Failed to stop: ${failures.map(escapeHtml).join(", ")}.`;
       return "⏹️ Stopped all bots.";
     }
-    const bot = findBotByName(target);
+    const bot = findBotByName(target, this.ownerUserId);
     if (!bot) return `No bot named "${escapeHtml(target)}".`;
-    if (!this.engine.isRunning(bot.id)) return `<b>${escapeHtml(bot.name)}</b> is not running.`;
+    if (!this.engine.isRunningForOwner(this.ownerUserId, bot.id)) return `<b>${escapeHtml(bot.name)}</b> is not running.`;
     try {
-      await this.engine.stopSafely(bot.id);
+      await this.engine.stopSafelyForOwner(this.ownerUserId, bot.id);
       return `⏹️ Stopped <b>${escapeHtml(bot.name)}</b>.`;
     } catch {
       return `⚠️ Failed to stop <b>${escapeHtml(bot.name)}</b>.`;
@@ -371,17 +386,17 @@ export class TelegramControl {
   private async startReply(arg: string): Promise<string> {
     const target = arg.trim();
     if (!target) return "Usage: /start &lt;name&gt;";
-    const bot = findBotByName(target);
+    const bot = findBotByName(target, this.ownerUserId);
     if (!bot) return `No bot named "${escapeHtml(target)}".`;
-    if (this.engine.isRunning(bot.id)) return `<b>${escapeHtml(bot.name)}</b> is already running.`;
+    if (this.engine.isRunningForOwner(this.ownerUserId, bot.id)) return `<b>${escapeHtml(bot.name)}</b> is already running.`;
 
     // LIVE bots honour the same arm gate as the HTTP route. Telegram is the
     // confirm step for an already-armed account — it must NOT bypass the arm.
-    if (bot.exchange !== "paper" && getSetting<boolean>("liveTradingEnabled") !== true) {
+    if (bot.exchange !== "paper" && getSetting<boolean>(tenantSettingKey(this.ownerUserId, "liveTradingEnabled")) !== true) {
       return `🔒 Live trading is not armed. Arm it in the web UI (Trade settings) before starting <b>${escapeHtml(bot.name)}</b>.`;
     }
     try {
-      await this.engine.start(bot);
+      await this.engine.startForOwner(this.ownerUserId, bot);
       return `▶️ Started <b>${escapeHtml(bot.name)}</b> on ${escapeHtml(bot.exchange)} · ${escapeHtml(bot.symbol)}.`;
     } catch (error) {
       return `⚠️ Failed to start <b>${escapeHtml(bot.name)}</b>: ${escapeHtml(error instanceof Error ? error.message : String(error))}`;
@@ -413,9 +428,9 @@ export class TelegramControl {
 // ---------- helpers ----------
 
 /** Case-insensitive bot lookup by name. */
-export function findBotByName(name: string): BotConfig | undefined {
+export function findBotByName(name: string, ownerUserId = LEGACY_TRADING_OWNER_ID): BotConfig | undefined {
   const wanted = name.trim().toLowerCase();
-  return listBots().find((bot) => bot.name.toLowerCase() === wanted);
+  return listBotsForOwner(ownerUserId).find((bot) => bot.name.toLowerCase() === wanted);
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

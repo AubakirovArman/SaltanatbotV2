@@ -29,10 +29,12 @@ private gates. No earlier level implies a later one.
   P&L, positions and open orders, labels own versus managed account metadata, and has explicit
   loading, error and empty states. Margin and borrowing remain unavailable when the portfolio API
   does not supply them; the UI does not synthesize values.
-- [x] Add admin-only CRUD for non-secret Binance/Bybit trading-account metadata with enabled and
-  own/managed fields, secure-origin mutation checks and in-use deletion/disable guards. Credential
-  storage remains one encrypted key set per exchange. Additional registry rows are metadata-only
-  and do not represent independently authenticated live accounts.
+- [x] Add owner-scoped CRUD for Binance/Bybit trading accounts with enabled and own/managed fields,
+  secure-origin mutation checks and in-use deletion/disable guards. Every account may hold its own
+  AES-256-GCM credentials authenticated against owner/account/exchange. Bots, journals, portfolio,
+  emergency state, audit and private WebSocket events are owner-filtered; application admins grant
+  roles but do not bypass another user's trading boundary. Schema v6 transactionally assigns
+  legacy rows/keys to one selected administrator and disarms live trading during migration.
 - [x] Let visible-range horizontal Volume Profile use chart candles or an independently selected
   `1m`, `5m`, `15m`, `1h`, `4h` or `1d` source. Bounded paging is cancellable and persisted; an
   incomplete, fallback/synthetic, unavailable or over-budget source fails closed instead of mixing

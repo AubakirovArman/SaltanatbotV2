@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { insertAuditLog } from "./store.js";
+import { insertAuditLogForOwner } from "./store.js";
 import type { AuthRole } from "./types.js";
+import { tradingOwnerFromResponse } from "./ownership.js";
 
 export function auditTradingMutation(req: Request, res: Response, next: NextFunction) {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method.toUpperCase())) {
@@ -11,9 +12,12 @@ export function auditTradingMutation(req: Request, res: Response, next: NextFunc
   const startedAt = Date.now();
   res.on("finish", () => {
     try {
-      insertAuditLog({
+      const ownerUserId = tradingOwnerFromResponse(res);
+      insertAuditLogForOwner(ownerUserId, {
         id: randomUUID(),
-        actor: String(res.locals.authMode ?? "unknown"),
+        ownerUserId,
+        actorUserId: ownerUserId,
+        actor: ownerUserId,
         role: (res.locals.authRole as AuthRole | undefined) ?? "read-only",
         action: `${req.method.toUpperCase()} ${req.route?.path ?? req.path}`,
         target: routeParam(req, "id") ?? routeParam(req, "orderId"),

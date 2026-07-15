@@ -4,8 +4,8 @@ import type { StrategyIR } from "./strategy/ir.js";
 export type ExchangeId = "paper" | "binance" | "bybit";
 export type TradingAccountExchange = Exclude<ExchangeId, "paper">;
 export type TradingAccountOwnership = "own" | "managed";
-export type TradingAccountRuntimeStatus = "ready" | "credentials_missing" | "metadata_only" | "disabled";
-export type TradingAccountCredentialStatus = "configured" | "missing" | "unsupported";
+export type TradingAccountRuntimeStatus = "ready" | "credentials_missing" | "disabled";
+export type TradingAccountCredentialStatus = "configured" | "missing";
 export type MarketType = "spot" | "futures";
 export type Side = "buy" | "sell";
 export type BotStatus = "stopped" | "running" | "error";
@@ -62,6 +62,9 @@ export interface PendingOrder {
 
 export interface BotConfig {
   id: string;
+  /** Server-side tenant owner. It is injected from the authenticated store row,
+   * never trusted from a client request. Optional only for legacy/test callers. */
+  ownerUserId?: string;
   /** Durable account binding. Legacy configs resolve to the venue default. */
   accountId?: string;
   name: string;
@@ -182,6 +185,10 @@ export interface OrderEventRecord {
 
 export interface AuditLogRecord {
   id: string;
+  /** Tenant whose trading resources the request targeted. */
+  ownerUserId?: string;
+  /** Authenticated database user. Legacy token sessions may omit it. */
+  actorUserId?: string;
   actor: string;
   role: AuthRole;
   action: string;
@@ -385,6 +392,8 @@ export interface ExchangeAdapter {
 /** Durable, non-secret metadata for a connected or planned live account. */
 export interface TradingAccount {
   id: string;
+  /** Server-side tenant owner; injected by the store. */
+  ownerUserId?: string;
   label: string;
   exchange: TradingAccountExchange;
   ownership: TradingAccountOwnership;
@@ -393,18 +402,18 @@ export interface TradingAccount {
   updatedAt: number;
 }
 
-/** API projection that states the current single-credential limitation. */
+/** Public API projection for an owner-isolated exchange account. */
 export interface TradingAccountCapabilityView extends TradingAccount {
   status: TradingAccountRuntimeStatus;
   credential: {
-    mode: "legacy_exchange_shared" | "unsupported";
+    mode: "account_isolated";
     status: TradingAccountCredentialStatus;
-    isolated: false;
+    isolated: true;
   };
   capabilities: {
     liveExecution: boolean;
-    credentialIsolation: false;
-    multipleCredentialAccounts: false;
+    credentialIsolation: true;
+    multipleCredentialAccounts: true;
   };
   botIds: string[];
 }

@@ -14,9 +14,9 @@ const desk: TradingAccountView = {
   enabled: true,
   createdAt: 1,
   updatedAt: 2,
-  status: "metadata_only",
-  credential: { mode: "unsupported", status: "unsupported", isolated: false },
-  capabilities: { liveExecution: false, credentialIsolation: false, multipleCredentialAccounts: false },
+  status: "credentials_missing",
+  credential: { mode: "account_isolated", status: "missing", isolated: true },
+  capabilities: { liveExecution: false, credentialIsolation: true, multipleCredentialAccounts: true },
   botIds: []
 };
 
@@ -24,21 +24,24 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("admin trading account registry", () => {
-  it("renders the honest capability boundary and complete EN/RU/KK copy", async () => {
+describe("per-user trading account registry", () => {
+  it("renders the account-isolation boundary and complete EN/RU/KK copy", async () => {
     for (const locale of ["en", "ru", "kk"] as const) {
       expect(accountRegistryText(locale, "title")).toBeTruthy();
-      expect(accountRegistryText(locale, "metadataOnly")).toBeTruthy();
       expect(accountRegistryText(locale, "boundary")).toMatch(/credentials|ключ|Кілт/i);
+      expect(accountRegistryText(locale, "credentialsHint")).toBeTruthy();
     }
 
     const { container, root } = await render({ locale: "ru", loadAccounts: async () => [desk] });
     expect(container.querySelector("section")?.getAttribute("aria-labelledby")).toBe("account-registry-title");
-    expect(container.querySelector('[role="note"]')?.textContent).toContain("Новые записи работают только как метаданные");
-    expect(container.textContent).toContain("марже и заимствованиях");
-    expect(container.textContent).toContain("Только метаданные");
+    expect(container.querySelector('[role="note"]')?.textContent).toContain("собственные зашифрованные ключи");
+    expect(container.textContent).toContain("Ключи не настроены");
     expect(container.textContent).toContain("Под управлением");
     expect([...container.querySelectorAll("legend")].map((item) => item.textContent)).toEqual(expect.arrayContaining(["Биржа", "Принадлежность"]));
+    const credentialForm = container.querySelector<HTMLFormElement>(".account-credential-form")!;
+    expect(credentialForm.getAttribute("autocomplete")).toBe("off");
+    expect([...credentialForm.querySelectorAll("input")].every((input) => input.getAttribute("autocomplete") === "off" && input.type === "password")).toBe(true);
+    expect([...credentialForm.querySelectorAll("label")].every((label) => !!label.htmlFor && document.getElementById(label.htmlFor) instanceof HTMLInputElement)).toBe(true);
     await act(async () => root.unmount());
   });
 
@@ -55,7 +58,8 @@ describe("admin trading account registry", () => {
         ...current,
         ...input,
         updatedAt: current.updatedAt + 1,
-        status: input.enabled === false ? "disabled" : input.enabled === true && current.status === "disabled" ? "metadata_only" : current.status
+        status: input.enabled === false ? "disabled" : input.enabled === true && current.status === "disabled" ? (current.credential.status === "configured" ? "ready" : "credentials_missing") : current.status,
+        capabilities: { ...current.capabilities, liveExecution: input.enabled === false ? false : current.credential.status === "configured" }
       };
       records.set(id, next);
       return next;
@@ -77,7 +81,7 @@ describe("admin trading account registry", () => {
     await changeInput(createLabel, "New account");
     await submit(container.querySelector<HTMLFormElement>(".account-registry-form")!);
     expect(createAccount).toHaveBeenCalledWith({ label: "New account", exchange: "bybit", ownership: "own", enabled: true });
-    expect(container.textContent).toContain("Account metadata added.");
+    expect(container.textContent).toContain("Trading account added.");
     expect(container.textContent).toContain("New account");
 
     let deskCard = cardFor(container, "Desk account");
@@ -94,10 +98,58 @@ describe("admin trading account registry", () => {
 
     deskCard = cardFor(container, "Desk renamed");
     await click(buttonFor(deskCard, "Delete"));
-    expect(confirmAction).toHaveBeenCalledWith(expect.stringContaining("Delete this account metadata?"));
+    expect(confirmAction).toHaveBeenCalledWith(expect.stringContaining("Delete this trading account?"));
     expect(removeAccount).toHaveBeenCalledWith("desk");
     expect(container.textContent).not.toContain("Desk renamed");
-    expect(container.textContent).toContain("Account metadata deleted.");
+    expect(container.textContent).toContain("Trading account deleted.");
+    await act(async () => root.unmount());
+  });
+
+  it("sets, rotates and removes credentials inside the owning account card without reading them back", async () => {
+    const configured: TradingAccountView = {
+      ...desk,
+      updatedAt: 3,
+      status: "ready",
+      credential: { ...desk.credential, status: "configured" },
+      capabilities: { ...desk.capabilities, liveExecution: true }
+    };
+    const cleared: TradingAccountView = {
+      ...configured,
+      updatedAt: 4,
+      status: "credentials_missing",
+      credential: { ...configured.credential, status: "missing" },
+      capabilities: { ...configured.capabilities, liveExecution: false }
+    };
+    const saveCredentials = vi.fn(async () => configured);
+    const clearCredentials = vi.fn(async () => cleared);
+    const confirmAction = vi.fn(() => true);
+    const { container, root } = await render({ locale: "en", loadAccounts: async () => [desk], saveCredentials, clearCredentials, confirmAction });
+    const card = cardFor(container, "Desk account");
+    const credentialForm = card.querySelector<HTMLFormElement>(".account-credential-form")!;
+    const apiKey = credentialForm.querySelector<HTMLInputElement>('input[name="apiKey"]')!;
+    const apiSecret = credentialForm.querySelector<HTMLInputElement>('input[name="apiSecret"]')!;
+
+    await changeInput(apiKey, "account-key-123");
+    await changeInput(apiSecret, "account-secret-123");
+    await submit(credentialForm);
+    expect(saveCredentials).toHaveBeenCalledWith("desk", { apiKey: "account-key-123", apiSecret: "account-secret-123" });
+    expect(apiKey.value).toBe("");
+    expect(apiSecret.value).toBe("");
+    expect(container.textContent).toContain("Account credentials saved.");
+    expect(container.textContent).not.toContain("account-key-123");
+    expect(container.textContent).not.toContain("account-secret-123");
+
+    await changeInput(apiKey, "rotated-key-123");
+    await changeInput(apiSecret, "rotated-secret-123");
+    await submit(credentialForm);
+    expect(saveCredentials).toHaveBeenLastCalledWith("desk", { apiKey: "rotated-key-123", apiSecret: "rotated-secret-123" });
+    expect(container.textContent).toContain("Account credentials rotated.");
+
+    const configuredCard = cardFor(container, "Desk account");
+    await click(buttonFor(configuredCard, "Remove credentials"));
+    expect(confirmAction).toHaveBeenCalledWith(expect.stringContaining("Remove this account's exchange credentials?"));
+    expect(clearCredentials).toHaveBeenCalledWith("desk");
+    expect(container.textContent).toContain("Account credentials removed.");
     await act(async () => root.unmount());
   });
 

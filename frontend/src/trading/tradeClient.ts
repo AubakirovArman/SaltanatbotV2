@@ -380,9 +380,7 @@ export const listArbitrageAlertRules = () => getArbitrageAlertState().then((valu
 export const listArbitrageAlertDeliveries = (limit = 100) => req<{ deliveries: ArbitrageAlertDelivery[] }>(`/arbitrage-alerts/deliveries?limit=${encodeURIComponent(String(limit))}`).then((value) => value.deliveries);
 export const saveArbitrageAlertRule = (rule: Omit<ArbitrageAlertRule, "id" | "createdAt" | "updatedAt" | "lastTriggeredAt"> & { id?: string }) => req<{ rule: ArbitrageAlertRule }>("/arbitrage-alerts", { method: "POST", body: JSON.stringify(rule) }).then((value) => value.rule);
 export const deleteArbitrageAlertRule = (id: string) => req<{ rules: ArbitrageAlertRule[] }>(`/arbitrage-alerts/${encodeURIComponent(id)}`, { method: "DELETE" }).then((value) => value.rules);
-export const getKeys = () => req<{ binance: boolean; bybit: boolean }>("/keys");
 export const getAccountTelemetry = (query: AccountTelemetryQuery): Promise<AccountTelemetrySnapshot> => req<unknown>(`/account-telemetry?${accountTelemetrySearch(query)}`).then(parseAccountTelemetrySnapshot);
-export const saveKeys = (exchange: ExchangeId, apiKey: string, apiSecret: string) => req("/keys", { method: "POST", body: JSON.stringify({ exchange, apiKey, apiSecret }) });
 export const getBybitUta = () => req<{ configured: boolean; snapshot?: BybitUtaSnapshot }>("/bybit/uta");
 export const borrowBybitUta = (coin: string, amount: number) => req<BybitUtaActionResult>("/bybit/uta/borrow", { method: "POST", body: JSON.stringify({ coin, amount, confirm: true }) });
 export const repayBybitUta = (input: { coin: string; amount?: number; repaymentType: "ALL" | "FIXED" | "FLEXIBLE"; convertCollateral: boolean; confirmConversion?: boolean }) => req<BybitUtaActionResult>("/bybit/uta/repay", { method: "POST", body: JSON.stringify({ ...input, confirm: true }) });

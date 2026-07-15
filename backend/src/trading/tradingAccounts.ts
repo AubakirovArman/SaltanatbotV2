@@ -11,11 +11,7 @@ const legacyIds: Record<TradingAccountExchange, string> = {
   bybit: "bybit:default"
 };
 
-/**
- * The current credential store has exactly one encrypted key pair per venue.
- * These deterministic ids expose that legacy binding without pretending that
- * separately-isolated credentials already exist.
- */
+/** Deterministic identifiers retained only for migration of pre-v6 data. */
 export function legacyTradingAccountId(exchange: TradingAccountExchange): string {
   return legacyIds[exchange];
 }
@@ -45,27 +41,25 @@ export function describeTradingAccount(
   credentialsConfigured: boolean,
   botIds: readonly string[] = []
 ): TradingAccountCapabilityView {
-  const legacy = isLegacyTradingAccount(account);
-  const credentialStatus = legacy ? (credentialsConfigured ? "configured" : "missing") : "unsupported";
+  const credentialStatus = credentialsConfigured ? "configured" : "missing";
   const status = !account.enabled
     ? "disabled"
-    : !legacy
-      ? "metadata_only"
-      : credentialsConfigured
-        ? "ready"
-        : "credentials_missing";
+    : credentialsConfigured
+      ? "ready"
+      : "credentials_missing";
+  const { ownerUserId: _serverOnlyOwner, ...publicAccount } = account;
   return {
-    ...account,
+    ...publicAccount,
     status,
     credential: {
-      mode: legacy ? "legacy_exchange_shared" : "unsupported",
+      mode: "account_isolated",
       status: credentialStatus,
-      isolated: false
+      isolated: true
     },
     capabilities: {
       liveExecution: status === "ready",
-      credentialIsolation: false,
-      multipleCredentialAccounts: false
+      credentialIsolation: true,
+      multipleCredentialAccounts: true
     },
     botIds: [...botIds]
   };
@@ -75,8 +69,7 @@ export interface TradingAccountBindingIssue {
   code:
     | "TRADING_ACCOUNT_NOT_FOUND"
     | "TRADING_ACCOUNT_EXCHANGE_MISMATCH"
-    | "TRADING_ACCOUNT_DISABLED"
-    | "MULTI_ACCOUNT_CREDENTIALS_UNSUPPORTED";
+    | "TRADING_ACCOUNT_DISABLED";
   message: string;
 }
 
@@ -101,12 +94,6 @@ export function tradingAccountBindingIssue(
   }
   if (!account.enabled) {
     return { code: "TRADING_ACCOUNT_DISABLED", message: `Trading account ${account.id} is disabled.` };
-  }
-  if (!isLegacyTradingAccount(account)) {
-    return {
-      code: "MULTI_ACCOUNT_CREDENTIALS_UNSUPPORTED",
-      message: `Trading account ${account.id} is metadata-only: this runtime currently supports one shared credential set per exchange.`
-    };
   }
   return undefined;
 }

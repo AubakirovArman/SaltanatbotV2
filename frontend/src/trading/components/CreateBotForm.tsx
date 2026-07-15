@@ -99,7 +99,7 @@ export function CreateBotForm({
       setError(tradingText(locale, "riskLimitsInvalid"));
       return;
     }
-    if (exchange !== "paper" && accountId && !selectedLiveAccount) {
+    if (exchange !== "paper" && !selectedLiveAccount) {
       setError(tradingText(locale, "liveAccountInvalid"));
       return;
     }
@@ -178,7 +178,9 @@ export function CreateBotForm({
               setAccountId("");
               if (next === "binance" && market === "spot") setMarket("futures");
             }}>
-              <option value="paper">{tradingText(locale, "paperSimulated")}</option><option value="binance">Binance</option><option value="bybit">Bybit</option>
+              <option value="paper">{tradingText(locale, "paperSimulated")}</option>
+              {canReadAccounts && <option value="binance">Binance</option>}
+              {canReadAccounts && <option value="bybit">Bybit</option>}
             </select>
           </label>
           <label>{tradingText(locale, "marketType")}
@@ -196,6 +198,7 @@ export function CreateBotForm({
               <select
                 name="account-id"
                 value={accountId}
+                required
                 aria-describedby="live-account-help"
                 disabled={accountsLoading}
                 onChange={(event) => setAccountId(event.target.value)}
@@ -276,14 +279,13 @@ export function CreateBotForm({
 
 function selectableLiveAccount(account: TradingAccountView): boolean {
   return account.enabled
-    && account.id === `${account.exchange}:default`
-    && account.credential.mode === "legacy_exchange_shared"
-    && (account.status === "ready" || account.status === "credentials_missing");
+    && account.credential.mode === "account_isolated"
+    && account.status === "ready"
+    && account.capabilities.liveExecution;
 }
 
-function accountStatusKey(account: TradingAccountView): "accountReady" | "accountCredentialsMissing" | "accountMetadataOnly" | "accountDisabled" {
+function accountStatusKey(account: TradingAccountView): "accountReady" | "accountCredentialsMissing" | "accountDisabled" {
   if (account.status === "ready") return "accountReady";
   if (account.status === "credentials_missing") return "accountCredentialsMissing";
-  if (account.status === "metadata_only") return "accountMetadataOnly";
   return "accountDisabled";
 }
