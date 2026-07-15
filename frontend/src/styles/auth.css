@@ -127,8 +127,7 @@
   cursor: pointer;
 }
 
-.auth-gate button,
-.auth-account-dialog button {
+:where(.auth-gate, .auth-account-dialog) button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -142,9 +141,9 @@
 }
 
 .auth-primary-button {
-  border-color: var(--accent-line);
-  color: #061018;
-  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  background: #1477a8;
   font-weight: 750;
 }
 
