@@ -1,7 +1,7 @@
 # R3.2 workspace workflow evidence
 
-Status: release candidate accepted locally; commit, push, GitHub Actions and production
-schema-v10 cutover remain pending.
+Status: released to production on schema 10 from commit
+`e3f8cc6e464faf5c8c9d3a4f624d79cbc3c77852`.
 Verified: 2026-07-16.
 
 ## Implemented backend contract
@@ -149,7 +149,8 @@ the suite; production port 4180 was not touched.
 - its API and worker launchers verify release checksums and the symlink manifest before restoring
   the exact v9 compiled backend/frontend into the project runtime boundary.
 
-The effective user-unit commands still point to the protected v9 launchers:
+Immediately before cutover, the effective user-unit commands pointed to the protected v9
+launchers:
 
 - `saltanatbotv2.service` →
   `/home/arman/.local/share/saltanatbotv2/releases/pre-r32-v9-2b0d86a/start-api-v9-safe.sh`;
@@ -168,24 +169,103 @@ verification:
 - live `index.html` SHA-256:
   `929fbab427f42e9ed2b7e1e2c9c39f34c4f1228ab81bd9161dc15ac8a16ab060`.
 
-This static release boundary is intentional. The future schema-v10 launcher must serve the
-candidate release slot directly through `FRONTEND_DIST_DIR`, so a later local build cannot replace
-the production UI.
+This static release boundary is intentional. The schema-v10 launcher now serves the candidate
+release slot directly through `FRONTEND_DIST_DIR`, so a later local build cannot replace the
+production UI.
 
-## Remaining release evidence
+## Commit, CI and protected release
 
-1. Commit and push the reviewed candidate to `main`.
-2. Obtain green GitHub Actions for the exact pushed commit.
-3. Build a protected candidate release from that exact committed SHA rather than from the mutable
-   worktree.
-4. Stop only the two SaltanatbotV2 user units: research worker first, API second.
-5. Create the final coordinated project-only SQLite backup and PostgreSQL schema-9 dump, then
-   verify restore and v9→v10 migration in a new temporary project-owned database.
-6. Point both unit drop-ins at checksum-verifying candidate launchers while the units remain
-   stopped.
-7. Start and verify the API first: schema 10, migration checksum, health, readiness,
-   `public-http-paper`, disabled live trading, authentication, workspace list and quota smoke.
-8. Start the research worker only after API acceptance, because the worker can also run database
-   migrations.
-9. Record the post-cutover PIDs, restart counts, schema, frontend hash and rollback verification in
-   this evidence document.
+- direct `main` commit:
+  `e3f8cc6e464faf5c8c9d3a4f624d79cbc3c77852`
+  (`feat: complete tenant workspace workflow`);
+- `origin/main` was verified at the same SHA;
+- [GitHub Actions run 29527152042](https://github.com/AubakirovArman/SaltanatbotV2/actions/runs/29527152042)
+  passed secret scan, PostgreSQL security integration, typecheck/lint/test/build, Firefox critical
+  journeys, Chromium end-to-end and Chromium visual regression;
+- protected read-only schema-10 release:
+  `/home/arman/.local/share/saltanatbotv2/releases/r32-schema10-e3f8cc6`;
+- the release was built from `git archive` of the exact committed SHA, followed by lockfile-frozen
+  install, production build, PWA/performance checks and production dependency pruning;
+- 9,897 regular-file checksums and 12 exact symlink entries passed;
+- both launchers verify `STARTUP-SAFETY.sha256`, all release checksums, the exact symlink inventory
+  and containment of every symlink before copying candidate backend files;
+- API launcher exports
+  `FRONTEND_DIST_DIR=/home/arman/.local/share/saltanatbotv2/releases/r32-schema10-e3f8cc6/source/frontend/dist`;
+- candidate backend SHA-256:
+  - `server.js`:
+    `02ca01b93fe3283e1b055a9a7860bdbaf851be9edf8af62461c7ead7bf8ea1c2`;
+  - `researchWorker.js`:
+    `084d571f100ac64c68939cef25e39b61044880f66ed4881afbe1dffde373ce46`;
+- migration v10 checksum:
+  `d6a3496e6ee1e9f1769abb3483de5b876411e0e786e07ff5b280d8a3f42d2622`.
+
+## Coordinated production cutover
+
+Only the two project user units were stopped, in this order:
+
+1. `saltanatbotv2-research-worker.service`;
+2. `saltanatbotv2.service`.
+
+No foreign process, port, container, database, volume or root-systemd unit was changed.
+
+Final coordinated backup:
+
+`tmp/r32-cutover-20260716T192232Z`
+
+- verified runtime backup:
+  `tmp/r32-cutover-20260716T192232Z/runtime`;
+- schema-9 PostgreSQL custom dump SHA-256:
+  `2e82a96af8fe7eb645b7b07bd5b91b686292566c9183ab8589c7dea758a9f351`;
+- runtime backup manifest SHA-256:
+  `01101e43c309973d21482821f79c7c273c91d6ea4b385ee6e5be488a5b31b0f0`;
+- `pg_restore --list` and all recorded backup checksums passed.
+
+The dump was restored into a newly created project-owned verification database. It first reported
+schema 9 with zero workspaces and revisions. The compiled candidate database module then applied
+only migration v10 and produced:
+
+- schema row:
+  `10 | versioned_workspace_workflow |
+  d6a3496e6ee1e9f1769abb3483de5b876411e0e786e07ff5b280d8a3f42d2622`;
+- three expected new columns;
+- two payload-byte triggers;
+- two new pagination/archive indexes;
+- zero current or revision payload-byte mismatches.
+
+The verification database was removed afterward; no database matching
+`saltanatbotv2_r32_verify_%` remained.
+
+While both units were still stopped, lexically later project-only drop-ins selected:
+
+- `r32-schema10-e3f8cc6/start-api-r32-safe.sh`;
+- `r32-schema10-e3f8cc6/start-worker-r32-safe.sh`.
+
+The API was started and accepted before the research worker. The worker was started only after the
+API had completed schema migration, frontend validation, listener startup and readiness checks.
+
+## Post-cutover acceptance
+
+- production PostgreSQL reports 10 contiguous migrations and the exact v10 checksum above;
+- production workspace and revision counts remained zero;
+- the API log reports:
+  `Identity database ready at 127.0.0.1:55434/saltanatbotv2 (schema 10, pool max 12)`;
+- the API log explicitly reports `public-http-paper` with private exchange access and live trading
+  disabled;
+- local and public-address `/api/health` and `/api/ready` returned HTTP 200;
+- `/api/auth/config` reports database authentication, registration enabled and authentication
+  required;
+- anonymous `/api/trade/auth`, workspace quota and workspace list requests return the stable
+  `not_authenticated` response; no production password, session or test account was created or
+  changed for release smoke;
+- API PID 3,248,051, worker PID 3,252,774 and both `NRestarts=0`;
+- worker log contains `research_worker_ready`, concurrency 2 and an empty healthy queue;
+- effective API and worker `ExecStart` both point to the same protected schema-10 slot;
+- live entry: `assets/index-DWXUWEnD.js`;
+- live `index.html` SHA-256:
+  `0242ef7ffc6697f44cbb5ed99ece625c717559f76995863ed5654a6c4ab96caf`;
+- mutable worktree `frontend/dist/index.html` deliberately remains at the old v9 hash
+  `929fbab427f42e9ed2b7e1e2c9c39f34c4f1228ab81bd9161dc15ac8a16ab060`,
+  proving production is served from the protected candidate slot;
+- the protected schema-9 rollback slot and the final schema-9 backup remain available. Because
+  migration v10 is forward-only, v9 must never be started against the schema-10 database; a full
+  rollback uses the verified dump in a replacement project-owned database.

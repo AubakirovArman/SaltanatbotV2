@@ -281,10 +281,9 @@ VoiceOver/NVDA/TalkBack records are complete.
 
 ## R3 — administrator lifecycle, workspaces and first-run workflow
 
-**Status:** R3.1 is delivered and deployed. The R3.2 release candidate passed
-local backend, isolated PostgreSQL, frontend, Chromium, Firefox and visual
-gates; its production schema-v10 cutover remains pending commit/push and green
-CI.
+**Status:** R3.1 and R3.2 are delivered and deployed. Production runs schema 10
+from the protected exact-commit release slot; R3.3 with its required O1 slice is
+the next increment.
 
 **Baseline:**
 
@@ -315,11 +314,8 @@ Evidence:
 [R3.1 identity control-plane acceptance](./evidence/R3_1_IDENTITY_CONTROL_PLANE.md)
 and [R3.2 workspace workflow](./evidence/R3_2_WORKSPACE_WORKFLOW.md).
 
-**Remaining — R3.2 cutover and R3.3 onboarding:**
+**Remaining — R3.3 onboarding:**
 
-- commit and push R3.2, obtain green GitHub Actions, take the final coordinated
-  project-only backup and perform an API-first atomic schema 9→10 migration
-  before starting the research worker;
 - add owner-scoped onboarding from goal selection to a first chart, backtest,
   research alert or paper robot, never requesting exchange keys;
 - provide 192×192, 512×512, maskable and Apple Touch icons and enforce the
@@ -728,7 +724,7 @@ and stabilization.
 | --- | --- | --- | ---: |
 | R1 | Safety, execution ledger, minimal workers and ADR | delivered Phase 0 | delivered foundation |
 | R2 | Mobile chart/navigation/Strategy Studio | R1 | 2-3 |
-| R3 | R3.1 deployed; R3.2 candidate accepted locally; cutover and onboarding remain | R1-R2 | production R3.2 cutover + R3.3 delta |
+| R3 | R3.1 and R3.2 deployed on schema 10; onboarding remains | R1-R2 | R3.3 plus its O1 slice |
 | O1 | Operational hardening increments | starts in R3 and ships with each new workload | included in R3-R10 estimates |
 | R4 | “Running” and paper portfolio/journal contract | R1-R3 | 3-5 |
 | R5 | Alerts + technical screener MVP + notifications/Telegram | R3-R4 | 5-7 |
@@ -742,7 +738,7 @@ and stabilization.
 | R12 | Documentation, fresh clone, recovery and release consolidation | R2-R11 | 2-4 |
 
 Acceptance, publication to `main` and production cutover of the remaining work
-are strictly sequential: R3.2 → R3.3 with its O1 slice → R4 → R5 → R6 → R7 →
+are strictly sequential: R3.3 with its O1 slice → R4 → R5 → R6 → R7 →
 R8 → R9 → R10A → R10B → R11 → R12. Parallel work is allowed only inside the
 current increment after its contracts are fixed. Code or migrations for a later
 release do not enter `main` or production before the preceding release is
