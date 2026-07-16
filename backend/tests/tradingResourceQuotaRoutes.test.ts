@@ -7,6 +7,14 @@ const state = vi.hoisted(() => ({
   bots: new Map<string, Record<string, unknown>>()
 }));
 
+vi.mock("../src/auth.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/auth.js")>();
+  return {
+    ...actual,
+    revalidateTradingAuthorization: vi.fn(async () => ({ assertCurrent: () => true }))
+  };
+});
+
 function quotaError(code: string, limit: number, message: string): Error {
   return Object.assign(new Error(message), {
     name: "TradingResourceQuotaError",

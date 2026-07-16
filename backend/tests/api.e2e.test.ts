@@ -2,6 +2,7 @@ import express from "express";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getAuthToken } from "../src/auth.js";
+import { initializeRuntimeConfig, resetRuntimeConfigForTests } from "../src/config/runtimeConfig.js";
 import { createTradingApi } from "../src/trading/routes.js";
 import {
   getBotForOwner,
@@ -13,7 +14,7 @@ import {
   upsertBotForOwner
 } from "../src/trading/store.js";
 import { PaperMultiLegJournal, PaperMultiLegService, type PaperMultiLegPlan } from "../src/arbitrage/paperMultiLeg/index.js";
-import { resolveRuntimeProfile } from "../src/runtimeProfile.js";
+import { resolveRuntimeProfile, runtimePolicyFromConfig } from "../src/runtimeProfile.js";
 
 // The HTTP tests never start a bot, so a no-op provider is enough — and it avoids
 // pulling the real provider layer (and its native node:sqlite candle store).
@@ -186,6 +187,8 @@ const validBody = (over: Record<string, unknown> = {}) => {
 };
 
 beforeAll(async () => {
+  resetRuntimeConfigForTests();
+  initializeRuntimeConfig({ NODE_ENV: "test", RUNTIME_PROFILE: "public-http-paper", AUTH_MODE: "legacy" } as NodeJS.ProcessEnv);
   process.env.AUTH_READONLY_TOKEN = "readonly-test-token";
   process.env.AUTH_PAPER_TRADE_TOKEN = "paper-test-token";
   paperMultiLegJournal = PaperMultiLegJournal.open(":memory:");
@@ -194,7 +197,11 @@ beforeAll(async () => {
   paperMultiLegJournal.createRun(interrupted, "idem-api-startup-recovery", interrupted.createdAt);
   paperMultiLegJournal.advance(interrupted.runId, interrupted.createdAt + 1);
   paperMultiLegJournal.advance(interrupted.runId, interrupted.createdAt + 2);
-  tradingApi = createTradingApi(fakeProvider, undefined, { emergencyAdapters: () => [], paperMultiLeg });
+  tradingApi = createTradingApi(fakeProvider, undefined, {
+    emergencyAdapters: () => [],
+    paperMultiLeg,
+    runtimePolicy: runtimePolicyFromConfig({ runtimeProfile: "private-live" })
+  });
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => {
@@ -220,6 +227,7 @@ beforeAll(async () => {
 afterAll(() => {
   server?.close();
   paperMultiLegJournal?.close();
+  resetRuntimeConfigForTests();
 });
 
 const authHeaders = (unsafe = false) => ({

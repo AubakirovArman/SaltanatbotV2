@@ -1,7 +1,7 @@
 # Runtime backup and restore
 
 Audience: self-hosted operators
-Last verified: 2026-07-11
+Last verified: 2026-07-16
 
 SaltanatbotV2 uses two independent persistence layers. PostgreSQL stores users, hashed passwords,
 sessions, workspaces and research jobs. Trading state and encrypted credentials remain under
@@ -33,8 +33,22 @@ The output directory must not already exist and must be outside `backend/data/`.
 Database entries also record SQLite `user_version`, allowing verification to detect unexpected
 schema-version drift in addition to byte-level changes.
 
+Before backup or recovery work, an operator can obtain a count-only inventory. It opens
+`trading.db` read-only, includes committed WAL rows, does not select ciphertext and does not open the
+master key:
+
+```bash
+npm run data:inventory -- --data-dir backend/data
+```
+
 All copied files and the manifest are written with owner-only `0600` permissions; the backup
-directory is created as `0700`.
+directory is created as `0700`. Verification rejects a key that is a symlink/non-file, is not owned
+by the backup directory owner, or has permissions other than `0600`/read-only `0400`.
+
+`.trading-runtime-lock.sqlite` is process-coordination metadata only. It contains no user data, is
+never copied into a backup, produces no retained WAL/journal sidecars, and is safely recreated after
+a directory-swap restore. An in-place restore preserves it as an unrelated owner-only file; the API
+must be stopped, so no process may hold the lock during restore.
 
 An old `.authtoken` remains accepted when verifying/restoring a pre-account-auth backup, but new
 backups no longer copy it. Delete the retired file after confirming database account login works.
@@ -124,7 +138,9 @@ path also needs an explicit persistent volume/bind mount; otherwise container re
 ## Verify a backup
 
 Verification detects missing/unmanifested files, symlinks, size/checksum changes, unsupported format
-versions and SQLite corruption.
+versions and SQLite corruption. Every `trading.db`, including an empty one, requires `.secret`.
+Verification derives the key in memory and authenticates every encrypted setting/account credential;
+a well-formed but unrelated key is rejected. Neither the key, ciphertext nor plaintext is printed.
 
 ```bash
 npm run data:verify -- ../saltanat-backups/2026-07-11

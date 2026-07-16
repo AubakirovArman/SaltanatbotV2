@@ -1,6 +1,13 @@
-export const RUNTIME_PROFILES = ["public-http-paper", "private-live"] as const;
+import {
+  getRuntimeConfig,
+  loadRuntimeConfig,
+  RUNTIME_PROFILES,
+  type RuntimeConfig,
+  type RuntimeProfileName
+} from "./config/runtimeConfig.js";
 
-export type RuntimeProfileName = (typeof RUNTIME_PROFILES)[number];
+export { RUNTIME_PROFILES };
+export type { RuntimeProfileName };
 
 export interface RuntimePolicy {
   readonly runtimeProfile: RuntimeProfileName;
@@ -30,10 +37,6 @@ export class RuntimeProfileError extends Error {
   }
 }
 
-const enabledValues = new Set(["1", "true"]);
-const disabledValues = new Set(["0", "false"]);
-const liveConflictFlags = ["ALLOW_INSECURE_TRADING_MUTATIONS", "ENABLE_LIVE_SPOT"] as const;
-
 let cachedPolicy: RuntimePolicy | undefined;
 
 /**
@@ -42,31 +45,13 @@ let cachedPolicy: RuntimePolicy | undefined;
  * A future HTTPS deployment must opt in explicitly with `private-live`.
  */
 export function resolveRuntimeProfile(env: NodeJS.ProcessEnv = process.env): RuntimePolicy {
-  const configured = env.RUNTIME_PROFILE?.trim();
-  if (configured && !RUNTIME_PROFILES.includes(configured as RuntimeProfileName)) {
-    throw new Error(`Invalid RUNTIME_PROFILE=${configured}. Expected one of: ${RUNTIME_PROFILES.join(", ")}.`);
-  }
+  return runtimePolicyFromConfig(loadRuntimeConfig(env));
+}
 
-  const demo = strictOptionalBoolean("DEMO_MODE", env.DEMO_MODE);
-  if (configured === "private-live" && demo === true) {
-    throw new Error("RUNTIME_PROFILE=private-live conflicts with DEMO_MODE=true.");
-  }
-
-  const runtimeProfile: RuntimeProfileName = configured === "private-live"
-    ? "private-live"
-    : "public-http-paper";
-
-  if (runtimeProfile === "public-http-paper") {
-    for (const name of liveConflictFlags) {
-      if (strictOptionalBoolean(name, env[name]) === true) {
-        throw new Error(`${name}=true conflicts with RUNTIME_PROFILE=public-http-paper.`);
-      }
-    }
-  }
-
-  const live = runtimeProfile === "private-live";
+export function runtimePolicyFromConfig(config: Pick<RuntimeConfig, "runtimeProfile">): RuntimePolicy {
+  const live = config.runtimeProfile === "private-live";
   return Object.freeze({
-    runtimeProfile,
+    runtimeProfile: config.runtimeProfile,
     executionMode: live ? "live-capable" : "paper-only",
     liveBotConfigsAllowed: live,
     credentialWritesAllowed: live,
@@ -78,7 +63,7 @@ export function resolveRuntimeProfile(env: NodeJS.ProcessEnv = process.env): Run
 
 /** Load once per process so changing an environment variable cannot re-arm it. */
 export function getRuntimePolicy(): RuntimePolicy {
-  cachedPolicy ??= resolveRuntimeProfile();
+  cachedPolicy ??= runtimePolicyFromConfig(getRuntimeConfig());
   return cachedPolicy;
 }
 
@@ -129,12 +114,4 @@ export function paperOnlyErrorBody(operation: string): { error: string; code: ty
 export function resetRuntimePolicyForTests(): void {
   if (process.env.NODE_ENV !== "test") throw new Error("Runtime policy can only be reset in tests.");
   cachedPolicy = undefined;
-}
-
-function strictOptionalBoolean(name: string, value: string | undefined): boolean | undefined {
-  if (value === undefined || value.trim() === "") return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (enabledValues.has(normalized)) return true;
-  if (disabledValues.has(normalized)) return false;
-  throw new Error(`Invalid ${name}=${value}. Expected 1, 0, true or false.`);
 }

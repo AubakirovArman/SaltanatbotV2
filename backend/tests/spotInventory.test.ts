@@ -16,18 +16,27 @@ describe("live spot inventory sizing", () => {
       if (url.includes("/api/v3/ticker/price")) return json({ price: "100" });
       if (url.includes("/api/v3/exchangeInfo")) {
         return json({
-          symbols: [{
-            symbol: "BTCUSDT",
-            filters: [
-              { filterType: "LOT_SIZE", stepSize: "0.001", minQty: "0.001" },
-              { filterType: "PRICE_FILTER", tickSize: "0.01" },
-              { filterType: "MIN_NOTIONAL", minNotional: "1" }
-            ]
-          }]
+          symbols: [
+            {
+              symbol: "BTCUSDT",
+              status: "TRADING",
+              filters: [
+                { filterType: "LOT_SIZE", stepSize: "0.001", minQty: "0.001", maxQty: "1000" },
+                { filterType: "MARKET_LOT_SIZE", stepSize: "0.001", minQty: "0.001", maxQty: "1000" },
+                { filterType: "PRICE_FILTER", tickSize: "0.01", minPrice: "0.01", maxPrice: "1000000" },
+                { filterType: "MIN_NOTIONAL", minNotional: "1", applyToMarket: true }
+              ]
+            }
+          ]
         });
       }
       if (url.includes("/api/v3/account")) {
-        return json({ balances: [{ asset: "BTC", free: "2", locked: "0" }, { asset: "USDT", free: "1000", locked: "0" }] });
+        return json({
+          balances: [
+            { asset: "BTC", free: "2", locked: "0" },
+            { asset: "USDT", free: "1000", locked: "0" }
+          ]
+        });
       }
       if (url.includes("/api/v3/order")) {
         orderUrls.push(url);
@@ -53,8 +62,14 @@ describe("live spot inventory sizing", () => {
     expect(orderUrl.searchParams.get("quantity")).toBe("1");
 
     await adapter.execute({
-      action: "neworder", market: "spot", symbol: "BTCUSDT", side: "sell", type: "market",
-      qty: 0.25, reduceOnly: true, reason: "bot-attributed close",
+      action: "neworder",
+      market: "spot",
+      symbol: "BTCUSDT",
+      side: "sell",
+      type: "market",
+      qty: 0.25,
+      reduceOnly: true,
+      reason: "bot-attributed close"
     });
     expect(new URL(orderUrls[1]).searchParams.get("quantity")).toBe("0.25");
   });
@@ -68,11 +83,14 @@ describe("live spot inventory sizing", () => {
         return json({
           retCode: 0,
           result: {
-            list: [{
-              symbol: "BTCUSDT",
-              lotSizeFilter: { basePrecision: "0.001", minOrderQty: "0.001", minOrderAmt: "1" },
-              priceFilter: { tickSize: "0.01" }
-            }]
+            list: [
+              {
+                symbol: "BTCUSDT",
+                status: "Trading",
+                lotSizeFilter: { basePrecision: "0.001", maxLimitOrderQty: "1000", maxMarketOrderQty: "1000", minOrderAmt: "1" },
+                priceFilter: { tickSize: "0.01", minPrice: "0.01", maxPrice: "1000000" }
+              }
+            ]
           }
         });
       }
@@ -81,11 +99,13 @@ describe("live spot inventory sizing", () => {
           retCode: 0,
           retMsg: "OK",
           result: {
-            list: [{
-              totalEquity: "1000",
-              totalAvailableBalance: "1000",
-              coin: [{ coin: "BTC", walletBalance: "2", availableToWithdraw: "2" }]
-            }]
+            list: [
+              {
+                totalEquity: "1000",
+                totalAvailableBalance: "1000",
+                coin: [{ coin: "BTC", walletBalance: "2", availableToWithdraw: "2" }]
+              }
+            ]
           }
         });
       }
@@ -109,13 +129,31 @@ describe("live spot inventory sizing", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(orderBodies[0]).toMatchObject({ category: "spot", symbol: "BTCUSDT", side: "Sell", qty: "1" });
+    expect(orderBodies[0]).toMatchObject({ category: "spot", symbol: "BTCUSDT", side: "Sell", qty: "1", marketUnit: "baseCoin" });
+    expect(orderBodies[0]).not.toHaveProperty("reduceOnly");
 
     await adapter.execute({
-      action: "neworder", market: "spot", symbol: "BTCUSDT", side: "sell", type: "market",
-      qty: 0.25, reduceOnly: true, reason: "bot-attributed close",
+      action: "neworder",
+      market: "spot",
+      symbol: "BTCUSDT",
+      side: "sell",
+      type: "market",
+      qty: 0.25,
+      reduceOnly: true,
+      reason: "bot-attributed close"
     });
-    expect(orderBodies[1]).toMatchObject({ category: "spot", symbol: "BTCUSDT", side: "Sell", qty: "0.25" });
+    expect(orderBodies[1]).toMatchObject({ category: "spot", symbol: "BTCUSDT", side: "Sell", qty: "0.25", marketUnit: "baseCoin" });
+
+    await adapter.execute({
+      action: "neworder",
+      market: "spot",
+      symbol: "BTCUSDT",
+      side: "buy",
+      type: "market",
+      qty: 0.25,
+      reason: "base-quantity market buy"
+    });
+    expect(orderBodies[2]).toMatchObject({ category: "spot", side: "Buy", qty: "0.25", marketUnit: "baseCoin" });
   });
 });
 

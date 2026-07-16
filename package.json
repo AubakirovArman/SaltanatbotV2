@@ -26,6 +26,7 @@
     "test:testnet": "node scripts/exchange-testnet-smoke.mjs",
     "test:public-feed-canary": "tsx scripts/public-feed-canary.ts",
     "data:backup": "node scripts/runtime-data.mjs backup",
+    "data:inventory": "node scripts/runtime-data.mjs inventory",
     "data:verify": "node scripts/runtime-data.mjs verify",
     "data:restore": "node scripts/runtime-data.mjs restore",
     "release:package": "node scripts/package-release.mjs",

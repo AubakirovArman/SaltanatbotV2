@@ -33,8 +33,10 @@ This folder contains deterministic maintenance and release helpers invoked by ro
   requires its reviewed book-only evidence. The scheduled workflow preserves the bounded schema-v3
   JSON result even when a venue fails. The 2026-07-14 local run passed eight targets and retained
   Kraken's host-specific TLS-egress failure instead of hiding it.
-- `runtime-data.mjs`: creates checksum-manifested online SQLite backups, verifies integrity and
-  performs explicit atomic restore of `backend/data` while preserving secret file permissions.
+- `runtime-data.mjs`: reports a ciphertext-count-only read-only inventory, creates
+  checksum-manifested online SQLite backups, always keeps `trading.db` with `.secret`, proves that the
+  owner-only key authenticates every encrypted row without printing secret data, verifies integrity
+  and performs explicit atomic restore of `backend/data`.
 
 ## Invariants
 

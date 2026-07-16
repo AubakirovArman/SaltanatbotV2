@@ -2,6 +2,7 @@ import express from "express";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getAuthToken } from "../src/auth.js";
+import { initializeRuntimeConfig, resetRuntimeConfigForTests } from "../src/config/runtimeConfig.js";
 import { ORDER_BOOK_QUALITY_POLICY_SCHEMA_V1, SEQUENCED_L2_SNAPSHOT_SCHEMA_V1, OrderBookMlResearchService, createOrderBookMlResearchRouter, type SequencedL2SnapshotV1 } from "../src/orderbook/ml/index.js";
 
 const NOW = 1_000_000;
@@ -15,6 +16,8 @@ let base: string;
 let service: OrderBookMlResearchService;
 
 beforeAll(async () => {
+  resetRuntimeConfigForTests();
+  initializeRuntimeConfig({ NODE_ENV: "test", RUNTIME_PROFILE: "public-http-paper", AUTH_MODE: "legacy" } as NodeJS.ProcessEnv);
   process.env.AUTH_READONLY_TOKEN = "order-book-ml-read-only";
   service = new OrderBookMlResearchService({ clock: () => NOW });
   const app = express();
@@ -29,6 +32,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  resetRuntimeConfigForTests();
 });
 
 describe("admin-only ephemeral order-book ML research API", () => {

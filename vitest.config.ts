@@ -20,7 +20,16 @@ export default defineConfig({
     // Unit/integration suites exercise both live adapters and the paper-only
     // boundary. Production has the opposite, fail-closed default; tests opt in
     // explicitly and paper-only cases inject/resolve that policy directly.
-    env: { RUNTIME_PROFILE: "private-live" },
+    env: {
+      RUNTIME_PROFILE: "private-live",
+      AUTH_MODE: "database",
+      HOST: "127.0.0.1",
+      COOKIE_SECURE: "1",
+      PUBLIC_ORIGIN: "https://tests.example.invalid",
+      ALLOWED_ORIGINS: "",
+      TRUST_PROXY: "loopback",
+      ALLOW_INSECURE_TRADING_MUTATIONS: "0",
+    },
     include: [
       "backend/tests/**/*.test.ts",
       "frontend/tests/**/*.test.{ts,tsx}",

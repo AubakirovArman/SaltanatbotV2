@@ -1,11 +1,20 @@
 # Backup және қалпына келтіру
 
-Тексерілген күні: 2026-07-15.
+Тексерілген күні: 2026-07-16.
 
 Runtime деректері `backend/data/` ішінде сақталады. Жарамды backup `trading.db` және `.secret`
 файлдарын бірге сақтауы тиіс: бастапқы `.secret` болмаса, шифрланған API кілттері ашылмайды.
 `candles.db` бар болса қосылады. Жаңа backup ескірген `.authtoken` файлын қоспайды, бірақ ескі
 manifest оны әлі тексере алады.
+
+`npm run data:inventory -- --data-dir backend/data` командасы read-only SQLite/WAL арқылы тек
+шифрланған жолдар санын есептейді және key файлын ашпайды. Тексеру `.secret` файлын әрқашан талап
+етеді, оның нақты type/owner/mode мәндерін тексереді және әр encrypted setting/credential үшін
+in-memory authentication орындайды. Key, ciphertext және plaintext output-қа жазылмайды.
+
+`.trading-runtime-lock.sqlite` user data сақтамайды, backup-қа кірмейді және екінші backend process-ті
+тоқтатады. Crash кезінде OS lock-ты босатады; retained sidecar жасалмайды. Restore алдында application
+тоқтатылуы тиіс.
 
 Accounts, sessions, workspaces және research queue PostgreSQL ішінде орналасады және бөлек
 `pg_dump -Fc saltanatbotv2 > saltanatbotv2.dump` арқылы сақталады. Толық recovery үшін PostgreSQL

@@ -1,34 +1,30 @@
 import type { Application, NextFunction, Request, Response } from "express";
-
-const enabledValues = new Set(["1", "true", "yes", "on"]);
+import { getRuntimeConfig, type TrustProxySetting } from "./config/runtimeConfig.js";
 
 /**
  * Configure Express' proxy trust only when the operator explicitly opted in.
  * Without this setting Express intentionally ignores X-Forwarded-Proto when it
  * computes req.secure.
  */
-export function configureTrustedProxy(app: Application): void {
-  const raw = process.env.TRUST_PROXY?.trim();
-  if (!raw) return;
-  if (raw === "true") {
-    app.set("trust proxy", true);
-    return;
-  }
-  if (/^\d+$/.test(raw)) {
-    app.set("trust proxy", Number(raw));
-    return;
-  }
-  const entries = raw.split(",").map((entry) => entry.trim()).filter(Boolean);
-  app.set("trust proxy", entries.length === 1 ? entries[0] : entries);
+export function configureTrustedProxy(
+  app: Application,
+  setting: TrustProxySetting = getRuntimeConfig().server.trustProxy
+): void {
+  if (setting === false) return;
+  app.set("trust proxy", Array.isArray(setting) ? [...setting] : setting);
 }
 
 /**
  * Dangerous trading mutations are allowed only over TLS (direct or through an
- * explicitly trusted proxy), over a direct loopback socket, or through the
- * deliberately loud development escape hatch.
+ * explicitly trusted proxy), over a direct loopback socket, or under an
+ * explicitly injected compatibility policy. Supported process profiles keep
+ * that last policy disabled.
  */
-export function isSecureTradingOrigin(req: Request): boolean {
-  if (enabledValues.has(process.env.ALLOW_INSECURE_TRADING_MUTATIONS?.trim().toLowerCase() ?? "")) return true;
+export function isSecureTradingOrigin(
+  req: Request,
+  allowInsecureTradingMutations = getRuntimeConfig().security.allowInsecureTradingMutations
+): boolean {
+  if (allowInsecureTradingMutations) return true;
   if (req.secure || (req.socket as Request["socket"] & { encrypted?: boolean }).encrypted === true) return true;
 
   // A proxy marker changes the trust boundary. Do not treat the proxy's local

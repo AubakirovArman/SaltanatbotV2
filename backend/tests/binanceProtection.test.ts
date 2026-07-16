@@ -17,8 +17,12 @@ describe("Binance futures protection", () => {
 
     expect(result.ok).toBe(true);
     expect(result.protection).toEqual({
-      requested: true, confirmed: true, entryOrderId: "1", stopOrderIds: ["2"],
-      takeProfitOrderIds: ["3"], verification: "order_ids",
+      requested: true,
+      confirmed: true,
+      entryOrderId: "1",
+      stopOrderIds: ["2"],
+      takeProfitOrderIds: ["3"],
+      verification: "order_ids"
     });
     expect(orderTypes).toEqual(["MARKET", "STOP_MARKET", "TAKE_PROFIT_MARKET"]);
     expect(clientOrderIds).toEqual(["entry-1", "entry-1-stop", "entry-1-tp-1"]);
@@ -113,8 +117,9 @@ describe("Binance futures protection", () => {
         return json([{ symbol: "BTCUSDT", positionAmt: "1", entryPrice: "100", leverage: "1" }]);
       }
       if (url.pathname.endsWith("/exchangeInfo")) {
-        return json({ symbols: [{ symbol: "BTCUSDT", filters: [{ filterType: "LOT_SIZE", stepSize: "0.001", minQty: "0.001" }] }] });
+        return json(binanceInstrumentInfo());
       }
+      if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
       if (url.pathname.endsWith("/balance")) return error(400, "account enrichment unavailable");
       if (url.pathname.endsWith("/order") && init?.method === "POST") {
         clientIds.push(url.searchParams.get("newClientOrderId") ?? "");
@@ -182,6 +187,213 @@ describe("Binance futures protection", () => {
     expect(result.message).toMatch(/orphan protection may remain/i);
     expect(result.message).not.toMatch(/entry (?:was )?closed/i);
   });
+
+  it("performs zero signed requests when exact, complete rules are unavailable", async () => {
+    const signed: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (init?.headers && "X-MBX-APIKEY" in (init.headers as Record<string, string>)) signed.push(url.pathname);
+      if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
+      if (url.pathname.endsWith("/exchangeInfo")) return json({ ...binanceInstrumentInfo(), symbols: [{ ...binanceInstrumentInfo().symbols[0], symbol: "ETHUSDT" }] });
+      return json({});
+    });
+    const adapter = new BinanceAdapter("bot-1", { apiKey: "key", apiSecret: "secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "open",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "buy",
+      type: "market",
+      qty: 1,
+      leverage: 5,
+      reason: "test"
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.message).toMatch(/0 exact rows/);
+    expect(signed).toEqual([]);
+  });
+
+  it("preflights zero-quantity protection children before leverage or entry mutation", async () => {
+    const signedMutations: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (init?.method && init.method !== "GET" && url.hostname.includes("binance")) signedMutations.push(url.pathname);
+      if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
+      if (url.pathname.endsWith("/exchangeInfo")) return json(binanceInstrumentInfo({ stepSize: "1", minQty: "1", minNotional: "1" }));
+      return json({ orderId: 1, leverage: 5 });
+    });
+    const adapter = new BinanceAdapter("bot-1", { apiKey: "key", apiSecret: "secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "open",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "buy",
+      type: "market",
+      qty: 1,
+      leverage: 5,
+      takeProfits: [{ priceBasis: "price", price: 110, qtyBasis: "percent", qty: 0.1 }],
+      reason: "test"
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.message).toMatch(/take-profit quantity quantizes to zero/);
+    expect(signedMutations).toEqual([]);
+  });
+
+  it("uses distinct market/limit quantity rules and exact limit-price ticks", async () => {
+    const submissions: URL[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
+      if (url.pathname.endsWith("/exchangeInfo")) {
+        return json(binanceInstrumentInfo({ stepSize: "0.001", marketStepSize: "0.01", tickSize: "0.05", minNotional: "1" }));
+      }
+      if (url.pathname.endsWith("/order") && init?.method === "POST") {
+        submissions.push(url);
+        return json({ orderId: submissions.length });
+      }
+      if (url.pathname.endsWith("/positionRisk")) return json([]);
+      if (url.pathname.endsWith("/balance")) return json([{ asset: "USDT", balance: "1000" }]);
+      return json({});
+    });
+    const adapter = new BinanceAdapter("bot-1", { apiKey: "key", apiSecret: "secret" }, "futures");
+
+    await adapter.execute({ action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1.239, reason: "test" });
+    await adapter.execute({ action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "limit", qty: 1.239, price: 100.079, reason: "test" });
+
+    expect(submissions).toHaveLength(2);
+    expect(submissions[0]?.searchParams.get("quantity")).toBe("1.23");
+    expect(submissions[0]?.searchParams.has("price")).toBe(false);
+    expect(submissions[1]?.searchParams.get("quantity")).toBe("1.239");
+    expect(submissions[1]?.searchParams.get("price")).toBe("100.05");
+  });
+
+  it("rejects aggregate take-profit quantity above the prepared entry before signed I/O", async () => {
+    const signedMutations: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (init?.method && init.method !== "GET" && url.hostname.includes("binance")) signedMutations.push(url.pathname);
+      if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
+      if (url.pathname.endsWith("/exchangeInfo")) return json(binanceInstrumentInfo());
+      return json({ orderId: 1 });
+    });
+    const adapter = new BinanceAdapter("bot-1", { apiKey: "key", apiSecret: "secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "open",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "buy",
+      type: "market",
+      qty: 1,
+      takeProfits: [
+        { priceBasis: "price", price: 110, qtyBasis: "percent", qty: 60 },
+        { priceBasis: "price", price: 120, qtyBasis: "percent", qty: 60 }
+      ],
+      reason: "test"
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.message).toMatch(/aggregate take-profit quantity exceeds/i);
+    expect(signedMutations).toEqual([]);
+  });
+
+  it("binds entry and every protection child to the selected hedge leg", async () => {
+    const submissions: URL[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
+      if (url.pathname.endsWith("/exchangeInfo")) return json(binanceInstrumentInfo());
+      if (url.pathname.endsWith("/order") && init?.method === "POST") {
+        submissions.push(url);
+        return json({ orderId: submissions.length });
+      }
+      if (url.pathname.endsWith("/positionRisk")) return json([]);
+      if (url.pathname.endsWith("/balance")) return json([{ asset: "USDT", balance: "1000" }]);
+      return json({});
+    });
+    const adapter = new BinanceAdapter("bot-1", { apiKey: "key", apiSecret: "secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "open",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "buy",
+      positionSide: "long",
+      type: "market",
+      qty: 1,
+      stop: { basis: "price", value: 95 },
+      takeProfits: [{ priceBasis: "price", price: 110, qtyBasis: "percent", qty: 100 }],
+      reason: "test"
+    });
+
+    expect(result.protection?.confirmed).toBe(true);
+    expect(submissions).toHaveLength(3);
+    expect(submissions.every((url) => url.searchParams.get("positionSide") === "LONG")).toBe(true);
+    expect(submissions[2]?.searchParams.has("reduceOnly")).toBe(false);
+  });
+
+  it("keeps exact reduce-only formatting, exempts futures dust notional, and records snapped close qty", async () => {
+    let submitted: URL | undefined;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
+      if (url.pathname.endsWith("/exchangeInfo")) return json(binanceInstrumentInfo({ marketStepSize: "0.01", minNotional: "5" }));
+      if (url.pathname.endsWith("/positionRisk")) return json([{ symbol: "BTCUSDT", positionAmt: "0.019", entryPrice: "100", leverage: "1" }]);
+      if (url.pathname.endsWith("/order") && init?.method === "POST") {
+        submitted = url;
+        return json({ orderId: 44 });
+      }
+      if (url.pathname.endsWith("/balance")) return json([{ asset: "USDT", balance: "1000" }]);
+      return json({});
+    });
+    const adapter = new BinanceAdapter("bot-1", { apiKey: "key", apiSecret: "secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "close",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "sell",
+      type: "market",
+      closePct: 100,
+      reduceOnly: true,
+      reason: "test"
+    });
+
+    expect(result).toMatchObject({ ok: true, pendingOrder: { qty: 0.01, reduceOnly: true } });
+    expect(submitted?.searchParams.get("quantity")).toBe("0.01");
+  });
+
+  it("does not emit unjournaled Binance chunks above the market cap", async () => {
+    const mutations: URL[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
+      if (url.pathname.endsWith("/exchangeInfo")) return json(binanceInstrumentInfo({ maxQty: "1" }));
+      if (url.pathname.endsWith("/positionRisk")) return json([{ symbol: "BTCUSDT", positionAmt: "2", entryPrice: "100", leverage: "1" }]);
+      if (init?.method && init.method !== "GET") mutations.push(url);
+      return json({ orderId: 1 });
+    });
+    const adapter = new BinanceAdapter("bot-1", { apiKey: "key", apiSecret: "secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "flatten",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "sell",
+      type: "market",
+      closePct: 100,
+      reduceOnly: true,
+      reason: "emergency"
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.message).toMatch(/above maxQty/);
+    expect(mutations).toEqual([]);
+  });
 });
 
 function executeProtectedEntry() {
@@ -205,30 +417,24 @@ function executeProtectedEntry() {
   });
 }
 
-function binanceFetch(orderTypes: string[], options: {
-  rejectTakeProfit?: boolean;
-  omitStopId?: boolean;
-  truncateStop?: boolean;
-  rejectSafetyClose?: boolean;
-  rejectCancellation?: boolean;
-  rejectEnrichmentReads?: boolean;
-  cancelledOrderIds?: string[];
-  clientOrderIds?: string[];
-} = {}) {
+function binanceFetch(
+  orderTypes: string[],
+  options: {
+    rejectTakeProfit?: boolean;
+    omitStopId?: boolean;
+    truncateStop?: boolean;
+    rejectSafetyClose?: boolean;
+    rejectCancellation?: boolean;
+    rejectEnrichmentReads?: boolean;
+    cancelledOrderIds?: string[];
+    clientOrderIds?: string[];
+  } = {}
+) {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input));
     if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
     if (url.pathname.endsWith("/exchangeInfo")) {
-      return json({
-        symbols: [{
-          symbol: "BTCUSDT",
-          filters: [
-            { filterType: "LOT_SIZE", stepSize: "0.001", minQty: "0.001" },
-            { filterType: "PRICE_FILTER", tickSize: "0.1" },
-            { filterType: "MIN_NOTIONAL", notional: "5" }
-          ]
-        }]
-      });
+      return json(binanceInstrumentInfo());
     }
     if (url.pathname.endsWith("/positionRisk")) return options.rejectEnrichmentReads ? error(400, "position enrichment unavailable") : json([]);
     if (url.pathname.endsWith("/balance")) return options.rejectEnrichmentReads ? error(400, "account enrichment unavailable") : json([{ asset: "USDT", balance: "1000" }]);
@@ -253,6 +459,35 @@ function binanceFetch(orderTypes: string[], options: {
       return json({ orderId: orderTypes.length });
     }
     return json({});
+  };
+}
+
+function binanceInstrumentInfo(
+  options: {
+    stepSize?: string;
+    marketStepSize?: string;
+    tickSize?: string;
+    minQty?: string;
+    minNotional?: string;
+    maxQty?: string;
+  } = {}
+) {
+  const stepSize = options.stepSize ?? "0.001";
+  const marketStepSize = options.marketStepSize ?? stepSize;
+  const minQty = options.minQty ?? "0.001";
+  return {
+    symbols: [
+      {
+        symbol: "BTCUSDT",
+        status: "TRADING",
+        filters: [
+          { filterType: "LOT_SIZE", stepSize, minQty, maxQty: options.maxQty ?? "1000" },
+          { filterType: "MARKET_LOT_SIZE", stepSize: marketStepSize, minQty, maxQty: options.maxQty ?? "1000" },
+          { filterType: "PRICE_FILTER", tickSize: options.tickSize ?? "0.1", minPrice: "0.1", maxPrice: "1000000" },
+          { filterType: "MIN_NOTIONAL", notional: options.minNotional ?? "5" }
+        ]
+      }
+    ]
   };
 }
 

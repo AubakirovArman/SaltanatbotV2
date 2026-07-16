@@ -458,7 +458,14 @@ A channel is only used when it is `enabled` **and** its token and destination id
 
 Secrets are stored via the `store.ts` settings table in a local SQLite database (`data/trading.db`), with an `encrypted` flag per row. Exchange keys are written encrypted and are **never sent back to the browser** — they are read server-side only, inside `buildAdapter()`.
 
-**Key derivation.** On first run, `loadOrCreateSecret()` generates 32 random bytes, writes them to `data/.secret` with `0o600` permissions, and derives a 32-byte key with `scrypt`. Subsequent runs re-derive the same key from that file.
+**Key derivation.** Only a first run with no `trading.db` may atomically create `data/.secret` from
+32 random bytes with `0o600` permissions. Existing databases require their existing owner-only,
+regular key file. The loader derives the same 32-byte scrypt key from the exact legacy file value
+(including one historical trailing LF/CRLF), then authenticates every existing encrypted row over a
+read-only SQLite/WAL view before migrations or database writes. It never replaces a missing key or
+repairs suspicious permissions. An owner-only SQLite coordination database holds an exclusive lock
+for the whole backend lifetime, so a second initializer/executor fails before touching `trading.db`;
+the OS releases that lock after either graceful shutdown or a crash.
 
 **Cipher.** `encrypt()` uses **AES-256-GCM**: a fresh random 12-byte IV per value, the derived key, and the GCM auth tag. The stored value is `base64(iv).base64(tag).base64(ciphertext)`. `decrypt()` reverses this and verifies the auth tag, so tampered ciphertext fails to decrypt.
 

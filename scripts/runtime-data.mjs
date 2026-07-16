@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createDecipheriv, createHash, randomUUID, scryptSync } from "node:crypto";
+import { chmodSync, closeSync, constants, copyFileSync, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
@@ -18,6 +18,7 @@ const sqliteSidecarNames = databaseNames.flatMap((name) => [`${name}-wal`, `${na
 const inPlaceManagedNames = [...allowedNames, ...sqliteSidecarNames, restoreManifestName];
 const formatName = "saltanatbotv2-runtime-backup";
 const formatVersion = 1;
+const keyDerivationSalt = "marketforge";
 
 function fail(message) {
   throw new Error(message);
@@ -81,6 +82,141 @@ function assertSqliteIntegrity(path) {
   }
 }
 
+/** Count encrypted trading rows without selecting ciphertext or opening the key. */
+export function inspectEncryptedTradingRows(databasePath) {
+  const handle = new DatabaseSync(resolve(databasePath), { readOnly: true });
+  try {
+    const hasSettings = sqliteTableExists(handle, "settings");
+    const hasEncryptedColumn =
+      hasSettings &&
+      handle
+        .prepare("PRAGMA table_info(settings)")
+        .all()
+        .some((column) => column.name === "encrypted");
+    const invalidEncryptedFlags = hasEncryptedColumn ? Number(handle.prepare("SELECT count(*) AS count FROM settings WHERE encrypted NOT IN (0, 1)").get()?.count ?? 0) : 0;
+    if (invalidEncryptedFlags > 0) fail(`Trading settings contain ${invalidEncryptedFlags} invalid encrypted flag value(s); expected only 0 or 1`);
+    const encryptedSettings = hasEncryptedColumn ? Number(handle.prepare("SELECT count(*) AS count FROM settings WHERE encrypted <> 0").get()?.count ?? 0) : 0;
+    const accountCredentials = sqliteTableExists(handle, "trading_account_credentials") ? Number(handle.prepare("SELECT count(*) AS count FROM trading_account_credentials").get()?.count ?? 0) : 0;
+    return { encryptedSettings, accountCredentials, total: encryptedSettings + accountCredentials };
+  } finally {
+    handle.close();
+  }
+}
+
+function sqliteTableExists(database, name) {
+  return database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) !== undefined;
+}
+
+function readMasterKeyMaterial(path, label, expectedUid) {
+  const entry = lstatSync(path);
+  if (!entry.isFile() || entry.isSymbolicLink()) fail(`${label} must be a regular file and must not be a symbolic link`);
+  let descriptor;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | noFollowFlag());
+    const stat = fstatSync(descriptor);
+    if (!stat.isFile() || stat.dev !== entry.dev || stat.ino !== entry.ino) fail(`${label} changed while it was being opened`);
+    if (expectedUid !== undefined && stat.uid !== expectedUid) fail(`${label} must be owned by uid ${expectedUid}`);
+    const permissions = stat.mode & 0o777;
+    if (permissions !== 0o600 && permissions !== 0o400) fail(`${label} permissions must be 0600 or read-only 0400`);
+    if (stat.size < 64 || stat.size > 66) malformedMasterKey(label);
+    const material = readFileSync(descriptor);
+    const after = fstatSync(descriptor);
+    const pathAfter = lstatSync(path);
+    if (after.dev !== stat.dev || after.ino !== stat.ino || after.size !== stat.size || pathAfter.dev !== stat.dev || pathAfter.ino !== stat.ino) {
+      material.fill(0);
+      fail(`${label} changed while it was being read`);
+    }
+    if (!isSupportedMasterKeyMaterial(material)) {
+      material.fill(0);
+      malformedMasterKey(label);
+    }
+    return material;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function malformedMasterKey(label) {
+  fail(`${label} is malformed; expected 64 hexadecimal characters with at most one trailing line ending`);
+}
+
+function isSupportedMasterKeyMaterial(material) {
+  let hexadecimalLength = material.length;
+  if (material.at(-1) === 0x0a) {
+    hexadecimalLength -= 1;
+    if (material.at(-2) === 0x0d) hexadecimalLength -= 1;
+  }
+  if (hexadecimalLength !== 64) return false;
+  for (let index = 0; index < hexadecimalLength; index += 1) {
+    const byte = material[index];
+    if (!((byte >= 0x30 && byte <= 0x39) || (byte >= 0x41 && byte <= 0x46) || (byte >= 0x61 && byte <= 0x66))) return false;
+  }
+  return true;
+}
+
+function copyMasterKeyFile(source, destination) {
+  const material = readMasterKeyMaterial(source, "Runtime trading master key", process.getuid?.());
+  let descriptor;
+  try {
+    descriptor = openSync(destination, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | noFollowFlag(), 0o600);
+    writeFileSync(descriptor, material);
+    fsyncSync(descriptor);
+  } finally {
+    material.fill(0);
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function proveEncryptedTradingRows(databasePath, key) {
+  const inventory = inspectEncryptedTradingRows(databasePath);
+  const handle = new DatabaseSync(resolve(databasePath), { readOnly: true });
+  try {
+    try {
+      if (inventory.encryptedSettings > 0) {
+        for (const row of handle.prepare("SELECT value FROM settings WHERE encrypted <> 0").iterate()) openEncryptedPayload(key, row.value);
+      }
+      if (inventory.accountCredentials > 0) proveAccountCredentials(handle, key);
+    } catch {
+      fail("Backup trading master key cannot decrypt every encrypted trading row");
+    }
+    return inventory;
+  } finally {
+    handle.close();
+  }
+}
+
+function proveAccountCredentials(database, key) {
+  if (!sqliteTableExists(database, "trading_accounts")) throw new Error("missing account registry");
+  const rows = database
+    .prepare(`
+      SELECT credential.ownerUserId, credential.accountId, credential.encryptedValue, account.exchange
+      FROM trading_account_credentials credential
+      LEFT JOIN trading_accounts account
+        ON account.ownerUserId = credential.ownerUserId AND account.id = credential.accountId
+      ORDER BY credential.ownerUserId, credential.accountId
+    `)
+    .all();
+  for (const row of rows) {
+    if (row.exchange !== "binance" && row.exchange !== "bybit") throw new Error("invalid account binding");
+    const aad = JSON.stringify(["trading-credentials", 1, String(row.ownerUserId).trim(), row.accountId, row.exchange]);
+    openEncryptedPayload(key, row.encryptedValue, aad);
+  }
+}
+
+function openEncryptedPayload(key, payload, aad) {
+  const [ivBase64, tagBase64, dataBase64] = String(payload).split(".");
+  if (!ivBase64 || !tagBase64 || !dataBase64) throw new Error("malformed encrypted trading value");
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivBase64, "base64"));
+  if (aad !== undefined) decipher.setAAD(Buffer.from(aad, "utf8"));
+  decipher.setAuthTag(Buffer.from(tagBase64, "base64"));
+  decipher.update(Buffer.from(dataBase64, "base64"));
+  decipher.final();
+}
+
+function noFollowFlag() {
+  return "O_NOFOLLOW" in constants ? constants.O_NOFOLLOW : 0;
+}
+
 function readManifest(backupDir) {
   const manifestPath = resolve(backupDir, manifestName);
   if (!existsSync(manifestPath)) fail(`Backup manifest is missing: ${manifestPath}`);
@@ -95,6 +231,8 @@ function readManifest(backupDir) {
 
 export function verifyRuntimeBackup(backupDirectory) {
   const backupDir = resolve(backupDirectory);
+  const backupEntry = lstatSync(backupDir);
+  if (backupEntry.isSymbolicLink() || !backupEntry.isDirectory()) fail("Backup path must be a real directory");
   const manifest = readManifest(backupDir);
   const seen = new Set();
 
@@ -111,6 +249,7 @@ export function verifyRuntimeBackup(backupDirectory) {
     if (!seen.has(name)) fail(`Backup contains an unmanifested file: ${name}`);
   }
   if (!seen.has("trading.db")) fail("Backup does not contain trading.db");
+  if (!seen.has(".secret")) fail("Backup does not contain .secret; trading.db and its master key are one recovery unit");
 
   for (const entry of manifest.files) {
     const file = resolve(backupDir, entry.name);
@@ -126,7 +265,19 @@ export function verifyRuntimeBackup(backupDirectory) {
     }
   }
 
-  return { backupDir, manifest };
+  const material = readMasterKeyMaterial(resolve(backupDir, ".secret"), "Backup trading master key", backupEntry.uid);
+  let key;
+  try {
+    key = scryptSync(material, keyDerivationSalt, 32);
+  } finally {
+    material.fill(0);
+  }
+  try {
+    const encryptedRows = proveEncryptedTradingRows(resolve(backupDir, "trading.db"), key);
+    return { backupDir, manifest, encryptedRows };
+  } finally {
+    key.fill(0);
+  }
 }
 
 export async function createRuntimeBackup({ dataDirectory = defaultDataDir, outputDirectory }) {
@@ -165,9 +316,8 @@ export async function createRuntimeBackup({ dataDirectory = defaultDataDir, outp
     for (const name of sensitiveNames) {
       const source = resolve(dataDir, name);
       if (!existsSync(source)) continue;
-      assertRegularFile(source, `Runtime file ${name}`);
       const destination = resolve(stagingDir, name);
-      copyFileSync(source, destination);
+      copyMasterKeyFile(source, destination);
       chmodSync(destination, 0o600);
       const stat = statSync(destination);
       files.push({ name, size: stat.size, sha256: sha256(destination), mode: "0600" });
@@ -365,6 +515,7 @@ function printUsage() {
   npm run data:backup -- --output <directory> [--data-dir <directory>]
   npm run data:verify -- <backup-directory>
   npm run data:restore -- <backup-directory> [--data-dir <directory>] [--force] [--in-place]
+  npm run data:inventory -- [--data-dir <directory>]
 
 Restore replaces runtime data only with --force. Use --in-place for a mounted data directory. Stop the application before restoring.`);
 }
@@ -397,6 +548,15 @@ async function main(args) {
       inPlace: args.includes("--in-place")
     });
     console.log(`Runtime data restored and verified: ${result.dataDir}`);
+    return;
+  }
+  if (command === "inventory") {
+    const databasePath = resolve(dataDirectory, "trading.db");
+    if (!existsSync(databasePath)) fail(`Runtime database is missing: ${databasePath}`);
+    assertRegularFile(databasePath, "Runtime database");
+    assertSqliteIntegrity(databasePath);
+    const inventory = inspectEncryptedTradingRows(databasePath);
+    console.log(`Encrypted trading row inventory: settings=${inventory.encryptedSettings}, accountCredentials=${inventory.accountCredentials}, total=${inventory.total}`);
     return;
   }
   fail(`Unknown command: ${command}`);

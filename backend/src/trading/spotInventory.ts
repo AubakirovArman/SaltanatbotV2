@@ -1,3 +1,4 @@
+import { getRuntimeConfig } from "../config/runtimeConfig.js";
 import { getSetting, insertFill, setSetting } from "./store.js";
 import { recordFuturesExposure } from "./futuresExposure.js";
 import type { ExecOrder, FillRecord, MarketType } from "./types.js";
@@ -5,7 +6,7 @@ import type { ExecOrder, FillRecord, MarketType } from "./types.js";
 export const SPOT_INVENTORY_MODEL_VERSION = 1;
 
 export function liveSpotInventoryEnabled(): boolean {
-  const armed = process.env.ENABLE_LIVE_SPOT === "1" || process.env.ENABLE_LIVE_SPOT === "true" || getSetting<boolean>("liveSpotEnabled") === true;
+  const armed = getRuntimeConfig().trading.enableLiveSpot || getSetting<boolean>("liveSpotEnabled") === true;
   return armed && SPOT_INVENTORY_MODEL_VERSION === 1;
 }
 

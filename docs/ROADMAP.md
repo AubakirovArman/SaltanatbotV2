@@ -6,6 +6,10 @@
 > remains active in [P0_P1_P2_EXECUTION_PLAN.md](./P0_P1_P2_EXECUTION_PLAN.md); this page records
 > longer-horizon product work without reclassifying that ledger as complete.
 
+The ordered implementation plan for the current public Research / Paper deployment is maintained in
+[PRE_HTTPS_ROADMAP.md](./PRE_HTTPS_ROADMAP.md). It deliberately excludes HTTPS and keeps all private
+exchange execution disabled until a separate security review.
+
 SaltanatbotV2 is a strong open-source alpha for charting, Pine import, visual strategy authoring,
 reproducible research, paper trading and experimental exchange execution. Live trading is not
 production-ready until the explicitly deferred funded soak and mainnet-readiness program are done.

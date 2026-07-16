@@ -14,7 +14,7 @@ import { BybitV5Client } from "./exchange/bybitClient.js";
 import { BybitUtaService } from "./bybitUta.js";
 import { roleForBot } from "./botRouteIdentity.js";
 import { TelegramControl } from "./telegramControl.js";
-import { disarmAllLiveTradingSettings, getBotForOwner, getSetting, getTradingAccountCredentialsForOwner, getTradingAccountForOwner, initStore, LEGACY_TRADING_OWNER_ID, listAuditLogForOwner, listBotsForOwner, listFillsForOwner, listLogsForOwner, listOrderEventsForOwner, listOrderJournalForOwner, setSetting } from "./store.js";
+import { closeStore, disarmAllLiveTradingSettings, getBotForOwner, getSetting, getTradingAccountCredentialsForOwner, getTradingAccountForOwner, initStore, LEGACY_TRADING_OWNER_ID, listAuditLogForOwner, listBotsForOwner, listFillsForOwner, listLogsForOwner, listOrderEventsForOwner, listOrderJournalForOwner, setSetting } from "./store.js";
 import type { AuthRole, BotConfig, ExchangeId, ExecOrder } from "./types.js";
 import type { ArbitrageAlertService } from "../arbitrage/alerts.js";
 import { registerArbitrageAlertRoutes } from "../arbitrage/alertRoutes.js";
@@ -56,6 +56,8 @@ export interface TradingApi {
   revokeOwnerAccess(ownerUserId: string): Promise<void>;
   /** Allow starts again after an explicit trading grant. */
   restoreOwnerAccess(ownerUserId: string): void;
+  /** Release the process-lifetime SQLite store and coordination lock. */
+  close(): void;
 }
 
 export interface TradingApiOptions {
@@ -421,7 +423,8 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
         stopAndSuspend: () => engine.stopOwnerSafely(ownerUserId),
         disarm: () => setSetting(tenantSettingKey(ownerUserId, "liveTradingEnabled"), false)
       }),
-    restoreOwnerAccess: (ownerUserId) => engine.resumeOwnerStarts(ownerUserId)
+    restoreOwnerAccess: (ownerUserId) => engine.resumeOwnerStarts(ownerUserId),
+    close: () => closeStore()
   };
 }
 

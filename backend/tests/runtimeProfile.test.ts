@@ -31,7 +31,7 @@ describe("runtime execution profile", () => {
   });
 
   it("requires an explicit valid profile for live-capable test/future deployments", () => {
-    expect(resolveRuntimeProfile({ RUNTIME_PROFILE: "private-live" } as NodeJS.ProcessEnv)).toMatchObject({
+    expect(resolveRuntimeProfile(privateLiveEnv())).toMatchObject({
       runtimeProfile: "private-live",
       executionMode: "live-capable",
       liveBotConfigsAllowed: true,
@@ -42,7 +42,7 @@ describe("runtime execution profile", () => {
   it("rejects invalid, contradictory and accidentally armed configuration", () => {
     expect(() => resolveRuntimeProfile({ RUNTIME_PROFILE: "typo" } as NodeJS.ProcessEnv)).toThrow(/Invalid RUNTIME_PROFILE/);
     expect(() => resolveRuntimeProfile({ DEMO_MODE: "sometimes" } as NodeJS.ProcessEnv)).toThrow(/Invalid DEMO_MODE/);
-    expect(() => resolveRuntimeProfile({ RUNTIME_PROFILE: "private-live", DEMO_MODE: "1" } as NodeJS.ProcessEnv)).toThrow(/conflicts/);
+    expect(() => resolveRuntimeProfile({ ...privateLiveEnv(), DEMO_MODE: "1" })).toThrow(/DEMO_MODE must be false/);
     expect(() => resolveRuntimeProfile({ RUNTIME_PROFILE: "public-http-paper", ALLOW_INSECURE_TRADING_MUTATIONS: "true" } as NodeJS.ProcessEnv)).toThrow(/conflicts/);
     expect(() => resolveRuntimeProfile({ ENABLE_LIVE_SPOT: "1" } as NodeJS.ProcessEnv)).toThrow(/conflicts/);
   });
@@ -53,3 +53,16 @@ describe("runtime execution profile", () => {
     expect(() => assertLiveExecutionAllowed("test live start", policy)).toThrowError(expect.objectContaining({ code: PAPER_ONLY_MODE_CODE }));
   });
 });
+
+function privateLiveEnv(): NodeJS.ProcessEnv {
+  return {
+    NODE_ENV: "production",
+    RUNTIME_PROFILE: "private-live",
+    AUTH_MODE: "database",
+    HOST: "127.0.0.1",
+    COOKIE_SECURE: "1",
+    PUBLIC_ORIGIN: "https://trade.example.test",
+    ALLOWED_ORIGINS: "",
+    TRUST_PROXY: "loopback"
+  };
+}

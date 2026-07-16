@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getAuthToken, issueWsTicket, roleForToken, verifyWsToken } from "../src/auth.js";
+import { initializeRuntimeConfig, resetRuntimeConfigForTests } from "../src/config/runtimeConfig.js";
+
+beforeAll(() => {
+  resetRuntimeConfigForTests();
+  initializeRuntimeConfig({ NODE_ENV: "test", RUNTIME_PROFILE: "public-http-paper", AUTH_MODE: "legacy" } as NodeJS.ProcessEnv);
+});
+
+afterAll(() => resetRuntimeConfigForTests());
 
 describe("token roles", () => {
   it("maps configured tokens to permission roles", () => {

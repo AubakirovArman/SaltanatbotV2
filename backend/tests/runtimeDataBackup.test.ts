@@ -1,14 +1,20 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { scryptSync } from "node:crypto";
+import { chmodSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { restoreRuntimeBackup } from "../../scripts/runtime-data.mjs";
+import { inspectEncryptedTradingRows, restoreRuntimeBackup } from "../../scripts/runtime-data.mjs";
+import { sealCredentialPayload } from "../src/trading/credentialCrypto.js";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const script = path.resolve(root, "scripts/runtime-data.mjs");
 const temporaryDirectories: string[] = [];
+const TEST_SECRET = "11".repeat(32);
+const BACKUP_SECRET = "22".repeat(32);
+const STALE_SECRET = "33".repeat(32);
+const TEST_KEY = scryptSync(TEST_SECRET, "marketforge", 32);
 
 function temporaryDirectory() {
   const directory = mkdtempSync(path.join(tmpdir(), "saltanat-runtime-data-"));
@@ -16,11 +22,12 @@ function temporaryDirectory() {
   return directory;
 }
 
-function seedRuntimeData(dataDir: string, marker = "original") {
+function seedRuntimeData(dataDir: string, marker = "original", encryptedRows = false) {
   mkdirSync(dataDir, { recursive: true });
   const trading = new DatabaseSync(path.resolve(dataDir, "trading.db"));
-  trading.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  trading.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, encrypted INTEGER NOT NULL DEFAULT 0)");
   trading.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run("marker", marker);
+  if (encryptedRows) trading.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, 1)").run("encrypted-fixture", sealCredentialPayload(TEST_KEY, "{}"));
   trading.close();
   const candles = new DatabaseSync(path.resolve(dataDir, "candles.db"));
   candles.exec("CREATE TABLE candles (symbol TEXT PRIMARY KEY, close REAL NOT NULL)");
@@ -30,7 +37,7 @@ function seedRuntimeData(dataDir: string, marker = "original") {
   paperMultiLeg.exec("CREATE TABLE runs (runId TEXT PRIMARY KEY, status TEXT NOT NULL)");
   paperMultiLeg.prepare("INSERT INTO runs (runId, status) VALUES (?, ?)").run("paper-backup-fixture", "completed");
   paperMultiLeg.close();
-  writeFileSync(path.resolve(dataDir, ".secret"), "test-secret", { mode: 0o600 });
+  writeFileSync(path.resolve(dataDir, ".secret"), TEST_SECRET, { mode: 0o600 });
   writeFileSync(path.resolve(dataDir, ".authtoken"), "test-token", { mode: 0o600 });
 }
 
@@ -113,7 +120,7 @@ describe("runtime data backup and restore", () => {
     const restoredPaperMultiLeg = new DatabaseSync(path.resolve(targetDir, "arbitrage-paper-multi-leg.sqlite"), { readOnly: true });
     expect(restoredPaperMultiLeg.prepare("SELECT status FROM runs WHERE runId = ?").get("paper-backup-fixture")).toMatchObject({ status: "completed" });
     restoredPaperMultiLeg.close();
-    expect(readFileSync(path.resolve(targetDir, ".secret"), "utf8")).toBe("test-secret");
+    expect(readFileSync(path.resolve(targetDir, ".secret"), "utf8")).toBe(TEST_SECRET);
     expect(existsSync(path.resolve(targetDir, "ordinary-restore-sentinel.txt"))).toBe(false);
   });
 
@@ -125,11 +132,11 @@ describe("runtime data backup and restore", () => {
     seedRuntimeData(sourceDir, "from-in-place-backup");
     rmSync(path.resolve(sourceDir, "candles.db"));
     rmSync(path.resolve(sourceDir, "arbitrage-paper-multi-leg.sqlite"));
-    writeFileSync(path.resolve(sourceDir, ".secret"), "backup-secret", { mode: 0o600 });
+    writeFileSync(path.resolve(sourceDir, ".secret"), BACKUP_SECRET, { mode: 0o600 });
     run("backup", "--data-dir", sourceDir, "--output", backupDir);
 
     seedRuntimeData(targetDir, "stale-target");
-    writeFileSync(path.resolve(targetDir, ".secret"), "stale-secret", { mode: 0o600 });
+    writeFileSync(path.resolve(targetDir, ".secret"), STALE_SECRET, { mode: 0o600 });
     writeFileSync(path.resolve(targetDir, ".restore-manifest.json"), "stale restore manifest", { mode: 0o600 });
     const unrelated = path.resolve(targetDir, "operator-notes.txt");
     writeFileSync(unrelated, "preserve me", { mode: 0o640 });
@@ -145,7 +152,7 @@ describe("runtime data backup and restore", () => {
     const after = statSync(targetDir);
     expect({ dev: after.dev, ino: after.ino }).toEqual({ dev: before.dev, ino: before.ino });
     expect(runtimeMarker(targetDir)).toMatchObject({ value: "from-in-place-backup" });
-    expect(readFileSync(path.resolve(targetDir, ".secret"), "utf8")).toBe("backup-secret");
+    expect(readFileSync(path.resolve(targetDir, ".secret"), "utf8")).toBe(BACKUP_SECRET);
     expect(readFileSync(unrelated, "utf8")).toBe("preserve me");
     expect(readFileSync(path.resolve(nested, "note.txt"), "utf8")).toBe("also preserve me");
     expect(existsSync(path.resolve(targetDir, "candles.db"))).toBe(false);
@@ -209,9 +216,9 @@ describe("runtime data backup and restore", () => {
     const targetDir = path.resolve(workspace, "target");
     const backupDir = path.resolve(workspace, "backup");
     seedRuntimeData(sourceDir, "new-value");
-    writeFileSync(path.resolve(sourceDir, ".secret"), "new-secret", { mode: 0o600 });
+    writeFileSync(path.resolve(sourceDir, ".secret"), BACKUP_SECRET, { mode: 0o600 });
     seedRuntimeData(targetDir, "old-value");
-    writeFileSync(path.resolve(targetDir, ".secret"), "old-secret", { mode: 0o600 });
+    writeFileSync(path.resolve(targetDir, ".secret"), STALE_SECRET, { mode: 0o600 });
     writeFileSync(path.resolve(targetDir, ".restore-manifest.json"), "old restore manifest", { mode: 0o600 });
     writeFileSync(path.resolve(targetDir, "unrelated.txt"), "preserved");
     const oldSidecars = ["trading.db-wal", "candles.db-shm", "arbitrage-paper-multi-leg.sqlite-journal"];
@@ -239,7 +246,7 @@ describe("runtime data backup and restore", () => {
     for (const name of oldSidecars) expect(readFileSync(path.resolve(targetDir, name), "utf8")).toBe(`old ${name}`);
     for (const name of oldSidecars) rmSync(path.resolve(targetDir, name));
     expect(runtimeMarker(targetDir)).toMatchObject({ value: "old-value" });
-    expect(readFileSync(path.resolve(targetDir, ".secret"), "utf8")).toBe("old-secret");
+    expect(readFileSync(path.resolve(targetDir, ".secret"), "utf8")).toBe(STALE_SECRET);
     expect(readFileSync(path.resolve(targetDir, ".restore-manifest.json"), "utf8")).toBe("old restore manifest");
     expect(readFileSync(path.resolve(targetDir, "unrelated.txt"), "utf8")).toBe("preserved");
     expect(readdirSync(targetDir).some((name) => name.startsWith(".restore-stage-") || name.startsWith(".restore-rollback-"))).toBe(false);
@@ -272,5 +279,111 @@ describe("runtime data backup and restore", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("unmanifested file: trading.db-wal");
     expect(readFileSync(sidecar, "utf8")).toBe("unexpected sidecar");
+  });
+
+  it("reports a read-only encrypted-row inventory without reading key material", () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    seedRuntimeData(dataDir, "inventory", true);
+    const database = new DatabaseSync(path.resolve(dataDir, "trading.db"));
+    database.exec("CREATE TABLE trading_account_credentials (encryptedValue TEXT NOT NULL)");
+    database.prepare("INSERT INTO trading_account_credentials (encryptedValue) VALUES (?)").run("opaque-account-ciphertext");
+    database.close();
+
+    expect(inspectEncryptedTradingRows(path.resolve(dataDir, "trading.db"))).toEqual({ encryptedSettings: 1, accountCredentials: 1, total: 2 });
+    expect(run("inventory", "--data-dir", dataDir)).toContain("settings=1, accountCredentials=1, total=2");
+  });
+
+  it("includes committed WAL rows in the read-only inventory", () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    seedRuntimeData(dataDir, "wal-inventory");
+    const databasePath = path.resolve(dataDir, "trading.db");
+    const writer = new DatabaseSync(databasePath);
+    writer.exec("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0");
+    writer.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, 1)").run("wal-ciphertext", "opaque");
+    const walPath = `${databasePath}-wal`;
+    const databaseBefore = readFileSync(databasePath);
+    const walBefore = readFileSync(walPath);
+
+    try {
+      expect(inspectEncryptedTradingRows(databasePath)).toEqual({ encryptedSettings: 1, accountCredentials: 0, total: 1 });
+      expect(run("inventory", "--data-dir", dataDir)).toContain("settings=1, accountCredentials=0, total=1");
+      expect(readFileSync(databasePath)).toEqual(databaseBefore);
+      expect(readFileSync(walPath)).toEqual(walBefore);
+    } finally {
+      writer.close();
+    }
+  });
+
+  it("refuses to create or verify a backup that omits the key", () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    const refusedBackup = path.resolve(workspace, "refused-backup");
+    seedRuntimeData(dataDir, "encrypted-source", true);
+    rmSync(path.resolve(dataDir, ".secret"));
+
+    const missingSourceKey = spawnSync(process.execPath, [script, "backup", "--data-dir", dataDir, "--output", refusedBackup], { cwd: root, encoding: "utf8" });
+    expect(missingSourceKey.status).toBe(1);
+    expect(missingSourceKey.stderr).toMatch(/does not contain \.secret/i);
+    expect(existsSync(refusedBackup)).toBe(false);
+
+    const validData = path.resolve(workspace, "valid-data");
+    const incompleteBackup = path.resolve(workspace, "incomplete-backup");
+    seedRuntimeData(validData, "encrypted-backup", true);
+    run("backup", "--data-dir", validData, "--output", incompleteBackup);
+    const manifestPath = path.resolve(incompleteBackup, "backup-manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.files = manifest.files.filter((entry: { name: string }) => entry.name !== ".secret");
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    rmSync(path.resolve(incompleteBackup, ".secret"));
+
+    const missingBackupKey = spawnSync(process.execPath, [script, "verify", incompleteBackup], { cwd: root, encoding: "utf8" });
+    expect(missingBackupKey.status).toBe(1);
+    expect(missingBackupKey.stderr).toMatch(/does not contain \.secret/i);
+  });
+
+  it("rejects an unencrypted trading database without its mandatory master key", () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    const backupDir = path.resolve(workspace, "backup");
+    seedRuntimeData(dataDir, "empty-key-unit");
+    rmSync(path.resolve(dataDir, ".secret"));
+
+    const result = spawnSync(process.execPath, [script, "backup", "--data-dir", dataDir, "--output", backupDir], { cwd: root, encoding: "utf8" });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/does not contain \.secret/i);
+    expect(existsSync(backupDir)).toBe(false);
+  });
+
+  it("rejects a well-formed master key that cannot decrypt the backed-up rows", () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    const backupDir = path.resolve(workspace, "backup");
+    seedRuntimeData(dataDir, "wrong-key", true);
+    writeFileSync(path.resolve(dataDir, ".secret"), BACKUP_SECRET, { mode: 0o600 });
+
+    const result = spawnSync(process.execPath, [script, "backup", "--data-dir", dataDir, "--output", backupDir], { cwd: root, encoding: "utf8" });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/cannot decrypt every encrypted trading row/i);
+    expect(existsSync(backupDir)).toBe(false);
+  });
+
+  it("rejects a backup key that became group or world readable", () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    const backupDir = path.resolve(workspace, "backup");
+    seedRuntimeData(dataDir);
+    run("backup", "--data-dir", dataDir, "--output", backupDir);
+    const keyPath = path.resolve(backupDir, ".secret");
+    chmodSync(keyPath, 0o644);
+
+    const result = spawnSync(process.execPath, [script, "verify", backupDir], { cwd: root, encoding: "utf8" });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/permissions must be 0600 or read-only 0400/i);
+    expect(lstatSync(keyPath).mode & 0o777).toBe(0o644);
   });
 });

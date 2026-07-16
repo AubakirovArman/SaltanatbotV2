@@ -83,6 +83,7 @@ services:
       # Deprecated compatibility alias for public-http-paper.
       DEMO_MODE: ${DEMO_MODE:-}
       # Comma-separated CORS allowlist for cross-origin dev/proxy setups.
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       TRUST_PROXY: ${TRUST_PROXY:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-}

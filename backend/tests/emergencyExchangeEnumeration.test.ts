@@ -46,8 +46,14 @@ describe("emergency exchange account enumeration", () => {
         return json([{ symbol: "BTCUSDT", positionAmt: "1", entryPrice: "100", leverage: "2", positionSide: "LONG" }]);
       }
       if (url.pathname.endsWith("/exchangeInfo")) {
-        return json({ symbols: [{ symbol: "BTCUSDT", filters: [{ filterType: "LOT_SIZE", stepSize: "0.001", minQty: "0.001" }] }] });
+        return json({ symbols: [{ symbol: "BTCUSDT", status: "TRADING", filters: [
+          { filterType: "LOT_SIZE", stepSize: "0.001", minQty: "0.001", maxQty: "1000" },
+          { filterType: "MARKET_LOT_SIZE", stepSize: "0.001", minQty: "0.001", maxQty: "1000" },
+          { filterType: "PRICE_FILTER", tickSize: "0.1", minPrice: "0.1", maxPrice: "1000000" },
+          { filterType: "MIN_NOTIONAL", notional: "5" }
+        ] }] });
       }
+      if (url.pathname.endsWith("/ticker/price")) return json({ price: "100" });
       if (url.pathname.endsWith("/order") && init?.method === "POST") {
         submitted = url;
         return json({ orderId: "closed" });

@@ -15,25 +15,14 @@ describe("Bybit futures protection", () => {
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
-      const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
       calls.push({ url, method, body });
 
       if (url.includes("/v5/market/tickers")) {
         return json({ result: { list: [{ lastPrice: "100" }] } });
       }
       if (url.includes("/v5/market/instruments-info")) {
-        return json({
-          retCode: 0,
-          result: {
-            list: [
-              {
-                symbol: "BTCUSDT",
-                lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001", minNotionalValue: "5" },
-                priceFilter: { tickSize: "0.1" }
-              }
-            ]
-          }
-        });
+        return json(bybitInstrumentInfo());
       }
       if (url.includes("/v5/position/list")) {
         return json({ retCode: 0, retMsg: "OK", result: { list: [{ side: "Buy", size: "1", avgPrice: "100", leverage: "1" }] } });
@@ -50,6 +39,8 @@ describe("Bybit futures protection", () => {
       market: "futures",
       symbol: "BTCUSDT",
       side: "buy",
+      positionSide: "long",
+      positionIndex: 1,
       type: "market",
       qty: 1,
       stop: { basis: "price", value: 95 },
@@ -65,22 +56,24 @@ describe("Bybit futures protection", () => {
       category: "linear",
       symbol: "BTCUSDT",
       tpslMode: "Full",
-      positionIdx: 0,
+      positionIdx: 1,
       stopLoss: "95",
       takeProfit: "110",
       slTriggerBy: "LastPrice",
       tpTriggerBy: "LastPrice"
     });
+    const entry = calls.find((call) => call.url.includes("/v5/order/create"));
+    expect(entry?.body?.positionIdx).toBe(1);
   });
 
   it("reports unconfirmed protection and submits a safety close when trading-stop is rejected", async () => {
     const calls: FetchCall[] = [];
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined });
+      calls.push({ url, method: init?.method ?? "GET", body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined });
       if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
       if (url.includes("/v5/market/instruments-info")) {
-        return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001", minNotionalValue: "5" }, priceFilter: { tickSize: "0.1" } }] } });
+        return json(bybitInstrumentInfo());
       }
       if (url.includes("/v5/position/trading-stop")) return json({ retCode: 10001, retMsg: "invalid stop" });
       if (url.includes("/v5/position/list")) return json({ retCode: 0, retMsg: "OK", result: { list: [] } });
@@ -90,9 +83,16 @@ describe("Bybit futures protection", () => {
 
     const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
     const result = await adapter.execute({
-      action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1,
-      stop: { basis: "price", value: 95 }, clientId: "entry-protection-1",
-      protectionClientIds: { safetyClose: "entry-protection-1-safety-child" }, reason: "test"
+      action: "open",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "buy",
+      type: "market",
+      qty: 1,
+      stop: { basis: "price", value: 95 },
+      clientId: "entry-protection-1",
+      protectionClientIds: { safetyClose: "entry-protection-1-safety-child" },
+      reason: "test"
     });
 
     expect(result.ok).toBe(true);
@@ -117,10 +117,10 @@ describe("Bybit futures protection", () => {
     const calls: FetchCall[] = [];
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined });
+      calls.push({ url, method: init?.method ?? "GET", body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined });
       if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
       if (url.includes("/v5/market/instruments-info")) {
-        return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001", minNotionalValue: "5" }, priceFilter: { tickSize: "0.1" } }] } });
+        return json(bybitInstrumentInfo());
       }
       return json({ retCode: 0, retMsg: "OK", result: {} });
     });
@@ -142,7 +142,7 @@ describe("Bybit futures protection", () => {
       const url = String(input);
       if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
       if (url.includes("/v5/market/instruments-info")) {
-        return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001" }, priceFilter: { tickSize: "0.1" } }] } });
+        return json(bybitInstrumentInfo());
       }
       if (url.includes("/v5/position/trading-stop")) return new Response('{"retCode":0,"retMsg":"OK","result":', { status: 200 });
       if (url.includes("/v5/order/create")) {
@@ -156,8 +156,15 @@ describe("Bybit futures protection", () => {
     const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
 
     const result = await adapter.execute({
-      action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1,
-      stop: { basis: "price", value: 95 }, clientId: "entry-client", reason: "test"
+      action: "open",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "buy",
+      type: "market",
+      qty: 1,
+      stop: { basis: "price", value: 95 },
+      clientId: "entry-client",
+      reason: "test"
     });
 
     expect(result).toMatchObject({
@@ -178,11 +185,11 @@ describe("Bybit futures protection", () => {
     let accepted = false;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
       calls.push({ url, method: init?.method ?? "GET", body });
       if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
       if (url.includes("/v5/market/instruments-info")) {
-        return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001" }, priceFilter: { tickSize: "0.1" } }] } });
+        return json(bybitInstrumentInfo());
       }
       if (url.includes("/v5/position/list")) {
         if (accepted) return json({ retCode: 10001, retMsg: "position enrichment unavailable" });
@@ -225,7 +232,7 @@ describe("Bybit futures protection", () => {
       const url = String(input);
       if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
       if (url.includes("/v5/market/instruments-info")) {
-        return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001", minNotionalValue: "5" }, priceFilter: { tickSize: "0.1" } }] } });
+        return json(bybitInstrumentInfo());
       }
       if (url.includes("/v5/order/create")) return json({ retCode: 0, retMsg: "OK", result: { orderId: "entry-ack" } });
       if (url.includes("/v5/position/trading-stop")) return json({ retCode: 0, retMsg: "OK", result: {} });
@@ -234,8 +241,15 @@ describe("Bybit futures protection", () => {
     const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
 
     const result = await adapter.execute({
-      action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1,
-      clientId: "entry-client", stop: { basis: "price", value: 95 }, reason: "test"
+      action: "open",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "buy",
+      type: "market",
+      qty: 1,
+      clientId: "entry-client",
+      stop: { basis: "price", value: 95 },
+      reason: "test"
     });
 
     expect(result).toMatchObject({
@@ -253,23 +267,28 @@ describe("Bybit futures protection", () => {
       const url = String(input);
       if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
       if (url.includes("/v5/market/instruments-info")) {
-        return json({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001", minNotionalValue: "5" }, priceFilter: { tickSize: "0.1" } }] } });
+        return json(bybitInstrumentInfo());
       }
       if (url.includes("/v5/position/trading-stop")) return json({ retCode: 10001, retMsg: "invalid stop" });
       if (url.includes("/v5/order/create")) {
         createCount += 1;
-        return createCount === 1
-          ? json({ retCode: 0, retMsg: "OK", result: { orderId: "entry-accepted" } })
-          : json({ retCode: 10001, retMsg: "safety close rejected" });
+        return createCount === 1 ? json({ retCode: 0, retMsg: "OK", result: { orderId: "entry-accepted" } }) : json({ retCode: 10001, retMsg: "safety close rejected" });
       }
       return json({ retCode: 10001, retMsg: "state unavailable" });
     });
     const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
 
     const result = await adapter.execute({
-      action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1,
-      clientId: "entry-client", protectionClientIds: { safetyClose: "safety-child-client" },
-      stop: { basis: "price", value: 95 }, reason: "test"
+      action: "open",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "buy",
+      type: "market",
+      qty: 1,
+      clientId: "entry-client",
+      protectionClientIds: { safetyClose: "safety-child-client" },
+      stop: { basis: "price", value: 95 },
+      reason: "test"
     });
 
     expect(result).toMatchObject({
@@ -285,7 +304,149 @@ describe("Bybit futures protection", () => {
     expect(result.message).toMatch(/emergency close failed.*unprotected position may remain/i);
     expect(result.message).not.toMatch(/entry (?:was )?closed/i);
   });
+
+  it("performs zero signed requests when exact complete rules are unavailable", async () => {
+    const signed: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if ((init?.headers as Record<string, string> | undefined)?.["X-BAPI-API-KEY"]) signed.push(url);
+      if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
+      if (url.includes("/v5/market/instruments-info")) {
+        const payload = bybitInstrumentInfo();
+        (payload.result.list[0]!.lotSizeFilter as { maxMktOrderQty?: string }).maxMktOrderQty = undefined;
+        return json(payload);
+      }
+      return json({ retCode: 0, retMsg: "OK", result: { orderId: "unexpected" } });
+    });
+    const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "open",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "buy",
+      type: "market",
+      qty: 1,
+      leverage: 5,
+      reason: "test"
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.message).toMatch(/market maxOrderQty/);
+    expect(signed).toEqual([]);
+  });
+
+  it("enforces market quantity caps separately from exact limit price ticks", async () => {
+    const creates: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
+      if (url.includes("/v5/market/instruments-info")) return json(bybitInstrumentInfo({ marketMaxQty: "1", tickSize: "0.05" }));
+      if (url.includes("/v5/order/create")) {
+        creates.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return json({ retCode: 0, retMsg: "OK", result: { orderId: "limit-1" } });
+      }
+      if (url.includes("/v5/position/list")) return json({ retCode: 0, retMsg: "OK", result: { list: [] } });
+      if (url.includes("/v5/account/wallet-balance")) return json({ retCode: 0, retMsg: "OK", result: { list: [] } });
+      return json({ retCode: 0, retMsg: "OK", result: {} });
+    });
+    const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
+
+    const market = await adapter.execute({ action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 2, reason: "test" });
+    const limit = await adapter.execute({ action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "limit", qty: 2, price: 100.079, reason: "test" });
+
+    expect(market).toMatchObject({ ok: false });
+    expect(market.message).toMatch(/maxQty/);
+    expect(creates).toEqual([expect.objectContaining({ orderType: "Limit", qty: "2", price: "100.05" })]);
+    expect(limit).toMatchObject({ ok: true });
+  });
+
+  it("rejects partial Full-mode take-profit before leverage or order mutation", async () => {
+    const signedMutations: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if ((init?.headers as Record<string, string> | undefined)?.["X-BAPI-API-KEY"] && init?.method !== "GET") {
+        signedMutations.push(url);
+      }
+      if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
+      if (url.includes("/v5/market/instruments-info")) return json(bybitInstrumentInfo());
+      return json({ retCode: 0, retMsg: "OK", result: { orderId: "unexpected" } });
+    });
+    const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "open",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "buy",
+      type: "market",
+      qty: 1,
+      leverage: 5,
+      takeProfits: [{ priceBasis: "price", price: 110, qtyBasis: "percent", qty: 50 }],
+      reason: "test"
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.message).toMatch(/requires exactly 100%/i);
+    expect(signedMutations).toEqual([]);
+  });
+
+  it("fails closed above Bybit max quantity because server-side split children are not durably tracked", async () => {
+    const creates: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/v5/market/tickers")) return json({ result: { list: [{ lastPrice: "100" }] } });
+      if (url.includes("/v5/market/instruments-info")) return json(bybitInstrumentInfo({ marketMaxQty: "1" }));
+      if (url.includes("/v5/position/list")) {
+        return json({ retCode: 0, retMsg: "OK", result: { list: [{ side: "Buy", size: "2", avgPrice: "100", leverage: "1", positionIdx: 0 }] } });
+      }
+      if (url.includes("/v5/order/create")) {
+        creates.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return json({ retCode: 0, retMsg: "OK", result: { orderId: "close-auto-split" } });
+      }
+      if (url.includes("/v5/account/wallet-balance")) return json({ retCode: 0, retMsg: "OK", result: { list: [] } });
+      return json({ retCode: 0, retMsg: "OK", result: {} });
+    });
+    const adapter = new BybitAdapter("bot-1", { apiKey: "test-key", apiSecret: "test-secret" }, "futures");
+
+    const result = await adapter.execute({
+      action: "flatten",
+      market: "futures",
+      symbol: "BTCUSDT",
+      side: "sell",
+      type: "market",
+      closePct: 100,
+      reduceOnly: true,
+      reason: "emergency"
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.message).toMatch(/above maxQty.*durable chunk intents/i);
+    expect(creates).toEqual([]);
+  });
 });
+
+function bybitInstrumentInfo(options: { marketMaxQty?: string; tickSize?: string } = {}) {
+  return {
+    retCode: 0,
+    result: {
+      list: [
+        {
+          symbol: "BTCUSDT",
+          status: "Trading",
+          lotSizeFilter: {
+            qtyStep: "0.001",
+            minOrderQty: "0.001",
+            maxOrderQty: "1000",
+            maxMktOrderQty: options.marketMaxQty ?? "1000",
+            minNotionalValue: "5"
+          },
+          priceFilter: { tickSize: options.tickSize ?? "0.1", minPrice: "0.1", maxPrice: "1000000" }
+        }
+      ]
+    }
+  };
+}
 
 function json(payload: unknown): Response {
   return {

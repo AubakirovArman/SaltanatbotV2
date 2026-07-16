@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
 import { verifyAppWsSession, verifyTradeWsRequest } from "./auth.js";
+import { initializeRuntimeConfig } from "./config/runtimeConfig.js";
 import { createArbitrageDepthHandler, createArbitrageHandler, createArbitrageHistoryHandler } from "./arbitrage/routes.js";
 import { ArbitrageScannerService } from "./arbitrage/service.js";
 import { ArbitrageStreamHub } from "./arbitrage/stream.js";
@@ -46,17 +47,17 @@ import { registerIdentityServerRoutes } from "./identity/serverRoutes.js";
 import { apiErrorHandler } from "./http/apiErrorHandler.js";
 import { installGracefulShutdown } from "./http/gracefulShutdown.js";
 import { SingleFlightGate } from "./http/singleFlightGate.js";
-import { getRuntimePolicy, isPaperOnlyRuntime } from "./runtimeProfile.js";
-const port = Number(process.env.PORT ?? 4180);
-// Fail safe: bind to loopback unless the operator explicitly opts into a wider bind.
-const host = process.env.HOST ?? "127.0.0.1";
-const runtimePolicy = getRuntimePolicy();
-const identityRuntime = await initializeIdentityRuntime();
+import { websocketOriginAllowed } from "./http/websocketOrigin.js";
+import { isPaperOnlyRuntime, runtimePolicyFromConfig } from "./runtimeProfile.js";
+const runtimeConfig = initializeRuntimeConfig(process.env);
+const { port, host } = runtimeConfig.server;
+const runtimePolicy = runtimePolicyFromConfig(runtimeConfig);
+const identityRuntime = await initializeIdentityRuntime(process.env, runtimeConfig.auth.mode);
 const legacyTradingOwnerUserId = await resolveLegacyTradingOwnerUserId(identityRuntime);
 const provider = new ProviderRouter();
 const marketDataGate = new SingleFlightGate(24, 128);
 const app = express();
-configureTrustedProxy(app);
+configureTrustedProxy(app, runtimeConfig.server.trustProxy);
 const server = createServer(app);
 const inboundWebSocketLimit = 64 * 1024;
 const wss = new WebSocketServer({ noServer: true, maxPayload: inboundWebSocketLimit });
@@ -92,17 +93,7 @@ arbitrageAlerts.attach(arbitrageStream);
 
 // CORS: same-origin needs nothing (the SPA is served by this app). Allow an
 // explicit allowlist for cross-origin dev/proxy setups via ALLOWED_ORIGINS.
-const allowedOrigins = new Set(
-  (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173,http://127.0.0.1:5173")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean)
-);
-function websocketOriginAllowed(origin: string | undefined, host: string | undefined): boolean {
-  if (!origin) return true;
-  try { return new URL(origin).host === host || allowedOrigins.has(origin); }
-  catch { return false; }
-}
+const allowedOrigins = new Set(runtimeConfig.server.allowedOrigins);
 const corsOptions: cors.CorsOptions = {
   origin(origin, callback) {
     // Non-browser / same-origin requests send no Origin header — always allow.
@@ -257,7 +248,7 @@ app.get("/api/sparklines", async (request, response) => {
 });
 
 server.on("upgrade", (request, socket, head) => {
-  if (!websocketOriginAllowed(request.headers.origin, request.headers.host)) {
+  if (!websocketOriginAllowed(request.headers.origin, request.headers.host, runtimeConfig.server)) {
     socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
     socket.destroy();
     return;
@@ -587,7 +578,10 @@ installGracefulShutdown(server, {
     continuousPublicFeeds.close();
     venueClockCalibration.stop();
   },
-  closeResources: () => identityRuntime.close()
+  closeResources: async () => {
+    trading.close();
+    await identityRuntime.close();
+  }
 });
 
 function continuousRouteConfigurationFromEnvironment() {

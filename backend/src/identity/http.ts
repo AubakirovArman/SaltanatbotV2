@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { getRuntimeConfig } from "../config/runtimeConfig.js";
 import type { IdentityPrincipal, SessionCredentials } from "./types.js";
 import type { IdentityService, RequestMetadata } from "./service.js";
 
@@ -63,6 +64,6 @@ function formatCookie(name: string, value: string, maxAge: number, httpOnly: boo
     `Max-Age=${maxAge}`
   ];
   if (httpOnly) attributes.push("HttpOnly");
-  if (process.env.COOKIE_SECURE === "1" || process.env.COOKIE_SECURE === "true") attributes.push("Secure");
+  if (getRuntimeConfig().auth.cookieSecure) attributes.push("Secure");
   return attributes.join("; ");
 }

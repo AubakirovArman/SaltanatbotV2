@@ -16,6 +16,11 @@ stable code `PAPER_ONLY_MODE`. It also clears persisted live-arm flags at startu
 bots, accounts, credentials or audit history. Keep this profile on any deployment that does not yet
 have HTTPS. `private-live` is reserved for a later, separately audited HTTPS deployment.
 
+Runtime security settings are parsed once into a frozen typed snapshot before databases, runtime
+files or network listeners are initialized. Unknown booleans, malformed ports/origins/proxy ranges
+and partial `private-live` deployments stop startup. There is no `NODE_ENV=test` or Docker bypass for
+these production invariants.
+
 At startup the trading store enforces mode `0700` on `backend/data/` and `0600` on both
 `trading.db` and its `.secret`, including files created by older versions with broader modes.
 
@@ -144,6 +149,16 @@ and account/owner-specific authenticated context, are never returned to the brow
 rotated while a bound robot is running. This is logical application isolation inside one deployment,
 not a claim that the machine's root operator cannot read process memory or the SQLite root secret.
 Protect `trading.db` and `.secret` as if they contained plaintext credentials.
+
+The SQLite master key is fail-stop. Only a new installation with no `trading.db` may atomically
+create `.secret`. For an existing database, a missing, malformed, symlinked/directory, foreign-owned,
+group/other-readable or cryptographically incorrect key stops startup before migrations or other
+database writes. Startup validates all encrypted settings and account credentials through a
+read-only connection that observes committed WAL data. It never replaces the key or silently fixes
+its permissions. Startup also holds an exclusive owner-only SQLite coordination lock for the process
+lifetime and rechecks the `trading.db` inode before the writable open; a second backend fails closed,
+and a crash releases the OS lock. Use `npm run data:inventory -- --data-dir backend/data` for
+count-only encrypted-row evidence and restore `trading.db` together with its matching `.secret`.
 
 Trading-role assignment is enabled by default after the owner migration. Set
 `AUTH_TRADING_ROLES_ENABLED=0` only as a maintenance kill switch for non-admin trading access;

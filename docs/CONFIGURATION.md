@@ -8,13 +8,16 @@ authenticated user's private trading surface separate.
 
 ## Environment variables
 
-The backend reads these environment variables in `backend/src/server.ts` / `backend/src/auth.ts`:
+The backend first parses the process security boundary through
+`backend/src/config/runtimeConfig.ts`, before identity/trading databases or listeners are opened.
+Invalid, contradictory or incomplete values stop startup instead of silently falling back.
+Variables outside that first slice are still owned by their feature modules and are listed below.
 
 | Variable          | Default       | Purpose                                                                                 |
 | ----------------- | ------------- | --------------------------------------------------------------------------------------- |
 | `PORT`            | `4180`        | TCP port the HTTP + WebSocket server listens on.                                        |
 | `HOST`            | `127.0.0.1`   | Interface the server binds to. Loopback by default (fail-safe). Set `0.0.0.0` to expose. |
-| `AUTH_MODE` | `database` | `database` enables account login. `legacy` is an explicit compatibility mode for hermetic tests/private demos only. |
+| `AUTH_MODE` | `database` | `database` enables account login. `NODE_ENV` never changes this default. `legacy` requires an explicit value, except for the documented deprecated `DEMO_MODE=true` plus explicit `AUTH_TOKEN` compatibility path. |
 | `AUTH_REGISTRATION_ENABLED` | `1` | Set `0` to hide/disable new registration. Registrations are pending until admin approval. |
 | `AUTH_SESSION_TTL_MS` | `43200000` | HttpOnly browser session TTL (default 12 hours). |
 | `AUTH_WS_TICKET_TTL_MS` | `30000` | One-time `/trade-stream` ticket TTL. |
@@ -35,17 +38,18 @@ The backend reads these environment variables in `backend/src/server.ts` / `back
 | `TRADING_MAX_RUNNING_PAPER_BOTS_PER_USER` | `4` | Concurrent paper-robot cap per owner in the single trading executor. |
 | `TRADING_MAX_RUNNING_LIVE_BOTS_PER_USER` | `2` | Concurrent live-robot cap per owner in the single trading executor. |
 | `COOKIE_SECURE`   | *(off)*       | Set to `1` behind HTTPS so session cookies are marked `Secure`. |
+| `PUBLIC_ORIGIN` | *(unset)* | Exact canonical browser and WebSocket origin (for example `https://trade.example.com`), without path/query/credentials. Required and HTTPS in `private-live`; WebSocket `Origin` must match it or `ALLOWED_ORIGINS`. |
 | `DATABASE_URL` | *(unset)* | PostgreSQL URL. Takes precedence over individual `PG*` parameters and cannot be combined with `PGPASSWORD_FILE`. |
 | `PGHOST` / `PGPORT` | `127.0.0.1` / `55434` | Isolated project PostgreSQL address. Compose uses `postgres:5432` internally. |
 | `PGDATABASE` / `PGUSER` | `saltanatbotv2` | Dedicated database and role. |
 | `PGPASSWORD_FILE` | *(unset)* | Preferred absolute regular file containing the database password. |
 | `PGPOOL_MAX` | `12` | Maximum API PostgreSQL connections. |
-| `RUNTIME_PROFILE` | `public-http-paper` | Immutable execution boundary loaded before databases/listeners. `public-http-paper` permits public data, research, backtests and paper robots but forbids live configs, credential writes/decryption for use, signed REST and private WebSockets. `private-live` is reserved for a separately audited HTTPS deployment. |
+| `RUNTIME_PROFILE` | `public-http-paper` | Immutable execution boundary loaded before databases/listeners. `public-http-paper` permits public data, research, backtests and paper robots but forbids live configs, credential writes/decryption for use, signed REST and private WebSockets. `private-live` starts only with database auth, loopback binding, an HTTPS `PUBLIC_ORIGIN`, Secure cookies, a narrow trusted proxy and HTTPS-only/empty cross-origin allowlist. |
 | `DEMO_MODE`       | *(off)*       | Deprecated compatibility alias: `1`/`true` selects `public-http-paper`. Unknown values and conflicts stop startup. |
 | `ENABLE_LIVE_SPOT` | *(off)* | `1`/`true` permits experimental Bybit spot after the normal live gates. It does not enable Binance spot, which remains disabled until authenticated spot execution accounting exists. |
-| `ALLOWED_ORIGINS` | dev localhost | Comma-separated HTTP CORS and WebSocket `Origin` allowlist for cross-origin browser access. Same-origin always works. |
-| `TRUST_PROXY` | *(unset)* | Explicit Express trusted-proxy IP/CIDR/name list (for example `loopback`). Only trusted proxies may establish HTTPS through `X-Forwarded-Proto`. |
-| `ALLOW_INSECURE_TRADING_MUTATIONS` | *(off)* | Dangerous development override for key storage and live/account mutations over public HTTP. Never enable on a public or production host. |
+| `ALLOWED_ORIGINS` | dev localhost | Comma-separated exact HTTP(S) CORS and WebSocket origins. When `PUBLIC_ORIGIN` is unset, public-paper WebSockets retain strictly parsed same-host access. An explicit empty value disables the development localhost defaults. |
+| `TRUST_PROXY` | *(unset)* | Explicit Express trusted-proxy identity. `private-live` accepts `loopback`, exact IPs, or pools of at most 16 addresses (IPv4 `/28`–`/32`, IPv6 `/124`–`/128`); hop counts, `true`, `linklocal`, `uniquelocal` and wider CIDRs are rejected. |
+| `ALLOW_INSECURE_TRADING_MUTATIONS` | *(off)* | Reserved unsafe override. Both supported runtime profiles reject startup when it is true. |
 | `PAPER_MULTI_LEG_DB_PATH` | `backend/data/arbitrage-paper-multi-leg.sqlite` | Optional path for the bounded append-only multi-leg paper journal. Compose operators should leave the default inside `/app/backend/data`; any custom container path needs its own persistent mount and backup policy or it is lost when the container is recreated. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_FILE` | *(unset)* | Preferred absolute path to one bounded, regular, non-symlinked UTF-8 public-feed allowlist. Mutually exclusive with the inline JSON variable. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_JSON` | *(unset)* | Optional bounded public-feed allowlist for continuous multi-venue research discovery; exact reviewed identity and fee metadata only, never credentials. |
@@ -209,12 +213,21 @@ const secretPath = path.join(dataDir, ".secret");
 | -------------------------- | ---------------------------------------------------------------- |
 | `backend/data/.secret`     | Random 32-byte hex seed for the AES encryption key. Written with file mode `0600`. |
 | `backend/data/trading.db`  | SQLite database (`node:sqlite`) holding bots, fills, logs, and encrypted settings. |
+| `backend/data/.trading-runtime-lock.sqlite` | Owner-only, user-data-free SQLite coordination file that enforces one trading backend process. It is not backed up. |
 | `backend/data/arbitrage-paper-multi-leg.sqlite` | Bounded append-only deterministic multi-leg paper runs and restart-recovery journal. |
 
-Both are **created automatically at runtime** the first time the store initializes. `initStore()`
-creates the data directory when needed, enforces mode `0700` on it and `0600` on `trading.db` and
-`.secret`, generates the secret if absent, and runs the schema migrations. You do not create these
-by hand.
+On a genuinely new installation, when `trading.db` does not exist, `initStore()` creates the data
+directory and atomically publishes a new owner-only `.secret` before creating the database. An
+existing `trading.db` always requires its existing `.secret`; startup never generates a replacement
+or silently repairs insecure key permissions. The key must be a regular non-symlink file owned by
+the service uid, with no group/other access, and contain 64 hexadecimal characters. One historical
+trailing LF or CRLF remains compatible and is included in the exact legacy scrypt input rather than
+trimmed. Before migrations or any other database write, startup opens the database read-only
+(including committed WAL frames) and proves that the key authenticates every encrypted setting and
+account credential. Missing, malformed, insecure or incorrect key material stops startup. A
+process-lifetime exclusive lock is acquired before this sequence, and the database pathname/inode is
+rechecked with non-following descriptors before and immediately after the writable SQLite open.
+Another API/executor process fails startup; an OS process exit, including a crash, releases the lock.
 
 Both are **gitignored and must never be committed.** The repository's `.gitignore` explicitly excludes `backend/data/`, `data/`, `*.secret`, `*.db`, and `*.sqlite*`.
 
@@ -222,6 +235,15 @@ Use the verified [backup and restore workflow](./BACKUP_RESTORE.md) before upgra
 changes. It includes the default multi-leg paper journal when present. A backup must keep
 `trading.db` and `.secret` together and must be treated as secret data; a journal moved with
 `PAPER_MULTI_LEG_DB_PATH` needs a separate operator backup policy.
+
+Count encrypted rows without selecting ciphertext or opening `.secret`:
+
+```bash
+npm run data:inventory -- --data-dir backend/data
+```
+
+The backup verifier always requires `.secret`, validates its real type/owner/mode and proves that it
+authenticates every encrypted row. It never prints key material, ciphertext or plaintext.
 
 ### Database schema
 
@@ -347,18 +369,23 @@ Sensitive settings are encrypted with **AES-256-GCM** using a key derived by **s
 envelope implementation lives in `backend/src/trading/credentialCrypto.ts`; the store supplies the
 installation key and per-record context.
 
-**Key derivation.** On first run a random 32-byte value is generated, hex-encoded, and written to `backend/data/.secret` with mode `0600`. The actual 32-byte AES key is derived from that seed via `scryptSync` (with a fixed salt) and never leaves memory:
+**Key derivation and startup proof.** On a first run with no `trading.db`, a random 32-byte value is
+hex-encoded and atomically published as `backend/data/.secret` with mode `0600`. The actual 32-byte
+AES key is derived from the exact file value via `scryptSync` with the legacy fixed salt and never
+leaves memory. Existing 64-hex files remain byte-for-byte compatible; a single historical trailing
+LF/CRLF is preserved in the derivation rather than normalized.
 
 ```ts
-function loadOrCreateSecret(): Buffer {
-  if (existsSync(secretPath)) {
-    return scryptSync(readFileSync(secretPath, "utf8"), "marketforge", 32);
-  }
-  const secret = randomBytes(32).toString("hex");
-  writeFileSync(secretPath, secret, { mode: 0o600 });
-  return scryptSync(secret, "marketforge", 32);
-}
+const key = loadTradingMasterKey({ dataDirectory, databasePath, secretPath });
+// Existing databases: read-only AEAD validation succeeds before migrations.
 ```
+
+The loader refuses a missing key beside an existing database, symlinks/directories, malformed
+content, a different file owner, group/other-readable permissions, invalid encryption flags and a key
+that cannot authenticate existing ciphertext. It does not `chmod` or replace suspicious material.
+Before key publication or migration, the store acquires an exclusive process-lifetime lock through
+the owner-only `.trading-runtime-lock.sqlite` coordination database. A duplicate backend fails
+startup, while a graceful stop or crash releases the OS lock without stale-lock recovery.
 
 **Encryption.** Each value gets a fresh random 12-byte IV. The stored payload is
 `iv.tag.ciphertext`, each part base64-encoded and dot-joined, with the GCM authentication tag
@@ -376,8 +403,9 @@ instead of decrypting under the wrong tenant.
 **Consequences to understand:**
 
 - The `.secret` file is the root of trust. Anyone who can read it (and the `trading.db`) can decrypt your stored API keys and tokens — keep both out of backups you would not trust with plaintext credentials, and never commit them.
-- **Losing `.secret` makes existing encrypted values undecryptable.** If you delete or replace it, previously stored exchange keys and notification tokens can no longer be read and must be re-entered.
+- **Losing `.secret` makes existing encrypted values undecryptable.** Startup now refuses to create a replacement beside that database. Restore the matching `trading.db` and `.secret` generation; without a trusted copy, the ciphertext cannot be recovered.
 - The encryption key is derived per-installation; `.secret` is not portable to another machine unless you copy it alongside the database.
+- No key fingerprint/schema metadata is written during this phase. That migration is deliberately deferred: any future metadata row must be created only after the existing ciphertext has authenticated under the supplied key, never as a write-before-proof shortcut.
 
 ## Production deployment
 
@@ -478,13 +506,19 @@ identity or trading data. See [Application startup recovery](STARTUP_RECOVERY.md
 
 ### Example: run behind a process manager
 
-Because `npm start` is a plain long-lived Node process, any supervisor works. For example, with a bound loopback host and an HTTPS reverse proxy on the same machine:
+Because `npm start` is a plain long-lived Node process, any supervisor works. After HTTPS is actually
+available, a private-live process behind a same-machine reverse proxy can be started with:
 
 ```bash
-HOST=127.0.0.1 PORT=4180 TRUST_PROXY=loopback COOKIE_SECURE=1 npm start
+HOST=127.0.0.1 PORT=4180 AUTH_MODE=database RUNTIME_PROFILE=private-live \
+PUBLIC_ORIGIN=https://trade.example.com ALLOWED_ORIGINS= \
+TRUST_PROXY=loopback COOKIE_SECURE=1 npm start
 ```
 
-The proxy must replace `X-Forwarded-Proto` with `$scheme`. Leaving `TRUST_PROXY` unset makes Express ignore that header, while `TRUST_PROXY=true` trusts every immediate peer and is therefore discouraged. Prefer an exact proxy address/CIDR or the `loopback` preset.
+The proxy must replace `X-Forwarded-Proto` with `$scheme`. Leaving `TRUST_PROXY` unset makes Express
+ignore that header, while `TRUST_PROXY=true` is rejected. Prefer the exact proxy address or the
+`loopback` preset; a private-live CIDR may cover at most 16 proxy addresses (`/28` or `/124` and
+narrower). Until this path exists, keep `RUNTIME_PROFILE=public-http-paper`.
 
 Point your process manager (systemd, pm2, Docker, etc.) at this command, ensure `backend/data/` is on persistent storage, and restart on failure.
 
@@ -506,12 +540,12 @@ headers. Live trading is disarmed by default. Before exposing the server, comple
 - [ ] **Grant the minimum trading role.** New users start with no trading access. Use `read-only` or
   `paper-trade` unless live exchange access is actually required; disabling/changing a user revokes
   sessions and stops that user's runtimes.
-- [ ] **Set `COOKIE_SECURE=1` behind HTTPS.** Local plain HTTP cannot use Secure cookies, so this is operator-controlled. For a public TLS deployment, enable it.
+- [ ] **Set the typed HTTPS boundary together.** `private-live` requires `AUTH_MODE=database`, loopback `HOST`, HTTPS `PUBLIC_ORIGIN`, `COOKIE_SECURE=1`, a narrow non-numeric `TRUST_PROXY`, and an empty or HTTPS-only `ALLOWED_ORIGINS`; startup rejects a partial rollout.
 - [ ] **Set `ALLOWED_ORIGINS` if the API is reached cross-origin.** Same-origin (the bundled SPA) needs nothing. Leave it unset for the default same-origin deployment.
 - [ ] **Never commit `backend/data/`.** It contains `.secret` (the encryption key seed) and `trading.db` (encrypted API keys and tokens). It is gitignored — keep it that way, and treat backups of it as secret material.
 - [ ] **Protect `.secret` file permissions.** It is written `0600`; ensure the deployment user owns it and no other account can read it.
 - [ ] **Use exchange API keys with least privilege.** Prefer trade-only keys without withdrawal permission, and IP-allowlist them at the exchange where possible.
-- [ ] **Keep `ALLOW_INSECURE_TRADING_MUTATIONS` unset.** The override exists only for disposable development environments where TLS cannot be used.
+- [ ] **Keep `ALLOW_INSECURE_TRADING_MUTATIONS` unset.** Supported runtime profiles reject it when true.
 - [ ] **Keep secrets off disk in plaintext.** Do not stash API keys or notification tokens in `.env` files, shell history, or config files — enter them through the app so they are encrypted at rest.
 
 ## See also

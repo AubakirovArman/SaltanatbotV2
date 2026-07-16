@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { NextFunction, Request, Response } from "express";
+import { getRuntimeConfig } from "./config/runtimeConfig.js";
 import type { AuthRole } from "./trading/types.js";
 import { csrfFromRequest, principalFromRequest, readCookie, requestNeedsCsrf, sessionCookieName } from "./identity/http.js";
 import { IdentityError, type IdentityService } from "./identity/service.js";
@@ -40,7 +41,7 @@ export function getIdentityAuth(): IdentityService | undefined {
 }
 
 export function isDatabaseAuthMode(): boolean {
-  return databaseIdentity !== undefined || process.env.AUTH_MODE === "database";
+  return databaseIdentity !== undefined || getRuntimeConfig().auth.mode === "database";
 }
 
 /**
@@ -141,7 +142,7 @@ export interface TradingAuthorizationLease {
  */
 export async function revalidateTradingAuthorization(res: Response, required: AuthRole): Promise<TradingAuthorizationLease | undefined> {
   if (!databaseIdentity) {
-    if (process.env.AUTH_MODE === "database") {
+    if (getRuntimeConfig().auth.mode === "database") {
       res.status(503).json({ error: "Authentication database is unavailable.", code: "auth_unavailable" });
       return undefined;
     }
@@ -229,7 +230,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     void requireDatabaseAuth(databaseIdentity, req, res, next, true);
     return;
   }
-  if (process.env.AUTH_MODE === "database") {
+  if (getRuntimeConfig().auth.mode === "database") {
     res.status(503).json({ error: "Authentication database is unavailable.", code: "auth_unavailable" });
     return;
   }
@@ -286,7 +287,7 @@ export async function verifyTradeWsRequest(protocolHeader?: unknown): Promise<Id
 }
 
 export async function verifyAppWsSession(cookieHeader?: string): Promise<boolean> {
-  if (!databaseIdentity) return process.env.AUTH_MODE !== "database";
+  if (!databaseIdentity) return getRuntimeConfig().auth.mode !== "database";
   const token = readCookie(cookieHeader, sessionCookieName);
   const principal = await databaseIdentity.authenticate(token);
   return Boolean(principal && !principal.user.mustChangePassword);
@@ -332,7 +333,7 @@ async function requireDatabaseAuth(
 async function clearDatabaseSession(service: IdentityService, req: Request, res: Response): Promise<void> {
   const principal = await principalFromRequest(service, req);
   await service.logout(principal);
-  const secure = process.env.COOKIE_SECURE === "1" || process.env.COOKIE_SECURE === "true";
+  const secure = getRuntimeConfig().auth.cookieSecure;
   const attributes = `SameSite=Strict; Path=/; Max-Age=0${secure ? "; Secure" : ""}`;
   res.append("Set-Cookie", `${sessionCookieName}=; HttpOnly; ${attributes}`);
   res.append("Set-Cookie", `sbv2_csrf=; ${attributes}`);
@@ -402,6 +403,6 @@ function pruneWsTickets() {
 
 function formatSessionCookie(value: string, maxAge: number): string {
   const attrs = [`${sessionCookie}=${value}`, "HttpOnly", "SameSite=Strict", "Path=/", `Max-Age=${maxAge}`];
-  if (process.env.COOKIE_SECURE === "1" || process.env.COOKIE_SECURE === "true") attrs.push("Secure");
+  if (getRuntimeConfig().auth.cookieSecure) attrs.push("Secure");
   return attrs.join("; ");
 }

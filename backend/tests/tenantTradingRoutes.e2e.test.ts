@@ -125,7 +125,6 @@ let trading: ReturnType<typeof createTradingApi>;
 let adminAuth: AuthContext;
 let traderAuth: AuthContext;
 let adminPrincipal: IdentityPrincipal;
-let previousAuthMode: string | undefined;
 
 function bot(ownerUserId: string, id: string) {
   const now = Date.now();
@@ -171,8 +170,6 @@ function headers(auth: AuthContext, mutation = false): Record<string, string> {
 }
 
 beforeAll(async () => {
-  previousAuthMode = process.env.AUTH_MODE;
-  process.env.AUTH_MODE = "database";
   identity = new IdentityService(new MemoryIdentityRepository(), { allowNonAdminTrading: true });
   configureIdentityAuth(identity);
 
@@ -214,8 +211,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   configureIdentityAuth(undefined);
-  if (previousAuthMode === undefined) Reflect.deleteProperty(process.env, "AUTH_MODE");
-  else process.env.AUTH_MODE = previousAuthMode;
 });
 
 describe("database-auth trading tenant boundary", () => {

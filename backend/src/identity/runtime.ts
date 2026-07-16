@@ -1,10 +1,11 @@
 import type { Pool } from "pg";
+import { loadRuntimeConfig, type AuthMode } from "../config/runtimeConfig.js";
 import { createDatabasePool, loadDatabaseConfig, migrateDatabase, verifyDatabaseConnection } from "../database/index.js";
 import { configureIdentityAuth } from "../auth.js";
 import { PostgresIdentityRepository } from "./postgresRepository.js";
 import { IdentityService } from "./service.js";
 
-export type AuthMode = "database" | "legacy";
+export type { AuthMode } from "../config/runtimeConfig.js";
 
 export interface IdentityRuntime {
   mode: AuthMode;
@@ -19,16 +20,13 @@ export interface IdentityRuntime {
 }
 
 export function resolveAuthMode(env: NodeJS.ProcessEnv = process.env): AuthMode {
-  const configured = env.AUTH_MODE?.trim().toLocaleLowerCase("en-US");
-  if (configured === "database" || configured === "legacy") return configured;
-  if (configured) throw new Error("AUTH_MODE must be 'database' or 'legacy'");
-  if (env.NODE_ENV === "test") return "legacy";
-  if ((env.DEMO_MODE === "1" || env.DEMO_MODE === "true") && env.AUTH_TOKEN?.trim()) return "legacy";
-  return "database";
+  return loadRuntimeConfig(env).auth.mode;
 }
 
-export async function initializeIdentityRuntime(env: NodeJS.ProcessEnv = process.env): Promise<IdentityRuntime> {
-  const mode = resolveAuthMode(env);
+export async function initializeIdentityRuntime(
+  env: NodeJS.ProcessEnv = process.env,
+  mode: AuthMode = resolveAuthMode(env)
+): Promise<IdentityRuntime> {
   if (mode === "legacy") {
     configureIdentityAuth(undefined);
     return { mode, async close() {} };

@@ -1,17 +1,7 @@
 import type { Request } from "express";
 import express from "express";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { configureTrustedProxy, isSecureTradingOrigin } from "../src/secureTradingOrigin.js";
-
-const originalOverride = process.env.ALLOW_INSECURE_TRADING_MUTATIONS;
-const originalTrustProxy = process.env.TRUST_PROXY;
-
-afterEach(() => {
-  if (originalOverride === undefined) Reflect.deleteProperty(process.env, "ALLOW_INSECURE_TRADING_MUTATIONS");
-  else process.env.ALLOW_INSECURE_TRADING_MUTATIONS = originalOverride;
-  if (originalTrustProxy === undefined) Reflect.deleteProperty(process.env, "TRUST_PROXY");
-  else process.env.TRUST_PROXY = originalTrustProxy;
-});
 
 function request(input: { remoteAddress?: string; secure?: boolean; headers?: Record<string, string> }): Request {
   return {
@@ -33,19 +23,17 @@ describe("secure live-trading origin", () => {
     expect(isSecureTradingOrigin(request({ remoteAddress: "127.0.0.1", headers: { "x-forwarded-proto": "https" } }))).toBe(false);
   });
 
-  it("supports the explicit development override", () => {
-    process.env.ALLOW_INSECURE_TRADING_MUTATIONS = "true";
-    expect(isSecureTradingOrigin(request({ remoteAddress: "203.0.113.8" }))).toBe(true);
+  it("honors an explicitly injected insecure-origin policy", () => {
+    expect(isSecureTradingOrigin(request({ remoteAddress: "203.0.113.8" }), true)).toBe(true);
   });
 
   it("configures proxy trust only after an explicit environment setting", () => {
     const defaultApp = express();
-    configureTrustedProxy(defaultApp);
+    configureTrustedProxy(defaultApp, false);
     expect(defaultApp.get("trust proxy")).toBe(false);
 
-    process.env.TRUST_PROXY = "loopback";
     const configuredApp = express();
-    configureTrustedProxy(configuredApp);
+    configureTrustedProxy(configuredApp, "loopback");
     expect(configuredApp.get("trust proxy")).toBe("loopback");
   });
 });

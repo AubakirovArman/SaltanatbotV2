@@ -1,6 +1,4 @@
 import { DatabaseSync } from "node:sqlite";
-import { randomBytes, scryptSync } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { LEGACY_TRADING_OWNER_ID, migrateTradingStore } from "./storeSchema.js";
@@ -14,6 +12,7 @@ import { configureTradingAccountStore, credentialAad, normalizeOwnerUserId } fro
 import { openCredentialPayload, sealCredentialPayload } from "./credentialCrypto.js";
 import { assertBotCapacity } from "./resourceQuotas.js";
 import { getOrderJournalFrom, insertOrderEventInto, listOrderEventsForOwnerFrom, listOrderEventsFrom, listOrderJournalForOwnerFrom, listOrderJournalFrom, upsertOrderJournalInto } from "./orderJournalStore.js";
+import { openProtectedTradingStore, type ProtectedTradingStore } from "./tradingStoreBootstrap.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../../data");
@@ -22,6 +21,7 @@ const secretPath = path.join(dataDir, ".secret");
 
 let db: DatabaseSync;
 let encKey: Buffer;
+let activeStore: ProtectedTradingStore | undefined;
 
 export { LEGACY_TRADING_OWNER_ID } from "./storeSchema.js";
 export * from "./tradingAccountStore.js";
@@ -33,21 +33,28 @@ export interface InitStoreOptions {
 }
 
 export function initStore(options: InitStoreOptions = {}) {
-  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-  chmodSync(dataDir, 0o700);
-  encKey = loadOrCreateSecret();
-  db = new DatabaseSync(dbPath);
-  chmodSync(dbPath, 0o600);
-  db.exec("PRAGMA foreign_keys = ON");
-  migrateTradingStore(db, Date.now, {
-    legacyOwnerUserId: options.legacyOwnerUserId ?? LEGACY_TRADING_OWNER_ID,
-    reencryptLegacyCredential: (payload, context) => encrypt(decrypt(payload), credentialAad(context.ownerUserId, context.accountId, context.exchange))
-  });
-  configureTradingAccountStore(db, {
-    seal: (plain, aad) => encrypt(plain, aad),
-    open: (payload, aad) => decrypt(payload, aad)
-  });
-  return db;
+  if (activeStore) return db;
+  const opened = openProtectedTradingStore({ dataDirectory: dataDir, databasePath: dbPath, secretPath });
+  db = opened.database;
+  encKey = opened.key;
+  try {
+    db.exec("PRAGMA foreign_keys = ON");
+    migrateTradingStore(db, Date.now, {
+      legacyOwnerUserId: options.legacyOwnerUserId ?? LEGACY_TRADING_OWNER_ID,
+      reencryptLegacyCredential: (payload, context) => encrypt(decrypt(payload), credentialAad(context.ownerUserId, context.accountId, context.exchange))
+    });
+    configureTradingAccountStore(db, { seal: (plain, aad) => encrypt(plain, aad), open: (payload, aad) => decrypt(payload, aad) });
+    activeStore = opened;
+    return db;
+  } catch (error) {
+    opened.close();
+    throw error;
+  }
+}
+
+export function closeStore(): void {
+  activeStore?.close();
+  activeStore = undefined;
 }
 
 // ---------- bots ----------
@@ -572,18 +579,6 @@ export function listArbitrageHistory(routeId: string, since: number, limit = 1_0
 
 export function pruneArbitrageHistory(before: number) {
   return db.prepare("DELETE FROM arbitrage_history WHERE ts < ?").run(before).changes;
-}
-
-// ---------- encryption for API keys at rest ----------
-
-function loadOrCreateSecret(): Buffer {
-  if (existsSync(secretPath)) {
-    chmodSync(secretPath, 0o600);
-    return scryptSync(readFileSync(secretPath, "utf8"), "marketforge", 32);
-  }
-  const secret = randomBytes(32).toString("hex");
-  writeFileSync(secretPath, secret, { mode: 0o600 });
-  return scryptSync(secret, "marketforge", 32);
 }
 
 function encrypt(plain: string, aad?: string): string {

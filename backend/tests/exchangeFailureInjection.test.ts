@@ -16,7 +16,7 @@ describe("exchange failure injection", () => {
   it("persists unknown when the connection drops during an order POST", async () => {
     vi.stubGlobal("fetch", scriptedFetch([
       { match: "/ticker/price", respond: () => jsonResponse({ price: "100" }) },
-      { match: "/exchangeInfo", respond: () => jsonResponse({ symbols: [{ symbol: "BTCUSDT", filters: [] }] }) },
+      { match: "/exchangeInfo", respond: () => jsonResponse(binanceRules()) },
       { match: "/order", respond: () => { throw new TypeError("socket closed after write"); } },
     ], () => jsonResponse({})));
     const adapter = new BinanceAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
@@ -42,7 +42,7 @@ describe("exchange failure injection", () => {
   it("persists unknown when Binance returns HTTP 200 with a truncated order acknowledgement", async () => {
     vi.stubGlobal("fetch", scriptedFetch([
       { match: "/ticker/price", respond: () => jsonResponse({ price: "100" }) },
-      { match: "/exchangeInfo", respond: () => jsonResponse({ symbols: [{ symbol: "BTCUSDT", filters: [] }] }) },
+      { match: "/exchangeInfo", respond: () => jsonResponse(binanceRules()) },
       { match: "/order", respond: () => new Response('{"orderId":', { status: 200 }) },
     ], () => jsonResponse({})));
     const adapter = new BinanceAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
@@ -62,7 +62,7 @@ describe("exchange failure injection", () => {
   it("persists unknown when Binance cannot read an HTTP 200 mutation body", async () => {
     vi.stubGlobal("fetch", scriptedFetch([
       { match: "/ticker/price", respond: () => jsonResponse({ price: "100" }) },
-      { match: "/exchangeInfo", respond: () => jsonResponse({ symbols: [{ symbol: "BTCUSDT", filters: [] }] }) },
+      { match: "/exchangeInfo", respond: () => jsonResponse(binanceRules()) },
       { match: "/order", respond: () => unreadableResponse() },
     ], () => jsonResponse({})));
     const adapter = new BinanceAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
@@ -80,7 +80,7 @@ describe("exchange failure injection", () => {
   it("keeps a definitive HTTP 400 response as a normal rejection", async () => {
     vi.stubGlobal("fetch", scriptedFetch([
       { match: "/ticker/price", respond: () => jsonResponse({ price: "100" }) },
-      { match: "/exchangeInfo", respond: () => jsonResponse({ symbols: [{ symbol: "BTCUSDT", filters: [] }] }) },
+      { match: "/exchangeInfo", respond: () => jsonResponse(binanceRules()) },
     ], () => textResponse("invalid quantity", 400)));
     const adapter = new BinanceAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
 
@@ -90,7 +90,7 @@ describe("exchange failure injection", () => {
   it("treats a mutating HTTP 5xx response as ambiguous", async () => {
     vi.stubGlobal("fetch", scriptedFetch([
       { match: "/ticker/price", respond: () => jsonResponse({ price: "100" }) },
-      { match: "/exchangeInfo", respond: () => jsonResponse({ symbols: [{ symbol: "BTCUSDT", filters: [] }] }) },
+      { match: "/exchangeInfo", respond: () => jsonResponse(binanceRules()) },
     ], () => textResponse("upstream unavailable", 503)));
     const adapter = new BinanceAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
 
@@ -100,7 +100,7 @@ describe("exchange failure injection", () => {
   it("applies the same ambiguous network contract to Bybit", async () => {
     vi.stubGlobal("fetch", scriptedFetch([
       { match: "/v5/market/tickers", respond: () => jsonResponse({ result: { list: [{ lastPrice: "100" }] } }) },
-      { match: "/v5/market/instruments-info", respond: () => jsonResponse({ retCode: 0, result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: {}, priceFilter: {} }] } }) },
+      { match: "/v5/market/instruments-info", respond: () => jsonResponse(bybitRules()) },
       { match: "/v5/order/create", respond: () => { throw new TypeError("connection reset"); } },
     ], () => jsonResponse({ retCode: 0, retMsg: "OK", result: {} })));
     const adapter = new BybitAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
@@ -111,7 +111,7 @@ describe("exchange failure injection", () => {
   it("persists unknown when Bybit returns HTTP 200 with malformed JSON", async () => {
     vi.stubGlobal("fetch", scriptedFetch([
       { match: "/v5/market/tickers", respond: () => jsonResponse({ result: { list: [{ lastPrice: "100" }] } }) },
-      { match: "/v5/market/instruments-info", respond: () => jsonResponse({ retCode: 0, retMsg: "OK", result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: {}, priceFilter: {} }] } }) },
+      { match: "/v5/market/instruments-info", respond: () => jsonResponse(bybitRules()) },
       { match: "/v5/order/create", respond: () => new Response('{"retCode":0,"retMsg":"OK","result":', { status: 200 }) },
     ], () => jsonResponse({ retCode: 0, retMsg: "OK", result: {} })));
     const adapter = new BybitAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
@@ -129,7 +129,7 @@ describe("exchange failure injection", () => {
   it("persists unknown when Bybit cannot read an HTTP 200 mutation body", async () => {
     vi.stubGlobal("fetch", scriptedFetch([
       { match: "/v5/market/tickers", respond: () => jsonResponse({ result: { list: [{ lastPrice: "100" }] } }) },
-      { match: "/v5/market/instruments-info", respond: () => jsonResponse({ retCode: 0, retMsg: "OK", result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: {}, priceFilter: {} }] } }) },
+      { match: "/v5/market/instruments-info", respond: () => jsonResponse(bybitRules()) },
       { match: "/v5/order/create", respond: () => unreadableResponse() },
     ], () => jsonResponse({ retCode: 0, retMsg: "OK", result: {} })));
     const adapter = new BybitAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
@@ -177,7 +177,7 @@ describe("exchange failure injection", () => {
     const binance = new BinanceAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
     vi.stubGlobal("fetch", scriptedFetch([
       { match: "/ticker/price", respond: () => jsonResponse({ price: "100" }) },
-      { match: "/exchangeInfo", respond: () => jsonResponse({ symbols: [{ symbol: "BTCUSDT", filters: [] }] }) },
+      { match: "/exchangeInfo", respond: () => jsonResponse(binanceRules()) },
     ], () => jsonResponse({ status: "NEW" })));
     await expect(binance.execute(marketOrder())).rejects.toMatchObject({ name: "ExchangeTransportError", ambiguous: true });
 
@@ -185,7 +185,7 @@ describe("exchange failure injection", () => {
     clearFilterCache();
     vi.stubGlobal("fetch", scriptedFetch([
       { match: "/v5/market/tickers", respond: () => jsonResponse({ result: { list: [{ lastPrice: "100" }] } }) },
-      { match: "/v5/market/instruments-info", respond: () => jsonResponse({ retCode: 0, retMsg: "OK", result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: {}, priceFilter: {} }] } }) },
+      { match: "/v5/market/instruments-info", respond: () => jsonResponse(bybitRules()) },
     ], () => jsonResponse({ retCode: 0, retMsg: "OK", result: {} })));
     const bybit = new BybitAdapter("bot", { apiKey: "key", apiSecret: "secret" }, "futures");
     await expect(bybit.execute(marketOrder())).rejects.toMatchObject({ name: "ExchangeTransportError", ambiguous: true });
@@ -196,6 +196,8 @@ describe("exchange failure injection", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
       paths.push(url.pathname);
+      if (url.pathname.endsWith("/ticker/price")) return jsonResponse({ price: "100" });
+      if (url.pathname.endsWith("/exchangeInfo")) return jsonResponse(binanceRules());
       if (url.pathname.endsWith("/leverage")) return textResponse('{"code":-1000,"msg":"leverage unavailable"}', 400);
       if (url.pathname.endsWith("/positionRisk")) return jsonResponse([{ symbol: "BTCUSDT", leverage: "10", positionAmt: "0" }]);
       return jsonResponse({});
@@ -211,6 +213,8 @@ describe("exchange failure injection", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
       paths.push(url.pathname);
+      if (url.pathname.endsWith("/market/tickers")) return jsonResponse({ result: { list: [{ lastPrice: "100" }] } });
+      if (url.pathname.endsWith("/market/instruments-info")) return jsonResponse(bybitRules());
       if (url.pathname.endsWith("/set-leverage")) return jsonResponse({ retCode: 10001, retMsg: "leverage unavailable", result: {} });
       if (url.pathname.endsWith("/position/list")) return jsonResponse({ retCode: 0, retMsg: "OK", result: { list: [{ leverage: "10" }] } });
       return jsonResponse({ retCode: 0, retMsg: "OK", result: {} });
@@ -228,7 +232,7 @@ describe("exchange failure injection", () => {
       if (url.pathname.endsWith("/set-leverage")) return jsonResponse({ retCode: 110043, retMsg: "Set leverage not modified", result: {} });
       if (url.pathname.endsWith("/position/list")) return jsonResponse({ retCode: 0, retMsg: "OK", result: { list: [{ side: "", size: "0", avgPrice: "0", leverage: "3" }] } });
       if (url.pathname.endsWith("/market/tickers")) return jsonResponse({ retCode: 0, retMsg: "OK", result: { list: [{ lastPrice: "100" }] } });
-      if (url.pathname.endsWith("/market/instruments-info")) return jsonResponse({ retCode: 0, retMsg: "OK", result: { list: [{ symbol: "BTCUSDT", lotSizeFilter: {}, priceFilter: {} }] } });
+      if (url.pathname.endsWith("/market/instruments-info")) return jsonResponse(bybitRules());
       if (url.pathname.endsWith("/order/create")) {
         created += 1;
         return jsonResponse({ retCode: 0, retMsg: "OK", result: { orderId: "accepted" } });
@@ -259,6 +263,23 @@ describe("exchange failure injection", () => {
 
 function marketOrder(): ExecOrder {
   return { action: "open", market: "futures", symbol: "BTCUSDT", side: "buy", type: "market", qty: 1, reason: "test" };
+}
+
+function binanceRules() {
+  return { symbols: [{ symbol: "BTCUSDT", status: "TRADING", filters: [
+    { filterType: "LOT_SIZE", stepSize: "0.001", minQty: "0.001", maxQty: "1000" },
+    { filterType: "MARKET_LOT_SIZE", stepSize: "0.001", minQty: "0.001", maxQty: "1000" },
+    { filterType: "PRICE_FILTER", tickSize: "0.1", minPrice: "0.1", maxPrice: "1000000" },
+    { filterType: "MIN_NOTIONAL", notional: "5" }
+  ] }] };
+}
+
+function bybitRules() {
+  return { retCode: 0, retMsg: "OK", result: { list: [{
+    symbol: "BTCUSDT", status: "Trading",
+    lotSizeFilter: { qtyStep: "0.001", minOrderQty: "0.001", maxOrderQty: "1000", maxMktOrderQty: "1000", minNotionalValue: "5" },
+    priceFilter: { tickSize: "0.1", minPrice: "0.1", maxPrice: "1000000" }
+  }] } };
 }
 
 function cancelOrder(): ExecOrder {
