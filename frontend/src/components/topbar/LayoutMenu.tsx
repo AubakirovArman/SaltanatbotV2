@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
 import type { ChartLayoutPreset } from "../../workspace/workspaces";
+import { handleMenuKeyboard } from "../menuKeyboard";
 
 const layoutOptions: Array<{ id: ChartLayoutPreset; icon: typeof Square; label: "singleChart" | "verticalSplit" | "horizontalSplit" | "fourChartGrid" }> = [
   { id: "single", icon: Square, label: "singleChart" },
@@ -19,7 +20,9 @@ export function LayoutMenu({ locale, preset, canUseDistinctMarkets, onChange, on
   const Current = layoutOptions.find((item) => item.id === preset)?.icon ?? Square;
   useEffect(() => {
     if (!open) return;
-    const close = (event: PointerEvent) => { if (!wrapRef.current?.contains(event.target as Node)) setOpen(false); };
+    const close = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
     window.addEventListener("pointerdown", close);
     window.requestAnimationFrame(() => wrapRef.current?.querySelector<HTMLElement>("[role='menuitemradio'][aria-checked='true']")?.focus());
     return () => window.removeEventListener("pointerdown", close);
@@ -29,24 +32,49 @@ export function LayoutMenu({ locale, preset, canUseDistinctMarkets, onChange, on
     window.requestAnimationFrame(() => triggerRef.current?.focus());
   };
   return (
-    <div className="charttype-menu-wrap" ref={wrapRef} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
+    <div
+      className="charttype-menu-wrap"
+      ref={wrapRef}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
       <button ref={triggerRef} type="button" className="icon-button" aria-label={shellText(locale, "chartLayout")} title={shellText(locale, "chartLayout")} aria-haspopup="menu" aria-controls={open ? menuId : undefined} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <Current size={15} aria-hidden="true" />
       </button>
       {open && (
-        <div id={menuId} className="charttype-menu layout-menu" role="menu" onKeyDown={(event) => {
-          const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
-          const current = items.indexOf(document.activeElement as HTMLButtonElement);
-          if (event.key === "Escape") { event.preventDefault(); closeAndFocus(); return; }
-          const target = event.key === "Home" ? items[0] : event.key === "End" ? items.at(-1) : event.key === "ArrowDown" ? items[(current + 1) % items.length] : event.key === "ArrowUp" ? items[(current - 1 + items.length) % items.length] : undefined;
-          if (target) { event.preventDefault(); target.focus(); }
-        }}>
+        <div id={menuId} className="charttype-menu layout-menu" role="menu" onKeyDown={(event) => handleMenuKeyboard(event, closeAndFocus)}>
           {layoutOptions.map((item) => {
             const Icon = item.icon;
-            return <button type="button" role="menuitemradio" aria-checked={item.id === preset} className={item.id === preset ? "active" : ""} key={item.id} onClick={() => { onChange(item.id); closeAndFocus(); }}><Icon size={14} aria-hidden="true" /> {shellText(locale, item.label)}</button>;
+            return (
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={item.id === preset}
+                className={item.id === preset ? "active" : ""}
+                key={item.id}
+                onClick={() => {
+                  onChange(item.id);
+                  closeAndFocus();
+                }}
+              >
+                <Icon size={14} aria-hidden="true" /> {shellText(locale, item.label)}
+              </button>
+            );
           })}
           <div className="layout-menu-separator" role="separator" />
-          <button type="button" role="menuitem" disabled={!canUseDistinctMarkets} title={shellText(locale, "fourDistinctMarketsHint")} onClick={() => { onDistinctMarkets(); closeAndFocus(); }}><Shuffle size={14} aria-hidden="true" /> {shellText(locale, "fourDistinctMarkets")}</button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!canUseDistinctMarkets}
+            title={shellText(locale, "fourDistinctMarketsHint")}
+            onClick={() => {
+              onDistinctMarkets();
+              closeAndFocus();
+            }}
+          >
+            <Shuffle size={14} aria-hidden="true" /> {shellText(locale, "fourDistinctMarkets")}
+          </button>
         </div>
       )}
     </div>

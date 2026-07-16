@@ -15,7 +15,7 @@ import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
 import { useCompareSeries } from "./hooks/useCompareSeries";
 import { useMarketStream } from "./hooks/useMarketStream";
-import { useMediaQuery } from "./hooks/useMediaQuery";
+import { MOBILE_SHELL_MEDIA_QUERY, useMediaQuery } from "./hooks/useMediaQuery";
 import { useLivePositions } from "./hooks/useLivePositions";
 import { usePriceAlerts } from "./hooks/usePriceAlerts";
 import { useSparklines } from "./hooks/useSparklines";
@@ -96,7 +96,7 @@ export default function App() {
     initialChartSession
   });
   const { cryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, workspaces, activeWorkspaceId, compareOverlays } = shell;
-  const isMobile = useMediaQuery("(max-width: 760px)");
+  const isMobile = useMediaQuery(MOBILE_SHELL_MEDIA_QUERY);
   useEffect(() => {
     const workspace = mode === "chart" ? automationText(locale, "monitoring") : mode === "screener" ? automationText(locale, "screener") : `${automationText(locale, "automation")} · ${automationText(locale, mode === "strategy" ? "strategies" : "robots")}`;
     document.title = `${workspace} · SaltanatbotV2`;

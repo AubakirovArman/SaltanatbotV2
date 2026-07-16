@@ -28,11 +28,41 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (min-width: 761px) and (max-width: 1024px) and (min-height: 521px) {
+  .workspace:not(.strategy-workspace) {
+    grid-template-columns:
+      min(var(--left-panel-size, 240px), 24vw)
+      minmax(18rem, 1fr)
+      min(var(--right-panel-size, 260px), 26vw);
+  }
+
+  .workspace.left-closed:not(.strategy-workspace) {
+    grid-template-columns: 0 minmax(18rem, 1fr) min(var(--right-panel-size, 260px), 26vw);
+  }
+
+  .workspace.right-closed:not(.strategy-workspace) {
+    grid-template-columns: min(var(--left-panel-size, 240px), 24vw) minmax(18rem, 1fr) 0;
+  }
+
+  .workspace.left-closed.right-closed:not(.strategy-workspace) {
+    grid-template-columns: 0 minmax(18rem, 1fr) 0;
+  }
+
+  .panel-resize-handle.left {
+    inset-inline-start: calc(min(var(--left-panel-size, 240px), 24vw) - 3px);
+  }
+
+  .panel-resize-handle.right {
+    inset-inline-end: calc(min(var(--right-panel-size, 260px), 26vw) - 3px);
+  }
+}
+
+@media (max-width: 760px), (pointer: coarse) and (max-height: 520px) {
   .topbar {
     flex-wrap: wrap;
     gap: 6px;
-    padding-block: 6px;
+    padding-block-start: max(6px, env(safe-area-inset-top));
+    padding-block-end: 6px;
     padding-inline: max(8px, env(safe-area-inset-left)) max(52px, calc(env(safe-area-inset-right) + 44px));
   }
 
@@ -149,8 +179,27 @@
     display: none;
   }
 
+  .multi-chart-pane.secondary {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .multi-chart-pane.secondary .chart-pane-controls {
+    position: relative;
+    inset: auto;
+    padding: 4px 56px 4px 6px;
+    overflow-x: auto;
+  }
+
   .chart-surface {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multi-chart-pane.secondary.maximized .chart-surface {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multi-chart-pane.secondary.maximized .tool-rail {
+    display: none;
   }
 
   .multi-chart-grid:is(.split-vertical, .split-horizontal, .grid-4) {
@@ -161,6 +210,12 @@
 
   .multi-chart-grid.grid-4 {
     --mobile-chart-count: 4;
+  }
+
+  .multi-chart-grid.has-maximized {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden !important;
   }
 
   .brand,
@@ -261,7 +316,7 @@
 
   .icon-button.mobile-utility-toggle {
     position: absolute;
-    inset-block-start: 6px;
+    inset-block-start: max(6px, env(safe-area-inset-top));
     inset-inline-end: max(8px, env(safe-area-inset-right));
     z-index: 52;
     display: grid;
@@ -361,7 +416,7 @@
   }
 }
 
-@media (max-width: 760px) and (pointer: coarse) {
+@media (pointer: coarse) and (max-width: 760px), (pointer: coarse) and (max-height: 520px) {
   .topbar :is(button, select) {
     min-block-size: 44px;
   }

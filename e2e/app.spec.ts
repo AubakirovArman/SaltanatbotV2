@@ -243,7 +243,9 @@ test("keeps mobile touch indicator controls clear of the price axis in single an
   await expect(settings).toBeHidden();
 
   const indicatorStrip = primary.locator(".indicator-strip");
-  await indicatorStrip.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+  await indicatorStrip.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
   const removeProfile = primary.getByRole("button", { name: "Remove Volume Profile" });
   await expect(removeProfile).toBeVisible();
   const removeBox = await removeProfile.boundingBox();
@@ -291,7 +293,7 @@ test("keeps mobile touch indicator controls clear of the price axis in single an
   await expectChartDataClearOfAxis(primary);
 
   await primary.locator(".indicator-add").click();
-  const indicatorMenu = primary.locator(".indicator-menu");
+  const indicatorMenu = primary.locator('.indicator-menu[role="menu"]');
   await expect(indicatorMenu).toBeVisible();
   const menuItems = indicatorMenu.getByRole("menuitem");
   expect(await menuItems.count()).toBeGreaterThan(8);
@@ -575,6 +577,207 @@ test("keeps a two-finger touch gesture inside the chart and zooms around its mid
     expect(await reset.getAttribute("aria-label")).toMatch(/\((1[1-9][0-9]|[2-4][0-9]{2})%\)/);
   }).toPass({ timeout: 10_000 });
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+});
+
+test("uses movement slop before long-press inspect and exposes the touch mode", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "CDP touch injection is Chromium-specific.");
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await navigateToCurrentAppAndWaitForWorkspace(page);
+  const canvas = page.locator(".chart-canvas-interaction");
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  const client = await page.context().newCDPSession(page);
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
+  const start = { x: box!.x + box!.width * 0.45, y: box!.y + box!.height * 0.45, id: 1, radiusX: 4, radiusY: 4, force: 1 };
+
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+  await expect(canvas).toHaveAttribute("data-touch-mode", "pending-pan");
+  await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ ...start, x: start.x + 6, y: start.y + 8 }] });
+  await expect(canvas).toHaveAttribute("data-touch-mode", "pending-pan");
+  await expect(canvas).toHaveAttribute("data-touch-mode", "inspect", { timeout: 2_000 });
+  await expect(page.locator(".crosshair-hud")).toBeVisible();
+
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(canvas).toHaveAttribute("data-touch-mode", "idle");
+  await expect(page.locator(".crosshair-hud")).toBeHidden();
+});
+
+test("does not commit a drawing anchor when a second finger promotes draw to pinch", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "CDP multi-touch injection is Chromium-specific.");
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await navigateToCurrentAppAndWaitForWorkspace(page);
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.includes("drawings:v2")) localStorage.removeItem(key);
+    }
+  });
+  const canvas = page.locator(".chart-canvas-interaction");
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+  const horizontalLine = page.getByRole("button", { name: "Horizontal line" });
+  await horizontalLine.click();
+  await expect(horizontalLine).toHaveAttribute("aria-pressed", "true");
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  const client = await page.context().newCDPSession(page);
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
+  const y = box!.y + box!.height * 0.48;
+  const center = box!.x + box!.width * 0.48;
+  const point = (x: number, id: number) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 });
+
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point(center - 50, 1)] });
+  await expect(canvas).toHaveAttribute("data-touch-mode", "pending-draw");
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point(center - 50, 1), point(center + 50, 2)] });
+  await expect(canvas).toHaveAttribute("data-touch-mode", "pinch");
+  await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [point(center - 90, 1), point(center + 90, 2)] });
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(canvas).toHaveAttribute("data-touch-mode", "idle");
+  await expect(horizontalLine).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Object.entries(localStorage)
+          .filter(([key]) => key.includes("drawings:v2"))
+          .map(([, value]) => JSON.parse(value))
+      )
+    )
+    .toEqual([]);
+});
+
+test("resumes one-finger pan after pinch without re-entering an active drawing tool", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Synthetic multi-pointer sequencing is Chromium-specific.");
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await navigateToCurrentAppAndWaitForWorkspace(page);
+  const canvas = page.locator(".chart-canvas-interaction");
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  const y = box!.y + box!.height * 0.5;
+  const center = box!.x + box!.width * 0.5;
+  await canvas.evaluate((element) => {
+    const target = element as HTMLCanvasElement;
+    target.setPointerCapture = () => undefined;
+    target.hasPointerCapture = () => true;
+    target.releasePointerCapture = () => undefined;
+  });
+  const fire = async (type: string, pointerId: number, x: number, isPrimary: boolean) => {
+    await canvas.evaluate(
+      (element, input) => {
+        element.dispatchEvent(
+          new PointerEvent(input.type, {
+            bubbles: true,
+            cancelable: true,
+            pointerType: "touch",
+            pointerId: input.pointerId,
+            isPrimary: input.isPrimary,
+            button: 0,
+            buttons: input.type === "pointerup" ? 0 : 1,
+            clientX: input.x,
+            clientY: input.y
+          })
+        );
+      },
+      { type, pointerId, x, isPrimary, y }
+    );
+  };
+
+  await fire("pointerdown", 101, center - 60, true);
+  await expect(canvas).toHaveAttribute("data-touch-mode", "pending-pan");
+  await fire("pointerdown", 102, center + 60, false);
+  await expect(canvas).toHaveAttribute("data-touch-mode", "pinch");
+  await fire("pointermove", 101, center - 90, true);
+  await fire("pointermove", 102, center + 90, false);
+  await fire("pointerup", 102, center + 90, false);
+  await expect(canvas).toHaveAttribute("data-touch-mode", "pan");
+  await fire("pointermove", 101, center - 120, true);
+  await expect(canvas).toHaveAttribute("data-touch-mode", "pan");
+  await fire("pointerup", 101, center - 120, true);
+  await expect(canvas).toHaveAttribute("data-touch-mode", "idle");
+});
+
+test("clears draft gestures on pointercancel, lost capture and viewport rotation without deleting completed drawings", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "CDP touch cancellation is Chromium-specific.");
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await navigateToCurrentAppAndWaitForWorkspace(page);
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.includes("drawings:v2")) localStorage.removeItem(key);
+    }
+  });
+  const canvas = page.locator(".chart-canvas-interaction");
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Horizontal line" }).click();
+  await canvas.click({ position: { x: 430, y: 260 } });
+  const storedTools = () =>
+    page.evaluate(() =>
+      Object.entries(localStorage)
+        .filter(([key]) => key.includes("drawings:v2"))
+        .flatMap(([, value]) => (JSON.parse(value) as Array<{ tool: string }>).map((drawing) => drawing.tool))
+    );
+  await expect.poll(storedTools).toEqual(["hline"]);
+
+  const trendLine = page.getByRole("button", { name: "Trend line" });
+  await trendLine.click();
+  const client = await page.context().newCDPSession(page);
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
+  const touchAt = async (id: number, end = true) => {
+    const box = await canvas.boundingBox();
+    expect(box).not.toBeNull();
+    const point = { x: box!.x + box!.width * 0.42, y: box!.y + box!.height * 0.44, id, radiusX: 4, radiusY: 4, force: 1 };
+    await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+    if (end) await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
+
+  await touchAt(1);
+  await expect(canvas).toHaveAttribute("data-touch-mode", "idle");
+  await touchAt(2, false);
+  await expect(canvas).toHaveAttribute("data-touch-mode", "pending-draw");
+  await client.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+  await expect(canvas).toHaveAttribute("data-touch-mode", "idle");
+  await touchAt(3);
+  await expect.poll(storedTools).toEqual(["hline"]);
+
+  await touchAt(4, false);
+  await expect(canvas).toHaveAttribute("data-touch-mode", "pending-draw");
+  await page.setViewportSize({ width: 600, height: 1000 });
+  await page.evaluate(() => window.dispatchEvent(new Event("orientationchange")));
+  await expect(canvas).toHaveAttribute("data-touch-mode", "idle");
+  await client.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] }).catch(() => undefined);
+  await touchAt(5);
+  await expect.poll(storedTools).toEqual(["hline"]);
+
+  await canvas.evaluate((element) => {
+    const target = element as HTMLCanvasElement;
+    target.setPointerCapture = () => undefined;
+    target.hasPointerCapture = () => true;
+    target.releasePointerCapture = () => undefined;
+    const rect = target.getBoundingClientRect();
+    const init = {
+      bubbles: true,
+      cancelable: true,
+      pointerType: "touch",
+      pointerId: 77,
+      isPrimary: true,
+      button: 0,
+      buttons: 1,
+      clientX: rect.left + rect.width * 0.46,
+      clientY: rect.top + rect.height * 0.46
+    };
+    target.dispatchEvent(new PointerEvent("pointerdown", init));
+    target.dispatchEvent(new PointerEvent("lostpointercapture", { ...init, buttons: 0 }));
+  });
+  await expect(canvas).toHaveAttribute("data-touch-mode", "idle");
+  await touchAt(6);
+  await expect.poll(storedTools).toEqual(["hline"]);
 });
 
 test("keeps repeated mobile pinch-out stable at the minimum chart zoom", async ({ browser, browserName, baseURL }) => {
@@ -1140,7 +1343,7 @@ test("isolates and restores drawings for identical symbols in separate panes", a
   await secondary.getByRole("button", { name: "Horizontal line" }).click();
   await secondary.locator(".chart-canvas-interaction").click({ position: { x: 430, y: 260 } });
   await secondary.getByRole("button", { name: "Drawing object tree" }).click();
-  await expect(secondary.locator(".drawing-object-list")).toContainText("hline");
+  await expect(secondary.getByRole("button", { name: "Horizontal line #1", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sbv2:drawings:v2:chart-2:BTCUSDT") ?? "[]").map((drawing: { tool?: string }) => drawing.tool))).toEqual(["hline"]);
   expect(await page.evaluate(() => localStorage.getItem("sbv2:drawings:v2:chart-1:BTCUSDT"))).toBeNull();
 
@@ -1155,8 +1358,138 @@ test("isolates and restores drawings for identical symbols in separate panes", a
   await page.keyboard.press("Escape");
   await restoredSecondary.locator(".pane-maximize").click();
   await restoredSecondary.getByRole("button", { name: "Drawing object tree" }).click();
-  await expect(restoredSecondary.locator(".drawing-object-list")).toContainText("hline");
+  await expect(restoredSecondary.getByRole("button", { name: "Horizontal line #1", exact: true })).toBeVisible();
   await expectNoAxeViolations(page);
+});
+
+test("offers the complete mobile drawing catalog with 44px history controls and focus restoration", async ({ page }) => {
+  test.setTimeout(60_000);
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.includes("drawings:v2")) localStorage.removeItem(key);
+    }
+  });
+  await page.reload();
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+
+  const toolbar = page.locator(".mobile-drawing-toolbar");
+  const trigger = toolbar.locator(".mobile-drawing-tools-trigger");
+  const undo = toolbar.getByRole("button", { name: "Undo drawing" });
+  const redo = toolbar.getByRole("button", { name: "Redo drawing" });
+  const removeSelected = toolbar.getByRole("button", { name: "Delete drawing" });
+  const objects = toolbar.getByRole("button", { name: "Drawing object tree" });
+  await expect(toolbar).toBeVisible();
+  await expect(page.locator(".tool-rail")).toBeHidden();
+  for (const target of [trigger, undo, redo, removeSelected, objects]) {
+    const box = await target.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  await trigger.focus();
+  await trigger.click();
+  const toolsDialog = page.getByRole("dialog", { name: "Drawing tools" });
+  const search = toolsDialog.getByPlaceholder("Search drawing tools");
+  await expect(toolsDialog).toBeVisible();
+  await expect(search).toBeFocused();
+  await expect(toolsDialog.locator(".mobile-drawing-groups button")).toHaveCount(19);
+  await expect(toolsDialog.locator(".menu-group-title")).toHaveCount(7);
+  await search.fill("horizontal line");
+  await expect(toolsDialog.getByRole("button", { name: "Horizontal line", exact: true })).toBeVisible();
+  await expect(toolsDialog.getByText("Lines", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(toolsDialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await toolsDialog.getByPlaceholder("Search drawing tools").fill("horizontal line");
+  await toolsDialog.getByRole("button", { name: "Horizontal line", exact: true }).click();
+  await expect(toolsDialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toContainText("Horizontal line");
+
+  const canvas = page.locator(".chart-canvas-interaction");
+  const canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  await canvas.click({ position: { x: canvasBox!.width * 0.5, y: canvasBox!.height * 0.42 } });
+  const storedTools = () =>
+    page.evaluate(() =>
+      Object.entries(localStorage)
+        .filter(([key]) => key.includes("drawings:v2"))
+        .flatMap(([, value]) => (JSON.parse(value) as Array<{ tool: string }>).map((drawing) => drawing.tool))
+    );
+  await expect.poll(storedTools).toEqual(["hline"]);
+  const indicatorStripBox = await page.locator(".indicator-strip").boundingBox();
+  const styleBarBox = await page.locator(".drawing-style-toolbar").boundingBox();
+  expect(indicatorStripBox).not.toBeNull();
+  expect(styleBarBox).not.toBeNull();
+  expect(styleBarBox!.y).toBeGreaterThanOrEqual(indicatorStripBox!.y + indicatorStripBox!.height);
+
+  await expect(undo).toBeEnabled();
+  await undo.click();
+  await expect.poll(storedTools).toEqual([]);
+  await expect(redo).toBeEnabled();
+  await redo.click();
+  await expect.poll(storedTools).toEqual(["hline"]);
+
+  await objects.click();
+  const objectsDialog = page.getByRole("dialog", { name: "Drawing object tree" });
+  const object = objectsDialog.getByRole("button", { name: "Horizontal line #1", exact: true });
+  await expect(objectsDialog).toBeVisible();
+  await expect(object).toBeVisible();
+  const objectBox = await object.boundingBox();
+  expect(objectBox).not.toBeNull();
+  expect(objectBox!.height).toBeGreaterThanOrEqual(44);
+  await object.click();
+  await page.keyboard.press("Escape");
+  await expect(objectsDialog).toBeHidden();
+  await expect(objects).toBeFocused();
+  await expect(removeSelected).toBeEnabled();
+  await removeSelected.click();
+  await expect.poll(storedTools).toEqual([]);
+
+  await trigger.click();
+  await expect(toolsDialog).toBeVisible();
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(toolsDialog).toBeHidden();
+});
+
+test("keeps the chart context menu keyboard-operable", async ({ page }) => {
+  const canvas = page.locator(".chart-canvas-interaction");
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+  const drawingTool = page.getByRole("button", { name: "Trend line", exact: true });
+  await drawingTool.click();
+  await expect(drawingTool).toHaveAttribute("aria-pressed", "true");
+  const returnTarget = page.getByRole("button", { name: "Chart layout" });
+  await returnTarget.focus();
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await canvas.click({ button: "right", position: { x: box!.width * 0.48, y: box!.height * 0.46 } });
+
+  const menu = page.getByRole("menu");
+  const items = menu.getByRole("menuitem");
+  await expect(menu).toBeVisible();
+  expect(await items.count()).toBeGreaterThan(1);
+  await expect(items.first()).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(items.nth(1)).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(items.last()).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(items.first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(drawingTool).toHaveAttribute("aria-pressed", "true");
+
+  await canvas.click({ button: "right", position: { x: box!.width * 0.48, y: box!.height * 0.46 } });
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(menu).toBeHidden();
 });
 
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
@@ -2557,11 +2890,7 @@ test("keeps every mobile Strategy Studio pane full-width and operable", { tag: "
           const gridElement = pane.closest(".strategy-grid");
           if (!gridElement) return false;
           const gridRect = gridElement.getBoundingClientRect();
-          return gridElement.scrollWidth <= gridElement.clientWidth + 1
-            && paneRect.width > 0
-            && paneRect.height >= gridRect.height - 2
-            && paneRect.left >= gridRect.left - 1
-            && paneRect.right <= gridRect.right + 1;
+          return gridElement.scrollWidth <= gridElement.clientWidth + 1 && paneRect.width > 0 && paneRect.height >= gridRect.height - 2 && paneRect.left >= gridRect.left - 1 && paneRect.right <= gridRect.right + 1;
         })
       )
       .toBe(true);
@@ -2605,9 +2934,7 @@ test("keeps every mobile Strategy Studio pane full-width and operable", { tag: "
     await page.setViewportSize({ width, height: 844 });
     await expect(paneTabs).toBeVisible();
     await expectPaneFits(".strategy-authoring");
-    await expect
-      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1))
-      .toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
   }
 });
 

@@ -20,9 +20,10 @@ import { TradeFootprintLayer } from "./chartCanvas/TradeFootprintLayer";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
 import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
-import { clampIndex, moveDrawing, nextPriceMode, pointerPoint, sameLegend, sameVolumeProfile, snapAnchor, snapDrawingAnchor } from "./chartCanvas/drawingInteraction";
+import { nextPriceMode, sameLegend, sameVolumeProfile } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
-import { useChartTouchNavigation, useChartWheelNavigation } from "./chartCanvas/useChartNavigation";
+import { useChartPointerInteraction } from "./chartCanvas/useChartPointerInteraction";
+import { useChartWheelNavigation } from "./chartCanvas/useChartNavigation";
 import { useLinkedTimeRange } from "./chartCanvas/useLinkedTimeRange";
 import { PriceRepresentationControl, usePriceRepresentationSettings } from "./chartCanvas/PriceRepresentationControl";
 import { PriceAxisControl } from "./chartCanvas/PriceAxisControl";
@@ -34,8 +35,6 @@ import { useVolumeProfileIndicator } from "./chartCanvas/useVolumeProfileIndicat
 import { normalizeChartTimeZone } from "../chart/timeAxis";
 
 const MAX_COMPARE = 3;
-
-type Interaction = { mode: "pan"; startX: number; startOffset: number } | { mode: "edit"; id: string; part: number | "body"; last: Anchor } | { mode: "measure"; start: Anchor } | undefined;
 
 export function ChartCanvas({
   candles,
@@ -91,7 +90,6 @@ export function ChartCanvas({
   showIndicatorControls = true
 }: ChartCanvasProps) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
-  const interactionRef = useRef<Interaction>();
   const drawingsRef = useRef<DrawingObject[]>([]);
   const historyRef = useRef<DrawingObject[][]>([]);
   const redoRef = useRef<DrawingObject[][]>([]);
@@ -191,6 +189,7 @@ export function ChartCanvas({
   // Keyboard: Esc cancels/deselects, Delete removes selected, Ctrl/Cmd+Z undoes.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       if ((event.key === "z" || event.key === "Z") && (event.metaKey || event.ctrlKey)) {
@@ -205,6 +204,7 @@ export function ChartCanvas({
         return;
       }
       if (event.key === "Escape") {
+        setMenu(undefined);
         setDraft(undefined);
         setQuickMeasure(undefined);
         setSelectedId(undefined);
@@ -259,8 +259,30 @@ export function ChartCanvas({
     onVisibleTimeRange: setVisibleProfileRange
   });
   useChartWheelNavigation(interactionCanvasRef, viewportRef, displayCandles, setView);
-  const touchGestureActiveRef = useChartTouchNavigation(interactionCanvasRef, viewportRef, displayCandles, view, setView, (x, offset) => {
-    interactionRef.current = { mode: "pan", startX: x, startOffset: offset };
+  const pointerInteraction = useChartPointerInteraction({
+    chartId,
+    displayCandles,
+    draft,
+    drawingsRef,
+    interactionCanvasRef,
+    magnet,
+    onLinkedCrosshairChange,
+    resetKey: drawingScopeKey,
+    selectedId,
+    setDraft,
+    setDrawings,
+    setHoverAnchor,
+    setHoveredId,
+    setHoverIndex,
+    setMenu,
+    setQuickMeasure,
+    setQuickMeasureActive,
+    setSelectedId,
+    setTool,
+    setView,
+    tool,
+    view,
+    viewportRef
   });
   useLinkedTimeRange({ candles: displayCandles, chartId, linkedRange: linkedTimeRange, onLinkedRangeChange: onLinkedTimeRangeChange, setView, view, viewportRef });
 
@@ -311,7 +333,17 @@ export function ChartCanvas({
         orderBookAvailable={orderBookAvailable}
         showObjects={showDrawingObjects}
         hasDrawings={drawings.length > 0}
+        canUndo={historyRef.current.length >= 2}
+        canRedo={redoRef.current.length > 0}
+        hasSelectedDrawing={Boolean(selectedId && drawings.some((drawing) => drawing.id === selectedId))}
         onTool={setTool}
+        onUndo={undoDrawings}
+        onRedo={redoDrawings}
+        onDeleteSelected={() => {
+          if (!selectedId) return;
+          setDrawings((current) => current.filter((drawing) => drawing.id !== selectedId));
+          setSelectedId(undefined);
+        }}
         onToggleMagnet={() => setMagnet((value) => !value)}
         onToggleVolume={() => setShowVolume((value) => !value)}
         onToggleOrderBookHeatmap={() => setShowOrderBookHeatmap((value) => !value)}
@@ -389,125 +421,15 @@ export function ChartCanvas({
         <canvas
           ref={interactionCanvasRef}
           className={`chart-canvas chart-canvas-interaction ${tool === "cursor" ? "" : "drawing"}`}
+          data-touch-mode="idle"
           aria-hidden="true"
           title={localized(locale, { en: "Drag to pan · pinch to zoom · Shift-drag to measure", ru: "Перетаскивание — прокрутка · два пальца — масштаб · Shift — измерение", kk: "Сүйреу — жылжыту · екі саусақ — масштаб · Shift-сүйреу — өлшеу" })}
-          onPointerDown={(event) => {
-            if (!event.isPrimary || event.button !== 0) return;
-            event.preventDefault();
-            event.currentTarget.setPointerCapture(event.pointerId);
-            const viewport = viewportRef.current;
-            if (!viewport) return;
-            const { x, y } = pointerPoint(event);
-
-            if (tool !== "cursor") {
-              const anchor = snapDrawingAnchor(tool, viewport, displayCandles, x, y, magnet);
-              const committed = draft && draft.tool === tool ? [...draft.points, anchor] : [anchor];
-              if (committed.length >= TOOL_POINT_COUNT[tool]) {
-                const object = createDrawing(tool, committed);
-                setDrawings((current) => [...current, object]);
-                setDraft(undefined);
-                setHoverAnchor(undefined);
-                setSelectedId(object.id);
-                setTool("cursor");
-              } else {
-                setDraft({ tool, points: committed });
-              }
-              return;
-            }
-
-            if (event.shiftKey) {
-              const start = snapAnchor(viewport, displayCandles, x, y, magnet);
-              interactionRef.current = { mode: "measure", start };
-              setQuickMeasure({ tool: "measure", points: [start, start] });
-              setQuickMeasureActive(true);
-              setSelectedId(undefined);
-              return;
-            }
-
-            setQuickMeasure(undefined);
-
-            const hit = hitTest(viewport, drawingsRef.current, x, y, selectedId);
-            if (hit) {
-              setSelectedId(hit.id);
-              interactionRef.current = { mode: "edit", id: hit.id, part: hit.part, last: snapAnchor(viewport, displayCandles, x, y, magnet) };
-            } else {
-              setSelectedId(undefined);
-              interactionRef.current = { mode: "pan", startX: x, startOffset: view.offset };
-            }
-          }}
-          onPointerMove={(event) => {
-            // The native two-touch controller owns pinch frames. Letting the
-            // ordinary React pan handler process the same two pointers makes
-            // offset/zoom state race at the minimum and maximum boundaries.
-            if (event.pointerType === "touch" && touchGestureActiveRef.current) return;
-            const viewport = viewportRef.current;
-            const { x, y } = pointerPoint(event);
-            if (viewport) setHoverIndex(clampIndex(Math.round(viewport.xToIndex(x)), displayCandles.length));
-            if (viewport && onLinkedCrosshairChange) {
-              const index = clampIndex(Math.round(viewport.xToIndex(x)), displayCandles.length);
-              const candle = displayCandles[index];
-              if (candle) onLinkedCrosshairChange({ sourceId: chartId, time: candle.time, price: viewport.yToPrice(y) });
-            }
-
-            if (tool !== "cursor" && draft && viewport) {
-              setHoverAnchor(snapAnchor(viewport, displayCandles, x, y, magnet));
-              setView((current) => ({ ...current, crosshair: { x, y } }));
-              return;
-            }
-
-            const interaction = interactionRef.current;
-            if (interaction?.mode === "measure" && viewport) {
-              const end = snapAnchor(viewport, displayCandles, x, y, magnet);
-              setQuickMeasure({ tool: "measure", points: [interaction.start, end] });
-              setView((current) => ({ ...current, crosshair: { x, y } }));
-              return;
-            }
-            if (interaction?.mode === "edit" && viewport) {
-              const next = snapAnchor(viewport, displayCandles, x, y, magnet);
-              const dt = next.time - interaction.last.time;
-              const dp = next.price - interaction.last.price;
-              setDrawings((current) => current.map((drawing) => (drawing.id === interaction.id ? moveDrawing(drawing, interaction.part, next, dt, dp) : drawing)));
-              interaction.last = next;
-              setView((current) => ({ ...current, crosshair: { x, y } }));
-              return;
-            }
-
-            if (interaction?.mode === "pan") {
-              const bar = viewport ? viewport.barSpacing : 8;
-              const delta = Math.round((interaction.startX - x) / Math.max(1, bar));
-              const visibleCount = Math.max(1, (viewport?.end ?? 0) - (viewport?.start ?? 0));
-              const limit = Math.max(0, displayCandles.length - Math.min(24, visibleCount));
-              setView((current) => ({ ...current, offset: Math.min(limit, Math.max(0, interaction.startOffset + delta)), crosshair: { x, y } }));
-              return;
-            }
-
-            setView((current) => ({ ...current, crosshair: { x, y } }));
-            if (viewport) {
-              const hit = hitTest(viewport, drawingsRef.current, x, y, selectedId);
-              setHoveredId(hit?.id);
-            }
-          }}
-          onPointerLeave={() => {
-            if (touchGestureActiveRef.current) return;
-            setView((current) => ({ ...current, crosshair: undefined }));
-            setHoveredId(undefined);
-            setHoverIndex(undefined);
-            onLinkedCrosshairChange?.();
-          }}
-          onPointerUp={(event) => {
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-            if (interactionRef.current?.mode === "measure") setQuickMeasureActive(false);
-            interactionRef.current = undefined;
-          }}
-          onPointerCancel={() => {
-            interactionRef.current = undefined;
-            setQuickMeasure(undefined);
-            setQuickMeasureActive(false);
-          }}
-          onLostPointerCapture={() => {
-            interactionRef.current = undefined;
-            setQuickMeasureActive(false);
-          }}
+          onPointerDown={pointerInteraction.onPointerDown}
+          onPointerMove={pointerInteraction.onPointerMove}
+          onPointerLeave={pointerInteraction.onPointerLeave}
+          onPointerUp={pointerInteraction.onPointerUp}
+          onPointerCancel={pointerInteraction.onPointerCancel}
+          onLostPointerCapture={pointerInteraction.onLostPointerCapture}
           onDoubleClick={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
           onContextMenu={(event) => {
             event.preventDefault();
@@ -520,7 +442,6 @@ export function ChartCanvas({
             setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id, price: viewport?.yToPrice(y) });
           }}
         />
-        {!compactChrome && <span className="chart-touch-hint" aria-hidden="true" />}
         <ChartPriceHud candle={legendCandle} latest={latest} timeframe={timeframe} decimals={instrument.decimals} locale={locale} timeZone={chartTimeZone} viewport={viewportRef.current} crosshair={quickMeasure ? undefined : view.crosshair} />
         <QuickMeasureSummary active={quickMeasureActive} decimals={instrument.decimals} locale={locale} measurement={quickMeasure} viewport={viewportRef.current} />
         {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay locale={locale} tables={tables} />}

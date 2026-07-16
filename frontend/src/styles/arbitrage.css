@@ -942,6 +942,9 @@
   background: var(--panel);
   scrollbar-gutter: stable;
 }
+.arb-results-view-switch {
+  display: none;
+}
 .arb-table {
   width: 100%;
   min-width: 1110px;
@@ -1123,7 +1126,7 @@
 .arb-depth-boundary {
   color: var(--warn);
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-height: 520px) {
   .arb-depth-verification-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1927,10 +1930,172 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-height: 520px) {
   .arb-screener,
   .arb-live-routes {
     padding: 12px;
+  }
+  .arb-table-shell {
+    min-height: 0;
+  }
+  .arb-results-view-switch {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    padding: 6px;
+    border-block-end: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .arb-results-view-switch button {
+    min-block-size: 44px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--panel-soft);
+    color: var(--muted);
+    font-weight: 700;
+  }
+  .arb-results-view-switch button[aria-pressed="true"] {
+    border-color: var(--accent-line);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .arb-table-shell[data-mobile-view="cards"] {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+  .arb-table-shell[data-mobile-view="cards"] .arb-results-view-switch {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .arb-card-list {
+    display: grid;
+    gap: 8px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .arb-result-card > article {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+  }
+  .arb-result-card article > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .arb-result-card header strong {
+    display: block;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 0.95rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .arb-result-card header small {
+    display: block;
+    color: var(--dim);
+    font-size: 0.68rem;
+  }
+  .arb-result-card mark {
+    background: transparent;
+  }
+  .arb-result-card .positive {
+    color: var(--up);
+  }
+  .arb-result-card .negative {
+    color: var(--muted);
+  }
+  .arb-card-edge {
+    flex: none;
+    text-align: end;
+  }
+  .arb-card-edge > span,
+  .arb-card-edge > small {
+    display: block;
+    color: var(--dim);
+    font-size: 0.64rem;
+  }
+  .arb-card-edge mark {
+    display: block;
+    margin-block: 2px;
+    font-family: var(--font-mono);
+    font-size: 0.96rem;
+    font-weight: 800;
+  }
+  .arb-card-legs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .arb-card-legs section {
+    padding: 9px;
+    border-radius: 7px;
+    background: var(--panel-soft);
+  }
+  .arb-card-legs span,
+  .arb-card-legs small {
+    display: block;
+    overflow: hidden;
+    color: var(--dim);
+    font-size: 0.66rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .arb-card-legs strong {
+    display: block;
+    margin-block: 4px 2px;
+    color: var(--text);
+  }
+  .arb-card-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid var(--line-soft);
+    border-radius: 7px;
+    background: var(--line-soft);
+  }
+  .arb-card-metrics > div {
+    padding: 8px 9px;
+    background: var(--panel-soft);
+  }
+  .arb-card-metrics dt {
+    overflow: hidden;
+    color: var(--dim);
+    font-size: 0.64rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .arb-card-metrics dd {
+    margin: 4px 0 0;
+    overflow-wrap: anywhere;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-weight: 700;
+  }
+  .arb-result-card .arb-row-actions {
+    display: grid !important;
+    grid-template-columns: repeat(5, 44px);
+    justify-content: start;
+    gap: 5px;
+  }
+  .arb-result-card .arb-row-actions button {
+    min-inline-size: 44px;
+    padding-inline: 0;
+  }
+  .arb-result-card .arb-depth-panel {
+    margin: 0 -12px -12px;
+    border-radius: 0 0 10px 10px;
   }
   .arb-mode-trigger {
     display: flex;

@@ -35,6 +35,11 @@ color alone, while route graphs have text and semantic-table alternatives. High-
 rows stop updating when the tab is hidden. Basis mode also shows the read-only lifecycle aggregate;
 it remains `executionPermission: false` and is not an order control.
 
+On mobile, basis results default to compact cards so the useful columns and row actions remain
+readable without forcing the whole page wider than the viewport. The explicit **Full table** switch
+keeps the complete semantic table available inside its own horizontal scroll region; switching
+back to **Cards** unmounts the table rather than leaving two hidden result trees.
+
 The collapsible **Fork types** guide beside the mode selector maps informal trader wording to the
 actual engine shapes: double means a two-leg pairwise route, triple means a three-leg triangular
 conversion, intra-exchange describes the venue location rather than a separate strategy, and

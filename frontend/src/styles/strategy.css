@@ -2687,7 +2687,7 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-height: 520px) {
   .strategy-lab {
     inline-size: 100%;
     min-inline-size: 0;

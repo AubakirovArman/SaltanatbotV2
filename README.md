@@ -174,7 +174,7 @@ npm run dev
 docker compose up -d --build
 ```
 
-**Tests & CI:** `npm test` (Vitest — command parser, paper engine, backtest honesty, evaluator parity), `npm run lint`, `npm run check`, the complete production-build Chromium suite (`npm run test:e2e`), tagged Firefox critical journeys (`npm run test:e2e:firefox-smoke`) and four deterministic visual baselines (`npm run test:visual`) run in [CI](.github/workflows/ci.yml) on every push and pull request. The scheduled and release-tagged [browser matrix](.github/workflows/browser-matrix.yml) runs all production journeys on Chromium, Firefox and WebKit. Failed browser runs retain their Playwright report, trace, screenshots and video. Authenticated exchange release checks are isolated in the manually dispatched, protected [testnet smoke workflow](.github/workflows/exchange-testnet-smoke.yml).
+**Tests & CI:** `npm test` (Vitest — command parser, paper engine, backtest honesty, evaluator parity), `npm run lint`, `npm run check`, the complete production-build Chromium suite (`npm run test:e2e`), tagged Firefox critical journeys (`npm run test:e2e:firefox-smoke`) and six deterministic visual baselines (`npm run test:visual`) run in [CI](.github/workflows/ci.yml) on every push and pull request. The scheduled and release-tagged [browser matrix](.github/workflows/browser-matrix.yml) runs all production journeys on Chromium, Firefox and WebKit. Failed browser runs retain their Playwright report, trace, screenshots and video. Authenticated exchange release checks are isolated in the manually dispatched, protected [testnet smoke workflow](.github/workflows/exchange-testnet-smoke.yml).
 
 ---
 

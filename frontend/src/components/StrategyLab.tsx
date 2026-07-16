@@ -8,6 +8,7 @@ import type { StrategyTemplate } from "../strategy/templates";
 import type { CatalogResponse, DataExchange, Timeframe } from "../types";
 import type { Locale } from "../i18n";
 import { strategyText } from "../i18n/strategy";
+import { MOBILE_SHELL_MEDIA_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import { StrategyLibrary } from "../strategy/components/StrategyLibrary";
 import { StrategyExecutionPanel } from "../strategy/components/StrategyExecutionPanel";
 import { PineSourceComparison } from "../strategy/components/PineSourceComparison";
@@ -74,7 +75,7 @@ export function StrategyLab({
   onOpenTrading
 }: StrategyLabProps) {
   const activeArtifact = artifacts.find((artifact) => artifact.id === activeArtifactId) ?? artifacts[0];
-  const [mobileLayout, setMobileLayout] = useState(isMobileStrategyViewport);
+  const mobileLayout = useMediaQuery(MOBILE_SHELL_MEDIA_QUERY);
   const [toolboxOpen, setToolboxOpen] = useState(false);
   const workspace = useStrategyWorkspace({ activeArtifact, onSaveArtifact, theme, toolboxVisible: !mobileLayout || toolboxOpen });
   const research = useStrategyResearch({
@@ -98,16 +99,8 @@ export function StrategyLab({
   }, [activeArtifact?.id]);
 
   useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia("(max-width: 760px)");
-    const onChange = (event: MediaQueryListEvent) => {
-      setMobileLayout(event.matches);
-      if (event.matches) setToolboxOpen(false);
-    };
-    setMobileLayout(query.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
+    if (mobileLayout) setToolboxOpen(false);
+  }, [mobileLayout]);
 
   const shareNow = () => {
     const payload = workspace.sharePayload();
@@ -251,8 +244,4 @@ export function StrategyLab({
       </div>
     </section>
   );
-}
-
-function isMobileStrategyViewport() {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 760px)").matches;
 }

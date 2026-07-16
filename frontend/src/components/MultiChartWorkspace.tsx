@@ -269,6 +269,7 @@ function SecondaryChartPane({
   return (
     <section {...paneProps} aria-label={`${chart.symbol} ${chart.timeframe}${active ? ` · ${shellText(locale, "activeChart")}` : ""}`}>
       {active && <PaneActiveIndicator locale={locale} paneNumber={paneNumber} />}
+      {canMaximize && <PaneMaximizeButton locale={locale} symbol={chart.symbol} shortcut={maximizeShortcut} maximized={maximized} floating onToggle={onToggleMaximize} />}
       <div className="chart-pane-controls">
         <span className="pane-number" aria-hidden="true">
           {paneNumber}
@@ -335,7 +336,6 @@ function SecondaryChartPane({
         {linkButton("linkCompare", shellText(locale, "linkCompare"), shellText(locale, "unlinkCompare"), GitCompareArrows)}
         {linkButton("linkCrosshair", shellText(locale, "linkCrosshair"), shellText(locale, "unlinkCrosshair"), Crosshair)}
         {linkButton("linkTimeRange", shellText(locale, "linkTimeRange"), shellText(locale, "unlinkTimeRange"), MoveHorizontal)}
-        {canMaximize && <PaneMaximizeButton locale={locale} symbol={chart.symbol} shortcut={maximizeShortcut} maximized={maximized} onToggle={onToggleMaximize} />}
         <span className={`pane-feed ${stream.connection}`} role="status">
           {stream.provider} · {stream.latencyMs ?? "—"} ms
         </span>

@@ -3,6 +3,8 @@ import {
   applyChartPinchNavigation,
   applyChartWheelNavigation,
   beginChartPinchGesture,
+  chartTouchMovementExceeded,
+  CHART_TOUCH_MOVEMENT_SLOP_PX,
   MIN_CHART_ZOOM,
   type ChartNavigationView,
   type ChartTouchPoint
@@ -117,6 +119,14 @@ describe("chart touch navigation", () => {
     });
 
     expect(next).toBe(view);
+  });
+
+  it("keeps small contact jitter inside the long-press slop and promotes deliberate movement", () => {
+    const start = { x: 120, y: 240 };
+    expect(chartTouchMovementExceeded(start, { x: 120 + CHART_TOUCH_MOVEMENT_SLOP_PX, y: 240 })).toBe(false);
+    expect(chartTouchMovementExceeded(start, { x: 120 + CHART_TOUCH_MOVEMENT_SLOP_PX + 0.1, y: 240 })).toBe(true);
+    expect(chartTouchMovementExceeded(start, { x: 126, y: 248 })).toBe(false);
+    expect(chartTouchMovementExceeded(start, { x: 128, y: 248 })).toBe(true);
   });
 });
 

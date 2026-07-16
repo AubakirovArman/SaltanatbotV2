@@ -121,12 +121,14 @@ Avoid pixel snapshots for every candle. Use semantic renderer assertions for log
 
 ### Visual regression baselines
 
-The required `visual regression (Chromium)` CI job compares four reviewed Linux/Chromium baselines:
+The required `visual regression (Chromium)` CI job compares six reviewed Linux/Chromium baselines:
 
 - the complete dark desktop terminal with side panels and a deterministic chart;
 - the narrow mobile terminal with its focus-managed market bottom sheet and unobscured chart context;
+- the narrow mobile drawing-tool bottom sheet with its searchable grouped catalog;
 - the isolated four-market chart grid, including compact pane controls and active-pane treatment;
-- Strategy Studio with its library, Blockly workspace and artifact inspector.
+- Strategy Studio with its library, Blockly workspace and artifact inspector;
+- the mobile Strategy Studio with one full-width operable pane.
 
 The suite fixes UTC time, browser locale, reduced motion, catalog, sparklines, candle history and
 WebSocket messages. It also waits for a verified non-empty Canvas readback before capture. Only
@@ -239,7 +241,7 @@ Prefer native `<dialog>`, form controls and buttons. Canvas information must hav
 Pull requests:
 
 - Chromium desktop for all E2E;
-- Firefox for ten tagged critical journeys covering chart input, multi-market layout, accessibility,
+- Firefox for eighteen tagged critical journeys covering chart input, multi-market layout, accessibility,
   EN/RU/KK localization, Pine import, backtest, authentication, paper execution and mobile panels.
 
 Nightly/release:
@@ -266,16 +268,16 @@ reachable lazy-route graph, every individual JavaScript chunk and total distribu
 A limit may only be raised with a measured explanation.
 
 The 2026-07-14 review split the old aggregate-only model after the scanner, Strategy Studio,
-Trading workspace and their nested tools were confirmed to be separate lazy routes. Moving scanner
-CSS behind its lazy boundary reduced initial CSS from 26.2 KiB to 20.9 KiB gzip. The 2026-07-15
+Trading workspace and their nested tools were confirmed to be separate lazy routes. The 2026-07-15
 review added three optional, lazy research surfaces: market-opportunity handoff, the structural
-strategy generator and L2 ML research. The measured build is 169.3 KiB initial JS, 333.4 KiB for the
-largest incremental lazy-route graph (Strategy Studio), 198.2 KiB for the largest single chunk
-(Blockly), 755.4 KiB for the complete distributable JS set and 37.5 KiB for the complete CSS set.
-The enforced ceilings are 170 KiB, 336 KiB, 200 KiB, 768 KiB and 39 KiB respectively. The roughly
-81 KiB distributable-JS increase is isolated behind those optional routes; total-distributable size
-remains a secondary regression guard and must not be reported as bytes downloaded on initial
-navigation.
+strategy generator and L2 ML research. The 2026-07-16 mobile release measurement is 57.9 KiB
+initial JS, 142.2 KiB for the largest incremental lazy-route graph, 198.2 KiB for the largest
+single chunk (lazy Blockly), 776.0 KiB for the complete distributable JS set and 40.9 KiB for the
+complete CSS set. The configured ceilings are 170 KiB, 336 KiB, 225 KiB, 900 KiB and 48 KiB
+respectively; the checker permits only 90% of each cap, preserving a mandatory 10% reserve.
+Initial navigation remains small, while the lazy Blockly, total JS and total CSS policies no longer
+depend on a byte-for-byte snapshot. Total-distributable size is a secondary regression guard and
+must not be reported as bytes downloaded on initial navigation.
 
 - initial JS gzip <= 150 KB target;
 - no JavaScript chunk > 200 KiB gzip (enforced); the stable Blockly vendor boundary is currently
@@ -355,8 +357,8 @@ platform-specific proxy/supervisor/persistent-volume rehearsal.
 
 - check, lint, unit, component, contract;
 - the complete production-build Chromium E2E suite in the required `end-to-end (Chromium)` CI job;
-- 15 tagged production journeys in the required `critical journeys (Firefox)` CI job;
-- four deterministic interface baselines in the required `visual regression (Chromium)` CI job;
+- 18 tagged production journeys in the required `critical journeys (Firefox)` CI job;
+- six deterministic interface baselines in the required `visual regression (Chromium)` CI job;
 - a seven-day Playwright report/trace/screenshot/video artifact when that browser job fails;
 - reviewed visual snapshot changes;
 - heuristic secret scan;
@@ -370,7 +372,7 @@ dispatched, protected workflow described below.
 
 ### Scheduled browser matrix
 
-- the complete 57-scenario Chromium, Firefox and WebKit matrix, with per-browser failure evidence
+- the complete production-journey Chromium, Firefox and WebKit matrix, with per-browser failure evidence
   retained for 14 days;
 
 The current scheduled workflow runs the browser matrix only. Separate scheduled fuzz/property,

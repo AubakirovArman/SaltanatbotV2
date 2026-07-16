@@ -61,6 +61,13 @@ test("mobile market bottom sheet", async ({ page }) => {
   await capture(page, "terminal-mobile-markets-dark.png");
 });
 
+test("mobile drawing tools bottom sheet", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".mobile-drawing-tools-trigger").click();
+  await expect(page.getByRole("dialog", { name: "Drawing tools" })).toBeVisible();
+  await capture(page, "terminal-mobile-drawing-tools-dark.png");
+});
+
 test("four independent markets layout", async ({ page }) => {
   await page.getByRole("button", { name: "Chart layout" }).click();
   await page.getByRole("menuitem", { name: "Four different markets" }).click();

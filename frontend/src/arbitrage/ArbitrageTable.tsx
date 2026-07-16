@@ -1,5 +1,6 @@
 import { FlaskConical, Layers3 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { MOBILE_SHELL_MEDIA_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import type { Locale } from "../i18n";
 import { localeTag } from "../i18n";
 import type { ArbitrageDepthResponse, ArbitrageOpportunity } from "./client";
@@ -43,6 +44,8 @@ const signalQualityKey = {
 
 export function ArbitrageTable({ locale, rows, columns = ALL_COLUMNS, scenario, depth, onDepth, onPaper, onOpenChart, profile, notionalUsd }: Props) {
   const [page, setPage] = useState(0);
+  const [mobileView, setMobileView] = useState<"cards" | "table">("cards");
+  const mobileLayout = useMediaQuery(MOBILE_SHELL_MEDIA_QUERY);
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   useEffect(() => {
     setPage((value) => Math.min(value, pages - 1));
@@ -51,30 +54,53 @@ export function ArbitrageTable({ locale, rows, columns = ALL_COLUMNS, scenario, 
   const from = rows.length ? page * PAGE_SIZE + 1 : 0;
   const to = Math.min(rows.length, (page + 1) * PAGE_SIZE);
   return (
-    <div className="arb-table-shell">
-      <table className="arb-table" style={{ minWidth: `${Math.max(680, columns.size * 135)}px` }}>
-        <caption>{arbitrageText(locale, "results")}</caption>
-        <thead>
-          <tr>
-            {columns.has("route") && <th scope="col">{arbitrageText(locale, "pair")}</th>}
-            {columns.has("spot") && <th scope="col">{arbitrageText(locale, "buySpot")}</th>}
-            {columns.has("perpetual") && <th scope="col">{arbitrageText(locale, "shortPerpetual")}</th>}
-            {columns.has("gross") && <th scope="col">{arbitrageText(locale, "grossSpread")}</th>}
-            {columns.has("net") && <th scope="col">{arbitrageText(locale, "netEdge")}</th>}
-            {columns.has("profit") && <th scope="col">{arbitrageText(locale, "expectedProfit")}</th>}
-            {columns.has("capacity") && <th scope="col">{arbitrageText(locale, "capacity")}</th>}
-            {columns.has("funding") && <th scope="col">{arbitrageText(locale, "funding")}</th>}
-            {columns.has("actions") && <th scope="col">{arbitrageText(locale, "actions")}</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((row) => {
-            const displayedScenario = scenario(row);
-            const isOpen = depth?.routeId === row.id;
-            return <RowGroup key={row.id} row={row} locale={locale} columns={columns} scenario={displayedScenario} depth={isOpen ? depth : undefined} onDepth={() => onDepth(row)} onPaper={() => onPaper(row)} onOpenChart={onOpenChart} profile={profile} notionalUsd={notionalUsd} />;
-          })}
-        </tbody>
-      </table>
+    <div className="arb-table-shell" data-mobile-view={mobileView}>
+      {mobileLayout && (
+        <>
+          <div className="arb-results-view-switch" role="group" aria-label={arbitrageText(locale, "switchResultsView")}>
+            <button type="button" aria-pressed={mobileView === "cards"} onClick={() => setMobileView("cards")}>
+              {arbitrageText(locale, "resultCards")}
+            </button>
+            <button type="button" aria-pressed={mobileView === "table"} onClick={() => setMobileView("table")}>
+              {arbitrageText(locale, "fullResultsTable")}
+            </button>
+          </div>
+          {mobileView === "cards" && (
+            <ol className="arb-card-list" aria-label={arbitrageText(locale, "results")}>
+              {visible.map((row) => {
+                const displayedScenario = scenario(row);
+                const isOpen = depth?.routeId === row.id;
+                return <OpportunityCard key={row.id} row={row} locale={locale} columns={columns} scenario={displayedScenario} depth={isOpen ? depth : undefined} onDepth={() => onDepth(row)} onPaper={() => onPaper(row)} onOpenChart={onOpenChart} profile={profile} notionalUsd={notionalUsd} />;
+              })}
+            </ol>
+          )}
+        </>
+      )}
+      {(!mobileLayout || mobileView === "table") && (
+        <table className="arb-table" style={{ minWidth: `${Math.max(680, columns.size * 135)}px` }}>
+          <caption>{arbitrageText(locale, "results")}</caption>
+          <thead>
+            <tr>
+              {columns.has("route") && <th scope="col">{arbitrageText(locale, "pair")}</th>}
+              {columns.has("spot") && <th scope="col">{arbitrageText(locale, "buySpot")}</th>}
+              {columns.has("perpetual") && <th scope="col">{arbitrageText(locale, "shortPerpetual")}</th>}
+              {columns.has("gross") && <th scope="col">{arbitrageText(locale, "grossSpread")}</th>}
+              {columns.has("net") && <th scope="col">{arbitrageText(locale, "netEdge")}</th>}
+              {columns.has("profit") && <th scope="col">{arbitrageText(locale, "expectedProfit")}</th>}
+              {columns.has("capacity") && <th scope="col">{arbitrageText(locale, "capacity")}</th>}
+              {columns.has("funding") && <th scope="col">{arbitrageText(locale, "funding")}</th>}
+              {columns.has("actions") && <th scope="col">{arbitrageText(locale, "actions")}</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((row) => {
+              const displayedScenario = scenario(row);
+              const isOpen = depth?.routeId === row.id;
+              return <RowGroup key={row.id} row={row} locale={locale} columns={columns} scenario={displayedScenario} depth={isOpen ? depth : undefined} onDepth={() => onDepth(row)} onPaper={() => onPaper(row)} onOpenChart={onOpenChart} profile={profile} notionalUsd={notionalUsd} />;
+            })}
+          </tbody>
+        </table>
+      )}
       {rows.length > PAGE_SIZE && (
         <nav className="arb-pagination" aria-label={arbitrageText(locale, "results")}>
           <button type="button" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>
@@ -152,35 +178,7 @@ function RowGroup({
         {columns.has("funding") && <td className={row.fundingRate >= 0 ? "funding-positive" : "funding-negative"}>{(row.fundingRate * 100).toFixed(4)}%</td>}
         {columns.has("actions") && (
           <td>
-            <span className="arb-row-actions">
-              <button type="button" onClick={onDepth} aria-label={arbitrageText(locale, "analyzeDepth", { symbol: row.symbol })}>
-                <Layers3 size={14} aria-hidden="true" />
-              </button>
-              <button type="button" onClick={onPaper} aria-label={arbitrageText(locale, "openPaper", { symbol: row.symbol })} title={row.dataQuality === "fresh" ? undefined : arbitrageText(locale, "paperRequiresFreshSignal")}>
-                <FlaskConical size={14} aria-hidden="true" />
-              </button>
-              <OpportunityHandoffButton locale={locale} name={row.symbol} createOpportunity={() => adaptBasisOpportunity(row, scenario)} />
-              <button
-                type="button"
-                onClick={() => onOpenChart({ symbol: row.symbol, exchange: row.spotExchange, marketType: "spot", priceType: "last" })}
-                aria-label={arbitrageText(locale, "openSpotChart", { symbol: row.symbol, venue: venue(row.spotExchange) })}
-                title={arbitrageText(locale, "openSpotChart", { symbol: row.symbol, venue: venue(row.spotExchange) })}
-              >
-                <span className="arb-market-glyph" aria-hidden="true">
-                  S
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onOpenChart({ symbol: row.symbol, exchange: row.futuresExchange, marketType: "linear", priceType: "last" })}
-                aria-label={arbitrageText(locale, "openPerpetualChart", { symbol: row.symbol, venue: venue(row.futuresExchange) })}
-                title={arbitrageText(locale, "openPerpetualChart", { symbol: row.symbol, venue: venue(row.futuresExchange) })}
-              >
-                <span className="arb-market-glyph" aria-hidden="true">
-                  P
-                </span>
-              </button>
-            </span>
+            <RowActions row={row} locale={locale} scenario={scenario} onDepth={onDepth} onPaper={onPaper} onOpenChart={onOpenChart} />
           </td>
         )}
       </tr>
@@ -192,6 +190,157 @@ function RowGroup({
         </tr>
       )}
     </>
+  );
+}
+
+function OpportunityCard({
+  row,
+  locale,
+  columns,
+  scenario,
+  depth,
+  onDepth,
+  onPaper,
+  onOpenChart,
+  profile,
+  notionalUsd
+}: {
+  row: ArbitrageOpportunity;
+  locale: Locale;
+  columns: ReadonlySet<string>;
+  scenario: BasisDisplayedScenario;
+  depth?: Props["depth"];
+  onDepth(): void;
+  onPaper(): void;
+  onOpenChart(target: ArbitrageChartTarget): void;
+  profile: ArbitrageFeeProfile;
+  notionalUsd: number;
+}) {
+  const number = (value: number) => new Intl.NumberFormat(localeTag(locale), { maximumSignificantDigits: 10 }).format(value);
+  const money = (value: number, digits = 0) => new Intl.NumberFormat(localeTag(locale), { style: "currency", currency: "USD", maximumFractionDigits: digits }).format(value);
+  const net = scenario.netEdgeBps;
+  const profit = scenario.projectedNetProfitUsd;
+  const cost = scenario.basisScenario.costBreakdownBps.total;
+  return (
+    <li className="arb-result-card">
+      <article>
+        <header>
+          <div>
+            <strong>{row.symbol}</strong>
+            <small>
+              USDT · <mark className={row.dataQuality === "fresh" ? "positive" : "negative"}>{arbitrageText(locale, signalQualityKey[row.dataQuality])}</mark>
+            </small>
+          </div>
+          {columns.has("net") && (
+            <div className="arb-card-edge">
+              <span>{arbitrageText(locale, "netEdge")}</span>
+              <mark className={net > 0 ? "positive" : "negative"}>{formatBps(net)}</mark>
+              <small>
+                −{cost.toFixed(1)} {arbitrageText(locale, "basisPointUnit")}
+              </small>
+            </div>
+          )}
+        </header>
+        {(columns.has("spot") || columns.has("perpetual")) && (
+          <div className="arb-card-legs">
+            {columns.has("spot") && (
+              <section>
+                <span>{arbitrageText(locale, "buySpot")}</span>
+                <strong>{venue(row.spotExchange)}</strong>
+                <small>
+                  {arbitrageText(locale, "buyAt")} {number(row.spotAsk)}
+                </small>
+              </section>
+            )}
+            {columns.has("perpetual") && (
+              <section>
+                <span>{arbitrageText(locale, "shortPerpetual")}</span>
+                <strong>{venue(row.futuresExchange)}</strong>
+                <small>
+                  {arbitrageText(locale, "sellAt")} {number(row.futuresBid)}
+                </small>
+              </section>
+            )}
+          </div>
+        )}
+        <dl className="arb-card-metrics">
+          {columns.has("gross") && (
+            <div>
+              <dt>{arbitrageText(locale, "grossSpread")}</dt>
+              <dd>{formatBps(row.grossSpreadBps)}</dd>
+            </div>
+          )}
+          {columns.has("profit") && (
+            <div>
+              <dt>{arbitrageText(locale, "expectedProfit")}</dt>
+              <dd className={profit > 0 ? "positive" : "negative"}>{money(profit, 2)}</dd>
+            </div>
+          )}
+          {columns.has("capacity") && (
+            <div>
+              <dt>{arbitrageText(locale, "capacity")}</dt>
+              <dd>{money(row.topBookCapacityUsd)}</dd>
+            </div>
+          )}
+          {columns.has("funding") && (
+            <div>
+              <dt>{arbitrageText(locale, "funding")}</dt>
+              <dd className={row.fundingRate >= 0 ? "funding-positive" : "funding-negative"}>{(row.fundingRate * 100).toFixed(4)}%</dd>
+            </div>
+          )}
+        </dl>
+        {columns.has("actions") && <RowActions row={row} locale={locale} scenario={scenario} onDepth={onDepth} onPaper={onPaper} onOpenChart={onOpenChart} />}
+        {depth && <DepthPanel locale={locale} state={depth} row={row} profile={profile} notionalUsd={notionalUsd} />}
+      </article>
+    </li>
+  );
+}
+
+function RowActions({
+  row,
+  locale,
+  scenario,
+  onDepth,
+  onPaper,
+  onOpenChart
+}: {
+  row: ArbitrageOpportunity;
+  locale: Locale;
+  scenario: BasisDisplayedScenario;
+  onDepth(): void;
+  onPaper(): void;
+  onOpenChart(target: ArbitrageChartTarget): void;
+}) {
+  return (
+    <span className="arb-row-actions">
+      <button type="button" onClick={onDepth} aria-label={arbitrageText(locale, "analyzeDepth", { symbol: row.symbol })}>
+        <Layers3 size={14} aria-hidden="true" />
+      </button>
+      <button type="button" onClick={onPaper} aria-label={arbitrageText(locale, "openPaper", { symbol: row.symbol })} title={row.dataQuality === "fresh" ? undefined : arbitrageText(locale, "paperRequiresFreshSignal")}>
+        <FlaskConical size={14} aria-hidden="true" />
+      </button>
+      <OpportunityHandoffButton locale={locale} name={row.symbol} createOpportunity={() => adaptBasisOpportunity(row, scenario)} />
+      <button
+        type="button"
+        onClick={() => onOpenChart({ symbol: row.symbol, exchange: row.spotExchange, marketType: "spot", priceType: "last" })}
+        aria-label={arbitrageText(locale, "openSpotChart", { symbol: row.symbol, venue: venue(row.spotExchange) })}
+        title={arbitrageText(locale, "openSpotChart", { symbol: row.symbol, venue: venue(row.spotExchange) })}
+      >
+        <span className="arb-market-glyph" aria-hidden="true">
+          S
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onOpenChart({ symbol: row.symbol, exchange: row.futuresExchange, marketType: "linear", priceType: "last" })}
+        aria-label={arbitrageText(locale, "openPerpetualChart", { symbol: row.symbol, venue: venue(row.futuresExchange) })}
+        title={arbitrageText(locale, "openPerpetualChart", { symbol: row.symbol, venue: venue(row.futuresExchange) })}
+      >
+        <span className="arb-market-glyph" aria-hidden="true">
+          P
+        </span>
+      </button>
+    </span>
   );
 }
 

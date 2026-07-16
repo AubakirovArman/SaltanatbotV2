@@ -209,6 +209,11 @@ export const kkShell: Record<ShellMessageKey, string> = {
   signals: "сигналдар",
   dashedLine: "Үзік сызық",
   drawingTools: "Сурет салу құралдары",
+  drawingLines: "Сызықтар",
+  drawingShapes: "Пішіндер",
+  drawingPositions: "Позициялар",
+  searchDrawingTools: "Сурет салу құралдарын іздеу",
+  lineWidth: "Сызық қалыңдығы",
   cursor: "Курсор (Esc)",
   trendLine: "Тренд сызығы",
   ray: "Сәуле",
@@ -321,5 +326,5 @@ export const kkShell: Record<ShellMessageKey, string> = {
   timeZoneLondon: "Лондон",
   timeZoneBerlin: "Берлин",
   timeZoneTokyo: "Токио",
-  timeZoneHongKong: "Гонконг",
+  timeZoneHongKong: "Гонконг"
 };

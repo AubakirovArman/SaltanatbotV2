@@ -58,6 +58,11 @@ Each phase is shipped independently and must include:
    mandatory password change, migrations, health, a sample paper run, backup,
    restore and upgrade; it preflights port collisions and never mutates another
    project's database, container or service.
+10. UI releases include a streamed-data performance soak and retain at least
+    10% headroom in the main and heavy asynchronous bundle budgets.
+11. Observability, global admission limits, backup/restore and failure handling
+    are introduced by the releases that create each workload. R11 integrates
+    and proves them; it is not their first implementation.
 
 ## Phase 0 — enforce Research / Paper mode
 
@@ -188,9 +193,11 @@ is not mistaken for completed product work:
 ## R2 — mobile chart, navigation and Strategy Studio
 
 **Status:** active. The reported volume-profile, screener, price-axis and
-half-width Strategy Studio defects are fixed in the current baseline, but the
-remaining drawing-tool, gesture and complete viewport/browser matrix is not yet
-accepted.
+half-width Strategy Studio defects are fixed. Mobile drawing tools, the touch
+state machine, short landscape, coarse tablets and the automated viewport/browser
+matrix are now accepted; the streamed-data performance soak plus manual Android
+Opera and assistive-technology smoke checks remain. The bundle checker now
+enforces a mandatory 10% reserve against reviewed round caps.
 
 **Baseline:**
 
@@ -203,26 +210,28 @@ accepted.
   through the 760 px mobile breakpoint;
 - Strategy Studio library, editor and parameters use one full-width mobile pane
   with useful height rather than a clipped half-width desktop layout.
+- every desktop drawing tool is available from a 44 px mobile control and
+  searchable bottom sheet, with active tool, undo, redo, delete and object list;
+- pan, long-press inspect, draw and pinch use an explicit touch state machine
+  with pointer-cancel, lost-capture and orientation-reset handling;
+- dense arbitrage results default to compact cards with an explicit full-table
+  alternative.
 
 **Remaining:**
 
-- make every desktop drawing tool reachable from a minimum 44 px **Tools**
-  control and bottom sheet;
-- keep active tool, undo, redo, delete and object list reachable near the chart;
-- finish the pan/long-press inspect/draw/pinch state machine, including
-  `pointercancel`, orientation change and safe-area handling;
-- complete the landscape, touch, keyboard, 200% text, Firefox and manual Opera
-  evidence matrix without regressing the fixed price-axis/profile/screener/
-  Strategy Studio geometry;
-- use compact cards for dense mobile data, retaining an explicit full-table view.
+- run the 5–10 minute synthetic market-stream benchmark and prove that hidden
+  panels release unnecessary subscriptions, ticks do not rerender the whole
+  application and candle updates do not copy the full retained history;
+- complete the manual Android Opera and VoiceOver/NVDA/TalkBack smoke record.
 
 **Dependencies:** R1 runtime boundary and the existing chart/strategy state
 contracts.
 
-**Evidence:** screenshots and geometry assertions at 320, 360, 390, 430, 600,
-760, 761, 768, 1024 and 1440 CSS pixels; mobile landscape; touch and keyboard
-journeys; `pointercancel`; 200% text; Chromium visual regression and Firefox
-critical journeys.
+**Evidence:** 74 Chromium E2E journeys, 18 Firefox critical journeys, six
+container visual snapshots, screenshots and geometry assertions at 320, 360,
+390, 430, 600, 760, 761, 768, 1024 and 1440 CSS pixels, mobile landscape,
+touch/keyboard journeys, `pointercancel`, 200% text, plus the remaining
+performance artifact and manual Opera record.
 
 **Exit criteria:** the chart price, price axis, indicator controls, volume
 profile, drawings and all Strategy Studio panels remain visible, dismissible and
@@ -572,6 +581,10 @@ can start live execution.
 
 **Status:** planned validation; the large current host snapshot is not a
 100-user guarantee.
+
+R3-R10 incrementally deliver the workload caps, metrics, readiness, backup
+evidence and load fixtures they need. R11 combines them into one reproducible
+capacity and failure-recovery proof.
 
 **Baseline:** API and worker PostgreSQL pools, authentication hashing, shared
 market subscriptions, slow-client disconnects, owner-scoped job quotas,

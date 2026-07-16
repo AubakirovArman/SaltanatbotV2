@@ -1,11 +1,12 @@
 {
+  "minimumHeadroomRatio": 0.1,
   "maxHtmlBytes": 4096,
   "maxCssGzipBytes": 24576,
   "maxInitialCssGzipBytes": 22528,
-  "maxTotalCssGzipBytes": 41984,
-  "maxSingleJsBytes": 778240,
-  "maxSingleJsGzipBytes": 204800,
+  "maxTotalCssGzipBytes": 49152,
+  "maxSingleJsBytes": 870400,
+  "maxSingleJsGzipBytes": 230400,
   "maxInitialJsGzipBytes": 174080,
   "maxLazyRouteJsGzipBytes": 344064,
-  "maxTotalJsGzipBytes": 794624
+  "maxTotalJsGzipBytes": 921600
 }

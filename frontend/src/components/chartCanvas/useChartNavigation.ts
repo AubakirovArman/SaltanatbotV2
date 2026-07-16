@@ -1,10 +1,12 @@
-import { useEffect, useRef, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { visibleCandles } from "../../chart/scales";
 import type { PriceMode, Viewport } from "../../chart/types";
 import type { Candle } from "../../types";
 
 export const MIN_CHART_ZOOM = 0.4;
 export const MAX_CHART_ZOOM = 4;
+export const CHART_LONG_PRESS_DELAY_MS = 500;
+export const CHART_TOUCH_MOVEMENT_SLOP_PX = 10;
 const WHEEL_DEAD_ZONE = 0.35;
 
 export interface ChartNavigationView {
@@ -34,6 +36,8 @@ export interface ChartTouchPoint {
   y: number;
 }
 
+export type ChartTouchMode = "idle" | "pending-pan" | "pan" | "inspect" | "pending-draw" | "draw" | "edit" | "measure" | "pinch";
+
 export interface ChartPinchGesture {
   anchorIndex: number;
   startDistance: number;
@@ -47,6 +51,17 @@ interface PinchNavigationInput {
   view: ChartNavigationView;
   candles: Candle[];
   viewport?: Viewport;
+}
+
+interface ChartTouchNavigationCallbacks {
+  onPinchStart?: () => void;
+  onPinchEnd?: () => void;
+  onSingleTouchResume?: (pointerId: number, point: ChartTouchPoint, offset: number) => void;
+  onReset?: (reason: "pointercancel" | "lostpointercapture") => void;
+}
+
+export function chartTouchMovementExceeded(start: ChartTouchPoint, current: ChartTouchPoint, slop = CHART_TOUCH_MOVEMENT_SLOP_PX) {
+  return Math.hypot(current.x - start.x, current.y - start.y) > Math.max(0, slop);
 }
 
 /** Apply one normalized/coalesced trackpad or mouse-wheel frame. */
@@ -166,21 +181,24 @@ export function useChartTouchNavigation(
   candles: Candle[],
   view: ChartNavigationView,
   setView: Dispatch<SetStateAction<ChartNavigationView>>,
-  onSingleTouchResume?: (x: number, offset: number) => void
+  callbacks: ChartTouchNavigationCallbacks = {}
 ) {
   const candlesRef = useRef(candles);
   const viewRef = useRef(view);
-  const resumeRef = useRef(onSingleTouchResume);
+  const callbacksRef = useRef(callbacks);
+  const resetRef = useRef<() => void>(() => undefined);
   candlesRef.current = candles;
   viewRef.current = view;
-  resumeRef.current = onSingleTouchResume;
+  callbacksRef.current = callbacks;
   const gestureActiveRef = useRef(false);
+  const reset = useCallback(() => resetRef.current(), []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const points = new Map<number, ChartTouchPoint>();
     let gesture: ChartPinchGesture | undefined;
+    let disposed = false;
 
     const pointFromEvent = (event: PointerEvent): ChartTouchPoint => {
       const rect = canvas.getBoundingClientRect();
@@ -194,6 +212,20 @@ export function useChartTouchNavigation(
       event.preventDefault();
       event.stopPropagation();
     };
+    const resetState = () => {
+      const captured = [...points.keys()];
+      points.clear();
+      gesture = undefined;
+      gestureActiveRef.current = false;
+      for (const pointerId of captured) {
+        try {
+          if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+        } catch {
+          // The browser may already have released a cancelled pointer.
+        }
+      }
+    };
+    resetRef.current = resetState;
     const onPointerDown = (event: PointerEvent) => {
       if (event.pointerType !== "touch") return;
       if (gesture || points.size >= 2) {
@@ -215,6 +247,7 @@ export function useChartTouchNavigation(
       }
       gesture = beginChartPinchGesture(currentPair, viewRef.current, viewportRef.current);
       gestureActiveRef.current = true;
+      callbacksRef.current.onPinchStart?.();
     };
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerType !== "touch") return;
@@ -247,24 +280,30 @@ export function useChartTouchNavigation(
       const wasGesture = gesture !== undefined;
       points.delete(event.pointerId);
       if (!wasGesture) return;
-      event.preventDefault();
-      if (resume) event.stopPropagation();
+      contain(event);
       gesture = undefined;
       gestureActiveRef.current = false;
-      const remaining = resume ? points.values().next().value as ChartTouchPoint | undefined : undefined;
-      if (remaining) {
+      callbacksRef.current.onPinchEnd?.();
+      const remaining = resume ? points.entries().next().value as [number, ChartTouchPoint] | undefined : undefined;
+      if (remaining !== undefined) {
         queueMicrotask(() => {
-          if (points.size === 1 && gesture === undefined) resumeRef.current?.(remaining.x, viewRef.current.offset);
+          if (!disposed && points.size === 1 && points.has(remaining[0]) && gesture === undefined) {
+            callbacksRef.current.onSingleTouchResume?.(remaining[0], remaining[1], viewRef.current.offset);
+          }
         });
       }
     };
     const onPointerUp = (event: PointerEvent) => finishPointer(event, true);
-    const onPointerCancel = (event: PointerEvent) => finishPointer(event, false);
+    const onPointerCancel = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" || !points.has(event.pointerId)) return;
+      contain(event);
+      resetState();
+      callbacksRef.current.onReset?.("pointercancel");
+    };
     const onLostPointerCapture = (event: PointerEvent) => {
       if (!points.has(event.pointerId)) return;
-      points.delete(event.pointerId);
-      gesture = undefined;
-      gestureActiveRef.current = false;
+      resetState();
+      callbacksRef.current.onReset?.("lostpointercapture");
     };
 
     canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
@@ -278,12 +317,13 @@ export function useChartTouchNavigation(
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerCancel);
       canvas.removeEventListener("lostpointercapture", onLostPointerCapture);
-      points.clear();
-      gestureActiveRef.current = false;
+      disposed = true;
+      resetState();
+      resetRef.current = () => undefined;
     };
   }, [canvasRef, setView, viewportRef]);
 
-  return gestureActiveRef;
+  return { gestureActiveRef, reset };
 }
 
 function zoomOnly(view: ChartNavigationView, deltaY: number, ctrlKey: boolean): ChartNavigationView {

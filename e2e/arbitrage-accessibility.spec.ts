@@ -18,6 +18,10 @@ test("keeps the RU/KK arbitrage screener keyboard and screen-reader operable on 
   await page.keyboard.press("Enter");
 
   await expect(page.getByRole("heading", { name: "Арбитражный скринер спот/фьючерс" })).toBeVisible();
+  const ruResultView = page.locator(".arb-results-view-switch");
+  await expect(ruResultView.getByRole("button", { name: "Карточки" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".arb-result-card").first()).toContainText("BTCUSDT");
+  await ruResultView.getByRole("button", { name: "Полная таблица" }).click();
   const ruBasisTable = page.getByRole("table", { name: "Исследовательские внутрибиржевые и межбиржевые кандидаты спот/фьючерс" });
   await expect(ruBasisTable.getByRole("row").filter({ hasText: "BTCUSDT" })).toBeVisible();
   const search = page.getByLabel("Поиск пары");
@@ -82,6 +86,7 @@ test("keeps the RU/KK arbitrage screener keyboard and screen-reader operable on 
   await page.keyboard.press("Enter");
   await expect(page.locator(".arb-mode-switch button[aria-pressed=true]")).toHaveText("Spot ↔ perpetual");
   await expect(page.getByRole("heading", { name: "Spot/perpetual арбитраж скринері" })).toBeVisible();
+  await page.locator(".arb-results-view-switch").getByRole("button", { name: "Толық кесте" }).click();
   const kkBasisTable = page.getByRole("table", { name: "Биржаішілік және биржааралық spot/perpetual зерттеу кандидаттары" });
   await expect(kkBasisTable.getByRole("row").filter({ hasText: "BTCUSDT" })).toBeVisible();
   await page.getByText("Комиссиялар, alert және симуляция", { exact: true }).click();
@@ -111,14 +116,43 @@ test("keeps the screener mode chooser compact across the complete mobile breakpo
   await expect(page.getByRole("heading", { name: "Арбитражный скринер спот/фьючерс" })).toBeVisible();
 
   const trigger = page.locator(".arb-mode-trigger");
-  for (const width of [320, 390, 600, 760]) {
-    await page.setViewportSize({ width, height: 844 });
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 360, height: 800 },
+    { width: 390, height: 844 },
+    { width: 430, height: 932 },
+    { width: 600, height: 844 },
+    { width: 760, height: 844 }
+  ]) {
+    const { width } = viewport;
+    await page.setViewportSize(viewport);
     await expect(trigger).toBeVisible();
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
-    await expect
-      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1))
-      .toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
     expect(await page.locator(".arb-mode-bar").evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(80);
+    if (width === 390) {
+      const viewSwitch = page.locator(".arb-results-view-switch");
+      const cards = page.locator(".arb-card-list");
+      const table = page.locator(".arb-table");
+      await expect(viewSwitch).toBeVisible();
+      await expect(viewSwitch.getByRole("button", { name: "Карточки" })).toHaveAttribute("aria-pressed", "true");
+      await expect(cards).toBeVisible();
+      await expect(cards.locator(".arb-result-card").first()).toContainText("BTCUSDT");
+      await expect(table).toBeHidden();
+      for (const action of await cards.locator(".arb-result-card").first().locator(".arb-row-actions button").all()) {
+        const box = await action.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.width).toBeGreaterThanOrEqual(44);
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+      }
+
+      await viewSwitch.getByRole("button", { name: "Полная таблица" }).click();
+      await expect(table).toBeVisible();
+      await expect(cards).toBeHidden();
+      await expect.poll(() => page.locator(".arb-table-shell").evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+      await viewSwitch.getByRole("button", { name: "Карточки" }).click();
+      await expect(cards).toBeVisible();
+    }
   }
 
   await page.setViewportSize({ width: 761, height: 844 });

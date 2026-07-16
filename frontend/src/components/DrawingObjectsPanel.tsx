@@ -1,9 +1,12 @@
 import { Eye, EyeOff, Lock, Redo2, Save, Trash2, Undo2, Unlock, X } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { DrawingObject } from "../chart/drawings";
 import { loadDrawingTemplates, removeDrawingTemplate, saveDrawingTemplate, type DrawingTemplate } from "../chart/drawingTemplates";
+import { MOBILE_SHELL_MEDIA_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import type { Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
+import { drawingToolLabelKey } from "./chartCanvas/drawingToolCatalog";
+import { MobilePanelDialog } from "./MobilePanelDialog";
 
 interface DrawingObjectsPanelProps {
   locale: Locale;
@@ -26,49 +29,59 @@ export function DrawingObjectsPanel({ locale, drawings, selectedId, canUndo, can
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const [templates, setTemplates] = useState(() => loadDrawingTemplates(storageOwnerId));
   const selected = drawings.find((drawing) => drawing.id === selectedId);
+  const mobile = useMediaQuery(MOBILE_SHELL_MEDIA_QUERY);
+  const dialogId = useId();
+
   const saveTemplate = () => {
     if (!selected) return;
-    const name = window.prompt(t("drawingTemplateName"), `${selected.tool} style`)?.trim();
+    const name = window.prompt(t("drawingTemplateName"), `${t(drawingToolLabelKey(selected.tool))} style`)?.trim();
     if (!name) return;
     setTemplates(saveDrawingTemplate({ id: `drawing-template-${Date.now()}`, name, tool: selected.tool, style: { ...selected.style }, createdAt: Date.now() }, storageOwnerId));
   };
-  return (
-    <aside className="drawing-objects-panel" aria-label={t("drawingObjects")}>
+
+  const content = (insideMobileSheet: boolean) => (
+    <>
       <header>
         <strong>{t("drawingObjects")}</strong>
         <div>
           <button type="button" disabled={!canUndo} onClick={onUndo} aria-label={t("undoDrawing")} title={t("undoDrawing")}>
-            <Undo2 size={13} aria-hidden="true" />
+            <Undo2 size={16} aria-hidden="true" />
           </button>
           <button type="button" disabled={!canRedo} onClick={onRedo} aria-label={t("redoDrawing")} title={t("redoDrawing")}>
-            <Redo2 size={13} aria-hidden="true" />
+            <Redo2 size={16} aria-hidden="true" />
           </button>
           <button type="button" disabled={!selected} onClick={saveTemplate} aria-label={t("saveDrawingTemplate")} title={t("saveDrawingTemplate")}>
-            <Save size={13} aria-hidden="true" />
+            <Save size={16} aria-hidden="true" />
           </button>
-          <button type="button" onClick={onClose} aria-label={t("closeDrawingObjects")}>
-            <X size={13} aria-hidden="true" />
-          </button>
+          {!insideMobileSheet && (
+            <button type="button" onClick={onClose} aria-label={t("closeDrawingObjects")}>
+              <X size={16} aria-hidden="true" />
+            </button>
+          )}
         </div>
       </header>
       <ul className="drawing-object-list">
-        {drawings.map((drawing, index) => (
-          <li key={drawing.id} className={drawing.id === selectedId ? "active" : ""}>
-            <button type="button" className="drawing-object-name" onClick={() => onSelect(drawing.id)}>
-              <span>{drawing.tool === "anchored-vwap" ? t("anchoredVwap") : drawing.tool}</span>
-              <small>#{index + 1}</small>
-            </button>
-            <button type="button" onClick={() => onToggleHidden(drawing.id)} aria-label={drawing.hidden ? t("showDrawing") : t("hideDrawing")}>
-              {drawing.hidden ? <EyeOff size={12} aria-hidden="true" /> : <Eye size={12} aria-hidden="true" />}
-            </button>
-            <button type="button" onClick={() => onToggleLocked(drawing.id)} aria-label={drawing.locked ? t("unlockDrawing") : t("lockDrawing")}>
-              {drawing.locked ? <Lock size={12} aria-hidden="true" /> : <Unlock size={12} aria-hidden="true" />}
-            </button>
-            <button type="button" onClick={() => onDelete(drawing.id)} aria-label={t("deleteDrawing")}>
-              <Trash2 size={12} aria-hidden="true" />
-            </button>
-          </li>
-        ))}
+        {drawings.map((drawing, index) => {
+          const name = t(drawingToolLabelKey(drawing.tool));
+          const number = index + 1;
+          return (
+            <li key={drawing.id} className={drawing.id === selectedId ? "active" : ""}>
+              <button type="button" className="drawing-object-name" aria-pressed={drawing.id === selectedId} onClick={() => onSelect(drawing.id)}>
+                <span>{name}</span>
+                <small>#{number}</small>
+              </button>
+              <button type="button" onClick={() => onToggleHidden(drawing.id)} aria-label={`${drawing.hidden ? t("showDrawing") : t("hideDrawing")} · ${name} #${number}`}>
+                {drawing.hidden ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+              </button>
+              <button type="button" onClick={() => onToggleLocked(drawing.id)} aria-label={`${drawing.locked ? t("unlockDrawing") : t("lockDrawing")} · ${name} #${number}`}>
+                {drawing.locked ? <Lock size={16} aria-hidden="true" /> : <Unlock size={16} aria-hidden="true" />}
+              </button>
+              <button type="button" onClick={() => onDelete(drawing.id)} aria-label={`${t("deleteDrawing")} · ${name} #${number}`}>
+                <Trash2 size={16} aria-hidden="true" />
+              </button>
+            </li>
+          );
+        })}
         {drawings.length === 0 && <li className="drawing-objects-empty">{t("noDrawingObjects")}</li>}
       </ul>
       {templates.length > 0 && (
@@ -77,15 +90,29 @@ export function DrawingObjectsPanel({ locale, drawings, selectedId, canUndo, can
           {templates.map((template) => (
             <div key={template.id}>
               <button type="button" disabled={!selected || selected.tool !== template.tool} onClick={() => onApplyTemplate(template)}>
-                {template.name} · {template.tool}
+                {template.name} · {t(drawingToolLabelKey(template.tool))}
               </button>
               <button type="button" aria-label={`${t("remove")} ${template.name}`} onClick={() => setTemplates(removeDrawingTemplate(template.id, storageOwnerId))}>
-                <X size={11} aria-hidden="true" />
+                <X size={15} aria-hidden="true" />
               </button>
             </div>
           ))}
         </section>
       )}
+    </>
+  );
+
+  if (mobile) {
+    return (
+      <MobilePanelDialog id={dialogId} open label={t("drawingObjects")} closeLabel={t("closeDrawingObjects")} initialFocus={selected ? ".drawing-object-name[aria-pressed='true']" : drawings.length > 0 ? ".drawing-object-name" : ".mobile-panel-close"} onClose={onClose}>
+        <section className="drawing-objects-content mobile-drawing-objects">{content(true)}</section>
+      </MobilePanelDialog>
+    );
+  }
+
+  return (
+    <aside className="drawing-objects-panel drawing-objects-content" aria-label={t("drawingObjects")}>
+      {content(false)}
     </aside>
   );
 }
