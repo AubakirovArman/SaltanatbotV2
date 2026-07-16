@@ -324,6 +324,97 @@ and [R3.2 workspace workflow](./evidence/R3_2_WORKSPACE_WORKFLOW.md).
   appear only on localhost or a browser-reported secure context. No HTTPS work
   is part of this release.
 
+### R3.3 + O1 executable implementation order
+
+R3.3 is accepted as one compatible increment, implemented internally in this
+order:
+
+1. **Configuration and schema 11.**
+   - parse new limits, watermarks and TTL values strictly before database,
+     filesystem or listener side effects;
+   - add an owner-scoped onboarding row with a finite goal/step/status,
+     optimistic revision, timestamps and an optional created-workspace
+     reference;
+   - add a bounded component-heartbeat table containing only the required
+     research worker generation, status, schema/release version and last
+     heartbeat;
+   - preserve existing workspaces and avoid forcing established users through
+     a misleading first-run flow.
+2. **Owner-scoped onboarding API.**
+   - `GET /api/onboarding` reads only the authenticated principal;
+   - `PUT /api/onboarding` accepts finite goal/step/status values and
+     `expectedRevision`;
+   - stale writes receive stable `409 onboarding_revision_conflict`;
+   - responses use `Cache-Control: private, no-store`, a strict body limit and
+     no credential, account or private-exchange fields.
+3. **First useful journey.**
+   - choose Monitoring, Research, Backtest or Paper robot;
+   - create the existing server-synchronized workspace template;
+   - expose one next action in every empty state;
+   - support RU/EN/KK, keyboard use, 200% text and a mobile bottom sheet;
+   - reload restores the workspace and resumes an incomplete onboarding step.
+4. **HTTP-safe PWA boundary.**
+   - a single capability check permits Service Worker, install/update and the
+     offline bundle only in a browser secure context or on
+     localhost/loopback;
+   - `http://public-ip:4180` has no PWA launcher and registers no Service
+     Worker, while ordinary workspace/strategy/report import and export remain
+     available;
+   - show install only after a real `beforeinstallprompt`; never use
+     `skipWaiting`, and explain that all tabs must be closed for a waiting
+     update;
+   - require distinct 192, 512, maskable 512 and Apple 180 icons and keep
+     `/arbitrage-stream` plus every runtime transport path network-only;
+   - bound `navigator.serviceWorker.ready` with a timeout and hide PWA-specific
+     recovery controls on public HTTP.
+5. **First global admission controller.**
+   - initial evidence-driven defaults are 128 ordinary active API requests, a
+     queue of 256, a two-second wait and 16 reserved control slots;
+   - admission runs before large body parsers, including research job payloads;
+   - health/readiness, login/session/password, job cancellation and pause/stop
+     controls for existing paper work remain outside the heavy queue;
+   - overflow returns stable `503 global_admission_exhausted` with
+     `Retry-After`, and capacity is released on finish, close, abort and
+     exception;
+   - defaults are configurable and reviewed from load evidence, but ambiguous
+     environment values cannot disable the controller.
+6. **Readiness and minimum operational telemetry.**
+   - keep `/api/health` as a cheap liveness endpoint;
+   - make `/api/ready` versioned and cover migration checksum,
+     PostgreSQL/pool, the singleton paper executor, worker heartbeat
+     freshness, disk soft/hard watermarks and admission saturation;
+   - return `503 unready` for hard failures, `200 degraded` for soft
+     watermark/saturation and `200 ready` otherwise;
+   - expose no database name/path, PID, owner identifier or secret publicly;
+   - add admin-only fixed latency/status buckets, pool/admission metrics,
+     queue/worker freshness, executor state, disk and the last verified
+     recovery generation.
+7. **Paired PostgreSQL + SQLite recovery generation.**
+   - provide operator-only `backup/verify/restore/drill` commands and no HTTP
+     restore endpoint;
+   - bind one PostgreSQL custom dump and the existing verified SQLite runtime
+     backup in a manifest with checksums, schema versions, release commit,
+     capture interval and aggregate counts;
+   - restore only into a new empty project-owned PostgreSQL database and a new
+     absent/empty data directory;
+   - reject the current target, non-empty targets, symlinks, a corrupted half
+     of the generation or excessive capture skew;
+   - never change systemd/Compose, `PGDATABASE` or runtime paths and never
+     delete source or foreign resources.
+8. **Acceptance and publication.**
+   - two-owner isolation, stale revision and four fresh-account journeys;
+   - a real insecure-origin browser test proves PWA controls are absent while
+     ordinary export still works;
+   - readiness failure matrix, admission saturation/abort tests and worker
+     heartbeat recovery;
+   - corruption tests for each backup half and an isolated replacement restore
+     drill;
+   - record schema checksum, backup hashes, failure matrix and explicit
+     `public-http-paper` proof in human-readable and machine-readable evidence;
+   - after green local gates, update self-hosting/rollback documentation,
+     commit to `main`, verify GitHub Actions and cut over only project-owned
+     services.
+
 **Dependencies:** backend R3 work may begin after R1 with stable owner IDs and
 the current workspace migration path; publishing R3 also requires the remaining
 R2 evidence to be closed.

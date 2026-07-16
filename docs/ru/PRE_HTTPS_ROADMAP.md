@@ -419,6 +419,100 @@ release boundary. Remaining delta: реализовать onboarding без до
 - offline research bundle только на `localhost` или в secure context; на
   публичном HTTP остаётся обычный экспорт файла без обещания PWA/offline.
 
+### R3.3 + O1 — исполнимый порядок реализации
+
+R3.3 поставляется одним совместимым инкрементом, но реализуется внутри него в
+следующем порядке:
+
+1. **Конфигурация и миграция schema 11.**
+   - новые лимиты, watermarks и TTL строго разбираются до подключения к БД,
+     файловой системе и listener;
+   - аддитивная owner-scoped таблица хранит цель, конечный шаг, status,
+     optimistic `revision`, timestamps и опциональную ссылку на созданный
+     workspace;
+   - отдельная ограниченная таблица heartbeat хранит только состояние
+     обязательного `research-worker`, generation ID, schema/release version и
+     время последнего сигнала;
+   - существующие пользователи не теряют workspace и не вынуждены повторять
+     уже фактически завершённый первый запуск.
+2. **Owner-scoped onboarding API.**
+   - `GET /api/onboarding` возвращает только состояние текущего principal;
+   - `PUT /api/onboarding` принимает конечные enum goal/step/status и
+     `expectedRevision`;
+   - stale update получает стабильный `409 onboarding_revision_conflict`;
+   - ответы имеют `Cache-Control: private, no-store`, строгий body limit и не
+     содержат credential/account/private-exchange полей.
+3. **Первый полезный пользовательский маршрут.**
+   - выбор одной из целей: Monitoring, Research, Backtest или Paper robot;
+   - создание существующего server-synced workspace template;
+   - одно следующее действие в каждом empty state вместо набора конкурирующих
+     кнопок;
+   - RU/EN/KK, клавиатура, 200% текста и mobile bottom sheet;
+   - после reload пользователь возвращается в тот же workspace и продолжает
+     незавершённый шаг.
+4. **HTTP-safe PWA boundary.**
+   - единая capability-проверка разрешает Service Worker, install/update и
+     offline bundle только в browser secure context либо на
+     `localhost`/loopback;
+   - на `http://public-ip:4180` PWA launcher полностью отсутствует, Service
+     Worker не регистрируется, но обычные workspace/strategy/report
+     import/export продолжают работать;
+   - install prompt показывается только после реального
+     `beforeinstallprompt`; update не вызывает `skipWaiting`, а сообщает о
+     необходимости закрыть все вкладки;
+   - manifest получает отдельные 192, 512, maskable 512 и Apple 180 icons;
+     `/arbitrage-stream` и все runtime transport paths фиксируются как
+     network-only;
+   - ожидание `navigator.serviceWorker.ready` ограничено timeout, а
+     PWA-specific recovery controls скрыты на публичном HTTP.
+5. **Первый global admission controller.**
+   - начальные проверяемые defaults: 128 обычных active API requests, очередь
+     256, ожидание до 2 секунд и 16 зарезервированных control slots;
+   - admission выполняется до крупных body parsers, включая research job
+     payload;
+   - health/readiness, login/session/password, cancel job и pause/stop уже
+     запущенной paper-работы не блокируются тяжёлой очередью;
+   - переполнение возвращает стабильный
+     `503 global_admission_exhausted` и `Retry-After`; slot освобождается при
+     finish, close, abort и exception;
+   - defaults остаются конфигурируемыми и пересматриваются по load evidence,
+     но не могут отключаться неоднозначным значением environment.
+6. **Readiness и минимальная операционная телеметрия.**
+   - `/api/health` остаётся дешёвым liveness endpoint;
+   - `/api/ready` versioned-проверяет migration checksum, PostgreSQL/pool,
+     singleton paper executor, свежесть worker heartbeat, disk soft/hard
+     watermark и admission saturation;
+   - hard failure даёт `503 unready`, soft watermark/saturation —
+     `200 degraded`, нормальное состояние — `200 ready`;
+   - публичный ответ не раскрывает DB name/path, PID, owner ID или секреты;
+   - admin-only metrics показывают fixed latency/status buckets, pool,
+     admission, queue/worker freshness, executor state, disk и последнюю
+     проверенную recovery generation.
+7. **Парная recovery generation PostgreSQL + SQLite.**
+   - операторский CLI `backup/verify/restore/drill`, без HTTP restore endpoint;
+   - manifest связывает один PostgreSQL custom dump и существующий проверяемый
+     SQLite runtime backup, checksums, schema versions, release commit,
+     capture interval и агрегированные counts;
+   - restore разрешён только в новую пустую project-owned PostgreSQL database
+     и новый отсутствующий/пустой data directory;
+   - current target, non-empty target, symlink, повреждённая половина backup и
+     чрезмерный capture skew приводят к fail-closed;
+   - CLI не меняет systemd/Compose, `PGDATABASE` или runtime path и не удаляет
+     чужие либо исходные ресурсы.
+8. **Приёмка и публикация.**
+   - two-owner isolation, stale revision и четыре fresh-account journeys;
+   - real insecure-origin browser test подтверждает отсутствие PWA controls и
+     сохранение обычного экспорта;
+   - readiness failure matrix, admission saturation/abort tests и worker
+     heartbeat recovery;
+   - повреждение каждой половины backup и isolated replacement restore drill;
+   - schema checksum, backup hashes, failure matrix и доказательство
+     `public-http-paper` записываются в human-readable и machine-readable
+     evidence;
+   - после зелёных локальных gates обновляются self-hosting/rollback docs,
+     выполняются commit в `main`, GitHub Actions и cutover только project-owned
+     сервисов.
+
 Критерий: новый пользователь без инструкции создаёт первое полезное research/paper
 действие, а после перезапуска возвращается в свой workspace.
 
