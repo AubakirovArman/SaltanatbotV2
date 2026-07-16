@@ -54,5 +54,7 @@ export interface RunningBot {
   /** Signed REST fallback while private order streams are not connected. */
   orderPollTimer?: ReturnType<typeof setInterval>;
   orderPollOffset?: number;
+  /** Aborts a private stream even while its async subscription is still being authorized. */
+  privateOrderStreamAbort?: AbortController;
   privateOrderSubscription?: PrivateOrderSubscription;
 }

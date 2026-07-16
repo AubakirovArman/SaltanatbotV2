@@ -4,15 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getAuthToken } from "../src/auth.js";
 import { initializeRuntimeConfig, resetRuntimeConfigForTests } from "../src/config/runtimeConfig.js";
 import { createTradingApi } from "../src/trading/routes.js";
-import {
-  getBotForOwner,
-  getSetting,
-  getTradingAccountForOwner,
-  getTradingAccountCredentialsForOwner,
-  LEGACY_TRADING_OWNER_ID,
-  setSetting,
-  upsertBotForOwner
-} from "../src/trading/store.js";
+import { getBotForOwner, getSetting, getTradingAccountForOwner, getTradingAccountCredentialsForOwner, LEGACY_TRADING_OWNER_ID, setSetting, upsertBotForOwner } from "../src/trading/store.js";
 import { PaperMultiLegJournal, PaperMultiLegService, type PaperMultiLegPlan } from "../src/arbitrage/paperMultiLeg/index.js";
 import { resolveRuntimeProfile, runtimePolicyFromConfig } from "../src/runtimeProfile.js";
 
@@ -38,13 +30,17 @@ const fakeProvider = {
 vi.mock("../src/trading/store.js", () => {
   const bots = new Map<string, unknown>();
   const settings = new Map<string, unknown>();
+  const ownerAuthorities = new Map<string, { armed: boolean; epoch: number; updatedAt: number }>();
   const accounts = new Map<string, unknown>();
   const credentials = new Map<string, unknown>();
   const audit: unknown[] = [];
   const LEGACY_TRADING_OWNER_ID = "legacy-operator";
   const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
   class TradingAccountInUseError extends Error {
-    constructor(readonly accountId: string, readonly botIds: readonly string[]) {
+    constructor(
+      readonly accountId: string,
+      readonly botIds: readonly string[]
+    ) {
       super(`Trading account ${accountId} is used by ${botIds.length} bot(s).`);
     }
   }
@@ -136,9 +132,23 @@ vi.mock("../src/trading/store.js", () => {
     insertAuditLog: (row: unknown) => audit.unshift(clone(row)),
     insertAuditLogForOwner: (owner: string, row: unknown) => audit.unshift(clone({ ...(row as object), ownerUserId: owner })),
     listAuditLog: (limit: number) => audit.slice(0, limit).map((row) => clone(row)),
-    listAuditLogForOwner: (owner: string, limit: number) => audit.filter((row) => (row as { ownerUserId?: string }).ownerUserId === owner).slice(0, limit).map((row) => clone(row)),
+    listAuditLogForOwner: (owner: string, limit: number) =>
+      audit
+        .filter((row) => (row as { ownerUserId?: string }).ownerUserId === owner)
+        .slice(0, limit)
+        .map((row) => clone(row)),
     getSetting: (k: string) => (settings.has(k) ? clone(settings.get(k)) : undefined),
     setSetting: (k: string, v: unknown) => settings.set(k, clone(v)),
+    getTradingOwnerAuthorityForOwner: (ownerUserId: string) => ({
+      ownerUserId,
+      ...(ownerAuthorities.get(ownerUserId) ?? { armed: false, epoch: 0, updatedAt: 0 })
+    }),
+    setTradingOwnerArmedForOwner: (ownerUserId: string, armed: boolean) => {
+      const previous = ownerAuthorities.get(ownerUserId);
+      const authority = { armed, epoch: (previous?.epoch ?? 0) + 1, updatedAt: Date.now() };
+      ownerAuthorities.set(ownerUserId, authority);
+      return { ownerUserId, ...authority };
+    },
     disarmAllLiveTradingSettings: () => {
       let changed = 0;
       for (const key of settings.keys()) {
@@ -146,6 +156,10 @@ vi.mock("../src/trading/store.js", () => {
           settings.set(key, false);
           changed += 1;
         }
+      }
+      for (const [ownerUserId, previous] of ownerAuthorities) {
+        ownerAuthorities.set(ownerUserId, { armed: false, epoch: previous.epoch + 1, updatedAt: Date.now() });
+        changed += 1;
       }
       return changed;
     }
@@ -253,7 +267,9 @@ async function loginAs(token: string): Promise<{ cookie: string; csrf: string; r
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
-  const promise = new Promise<void>((done) => { resolve = done; });
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }
 
@@ -423,11 +439,13 @@ describe("trading API E2E (real router, in-memory store)", () => {
   });
 
   it("never selects a disabled configured account for telemetry or direct Bybit UTA mutations", async () => {
-    const created = await (await post("/accounts", {
-      label: "Disabled Bybit",
-      exchange: "bybit",
-      enabled: false
-    })).json() as { account: { id: string } };
+    const created = (await (
+      await post("/accounts", {
+        label: "Disabled Bybit",
+        exchange: "bybit",
+        enabled: false
+      })
+    ).json()) as { account: { id: string } };
     const id = created.account.id;
     const credentials = await fetch(`${base}/accounts/${id}/credentials`, {
       method: "PUT",
@@ -448,44 +466,57 @@ describe("trading API E2E (real router, in-memory store)", () => {
       expect(await response.json()).toMatchObject({ code: "TRADING_ACCOUNT_DISABLED" });
     }
 
-    expect((await fetch(`${base}/accounts/${id}/credentials`, {
-      method: "DELETE",
-      headers: authHeaders(true)
-    })).status).toBe(200);
+    expect(
+      (
+        await fetch(`${base}/accounts/${id}/credentials`, {
+          method: "DELETE",
+          headers: authHeaders(true)
+        })
+      ).status
+    ).toBe(200);
     expect((await del(`/accounts/${id}`)).status).toBe(200);
   });
 
   it("serializes credential rotation and removal with account-bound bot lifecycle checks", async () => {
-    const createdAccount = await (await post("/accounts", {
-      label: "Lifecycle locked Bybit",
-      exchange: "bybit"
-    })).json() as { account: { id: string } };
+    const createdAccount = (await (
+      await post("/accounts", {
+        label: "Lifecycle locked Bybit",
+        exchange: "bybit"
+      })
+    ).json()) as { account: { id: string } };
     const accountId = createdAccount.account.id;
     const originalKeys = { apiKey: "original-api-key", apiSecret: "original-api-secret" };
-    expect((await fetch(`${base}/accounts/${accountId}/credentials`, {
-      method: "PUT",
-      headers: { "content-type": "application/json", ...authHeaders(true) },
-      body: JSON.stringify(originalKeys)
-    })).status).toBe(200);
-    const createdBot = await (await post("/bots", validBody({
-      exchange: "bybit",
-      market: "futures",
-      accountId
-    }))).json() as { bot: Record<string, unknown> & { id: string } };
-    const running = (tradingApi.engine as unknown as {
-      running: Map<string, { config: typeof createdBot.bot }>;
-    }).running;
+    expect(
+      (
+        await fetch(`${base}/accounts/${accountId}/credentials`, {
+          method: "PUT",
+          headers: { "content-type": "application/json", ...authHeaders(true) },
+          body: JSON.stringify(originalKeys)
+        })
+      ).status
+    ).toBe(200);
+    const createdBot = (await (
+      await post(
+        "/bots",
+        validBody({
+          exchange: "bybit",
+          market: "futures",
+          accountId
+        })
+      )
+    ).json()) as { bot: Record<string, unknown> & { id: string } };
+    const running = (
+      tradingApi.engine as unknown as {
+        running: Map<string, { config: typeof createdBot.bot }>;
+      }
+    ).running;
 
     const rotationGate = deferred();
     const rotationEntered = deferred();
-    const rotationBlocker = tradingApi.engine.withAccountLifecycleLock(
-      LEGACY_TRADING_OWNER_ID,
-      accountId,
-      async () => {
-        rotationEntered.resolve();
-        await rotationGate.promise;
-      }
-    );
+    const rotationBlocker = tradingApi.engine.withAccountLifecycleLock(LEGACY_TRADING_OWNER_ID, accountId, async () => {
+      rotationEntered.resolve();
+      await rotationGate.promise;
+    });
     await rotationEntered.promise;
     const rotation = fetch(`${base}/accounts/${accountId}/credentials`, {
       method: "PUT",
@@ -494,8 +525,12 @@ describe("trading API E2E (real router, in-memory store)", () => {
     });
     let rotationSettled = false;
     void rotation.then(
-      () => { rotationSettled = true; },
-      () => { rotationSettled = true; }
+      () => {
+        rotationSettled = true;
+      },
+      () => {
+        rotationSettled = true;
+      }
     );
     await flushPendingHttp();
     expect(rotationSettled).toBe(false);
@@ -511,14 +546,10 @@ describe("trading API E2E (real router, in-memory store)", () => {
 
     const removalGate = deferred();
     const removalEntered = deferred();
-    const removalBlocker = tradingApi.engine.withAccountLifecycleLock(
-      LEGACY_TRADING_OWNER_ID,
-      accountId,
-      async () => {
-        removalEntered.resolve();
-        await removalGate.promise;
-      }
-    );
+    const removalBlocker = tradingApi.engine.withAccountLifecycleLock(LEGACY_TRADING_OWNER_ID, accountId, async () => {
+      removalEntered.resolve();
+      await removalGate.promise;
+    });
     await removalEntered.promise;
     const removal = fetch(`${base}/accounts/${accountId}/credentials`, {
       method: "DELETE",
@@ -526,8 +557,12 @@ describe("trading API E2E (real router, in-memory store)", () => {
     });
     let removalSettled = false;
     void removal.then(
-      () => { removalSettled = true; },
-      () => { removalSettled = true; }
+      () => {
+        removalSettled = true;
+      },
+      () => {
+        removalSettled = true;
+      }
     );
     await flushPendingHttp();
     expect(removalSettled).toBe(false);
@@ -541,10 +576,14 @@ describe("trading API E2E (real router, in-memory store)", () => {
     expect(getTradingAccountCredentialsForOwner(LEGACY_TRADING_OWNER_ID, accountId)).toEqual(originalKeys);
 
     expect((await del(`/bots/${reboundBotId}`)).status).toBe(200);
-    expect((await fetch(`${base}/accounts/${accountId}/credentials`, {
-      method: "DELETE",
-      headers: authHeaders(true)
-    })).status).toBe(200);
+    expect(
+      (
+        await fetch(`${base}/accounts/${accountId}/credentials`, {
+          method: "DELETE",
+          headers: authHeaders(true)
+        })
+      ).status
+    ).toBe(200);
     expect((await del(`/accounts/${accountId}`)).status).toBe(200);
   });
 
@@ -686,7 +725,7 @@ describe("trading API E2E (real router, in-memory store)", () => {
   });
 
   it("re-checks runtime state inside config-update and reset lifecycle locks", async () => {
-    const created = await (await post("/bots", validBody({ name: "Before race" }))).json() as { bot: { id: string } };
+    const created = (await (await post("/bots", validBody({ name: "Before race" }))).json()) as { bot: { id: string } };
     const id = created.bot.id;
     const persisted = getBotForOwner(LEGACY_TRADING_OWNER_ID, id)!;
     const running = (tradingApi.engine as unknown as { running: Map<string, { config: typeof persisted }> }).running;
@@ -700,7 +739,14 @@ describe("trading API E2E (real router, in-memory store)", () => {
     await updateEntered.promise;
     const update = post("/bots", validBody({ id, name: "Raced update" }));
     let updateSettled = false;
-    void update.then(() => { updateSettled = true; }, () => { updateSettled = true; });
+    void update.then(
+      () => {
+        updateSettled = true;
+      },
+      () => {
+        updateSettled = true;
+      }
+    );
     await flushPendingHttp();
     expect(updateSettled).toBe(false);
     running.set(id, { config: { ...persisted, status: "running" } });
@@ -720,7 +766,14 @@ describe("trading API E2E (real router, in-memory store)", () => {
     await resetEntered.promise;
     const reset = post(`/bots/${id}/reset-state`, {});
     let resetSettled = false;
-    void reset.then(() => { resetSettled = true; }, () => { resetSettled = true; });
+    void reset.then(
+      () => {
+        resetSettled = true;
+      },
+      () => {
+        resetSettled = true;
+      }
+    );
     await flushPendingHttp();
     expect(resetSettled).toBe(false);
     running.set(id, { config: { ...persisted, status: "running" } });
@@ -733,7 +786,7 @@ describe("trading API E2E (real router, in-memory store)", () => {
   });
 
   it("rejects a queued start when a same-millisecond config edit changed its captured revision", async () => {
-    const created = await (await post("/bots", validBody({ name: "Old revision" }))).json() as { bot: { id: string } };
+    const created = (await (await post("/bots", validBody({ name: "Old revision" }))).json()) as { bot: { id: string } };
     const id = created.bot.id;
     const originalRevision = getBotForOwner(LEGACY_TRADING_OWNER_ID, id)!.updatedAt;
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(originalRevision);
@@ -784,7 +837,7 @@ describe("trading API E2E (real router, in-memory store)", () => {
   });
 
   it("tombstones a bot before a queued HTTP delete can be overtaken by stale start", async () => {
-    const created = await (await post("/bots", validBody({ name: "Delete race" }))).json() as { bot: { id: string } };
+    const created = (await (await post("/bots", validBody({ name: "Delete race" }))).json()) as { bot: { id: string } };
     const id = created.bot.id;
     const stale = getBotForOwner(LEGACY_TRADING_OWNER_ID, id)!;
     const gate = deferred();
@@ -902,7 +955,7 @@ describe("public-http-paper API boundary", () => {
         body: JSON.stringify({ token: getAuthToken() })
       });
       expect(login.status).toBe(200);
-      const loginBody = await login.json() as { csrfToken: string; runtimeProfile: string; executionMode: string };
+      const loginBody = (await login.json()) as { csrfToken: string; runtimeProfile: string; executionMode: string };
       const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
       const mutationHeaders = { cookie, "x-csrf-token": loginBody.csrfToken, "content-type": "application/json" };
       expect(loginBody).toMatchObject({ runtimeProfile: "public-http-paper", executionMode: "paper-only" });
@@ -942,7 +995,7 @@ describe("public-http-paper API boundary", () => {
       expect(emergencyAdapters).not.toHaveBeenCalled();
     } finally {
       api.engine.shutdown();
-      await new Promise<void>((resolve, reject) => paperServer.close((error) => error ? reject(error) : resolve()));
+      await new Promise<void>((resolve, reject) => paperServer.close((error) => (error ? reject(error) : resolve())));
     }
   });
 });

@@ -8,11 +8,14 @@
 
 The ordered implementation plan for the current public Research / Paper deployment is maintained in
 [PRE_HTTPS_ROADMAP.md](./PRE_HTTPS_ROADMAP.md). It deliberately excludes HTTPS and keeps all private
-exchange execution disabled until a separate security review.
+exchange execution disabled until a separate security review. The current build accepts only
+`RUNTIME_PROFILE=public-http-paper`; environment variables cannot activate the retained future live
+policy types.
 
 SaltanatbotV2 is a strong open-source alpha for charting, Pine import, visual strategy authoring,
-reproducible research, paper trading and experimental exchange execution. Live trading is not
-production-ready until the explicitly deferred funded soak and mainnet-readiness program are done.
+reproducible research and paper trading. It contains tested future execution-foundation components,
+but production routes/adapters intentionally remain deny-only and live trading is not part of this
+release.
 
 ## Delivered baseline
 
@@ -22,7 +25,8 @@ production-ready until the explicitly deferred funded soak and mainnet-readiness
 - Multi-symbol portfolio backtests with one shared capital pool, correlated returns and portfolio-level exposure limits.
 - Modeled portfolio TCA with reconciled commission, configured slippage, funding and per-market/exit-reason attribution.
 - Checksummed and optionally ECDSA-signed local declarative plugin packages with strict permissions, device-local author identity, dual-signed bounded key rotation, explicit fingerprint trust, fail-closed local signer/chain blocking, version/signer-continuity update review, automatic dependency-aware authoring, an installed-package catalog, dependency-safe uninstall and no arbitrary JavaScript.
-- Durable order/fill/position/run lifecycle, private streams plus polling, recovery and bot-attributed spot inventory.
+- Durable order/fill/position/run lifecycle plus tested future private-stream, reconciliation and
+  execution-authority foundations that are unreachable from the current production runtime.
 - Professional multi-chart workspaces, pane/scales, drawing management, accessible tables and responsive monitoring.
 - Per-pane IANA time-zone axes with DST-safe chart labels and versioned workspace/session persistence.
 - Scoped session security, encrypted keys, audit logs, verified backup/restore and fail-closed demo mode.

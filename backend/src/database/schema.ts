@@ -244,6 +244,304 @@ const migrationDefinitions = [
         ON workspaces (owner_user_id, client_id)
         WHERE deleted_at IS NULL;
     `
+  },
+  {
+    version: 5,
+    name: "persistent_authorization_revision",
+    sql: `
+      ALTER TABLE users
+        ADD COLUMN authorization_revision BIGINT NOT NULL DEFAULT 1;
+
+      ALTER TABLE users
+        ADD CONSTRAINT users_authorization_revision_positive
+        CHECK (authorization_revision > 0);
+    `
+  },
+  {
+    version: 6,
+    name: "bounded_compute_job_metrics",
+    sql: `
+      CREATE INDEX compute_jobs_terminal_completed_index
+        ON compute_jobs (completed_at DESC)
+        WHERE status IN ('completed', 'failed', 'cancelled');
+
+      CREATE INDEX compute_jobs_owner_terminal_completed_index
+        ON compute_jobs (owner_user_id, completed_at DESC)
+        WHERE status IN ('completed', 'failed', 'cancelled');
+    `
+  },
+  {
+    version: 7,
+    name: "durable_execution_step_ledger",
+    sql: `
+      CREATE TABLE execution_step_ledger (
+        owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        intent_id VARCHAR(160) NOT NULL,
+        intent_digest VARCHAR(64) NOT NULL
+          CHECK (intent_digest ~ '^[0-9a-f]{64}$'),
+        signed_request_digest VARCHAR(64) NOT NULL
+          CHECK (signed_request_digest ~ '^[0-9a-f]{64}$'),
+        binding_digest VARCHAR(64) NOT NULL
+          CHECK (binding_digest ~ '^[0-9a-f]{64}$'),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        PRIMARY KEY (owner_user_id, intent_id),
+        UNIQUE (owner_user_id, binding_digest),
+        CHECK (intent_id = btrim(intent_id)),
+        CHECK (char_length(intent_id) BETWEEN 1 AND 160),
+        CHECK (intent_id !~ '[[:cntrl:]]')
+      );
+
+      CREATE TABLE execution_step_ledger_owner_usage (
+        owner_user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        durable_key_count BIGINT NOT NULL DEFAULT 0
+          CHECK (durable_key_count BETWEEN 0 AND 250000)
+      );
+
+      CREATE TABLE execution_step_reservations (
+        owner_user_id UUID NOT NULL,
+        intent_id VARCHAR(160) NOT NULL,
+        account_id VARCHAR(160) NOT NULL,
+        operation_kind VARCHAR(24) NOT NULL
+          CHECK (operation_kind IN ('bot', 'manual', 'emergency', 'reconciliation')),
+        operation_id VARCHAR(160) NOT NULL,
+        account_revision BIGINT NOT NULL CHECK (account_revision > 0),
+        credential_revision BIGINT NOT NULL CHECK (credential_revision > 0),
+        authorization_revision BIGINT NOT NULL CHECK (authorization_revision > 0),
+        authorization_epoch BIGINT NOT NULL CHECK (authorization_epoch >= 0),
+        live_arm_epoch BIGINT NOT NULL CHECK (live_arm_epoch > 0),
+        status VARCHAR(16) NOT NULL DEFAULT 'reserved'
+          CHECK (status IN ('reserved', 'consumed', 'expired')),
+        reservation_id UUID NOT NULL UNIQUE,
+        reserved_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        reservation_expires_at TIMESTAMPTZ NOT NULL,
+        consumed_at TIMESTAMPTZ,
+        terminal_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        PRIMARY KEY (owner_user_id, intent_id),
+        FOREIGN KEY (owner_user_id, intent_id)
+          REFERENCES execution_step_ledger(owner_user_id, intent_id) ON DELETE CASCADE,
+        CHECK (account_id = btrim(account_id)),
+        CHECK (char_length(account_id) BETWEEN 1 AND 160),
+        CHECK (account_id !~ '[[:cntrl:]]'),
+        CHECK (operation_id = btrim(operation_id)),
+        CHECK (char_length(operation_id) BETWEEN 1 AND 160),
+        CHECK (operation_id !~ '[[:cntrl:]]'),
+        CHECK (reservation_expires_at > reserved_at),
+        CHECK (
+          (status = 'reserved' AND consumed_at IS NULL AND terminal_at IS NULL)
+          OR (
+            status = 'consumed'
+            AND consumed_at IS NOT NULL
+            AND terminal_at IS NOT NULL
+            AND consumed_at >= reserved_at
+            AND terminal_at >= consumed_at
+          )
+          OR (
+            status = 'expired'
+            AND consumed_at IS NULL
+            AND terminal_at IS NOT NULL
+            AND terminal_at >= reservation_expires_at
+          )
+        )
+      );
+
+      CREATE INDEX execution_step_reservations_owner_status_index
+        ON execution_step_reservations (owner_user_id, status, created_at DESC);
+      CREATE INDEX execution_step_reservations_owner_operation_index
+        ON execution_step_reservations (owner_user_id, operation_kind, operation_id, created_at DESC);
+      CREATE INDEX execution_step_reservations_expiry_index
+        ON execution_step_reservations (reservation_expires_at ASC)
+        WHERE status = 'reserved';
+      CREATE INDEX execution_step_reservations_terminal_retention_index
+        ON execution_step_reservations (terminal_at ASC)
+        WHERE status IN ('consumed', 'expired');
+      CREATE INDEX execution_step_reservations_owner_terminal_retention_index
+        ON execution_step_reservations (owner_user_id, terminal_at DESC, intent_id DESC)
+        WHERE status IN ('consumed', 'expired');
+    `
+  },
+  {
+    version: 8,
+    name: "bounded_compute_job_artifact_retention",
+    sql: `
+      ALTER TABLE compute_jobs
+        ALTER COLUMN payload DROP NOT NULL,
+        ADD COLUMN artifact_size_bytes BIGINT,
+        ADD COLUMN artifacts_pruned_at TIMESTAMPTZ;
+
+      UPDATE compute_jobs
+        SET artifact_size_bytes =
+          COALESCE(octet_length(payload::text), 0)::bigint
+          + COALESCE(octet_length(result::text), 0)::bigint;
+
+      UPDATE compute_jobs
+        SET completed_at = COALESCE(completed_at, updated_at, created_at)
+        WHERE status IN ('completed', 'failed', 'cancelled')
+          AND completed_at IS NULL;
+
+      ALTER TABLE compute_jobs
+        ALTER COLUMN artifact_size_bytes SET NOT NULL,
+        ADD CONSTRAINT compute_jobs_artifact_size_nonnegative
+          CHECK (artifact_size_bytes >= 0),
+        ADD CONSTRAINT compute_jobs_terminal_completed_at
+          CHECK (
+            status NOT IN ('completed', 'failed', 'cancelled')
+            OR completed_at IS NOT NULL
+          ),
+        ADD CONSTRAINT compute_jobs_active_payload_retained
+          CHECK (
+            status NOT IN ('queued', 'running')
+            OR (
+              payload IS NOT NULL
+              AND artifacts_pruned_at IS NULL
+            )
+          ),
+        ADD CONSTRAINT compute_jobs_tombstone_shape
+          CHECK (
+            artifacts_pruned_at IS NULL
+            OR (
+              status IN ('completed', 'failed', 'cancelled')
+              AND completed_at IS NOT NULL
+              AND artifacts_pruned_at >= completed_at
+              AND payload IS NULL
+              AND result IS NULL
+              AND result_ref IS NULL
+              AND error_message IS NULL
+              AND artifact_size_bytes = 0
+            )
+          ),
+        ADD CONSTRAINT compute_jobs_null_payload_is_tombstone
+          CHECK (payload IS NOT NULL OR artifacts_pruned_at IS NOT NULL);
+
+      CREATE TABLE compute_job_retention_usage (
+        owner_user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        terminal_artifact_count BIGINT NOT NULL DEFAULT 0
+          CHECK (terminal_artifact_count >= 0),
+        terminal_artifact_bytes BIGINT NOT NULL DEFAULT 0
+          CHECK (terminal_artifact_bytes >= 0),
+        tombstone_count BIGINT NOT NULL DEFAULT 0
+          CHECK (tombstone_count >= 0),
+        last_retention_at TIMESTAMPTZ
+      );
+
+      INSERT INTO compute_job_retention_usage (
+        owner_user_id,
+        terminal_artifact_count,
+        terminal_artifact_bytes,
+        tombstone_count
+      )
+      SELECT
+        owner_user_id,
+        count(*) FILTER (
+          WHERE status IN ('completed', 'failed', 'cancelled')
+            AND artifacts_pruned_at IS NULL
+        )::bigint,
+        COALESCE(sum(artifact_size_bytes) FILTER (
+          WHERE status IN ('completed', 'failed', 'cancelled')
+            AND artifacts_pruned_at IS NULL
+        ), 0)::bigint,
+        count(*) FILTER (WHERE artifacts_pruned_at IS NOT NULL)::bigint
+      FROM compute_jobs
+      GROUP BY owner_user_id
+      HAVING count(*) FILTER (
+        WHERE status IN ('completed', 'failed', 'cancelled')
+      ) > 0;
+
+      CREATE FUNCTION maintain_compute_job_retention_usage()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      SECURITY INVOKER
+      SET search_path = pg_catalog, public
+      AS $$
+      DECLARE
+        usage_owner UUID;
+        artifact_count_delta BIGINT := 0;
+        artifact_bytes_delta BIGINT := 0;
+        tombstone_count_delta BIGINT := 0;
+      BEGIN
+        IF TG_OP = 'UPDATE' AND OLD.owner_user_id <> NEW.owner_user_id THEN
+          RAISE EXCEPTION 'compute job owner cannot change';
+        END IF;
+
+        IF TG_OP <> 'INSERT' THEN
+          usage_owner := OLD.owner_user_id;
+          IF OLD.artifacts_pruned_at IS NOT NULL THEN
+            tombstone_count_delta := tombstone_count_delta - 1;
+          ELSIF OLD.status IN ('completed', 'failed', 'cancelled') THEN
+            artifact_count_delta := artifact_count_delta - 1;
+            artifact_bytes_delta := artifact_bytes_delta - OLD.artifact_size_bytes;
+          END IF;
+        END IF;
+
+        IF TG_OP <> 'DELETE' THEN
+          usage_owner := NEW.owner_user_id;
+          IF NEW.artifacts_pruned_at IS NOT NULL THEN
+            tombstone_count_delta := tombstone_count_delta + 1;
+          ELSIF NEW.status IN ('completed', 'failed', 'cancelled') THEN
+            artifact_count_delta := artifact_count_delta + 1;
+            artifact_bytes_delta := artifact_bytes_delta + NEW.artifact_size_bytes;
+          END IF;
+        END IF;
+
+        IF artifact_count_delta <> 0
+          OR artifact_bytes_delta <> 0
+          OR tombstone_count_delta <> 0 THEN
+          UPDATE compute_job_retention_usage SET
+            terminal_artifact_count =
+              terminal_artifact_count + artifact_count_delta,
+            terminal_artifact_bytes =
+              terminal_artifact_bytes + artifact_bytes_delta,
+            tombstone_count =
+              tombstone_count + tombstone_count_delta
+          WHERE owner_user_id = usage_owner;
+        END IF;
+
+        IF NOT FOUND
+          AND (artifact_count_delta > 0 OR tombstone_count_delta > 0) THEN
+          INSERT INTO compute_job_retention_usage (
+            owner_user_id,
+            terminal_artifact_count,
+            terminal_artifact_bytes,
+            tombstone_count
+          ) VALUES (
+            usage_owner,
+            artifact_count_delta,
+            artifact_bytes_delta,
+            tombstone_count_delta
+          )
+          ON CONFLICT (owner_user_id) DO UPDATE SET
+            terminal_artifact_count =
+              compute_job_retention_usage.terminal_artifact_count
+              + EXCLUDED.terminal_artifact_count,
+            terminal_artifact_bytes =
+              compute_job_retention_usage.terminal_artifact_bytes
+              + EXCLUDED.terminal_artifact_bytes,
+            tombstone_count =
+              compute_job_retention_usage.tombstone_count
+              + EXCLUDED.tombstone_count;
+        END IF;
+
+        IF TG_OP = 'DELETE' THEN
+          RETURN OLD;
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+
+      CREATE TRIGGER compute_jobs_retention_usage_trigger
+      AFTER INSERT OR UPDATE OR DELETE ON compute_jobs
+      FOR EACH ROW
+      EXECUTE FUNCTION maintain_compute_job_retention_usage();
+
+      CREATE INDEX compute_jobs_full_artifact_retention_index
+        ON compute_jobs (owner_user_id, completed_at ASC, id ASC)
+        WHERE status IN ('completed', 'failed', 'cancelled')
+          AND artifacts_pruned_at IS NULL;
+      CREATE INDEX compute_jobs_tombstone_retention_index
+        ON compute_jobs (owner_user_id, artifacts_pruned_at ASC, id ASC)
+        WHERE artifacts_pruned_at IS NOT NULL;
+    `
   }
 ] as const;
 

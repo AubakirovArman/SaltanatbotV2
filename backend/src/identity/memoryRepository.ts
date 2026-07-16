@@ -45,7 +45,11 @@ export class MemoryIdentityRepository implements IdentityRepository {
   async updateUser(id: string, update: UserUpdate): Promise<IdentityUser | undefined> {
     const current = this.users.get(id);
     if (!current) return undefined;
-    const next = cloneUser({ ...current, ...update });
+    const next = cloneUser({
+      ...current,
+      ...update,
+      authorizationRevision: current.authorizationRevision + (changesAuthorization(update) ? 1 : 0)
+    });
     this.users.set(id, next);
     return cloneUser(next);
   }
@@ -56,7 +60,11 @@ export class MemoryIdentityRepository implements IdentityRepository {
     if (actorFailure) return { status: actorFailure };
     const current = this.users.get(subjectUserId);
     if (!current) return { status: "subject_not_found" };
-    const next = cloneUser({ ...current, ...update });
+    const next = cloneUser({
+      ...current,
+      ...update,
+      authorizationRevision: current.authorizationRevision + (changesAuthorization(update) ? 1 : 0)
+    });
     if (isActiveAdmin(current) && !isActiveAdmin(next)) {
       const replacementExists = [...this.users.values()].some((user) => user.id !== subjectUserId && isActiveAdmin(user));
       if (!replacementExists) return { status: "last_active_admin" };
@@ -124,6 +132,14 @@ export class MemoryIdentityRepository implements IdentityRepository {
   async appendAuditEvent(event: AuditEventInput): Promise<void> {
     this.auditEvents.unshift({ ...event, createdAt: new Date(event.createdAt), metadata: event.metadata && structuredClone(event.metadata) });
   }
+}
+
+function changesAuthorization(update: UserUpdate): boolean {
+  return update.status !== undefined
+    || update.appRole !== undefined
+    || update.tradingRole !== undefined
+    || update.mustChangePassword !== undefined
+    || update.passwordHash !== undefined;
 }
 
 function cloneUser(user: IdentityUser): IdentityUser {

@@ -4,6 +4,9 @@ import { IdentityService } from "../src/identity/service.js";
 import { createTradingResumeAuthorization } from "../src/identity/tradingResumePolicy.js";
 import type { IdentityRuntime } from "../src/identity/runtime.js";
 import type { BotConfig } from "../src/trading/types.js";
+import { runtimePolicyFromConfig } from "../src/runtimeProfile.js";
+
+const FUTURE_LIVE_POLICY = runtimePolicyFromConfig({ runtimeProfile: "private-live" });
 
 const bot = (ownerUserId: string, exchange: BotConfig["exchange"]): BotConfig => ({
   id: `${ownerUserId}-${exchange}`,
@@ -35,7 +38,7 @@ describe("boot-time trading resume authorization", () => {
     const adminPrincipal = (await service.authenticate((await service.login(admin.login, "temporary-Admin-password-2026")).sessionToken))!;
     await service.activateUser(adminPrincipal, user.id);
     await service.updatePermissions(adminPrincipal, user.id, { tradingRole: "paper-trade" });
-    const authorize = createTradingResumeAuthorization({ mode: "database", service, async close() {} });
+    const authorize = createTradingResumeAuthorization({ mode: "database", service, async close() {} }, FUTURE_LIVE_POLICY);
 
     expect(await authorize(bot(user.id, "paper"))).toBe(true);
     expect(await authorize(bot(user.id, "bybit"))).toBe(false);

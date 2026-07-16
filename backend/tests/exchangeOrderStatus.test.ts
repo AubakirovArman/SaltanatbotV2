@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BinanceAdapter } from "../src/trading/exchange/binance.js";
-import { BybitAdapter } from "../src/trading/exchange/bybit.js";
+import { BinanceAdapter, BybitAdapter } from "./support/signedAdapters.js";
 import { normalizeBinanceOrderStatus, normalizeBybitOrderStatus } from "../src/trading/exchange/orderStatus.js";
 
 afterEach(() => vi.unstubAllGlobals());

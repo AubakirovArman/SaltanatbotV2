@@ -30,6 +30,13 @@ export interface RequestMetadata {
   userAgent?: string;
 }
 
+export interface ExecutionAuthorizationSnapshot {
+  ownerUserId: string;
+  authorizationRevision: number;
+  authorizationEpoch: number;
+  role: Exclude<ReturnType<typeof effectiveTradingRole>, undefined>;
+}
+
 export class IdentityError extends Error {
   constructor(
     readonly status: number,
@@ -89,6 +96,7 @@ export class IdentityService {
       appRole: "user",
       tradingRole: "none",
       mustChangePassword: false,
+      authorizationRevision: 1,
       createdAt: now,
       updatedAt: now
     };
@@ -111,6 +119,7 @@ export class IdentityService {
       appRole: "admin",
       tradingRole: "none",
       mustChangePassword: true,
+      authorizationRevision: 1,
       approvedAt: now,
       createdAt: now,
       updatedAt: now
@@ -217,6 +226,10 @@ export class IdentityService {
       });
       await this.repository.revokeUserSessions(user.id, now);
       await this.sessionRevocationHandler?.({ userId: user.id, reason: "password_changed" });
+      // Password changes advance the durable authorization revision. Stop the
+      // old execution authority (including private exchange streams) before
+      // allowing future starts under the new login credentials.
+      await this.tradingAccessChangeHandler?.(user.id, "revoke");
       if (updated && this.userHasTradingAccess(updated)) await this.tradingAccessChangeHandler?.(user.id, "restore");
       await this.audit("password.changed", metadata, user.id, user.id);
     } finally {
@@ -328,6 +341,28 @@ export class IdentityService {
     const user = await this.repository.findUserById(userId);
     if (!user || user.status !== "active" || user.mustChangePassword) return undefined;
     return this.roleForUser(user);
+  }
+
+  /** Durable + in-process fencing snapshot used only by the internal permit broker. */
+  async executionAuthorizationSnapshot(userId: string): Promise<ExecutionAuthorizationSnapshot | undefined> {
+    const user = await this.repository.findUserById(userId);
+    if (!user || user.status !== "active" || user.mustChangePassword || this.authorizationTransitionPending(userId)) {
+      return undefined;
+    }
+    const role = this.roleForUser(user);
+    if (!role) return undefined;
+    return {
+      ownerUserId: user.id,
+      authorizationRevision: user.authorizationRevision,
+      authorizationEpoch: this.authorizationEpoch(user.id),
+      role
+    };
+  }
+
+  /** Synchronous final fence immediately before signed I/O. Process restart drops all permits. */
+  isExecutionAuthorizationCurrent(snapshot: ExecutionAuthorizationSnapshot): boolean {
+    return !this.authorizationTransitionPending(snapshot.ownerUserId)
+      && this.authorizationEpoch(snapshot.ownerUserId) === snapshot.authorizationEpoch;
   }
 
   async cleanup(): Promise<void> {

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ErrorRequestHandler } from "express";
 import { IdentityError } from "../identity/service.js";
 import { RuntimeProfileError } from "../runtimeProfile.js";
@@ -7,6 +8,11 @@ export const apiErrorHandler: ErrorRequestHandler = (error, request, response, n
     next(error);
     return;
   }
+  const requestId = typeof response.locals.requestId === "string"
+    ? response.locals.requestId
+    : randomUUID();
+  response.locals.requestId = requestId;
+  response.setHeader("X-Request-ID", requestId);
   if (error instanceof IdentityError) {
     response.status(error.status).json({ error: error.message, code: error.code });
     return;
@@ -24,11 +30,10 @@ export const apiErrorHandler: ErrorRequestHandler = (error, request, response, n
     response.status(400).json({ error: "Request body is not valid JSON.", code: "invalid_json" });
     return;
   }
-  const requestId = request.headers["x-request-id"];
   console.error("Unhandled API error", {
     method: request.method,
     path: request.path,
-    requestId: typeof requestId === "string" ? requestId.slice(0, 128) : undefined,
+    requestId,
     error: error instanceof Error ? error.message : String(error)
   });
   response.status(500).json({ error: "Internal server error.", code: "internal_error" });

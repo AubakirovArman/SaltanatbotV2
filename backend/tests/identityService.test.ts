@@ -195,6 +195,31 @@ describe("database identity service", () => {
     expect(await service.tradingRoleForUser(user.id)).toBeUndefined();
   });
 
+  it("fences execution authorization with durable revision and process epoch", async () => {
+    const repository = new MemoryIdentityRepository();
+    const service = new IdentityService(repository);
+    const admin = await service.bootstrapAdmin("permit-admin", "temporary-Secure-password-2026");
+    await makeAdminReady(repository, admin.id);
+    const user = await service.register("permit-trader", "correct-horse-battery-staple");
+    const principal = (await service.authenticate(
+      (await service.login(admin.login, "temporary-Secure-password-2026")).sessionToken
+    ))!;
+    await service.activateUser(principal, user.id);
+    await service.updatePermissions(principal, user.id, { tradingRole: "live-trade" });
+
+    const snapshot = await service.executionAuthorizationSnapshot(user.id);
+    expect(snapshot).toMatchObject({ ownerUserId: user.id, role: "live-trade" });
+    expect(snapshot?.authorizationRevision).toBeGreaterThan(1);
+    expect(service.isExecutionAuthorizationCurrent(snapshot!)).toBe(true);
+
+    await service.updatePermissions(principal, user.id, { tradingRole: "none" });
+    expect(service.isExecutionAuthorizationCurrent(snapshot!)).toBe(false);
+    expect(await service.executionAuthorizationSnapshot(user.id)).toBeUndefined();
+    expect((await repository.findUserById(user.id))!.authorizationRevision).toBe(
+      snapshot!.authorizationRevision + 1
+    );
+  });
+
   it("ignores a persisted non-admin trading role when the migration flag is off", async () => {
     const repository = new MemoryIdentityRepository();
     const enabled = new IdentityService(repository, { allowNonAdminTrading: true });

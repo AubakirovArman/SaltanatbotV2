@@ -86,6 +86,8 @@ function quiesce(bot: RunningBot): void {
   bot.sub = undefined;
   if (bot.orderPollTimer) clearInterval(bot.orderPollTimer);
   bot.orderPollTimer = undefined;
+  bot.privateOrderStreamAbort?.abort();
+  bot.privateOrderStreamAbort = undefined;
   bot.privateOrderSubscription?.close();
   bot.privateOrderSubscription = undefined;
 }

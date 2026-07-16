@@ -2,8 +2,8 @@ import type { RequestHandler, Response, Router } from "express";
 import { z } from "zod";
 import type { TradingEngine } from "./engine.js";
 import { EmergencyStopConflictError } from "./emergencyStop.js";
-import { setSetting } from "./store.js";
-import { tenantSettingKey, tradingOwnerFromResponse } from "./ownership.js";
+import { setTradingOwnerArmedForOwner } from "./store.js";
+import { tradingOwnerFromResponse } from "./ownership.js";
 
 const bodySchema = z.object({
   operationId: z.string().uuid().optional(),
@@ -42,7 +42,7 @@ export function registerEmergencyStopRoutes(router: Router, engine: TradingEngin
       res.status(428).json({ error: `Flatten requires confirmFlatten=${FLATTEN_CONFIRMATION}.` });
       return;
     }
-    setSetting(tenantSettingKey(ownerUserId, "liveTradingEnabled"), false);
+    setTradingOwnerArmedForOwner(ownerUserId, false);
     try {
       const result = await engine.emergencyStopForOwner(ownerUserId, { operationId: parsed.data.operationId, flatten: parsed.data.flatten });
       res.status(result.ok ? 200 : 207).json(result);

@@ -7,6 +7,7 @@ import { BinanceSignedClient } from "../src/trading/exchange/binanceClient.js";
 import { BybitV5Client } from "../src/trading/exchange/bybitClient.js";
 import { subscribeBinanceOrders, subscribeBybitOrders } from "../src/trading/exchange/privateOrderStreams.js";
 import type { BotConfig } from "../src/trading/types.js";
+import { signedRequestAuthorizerForTests } from "./support/signedRequestAuthorizer.js";
 
 const paperOnly = resolveRuntimeProfile({ RUNTIME_PROFILE: "public-http-paper" } as NodeJS.ProcessEnv);
 const keys = { apiKey: "api-key-for-test", apiSecret: "api-secret-for-test" };
@@ -21,12 +22,12 @@ describe("paper-only private exchange boundary", () => {
   it("blocks signed REST transports before fetch", async () => {
     const binanceFetch = vi.fn();
     vi.stubGlobal("fetch", binanceFetch);
-    await expect(new BinanceSignedClient(keys, "futures", paperOnly).request("GET", "/fapi/v2/account"))
+    await expect(new BinanceSignedClient(keys, "futures", signedRequestAuthorizerForTests(), { runtimePolicy: paperOnly }).request("GET", "/fapi/v2/account"))
       .rejects.toMatchObject({ code: "PAPER_ONLY_MODE" });
     expect(binanceFetch).not.toHaveBeenCalled();
 
     const bybitFetch = vi.fn();
-    const bybit = new BybitV5Client(keys, { fetch: bybitFetch as never, runtimePolicy: paperOnly });
+    const bybit = new BybitV5Client(keys, "futures", signedRequestAuthorizerForTests(), { fetch: bybitFetch as never, runtimePolicy: paperOnly });
     await expect(bybit.request("GET", "/v5/account/wallet-balance"))
       .rejects.toMatchObject({ code: "PAPER_ONLY_MODE" });
     expect(bybitFetch).not.toHaveBeenCalled();
@@ -36,9 +37,11 @@ describe("paper-only private exchange boundary", () => {
     const fetcher = vi.fn();
     const createSocket = vi.fn();
     const dependencies = { fetch: fetcher as never, createSocket: createSocket as never, runtimePolicy: paperOnly };
+    const controller = new AbortController();
+    const context = { authorizer: signedRequestAuthorizerForTests(), signal: controller.signal };
 
-    await expect(subscribeBinanceOrders(keys, callbacks, dependencies)).rejects.toMatchObject({ code: "PAPER_ONLY_MODE" });
-    await expect(subscribeBybitOrders(keys, callbacks, dependencies)).rejects.toMatchObject({ code: "PAPER_ONLY_MODE" });
+    await expect(subscribeBinanceOrders(keys, callbacks, context, dependencies)).rejects.toMatchObject({ code: "PAPER_ONLY_MODE" });
+    await expect(subscribeBybitOrders(keys, callbacks, context, dependencies)).rejects.toMatchObject({ code: "PAPER_ONLY_MODE" });
     expect(fetcher).not.toHaveBeenCalled();
     expect(createSocket).not.toHaveBeenCalled();
   });
@@ -46,8 +49,16 @@ describe("paper-only private exchange boundary", () => {
   it("blocks signed telemetry before fetch", async () => {
     const fetcher = vi.fn();
     const signal = new AbortController().signal;
-    const binance = new BinanceReadonlyTelemetryTransport(keys, { fetch: fetcher as never, runtimePolicy: paperOnly });
-    const bybit = new BybitReadonlyTelemetryTransport(keys, { fetch: fetcher as never, runtimePolicy: paperOnly });
+    const binance = new BinanceReadonlyTelemetryTransport(keys, {
+      signedRequestAuthorizer: signedRequestAuthorizerForTests(),
+      fetch: fetcher as never,
+      runtimePolicy: paperOnly
+    });
+    const bybit = new BybitReadonlyTelemetryTransport(keys, {
+      signedRequestAuthorizer: signedRequestAuthorizerForTests(),
+      fetch: fetcher as never,
+      runtimePolicy: paperOnly
+    });
 
     await expect(binance.read("spot", "/api/v3/account/commission", {}, signal)).rejects.toMatchObject({ code: "PAPER_ONLY_MODE" });
     await expect(bybit.read("/v5/account/fee-rate", {}, signal)).rejects.toMatchObject({ code: "PAPER_ONLY_MODE" });

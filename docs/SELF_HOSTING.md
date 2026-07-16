@@ -1,7 +1,7 @@
 # Self-hosting with account authentication
 
 Audience: operators and people installing a fork
-Last verified: 2026-07-15
+Last verified: 2026-07-16
 
 SaltanatbotV2 remains self-hostable and does not require an OpenAI account, an OpenAI package, or
 any project-owned cloud service. PostgreSQL stores users, browser sessions, named workspaces and
@@ -9,17 +9,19 @@ research jobs. SQLite stores owner-partitioned trading accounts, robots, journal
 per-account exchange credentials, plus candles and paper journals. Forward migrations preserve
 existing records; make a verified backup before every upgrade.
 
-The default execution boundary is `RUNTIME_PROFILE=public-http-paper`. It keeps monitoring, public
+The only runnable execution boundary in this pre-HTTPS release is
+`RUNTIME_PROFILE=public-http-paper`. It keeps monitoring, public
 market data, screeners, backtests and paper robots available, while the backend rejects live robot
 configuration/start/resume, credential writes and every signed REST/private WebSocket request with
 stable code `PAPER_ONLY_MODE`. It also clears persisted live-arm flags at startup without deleting
-bots, accounts, credentials or audit history. Keep this profile on any deployment that does not yet
-have HTTPS. `private-live` is reserved for a later, separately audited HTTPS deployment.
+bots, accounts, credentials or audit history. `private-live` remains a future typed design but this
+build rejects it even when all future HTTPS prerequisites are supplied.
 
 Runtime security settings are parsed once into a frozen typed snapshot before databases, runtime
 files or network listeners are initialized. Unknown booleans, malformed ports/origins/proxy ranges
-and partial `private-live` deployments stop startup. There is no `NODE_ENV=test` or Docker bypass for
-these production invariants.
+and every attempt to select `private-live` stop startup. There is no `NODE_ENV=test`, development or
+Docker bypass for these production invariants. Compose hard-codes the paper profile and does not
+pass live activators into the application container.
 
 At startup the trading store enforces mode `0700` on `backend/data/` and `0600` on both
 `trading.db` and its `.secret`, including files created by older versions with broader modes.
@@ -44,9 +46,10 @@ The default endpoints are:
 - health: `/api/health` (process) and `/api/ready` (process plus database).
 
 The plain-HTTP address above is for loopback/local use only. Never submit an account password over
-public `http://IP:4180`: HTTP does not encrypt it in transit. For remote users, keep the application
-bound to loopback, terminate TLS at a reverse proxy, set `TRUST_PROXY` to that proxy only and enable
-`COOKIE_SECURE=1`. The proxy must forward WebSocket upgrades as well as normal HTTP requests.
+public `http://IP:4180`: HTTP does not encrypt it in transit. HTTPS deployment is explicitly
+deferred from the current work. Until that separate phase is implemented and reviewed, remote test
+access must stay behind a trusted private network/VPN and a strict source-IP allowlist, using unique
+passwords that are not reused elsewhere.
 
 The database mapping is loopback-only. If `55434` is already occupied, set a different free host
 port without changing the container network:
@@ -78,32 +81,197 @@ limited independently by client IP and normalized login, every registration atte
 per-IP allowance even when it succeeds, and Argon2id has a bounded global worker/queue gate. The
 shared in-process limiter stores are capped at 4,096 keys by default, which leaves ample headroom for
 the first 100 users while preventing attacker-controlled map growth. See
-[Configuration](./CONFIGURATION.md) for tuning variables. If TLS is terminated by a proxy, set
-`TRUST_PROXY` only to that proxy; otherwise all clients can appear as one IP and share its allowance.
+[Configuration](./CONFIGURATION.md) for tuning variables. If a trusted private-network proxy is
+already present, set `TRUST_PROXY` only to that exact proxy; otherwise all clients can appear as one
+IP and share its allowance. This does not add transport encryption or enable private/live trading.
 
 ## Direct host installation
 
-Prerequisites: Node.js 24+, npm, and an isolated PostgreSQL database/user. PostgreSQL may run on any
-free port; the project default is `127.0.0.1:55434` specifically to avoid common `5432` installations.
+Prerequisites: Node.js 24+, npm, PostgreSQL 17 client/server tools and systemd. The examples below
+assume a fresh checkout at `/opt/saltanatbotv2` and a dedicated unprivileged operating-system user
+named `saltanatbotv2`. Change all matching paths consistently if your layout differs.
+
+### Create a separate PostgreSQL cluster
+
+Do not reuse, stop, reconfigure or migrate an unrelated PostgreSQL instance. Pick a free loopback
+port first. The application default is `55434` specifically to avoid common `5432` installations:
+
+```bash
+PG_MAJOR=17
+PG_CLUSTER=saltanatbotv2
+PGPORT=55434
+
+if ss -H -ltn "sport = :$PGPORT" | grep -q .; then
+  echo "Port $PGPORT is already in use; choose another port and stop here."
+  exit 1
+fi
+if sudo pg_lsclusters --no-header | awk '{print $1 ":" $2}' \
+  | grep -qx "$PG_MAJOR:$PG_CLUSTER"; then
+  echo "PostgreSQL cluster $PG_MAJOR/$PG_CLUSTER already exists; inspect it and stop here."
+  exit 1
+fi
+```
+
+On Debian/Ubuntu, create a new named cluster rather than changing the default cluster. This command
+only creates `17/saltanatbotv2`; it contains no `DROP`, restore or data-directory reuse:
+
+```bash
+sudo pg_createcluster --port "$PGPORT" --start \
+  "$PG_MAJOR" "$PG_CLUSTER" -- --auth-local=peer --auth-host=scram-sha-256
+
+sudo -u postgres psql --port "$PGPORT" --dbname postgres \
+  --tuples-only --no-align --command="SHOW listen_addresses"
+```
+
+The last command must report only `localhost`/loopback. If it reports a wildcard or public address,
+stop this new cluster and correct its own configuration before continuing. Other distributions
+should use their supported equivalent to create a new named cluster with its own data directory,
+the selected free port, loopback-only listening and SCRAM host authentication.
+
+Create a service account, one non-superuser PostgreSQL role and one database. These commands fail if
+the names already exist; they do not alter or delete the existing object:
+
+```bash
+sudo useradd --system --home-dir /var/lib/saltanatbotv2 --create-home \
+  --shell /usr/sbin/nologin saltanatbotv2
+
+sudo -u postgres createuser --port "$PGPORT" --pwprompt --login \
+  --no-superuser --no-createdb --no-createrole --no-replication saltanatbotv2
+sudo -u postgres createdb --port "$PGPORT" \
+  --owner=saltanatbotv2 saltanatbotv2
+sudo -u postgres psql --port "$PGPORT" --dbname postgres \
+  --set=ON_ERROR_STOP=1 \
+  --command='REVOKE ALL ON DATABASE saltanatbotv2 FROM PUBLIC'
+```
+
+The `createuser --pwprompt` step asks twice for a unique password without echoing it and sends a
+SCRAM verifier rather than putting the plaintext in shell history. Enter that same password into
+the application's hidden prompt:
+
+```bash
+sudo install -d -o saltanatbotv2 -g saltanatbotv2 -m 0700 \
+  /etc/saltanatbotv2
+sudo -u saltanatbotv2 bash -c \
+  'umask 077; read -rsp "Repeat PostgreSQL password for the app: " password; echo; printf "%s\n" "$password" > /etc/saltanatbotv2/postgres_password; unset password'
+sudo stat -c '%U:%G %a %n' /etc/saltanatbotv2/postgres_password
+```
+
+The final line must show `saltanatbotv2:saltanatbotv2 600`. Stop and correct the file owner/mode if
+it does not. `PGPASSWORD_FILE` must be an absolute path to a regular file. The application removes
+only one final line ending and never logs the password. Do not also set `PGPASSWORD` or
+`DATABASE_URL`.
+
+### Build and supervise exactly two Node processes
+
+From the repository root:
 
 ```bash
 npm ci
+npm run check
 npm run build
+sudo install -d -o saltanatbotv2 -g saltanatbotv2 -m 0700 \
+  /opt/saltanatbotv2/backend/data
+```
 
+The production application has exactly two independently supervised Node processes:
+
+1. `saltanatbotv2.service` serves the built frontend, API, public WebSockets and the single
+   owner-partitioned paper runtime on port `4180`;
+2. `saltanatbotv2-research-worker.service` claims bounded PostgreSQL research jobs and opens no HTTP
+   port.
+
+Do not also run `npm start`, `npm run dev`, PM2, another container or a second API unit against the
+same `backend/data/trading.db`. PostgreSQL is supervised separately by the operating system and is
+not a third application process.
+
+Install the reviewed examples, adjusting all occurrences of `/opt/saltanatbotv2`, `PGPORT` or the
+service account first when your layout differs:
+
+```bash
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/saltanatbotv2.service.example \
+  /etc/systemd/system/saltanatbotv2.service
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/saltanatbotv2-research-worker.service.example \
+  /etc/systemd/system/saltanatbotv2-research-worker.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now \
+  saltanatbotv2.service saltanatbotv2-research-worker.service
+```
+
+The API example is available at
+[`deploy/systemd/saltanatbotv2.service.example`](../deploy/systemd/saltanatbotv2.service.example);
+the worker example is at
+[`deploy/systemd/saltanatbotv2-research-worker.service.example`](../deploy/systemd/saltanatbotv2-research-worker.service.example).
+Both run as the unprivileged service user, drop Linux capabilities, make the checkout read-only,
+limit resources and hard-pin `RUNTIME_PROFILE=public-http-paper`. Only the API receives write access
+to `backend/data`; the worker receives PostgreSQL configuration only.
+
+Check both units and database readiness:
+
+```bash
+systemctl --no-pager --full status \
+  saltanatbotv2.service saltanatbotv2-research-worker.service
+curl --fail --silent http://127.0.0.1:4180/api/health
+curl --fail --silent http://127.0.0.1:4180/api/ready
+```
+
+Create the first administrator once, under the same service account and database settings. The
+generated application password is printed once and must be changed at first login:
+
+```bash
+sudo -u saltanatbotv2 env \
+  AUTH_MODE=database RUNTIME_PROFILE=public-http-paper \
+  PGHOST=127.0.0.1 PGPORT=55434 \
+  PGDATABASE=saltanatbotv2 PGUSER=saltanatbotv2 \
+  PGPASSWORD_FILE=/etc/saltanatbotv2/postgres_password \
+  /usr/bin/node /opt/saltanatbotv2/backend/dist/cli/bootstrapAdmin.js \
+  --login your-admin-login
+```
+
+If you selected another PostgreSQL port, use the same value in both units and the bootstrap command.
+The API accepts durable research jobs, while the worker claims and executes them. Running only the
+API leaves jobs safely queued but does not process them.
+
+For a non-systemd smoke test only, export the same values and run the two commands in separate
+terminals:
+
+```bash
 export AUTH_MODE=database
 export RUNTIME_PROFILE=public-http-paper
 export PGHOST=127.0.0.1
 export PGPORT=55434
 export PGDATABASE=saltanatbotv2
 export PGUSER=saltanatbotv2
-export PGPASSWORD_FILE=/absolute/private/path/postgres_password
+export PGPASSWORD_FILE=/etc/saltanatbotv2/postgres_password
 
-npm --workspace backend run admin:bootstrap -- --login your-admin-login
 npm start
+npm --workspace backend run worker:start
 ```
 
-`PGPASSWORD_FILE` must be an absolute path to a regular file. Keep it owner-readable only. The app
-also accepts `DATABASE_URL`, but not together with `PGPASSWORD_FILE`. Database migrations are
+Stop those terminals before enabling the systemd units.
+
+The worker opens no HTTP port and must use the same isolated PostgreSQL database as the API.
+`RESEARCH_WORKER_CONCURRENCY`, `RESEARCH_JOB_TIMEOUT_MS` and `RESEARCH_JOB_MEMORY_MB` bound each
+process. `RESEARCH_JOB_RETENTION_INTERVAL_MS` controls the bounded retention pass (60 seconds by
+default, accepted range 60 seconds to one hour). `RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS` must remain
+below the supervisor stop timeout so a stuck database call cannot prevent lease recovery.
+Authenticated users can inspect only their own bounded queue metrics at `/api/jobs/metrics`; worker
+logs contain aggregate counts and durations, never job payloads, account credentials or owner
+identifiers.
+
+Queued and running jobs are never compacted. Terminal payload/result artifacts are compacted when
+the first owner-scoped limit is reached: 30 days, 200 full terminal jobs, or 256 MiB of recorded
+payload/result JSON. Each pass changes at most 50 rows while holding the same owner advisory lock as
+enqueue/idempotency. Compact metadata tombstones retain the job ID, terminal status,
+`clientRequestId` and content digest for at most 90 days and 1,000 tombstones per owner. During that
+window an exact retry returns HTTP 410 instead of running twice, while a reused request ID with
+different content remains HTTP 409. A new request ID may rerun the same content after its full
+artifact was compacted. The 90-day idempotency horizon is an upper bound: a tenant producing more
+than 1,000 tombstones reaches the count cap first; after tombstone removal, old IDs return 404 and
+may be submitted again.
+
+The app also accepts `DATABASE_URL`, but not together with `PGPASSWORD_FILE`. Database migrations are
 checksum-verified, run in one transaction and take a PostgreSQL advisory lock, so two starting
 processes cannot apply a migration concurrently.
 
@@ -111,7 +279,7 @@ processes cannot apply a migration concurrently.
 
 | Storage | Data | Backup tool |
 | --- | --- | --- |
-| PostgreSQL | users, hashed passwords, sessions, WS tickets, auth audit, workspaces/revisions, research jobs | `pg_dump` / `pg_restore` |
+| PostgreSQL | users, hashed passwords, authorization revisions, sessions, WS tickets, auth audit, workspaces/revisions, research jobs | `pg_dump` / `pg_restore` |
 | `backend/data/trading.db` | owner-scoped trading accounts, bots, orders, fills, logs, audit rows and encrypted account credentials/notifications | `npm run data:backup`; for Compose use the [named-volume procedure](./BACKUP_RESTORE.md#docker-compose-named-volume) |
 | `backend/data/.secret` | AES root secret for encrypted SQLite settings | same verified runtime backup |
 | `backend/data/candles.db` | optional candle cache | same verified runtime backup |
@@ -191,7 +359,8 @@ chat to a durable user and verify the current trading role on every command.
 
 ### Upgrading a pre-tenant trading database
 
-Schema v6 transactionally assigns every pre-v6 trading row to one administrator, re-encrypts each
+The current SQLite trading schema is v8. The migration that crosses v6 transactionally assigns every
+pre-v6 trading row to one administrator, re-encrypts each
 legacy `keys:binance`/`keys:bybit` value for its concrete migrated account and clears the old
 server-wide live arm. Nothing is assigned to newly registered users. Before the first v6 start:
 
@@ -202,7 +371,7 @@ server-wide live arm. Nothing is assigned to newly registered users. Before the 
 3. If there is more than one administrator, set `TRADING_LEGACY_OWNER_USER_ID` to the intended
    administrator UUID. Startup deliberately refuses an ambiguous migration.
 4. Start exactly one API process, inspect the migration log and verify the old robots under that
-   administrator before manually rearming live trading.
+   administrator. The current release keeps all live state inert.
 
 With exactly one administrator the server selects that account automatically. On a brand-new empty
 installation `TRADING_LEGACY_OWNER_USER_ID` is unnecessary.
@@ -212,10 +381,11 @@ installation `TRADING_LEGACY_OWNER_USER_ID` is unnecessary.
 1. Verify PostgreSQL and SQLite backups.
 2. Pull or merge the desired commit.
 3. Run `npm ci`, tests and `npm run build` (or rebuild the Compose image).
-4. Restart one API instance; migrations run automatically. For the first schema-v6 upgrade, follow
+4. Restart one API instance; migrations run automatically. When first crossing trading schema v6,
+   follow
    the legacy-owner procedure above.
-5. Check `/api/ready`, pending jobs, per-user account visibility and current robots before rearming
-   live trading.
+5. Check `/api/ready`, pending jobs, per-user account visibility, current robots and the
+   `public-http-paper` runtime state.
 
 Never start a second copy of the current trading backend against the same `trading.db`: both copies
 could restore the same bot. Horizontal API replicas become safe only after the trading executor and

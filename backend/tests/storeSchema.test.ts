@@ -80,11 +80,12 @@ describe("trading store schema migrations", () => {
         { version: 4, name: "append_only_paper_trading_ledger" },
         { version: 5, name: "durable_trading_account_registry" },
         { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
-        { version: 7, name: "tenant_safe_execution_journal_identity" }
+        { version: 7, name: "tenant_safe_execution_journal_identity" },
+        { version: 8, name: "execution_authority_revisions" }
       ]
     });
-    expect(tableNames(database)).toEqual(["arbitrage_history", "audit_log", "bots", "fills", "logs", "order_events", "orders", "paper_events", "positions", "schema_migrations", "settings", "strategy_runs", "trading_account_credentials", "trading_accounts"]);
-    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 7 });
+    expect(tableNames(database)).toEqual(["arbitrage_history", "audit_log", "bots", "fills", "logs", "order_events", "orders", "paper_events", "positions", "schema_migrations", "settings", "strategy_runs", "trading_account_credentials", "trading_accounts", "trading_owner_authority"]);
+    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 8 });
   });
 
   it("upgrades an unversioned legacy database without deleting existing records", () => {
@@ -115,10 +116,11 @@ describe("trading store schema migrations", () => {
 
     expect(result).toEqual({
       fromVersion: 5,
-      toVersion: 7,
+      toVersion: 8,
       applied: [
         { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
-        { version: 7, name: "tenant_safe_execution_journal_identity" }
+        { version: 7, name: "tenant_safe_execution_journal_identity" },
+        { version: 8, name: "execution_authority_revisions" }
       ]
     });
     expect(database.prepare("SELECT ownerUserId FROM bots WHERE id = 'legacy-bot'").get()).toEqual({ ownerUserId: "admin-user" });
@@ -142,6 +144,18 @@ describe("trading store schema migrations", () => {
       );
       CREATE INDEX idx_orders_bot ON orders(botId, updatedAt);
       CREATE INDEX idx_order_events_order ON order_events(orderId, ts);
+      CREATE TABLE bots (
+        id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL, config TEXT NOT NULL, updatedAt INTEGER NOT NULL
+      );
+      CREATE TABLE trading_accounts (
+        id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL, label TEXT NOT NULL,
+        exchange TEXT NOT NULL, ownership TEXT NOT NULL, enabled INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL,
+        UNIQUE (ownerUserId, id)
+      );
+      CREATE TABLE settings (
+        key TEXT PRIMARY KEY, value TEXT NOT NULL, encrypted INTEGER NOT NULL DEFAULT 0
+      );
       PRAGMA user_version = 6;
     `);
     const legacyFill = JSON.stringify({ id: "shared-fill", botId: "bot-a", marker: "preserved" });
@@ -161,8 +175,11 @@ describe("trading store schema migrations", () => {
 
     expect(migrateTradingStore(database, () => 20)).toEqual({
       fromVersion: 6,
-      toVersion: 7,
-      applied: [{ version: 7, name: "tenant_safe_execution_journal_identity" }]
+      toVersion: 8,
+      applied: [
+        { version: 7, name: "tenant_safe_execution_journal_identity" },
+        { version: 8, name: "execution_authority_revisions" }
+      ]
     });
     expect(database.prepare("SELECT data, ts, updatedAt FROM orders WHERE botId = ? AND id = ?").get("bot-a", "shared-client"))
       .toEqual({ data: legacy, ts: 10, updatedAt: 11 });
@@ -202,8 +219,8 @@ describe("trading store schema migrations", () => {
     migrateTradingStore(database, () => 1);
     const result = migrateTradingStore(database, () => 2);
 
-    expect(result).toEqual({ fromVersion: 7, toVersion: 7, applied: [] });
-    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 7 });
+    expect(result).toEqual({ fromVersion: 8, toVersion: 8, applied: [] });
+    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 8 });
   });
 
   it("seeds legacy exchange accounts from stored keys and backfills bot account ids", () => {
@@ -248,11 +265,12 @@ describe("trading store schema migrations", () => {
 
     expect(result).toEqual({
       fromVersion: 4,
-      toVersion: 7,
+      toVersion: 8,
       applied: [
         { version: 5, name: "durable_trading_account_registry" },
         { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
-        { version: 7, name: "tenant_safe_execution_journal_identity" }
+        { version: 7, name: "tenant_safe_execution_journal_identity" },
+        { version: 8, name: "execution_authority_revisions" }
       ]
     });
     expect(database.prepare("SELECT id, ownerUserId, exchange, ownership, enabled, createdAt FROM trading_accounts").all()).toEqual([

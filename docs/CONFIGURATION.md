@@ -36,20 +36,26 @@ Variables outside that first slice are still owned by their feature modules and 
 | `TRADING_MAX_ACCOUNTS_PER_USER` | `8` | Hard per-owner cap for saved exchange accounts; excess existing rows are preserved. |
 | `TRADING_MAX_BOTS_PER_USER` | `24` | Hard per-owner cap for saved robot configurations; excess existing rows are preserved. |
 | `TRADING_MAX_RUNNING_PAPER_BOTS_PER_USER` | `4` | Concurrent paper-robot cap per owner in the single trading executor. |
-| `TRADING_MAX_RUNNING_LIVE_BOTS_PER_USER` | `2` | Concurrent live-robot cap per owner in the single trading executor. |
-| `COOKIE_SECURE`   | *(off)*       | Set to `1` behind HTTPS so session cookies are marked `Secure`. |
-| `PUBLIC_ORIGIN` | *(unset)* | Exact canonical browser and WebSocket origin (for example `https://trade.example.com`), without path/query/credentials. Required and HTTPS in `private-live`; WebSocket `Origin` must match it or `ALLOWED_ORIGINS`. |
+| `TRADING_MAX_RUNNING_LIVE_BOTS_PER_USER` | `2` | Reserved compatibility limit for a future separately reviewed live release; it cannot enable live work in this build. |
+| `COOKIE_SECURE`   | *(off)*       | Marks session cookies `Secure`; use only when the browser really reaches the app through HTTPS. It does not enable private/live execution. |
+| `PUBLIC_ORIGIN` | *(unset)* | Optional exact canonical browser and WebSocket origin, without path/query/credentials. WebSocket `Origin` must match it or `ALLOWED_ORIGINS`; it does not enable private/live execution. |
 | `DATABASE_URL` | *(unset)* | PostgreSQL URL. Takes precedence over individual `PG*` parameters and cannot be combined with `PGPASSWORD_FILE`. |
 | `PGHOST` / `PGPORT` | `127.0.0.1` / `55434` | Isolated project PostgreSQL address. Compose uses `postgres:5432` internally. |
 | `PGDATABASE` / `PGUSER` | `saltanatbotv2` | Dedicated database and role. |
 | `PGPASSWORD_FILE` | *(unset)* | Preferred absolute regular file containing the database password. |
 | `PGPOOL_MAX` | `12` | Maximum API PostgreSQL connections. |
-| `RUNTIME_PROFILE` | `public-http-paper` | Immutable execution boundary loaded before databases/listeners. `public-http-paper` permits public data, research, backtests and paper robots but forbids live configs, credential writes/decryption for use, signed REST and private WebSockets. `private-live` starts only with database auth, loopback binding, an HTTPS `PUBLIC_ORIGIN`, Secure cookies, a narrow trusted proxy and HTTPS-only/empty cross-origin allowlist. |
+| `RESEARCH_WORKER_CONCURRENCY` | `2` | Concurrent bounded research jobs in the separate worker process; accepted range 1–4. |
+| `RESEARCH_JOB_TIMEOUT_MS` | `120000` | Per-job wall-time limit; accepted range 5 seconds–15 minutes. |
+| `RESEARCH_JOB_MEMORY_MB` | `512` | V8 old-generation limit for each research worker thread; accepted range 128–2048 MiB. |
+| `RESEARCH_WORKER_METRICS_INTERVAL_MS` | `30000` | Aggregate queue-metrics log interval; accepted range 5 seconds–5 minutes. |
+| `RESEARCH_JOB_RETENTION_INTERVAL_MS` | `60000` | Bounded terminal-artifact retention interval; accepted range 1–60 minutes. |
+| `RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS` | `20000` | Maximum graceful worker shutdown; keep below the supervisor stop grace period. |
+| `RUNTIME_PROFILE` | `public-http-paper` | The only accepted value in this pre-HTTPS release. It permits public data, research, backtests and paper robots but forbids live configs, credential writes/decryption for use, signed REST and private WebSockets. `private-live` is rejected before database, filesystem or listener side effects, even when all future HTTPS prerequisites are supplied. |
 | `DEMO_MODE`       | *(off)*       | Deprecated compatibility alias: `1`/`true` selects `public-http-paper`. Unknown values and conflicts stop startup. |
-| `ENABLE_LIVE_SPOT` | *(off)* | `1`/`true` permits experimental Bybit spot after the normal live gates. It does not enable Binance spot, which remains disabled until authenticated spot execution accounting exists. |
+| `ENABLE_LIVE_SPOT` | *(off)* | Reserved for future design validation. `1`/`true` conflicts with the only runnable profile and stops this release at startup. |
 | `ALLOWED_ORIGINS` | dev localhost | Comma-separated exact HTTP(S) CORS and WebSocket origins. When `PUBLIC_ORIGIN` is unset, public-paper WebSockets retain strictly parsed same-host access. An explicit empty value disables the development localhost defaults. |
-| `TRUST_PROXY` | *(unset)* | Explicit Express trusted-proxy identity. `private-live` accepts `loopback`, exact IPs, or pools of at most 16 addresses (IPv4 `/28`–`/32`, IPv6 `/124`–`/128`); hop counts, `true`, `linklocal`, `uniquelocal` and wider CIDRs are rejected. |
-| `ALLOW_INSECURE_TRADING_MUTATIONS` | *(off)* | Reserved unsafe override. Both supported runtime profiles reject startup when it is true. |
+| `TRUST_PROXY` | *(unset)* | Explicit Express trusted-proxy identity used for correct client IP/origin handling. It does not enable private/live execution; `true` remains rejected. |
+| `ALLOW_INSECURE_TRADING_MUTATIONS` | *(off)* | Reserved unsafe override. The current release rejects startup when it is true. |
 | `PAPER_MULTI_LEG_DB_PATH` | `backend/data/arbitrage-paper-multi-leg.sqlite` | Optional path for the bounded append-only multi-leg paper journal. Compose operators should leave the default inside `/app/backend/data`; any custom container path needs its own persistent mount and backup policy or it is lost when the container is recreated. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_FILE` | *(unset)* | Preferred absolute path to one bounded, regular, non-symlinked UTF-8 public-feed allowlist. Mutually exclusive with the inline JSON variable. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_JSON` | *(unset)* | Optional bounded public-feed allowlist for continuous multi-venue research discovery; exact reviewed identity and fee metadata only, never credentials. |
@@ -67,7 +73,9 @@ a password change:
 npm --workspace backend run admin:bootstrap -- --login your-admin-login
 ```
 
-If you bind to a non-loopback address, the server prints a warning to put it behind a reverse proxy with TLS (see [Security hardening](#security-hardening)).
+If you bind to a non-loopback address during this HTTP phase, restrict access to a trusted private
+network/VPN or a strict source-IP allowlist. HTTPS remains a separate future release (see
+[Security hardening](#security-hardening)).
 
 > **Database mode protects the application API and market WebSockets.** `POST /api/auth/login`
 > creates an HttpOnly `sbv2_session` plus a readable SameSite CSRF cookie; unsafe requests must copy
@@ -149,44 +157,23 @@ The release-only `npm run test:testnet` command is deliberately separate from no
 
 Repository maintainers configure these four credentials as secrets in the protected GitHub `exchange-testnet` environment and add required reviewers there. The `Exchange testnet smoke` workflow is `workflow_dispatch` only, has read-only repository permissions, and never runs on pull requests or pushes.
 
-### Live-trading arming
+### Current pre-HTTPS execution boundary
 
-Live trading (Binance/Bybit) is **disarmed by default**. Binance live spot cannot be armed until an
-authenticated spot execution-accounting path exists. Bybit spot is experimental, additionally
-requires `ENABLE_LIVE_SPOT`, and uses the v5 `order` + `execution` topics. Even with valid API keys, an
-eligible live bot will not start until you:
+This release has no operator procedure for enabling live trading. The process loader rejects
+`RUNTIME_PROFILE=private-live` immediately in production, development and tests; Docker Compose
+hard-codes `public-http-paper` and does not pass through live activators. `ENABLE_LIVE_SPOT=true`
+also conflicts with the only runnable profile.
 
-1. Open the app through HTTPS or a direct localhost connection.
-2. Configure positive per-bot caps for maximum position, maximum order, daily loss and open orders (plus maximum leverage).
-3. Enable **Arm live trading** in the Trade → Settings panel (persisted server-side), and
-4. Confirm the live-start prompt on the bot (`confirmLive`).
+The repository retains future profile types, strict HTTPS-boundary validation and exchange-adapter
+test fixtures so that the later security work can be reviewed without weakening today's release.
+The execution authority is integrated with the durable prepared-step ledger in the future boundary:
+reservation happens before handoff and consumption before a network callback. That foundation is
+implemented and tested, but `createRuntimeExecutionAuthority` is intentionally not connected to
+production routes or adapters. Those call sites use deny-only authorizers, so no current environment,
+role, UI action, Telegram command or restart path can reach signed/private exchange I/O.
 
-The same secure-origin gate protects exchange-key storage, live bot creation/start/resume/manual commands and Bybit UTA borrow/repay/collateral mutations. Paper bot creation and operation remain available over HTTP. Existing live bots without all required caps fail closed at start and automatic resume.
-
-Every risk-increasing live order must reach preflight with an explicit positive base `qty`; quote,
-deposit and balance-percentage sizing cannot create live exposure. The durable journal continues to
-reserve capacity for accepted, partially filled and venue-filled-but-not-accounted orders. Spot sells
-separately reserve attributed inventory. Cancelled/expired rows retain any unaccounted partial fill;
-legacy replaced rows remain conservative until their execution is accounted. Live `replace` and
-`turnover` are disabled on every market until their child actions have independent durable lifecycles.
-
-Futures preflight compares exact-symbol venue gross positions with the durable fill-accounted shadow
-quantity and uses the larger value. A matched venue/local order uses maximum quantity/price, while an
-identity conflict fails closed. A second live bot on the same exchange+symbol is rejected even across
-spot/futures and cannot be forced through with `override`. If REST polling or reconnect reconciliation
-observes a terminal order without authenticated execution accounting, the bot is paused.
-
-Live starts are serialized by exchange+symbol, so concurrent start requests cannot race the collision
-or reconciliation gates. If protection fails after an entry was accepted, that entry stays accepted,
-managed and reserved; the bot pauses while a distinct reduce-only `…-safety` close reports its own
-venue order ID or an explicit failure. A live close acknowledgement also leaves managed state intact
-and pauses the bot until its authenticated execution is committed to accounting.
-
-The **kill switch** (Trade → Settings) stops every running bot and disarms live trading instantly. `DEMO_MODE=1` forces paper-only regardless of these settings.
-
-Live execution remains experimental. The funded 7–14-day Binance/Bybit exchange soak is explicitly
-excluded from the current verified scope, so none of these configuration gates constitute a
-mainnet-readiness claim.
+The manually triggered exchange-testnet smoke above is a maintainer-only, read-only validation tool.
+It is not an application runtime profile and cannot arm orders.
 
 ### Development ports
 
@@ -506,19 +493,13 @@ identity or trading data. See [Application startup recovery](STARTUP_RECOVERY.md
 
 ### Example: run behind a process manager
 
-Because `npm start` is a plain long-lived Node process, any supervisor works. After HTTPS is actually
-available, a private-live process behind a same-machine reverse proxy can be started with:
+Because `npm start` is a plain long-lived Node process, any supervisor works. The current release
+must be started in Research / Paper mode:
 
 ```bash
-HOST=127.0.0.1 PORT=4180 AUTH_MODE=database RUNTIME_PROFILE=private-live \
-PUBLIC_ORIGIN=https://trade.example.com ALLOWED_ORIGINS= \
-TRUST_PROXY=loopback COOKIE_SECURE=1 npm start
+HOST=127.0.0.1 PORT=4180 AUTH_MODE=database \
+RUNTIME_PROFILE=public-http-paper npm start
 ```
-
-The proxy must replace `X-Forwarded-Proto` with `$scheme`. Leaving `TRUST_PROXY` unset makes Express
-ignore that header, while `TRUST_PROXY=true` is rejected. Prefer the exact proxy address or the
-`loopback` preset; a private-live CIDR may cover at most 16 proxy addresses (`/28` or `/124` and
-narrower). Until this path exists, keep `RUNTIME_PROFILE=public-http-paper`.
 
 Point your process manager (systemd, pm2, Docker, etc.) at this command, ensure `backend/data/` is on persistent storage, and restart on failure.
 
@@ -526,27 +507,29 @@ Point your process manager (systemd, pm2, Docker, etc.) at this command, ensure 
 
 The backend defaults to a safe posture: it binds to `127.0.0.1`, database-mode APIs and WebSockets
 require an active account, CORS is an allowlist, and the bundled SPA uses CSP/browser hardening
-headers. Live trading is disarmed by default. Before exposing the server, complete this checklist.
+headers. Private/live exchange execution is unavailable in this release. Before exposing the
+server, complete this checklist.
 
-- [ ] **Terminate TLS at a reverse proxy.** Keep the app bound to loopback (`HOST=127.0.0.1`, the default), set `TRUST_PROXY` to that proxy only, and place nginx / Caddy / Traefik in front to handle HTTPS and all HTTP/WebSocket routes. Never enter an account password over public HTTP; key storage and risk-increasing live mutations also return `426 SECURE_TRADING_ORIGIN_REQUIRED` without a trustworthy origin.
-- [ ] **Restrict network exposure with a firewall.** Only expose the proxy's `443` (and optionally `80` for redirect). Do not expose the backend's `4180` directly; block it at the host firewall / security group.
+- [ ] **Treat HTTP as transport-insecure.** Until the separately planned HTTPS phase, keep the app on loopback, a trusted private network/VPN or a strict IP allowlist. Never reuse an important password on a public-HTTP test deployment.
+- [ ] **Restrict network exposure with a firewall.** Do not expose port `4180` to the whole Internet. Permit only the intended private/VPN source addresses.
 - [ ] **Protect account and database credentials.** Change the one-time administrator password,
   keep the PostgreSQL password file owner-only, review pending registrations, and disable departed
   users. Never expose a dump, cookie or CSRF value in logs/screenshots.
-- [ ] **Verify tenant ownership after the first schema-v6 upgrade.** Back up PostgreSQL plus
+- [ ] **Verify tenant ownership when crossing trading schema v6.** The current SQLite trading schema
+  is v8. Back up PostgreSQL plus
   `trading.db`/`.secret`, set `TRADING_LEGACY_OWNER_USER_ID` when multiple admins exist, and confirm
-  that migrated robots appear only for the selected administrator. Live trading is disarmed by the
-  migration and must be rearmed manually.
+  that migrated robots appear only for the selected administrator. Persisted live flags remain inert.
 - [ ] **Grant the minimum trading role.** New users start with no trading access. Use `read-only` or
-  `paper-trade` unless live exchange access is actually required; disabling/changing a user revokes
-  sessions and stops that user's runtimes.
-- [ ] **Set the typed HTTPS boundary together.** `private-live` requires `AUTH_MODE=database`, loopback `HOST`, HTTPS `PUBLIC_ORIGIN`, `COOKIE_SECURE=1`, a narrow non-numeric `TRUST_PROXY`, and an empty or HTTPS-only `ALLOWED_ORIGINS`; startup rejects a partial rollout.
+  `paper-trade`; a `live-trade` role cannot override this release gate. Disabling/changing a user
+  revokes sessions and stops that user's runtimes.
+- [ ] **Keep the release profile literal.** Use `RUNTIME_PROFILE=public-http-paper`. This build
+  rejects `private-live` even if future HTTPS-related settings are present.
 - [ ] **Set `ALLOWED_ORIGINS` if the API is reached cross-origin.** Same-origin (the bundled SPA) needs nothing. Leave it unset for the default same-origin deployment.
 - [ ] **Never commit `backend/data/`.** It contains `.secret` (the encryption key seed) and `trading.db` (encrypted API keys and tokens). It is gitignored — keep it that way, and treat backups of it as secret material.
 - [ ] **Protect `.secret` file permissions.** It is written `0600`; ensure the deployment user owns it and no other account can read it.
-- [ ] **Use exchange API keys with least privilege.** Prefer trade-only keys without withdrawal permission, and IP-allowlist them at the exchange where possible.
-- [ ] **Keep `ALLOW_INSECURE_TRADING_MUTATIONS` unset.** Supported runtime profiles reject it when true.
-- [ ] **Keep secrets off disk in plaintext.** Do not stash API keys or notification tokens in `.env` files, shell history, or config files — enter them through the app so they are encrypted at rest.
+- [ ] **Do not enter new exchange API keys in this phase.** The current runtime rejects credential writes and private exchange use. Existing encrypted records are preserved only for compatibility and backup.
+- [ ] **Keep `ALLOW_INSECURE_TRADING_MUTATIONS` unset.** The current release rejects it when true.
+- [ ] **Keep secrets off disk in plaintext.** Do not stash database passwords, notification tokens or dormant exchange material in `.env` files, shell history or source-controlled config.
 
 ## See also
 

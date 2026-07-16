@@ -1,10 +1,4 @@
-import {
-  getRuntimeConfig,
-  loadRuntimeConfig,
-  RUNTIME_PROFILES,
-  type RuntimeConfig,
-  type RuntimeProfileName
-} from "./config/runtimeConfig.js";
+import { getRuntimeConfig, loadRuntimeConfig, RUNTIME_PROFILES, type RuntimeConfig, type RuntimeProfileName } from "./config/runtimeConfig.js";
 
 export { RUNTIME_PROFILES };
 export type { RuntimeProfileName };
@@ -31,7 +25,10 @@ export const PAPER_ONLY_MODE_CODE = "PAPER_ONLY_MODE";
 export class RuntimeProfileError extends Error {
   readonly code = PAPER_ONLY_MODE_CODE;
 
-  constructor(message: string, readonly operation?: string) {
+  constructor(
+    message: string,
+    readonly operation?: string
+  ) {
     super(message);
     this.name = "RuntimeProfileError";
   }
@@ -42,7 +39,9 @@ let cachedPolicy: RuntimePolicy | undefined;
 /**
  * Resolve the immutable process execution boundary. The deliberately safe
  * default is public market data, research, backtests and paper execution only.
- * A future HTTPS deployment must opt in explicitly with `private-live`.
+ * This pre-HTTPS build rejects `private-live` at configuration load time.
+ * `runtimePolicyFromConfig` retains the pure future policy model for boundary
+ * tests, but process startup cannot select it from environment variables.
  */
 export function resolveRuntimeProfile(env: NodeJS.ProcessEnv = process.env): RuntimePolicy {
   return runtimePolicyFromConfig(loadRuntimeConfig(env));
@@ -88,16 +87,8 @@ export function assertCredentialWriteAllowed(operation = "exchange credential st
   if (!policy.credentialWritesAllowed) throw paperOnlyError(operation);
 }
 
-export function assertPrivateExchangeAccess(
-  operation = "private exchange access",
-  access: "read" | "mutation" | "stream" = "mutation",
-  policy: RuntimePolicy = getRuntimePolicy()
-): void {
-  const allowed = access === "read"
-    ? policy.privateExchangeReadsAllowed
-    : access === "stream"
-      ? policy.privateStreamsAllowed
-      : policy.privateExchangeMutationsAllowed;
+export function assertPrivateExchangeAccess(operation = "private exchange access", access: "read" | "mutation" | "stream" = "mutation", policy: RuntimePolicy = getRuntimePolicy()): void {
+  const allowed = access === "read" ? policy.privateExchangeReadsAllowed : access === "stream" ? policy.privateStreamsAllowed : policy.privateExchangeMutationsAllowed;
   if (!allowed) throw paperOnlyError(operation);
 }
 

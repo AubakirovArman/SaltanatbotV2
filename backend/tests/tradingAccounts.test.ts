@@ -7,14 +7,17 @@ import {
   deleteTradingAccountCredentialsForOwner,
   deleteTradingAccountFrom,
   deleteTradingAccountFromForOwner,
+  getTradingAccountAuthorizationStateFromForOwner,
   getTradingAccountCredentialsForOwner,
   getTradingAccountFrom,
   getTradingAccountFromForOwner,
+  getTradingOwnerAuthorityFromForOwner,
   insertTradingAccountInto,
   insertTradingAccountIntoForOwner,
   listTradingAccountsFrom,
   listTradingAccountsFromForOwner,
   setTradingAccountCredentialsForOwner,
+  setTradingOwnerArmedInForOwner,
   TradingAccountInUseError,
   upsertBotIntoForOwner,
   updateTradingAccountIn,
@@ -26,10 +29,12 @@ import { buildPortfolioSummary } from "../src/trading/enginePortfolio.js";
 import type { RunningBot } from "../src/trading/engineRuntime.js";
 import type { BotConfig, ExchangeAdapter, PendingOrder, PositionState, TradingAccount } from "../src/trading/types.js";
 import { TradingResourceQuotaError } from "../src/trading/resourceQuotas.js";
+import { runtimePolicyFromConfig } from "../src/runtimeProfile.js";
 
 const databases: DatabaseSync[] = [];
 const OWNER_A = "owner-a";
 const OWNER_B = "owner-b";
+const FUTURE_LIVE_POLICY = runtimePolicyFromConfig({ runtimeProfile: "private-live" });
 
 function database() {
   const db = new DatabaseSync(":memory:");
@@ -109,6 +114,71 @@ describe("trading account registry", () => {
     const updated = { ...initial, label: "Desk paused", enabled: false, updatedAt: 20 };
     expect(updateTradingAccountIn(db, updated)).toBe(true);
     expect(getTradingAccountFrom(db, initial.id)).toEqual(updated);
+    expect(getTradingAccountAuthorizationStateFromForOwner(db, OWNER_A, initial.id)).toMatchObject({
+      authorizationRevision: 2,
+      credentialRevision: 0,
+      credentialsConfigured: false
+    });
+  });
+
+  it("keeps monotonic account, credential and owner-arm revisions", () => {
+    const db = database();
+    const key = Buffer.alloc(32, 13);
+    configureTradingAccountStore(db, {
+      seal: (plain, aad) => sealCredentialPayload(key, plain, aad),
+      open: (payload, aad) => openCredentialPayload(key, payload, aad)
+    });
+    const initial = account({ id: "revision-account" });
+    insertTradingAccountIntoForOwner(db, OWNER_A, initial);
+
+    expect(getTradingAccountAuthorizationStateFromForOwner(db, OWNER_A, initial.id)).toMatchObject({
+      enabled: true,
+      authorizationRevision: 1,
+      credentialRevision: 0,
+      credentialsConfigured: false
+    });
+    expect(getTradingOwnerAuthorityFromForOwner(db, OWNER_A)).toMatchObject({ armed: false, epoch: 1 });
+
+    expect(setTradingOwnerArmedInForOwner(db, OWNER_A, true, 20)).toMatchObject({ armed: true, epoch: 2 });
+    expect(setTradingOwnerArmedInForOwner(db, OWNER_A, false, 21)).toMatchObject({ armed: false, epoch: 3 });
+    expect(setTradingOwnerArmedInForOwner(db, OWNER_A, false, 22)).toMatchObject({ armed: false, epoch: 4 });
+    expect(getTradingOwnerAuthorityFromForOwner(db, OWNER_B)).toMatchObject({ armed: false, epoch: 0 });
+
+    setTradingAccountCredentialsForOwner(OWNER_A, initial.id, { apiKey: "one", apiSecret: "secret-one" }, FUTURE_LIVE_POLICY);
+    expect(getTradingAccountAuthorizationStateFromForOwner(db, OWNER_A, initial.id)).toMatchObject({
+      authorizationRevision: 1,
+      credentialRevision: 1,
+      credentialsConfigured: true
+    });
+    setTradingAccountCredentialsForOwner(OWNER_A, initial.id, { apiKey: "two", apiSecret: "secret-two" }, FUTURE_LIVE_POLICY);
+    expect(getTradingAccountAuthorizationStateFromForOwner(db, OWNER_A, initial.id)?.credentialRevision).toBe(2);
+    expect(deleteTradingAccountCredentialsForOwner(OWNER_A, initial.id)).toBe(true);
+    expect(getTradingAccountAuthorizationStateFromForOwner(db, OWNER_A, initial.id)).toMatchObject({
+      credentialRevision: 3,
+      credentialsConfigured: false
+    });
+    expect(deleteTradingAccountCredentialsForOwner(OWNER_A, initial.id)).toBe(false);
+    expect(getTradingAccountAuthorizationStateFromForOwner(db, OWNER_A, initial.id)?.credentialRevision).toBe(3);
+  });
+
+  it("rolls back credential writes and revisions together", () => {
+    const db = database();
+    const initial = account({ id: "rollback-account" });
+    insertTradingAccountIntoForOwner(db, OWNER_A, initial);
+    configureTradingAccountStore(db, {
+      seal: () => {
+        throw new Error("seal unavailable");
+      },
+      open: () => {
+        throw new Error("not used");
+      }
+    });
+
+    expect(() => setTradingAccountCredentialsForOwner(OWNER_A, initial.id, { apiKey: "not-written" }, FUTURE_LIVE_POLICY)).toThrow("seal unavailable");
+    expect(getTradingAccountAuthorizationStateFromForOwner(db, OWNER_A, initial.id)).toMatchObject({
+      credentialRevision: 0,
+      credentialsConfigured: false
+    });
   });
 
   it("keeps account deletion atomic and rejects legacy bot bindings", () => {
@@ -167,14 +237,14 @@ describe("trading account registry", () => {
     insertTradingAccountIntoForOwner(db, OWNER_A, accountA);
     insertTradingAccountIntoForOwner(db, OWNER_B, accountB);
 
-    setTradingAccountCredentialsForOwner(OWNER_A, accountA.id, { apiKey: "public-a", apiSecret: "secret-a" });
+    setTradingAccountCredentialsForOwner(OWNER_A, accountA.id, { apiKey: "public-a", apiSecret: "secret-a" }, FUTURE_LIVE_POLICY);
 
-    expect(getTradingAccountCredentialsForOwner(OWNER_A, accountA.id)).toEqual({
+    expect(getTradingAccountCredentialsForOwner(OWNER_A, accountA.id, FUTURE_LIVE_POLICY)).toEqual({
       apiKey: "public-a",
       apiSecret: "secret-a"
     });
-    expect(getTradingAccountCredentialsForOwner(OWNER_B, accountA.id)).toBeUndefined();
-    expect(() => setTradingAccountCredentialsForOwner(OWNER_B, accountA.id, { apiKey: "stolen" })).toThrow("does not belong to owner");
+    expect(getTradingAccountCredentialsForOwner(OWNER_B, accountA.id, FUTURE_LIVE_POLICY)).toBeUndefined();
+    expect(() => setTradingAccountCredentialsForOwner(OWNER_B, accountA.id, { apiKey: "stolen" }, FUTURE_LIVE_POLICY)).toThrow("does not belong to owner");
     expect(deleteTradingAccountCredentialsForOwner(OWNER_B, accountA.id)).toBe(false);
     const stored = db
       .prepare(`
@@ -184,7 +254,7 @@ describe("trading account registry", () => {
       .get(OWNER_A, accountA.id) as { encryptedValue: string };
     expect(stored.encryptedValue).not.toContain("secret-a");
     expect(deleteTradingAccountCredentialsForOwner(OWNER_A, accountA.id)).toBe(true);
-    expect(getTradingAccountCredentialsForOwner(OWNER_A, accountA.id)).toBeUndefined();
+    expect(getTradingAccountCredentialsForOwner(OWNER_A, accountA.id, FUTURE_LIVE_POLICY)).toBeUndefined();
   });
 
   it("maps legacy bot configs to deterministic account ids", () => {

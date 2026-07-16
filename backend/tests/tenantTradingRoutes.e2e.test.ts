@@ -5,7 +5,10 @@ import { configureIdentityAuth } from "../src/auth.js";
 import { MemoryIdentityRepository } from "../src/identity/memoryRepository.js";
 import { IdentityService } from "../src/identity/service.js";
 import type { IdentityPrincipal, SessionCredentials } from "../src/identity/types.js";
+import { runtimePolicyFromConfig } from "../src/runtimeProfile.js";
 import { createTradingApi } from "../src/trading/routes.js";
+
+const FUTURE_LIVE_POLICY = runtimePolicyFromConfig({ runtimeProfile: "private-live" });
 
 const storeState = vi.hoisted(() => ({
   bots: new Map<string, unknown>(),
@@ -16,11 +19,12 @@ const storeState = vi.hoisted(() => ({
   orders: new Map<string, unknown[]>(),
   orderEvents: new Map<string, unknown[]>(),
   audit: [] as unknown[],
-  settings: new Map<string, unknown>()
+  settings: new Map<string, unknown>(),
+  ownerAuthorities: new Map<string, { armed: boolean; epoch: number; updatedAt: number }>()
 }));
 
 vi.mock("../src/trading/store.js", () => {
-  const clone = <T>(value: T): T => value === undefined ? value : structuredClone(value);
+  const clone = <T>(value: T): T => (value === undefined ? value : structuredClone(value));
   const ownerOf = (value: unknown) => (value as { ownerUserId?: string } | undefined)?.ownerUserId;
   const ownedBot = (ownerUserId: string, botId: string) => {
     const bot = storeState.bots.get(botId);
@@ -32,7 +36,10 @@ vi.mock("../src/trading/store.js", () => {
   };
 
   class TradingAccountInUseError extends Error {
-    constructor(readonly accountId: string, readonly botIds: readonly string[]) {
+    constructor(
+      readonly accountId: string,
+      readonly botIds: readonly string[]
+    ) {
       super(`Trading account ${accountId} is used by ${botIds.length} bot(s).`);
     }
   }
@@ -66,17 +73,31 @@ vi.mock("../src/trading/store.js", () => {
     hasTradingAccountCredentialsForOwner: (ownerUserId: string, accountId: string) => storeState.credentials.has(`${ownerUserId}:${accountId}`),
     setTradingAccountCredentialsForOwner: (ownerUserId: string, accountId: string, value: unknown) => storeState.credentials.set(`${ownerUserId}:${accountId}`, clone(value)),
     deleteTradingAccountCredentialsForOwner: (ownerUserId: string, accountId: string) => storeState.credentials.delete(`${ownerUserId}:${accountId}`),
-    listFillsForOwner: (ownerUserId: string, botId: string) => ownedBot(ownerUserId, botId) ? clone(storeState.fills.get(botId) ?? []) : [],
-    listLogsForOwner: (ownerUserId: string, botId: string) => ownedBot(ownerUserId, botId) ? clone(storeState.logs.get(botId) ?? []) : [],
-    listOrderJournalForOwner: (ownerUserId: string, botId: string) => ownedBot(ownerUserId, botId) ? clone(storeState.orders.get(botId) ?? []) : [],
+    listFillsForOwner: (ownerUserId: string, botId: string) => (ownedBot(ownerUserId, botId) ? clone(storeState.fills.get(botId) ?? []) : []),
+    listLogsForOwner: (ownerUserId: string, botId: string) => (ownedBot(ownerUserId, botId) ? clone(storeState.logs.get(botId) ?? []) : []),
+    listOrderJournalForOwner: (ownerUserId: string, botId: string) => (ownedBot(ownerUserId, botId) ? clone(storeState.orders.get(botId) ?? []) : []),
     listOrderEventsForOwner: (ownerUserId: string, botId: string, orderId: string) => {
       if (!ownedBot(ownerUserId, botId)) return [];
       return clone((storeState.orderEvents.get(orderId) ?? []).filter((event) => (event as { botId?: string }).botId === botId));
     },
     insertAuditLogForOwner: (ownerUserId: string, row: unknown) => storeState.audit.unshift(clone({ ...(row as object), ownerUserId })),
-    listAuditLogForOwner: (ownerUserId: string, limit: number) => storeState.audit.filter((row) => ownerOf(row) === ownerUserId).slice(0, limit).map(clone),
+    listAuditLogForOwner: (ownerUserId: string, limit: number) =>
+      storeState.audit
+        .filter((row) => ownerOf(row) === ownerUserId)
+        .slice(0, limit)
+        .map(clone),
     getSetting: (key: string) => clone(storeState.settings.get(key)),
     setSetting: (key: string, value: unknown) => storeState.settings.set(key, clone(value)),
+    getTradingOwnerAuthorityForOwner: (ownerUserId: string) => ({
+      ownerUserId,
+      ...(storeState.ownerAuthorities.get(ownerUserId) ?? { armed: false, epoch: 0, updatedAt: 0 })
+    }),
+    setTradingOwnerArmedForOwner: (ownerUserId: string, armed: boolean) => {
+      const previous = storeState.ownerAuthorities.get(ownerUserId);
+      const authority = { armed, epoch: (previous?.epoch ?? 0) + 1, updatedAt: Date.now() };
+      storeState.ownerAuthorities.set(ownerUserId, authority);
+      return { ownerUserId, ...authority };
+    },
     disarmAllLiveTradingSettings: () => {
       let changed = 0;
       for (const key of storeState.settings.keys()) {
@@ -84,6 +105,10 @@ vi.mock("../src/trading/store.js", () => {
           storeState.settings.set(key, false);
           changed += 1;
         }
+      }
+      for (const [ownerUserId, previous] of storeState.ownerAuthorities) {
+        storeState.ownerAuthorities.set(ownerUserId, { armed: false, epoch: previous.epoch + 1, updatedAt: Date.now() });
+        changed += 1;
       }
       return changed;
     },
@@ -108,8 +133,12 @@ vi.mock("../src/trading/store.js", () => {
 
 const provider = {
   name: "tenant-isolation-test",
-  async getCandles() { return []; },
-  async subscribe() { return { close() {} }; }
+  async getCandles() {
+    return [];
+  },
+  async subscribe() {
+    return { close() {} };
+  }
 } as never;
 
 interface AuthContext {
@@ -197,7 +226,7 @@ beforeAll(async () => {
   storeState.orders.set("trader-bot", [{ id: "trader-order", botId: "trader-bot" }]);
   storeState.orderEvents.set("trader-order", [{ id: "trader-event", orderId: "trader-order", botId: "trader-bot", type: "result", data: {}, ts: 1 }]);
 
-  trading = createTradingApi(provider, undefined, { paperMultiLeg: false });
+  trading = createTradingApi(provider, undefined, { paperMultiLeg: false, runtimePolicy: FUTURE_LIVE_POLICY });
   const app = express();
   app.use(express.json());
   app.use("/api/trade", trading.router);
@@ -209,7 +238,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   configureIdentityAuth(undefined);
 });
 
@@ -217,7 +246,7 @@ describe("database-auth trading tenant boundary", () => {
   it("never lets an admin role bypass resource ownership", async () => {
     const botsResponse = await fetch(`${baseUrl}/bots`, { headers: headers(adminAuth) });
     expect(botsResponse.status).toBe(200);
-    const botBody = await botsResponse.json() as { bots: Array<{ id: string; ownerUserId?: string }> };
+    const botBody = (await botsResponse.json()) as { bots: Array<{ id: string; ownerUserId?: string }> };
     expect(botBody.bots.map((item) => item.id)).toEqual(["admin-bot"]);
     expect(botBody.bots[0]).not.toHaveProperty("ownerUserId");
 
@@ -225,11 +254,15 @@ describe("database-auth trading tenant boundary", () => {
     expect((await fetch(`${baseUrl}/bots/trader-bot/logs`, { headers: headers(adminAuth) })).status).toBe(404);
     expect((await fetch(`${baseUrl}/bots/trader-bot/order-journal`, { headers: headers(adminAuth) })).status).toBe(404);
     expect((await fetch(`${baseUrl}/bots/trader-bot/order-journal/trader-order/events`, { headers: headers(adminAuth) })).status).toBe(404);
-    expect((await fetch(`${baseUrl}/bots/trader-bot/start`, {
-      method: "POST",
-      headers: headers(adminAuth, true),
-      body: "{}"
-    })).status).toBe(404);
+    expect(
+      (
+        await fetch(`${baseUrl}/bots/trader-bot/start`, {
+          method: "POST",
+          headers: headers(adminAuth, true),
+          body: "{}"
+        })
+      ).status
+    ).toBe(404);
 
     const ownBotForeignOrder = await fetch(`${baseUrl}/bots/admin-bot/order-journal/trader-order/events`, { headers: headers(adminAuth) });
     expect(ownBotForeignOrder.status).toBe(200);
@@ -257,7 +290,7 @@ describe("database-auth trading tenant boundary", () => {
 
     const traderAccount = await fetch(`${baseUrl}/accounts/trader-account`, { headers: headers(traderAuth) });
     expect(traderAccount.status).toBe(200);
-    const traderAccountBody = await traderAccount.json() as { account: Record<string, unknown> };
+    const traderAccountBody = (await traderAccount.json()) as { account: Record<string, unknown> };
     expect(traderAccountBody.account).toMatchObject({ id: "trader-account", credential: { status: "configured", isolated: true } });
     expect(JSON.stringify(traderAccountBody)).not.toContain("trader-api-key");
     expect(JSON.stringify(traderAccountBody)).not.toContain("trader-api-secret");
@@ -267,13 +300,13 @@ describe("database-auth trading tenant boundary", () => {
   it("returns only the authenticated owner's audit and bot collections", async () => {
     const adminAudit = await fetch(`${baseUrl}/audit`, { headers: headers(adminAuth) });
     expect(adminAudit.status).toBe(200);
-    const adminAuditBody = await adminAudit.json() as { events: Array<{ ownerUserId?: string; action: string }> };
+    const adminAuditBody = (await adminAudit.json()) as { events: Array<{ ownerUserId?: string; action: string }> };
     expect(adminAuditBody.events.some((event) => event.action === "trader-own")).toBe(false);
     expect(adminAuditBody.events.every((event) => event.ownerUserId === adminAuth.userId)).toBe(true);
 
     const traderBots = await fetch(`${baseUrl}/bots`, { headers: headers(traderAuth) });
     expect(traderBots.status).toBe(200);
-    const traderBotBody = await traderBots.json() as { bots: Array<{ id: string }> };
+    const traderBotBody = (await traderBots.json()) as { bots: Array<{ id: string }> };
     expect(traderBotBody.bots.map((item) => item.id)).toEqual(["trader-bot"]);
   });
 
@@ -404,12 +437,12 @@ describe("database-auth trading tenant boundary", () => {
   });
 
   it("disarms only the revoked owner's live gate", async () => {
-    storeState.settings.set(`owner:${adminAuth.userId}:liveTradingEnabled`, true);
-    storeState.settings.set(`owner:${traderAuth.userId}:liveTradingEnabled`, true);
+    storeState.ownerAuthorities.set(adminAuth.userId, { armed: true, epoch: 1, updatedAt: Date.now() });
+    storeState.ownerAuthorities.set(traderAuth.userId, { armed: true, epoch: 1, updatedAt: Date.now() });
 
     await trading.revokeOwnerAccess(traderAuth.userId);
 
-    expect(storeState.settings.get(`owner:${traderAuth.userId}:liveTradingEnabled`)).toBe(false);
-    expect(storeState.settings.get(`owner:${adminAuth.userId}:liveTradingEnabled`)).toBe(true);
+    expect(storeState.ownerAuthorities.get(traderAuth.userId)?.armed).toBe(false);
+    expect(storeState.ownerAuthorities.get(adminAuth.userId)?.armed).toBe(true);
   });
 });

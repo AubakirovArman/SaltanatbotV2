@@ -75,9 +75,11 @@ import { registerBotLifecycleMutationRoutes } from "../src/trading/botLifecycleM
 import { registerTradingAccountRegistryRoutes } from "../src/trading/tradingAccountRoutes.js";
 import type { TradingEngine } from "../src/trading/engine.js";
 import type { BotConfig } from "../src/trading/types.js";
+import { runtimePolicyFromConfig } from "../src/runtimeProfile.js";
 
 let server: Server;
 let baseUrl: string;
+const FUTURE_LIVE_POLICY = runtimePolicyFromConfig({ runtimeProfile: "private-live" });
 
 beforeAll(async () => {
   const router = Router();
@@ -88,7 +90,7 @@ beforeAll(async () => {
     next();
   });
   const allow = (_request: express.Request, _response: express.Response, next: express.NextFunction) => next();
-  registerTradingAccountRegistryRoutes(router, allow, { maxAccountsPerOwner: 1 });
+  registerTradingAccountRegistryRoutes(router, allow, { maxAccountsPerOwner: 1, runtimePolicy: FUTURE_LIVE_POLICY });
   const engine = {
     runtimeConfigForOwner: () => undefined,
     withBotLifecycleLock: async (_owner: string, _bot: string, operation: () => Promise<unknown>) => operation(),
@@ -96,6 +98,7 @@ beforeAll(async () => {
   } as unknown as TradingEngine;
   registerBotLifecycleMutationRoutes(router, engine, {
     maxBotsPerOwner: 1,
+    runtimePolicy: FUTURE_LIVE_POLICY,
     view: (_owner, bot) => {
       const { ownerUserId: _privateOwner, ...publicBot } = bot;
       return publicBot;

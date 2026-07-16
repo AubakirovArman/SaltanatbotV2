@@ -101,7 +101,7 @@ describe("trading permission revocation", () => {
 
     expect(secondSocket.closes).toEqual([{ code: 1008, reason: "Session password_changed" }]);
     expect(unrelatedSocket.closes).toEqual([]);
-    expect(tradingActions).toEqual([`restore:${admin.id}`]);
+    expect(tradingActions).toEqual([`revoke:${admin.id}`, `restore:${admin.id}`]);
     expect(await service.authenticate(second.sessionToken)).toBeUndefined();
   });
 });

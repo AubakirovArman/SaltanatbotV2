@@ -1,14 +1,20 @@
 import type { AccountState, ExchangeAdapter, ExchangeOrderSnapshot, ExecOrder, ExecResult, MarketType, OrderType, PendingOrder, PositionState } from "../types.js";
+import type { RuntimePolicy } from "../../runtimeProfile.js";
 import { assertFreshSymbolFilters, binanceFilters, type SymbolFilters } from "./filters.js";
 import { BinanceSignedClient } from "./binanceClient.js";
 import { ambiguousAcknowledgement, isAmbiguousExchangeError, requireExchangeObject } from "./errors.js";
 import { assertClosePercentage, assertLiveOrderShape, prepareLiveOrder, prepareMarketExit, type PreparedLiveOrder, type PreparedMarketExit } from "./orderRules.js";
 import { normalizeBinanceOrderStatus } from "./orderStatus.js";
 import { subscribeBinanceOrders } from "./privateOrderStreams.js";
+import type { SignedRequestAuthorizer } from "./signedRequestGate.js";
 
 export interface ExchangeKeys {
   apiKey: string;
   apiSecret: string;
+}
+
+export interface BinanceAdapterOptions {
+  runtimePolicy?: RuntimePolicy;
 }
 
 /**
@@ -25,10 +31,12 @@ export class BinanceAdapter implements ExchangeAdapter {
     private readonly botId: string,
     private readonly keys: ExchangeKeys,
     market: MarketType,
-    readonly accountId = "binance:default"
+    private readonly authorizer: SignedRequestAuthorizer,
+    readonly accountId = "binance:default",
+    private readonly options: BinanceAdapterOptions = {}
   ) {
     this.market = market;
-    this.client = new BinanceSignedClient(keys, market);
+    this.client = new BinanceSignedClient(keys, market, authorizer, { runtimePolicy: options.runtimePolicy });
   }
 
   private get base() {
@@ -164,9 +172,13 @@ export class BinanceAdapter implements ExchangeAdapter {
     };
   }
 
-  async subscribeOrderUpdates(onSnapshot: (snapshot: ExchangeOrderSnapshot) => void, onConnection: (connected: boolean, message: string) => void) {
+  async subscribeOrderUpdates(
+    onSnapshot: (snapshot: ExchangeOrderSnapshot) => void,
+    onConnection: (connected: boolean, message: string) => void,
+    signal: AbortSignal
+  ) {
     if (this.market !== "futures") throw new Error("Binance private order stream is currently enabled for USDⓈ-M futures only");
-    return subscribeBinanceOrders(this.keys, { onSnapshot, onConnection });
+    return subscribeBinanceOrders(this.keys, { onSnapshot, onConnection }, { authorizer: this.authorizer, signal }, { runtimePolicy: this.options.runtimePolicy });
   }
 
   async execute(order: ExecOrder): Promise<ExecResult> {

@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { legacyTradingAccountId, paperTradingAccountId } from "./tradingAccounts.js";
 import type { TradingAccountExchange } from "./types.js";
 
-export const TRADING_SCHEMA_VERSION = 7;
+export const TRADING_SCHEMA_VERSION = 8;
 export const TRADING_TENANT_OWNERSHIP_SCHEMA_VERSION = 6;
 
 /** Stable standalone/legacy tenant. Database-auth deployments should pass the
@@ -239,8 +239,55 @@ const migrations: Migration[] = [
       CREATE INDEX idx_order_events_bot_order
         ON order_events(botId, orderId, ts);
     `
+  },
+  {
+    version: 8,
+    name: "execution_authority_revisions",
+    sql: `
+      ALTER TABLE trading_accounts
+        ADD COLUMN authorizationRevision INTEGER NOT NULL DEFAULT 1
+        CHECK (authorizationRevision > 0);
+      ALTER TABLE trading_accounts
+        ADD COLUMN credentialRevision INTEGER NOT NULL DEFAULT 0
+        CHECK (credentialRevision >= 0);
+
+      CREATE TABLE trading_owner_authority (
+        ownerUserId TEXT PRIMARY KEY
+          CHECK (length(trim(ownerUserId)) BETWEEN 1 AND 160),
+        armed INTEGER NOT NULL DEFAULT 0 CHECK (armed IN (0, 1)),
+        epoch INTEGER NOT NULL DEFAULT 1 CHECK (epoch > 0),
+        updatedAt INTEGER NOT NULL
+      );
+    `,
+    apply: initializeExecutionAuthorityRevisions
   }
 ];
+
+function initializeExecutionAuthorityRevisions(
+  database: DatabaseSync,
+  appliedAt: number,
+  context: MigrationContext
+): void {
+  const owners = new Set<string>([normalizeOwnerUserId(context.legacyOwnerUserId)]);
+  for (const row of database.prepare("SELECT DISTINCT ownerUserId FROM trading_accounts").all()) {
+    owners.add(normalizeOwnerUserId(String(row.ownerUserId)));
+  }
+  for (const row of database.prepare("SELECT DISTINCT ownerUserId FROM bots").all()) {
+    owners.add(normalizeOwnerUserId(String(row.ownerUserId)));
+  }
+  const insert = database.prepare(`
+    INSERT INTO trading_owner_authority (ownerUserId, armed, epoch, updatedAt)
+    VALUES (?, 0, 1, ?)
+  `);
+  for (const ownerUserId of owners) insert.run(ownerUserId, appliedAt);
+
+  // A schema upgrade is a process boundary. Never carry a historical boolean
+  // arm across it; every owner must explicitly re-arm under the new epoch.
+  database.prepare(`
+    DELETE FROM settings
+    WHERE key = 'liveTradingEnabled' OR key LIKE 'owner:%:liveTradingEnabled'
+  `).run();
+}
 
 function migrateTenantOwnership(database: DatabaseSync, appliedAt: number, context: MigrationContext): void {
   const ownerUserId = normalizeOwnerUserId(context.legacyOwnerUserId);

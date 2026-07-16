@@ -4,7 +4,31 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
-## Unreleased / schema baseline 4
+## Unreleased / PostgreSQL schema 8 and trading SQLite schema 8
+
+- PostgreSQL schema v5 adds a monotonic `users.authorization_revision`. Every status, role,
+  temporary-password or password mutation advances it; login timestamps do not. It is a durable
+  execution-permit fence and contains no secret data.
+- PostgreSQL schema v6 adds partial terminal-job indexes used by bounded 24-hour queue metrics. The
+  metrics sample at most 10,000 recent terminal jobs instead of sorting the full lifetime history.
+- PostgreSQL schema v7 adds a durable owner-scoped at-most-once dispatch/replay ledger. `intentId` is the stable unique
+  identity of one signed step; entry, stop-loss and take-profit steps use different IDs while
+  `operationId` groups them. A compact `(owner, intent, binding)` key is retained for the lifetime of
+  the owner, so pruning cannot make an old step executable again. Ordinary work fails closed at
+  240,000 keys per owner; reconciliation has the next 8,000-key/24-active tier, and emergency has a
+  final isolated 2,000-key/8-active tier that reconciliation cannot consume. Reservation/status/
+  revision details are retained for 30 days and at most 10,000 terminal rows per owner. Read-only
+  telemetry is outside this mutation ledger. The schema stores no signed request payloads,
+  credentials, signatures, sessions or permit tokens.
+- PostgreSQL schema v8 adds exact per-owner research-artifact byte/count counters and bounded
+  compaction metadata. Queued/running jobs are never compacted. Full terminal payload/result JSON
+  is retained until the first of 30 days, 200 jobs or 256 MiB per owner; at most 50 rows change per
+  pass under the enqueue advisory lock. A compact tombstone preserves exact-request idempotency and
+  returns HTTP 410 for at most 90 days and 1,000 tombstones per owner. Content-only dedupe may run
+  again after compaction; conflicting reuse of the same request ID remains HTTP 409.
+- Trading SQLite schema v8 adds monotonic account and credential revisions plus a per-owner
+  arm/disarm epoch. Migration always starts every owner disarmed and removes legacy boolean arm
+  settings; it never deletes accounts, credentials, bots or journals.
 
 - Trading SQLite state is upgraded transactionally through ordered `schema_migrations`; a database
   declaring a newer unsupported version is rejected without mutation.

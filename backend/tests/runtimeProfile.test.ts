@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  assertLiveExecutionAllowed,
-  PAPER_ONLY_MODE_CODE,
-  resolveRuntimeProfile,
-  runtimeProfilePublicState
-} from "../src/runtimeProfile.js";
+import { assertLiveExecutionAllowed, PAPER_ONLY_MODE_CODE, resolveRuntimeProfile, runtimePolicyFromConfig, runtimeProfilePublicState } from "../src/runtimeProfile.js";
 
 describe("runtime execution profile", () => {
   it("fails closed to public-http-paper when no profile is configured", () => {
@@ -30,19 +25,20 @@ describe("runtime execution profile", () => {
     expect(resolveRuntimeProfile({ DEMO_MODE: "true" } as NodeJS.ProcessEnv).runtimeProfile).toBe("public-http-paper");
   });
 
-  it("requires an explicit valid profile for live-capable test/future deployments", () => {
-    expect(resolveRuntimeProfile(privateLiveEnv())).toMatchObject({
+  it("keeps the future live policy as a pure boundary model without allowing environment activation", () => {
+    expect(runtimePolicyFromConfig({ runtimeProfile: "private-live" })).toMatchObject({
       runtimeProfile: "private-live",
       executionMode: "live-capable",
       liveBotConfigsAllowed: true,
       credentialWritesAllowed: true
     });
+    expect(() => resolveRuntimeProfile(privateLiveEnv())).toThrow(/private-live is disabled in this pre-HTTPS release/);
   });
 
   it("rejects invalid, contradictory and accidentally armed configuration", () => {
     expect(() => resolveRuntimeProfile({ RUNTIME_PROFILE: "typo" } as NodeJS.ProcessEnv)).toThrow(/Invalid RUNTIME_PROFILE/);
     expect(() => resolveRuntimeProfile({ DEMO_MODE: "sometimes" } as NodeJS.ProcessEnv)).toThrow(/Invalid DEMO_MODE/);
-    expect(() => resolveRuntimeProfile({ ...privateLiveEnv(), DEMO_MODE: "1" })).toThrow(/DEMO_MODE must be false/);
+    expect(() => resolveRuntimeProfile({ ...privateLiveEnv(), DEMO_MODE: "1" })).toThrow(/private-live is disabled/);
     expect(() => resolveRuntimeProfile({ RUNTIME_PROFILE: "public-http-paper", ALLOW_INSECURE_TRADING_MUTATIONS: "true" } as NodeJS.ProcessEnv)).toThrow(/conflicts/);
     expect(() => resolveRuntimeProfile({ ENABLE_LIVE_SPOT: "1" } as NodeJS.ProcessEnv)).toThrow(/conflicts/);
   });

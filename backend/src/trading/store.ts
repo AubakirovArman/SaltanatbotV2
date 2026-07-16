@@ -8,7 +8,12 @@ import { recordBotStatusTransition, writePositionSnapshot, type PositionSnapshot
 import type { AuditLogRecord, BotConfig, FillRecord, OrderEventRecord, OrderJournalRecord } from "./types.js";
 import type { ArbitrageOpportunity } from "../arbitrage/types.js";
 import { withResolvedBotAccountId } from "./tradingAccounts.js";
-import { configureTradingAccountStore, credentialAad, normalizeOwnerUserId } from "./tradingAccountStore.js";
+import {
+  configureTradingAccountStore,
+  credentialAad,
+  disarmAllTradingOwners,
+  normalizeOwnerUserId
+} from "./tradingAccountStore.js";
 import { openCredentialPayload, sealCredentialPayload } from "./credentialCrypto.js";
 import { assertBotCapacity } from "./resourceQuotas.js";
 import { getOrderJournalFrom, insertOrderEventInto, listOrderEventsForOwnerFrom, listOrderEventsFrom, listOrderJournalForOwnerFrom, listOrderJournalFrom, upsertOrderJournalInto } from "./orderJournalStore.js";
@@ -541,7 +546,8 @@ export function setSetting(key: string, value: unknown, encrypted = false) {
 
 /** Clear all live arms without deleting tenant data or audit history. */
 export function disarmAllLiveTradingSettings(): number {
-  return Number(db.prepare("UPDATE settings SET value = 'false', encrypted = 0 WHERE key = 'liveTradingEnabled' OR key LIKE 'owner:%:liveTradingEnabled'").run().changes);
+  const settings = Number(db.prepare("UPDATE settings SET value = 'false', encrypted = 0 WHERE key = 'liveTradingEnabled' OR key LIKE 'owner:%:liveTradingEnabled'").run().changes);
+  return settings + disarmAllTradingOwners(db);
 }
 
 // ---------- public arbitrage research history ----------

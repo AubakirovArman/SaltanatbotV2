@@ -49,6 +49,71 @@ jobs:
       - name: Frontend bundle budgets
         run: npm run perf:check
 
+  postgres-security:
+    name: PostgreSQL security integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.10-bookworm
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-admin-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      ALLOW_DESTRUCTIVE_POSTGRES_TESTS: "1"
+      JOBS_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
+      EXECUTION_LEDGER_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
+      WORKSPACES_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create isolated unprivileged test database
+        run: |
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const admin = new pg.Client({
+            host: "127.0.0.1",
+            port: 5432,
+            database: "postgres",
+            user: "postgres",
+            password: "ci-admin-password"
+          });
+          await admin.connect();
+          await admin.query(
+            "CREATE ROLE saltanatbotv2_test LOGIN PASSWORD 'ci-test-password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT"
+          );
+          await admin.query("CREATE DATABASE saltanatbotv2_ci_test OWNER saltanatbotv2_test");
+          await admin.end();
+          NODE
+
+      # The integration suites require an explicit destructive-test opt-in,
+      # verify a test-only database and unprivileged role, apply checksum-locked
+      # migrations, then exercise real queue, execution-ledger and workspace
+      # tenant/concurrency invariants.
+      - name: Run migrations and PostgreSQL security integration tests
+        run: |
+          npx --no-install vitest run backend/tests/computeJobsPostgres.integration.test.ts
+          npx --no-install vitest run backend/tests/executionStepLedgerPostgres.integration.test.ts
+          npx --no-install vitest run backend/tests/workspacesPostgres.integration.test.ts
+
   browser-e2e:
     name: end-to-end (Chromium)
     runs-on: ubuntu-latest

@@ -6,6 +6,7 @@ import { revalidateTradingAuthorization } from "../auth.js";
 import { requireSecureTradingOrigin } from "../secureTradingOrigin.js";
 import { createBybitUtaHandlers, type BybitUtaHandlers } from "./bybitUtaRoutes.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
+import { DENY_SIGNED_REQUEST_AUTHORIZER } from "./exchange/signedRequestGate.js";
 import {
   deleteTradingAccountCredentialsForOwner,
   deleteTradingAccountForOwner,
@@ -270,6 +271,7 @@ export function registerTradingAccountIntegrationRoutes(router: Router, requireL
         demo: () => isPaperOnlyRuntime(runtimePolicy),
         liveEnabled: () => options.liveEnabled(ownerUserId),
         keys: () => selected?.keys,
+        signedRequestAuthorizer: DENY_SIGNED_REQUEST_AUTHORIZER,
         authorizeMutation: () => revalidateTradingAuthorization(res, "live-trade")
       });
       return handlers[kind](req, res, next);

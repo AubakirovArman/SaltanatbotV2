@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, scriptedFetch, textResponse } from "@saltanatbotv2/test-fixtures";
-import { BinanceAdapter } from "../src/trading/exchange/binance.js";
-import { BybitAdapter } from "../src/trading/exchange/bybit.js";
+import { BinanceAdapter, BybitAdapter } from "./support/signedAdapters.js";
 import { ExchangeTransportError } from "../src/trading/exchange/errors.js";
 import { clearFilterCache } from "../src/trading/exchange/filters.js";
 import { OrderLifecycle, type OrderLifecycleWriter } from "../src/trading/orderLifecycle.js";

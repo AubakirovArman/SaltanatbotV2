@@ -1,5 +1,8 @@
 # Architecture
 
+The cross-store authority boundary and single-executor constraint are normative in
+[ADR 0001](adr/0001-execution-authority-and-system-of-record.md).
+
 SaltanatbotV2 is an open-source crypto trading terminal built as an npm-workspaces monorepo. The Express 5 + `ws` backend proxies public market data, runs a read-only arbitrage research hub and drives a persisted trading engine; the React 18 + Vite 8 frontend renders a custom canvas chart, arbitrage screener and Blockly strategy builder; shared workspaces own canonical transport and strategy contracts. Candle data is normalized behind a `ProviderRouter`, arbitrage quotes behind venue-specific public adapters, and strategies compile to a shared intermediate representation (IR).
 
 ## Monorepo layout
@@ -76,12 +79,25 @@ PostgreSQL stores users, Argon2id password hashes, revocable sessions, one-use W
 authentication audit events, owner-scoped workspace revisions and durable research jobs. Checked-in
 migrations run atomically under an advisory lock and refuse checksum drift.
 
-The legacy trading tier still uses built-in **`node:sqlite`** (`DatabaseSync`) in
-`backend/src/trading/store.ts`. Exchange credentials are AES-256-GCM encrypted with a key derived by
-`scryptSync`. These stores are deliberately not dual-written or auto-migrated: active bots must not
-be duplicated. Until bots/accounts/events gain owner IDs, only the application administrator gets an
-effective trading role. CPU-heavy backtests are claimed from PostgreSQL and run by a separate
-supervisor in bounded worker threads; the API process never executes them synchronously.
+The trading executor still uses built-in **`node:sqlite`** (`DatabaseSync`) in
+`backend/src/trading/store.ts`. Accounts, credentials, bots and journals are owner-scoped; exchange
+credentials are AES-256-GCM encrypted with a key derived by `scryptSync`. PostgreSQL authorization
+revisions and SQLite account/credential/arm revisions are joined only through short-lived internal
+execution permits, never through an unsafe dual write. Each exact signed exchange request crosses a
+mandatory fail-closed transport gate before timestamping, HMAC and network I/O. CPU-heavy backtests
+are claimed fairly from PostgreSQL and run by a separate supervisor in bounded worker threads; the
+API process never executes them synchronously. Queue telemetry uses a bounded 24-hour/10,000-row
+terminal sample and exposes only owner-scoped metrics to HTTP clients. The latest PostgreSQL schema
+is v8: v7 adds an owner-scoped prepared-step replay ledger and v8 adds bounded terminal-job artifact
+retention. A stable per-step `intentId` is checked against
+the exact permit-binding digest, compact keys are durable and owner-capped, and non-secret
+reservation metadata has bounded retention. It provides durable at-most-once network admission, not
+proof that an exchange accepted an order; unknown outcomes still require venue idempotency and
+reconciliation. `ExecutionAuthority` reserves before permit handoff and consumes before its signed
+network callback in the future boundary implementation. This is integrated and tested, but the
+production factory is intentionally not called by routes or adapters. Production call sites remain
+deny-only and the pre-HTTPS configuration loader rejects `private-live`, so that boundary is
+unreachable in the current release.
 
 ### Backend source tree
 

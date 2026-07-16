@@ -39,6 +39,11 @@ export class EngineOrderCoordinator {
 
   startPrivateOrderStream(bot: RunningBot) {
     if (!bot.adapter.subscribeOrderUpdates) return;
+    bot.privateOrderStreamAbort?.abort();
+    bot.privateOrderSubscription?.close();
+    bot.privateOrderSubscription = undefined;
+    const controller = new AbortController();
+    bot.privateOrderStreamAbort = controller;
     void bot.adapter
       .subscribeOrderUpdates(
         (snapshot) => this.enqueue(bot, "Private order update failed", () => this.ingestOrderEvent(bot, snapshot, false)),
@@ -47,13 +52,19 @@ export class EngineOrderCoordinator {
             this.log(bot.config.id, connected ? "info" : "warn", message);
             await this.pollOrders(bot, true);
           });
-        }
+        },
+        controller.signal
       )
       .then((subscription) => {
-        if (this.currentBot(bot.config.id) === bot) bot.privateOrderSubscription = subscription;
-        else subscription.close();
+        if (this.currentBot(bot.config.id) === bot && bot.privateOrderStreamAbort === controller && !controller.signal.aborted) {
+          bot.privateOrderSubscription = subscription;
+        } else {
+          subscription.close();
+        }
       })
       .catch((error) => {
+        if (bot.privateOrderStreamAbort === controller) bot.privateOrderStreamAbort = undefined;
+        if (controller.signal.aborted) return;
         this.log(bot.config.id, "warn", `Private order stream unavailable: ${messageOf(error)}; REST polling fallback active.`);
       });
   }

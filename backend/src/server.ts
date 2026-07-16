@@ -550,7 +550,10 @@ server.listen(port, host, () => {
   }
   const loopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
   if (!loopback) {
-    console.log(`⚠️  Bound to ${host} (reachable off-machine). Put this behind a reverse proxy with TLS,\n` + "   restrict access, and keep account/database secrets private. See docs/CONFIGURATION.md.");
+    console.log(
+      `⚠️  Bound to ${host} (reachable off-machine). During the current HTTP Research / Paper phase,\n` +
+        "   allow only a trusted private network/VPN or strict source IPs. HTTPS is deferred. See docs/CONFIGURATION.md."
+    );
   }
   // Bring back bots that were running before the last shutdown/crash.
   void trading.engine.resume(createTradingResumeAuthorization(identityRuntime, runtimePolicy));

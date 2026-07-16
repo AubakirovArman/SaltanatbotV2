@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BybitAdapter } from "../src/trading/exchange/bybit.js";
+import { BybitAdapter } from "./support/signedAdapters.js";
 import { clearFilterCache } from "../src/trading/exchange/filters.js";
 
 type FetchCall = { url: string; method: string; body?: Record<string, unknown> };

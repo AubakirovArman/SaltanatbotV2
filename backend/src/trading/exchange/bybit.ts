@@ -1,4 +1,5 @@
 import type { AccountState, ExchangeAdapter, ExchangeOrderSnapshot, ExecOrder, ExecResult, MarketType, PendingOrder, PositionState } from "../types.js";
+import type { RuntimePolicy } from "../../runtimeProfile.js";
 import type { ExchangeKeys } from "./binance.js";
 import { BybitV5Client } from "./bybitClient.js";
 import { assertFreshSymbolFilters, bybitFilters } from "./filters.js";
@@ -6,6 +7,11 @@ import { ambiguousAcknowledgement, isAmbiguousExchangeError } from "./errors.js"
 import { assertClosePercentage, assertLiveOrderShape, prepareLiveOrder, prepareMarketExit, type PreparedLiveOrder, type PreparedMarketExit } from "./orderRules.js";
 import { normalizeBybitOrderStatus } from "./orderStatus.js";
 import { subscribeBybitOrders } from "./privateOrderStreams.js";
+import type { SignedRequestAuthorizer } from "./signedRequestGate.js";
+
+export interface BybitAdapterOptions {
+  runtimePolicy?: RuntimePolicy;
+}
 
 /**
  * Bybit adapter (v5 unified API). `linear` category for USDT futures, `spot`
@@ -21,10 +27,12 @@ export class BybitAdapter implements ExchangeAdapter {
     private readonly botId: string,
     private readonly keys: ExchangeKeys,
     market: MarketType,
-    readonly accountId = "bybit:default"
+    private readonly authorizer: SignedRequestAuthorizer,
+    readonly accountId = "bybit:default",
+    private readonly options: BybitAdapterOptions = {}
   ) {
     this.market = market;
-    this.client = new BybitV5Client(keys);
+    this.client = new BybitV5Client(keys, market, authorizer, { runtimePolicy: options.runtimePolicy });
   }
 
   private get category() {
@@ -146,8 +154,12 @@ export class BybitAdapter implements ExchangeAdapter {
     };
   }
 
-  async subscribeOrderUpdates(onSnapshot: (snapshot: ExchangeOrderSnapshot) => void, onConnection: (connected: boolean, message: string) => void) {
-    return subscribeBybitOrders(this.keys, { onSnapshot, onConnection });
+  async subscribeOrderUpdates(
+    onSnapshot: (snapshot: ExchangeOrderSnapshot) => void,
+    onConnection: (connected: boolean, message: string) => void,
+    signal: AbortSignal
+  ) {
+    return subscribeBybitOrders(this.keys, { onSnapshot, onConnection }, { authorizer: this.authorizer, signal }, { runtimePolicy: this.options.runtimePolicy });
   }
 
   async execute(order: ExecOrder): Promise<ExecResult> {

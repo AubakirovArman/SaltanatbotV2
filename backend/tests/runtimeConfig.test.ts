@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { initializeRuntimeConfig, loadRuntimeConfig, resetRuntimeConfigForTests, type RuntimeConfig } from "../src/config/runtimeConfig.js";
+import { initializeRuntimeConfig, loadRuntimeConfig, resetRuntimeConfigForTests, type RuntimeConfig, validateFuturePrivateLiveBoundary } from "../src/config/runtimeConfig.js";
 
 const privateLiveEnv: NodeJS.ProcessEnv = {
   NODE_ENV: "production",
@@ -57,18 +57,17 @@ describe("typed runtime configuration", () => {
     expect(Object.isFrozen(config.server.trustProxy)).toBe(true);
   });
 
-  it("accepts private-live only with the complete HTTPS reverse-proxy boundary", () => {
-    const config = loadRuntimeConfig({ ...privateLiveEnv, ENABLE_LIVE_SPOT: "true" });
-
-    expect(config).toMatchObject({
-      runtimeProfile: "private-live",
-      auth: { mode: "database", cookieSecure: true },
-      trading: { enableLiveSpot: true }
-    });
+  it.each(["production", "development", "test"])("cannot activate private-live from %s environment", (nodeEnv) => {
+    expect(() => loadRuntimeConfig({ ...privateLiveEnv, NODE_ENV: nodeEnv, ENABLE_LIVE_SPOT: "true" })).toThrow(/private-live is disabled in this pre-HTTPS release/);
   });
 
-  it.each(["loopback", "127.0.0.1", "10.20.30.0/28", "fd00::/124"])("accepts a bounded private-live proxy identity: %s", (trustProxy) => {
-    expect(loadRuntimeConfig({ ...privateLiveEnv, TRUST_PROXY: trustProxy }).server.trustProxy).toBe(trustProxy);
+  it("retains a pure validator for the future private-live HTTPS boundary", () => {
+    expect(() => validateFuturePrivateLiveBoundary({ ...privateLiveEnv, ENABLE_LIVE_SPOT: "true" })).not.toThrow();
+    expect(() => validateFuturePrivateLiveBoundary({ RUNTIME_PROFILE: "public-http-paper" })).toThrow(/requires RUNTIME_PROFILE=private-live/);
+  });
+
+  it.each(["loopback", "127.0.0.1", "10.20.30.0/28", "fd00::/124"])("validates a bounded future private-live proxy identity: %s", (trustProxy) => {
+    expect(() => validateFuturePrivateLiveBoundary({ ...privateLiveEnv, TRUST_PROXY: trustProxy })).not.toThrow();
   });
 
   it.each([
@@ -105,7 +104,7 @@ describe("typed runtime configuration", () => {
     ["no insecure override", { ALLOW_INSECURE_TRADING_MUTATIONS: "1" }, /ALLOW_INSECURE_TRADING_MUTATIONS must be false/],
     ["no demo alias", { DEMO_MODE: "1" }, /DEMO_MODE must be false/]
   ])("rejects private-live without %s", (_label, overrides, expected) => {
-    expect(() => loadRuntimeConfig({ ...privateLiveEnv, ...overrides })).toThrow(expected);
+    expect(() => validateFuturePrivateLiveBoundary({ ...privateLiveEnv, ...overrides })).toThrow(expected);
   });
 
   it("pins one process snapshot and rejects attempted re-arming", () => {

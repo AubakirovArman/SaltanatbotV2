@@ -130,13 +130,27 @@ vi.mock("../src/trading/notifications.js", () => ({
   })
 }));
 
-import { TradingEngine } from "../src/trading/engine.js";
+import { runtimePolicyFromConfig } from "../src/runtimeProfile.js";
+import { TradingEngine as ProductionTradingEngine } from "../src/trading/engine.js";
 import type { RunningBot } from "../src/trading/engineRuntime.js";
 import { TradingResourceQuotaError } from "../src/trading/resourceQuotas.js";
 import * as store from "../src/trading/store.js";
-import type { BotConfig, ExchangeOrderSnapshot } from "../src/trading/types.js";
+import type { BotConfig, ExchangeOrderSnapshot, PrivateOrderSubscription } from "../src/trading/types.js";
 
 const TF = 60_000;
+const FUTURE_LIVE_POLICY = runtimePolicyFromConfig({ runtimeProfile: "private-live" });
+
+class TradingEngine extends ProductionTradingEngine {
+  constructor(
+    provider: ConstructorParameters<typeof ProductionTradingEngine>[0],
+    broadcast: ConstructorParameters<typeof ProductionTradingEngine>[1],
+    emergencyAdapters?: ConstructorParameters<typeof ProductionTradingEngine>[2],
+    resourceLimits?: ConstructorParameters<typeof ProductionTradingEngine>[3],
+    runtimePolicy = FUTURE_LIVE_POLICY
+  ) {
+    super(provider, broadcast, emergencyAdapters, resourceLimits, runtimePolicy);
+  }
+}
 
 // A stateful strategy: init count=0, then +1 every bar. No orders — pure state.
 const counterIR = {
@@ -946,6 +960,38 @@ describe("engine lifecycle E2E", () => {
       pauseReason: expect.stringMatching(/without authenticated execution accounting/i)
     });
     engine.shutdown();
+  });
+
+  it("aborts a pending private stream authorization during quiesce and closes a late subscription", async () => {
+    const f = fakeProvider();
+    const engine = new TradingEngine(f.provider as never, () => {});
+    const cfg = baseConfig("pending-private-stream", { exchange: "bybit", market: "futures" });
+    await engine.start(cfg);
+    const internal = engine as unknown as {
+      running: Map<string, RunningBot>;
+      orderCoordinator: { startPrivateOrderStream(bot: RunningBot): void };
+    };
+    const runtime = internal.running.get(cfg.id);
+    if (!runtime) throw new Error("running bot missing");
+    if (runtime.orderPollTimer) clearInterval(runtime.orderPollTimer);
+    let observedSignal: AbortSignal | undefined;
+    let resolveSubscription = (_subscription: PrivateOrderSubscription) => {};
+    const close = vi.fn();
+    runtime.adapter.subscribeOrderUpdates = async (_onSnapshot, _onConnection, signal) => {
+      observedSignal = signal;
+      return new Promise<PrivateOrderSubscription>((resolve) => {
+        resolveSubscription = resolve;
+      });
+    };
+
+    internal.orderCoordinator.startPrivateOrderStream(runtime);
+    expect(observedSignal?.aborted).toBe(false);
+    engine.stop(cfg.id);
+    expect(observedSignal?.aborted).toBe(true);
+
+    resolveSubscription({ close, connected: () => false });
+    await flush();
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it("fails closed on an unmatched authenticated private execution", async () => {

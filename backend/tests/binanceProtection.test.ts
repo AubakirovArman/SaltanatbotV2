@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BinanceAdapter } from "../src/trading/exchange/binance.js";
+import { BinanceAdapter } from "./support/signedAdapters.js";
 import { clearFilterCache } from "../src/trading/exchange/filters.js";
 
 afterEach(() => {

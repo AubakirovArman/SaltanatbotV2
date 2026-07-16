@@ -76,11 +76,16 @@ returns `409 workspace_owner_mismatch` before any workspace is read or written; 
 and restart synchronization. Legacy-auth compatibility mode does not require this header.
 
 `POST /api/jobs` accepts a bounded `kind: "backtest"` strategy/candle/config payload and returns
-`202` with a durable job. `GET /api/jobs`, `GET /api/jobs/:id` and
-`POST /api/jobs/:id/cancel` are owner-scoped. States are
+`202` with a durable job. `GET /api/jobs`, `GET /api/jobs/metrics`, `GET /api/jobs/:id` and
+`POST /api/jobs/:id/cancel` are owner-scoped and always return
+`Cache-Control: private, no-store, max-age=0` with `Vary: Cookie`. States are
 `queued/running/completed/failed/cancelled`. One user may have five active jobs and one running job;
 identical payloads are deduplicated. A separate research worker claims jobs by lease and stores a
-bounded result with metrics, trades and a downsampled equity curve.
+bounded result with metrics, trades and a downsampled equity curve. After artifact compaction,
+list responses expose `artifactsExpired: true`; `GET /api/jobs/:id` and an exact
+`clientRequestId` retry return `410 job_artifacts_expired`. Reusing the same request ID with
+different content remains `409 job_idempotency_conflict`, while a new request ID may rerun the same
+content.
 
 ## Shared types
 

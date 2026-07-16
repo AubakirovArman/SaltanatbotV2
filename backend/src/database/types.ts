@@ -23,6 +23,7 @@ export interface UserDatabaseRow {
   approved_by: string | null;
   last_login_at: Date | null;
   password_changed_at: Date | null;
+  authorization_revision: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -46,7 +47,7 @@ export interface WorkspaceDatabaseRow {
   owner_user_id: string;
   name: string;
   schema_version: number;
-  payload: unknown;
+  payload: unknown | null;
   revision: string;
   content_hash: string | null;
   deleted_at: Date | null;
@@ -62,6 +63,8 @@ export interface ComputeJobDatabaseRow {
   payload: unknown;
   result: unknown | null;
   result_ref: string | null;
+  artifact_size_bytes: string;
+  artifacts_pruned_at: Date | null;
   error_code: string | null;
   error_message: string | null;
   progress: number;

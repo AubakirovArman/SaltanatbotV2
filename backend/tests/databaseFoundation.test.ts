@@ -88,9 +88,9 @@ function createPoolDouble(
 
 describe("PostgreSQL schema migrations", () => {
   it("uses contiguous checksummed versions and no extensions", () => {
-    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(4);
-    expect(DATABASE_MIGRATIONS.map((migration) => migration.version)).toEqual([1, 2, 3, 4]);
-    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(4);
+    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(8);
+    expect(DATABASE_MIGRATIONS.map((migration) => migration.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(8);
     expect(DATABASE_MIGRATIONS.every((migration) => /^[0-9a-f]{64}$/.test(migration.checksum))).toBe(true);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.sql).join("\n")).not.toMatch(/CREATE\s+EXTENSION/i);
   });
@@ -104,14 +104,30 @@ describe("PostgreSQL schema migrations", () => {
     expect(DATABASE_MIGRATIONS[3].sql).toContain("ADD COLUMN client_id VARCHAR(160)");
     expect(DATABASE_MIGRATIONS[3].sql).toContain("ON workspaces (owner_user_id, client_id)");
     expect(DATABASE_MIGRATIONS[3].sql).toContain("WHERE deleted_at IS NULL");
+    expect(DATABASE_MIGRATIONS[4].sql).toContain("authorization_revision BIGINT NOT NULL DEFAULT 1");
+    expect(DATABASE_MIGRATIONS[5].sql).toContain("compute_jobs_terminal_completed_index");
+    expect(DATABASE_MIGRATIONS[5].sql).toContain("compute_jobs_owner_terminal_completed_index");
+    expect(DATABASE_MIGRATIONS[6].sql).toContain("CREATE TABLE execution_step_ledger");
+    expect(DATABASE_MIGRATIONS[6].sql).toContain("CREATE TABLE execution_step_ledger_owner_usage");
+    expect(DATABASE_MIGRATIONS[6].sql).toContain("CREATE TABLE execution_step_reservations");
+    expect(DATABASE_MIGRATIONS[6].sql).toContain("PRIMARY KEY (owner_user_id, intent_id)");
+    expect(DATABASE_MIGRATIONS[6].sql).toContain("UNIQUE (owner_user_id, binding_digest)");
+    expect(DATABASE_MIGRATIONS[6].sql).toContain("authorization_epoch BIGINT NOT NULL CHECK (authorization_epoch >= 0)");
+    expect(DATABASE_MIGRATIONS[6].sql).not.toContain("'telemetry'");
+    expect(DATABASE_MIGRATIONS[6].sql).not.toMatch(/\b(payload|secret|signature|api_key|session|permit_token)\b/i);
+    expect(DATABASE_MIGRATIONS[7].sql).toContain("ADD COLUMN artifact_size_bytes BIGINT");
+    expect(DATABASE_MIGRATIONS[7].sql).toContain("CREATE TABLE compute_job_retention_usage");
+    expect(DATABASE_MIGRATIONS[7].sql).toContain("maintain_compute_job_retention_usage");
+    expect(DATABASE_MIGRATIONS[7].sql).toContain("compute_jobs_full_artifact_retention_index");
+    expect(DATABASE_MIGRATIONS[7].sql).toContain("compute_jobs_tombstone_retention_index");
   });
 
   it("holds an advisory lock and applies every new migration atomically", async () => {
     const database = createPoolDouble();
     const result = await migrateDatabase(database.pool);
 
-    expect(result).toMatchObject({ fromVersion: 0, toVersion: 4 });
-    expect(result.applied).toHaveLength(4);
+    expect(result).toMatchObject({ fromVersion: 0, toVersion: 8 });
+    expect(result.applied).toHaveLength(8);
     expect(database.queries.some((query) => query.text.includes("pg_advisory_xact_lock"))).toBe(true);
     expect(database.queries.at(0)?.text).toBe("BEGIN");
     expect(database.queries.at(-1)?.text).toBe("COMMIT");

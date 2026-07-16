@@ -78,17 +78,13 @@ services:
       # Port the server binds inside the container (matches the EXPOSE/mapping).
       PORT: 4180
       # HOST is fixed to 0.0.0.0 in the image so the mapped port is reachable.
-      # Fail closed until an HTTPS deployment is deliberately designed/audited.
-      RUNTIME_PROFILE: ${RUNTIME_PROFILE:-public-http-paper}
-      # Deprecated compatibility alias for public-http-paper.
-      DEMO_MODE: ${DEMO_MODE:-}
+      # This pre-HTTPS image is deliberately hard-pinned to Research / Paper.
+      RUNTIME_PROFILE: public-http-paper
       # Comma-separated CORS allowlist for cross-origin dev/proxy setups.
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       TRUST_PROXY: ${TRUST_PROXY:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-}
-      ALLOW_INSECURE_TRADING_MUTATIONS: ${ALLOW_INSECURE_TRADING_MUTATIONS:-}
-      ENABLE_LIVE_SPOT: ${ENABLE_LIVE_SPOT:-}
       PAPER_MULTI_LEG_DB_PATH: ${PAPER_MULTI_LEG_DB_PATH:-}
       ARBITRAGE_CONTINUOUS_ROUTES_FILE: ${ARBITRAGE_CONTINUOUS_ROUTES_FILE:-}
       ARBITRAGE_CONTINUOUS_ROUTES_JSON: ${ARBITRAGE_CONTINUOUS_ROUTES_JSON:-}
@@ -118,10 +114,12 @@ services:
     image: saltanatbotv2:latest
     command: ["node", "backend/dist/workers/researchWorker.js"]
     restart: unless-stopped
+    stop_grace_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
     environment:
+      RUNTIME_PROFILE: public-http-paper
       PGHOST: postgres
       PGPORT: 5432
       PGDATABASE: ${PGDATABASE:-saltanatbotv2}
@@ -131,6 +129,9 @@ services:
       RESEARCH_WORKER_CONCURRENCY: ${RESEARCH_WORKER_CONCURRENCY:-2}
       RESEARCH_JOB_TIMEOUT_MS: ${RESEARCH_JOB_TIMEOUT_MS:-120000}
       RESEARCH_JOB_MEMORY_MB: ${RESEARCH_JOB_MEMORY_MB:-512}
+      RESEARCH_WORKER_METRICS_INTERVAL_MS: ${RESEARCH_WORKER_METRICS_INTERVAL_MS:-30000}
+      RESEARCH_JOB_RETENTION_INTERVAL_MS: ${RESEARCH_JOB_RETENTION_INTERVAL_MS:-60000}
+      RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS: ${RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS:-20000}
     secrets:
       - postgres_password
     mem_limit: 2g

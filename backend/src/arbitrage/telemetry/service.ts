@@ -8,6 +8,7 @@ import { ACCOUNT_TELEMETRY_TTL_MS, issue, safeMessage } from "./helpers.js";
 import { collectStablecoinFx, type StablecoinFxOptions } from "./stableFx.js";
 import { BinanceReadonlyTelemetryTransport, type BinanceTelemetryRequester, BybitReadonlyTelemetryTransport, type BybitTelemetryRequester } from "./transport.js";
 import type { AccountTelemetryIssue, AccountTelemetryReadiness, AccountTelemetryRequest, AccountTelemetrySnapshot, AccountTelemetryVenue, StablecoinFxTelemetry, VenueAccountTelemetry } from "./types.js";
+import { DENY_SIGNED_REQUEST_AUTHORIZER } from "../../trading/exchange/signedRequestGate.js";
 
 const PRIVATE_SOURCE = {
   binance: "binance.account-telemetry",
@@ -131,6 +132,7 @@ export class AccountTelemetryService {
     const collect = async () => {
       if (venue === "binance") {
         const requester = this.options.binanceRequester ?? new BinanceReadonlyTelemetryTransport(keys, {
+          signedRequestAuthorizer: DENY_SIGNED_REQUEST_AUTHORIZER,
           fetch: this.options.fetch,
           now: this.now,
           timeoutMs: Math.min(5_000, this.timeoutMs),
@@ -140,6 +142,7 @@ export class AccountTelemetryService {
         return collectBinanceTelemetry(requester, request, this.now, signal);
       }
       const requester = this.options.bybitRequester ?? new BybitReadonlyTelemetryTransport(keys, {
+        signedRequestAuthorizer: DENY_SIGNED_REQUEST_AUTHORIZER,
         fetch: this.options.fetch,
         now: this.now,
         timeoutMs: Math.min(5_000, this.timeoutMs),

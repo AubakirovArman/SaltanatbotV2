@@ -2,6 +2,7 @@ import type { DataMarketType } from "../providers/provider.js";
 import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
 import { BybitAdapter } from "./exchange/bybit.js";
 import { PaperAdapter } from "./exchange/paper.js";
+import { DENY_SIGNED_REQUEST_AUTHORIZER } from "./exchange/signedRequestGate.js";
 import { getTradingAccountCredentialsForOwner, getTradingAccountForOwner, listTradingAccountsForOwner } from "./store.js";
 import type { BotConfig, ExchangeAdapter } from "./types.js";
 import { botTradingAccountId, tradingAccountBindingIssue } from "./tradingAccounts.js";
@@ -19,8 +20,8 @@ export function buildEngineAdapter(config: BotConfig, getPrice: () => number, po
     const keys = getTradingAccountCredentialsForOwner<ExchangeKeys>(ownerUserId, accountId) ?? { apiKey: "", apiSecret: "" };
     if (!keys.apiKey || !keys.apiSecret) throw new Error(`Credentials are not configured for trading account ${accountId}.`);
     return config.exchange === "binance"
-      ? new BinanceAdapter(config.id, keys, config.market, accountId)
-      : new BybitAdapter(config.id, keys, config.market, accountId);
+      ? new BinanceAdapter(config.id, keys, config.market, DENY_SIGNED_REQUEST_AUTHORIZER, accountId)
+      : new BybitAdapter(config.id, keys, config.market, DENY_SIGNED_REQUEST_AUTHORIZER, accountId);
   }
   return new PaperAdapter({
     botId: config.id,
@@ -45,8 +46,8 @@ export function buildEmergencyAdapters(ownerUserId: string, policy: RuntimePolic
     // metadata is disabled: old venue exposure may still exist.
     for (const market of ["spot", "futures"] as const) {
       adapters.push(account.exchange === "binance"
-        ? new BinanceAdapter(`emergency-${market}`, keys, market, account.id)
-        : new BybitAdapter(`emergency-${market}`, keys, market, account.id));
+        ? new BinanceAdapter(`emergency-${market}`, keys, market, DENY_SIGNED_REQUEST_AUTHORIZER, account.id)
+        : new BybitAdapter(`emergency-${market}`, keys, market, DENY_SIGNED_REQUEST_AUTHORIZER, account.id));
     }
   }
   return adapters;

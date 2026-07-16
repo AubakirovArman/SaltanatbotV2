@@ -156,7 +156,8 @@ known-good snapshot.
 3. Restore PostgreSQL into an empty replacement database, then restore the SQLite directory with the
    explicit replacement flag.
 4. Start one API instance in paper mode and inspect users, workspaces, jobs, bots and journals.
-5. Keep live trading disarmed until reconciliation and exchange state have been checked.
+5. Confirm the restored server reports `public-http-paper`. This release has no live reactivation
+   step; dormant encrypted exchange state remains preserved but unreachable.
 
 ```bash
 npm run data:verify -- ../saltanat-backups/2026-07-11

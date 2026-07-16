@@ -2,6 +2,7 @@ import { isIP } from "node:net";
 import { normalizeExactHttpOrigin } from "../http/exactOrigin.js";
 
 export const RUNTIME_PROFILES = ["public-http-paper", "private-live"] as const;
+export const CURRENT_RELEASE_RUNTIME_PROFILE = "public-http-paper" as const;
 
 export type RuntimeProfileName = (typeof RUNTIME_PROFILES)[number];
 export type AuthMode = "database" | "legacy";
@@ -44,8 +45,27 @@ let configuredRuntimeConfig: RuntimeConfig | undefined;
  * listeners. Every consumer receives the same deeply frozen typed snapshot.
  */
 export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
-  const demoMode = parseOptionalBoolean("DEMO_MODE", env.DEMO_MODE);
   const runtimeProfile = parseRuntimeProfile(env.RUNTIME_PROFILE);
+  assertCurrentReleaseRuntimeProfile(runtimeProfile);
+  return parseRuntimeConfig(env, runtimeProfile);
+}
+
+/**
+ * Pure validation hook for the separately reviewed future HTTPS release.
+ * It intentionally returns no runnable configuration and is never used by
+ * process startup; current builds still reject `private-live` in
+ * `loadRuntimeConfig`.
+ */
+export function validateFuturePrivateLiveBoundary(env: NodeJS.ProcessEnv): void {
+  const runtimeProfile = parseRuntimeProfile(env.RUNTIME_PROFILE);
+  if (runtimeProfile !== "private-live") {
+    throw new RuntimeConfigError("Future private-live boundary validation requires RUNTIME_PROFILE=private-live.");
+  }
+  parseRuntimeConfig(env, runtimeProfile);
+}
+
+function parseRuntimeConfig(env: NodeJS.ProcessEnv, runtimeProfile: RuntimeProfileName): RuntimeConfig {
+  const demoMode = parseOptionalBoolean("DEMO_MODE", env.DEMO_MODE);
   const host = parseHost(env.HOST);
   const port = parsePort(env.PORT);
   const publicOrigin = parseOptionalOrigin("PUBLIC_ORIGIN", env.PUBLIC_ORIGIN);
@@ -105,6 +125,12 @@ function parseRuntimeProfile(value: string | undefined): RuntimeProfileName {
   if (!configured) return "public-http-paper";
   if (RUNTIME_PROFILES.includes(configured as RuntimeProfileName)) return configured as RuntimeProfileName;
   throw new RuntimeConfigError(`Invalid RUNTIME_PROFILE=${configured}. Expected one of: ${RUNTIME_PROFILES.join(", ")}.`);
+}
+
+function assertCurrentReleaseRuntimeProfile(runtimeProfile: RuntimeProfileName): void {
+  if (runtimeProfile !== CURRENT_RELEASE_RUNTIME_PROFILE) {
+    throw new RuntimeConfigError("RUNTIME_PROFILE=private-live is disabled in this pre-HTTPS release. Use RUNTIME_PROFILE=public-http-paper; live activation requires a separate future release and security review.");
+  }
 }
 
 function parseAuthMode(env: NodeJS.ProcessEnv, demoMode: boolean | undefined): AuthMode {

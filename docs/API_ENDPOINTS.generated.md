@@ -42,6 +42,7 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `POST` | `/api/jobs` | Authenticated · owner-scoped | `backend/src/jobs/routes.ts` |
 | `GET` | `/api/jobs/:id` | Authenticated · owner-scoped | `backend/src/jobs/routes.ts` |
 | `POST` | `/api/jobs/:id/cancel` | Authenticated · owner-scoped | `backend/src/jobs/routes.ts` |
+| `GET` | `/api/jobs/metrics` | Authenticated · owner-scoped | `backend/src/jobs/routes.ts` |
 | `GET` | `/api/market-data/:venue/depth` | Authenticated account · public-market read-only | `backend/src/venues/publicRoutes.ts` |
 | `GET` | `/api/market-data/:venue/funding` | Authenticated account · public-market read-only | `backend/src/venues/publicRoutes.ts` |
 | `GET` | `/api/market-data/:venue/instruments` | Authenticated account · public-market read-only | `backend/src/venues/publicRoutes.ts` |
@@ -137,4 +138,4 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **117 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **118 HTTP endpoints** and **6 WebSocket endpoints**.

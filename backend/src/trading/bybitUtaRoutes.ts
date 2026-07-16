@@ -2,6 +2,7 @@ import type { RequestHandler, Response } from "express";
 import { z } from "zod";
 import type { ExchangeKeys } from "./exchange/binance.js";
 import { BybitV5Client } from "./exchange/bybitClient.js";
+import type { SignedRequestAuthorizer } from "./exchange/signedRequestGate.js";
 import { BybitUtaService, type MutationAuthorization } from "./bybitUta.js";
 
 const coinSchema = z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,15}$/);
@@ -24,6 +25,7 @@ interface Dependencies {
   demo: () => boolean;
   liveEnabled: () => boolean;
   keys: () => ExchangeKeys | undefined;
+  signedRequestAuthorizer: SignedRequestAuthorizer;
   authorizeMutation?: MutationAuthorization;
 }
 
@@ -38,7 +40,7 @@ export function createBybitUtaHandlers(deps: Dependencies): BybitUtaHandlers {
   const service = () => {
     const keys = deps.keys();
     if (!keys?.apiKey || !keys.apiSecret) throw new Error("Bybit API keys are not configured.");
-    return new BybitUtaService(new BybitV5Client(keys), deps.authorizeMutation);
+    return new BybitUtaService(new BybitV5Client(keys, "futures", deps.signedRequestAuthorizer), deps.authorizeMutation);
   };
   const allowMutation = (response: Response, requiresLiveArm: boolean) => {
     if (deps.demo()) {

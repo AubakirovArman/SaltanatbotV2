@@ -17,18 +17,12 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
-    // Unit/integration suites exercise both live adapters and the paper-only
-    // boundary. Production has the opposite, fail-closed default; tests opt in
-    // explicitly and paper-only cases inject/resolve that policy directly.
+    // The test process uses the same runnable profile as the current release.
+    // Future private/live boundaries must inject a pure RuntimePolicy directly;
+    // environment variables are never a test-only activation bypass.
     env: {
-      RUNTIME_PROFILE: "private-live",
+      RUNTIME_PROFILE: "public-http-paper",
       AUTH_MODE: "database",
-      HOST: "127.0.0.1",
-      COOKIE_SECURE: "1",
-      PUBLIC_ORIGIN: "https://tests.example.invalid",
-      ALLOWED_ORIGINS: "",
-      TRUST_PROXY: "loopback",
-      ALLOW_INSECURE_TRADING_MUTATIONS: "0",
     },
     include: [
       "backend/tests/**/*.test.ts",

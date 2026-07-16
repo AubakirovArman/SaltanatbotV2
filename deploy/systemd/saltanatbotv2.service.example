@@ -1,0 +1,59 @@
+[Unit]
+Description=SaltanatbotV2 API, WebSockets and paper trading runtime
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=saltanatbotv2
+Group=saltanatbotv2
+WorkingDirectory=/opt/saltanatbotv2
+Environment=NODE_ENV=production
+Environment=AUTH_MODE=database
+Environment=AUTH_REGISTRATION_ENABLED=1
+Environment=RUNTIME_PROFILE=public-http-paper
+Environment=HOST=127.0.0.1
+Environment=PORT=4180
+Environment=PGHOST=127.0.0.1
+Environment=PGPORT=55434
+Environment=PGDATABASE=saltanatbotv2
+Environment=PGUSER=saltanatbotv2
+Environment=PGPASSWORD_FILE=/etc/saltanatbotv2/postgres_password
+Environment=PGAPPNAME=saltanatbotv2-api
+Environment=PGPOOL_MAX=12
+ExecStartPre=/usr/bin/test -r /etc/saltanatbotv2/postgres_password
+ExecStartPre=/usr/bin/test -d /opt/saltanatbotv2/backend/data
+ExecStart=/usr/bin/node /opt/saltanatbotv2/backend/dist/server.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=90s
+TimeoutStopSec=45s
+KillSignal=SIGTERM
+UMask=0077
+LimitNOFILE=32768
+MemoryHigh=3G
+MemoryMax=4G
+CPUQuota=400%
+TasksMax=512
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/opt/saltanatbotv2/backend/data
+
+[Install]
+WantedBy=multi-user.target

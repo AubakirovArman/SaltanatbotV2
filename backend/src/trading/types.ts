@@ -383,7 +383,8 @@ export interface ExchangeAdapter {
   /** Authenticated order updates; REST status polling remains the disconnect fallback. */
   subscribeOrderUpdates?(
     onSnapshot: (snapshot: ExchangeOrderSnapshot) => void,
-    onConnection: (connected: boolean, message: string) => void
+    onConnection: (connected: boolean, message: string) => void,
+    signal: AbortSignal
   ): Promise<PrivateOrderSubscription>;
   /** Feed a live price so resting orders can trigger (paper). */
   onPrice?(symbol: string, price: number): FillRecord[];

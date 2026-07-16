@@ -19,10 +19,9 @@
 
 import type { TradingEngine } from "./engine.js";
 import { getNotifyConfig, isTelegramControlEnabled, type TelegramConfig } from "./notifications.js";
-import { LEGACY_TRADING_OWNER_ID, getSetting, listBotsForOwner, listLogsForOwner, setSetting } from "./store.js";
+import { getTradingOwnerAuthorityForOwner, LEGACY_TRADING_OWNER_ID, listBotsForOwner, listLogsForOwner, setTradingOwnerArmedForOwner } from "./store.js";
 import { type BotDetail, escapeHtml, formatBotDetail, formatPortfolio, formatStatus, HELP_TEXT, parseCommand, type StatusRow } from "./telegramCommands.js";
 import type { BotConfig } from "./types.js";
-import { tenantSettingKey } from "./ownership.js";
 import { getRuntimePolicy, isPaperOnlyRuntime, type RuntimePolicy } from "../runtimeProfile.js";
 
 /** An inline-keyboard reply: rows of buttons carrying callback `data`. */
@@ -224,7 +223,7 @@ export class TelegramControl {
     switch (action) {
       case "kill":
         if (isPaperOnlyRuntime(this.runtimePolicy)) return { toast: "Paper only", text: "🔒 Private exchange emergency actions are disabled in Research / Paper mode." };
-        setSetting(tenantSettingKey(this.ownerUserId, "liveTradingEnabled"), false);
+        setTradingOwnerArmedForOwner(this.ownerUserId, false);
         {
           const result = await this.engine.emergencyStopForOwner(this.ownerUserId);
           if (!result.ok) {
@@ -245,9 +244,7 @@ export class TelegramControl {
         }
       case "close": {
         if (this.isLiveActionBlocked(id)) return { toast: "Paper only" };
-        const ok = this.engine.runtimeConfigForOwner(this.ownerUserId, id)
-          ? await this.engine.closeNow(id).catch(() => false)
-          : false;
+        const ok = this.engine.runtimeConfigForOwner(this.ownerUserId, id) ? await this.engine.closeNow(id).catch(() => false) : false;
         return { toast: ok ? "Closed" : "No position" };
       }
       default:
@@ -310,9 +307,7 @@ export class TelegramControl {
     const bot = findBotByName(arg.trim(), this.ownerUserId);
     if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
     if (bot.exchange !== "paper" && isPaperOnlyRuntime(this.runtimePolicy)) return "🔒 Live position actions are disabled in Research / Paper mode.";
-    const ok = this.engine.runtimeConfigForOwner(this.ownerUserId, bot.id)
-      ? await this.engine.closeNow(bot.id).catch(() => false)
-      : false;
+    const ok = this.engine.runtimeConfigForOwner(this.ownerUserId, bot.id) ? await this.engine.closeNow(bot.id).catch(() => false) : false;
     return ok ? `✋ Closed <b>${escapeHtml(bot.name)}</b>'s position.` : `<b>${escapeHtml(bot.name)}</b> has no open position.`;
   }
 
@@ -408,7 +403,7 @@ export class TelegramControl {
 
     // LIVE bots honour the same arm gate as the HTTP route. Telegram is the
     // confirm step for an already-armed account — it must NOT bypass the arm.
-    if (bot.exchange !== "paper" && getSetting<boolean>(tenantSettingKey(this.ownerUserId, "liveTradingEnabled")) !== true) {
+    if (bot.exchange !== "paper" && !getTradingOwnerAuthorityForOwner(this.ownerUserId).armed) {
       return `🔒 Live trading is not armed. Arm it in the web UI (Trade settings) before starting <b>${escapeHtml(bot.name)}</b>.`;
     }
     try {

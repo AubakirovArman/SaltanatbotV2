@@ -1,10 +1,15 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 import type { IdentityPrincipal } from "../identity/types.js";
 import { parseStrategyIR } from "../trading/strategy/irSchema.js";
-import { ComputeJobRepository, JobIdempotencyConflictError, JobQuotaError } from "./repository.js";
+import {
+  ComputeJobRepository,
+  type ComputeJob,
+  JobIdempotencyConflictError,
+  JobQuotaError
+} from "./repository.js";
 
 const candleSchema = z.object({
   time: z.number().int().safe().nonnegative(),
@@ -58,6 +63,18 @@ export function createComputeJobsRouter(pool: Pool): Router {
   const repository = new ComputeJobRepository(pool);
   const router = Router();
 
+  router.use((request, response, next) => {
+    const requestId = randomUUID();
+    // Never reflect a caller value: it may contain a secret or log-forging
+    // content. Error middleware reads only this server-owned local value.
+    response.locals.requestId = requestId;
+    response.locals.computeRequestId = requestId;
+    response.setHeader("X-Request-ID", requestId);
+    response.setHeader("Cache-Control", "private, no-store, max-age=0");
+    response.vary("Cookie");
+    next();
+  });
+
   router.post("/", asyncRoute(async (request, response) => {
     const input = backtestSchema.parse(request.body);
     const parsedIr = parseStrategyIR(input.strategy);
@@ -79,6 +96,23 @@ export function createComputeJobsRouter(pool: Pool): Router {
       clientRequestId,
       dedupeKey
     });
+    response.setHeader("X-Job-ID", job.id);
+    if (job.artifactsPrunedAt) {
+      console.info(JSON.stringify({
+        event: "research_job_artifacts_expired_retry",
+        requestId: computeRequestId(response),
+        jobId: job.id,
+        status: job.status
+      }));
+      response.status(410).json(expiredJobResponse(job));
+      return;
+    }
+    console.info(JSON.stringify({
+      event: "research_job_accepted",
+      requestId: computeRequestId(response),
+      jobId: job.id,
+      status: job.status
+    }));
     response.status(job.status === "queued" || job.status === "running" ? 202 : 200).json({ job });
   }));
 
@@ -87,9 +121,14 @@ export function createComputeJobsRouter(pool: Pool): Router {
     response.json({ jobs: await repository.list(owner(response), limit) });
   }));
 
+  router.get("/metrics", asyncRoute(async (_request, response) => {
+    response.json({ metrics: await repository.getOwnerMetrics(owner(response)) });
+  }));
+
   router.get("/:id", asyncRoute(async (request, response) => {
     const job = await repository.get(owner(response), idSchema.parse(routeId(request)));
     if (!job) return response.status(404).json({ error: "Job not found.", code: "job_not_found" });
+    if (job.artifactsPrunedAt) return response.status(410).json(expiredJobResponse(job));
     response.json({ job });
   }));
 
@@ -130,4 +169,18 @@ function owner(response: Response): string {
 function routeId(request: Request): string {
   const value = request.params.id;
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+function computeRequestId(response: Response): string {
+  const requestId = response.locals.computeRequestId;
+  if (typeof requestId !== "string") throw new Error("Compute request correlation ID missing");
+  return requestId;
+}
+
+function expiredJobResponse(job: ComputeJob) {
+  return {
+    error: "Research job artifacts have expired.",
+    code: "job_artifacts_expired",
+    job
+  };
 }

@@ -69,7 +69,9 @@ These figures are a point-in-time observation on a shared machine, not reserved 
   limit per task. Compose caps the API at 4 CPU/4 GiB, PostgreSQL at 2 CPU/2 GiB and the research
   service at 2 CPU/2 GiB; operators should tune these after measuring their own workloads.
 - Completed backtest results keep metrics, trades and bounded/downsampled curves rather than an
-  unbounded execution trace.
+  unbounded execution trace. Full terminal artifacts are further capped per owner by the first of
+  30 days, 200 jobs or 256 MiB; active jobs are never compacted. Compact idempotency tombstones are
+  capped at 90 days and 1,000 per owner, and the worker changes at most 50 rows per retention pass.
 
 ## Why this should be comfortable for about 100 people
 

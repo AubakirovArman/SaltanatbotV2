@@ -111,8 +111,10 @@ Paper execution → журнал → метрики → алерты/Telegram
 
 ## 5. Этап 1 — фундамент исполнения без включения live
 
-Статус: 1A-1C реализованы в текущем релизе; 1D-1E остаются в плане. Поэтому
-профиль по-прежнему только `public-http-paper`, это не заявление о готовности live.
+Статус: фундамент 1A-1E реализован и протестирован. Production-подключение
+private/live намеренно отсутствует: routes и adapters используют deny-only authorizer,
+а текущая сборка отклоняет `private-live` до любых startup side effects. Это не
+заявление о готовности live.
 
 ### 1A. Типизированная конфигурация
 
@@ -122,7 +124,8 @@ Paper execution → журнал → метрики → алерты/Telegram
 - строгий разбор boolean, integer, URL, origin, proxy trust, путей и TTL;
 - неизвестное или противоречивое значение останавливает запуск;
 - секреты никогда не попадают в diagnostics/logs;
-- будущий `private-live` описан, но не может активироваться без HTTPS-условий.
+- типы и чистая проверка будущей HTTPS-границы `private-live` сохранены, но
+  операторского пути активации нет: текущий loader всегда отклоняет это значение.
 
 Критерий: изменение `process.env` после загрузки не меняет поведение процесса, а
 ошибка конфигурации возникает до открытия БД, создания файлов и порта.
@@ -165,12 +168,26 @@ Paper execution → журнал → метрики → алерты/Telegram
   bot/emergency operation, venue, market, symbol, действие, risk effect, intent,
   authorization epoch, rules fingerprint, nonce и expiry;
 - permit проверяется на engine→adapter и непосредственно перед signed I/O;
+- каждый точный шаг резервируется в durable owner-scoped ledger до handoff и
+  consume выполняется до сетевого callback;
 - disarm, отключение пользователя, смена роли/аккаунта или revision отзывают permit;
 - emergency разрешает только cancel и доказуемый reduce-only;
 - в `public-http-paper` risk-increasing permit не выдаётся вообще.
 
 Критерий: forged, expired, reused, cross-owner и wrong-capability permit дают ноль
-сетевых вызовов. Этот этап укрепляет будущий live-контур, но не включает его.
+сетевых вызовов. Фундамент интегрирован и протестирован, но production routes/adapters
+намеренно не подключены к нему и остаются deny-only.
+
+Обязательные security blockers будущего `private-live`:
+
+- отзыв полномочий либо сначала завершает durable cancel/reduce-only de-risking, либо передаёт его
+  отдельному аутентифицированному owner-scoped системному emergency principal;
+- archive/partition lookup для replay keys сохраняет проверку exact-step duplicate и гарантирует,
+  что lifetime cap владельца не исчерпает возможность emergency или reconciliation.
+
+На текущий `public-http-paper` эти блокеры не влияют: `private-live` отклоняется до startup side
+effects, а все production signed adapters остаются deny-only. До будущего live activation оба
+блокера должны быть реализованы и пройти отдельный security review.
 
 ### 1E. Минимальный worker/queue foundation
 
@@ -180,8 +197,13 @@ Paper execution → журнал → метрики → алерты/Telegram
 - durable queue/lease, idempotency key, retry/backoff и graceful recovery;
 - per-owner concurrency, timeout, result-size, CPU и memory quotas;
 - request/job correlation id, queue depth, duration и failure counters;
+- полные terminal-артефакты ограничены первым достигнутым лимитом: 30 дней,
+  200 jobs или 256 MiB на владельца; exact-request tombstone — 90 дней и
+  максимум 1 000 на владельца;
 - ADR с окончательным решением: единый PostgreSQL system of record либо
   PostgreSQL outbox + формально описанная reconciliation с legacy SQLite.
+
+Решение зафиксировано в [ADR по полномочиям исполнения и system of record](ADR_EXECUTION_AUTHORITY.md).
 
 Критерий: worker crash не сбрасывает job и не останавливает login/chart API;
 второй запуск одного job не создаёт второй результат.

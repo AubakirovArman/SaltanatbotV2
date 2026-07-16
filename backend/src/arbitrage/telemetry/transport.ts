@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import type { ExchangeKeys } from "../../trading/exchange/binance.js";
 import { getExchangeRequestGuard, type ExchangeRequestGuard } from "../../trading/exchange/requestGuard.js";
+import { type SignedRequestAuthorizer, withSignedRequestAuthorization } from "../../trading/exchange/signedRequestGate.js";
 import { boundedFetchJson, invalid, object, safeMessage } from "./helpers.js";
 import { assertPrivateExchangeAccess, getRuntimePolicy, type RuntimePolicy } from "../../runtimeProfile.js";
 
@@ -18,6 +19,7 @@ export interface BybitTelemetryRequester {
 }
 
 export interface ReadonlyTelemetryTransportOptions {
+  signedRequestAuthorizer: SignedRequestAuthorizer;
   fetch?: typeof fetch;
   now?: () => number;
   timeoutMs?: number;
@@ -58,9 +60,11 @@ export class BinanceReadonlyTelemetryTransport implements BinanceTelemetryReques
   private readonly spotBase: string;
   private readonly futuresBase: string;
   private readonly runtimePolicy: RuntimePolicy;
+  private readonly authorizer: SignedRequestAuthorizer;
 
-  constructor(private readonly keys: ExchangeKeys, options: ReadonlyTelemetryTransportOptions = {}) {
-    this.fetcher = options.fetch ?? fetch;
+  constructor(private readonly keys: ExchangeKeys, options: ReadonlyTelemetryTransportOptions) {
+    this.authorizer = options.signedRequestAuthorizer;
+    this.fetcher = options.fetch ?? ((input, init) => fetch(input, init));
     this.now = options.now ?? Date.now;
     this.timeoutMs = options.timeoutMs ?? 5_000;
     this.guard = options.requestGuard ?? getExchangeRequestGuard("binance");
@@ -76,20 +80,23 @@ export class BinanceReadonlyTelemetryTransport implements BinanceTelemetryReques
     if (!policy) throw new Error("Binance telemetry endpoint is not allowlisted");
     this.guard.assertAvailable(policy.weight);
     const query = safeQuery(params);
-    query.set("timestamp", String(this.now()));
-    query.set("recvWindow", "5000");
-    query.set("signature", createHmac("sha256", this.keys.apiSecret).update(query.toString()).digest("hex"));
-    const base = target === "spot" ? this.spotBase : this.futuresBase;
-    return boundedFetchJson(
-      this.fetcher,
-      `${base}${path}?${query.toString()}`,
-      signal,
-      policy.maxBytes,
-      this.timeoutMs,
-      this.now,
-      (response) => this.guard.observeHttpResponse(response),
-      { "X-MBX-APIKEY": this.keys.apiKey }
-    );
+    const payload = Object.freeze(Object.fromEntries(query.entries()));
+    return withSignedRequestAuthorization(this.authorizer, { venue: "binance", market: target, method: "GET", path, payload }, async () => {
+      query.set("timestamp", String(this.now()));
+      query.set("recvWindow", "5000");
+      query.set("signature", createHmac("sha256", this.keys.apiSecret).update(query.toString()).digest("hex"));
+      const base = target === "spot" ? this.spotBase : this.futuresBase;
+      return boundedFetchJson(
+        this.fetcher,
+        `${base}${path}?${query.toString()}`,
+        signal,
+        policy.maxBytes,
+        this.timeoutMs,
+        this.now,
+        (response) => this.guard.observeHttpResponse(response),
+        { "X-MBX-APIKEY": this.keys.apiKey }
+      );
+    });
   }
 }
 
@@ -101,9 +108,11 @@ export class BybitReadonlyTelemetryTransport implements BybitTelemetryRequester 
   private readonly guard: ExchangeRequestGuard;
   private readonly base: string;
   private readonly runtimePolicy: RuntimePolicy;
+  private readonly authorizer: SignedRequestAuthorizer;
 
-  constructor(private readonly keys: ExchangeKeys, options: ReadonlyTelemetryTransportOptions = {}) {
-    this.fetcher = options.fetch ?? fetch;
+  constructor(private readonly keys: ExchangeKeys, options: ReadonlyTelemetryTransportOptions) {
+    this.authorizer = options.signedRequestAuthorizer;
+    this.fetcher = options.fetch ?? ((input, init) => fetch(input, init));
     this.now = options.now ?? Date.now;
     this.timeoutMs = options.timeoutMs ?? 5_000;
     this.guard = options.requestGuard ?? getExchangeRequestGuard("bybit");
@@ -117,28 +126,35 @@ export class BybitReadonlyTelemetryTransport implements BybitTelemetryRequester 
     const policy = BYBIT_ENDPOINTS.get(path);
     if (!policy) throw new Error("Bybit telemetry endpoint is not allowlisted");
     this.guard.assertAvailable(policy.weight);
-    const query = safeQuery(params).toString();
-    const timestamp = String(this.now());
-    const recvWindow = "5000";
-    const signature = createHmac("sha256", this.keys.apiSecret).update(timestamp + this.keys.apiKey + recvWindow + query).digest("hex");
-    const suffix = query ? `?${query}` : "";
-    const response = await boundedFetchJson(
-      this.fetcher,
-      `${this.base}${path}${suffix}`,
-      signal,
-      policy.maxBytes,
-      this.timeoutMs,
-      this.now,
-      (value) => this.guard.observeHttpResponse(value),
-      {
-        "X-BAPI-API-KEY": this.keys.apiKey,
-        "X-BAPI-TIMESTAMP": timestamp,
-        "X-BAPI-RECV-WINDOW": recvWindow,
-        "X-BAPI-SIGN": signature
-      }
-    );
-    validateBybitEnvelope(response.payload);
-    return response;
+    const query = safeQuery(params);
+    const serialized = query.toString();
+    const payload = Object.freeze(Object.fromEntries(query.entries()));
+    // Account-wide Bybit V5 telemetry is explicitly bound to the futures/UTA
+    // scope until execution capabilities gain a market-neutral account scope.
+    const market = payload.category === "spot" ? "spot" : "futures";
+    return withSignedRequestAuthorization(this.authorizer, { venue: "bybit", market, method: "GET", path, payload }, async () => {
+      const timestamp = String(this.now());
+      const recvWindow = "5000";
+      const signature = createHmac("sha256", this.keys.apiSecret).update(timestamp + this.keys.apiKey + recvWindow + serialized).digest("hex");
+      const suffix = serialized ? `?${serialized}` : "";
+      const response = await boundedFetchJson(
+        this.fetcher,
+        `${this.base}${path}${suffix}`,
+        signal,
+        policy.maxBytes,
+        this.timeoutMs,
+        this.now,
+        (value) => this.guard.observeHttpResponse(value),
+        {
+          "X-BAPI-API-KEY": this.keys.apiKey,
+          "X-BAPI-TIMESTAMP": timestamp,
+          "X-BAPI-RECV-WINDOW": recvWindow,
+          "X-BAPI-SIGN": signature
+        }
+      );
+      validateBybitEnvelope(response.payload);
+      return response;
+    });
   }
 }
 

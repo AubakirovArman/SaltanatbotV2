@@ -13,6 +13,8 @@ export interface IdentityUser {
   appRole: AppRole;
   tradingRole: TradingRole;
   mustChangePassword: boolean;
+  /** Durable monotonic fence for every authorization-affecting mutation. */
+  authorizationRevision: number;
   approvedBy?: string;
   approvedAt?: Date;
   lastLoginAt?: Date;

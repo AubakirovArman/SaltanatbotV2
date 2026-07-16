@@ -198,6 +198,11 @@ function userInsertValues(user: IdentityUser): unknown[] {
 function userUpdateStatement(id: string, update: UserUpdate): { text: string; values: unknown[] } {
   const values: unknown[] = [];
   const assignments: string[] = [];
+  const authorizationMutation = update.status !== undefined
+    || update.appRole !== undefined
+    || update.tradingRole !== undefined
+    || update.mustChangePassword !== undefined
+    || update.passwordHash !== undefined;
   const add = (column: string, value: unknown) => {
     values.push(value);
     assignments.push(`${column} = $${values.length}`);
@@ -213,6 +218,7 @@ function userUpdateStatement(id: string, update: UserUpdate): { text: string; va
   if (update.approvedBy !== undefined) add("approved_by", update.approvedBy);
   if (update.approvedAt !== undefined) add("approved_at", update.approvedAt);
   if (update.lastLoginAt !== undefined) add("last_login_at", update.lastLoginAt);
+  if (authorizationMutation) assignments.push("authorization_revision = authorization_revision + 1");
   add("updated_at", update.updatedAt);
   values.push(id);
   return {
@@ -260,12 +266,19 @@ function mapUser(row: UserDatabaseRow): IdentityUser {
     appRole: row.app_role,
     tradingRole: row.trading_role,
     mustChangePassword: row.must_change_password,
+    authorizationRevision: safeRevision(row.authorization_revision),
     approvedBy: row.approved_by ?? undefined,
     approvedAt: row.approved_at ?? undefined,
     lastLoginAt: row.last_login_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function safeRevision(value: string): number {
+  const revision = Number(value);
+  if (!Number.isSafeInteger(revision) || revision < 1) throw new Error("Invalid user authorization revision");
+  return revision;
 }
 
 function mapSessionJoin(row: SessionJoinRow): { user: IdentityUser; session: IdentitySession } {

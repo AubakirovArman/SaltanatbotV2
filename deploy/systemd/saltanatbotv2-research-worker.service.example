@@ -1,0 +1,57 @@
+[Unit]
+Description=SaltanatbotV2 bounded research worker
+Wants=network-online.target
+After=network-online.target saltanatbotv2.service
+
+[Service]
+Type=simple
+User=saltanatbotv2
+Group=saltanatbotv2
+WorkingDirectory=/opt/saltanatbotv2
+Environment=NODE_ENV=production
+Environment=RUNTIME_PROFILE=public-http-paper
+Environment=PGHOST=127.0.0.1
+Environment=PGPORT=55434
+Environment=PGDATABASE=saltanatbotv2
+Environment=PGUSER=saltanatbotv2
+Environment=PGPASSWORD_FILE=/etc/saltanatbotv2/postgres_password
+Environment=PGAPPNAME=saltanatbotv2-research-worker
+Environment=PGPOOL_MAX=4
+Environment=RESEARCH_WORKER_CONCURRENCY=2
+Environment=RESEARCH_JOB_TIMEOUT_MS=120000
+Environment=RESEARCH_JOB_MEMORY_MB=512
+Environment=RESEARCH_JOB_RETENTION_INTERVAL_MS=60000
+Environment=RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS=20000
+ExecStartPre=/usr/bin/test -r /etc/saltanatbotv2/postgres_password
+ExecStart=/usr/bin/node /opt/saltanatbotv2/backend/dist/workers/researchWorker.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+LimitNOFILE=16384
+MemoryHigh=1792M
+MemoryMax=2G
+CPUQuota=200%
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

@@ -84,8 +84,9 @@ Acceptance:
 Order: typed configuration, master-key fail-stop, strict instrument rules, then
 execution capabilities and permits. None of these changes enables live trading.
 
-Status: 1A-1C are implemented in this release; 1D-1E remain planned. The runtime
-therefore stays `public-http-paper` and this is not a live-readiness claim.
+Status: 1A-1E foundations are implemented and tested. Production private/live wiring is
+intentionally absent: routes and adapters retain deny-only authorizers, and this build rejects
+`private-live` before startup side effects. This is not a live-readiness claim.
 
 ### 1A. Typed immutable runtime configuration
 
@@ -94,7 +95,8 @@ therefore stays `public-http-paper` and this is not a live-readiness claim.
 - load configuration before database, filesystem and listener side effects;
 - redact secrets from diagnostics;
 - retain `DEMO_MODE` only as a temporary deprecated alias;
-- define future `private-live` prerequisites without activating that profile.
+- retain pure future `private-live` types and HTTPS-boundary validation without exposing an
+  operator activation path; the current loader rejects that value unconditionally.
 
 Acceptance: invalid configuration fails before startup side effects and the
 resolved object cannot change when `process.env` changes later.
@@ -131,11 +133,25 @@ requests; precision is preserved beyond eight decimal places.
 - bind a short-lived opaque permit to owner, account, credential revision, bot or
   emergency operation, symbol, action, risk effect and durable intent;
 - validate before adapter execution and consume immediately before signed I/O;
+- reserve each exact step in the durable owner-scoped ledger before handoff and consume it before
+  the network callback;
 - revoke risk-increasing work after disarm, role revocation or account changes;
 - restrict emergency permits to cancel and true reduce-only flattening.
 
 Acceptance: forged, expired, reused, cross-owner or wrong-capability permits are
-rejected with zero network calls.
+rejected with zero network calls. The foundation is integrated and tested, while production
+routes/adapters deliberately remain disconnected and deny-only.
+
+Future `private-live` security blockers:
+
+- authorization revocation must either finish durable cancel/reduce-only de-risking first or hand
+  it to a separately authenticated, owner-scoped system emergency principal;
+- replay-key archive/partition lookup must preserve exact-step duplicate detection while ensuring
+  that a lifetime owner cap can never exhaust emergency or reconciliation issuance.
+
+These blockers do not affect the current `public-http-paper` release because `private-live` is
+rejected before startup side effects and every production signed adapter remains deny-only. They
+must be implemented and reviewed before any future live activation.
 
 ### 1E. Minimal worker and queue foundation
 
@@ -143,8 +159,12 @@ rejected with zero network calls.
 - provide durable leases, idempotency keys, retry/backoff and crash recovery;
 - enforce per-owner concurrency, timeout, CPU, memory and result-size quotas;
 - add request/job correlation, queue depth, duration and failure counters;
+- bound terminal artifacts by the first of 30 days, 200 jobs or 256 MiB per
+  owner; retain at most 1,000 compact exact-request tombstones for 90 days;
 - decide an ADR early: one PostgreSQL system of record, or a PostgreSQL outbox
   with formally specified reconciliation to legacy SQLite.
+
+The accepted decision is [ADR 0001: execution authority and system of record](adr/0001-execution-authority-and-system-of-record.md).
 
 Acceptance: a worker crash cannot stop login/chart traffic or lose a queued job,
 and a retried job cannot publish a duplicate result.

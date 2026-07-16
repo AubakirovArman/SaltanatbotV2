@@ -11,10 +11,27 @@ import { TradingEngine } from "./engine.js";
 import type { TradeEvent } from "./engineEvents.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
 import { BybitV5Client } from "./exchange/bybitClient.js";
+import { DENY_SIGNED_REQUEST_AUTHORIZER } from "./exchange/signedRequestGate.js";
 import { BybitUtaService } from "./bybitUta.js";
 import { roleForBot } from "./botRouteIdentity.js";
 import { TelegramControl } from "./telegramControl.js";
-import { closeStore, disarmAllLiveTradingSettings, getBotForOwner, getSetting, getTradingAccountCredentialsForOwner, getTradingAccountForOwner, initStore, LEGACY_TRADING_OWNER_ID, listAuditLogForOwner, listBotsForOwner, listFillsForOwner, listLogsForOwner, listOrderEventsForOwner, listOrderJournalForOwner, setSetting } from "./store.js";
+import {
+  closeStore,
+  disarmAllLiveTradingSettings,
+  getBotForOwner,
+  getTradingAccountCredentialsForOwner,
+  getTradingAccountForOwner,
+  getTradingOwnerAuthorityForOwner,
+  initStore,
+  LEGACY_TRADING_OWNER_ID,
+  listAuditLogForOwner,
+  listBotsForOwner,
+  listFillsForOwner,
+  listLogsForOwner,
+  listOrderEventsForOwner,
+  listOrderJournalForOwner,
+  setTradingOwnerArmedForOwner
+} from "./store.js";
 import type { AuthRole, BotConfig, ExchangeId, ExecOrder } from "./types.js";
 import type { ArbitrageAlertService } from "../arbitrage/alerts.js";
 import { registerArbitrageAlertRoutes } from "../arbitrage/alertRoutes.js";
@@ -25,7 +42,7 @@ import { createPaperMultiLegRouter, getPaperMultiLegRuntime, type PaperMultiLegS
 import { registerResearchAlertRoutes, type ResearchAlertService } from "../arbitrage/researchAlerts/index.js";
 import { botTradingAccountId, tradingAccountBindingIssue } from "./tradingAccounts.js";
 import { registerTradingAccountIntegrationRoutes, registerTradingAccountRegistryRoutes } from "./tradingAccountRoutes.js";
-import { tenantSettingKey, tradingOwnerFromResponse } from "./ownership.js";
+import { tradingOwnerFromResponse } from "./ownership.js";
 import { TradeStreamHub } from "./tradeStreamHub.js";
 import { registerNotificationRoutes } from "./notificationRoutes.js";
 import { registerBotLifecycleMutationRoutes } from "./botLifecycleMutationRoutes.js";
@@ -136,7 +153,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     return { ...publicBot, status: engine.isRunningForOwner(ownerUserId, bot.id) ? "running" : "stopped" };
   };
 
-  const liveEnabled = (ownerUserId: string) => runtimePolicy.liveBotConfigsAllowed && (getSetting<boolean>(tenantSettingKey(ownerUserId, "liveTradingEnabled")) === true || (ownerUserId === LEGACY_TRADING_OWNER_ID && getSetting<boolean>("liveTradingEnabled") === true));
+  const liveEnabled = (ownerUserId: string) => runtimePolicy.liveBotConfigsAllowed && getTradingOwnerAuthorityForOwner(ownerUserId).armed;
   const runtimeState = runtimeProfilePublicState(runtimePolicy);
   const paperMultiLeg = options.paperMultiLeg === false ? undefined : (options.paperMultiLeg ?? (process.env.NODE_ENV === "test" ? undefined : getPaperMultiLegRuntime()));
 
@@ -206,8 +223,8 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     if (parsed.data.liveTradingEnabled && isPaperOnlyRuntime(runtimePolicy)) return void rejectPaperOnly(res, "live trading arm");
     if (parsed.data.liveTradingEnabled && !ensureSecureTradingOrigin(req, res)) return;
     if (parsed.data.liveTradingEnabled && !ensureEmergencyCanRearm(engine, res, ownerUserId)) return;
-    setSetting(tenantSettingKey(ownerUserId, "liveTradingEnabled"), parsed.data.liveTradingEnabled);
-    res.json({ liveTradingEnabled: parsed.data.liveTradingEnabled });
+    const authority = setTradingOwnerArmedForOwner(ownerUserId, parsed.data.liveTradingEnabled);
+    res.json({ liveTradingEnabled: authority.armed });
   });
 
   registerEmergencyStopRoutes(router, engine, requireRole("live-trade"));
@@ -421,7 +438,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       revokeTradingOwnerAccess(ownerUserId, {
         disconnect: () => tradeStream.disconnectOwner(ownerUserId),
         stopAndSuspend: () => engine.stopOwnerSafely(ownerUserId),
-        disarm: () => setSetting(tenantSettingKey(ownerUserId, "liveTradingEnabled"), false)
+        disarm: () => setTradingOwnerArmedForOwner(ownerUserId, false)
       }),
     restoreOwnerAccess: (ownerUserId) => engine.resumeOwnerStarts(ownerUserId),
     close: () => closeStore()
@@ -435,7 +452,7 @@ function rejectPaperOnly(res: Response, operation: string): void {
 function bybitUta(ownerUserId: string, accountId: string): BybitUtaService {
   const keys = getTradingAccountCredentialsForOwner<ExchangeKeys>(ownerUserId, accountId);
   if (!keys?.apiKey || !keys.apiSecret) throw new Error("Bybit API keys are not configured.");
-  return new BybitUtaService(new BybitV5Client(keys));
+  return new BybitUtaService(new BybitV5Client(keys, "futures", DENY_SIGNED_REQUEST_AUTHORIZER));
 }
 
 function ownedBot(engine: TradingEngine, ownerUserId: string, id: string): BotConfig | undefined {
