@@ -1,6 +1,7 @@
 export const AUTH_SESSION_CHANNEL = "sbv2-auth-session-v1";
 export const AUTH_SESSION_STORAGE_KEY = "sbv2:auth-session-event:v1";
 export const AUTH_SESSION_CUSTOM_EVENT = "sbv2:auth-session-event:v1";
+export const AUTH_SESSION_INVALIDATED_EVENT = "sbv2:auth-session-invalidated:v1";
 
 export type AuthSessionChangeKind = "login" | "logout" | "password" | "session";
 
@@ -49,6 +50,12 @@ export function publishAuthSessionChange(kind: AuthSessionChangeKind): AuthSessi
   }
 
   return change;
+}
+
+/** Reconciles this tab immediately and asks sibling tabs to re-read the shared cookie. */
+export function publishAuthSessionInvalidated(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(AUTH_SESSION_INVALIDATED_EVENT));
+  publishAuthSessionChange("session");
 }
 
 export function subscribeAuthSessionChanges(listener: (change: AuthSessionChange) => void): () => void {

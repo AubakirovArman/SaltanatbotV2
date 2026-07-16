@@ -184,10 +184,14 @@ export class ComputeJobRepository {
   async claim(workerId: string, leaseMs: number): Promise<ClaimedJob | undefined> {
     const leaseToken = randomUUID();
     const result = await this.pool.query<JobRow>(
-      `WITH owner_heads AS MATERIALIZED (
+       `WITH owner_heads AS MATERIALIZED (
          SELECT DISTINCT ON (j.owner_user_id)
            j.id, j.owner_user_id, j.priority, j.run_after, j.created_at
          FROM compute_jobs j
+         INNER JOIN users owner_user
+           ON owner_user.id = j.owner_user_id
+          AND owner_user.status = 'active'
+          AND owner_user.must_change_password = FALSE
          WHERE j.status = 'queued' AND j.cancel_requested_at IS NULL AND j.run_after <= clock_timestamp()
            AND j.attempt < j.max_attempts
            AND NOT EXISTS (

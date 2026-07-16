@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "worker:start": "node dist/workers/researchWorker.js",
     "check": "tsc -p tsconfig.json --noEmit",
-    "admin:bootstrap": "tsx src/cli/bootstrapAdmin.ts"
+    "admin:bootstrap": "tsx src/cli/bootstrapAdmin.ts",
+    "admin:recover": "tsx src/cli/recoverAdmin.ts"
   },
   "dependencies": {
     "@saltanatbotv2/backtest-core": "^0.1.0",

@@ -1,33 +1,43 @@
-import { createHash } from "node:crypto";
-import express, { Router, type NextFunction, type Request, type Response } from "express";
-import { z } from "zod";
-import { PasswordHashCapacityError } from "./password.js";
+import express, { Router } from "express";
 import { AuthRateLimiter, BoundedAuthRateLimitStore, type AuthRateLimitPolicy } from "./rateLimit.js";
-import { IdentityError, IdentityService, normalizeLogin } from "./service.js";
-import { clearAuthCookies, csrfFromCookie, csrfFromRequest, principalFromRequest, requestMetadata, setAuthCookies } from "./http.js";
-import type { IdentityPrincipal, UserStatus } from "./types.js";
-
-const loginSchema = z
-  .object({
-    login: z.string().min(1).max(128),
-    password: z.string().min(1).max(256)
-  })
-  .strict();
-
-const registerSchema = loginSchema;
-const changePasswordSchema = z
-  .object({
-    currentPassword: z.string().min(1).max(256),
-    newPassword: z.string().min(1).max(256)
-  })
-  .strict();
-const permissionsSchema = z
-  .object({
-    appRole: z.enum(["user", "admin"]).optional(),
-    tradingRole: z.enum(["none", "read-only", "paper-trade", "live-trade"]).optional()
-  })
-  .strict()
-  .refine((value) => value.appRole !== undefined || value.tradingRole !== undefined);
+import { clearAuthCookies, csrfFromCookie, principalFromRequest, requestMetadata, setAuthCookies } from "./http.js";
+import {
+  changePasswordSchema,
+  lifecycleSchema,
+  loginSchema,
+  mutationBaseSchema,
+  permissionsSchema,
+  reasonSchema,
+  registerSchema,
+  uuidSchema
+} from "./routeSchemas.js";
+import {
+  adminMutationResponse,
+  asyncRoute,
+  authRateLimitConfiguration,
+  identityErrorHandler,
+  identityRequestContext,
+  isCredentialFailure,
+  isProvenCredentialRejection,
+  loginIdentityKey,
+  optionalQuery,
+  optionalUuidQuery,
+  pageRequest,
+  pagedResponse,
+  parseAppRole,
+  parseStatus,
+  parseTradingRole,
+  rateLimited,
+  requestIpKey,
+  requireCsrf,
+  requirePrincipal,
+  routeId,
+  routeParam,
+  tradingAvailable,
+  validationError
+} from "./routeSupport.js";
+import { IdentityError, IdentityService } from "./service.js";
+import type { IdentityPrincipal } from "./types.js";
 
 export interface IdentityRouters {
   auth: Router;
@@ -52,6 +62,15 @@ export function createIdentityRouters(service: IdentityService, protection: Iden
   const registerLimiter = new AuthRateLimiter("registration-ip", store, protection.registrationIpPolicy ?? defaults.registrationIp);
   const now = protection.now ?? Date.now;
   const authJson = express.json({ limit: "32kb" });
+  auth.use(identityRequestContext);
+  admin.use(identityRequestContext);
+  admin.param("id", (_request, _response, next, value) => {
+    if (!uuidSchema.safeParse(value).success) {
+      next(new IdentityError(400, "invalid_user_id", "Invalid user identifier."));
+      return;
+    }
+    next();
+  });
   admin.use(express.json({ limit: "32kb" }));
 
   auth.get("/config", (_request, response) => {
@@ -75,7 +94,7 @@ export function createIdentityRouters(service: IdentityService, protection: Iden
     asyncRoute(async (request, response) => {
       const parsed = registerSchema.safeParse(request.body);
       if (!parsed.success) return validationError(response, parsed.error.flatten());
-      const user = await service.register(parsed.data.login, parsed.data.password, requestMetadata(request));
+      const user = await service.register(parsed.data.login, parsed.data.password, requestMetadata(request, response));
       response.status(202).json({ ok: true, status: "pending", user: { id: user.id, login: user.login } });
     })
   );
@@ -101,7 +120,7 @@ export function createIdentityRouters(service: IdentityService, protection: Iden
         return;
       }
       try {
-        const credentials = await service.login(parsed.data.login, parsed.data.password, requestMetadata(request));
+        const credentials = await service.login(parsed.data.login, parsed.data.password, requestMetadata(request, response));
         // Refund only this successful request's IP reservation, preserving any
         // earlier failures from that IP. A proven credential may safely clear
         // failures for its own identity.
@@ -149,7 +168,7 @@ export function createIdentityRouters(service: IdentityService, protection: Iden
     asyncRoute(async (request, response) => {
       const principal = await requirePrincipal(service, request);
       requireCsrf(service, principal, request);
-      await service.logout(principal, requestMetadata(request));
+      await service.logout(principal, requestMetadata(request, response));
       clearAuthCookies(response);
       response.json({ ok: true });
     })
@@ -162,9 +181,83 @@ export function createIdentityRouters(service: IdentityService, protection: Iden
       requireCsrf(service, principal, request);
       const parsed = changePasswordSchema.safeParse(request.body);
       if (!parsed.success) return validationError(response, parsed.error.flatten());
-      await service.changePassword(principal, parsed.data.currentPassword, parsed.data.newPassword, requestMetadata(request));
+      await service.changePassword(principal, parsed.data.currentPassword, parsed.data.newPassword, requestMetadata(request, response));
       clearAuthCookies(response);
       response.json({ ok: true, reloginRequired: true });
+    })
+  );
+
+  auth.get(
+    "/sessions",
+    asyncRoute(async (request, response) => {
+      const principal = await requirePrincipal(service, request);
+      const result = await service.listOwnSessions(
+        principal,
+        pageRequest(request)
+      );
+      response.setHeader("Cache-Control", "no-store");
+      response.json(pagedResponse("sessions", result.items, result));
+    })
+  );
+
+  const revokeOwnSession = asyncRoute(async (request, response) => {
+    const principal = await requirePrincipal(service, request);
+    requireCsrf(service, principal, request);
+    const parsed = reasonSchema.safeParse(request.body);
+    const publicId = uuidSchema.safeParse(routeParam(request, "publicId"));
+    if (!parsed.success || !publicId.success) {
+      return validationError(response, {
+        body: parsed.success ? undefined : parsed.error.flatten(),
+        publicId: publicId.success ? undefined : publicId.error.flatten()
+      });
+    }
+    const result = await service.revokeOwnSession(
+      principal,
+      publicId.data,
+      parsed.data.reason,
+      requestMetadata(request, response)
+    );
+    if (result.revokedCurrentSession) clearAuthCookies(response);
+    response.json(result);
+  });
+
+  auth.post("/sessions/:publicId/revoke", revokeOwnSession);
+  auth.delete("/sessions/:publicId", revokeOwnSession);
+
+  auth.post(
+    "/sessions/revoke-others",
+    asyncRoute(async (request, response) => {
+      const principal = await requirePrincipal(service, request);
+      requireCsrf(service, principal, request);
+      const parsed = reasonSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return validationError(response, parsed.error.flatten());
+      }
+      const result = await service.revokeOtherSessions(
+        principal,
+        parsed.data.reason,
+        requestMetadata(request, response)
+      );
+      response.json(result);
+    })
+  );
+
+  auth.post(
+    "/sessions/revoke-all",
+    asyncRoute(async (request, response) => {
+      const principal = await requirePrincipal(service, request);
+      requireCsrf(service, principal, request);
+      const parsed = reasonSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return validationError(response, parsed.error.flatten());
+      }
+      const result = await service.revokeAllOwnSessions(
+        principal,
+        parsed.data.reason,
+        requestMetadata(request, response)
+      );
+      if (result.revokedCurrentSession) clearAuthCookies(response);
+      response.json(result);
     })
   );
 
@@ -185,23 +278,71 @@ export function createIdentityRouters(service: IdentityService, protection: Iden
     "/users",
     asyncRoute(async (request, response) => {
       const status = parseStatus(request.query.status);
-      response.json({ users: await service.listUsers(response.locals.authPrincipal as IdentityPrincipal, status) });
+      const result = await service.listUsersPage(
+        response.locals.authPrincipal as IdentityPrincipal,
+        {
+          ...pageRequest(request),
+          status,
+          appRole: parseAppRole(request.query.appRole),
+          tradingRole: parseTradingRole(request.query.tradingRole),
+          query: optionalQuery(request.query.query, 64)
+        }
+      );
+      response.json(pagedResponse("users", result.items, result));
     })
   );
 
   admin.post(
     "/users/:id/activate",
     asyncRoute(async (request, response) => {
-      const user = await service.activateUser(response.locals.authPrincipal as IdentityPrincipal, routeId(request), requestMetadata(request));
-      response.json({ user });
+      const parsed = lifecycleSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return validationError(response, parsed.error.flatten());
+      }
+      const result = await service.activateUser(
+        response.locals.authPrincipal as IdentityPrincipal,
+        routeId(request),
+        parsed.data,
+        requestMetadata(request, response)
+      );
+      if (result.revokedCurrentSession) clearAuthCookies(response);
+      response.json(adminMutationResponse(result));
+    })
+  );
+
+  admin.post(
+    "/users/:id/reactivate",
+    asyncRoute(async (request, response) => {
+      const parsed = lifecycleSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return validationError(response, parsed.error.flatten());
+      }
+      const result = await service.reactivateUser(
+        response.locals.authPrincipal as IdentityPrincipal,
+        routeId(request),
+        parsed.data,
+        requestMetadata(request, response)
+      );
+      if (result.revokedCurrentSession) clearAuthCookies(response);
+      response.json(adminMutationResponse(result));
     })
   );
 
   admin.post(
     "/users/:id/disable",
     asyncRoute(async (request, response) => {
-      const user = await service.disableUser(response.locals.authPrincipal as IdentityPrincipal, routeId(request), requestMetadata(request));
-      response.json({ user });
+      const parsed = mutationBaseSchema.strict().safeParse(request.body);
+      if (!parsed.success) {
+        return validationError(response, parsed.error.flatten());
+      }
+      const result = await service.disableUser(
+        response.locals.authPrincipal as IdentityPrincipal,
+        routeId(request),
+        parsed.data,
+        requestMetadata(request, response)
+      );
+      if (result.revokedCurrentSession) clearAuthCookies(response);
+      response.json(adminMutationResponse(result));
     })
   );
 
@@ -210,117 +351,85 @@ export function createIdentityRouters(service: IdentityService, protection: Iden
     asyncRoute(async (request, response) => {
       const parsed = permissionsSchema.safeParse(request.body);
       if (!parsed.success) return validationError(response, parsed.error.flatten());
-      const user = await service.updatePermissions(response.locals.authPrincipal as IdentityPrincipal, routeId(request), parsed.data, requestMetadata(request));
-      response.json({ user });
+      const result = await service.updatePermissions(
+        response.locals.authPrincipal as IdentityPrincipal,
+        routeId(request),
+        parsed.data,
+        requestMetadata(request, response)
+      );
+      if (result.revokedCurrentSession) clearAuthCookies(response);
+      response.json(adminMutationResponse(result));
+    })
+  );
+
+  admin.get(
+    "/users/:id/sessions",
+    asyncRoute(async (request, response) => {
+      const result = await service.listAdminSessions(
+        response.locals.authPrincipal as IdentityPrincipal,
+        routeId(request),
+        pageRequest(request)
+      );
+      response.json(pagedResponse("sessions", result.items, result));
+    })
+  );
+
+  admin.post(
+    "/users/:id/sessions/:publicId/revoke",
+    asyncRoute(async (request, response) => {
+      const parsed = reasonSchema.safeParse(request.body);
+      const publicId = uuidSchema.safeParse(routeParam(request, "publicId"));
+      if (!parsed.success || !publicId.success) {
+        return validationError(response, {
+          body: parsed.success ? undefined : parsed.error.flatten(),
+          publicId: publicId.success ? undefined : publicId.error.flatten()
+        });
+      }
+      const result = await service.revokeAdminSession(
+        response.locals.authPrincipal as IdentityPrincipal,
+        routeId(request),
+        publicId.data,
+        parsed.data.reason,
+        requestMetadata(request, response)
+      );
+      if (result.revokedCurrentSession) clearAuthCookies(response);
+      response.json(result);
+    })
+  );
+
+  admin.post(
+    "/users/:id/sessions/revoke-all",
+    asyncRoute(async (request, response) => {
+      const parsed = reasonSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return validationError(response, parsed.error.flatten());
+      }
+      const result = await service.revokeAllUserSessionsAdmin(
+        response.locals.authPrincipal as IdentityPrincipal,
+        routeId(request),
+        parsed.data.reason,
+        requestMetadata(request, response)
+      );
+      if (result.revokedCurrentSession) clearAuthCookies(response);
+      response.json(result);
+    })
+  );
+
+  admin.get(
+    "/audit",
+    asyncRoute(async (request, response) => {
+      const result = await service.listAuditEvents(
+        response.locals.authPrincipal as IdentityPrincipal,
+        {
+          ...pageRequest(request),
+          subjectUserId: optionalUuidQuery(request.query.subjectUserId),
+          eventType: optionalQuery(request.query.eventType, 96)
+        }
+      );
+      response.json(pagedResponse("events", result.items, result));
     })
   );
 
   for (const router of [auth, admin]) router.use(identityErrorHandler);
   return { auth, admin };
-}
-
-function asyncRoute(handler: (request: Request, response: Response, next: NextFunction) => Promise<unknown>) {
-  return (request: Request, response: Response, next: NextFunction) => {
-    void handler(request, response, next).catch(next);
-  };
-}
-
-async function requirePrincipal(service: IdentityService, request: Request): Promise<IdentityPrincipal> {
-  const principal = await principalFromRequest(service, request);
-  if (!principal) throw new IdentityError(401, "not_authenticated", "Authentication is required.");
-  return principal;
-}
-
-function requireCsrf(service: IdentityService, principal: IdentityPrincipal, request: Request): void {
-  if (!service.verifyCsrf(principal, csrfFromRequest(request))) {
-    throw new IdentityError(403, "invalid_csrf", "Missing or invalid CSRF token.");
-  }
-}
-
-function tradingAvailable(service: IdentityService, user: IdentityPrincipal["user"]): boolean {
-  return user.appRole === "admin" || (service.allowNonAdminTrading && user.tradingRole !== "none");
-}
-
-function rateLimited(retryAfter: number | undefined, response: Response): boolean {
-  if (!retryAfter) return false;
-  response.setHeader("Retry-After", String(retryAfter));
-  response.status(429).json({ error: "Too many attempts. Try again later.", code: "rate_limited" });
-  return true;
-}
-
-function validationError(response: Response, details: unknown): void {
-  response.status(400).json({ error: "Invalid request.", code: "invalid_request", details });
-}
-
-function parseStatus(value: unknown): UserStatus | undefined {
-  if (value === undefined || value === "") return undefined;
-  if (value === "pending" || value === "active" || value === "disabled") return value;
-  throw new IdentityError(400, "invalid_status", "Invalid user status filter.");
-}
-
-function routeId(request: Request): string {
-  const value = request.params.id;
-  return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
-}
-
-function identityErrorHandler(error: unknown, _request: Request, response: Response, next: NextFunction): void {
-  if (error instanceof PasswordHashCapacityError) {
-    response.setHeader("Retry-After", "1");
-    response.status(503).json({ error: "Authentication is temporarily unavailable. Try again later.", code: "auth_busy" });
-    return;
-  }
-  if (!(error instanceof IdentityError)) {
-    next(error);
-    return;
-  }
-  response.status(error.status).json({ error: error.message, code: error.code });
-}
-
-function requestIpKey(request: Request): string {
-  return request.ip || request.socket.remoteAddress || "unknown";
-}
-
-function loginIdentityKey(login: string): string {
-  return createHash("sha256").update(normalizeLogin(login)).digest("base64url");
-}
-
-function isCredentialFailure(error: unknown): boolean {
-  return error instanceof IdentityError && error.code === "invalid_credentials";
-}
-
-function isProvenCredentialRejection(error: unknown): boolean {
-  return error instanceof IdentityError && (error.code === "pending_approval" || error.code === "account_disabled");
-}
-
-function authRateLimitConfiguration(): {
-  maxEntries: number;
-  loginIp: AuthRateLimitPolicy;
-  loginIdentity: AuthRateLimitPolicy;
-  registrationIp: AuthRateLimitPolicy;
-} {
-  const loginWindowMs = boundedEnv("AUTH_LOGIN_RATE_WINDOW_MS", 15 * 60_000, 60_000, 24 * 60 * 60_000);
-  const loginBlockMs = boundedEnv("AUTH_LOGIN_RATE_BLOCK_MS", 15 * 60_000, 60_000, 24 * 60 * 60_000);
-  return {
-    maxEntries: boundedEnv("AUTH_RATE_LIMIT_MAX_ENTRIES", 4_096, 256, 100_000),
-    loginIp: {
-      windowMs: loginWindowMs,
-      maxAttempts: boundedEnv("AUTH_LOGIN_IP_MAX_FAILURES", 30, 3, 10_000),
-      blockMs: loginBlockMs
-    },
-    loginIdentity: {
-      windowMs: loginWindowMs,
-      maxAttempts: boundedEnv("AUTH_LOGIN_IDENTITY_MAX_FAILURES", 10, 3, 1_000),
-      blockMs: loginBlockMs
-    },
-    registrationIp: {
-      windowMs: boundedEnv("AUTH_REGISTER_RATE_WINDOW_MS", 60 * 60_000, 60_000, 7 * 24 * 60 * 60_000),
-      maxAttempts: boundedEnv("AUTH_REGISTER_IP_MAX_ATTEMPTS", 5, 1, 1_000),
-      blockMs: boundedEnv("AUTH_REGISTER_RATE_BLOCK_MS", 60 * 60_000, 60_000, 7 * 24 * 60 * 60_000)
-    }
-  };
-}
-
-function boundedEnv(name: string, fallback: number, minimum: number, maximum: number): number {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) ? Math.min(maximum, Math.max(minimum, Math.trunc(value))) : fallback;
 }

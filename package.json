@@ -33,6 +33,8 @@
     "data:inventory": "node scripts/runtime-data.mjs inventory",
     "data:verify": "node scripts/runtime-data.mjs verify",
     "data:restore": "node scripts/runtime-data.mjs restore",
+    "admin:bootstrap": "npm --workspace backend run admin:bootstrap --",
+    "admin:recover": "npm --workspace backend run admin:recover --",
     "release:package": "node scripts/package-release.mjs",
     "release:rollback-drill": "node scripts/release-rollback-drill.mjs",
     "perf:check": "node scripts/check-bundle-budgets.mjs",

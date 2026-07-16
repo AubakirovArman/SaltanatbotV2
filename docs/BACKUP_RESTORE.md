@@ -114,8 +114,10 @@ docker compose exec -T postgres \
 ```
 
 For a direct installation, run the matching `pg_dump` major version with the same `PGHOST`,
-`PGPORT`, `PGDATABASE`, `PGUSER` and `PGPASSWORD_FILE` used by the service. Verify it without changing
-the live database:
+`PGPORT`, `PGDATABASE` and `PGUSER` used by the service. `PGPASSWORD_FILE` is understood only by
+SaltanatbotV2; libpq tools do not read that raw-password format. Let the tool prompt securely, use
+an owner-only libpq `PGPASSFILE`, or provide credentials through another reviewed libpq mechanism.
+Verify the dump without changing the live database:
 
 ```bash
 pg_restore --list ../saltanat-backups/2026-07-15.postgres.dump >/dev/null
@@ -164,13 +166,22 @@ npm run data:verify -- ../saltanat-backups/2026-07-11
 npm run data:restore -- ../saltanat-backups/2026-07-11 --force
 ```
 
-Example PostgreSQL restore into a prepared empty database:
+Example PostgreSQL restore into a newly created empty replacement database:
 
 ```bash
-pg_restore --exit-on-error --clean --if-exists \
+createdb --host 127.0.0.1 --port 55434 --username postgres \
+  --owner saltanatbotv2 saltanatbotv2_restore_20260715
+pg_restore --exit-on-error --no-owner --no-privileges \
   --host 127.0.0.1 --port 55434 --username saltanatbotv2 \
-  --dbname saltanatbotv2 ../saltanat-backups/2026-07-15.postgres.dump
+  --dbname saltanatbotv2_restore_20260715 \
+  ../saltanat-backups/2026-07-15.postgres.dump
 ```
+
+Use the project PostgreSQL operator role appropriate to your installation for `createdb`; it may
+have a different name than `postgres`. Never add `--clean` to this recovery path and never target
+the current `saltanatbotv2` database. Verify the replacement first, then change only this project's
+`PGDATABASE` setting during a stopped-service cutover. Retain the original database for rollback
+until the recovery has passed its acceptance window.
 
 Restore validates the complete backup before touching the target, builds a verified staging
 directory, atomically swaps it into place and rolls back the previous directory if the swap fails.

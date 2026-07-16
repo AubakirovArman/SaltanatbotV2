@@ -63,6 +63,12 @@ Each phase is shipped independently and must include:
 11. Observability, global admission limits, backup/restore and failure handling
     are introduced by the releases that create each workload. R11 integrates
     and proves them; it is not their first implementation.
+12. Test accounts are created through bootstrap/admin APIs in an isolated
+    project-owned database. Direct SQL role assignment in a running environment
+    is not an accepted audit or E2E setup procedure.
+13. Before public beta, `main` must have either a required-check GitHub ruleset
+    or a documented owner-only exception with an equivalent mandatory local
+    pre-push gate and post-push GitHub Actions verification.
 
 ## Phase 0 — enforce Research / Paper mode
 
@@ -259,32 +265,29 @@ VoiceOver/NVDA/TalkBack records are complete.
 
 ## R3 — administrator lifecycle, workspaces and first-run workflow
 
-**Status:** planned hardening on top of a delivered authentication and workspace
-baseline.
+**Status:** R3.1 is delivered and deployed; R3.2 is next.
 
 **Baseline:**
 
 - PostgreSQL registration creates `pending` users; administrators can activate,
   disable and assign application/trading roles;
 - the bootstrap administrator receives a one-time password and must change it;
-- disablement and permission changes revoke sessions and owner-scoped private
-  streams;
+- atomic lifecycle and permission changes require a reason and expected
+  authorization revision, retain before/after audit state, and revoke sessions
+  and owner-scoped private streams;
+- users and administrators can list/revoke opaque public session IDs; current
+  session revocation clears cookies and reconciles the UI;
+- guarded administrator recovery verifies the exact checked-in schema, never
+  runs migrations and requires a password change after recovery;
+- schema v9 downgrades retained non-administrator live roles to paper, revokes
+  affected sessions/tickets and prevents the role from being re-granted;
 - administrators do not inherit access to another owner's workspace, journal,
   portfolio or Telegram binding;
 - owner-scoped workspace CRUD, optimistic revision conflicts, rollback and at
   most 20 retained revisions are implemented; the HTTP document limit is 1 MiB.
 
-**Remaining — administrator lifecycle:**
-
-- present one auditable flow for pending review, role selection, activate,
-  disable, reactivate and session revocation;
-- require an explicit reason for privileged role changes and retain actor,
-  target, before/after roles and time without logging passwords;
-- prevent self-disable and accidental removal of the last active administrator;
-- document bootstrap, mandatory password change, administrator recovery and
-  registration maintenance mode;
-- paginate and filter the user list, and prove that an administrator cannot use
-  admin APIs to impersonate a tenant or read tenant-owned product data.
+R3.1 evidence:
+[identity control-plane acceptance](./evidence/R3_1_IDENTITY_CONTROL_PLANE.md).
 
 **Remaining — workspaces and onboarding:**
 
@@ -301,12 +304,15 @@ baseline.
   fail without deleting existing revisions;
 - add owner-scoped onboarding from goal selection to a first chart, backtest,
   research alert or paper robot, never requesting exchange keys;
+- provide 192×192, 512×512, maskable and Apple Touch icons and enforce the
+  manifest contract in CI;
 - retain ordinary export over HTTP; install/update and offline-bundle actions
   appear only on localhost or a browser-reported secure context. No HTTPS work
   is part of this release.
 
-**Dependencies:** R1, stable owner IDs and the current workspace schema/migration
-path.
+**Dependencies:** backend R3 work may begin after R1 with stable owner IDs and
+the current workspace migration path; publishing R3 also requires the remaining
+R2 evidence to be closed.
 
 **Evidence:** two-owner and two-admin isolation tests; stale-tab conflict tests;
 quota boundary tests; admin audit/session-revocation tests; fresh-account E2E;
@@ -315,6 +321,36 @@ export/import checksum tests; backup/restore of users and workspaces.
 **Exit criteria:** an administrator can safely complete the full account
 lifecycle, while a normal user can create, recover and resolve conflicts in a
 useful workflow without any cross-tenant access or silent data loss.
+
+### Cross-cutting O1 operational package starting in R3
+
+This package is delivered in compatible increments by the release that creates
+each workload rather than being postponed until R11:
+
+- enable WAL, `busy_timeout`, integrity checks and bounded retention for
+  project-owned SQLite stores;
+- add structured logs and metrics for API latency, PostgreSQL pools, queues,
+  workers, paper execution, WebSockets, market freshness, filesystem and
+  backups;
+- expand readiness to cover migration state, PostgreSQL, the singleton
+  executor, required workers and a hard disk watermark;
+- add global admission limits above owner quotas while keeping health, login and
+  control of already-running work outside heavy queues;
+- create paired PostgreSQL/SQLite backup generations with a manifest,
+  checksums and restore into a new replacement database/data directory only;
+- converge public market sockets on one transport with fan-out,
+  reconnect/gap handling and slow-client backpressure;
+- require every intentionally suppressed error in auth, paper execution,
+  workers, notifications and market adapters to emit a structured log/counter
+  and enter a defined degraded or fail-closed state;
+- add bounded HTTP compression for JSON and textual static assets with measured
+  wire-size/CPU benefit, excluding WebSocket, streaming and already-compressed
+  files;
+- publish a compatibility note and machine-readable evidence for every schema
+  release.
+
+**O1 acceptance:** every new workload has a limit, metric, readiness/degraded
+state, backup scope and failure test before its owning release is accepted.
 
 ## R4 — “Running” and the paper portfolio contract
 
@@ -398,6 +434,8 @@ alerts before robot strategy expansion.
   deduplication ID and duplicate possibility is documented;
 - bind/revoke Telegram through owner-scoped one-use codes and limit commands to
   paper balance, reports, alerts and confirmation-bound pause/resume/stop;
+  expose paper-only `/balance`, `/daily`, `/profit`, `/performance`, `/trades`
+  and `/alerts`;
 - keep Web Push disabled because HTTPS is outside this roadmap.
 
 **Dependencies:** R1 queue/ADR foundation, R3 ownership, R4 paper metrics and the
@@ -539,7 +577,8 @@ uploaded evidence.
 - normalize public funding, open interest and liquidation feeds with exact
   contract/base/quote units, provenance, freshness and reconnect gaps; derive
   multi-timeframe inputs only from completed higher-timeframe candles without
-  lookahead;
+  lookahead, and let the user select and see the source timeframe for
+  EMA/SMA/RSI and other supported indicators;
 - partition and compress an append-only corpus with bounded hot/warm retention,
   checksums, replay manifests and deletion policy;
 - cap source streams, bytes/day and disk watermark globally; reaching a
@@ -616,8 +655,9 @@ dashboards; run the quantified workload, failure drills, backup/recovery targets
 and second-API fencing prerequisites in
 [Capacity plan for the first 100 users](CAPACITY_100_USERS.md).
 
-**Dependencies:** all workloads selected for the capacity claim, stable schemas
-and accepted ADR 0001 reconciliation.
+**Dependencies:** all workloads selected for the capacity claim, stable schemas,
+the accepted ADR 0001 decision and completed implementation/reconciliation
+evidence.
 
 **Evidence:** repeatable load-test configuration/results, p50/p95/p99 and
 event-loop/queue/database/resource graphs, failure-drill reports, backup/restore
@@ -670,13 +710,14 @@ and stabilization.
 | --- | --- | --- | ---: |
 | R1 | Safety, execution ledger, minimal workers and ADR | delivered Phase 0 | delivered foundation |
 | R2 | Mobile chart/navigation/Strategy Studio | R1 | 2-3 |
-| R3 | Admin lifecycle, workspaces and onboarding | R1-R2 | 3-5 |
+| R3 | R3.1 delivered; workspace workflow and onboarding remain | R1-R2 | remaining R3.2-R3.3 delta |
+| O1 | Operational hardening increments | starts in R3 and ships with each new workload | included in R3-R10 estimates |
 | R4 | “Running” and paper portfolio/journal contract | R1-R3 | 3-5 |
 | R5 | Alerts + technical screener MVP + notifications/Telegram | R3-R4 | 5-7 |
 | R6 | DCA paper | R4-R5 | 3-4 |
 | R7 | Grid paper | R4-R6 | 4-5 |
 | R8 | Spread/inefficiency paper research | R4-R5 | 4-6 |
-| R9 | Generator/genetic optimizer | R1 + canonical IR/dataset/backtest | 5-8 |
+| R9 | Generator/genetic optimizer | R1 + R4 portfolio metrics + canonical IR/dataset/backtest | 5-8 |
 | R10A | Funding/OI/MTF + L2 capture/storage/quality | R1 + public data contracts | 3-5 plus 4-8 calendar weeks soak |
 | R10B | ML baseline/model/UI | accepted R10A corpus | 5-8 |
 | R11 | 100-user capacity and operational proof | accepted workload contracts | 5-9 |

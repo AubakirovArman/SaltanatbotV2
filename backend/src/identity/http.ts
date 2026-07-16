@@ -23,9 +23,13 @@ export function requestNeedsCsrf(request: Request): boolean {
   return !["GET", "HEAD", "OPTIONS"].includes(request.method.toUpperCase());
 }
 
-export function requestMetadata(request: Request): RequestMetadata {
+export function requestMetadata(request: Request, response?: Response): RequestMetadata {
   const userAgent = request.headers["user-agent"];
   return {
+    requestId:
+      typeof response?.locals.identityRequestId === "string"
+        ? response.locals.identityRequestId
+        : undefined,
     ipAddress: request.ip || request.socket.remoteAddress,
     userAgent: typeof userAgent === "string" ? userAgent.slice(0, 512) : undefined
   };

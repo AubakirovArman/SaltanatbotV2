@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { IDENTITY_CONTROL_PLANE_MIGRATION_SQL } from "./identityControlPlaneMigration.js";
 
 export interface DatabaseMigration {
   readonly version: number;
@@ -542,6 +543,11 @@ const migrationDefinitions = [
         ON compute_jobs (owner_user_id, artifacts_pruned_at ASC, id ASC)
         WHERE artifacts_pruned_at IS NOT NULL;
     `
+  },
+  {
+    version: 9,
+    name: "identity_admin_control_plane",
+    sql: IDENTITY_CONTROL_PLANE_MIGRATION_SQL
   }
 ] as const;
 

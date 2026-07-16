@@ -29,6 +29,7 @@ export interface UserDatabaseRow {
 }
 
 export interface AuthSessionDatabaseRow {
+  public_id: string;
   id_hash: string;
   user_id: string;
   csrf_hash: string;
@@ -39,6 +40,20 @@ export interface AuthSessionDatabaseRow {
   user_agent: string | null;
   ip_address: string | null;
   created_at: Date;
+}
+
+export interface AuditEventDatabaseRow {
+  id: string;
+  event_type: string;
+  actor_user_id: string | null;
+  actor_login: string | null;
+  subject_user_id: string | null;
+  subject_login: string | null;
+  request_id: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  metadata: unknown;
+  occurred_at: Date;
 }
 
 export interface WorkspaceDatabaseRow {

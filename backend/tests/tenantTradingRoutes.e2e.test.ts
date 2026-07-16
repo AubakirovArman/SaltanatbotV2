@@ -3,7 +3,10 @@ import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { configureIdentityAuth } from "../src/auth.js";
 import { MemoryIdentityRepository } from "../src/identity/memoryRepository.js";
-import { IdentityService } from "../src/identity/service.js";
+import {
+  IdentityService,
+  type AdminLifecycleMutationInput
+} from "../src/identity/service.js";
 import type { IdentityPrincipal, SessionCredentials } from "../src/identity/types.js";
 import { runtimePolicyFromConfig } from "../src/runtimeProfile.js";
 import { createTradingApi } from "../src/trading/routes.js";
@@ -198,6 +201,19 @@ function headers(auth: AuthContext, mutation = false): Record<string, string> {
   };
 }
 
+async function adminMutationInput(
+  userId: string,
+  roles: Pick<AdminLifecycleMutationInput, "appRole" | "tradingRole"> = {}
+): Promise<AdminLifecycleMutationInput> {
+  const user = await identity.repository.findUserById(userId);
+  if (!user) throw new Error("test user not found");
+  return {
+    reason: "tenant isolation test mutation",
+    expectedAuthorizationRevision: user.authorizationRevision,
+    ...roles
+  };
+}
+
 beforeAll(async () => {
   identity = new IdentityService(new MemoryIdentityRepository(), { allowNonAdminTrading: true });
   configureIdentityAuth(identity);
@@ -207,8 +223,11 @@ beforeAll(async () => {
   const trader = await identity.register("isolation-trader", "correct-horse-battery-staple");
   const adminCredentials = await identity.login(admin.login, "temporary-Admin-password-2026");
   adminPrincipal = (await identity.authenticate(adminCredentials.sessionToken))!;
-  await identity.activateUser(adminPrincipal, trader.id);
-  await identity.updatePermissions(adminPrincipal, trader.id, { tradingRole: "live-trade" });
+  await identity.activateUser(adminPrincipal, trader.id, await adminMutationInput(trader.id));
+  await identity.repository.updateUser(trader.id, {
+    tradingRole: "live-trade",
+    updatedAt: new Date()
+  });
   const freshAdminCredentials = await identity.login(admin.login, "temporary-Admin-password-2026");
   const traderCredentials = await identity.login(trader.login, "correct-horse-battery-staple");
   adminAuth = authContext(admin.id, freshAdminCredentials);
@@ -312,8 +331,11 @@ describe("database-auth trading tenant boundary", () => {
 
   it("rejects a credential rotation queued before a durable trading-role downgrade", async () => {
     const queuedUser = await identity.register("queued-trader", "correct-horse-battery-staple");
-    await identity.activateUser(adminPrincipal, queuedUser.id);
-    await identity.updatePermissions(adminPrincipal, queuedUser.id, { tradingRole: "live-trade" });
+    await identity.activateUser(adminPrincipal, queuedUser.id, await adminMutationInput(queuedUser.id));
+    await identity.repository.updateUser(queuedUser.id, {
+      tradingRole: "live-trade",
+      updatedAt: new Date()
+    });
     const queuedCredentials = await identity.login(queuedUser.login, "correct-horse-battery-staple");
     const queuedAuth = authContext(queuedUser.id, queuedCredentials);
     const accountId = "queued-account";
@@ -351,7 +373,7 @@ describe("database-auth trading tenant boundary", () => {
         body: JSON.stringify({ apiKey: "replacement-api-key", apiSecret: "replacement-api-secret" })
       });
       await requestQueued;
-      await identity.updatePermissions(adminPrincipal, queuedUser.id, { tradingRole: "none" });
+      await identity.updatePermissions(adminPrincipal, queuedUser.id, await adminMutationInput(queuedUser.id, { tradingRole: "none" }));
       releaseBlock();
 
       const response = await rotation;
@@ -370,8 +392,8 @@ describe("database-auth trading tenant boundary", () => {
 
   it("rejects a bot update queued before a durable trading-role downgrade", async () => {
     const queuedUser = await identity.register("queued-bot-trader", "correct-horse-battery-staple");
-    await identity.activateUser(adminPrincipal, queuedUser.id);
-    await identity.updatePermissions(adminPrincipal, queuedUser.id, { tradingRole: "paper-trade" });
+    await identity.activateUser(adminPrincipal, queuedUser.id, await adminMutationInput(queuedUser.id));
+    await identity.updatePermissions(adminPrincipal, queuedUser.id, await adminMutationInput(queuedUser.id, { tradingRole: "paper-trade" }));
     const queuedCredentials = await identity.login(queuedUser.login, "correct-horse-battery-staple");
     const queuedAuth = authContext(queuedUser.id, queuedCredentials);
     const botId = "queued-paper-bot";
@@ -422,7 +444,7 @@ describe("database-auth trading tenant boundary", () => {
         })
       });
       await requestQueued;
-      await identity.updatePermissions(adminPrincipal, queuedUser.id, { tradingRole: "none" });
+      await identity.updatePermissions(adminPrincipal, queuedUser.id, await adminMutationInput(queuedUser.id, { tradingRole: "none" }));
       releaseBlock();
 
       const response = await update;

@@ -36,15 +36,25 @@ describe("boot-time trading resume authorization", () => {
     await repository.updateUser(admin.id, { mustChangePassword: false, updatedAt: new Date() });
     const user = await service.register("resume-user", "correct-horse-battery-staple");
     const adminPrincipal = (await service.authenticate((await service.login(admin.login, "temporary-Admin-password-2026")).sessionToken))!;
-    await service.activateUser(adminPrincipal, user.id);
-    await service.updatePermissions(adminPrincipal, user.id, { tradingRole: "paper-trade" });
+    await service.activateUser(adminPrincipal, user.id, {
+      reason: "resume policy test activation",
+      expectedAuthorizationRevision: (await repository.findUserById(user.id))!.authorizationRevision
+    });
+    await service.updatePermissions(adminPrincipal, user.id, {
+      reason: "resume policy test permission",
+      expectedAuthorizationRevision: (await repository.findUserById(user.id))!.authorizationRevision,
+      tradingRole: "paper-trade"
+    });
     const authorize = createTradingResumeAuthorization({ mode: "database", service, async close() {} }, FUTURE_LIVE_POLICY);
 
     expect(await authorize(bot(user.id, "paper"))).toBe(true);
     expect(await authorize(bot(user.id, "bybit"))).toBe(false);
     expect(await authorize(bot(admin.id, "bybit"))).toBe(true);
 
-    await service.disableUser(adminPrincipal, user.id);
+    await service.disableUser(adminPrincipal, user.id, {
+      reason: "resume policy test disable",
+      expectedAuthorizationRevision: (await repository.findUserById(user.id))!.authorizationRevision
+    });
     expect(await authorize(bot(user.id, "paper"))).toBe(false);
   });
 

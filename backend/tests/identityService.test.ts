@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { MemoryIdentityRepository } from "../src/identity/memoryRepository.js";
-import { IdentityError, IdentityService } from "../src/identity/service.js";
+import {
+  IdentityError,
+  IdentityService,
+  type AdminLifecycleMutationInput
+} from "../src/identity/service.js";
+import type { IdentityPrincipal } from "../src/identity/types.js";
 
 describe("database identity service", () => {
   it("bootstraps exactly one administrator under concurrent attempts", async () => {
@@ -22,11 +27,14 @@ describe("database identity service", () => {
     await makeAdminReady(repository, first.id);
     const second = await service.register("second-admin", "correct-horse-battery-staple");
     const firstPrincipal = (await service.authenticate((await service.login(first.login, "temporary-Secure-password-2026")).sessionToken))!;
-    await service.activateUser(firstPrincipal, second.id);
-    await service.updatePermissions(firstPrincipal, second.id, { appRole: "admin" });
+    await activate(service, repository, firstPrincipal, second.id);
+    await permissions(service, repository, firstPrincipal, second.id, { appRole: "admin" });
     const secondPrincipal = (await service.authenticate((await service.login(second.login, "correct-horse-battery-staple")).sessionToken))!;
 
-    const attempts = await Promise.allSettled([service.disableUser(firstPrincipal, second.id), service.disableUser(secondPrincipal, first.id)]);
+    const attempts = await Promise.allSettled([
+      disable(service, repository, firstPrincipal, second.id),
+      disable(service, repository, secondPrincipal, first.id)
+    ]);
 
     expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
     expect(attempts.find((attempt) => attempt.status === "rejected")).toMatchObject({
@@ -42,7 +50,7 @@ describe("database identity service", () => {
     await makeAdminReady(repository, admin.id);
     const principal = (await service.authenticate((await service.login(admin.login, "temporary-Secure-password-2026")).sessionToken))!;
 
-    await expect(service.updatePermissions(principal, admin.id, { appRole: "user" })).rejects.toMatchObject({
+    await expect(permissions(service, repository, principal, admin.id, { appRole: "user" })).rejects.toMatchObject({
       code: "self_demote"
     });
   });
@@ -54,12 +62,12 @@ describe("database identity service", () => {
     await makeAdminReady(repository, first.id);
     const second = await service.register("second-admin", "correct-horse-battery-staple");
     const firstPrincipal = (await service.authenticate((await service.login(first.login, "temporary-Secure-password-2026")).sessionToken))!;
-    await service.activateUser(firstPrincipal, second.id);
-    await service.updatePermissions(firstPrincipal, second.id, { appRole: "admin" });
+    await activate(service, repository, firstPrincipal, second.id);
+    await permissions(service, repository, firstPrincipal, second.id, { appRole: "admin" });
     const secondPrincipal = (await service.authenticate((await service.login(second.login, "correct-horse-battery-staple")).sessionToken))!;
-    await service.disableUser(firstPrincipal, second.id);
+    await disable(service, repository, firstPrincipal, second.id);
 
-    await expect(service.updatePermissions(secondPrincipal, first.id, { tradingRole: "read-only" })).rejects.toMatchObject({
+    await expect(permissions(service, repository, secondPrincipal, first.id, { tradingRole: "read-only" })).rejects.toMatchObject({
       code: "admin_required"
     });
     expect(await repository.findUserById(first.id)).toMatchObject({ status: "active", appRole: "admin" });
@@ -73,16 +81,16 @@ describe("database identity service", () => {
     const second = await service.register("second-admin", "correct-horse-battery-staple");
     const pending = await service.register("pending-user", "pending-horse-battery-staple");
     const firstPrincipal = (await service.authenticate((await service.login(first.login, "temporary-Secure-password-2026")).sessionToken))!;
-    await service.activateUser(firstPrincipal, second.id);
-    await service.updatePermissions(firstPrincipal, second.id, { appRole: "admin" });
+    await activate(service, repository, firstPrincipal, second.id);
+    await permissions(service, repository, firstPrincipal, second.id, { appRole: "admin" });
     const secondPrincipal = (await service.authenticate((await service.login(second.login, "correct-horse-battery-staple")).sessionToken))!;
 
-    const [disable, staleActivation] = await Promise.allSettled([
-      service.disableUser(firstPrincipal, second.id),
-      service.activateUser(secondPrincipal, pending.id)
+    const [disableAttempt, staleActivation] = await Promise.allSettled([
+      disable(service, repository, firstPrincipal, second.id),
+      activate(service, repository, secondPrincipal, pending.id)
     ]);
 
-    expect(disable.status).toBe("fulfilled");
+    expect(disableAttempt.status).toBe("fulfilled");
     expect(staleActivation).toMatchObject({ status: "rejected", reason: { code: "admin_required" } });
     const unchanged = await repository.findUserById(pending.id);
     expect(unchanged).toMatchObject({ status: "pending" });
@@ -96,7 +104,7 @@ describe("database identity service", () => {
     const pending = await service.register("pending-user", "pending-horse-battery-staple");
     const principal = (await service.authenticate((await service.login(admin.login, "temporary-Secure-password-2026")).sessionToken))!;
 
-    await expect(service.activateUser(principal, pending.id)).rejects.toMatchObject({ code: "password_change_required" });
+    await expect(activate(service, repository, principal, pending.id)).rejects.toMatchObject({ code: "password_change_required" });
     expect(await repository.findUserById(pending.id)).toMatchObject({ status: "pending" });
   });
 
@@ -107,13 +115,13 @@ describe("database identity service", () => {
     await makeAdminReady(repository, admin.id);
     const trader = await service.register("transition-trader", "correct-horse-battery-staple");
     const adminPrincipal = (await service.authenticate((await service.login(admin.login, "temporary-Secure-password-2026")).sessionToken))!;
-    await service.activateUser(adminPrincipal, trader.id);
-    await service.updatePermissions(adminPrincipal, trader.id, { tradingRole: "live-trade" });
+    await activate(service, repository, adminPrincipal, trader.id);
+    await permissions(service, repository, adminPrincipal, trader.id, { tradingRole: "paper-trade" });
     const traderPrincipal = (await service.authenticate((await service.login(trader.login, "correct-horse-battery-staple")).sessionToken))!;
     const wsTicket = await service.issueWsTicket(traderPrincipal);
     const barrier = repository.blockNextAdminMutation();
 
-    const downgrade = service.updatePermissions(adminPrincipal, trader.id, { tradingRole: "none" });
+    const downgrade = permissions(service, repository, adminPrincipal, trader.id, { tradingRole: "none" });
     await barrier.entered;
     try {
       expect(await service.revalidatePrincipal(traderPrincipal)).toBeUndefined();
@@ -140,7 +148,7 @@ describe("database identity service", () => {
     const adminCredentials = await service.login(admin.login, "temporary-Admin-password-2026");
     const principal = await service.authenticate(adminCredentials.sessionToken);
     expect(principal?.effectiveTradingRole).toBe("admin");
-    await service.activateUser(principal!, pending.id);
+    await activate(service, repository, principal!, pending.id);
 
     const credentials = await service.login("TRADER.ONE", "correct-horse-battery-staple");
     expect(credentials.user.status).toBe("active");
@@ -185,14 +193,76 @@ describe("database identity service", () => {
     const credentials = await service.login(admin.login, "temporary-Secure-password-2026");
     const principal = (await service.authenticate(credentials.sessionToken))!;
 
-    await service.activateUser(principal, user.id);
-    await expect(service.updatePermissions(principal, user.id, { tradingRole: "read-only" })).resolves.toMatchObject({
+    await activate(service, repository, principal, user.id);
+    await expect(permissions(service, repository, principal, user.id, { tradingRole: "read-only" })).resolves.toMatchObject({
       id: user.id,
       tradingRole: "read-only"
     });
     expect(await service.tradingRoleForUser(user.id)).toBe("read-only");
-    await service.disableUser(principal, user.id);
+    await disable(service, repository, principal, user.id);
     expect(await service.tradingRoleForUser(user.id)).toBeUndefined();
+  });
+
+  it("forbids new live-trading grants before the HTTPS rollout", async () => {
+    const repository = new MemoryIdentityRepository();
+    const service = new IdentityService(repository);
+    const admin = await service.bootstrapAdmin("live-admin", "temporary-Secure-password-2026");
+    await makeAdminReady(repository, admin.id);
+    const user = await service.register("live-client", "correct-horse-battery-staple");
+    const principal = (await service.authenticate(
+      (await service.login(admin.login, "temporary-Secure-password-2026")).sessionToken
+    ))!;
+    await activate(service, repository, principal, user.id);
+
+    await expect(
+      permissions(service, repository, principal, user.id, {
+        tradingRole: "live-trade"
+      })
+    ).rejects.toMatchObject({ code: "live_trading_role_forbidden" });
+  });
+
+  it("fails closed when a legacy live role would survive activation, reactivation or demotion", async () => {
+    const repository = new MemoryIdentityRepository();
+    const service = new IdentityService(repository);
+    const admin = await service.bootstrapAdmin("legacy-admin", "temporary-Secure-password-2026");
+    await makeAdminReady(repository, admin.id);
+    const principal = (await service.authenticate(
+      (await service.login(admin.login, "temporary-Secure-password-2026")).sessionToken
+    ))!;
+
+    const pending = await service.register("legacy-pending", "correct-horse-battery-staple");
+    await repository.updateUser(pending.id, {
+      tradingRole: "live-trade",
+      updatedAt: new Date()
+    });
+    await expect(
+      activate(service, repository, principal, pending.id)
+    ).rejects.toMatchObject({ code: "live_trading_role_forbidden" });
+
+    const disabled = await service.register("legacy-disabled", "correct-horse-battery-staple");
+    await repository.updateUser(disabled.id, {
+      status: "disabled",
+      tradingRole: "live-trade",
+      updatedAt: new Date()
+    });
+    await expect(
+      reactivate(service, repository, principal, disabled.id)
+    ).rejects.toMatchObject({ code: "live_trading_role_forbidden" });
+
+    const legacyAdmin = await service.register("legacy-second-admin", "correct-horse-battery-staple");
+    await activate(service, repository, principal, legacyAdmin.id);
+    await permissions(service, repository, principal, legacyAdmin.id, {
+      appRole: "admin"
+    });
+    await repository.updateUser(legacyAdmin.id, {
+      tradingRole: "live-trade",
+      updatedAt: new Date()
+    });
+    await expect(
+      permissions(service, repository, principal, legacyAdmin.id, {
+        appRole: "user"
+      })
+    ).rejects.toMatchObject({ code: "live_trading_role_forbidden" });
   });
 
   it("fences execution authorization with durable revision and process epoch", async () => {
@@ -204,15 +274,15 @@ describe("database identity service", () => {
     const principal = (await service.authenticate(
       (await service.login(admin.login, "temporary-Secure-password-2026")).sessionToken
     ))!;
-    await service.activateUser(principal, user.id);
-    await service.updatePermissions(principal, user.id, { tradingRole: "live-trade" });
+    await activate(service, repository, principal, user.id);
+    await permissions(service, repository, principal, user.id, { tradingRole: "paper-trade" });
 
     const snapshot = await service.executionAuthorizationSnapshot(user.id);
-    expect(snapshot).toMatchObject({ ownerUserId: user.id, role: "live-trade" });
+    expect(snapshot).toMatchObject({ ownerUserId: user.id, role: "paper-trade" });
     expect(snapshot?.authorizationRevision).toBeGreaterThan(1);
     expect(service.isExecutionAuthorizationCurrent(snapshot!)).toBe(true);
 
-    await service.updatePermissions(principal, user.id, { tradingRole: "none" });
+    await permissions(service, repository, principal, user.id, { tradingRole: "none" });
     expect(service.isExecutionAuthorizationCurrent(snapshot!)).toBe(false);
     expect(await service.executionAuthorizationSnapshot(user.id)).toBeUndefined();
     expect((await repository.findUserById(user.id))!.authorizationRevision).toBe(
@@ -227,8 +297,8 @@ describe("database identity service", () => {
     await makeAdminReady(repository, admin.id);
     const user = await enabled.register("client", "correct-horse-battery-staple");
     const adminPrincipal = (await enabled.authenticate((await enabled.login(admin.login, "temporary-Secure-password-2026")).sessionToken))!;
-    await enabled.activateUser(adminPrincipal, user.id);
-    await enabled.updatePermissions(adminPrincipal, user.id, { tradingRole: "paper-trade" });
+    await activate(enabled, repository, adminPrincipal, user.id);
+    await permissions(enabled, repository, adminPrincipal, user.id, { tradingRole: "paper-trade" });
     const userSession = await enabled.login(user.login, "correct-horse-battery-staple");
 
     const disabled = new IdentityService(repository, { allowNonAdminTrading: false });
@@ -247,10 +317,10 @@ describe("database identity service", () => {
     const user = await service.register("client", "correct-horse-battery-staple");
     const principal = (await service.authenticate((await service.login(admin.login, "temporary-Secure-password-2026")).sessionToken))!;
 
-    await service.activateUser(principal, user.id);
-    await service.updatePermissions(principal, user.id, { tradingRole: "paper-trade" });
-    await service.updatePermissions(principal, user.id, { tradingRole: "read-only" });
-    await service.disableUser(principal, user.id);
+    await activate(service, repository, principal, user.id);
+    await permissions(service, repository, principal, user.id, { tradingRole: "paper-trade" });
+    await permissions(service, repository, principal, user.id, { tradingRole: "read-only" });
+    await disable(service, repository, principal, user.id);
 
     expect(actions).toEqual([`revoke:${user.id}`, `restore:${user.id}`, `revoke:${user.id}`, `revoke:${user.id}`]);
   });
@@ -258,6 +328,73 @@ describe("database identity service", () => {
 
 async function makeAdminReady(repository: MemoryIdentityRepository, userId: string): Promise<void> {
   await repository.updateUser(userId, { mustChangePassword: false, updatedAt: new Date() });
+}
+
+async function mutationInput(
+  repository: MemoryIdentityRepository,
+  userId: string,
+  overrides: Pick<AdminLifecycleMutationInput, "appRole" | "tradingRole"> = {}
+): Promise<AdminLifecycleMutationInput> {
+  const user = await repository.findUserById(userId);
+  if (!user) throw new Error("test user not found");
+  return {
+    reason: "identity service test mutation",
+    expectedAuthorizationRevision: user.authorizationRevision,
+    ...overrides
+  };
+}
+
+async function activate(
+  service: IdentityService,
+  repository: MemoryIdentityRepository,
+  actor: IdentityPrincipal,
+  userId: string
+) {
+  return service.activateUser(
+    actor,
+    userId,
+    await mutationInput(repository, userId)
+  );
+}
+
+async function reactivate(
+  service: IdentityService,
+  repository: MemoryIdentityRepository,
+  actor: IdentityPrincipal,
+  userId: string
+) {
+  return service.reactivateUser(
+    actor,
+    userId,
+    await mutationInput(repository, userId)
+  );
+}
+
+async function disable(
+  service: IdentityService,
+  repository: MemoryIdentityRepository,
+  actor: IdentityPrincipal,
+  userId: string
+) {
+  return service.disableUser(
+    actor,
+    userId,
+    await mutationInput(repository, userId)
+  );
+}
+
+async function permissions(
+  service: IdentityService,
+  repository: MemoryIdentityRepository,
+  actor: IdentityPrincipal,
+  userId: string,
+  overrides: Pick<AdminLifecycleMutationInput, "appRole" | "tradingRole">
+) {
+  return service.updatePermissions(
+    actor,
+    userId,
+    await mutationInput(repository, userId, overrides)
+  );
 }
 
 class BlockingAdminMutationRepository extends MemoryIdentityRepository {
@@ -276,13 +413,13 @@ class BlockingAdminMutationRepository extends MemoryIdentityRepository {
     return { entered, release };
   }
 
-  override async updateUserAsAdmin(actorUserId: string, subjectUserId: string, update: Parameters<MemoryIdentityRepository["updateUserAsAdmin"]>[2]) {
+  override async mutateUserAsAdmin(actorUserId: string, subjectUserId: string, mutation: Parameters<MemoryIdentityRepository["mutateUserAsAdmin"]>[2]) {
     const barrier = this.nextBarrier;
     this.nextBarrier = undefined;
     if (barrier) {
       barrier.entered();
       await barrier.gate;
     }
-    return super.updateUserAsAdmin(actorUserId, subjectUserId, update);
+    return super.mutateUserAsAdmin(actorUserId, subjectUserId, mutation);
   }
 }

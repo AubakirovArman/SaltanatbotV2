@@ -68,13 +68,49 @@ docker compose exec saltanatbotv2 \
 The command prints one generated password once. It is not written to the repository or stored in
 plaintext in PostgreSQL. Sign in with it, change it immediately when prompted, then delete the
 terminal scrollback if other people can read it. Concurrent bootstrap attempts are serialized in
-PostgreSQL and only one can succeed; every later attempt fails closed.
+PostgreSQL and only one can succeed; every later attempt fails closed. Use bootstrap only to create
+the first administrator. It is not a password-reset command.
 
 Registration is intentionally simple: a person chooses a login and password, receives a pending
 status, and cannot create a session until an administrator activates the account. The account menu
 contains the pending-user list for administrators. Disabling an account or changing its permissions
 revokes its active sessions. An administrator cannot disable or demote the last active administrator,
 including when two administrators try to remove each other concurrently.
+
+### Registration maintenance mode
+
+Set `AUTH_REGISTRATION_ENABLED=0` and restart only this project's API process to temporarily close
+new registration. Existing users, pending requests, sessions and data are preserved; administrators
+can still review existing pending accounts. The value is read at process start, so changing a shell
+or `.env` file without restarting the API has no effect. Set it back to `1` and restart the same API
+process to reopen registration. The research worker and PostgreSQL do not need to be recreated for
+this setting.
+
+### Recover an existing administrator password
+
+Recovery is an exceptional operator procedure, not an authentication endpoint. First stop this
+project's API and research worker so an already connected browser or WebSocket cannot outlive the
+database revocation. Take the matching PostgreSQL and runtime-data backups, and use the recovery CLI
+from the exact release whose checked-in PostgreSQL schema is already applied. The CLI deliberately
+does not run migrations.
+
+For Compose:
+
+```bash
+docker compose stop saltanatbotv2 research-worker
+docker compose run --rm --no-deps saltanatbotv2 \
+  node backend/dist/cli/recoverAdmin.js \
+  --login your-admin-login \
+  --confirm-login your-admin-login \
+  --reason "Operator recovery after verified credential loss"
+docker compose up -d saltanatbotv2 research-worker
+```
+
+`--confirm-login` must exactly match `--login`, and a reason is mandatory for the audit record.
+There is no password argument or password environment variable. After the transaction succeeds,
+the command revokes every session, marks the account for mandatory password change and prints one
+generated password once. It prints no password on failure. If the output is lost, run the guarded
+procedure again rather than placing a password in shell history.
 
 Authentication abuse protection is enabled without extra services: failed login attempts are
 limited independently by client IP and normalized login, every registration attempt consumes the
@@ -229,6 +265,26 @@ sudo -u saltanatbotv2 env \
   --login your-admin-login
 ```
 
+For guarded recovery on a direct systemd installation, stop only the two SaltanatbotV2 units and
+run the recovery command with the same database environment. The checked-in schema must already
+match; this command never upgrades it:
+
+```bash
+sudo systemctl stop \
+  saltanatbotv2.service saltanatbotv2-research-worker.service
+sudo -u saltanatbotv2 env \
+  AUTH_MODE=database RUNTIME_PROFILE=public-http-paper \
+  PGHOST=127.0.0.1 PGPORT=55434 \
+  PGDATABASE=saltanatbotv2 PGUSER=saltanatbotv2 \
+  PGPASSWORD_FILE=/etc/saltanatbotv2/postgres_password \
+  /usr/bin/node /opt/saltanatbotv2/backend/dist/cli/recoverAdmin.js \
+  --login your-admin-login \
+  --confirm-login your-admin-login \
+  --reason "Operator recovery after verified credential loss"
+sudo systemctl start \
+  saltanatbotv2.service saltanatbotv2-research-worker.service
+```
+
 If you selected another PostgreSQL port, use the same value in both units and the bootstrap command.
 The API accepts durable research jobs, while the worker claims and executes them. Running only the
 API leaves jobs safely queued but does not process them.
@@ -273,7 +329,10 @@ may be submitted again.
 
 The app also accepts `DATABASE_URL`, but not together with `PGPASSWORD_FILE`. Database migrations are
 checksum-verified, run in one transaction and take a PostgreSQL advisory lock, so two starting
-processes cannot apply a migration concurrently.
+processes cannot apply a migration concurrently. `PGPASSWORD_FILE` is an application setting, not a
+libpq setting: PostgreSQL command-line tools use an owner-only `PGPASSFILE`, `PGPASSWORD`, or their
+interactive password prompt. Never assume `pg_dump` or `pg_restore` reads the application's raw
+password file.
 
 ## What persists where
 

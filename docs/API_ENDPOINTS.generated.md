@@ -8,10 +8,15 @@ This index is a route-presence contract. A change to an Express route makes `npm
 
 | Method | Path | Access | Source |
 | --- | --- | --- | --- |
+| `GET` | `/api/admin/audit` | Authenticated · admin | `backend/src/identity/routes.ts` |
 | `GET` | `/api/admin/users` | Authenticated · admin | `backend/src/identity/routes.ts` |
 | `POST` | `/api/admin/users/:id/activate` | Authenticated · admin | `backend/src/identity/routes.ts` |
 | `POST` | `/api/admin/users/:id/disable` | Authenticated · admin | `backend/src/identity/routes.ts` |
 | `PATCH` | `/api/admin/users/:id/permissions` | Authenticated · admin | `backend/src/identity/routes.ts` |
+| `POST` | `/api/admin/users/:id/reactivate` | Authenticated · admin | `backend/src/identity/routes.ts` |
+| `GET` | `/api/admin/users/:id/sessions` | Authenticated · admin | `backend/src/identity/routes.ts` |
+| `POST` | `/api/admin/users/:id/sessions/:publicId/revoke` | Authenticated · admin | `backend/src/identity/routes.ts` |
+| `POST` | `/api/admin/users/:id/sessions/revoke-all` | Authenticated · admin | `backend/src/identity/routes.ts` |
 | `GET` | `/api/arbitrage` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/arbitrage/clock-health` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/arbitrage/continuous-feed-health` | Authenticated account | `backend/src/server.ts` |
@@ -34,6 +39,11 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `POST` | `/api/auth/logout` | Authenticated account | `backend/src/identity/routes.ts` |
 | `GET` | `/api/auth/me` | Authenticated account | `backend/src/identity/routes.ts` |
 | `POST` | `/api/auth/register` | Public | `backend/src/identity/routes.ts` |
+| `GET` | `/api/auth/sessions` | Authenticated account | `backend/src/identity/routes.ts` |
+| `DELETE` | `/api/auth/sessions/:publicId` | Authenticated account | `backend/src/identity/routes.ts` |
+| `POST` | `/api/auth/sessions/:publicId/revoke` | Authenticated account | `backend/src/identity/routes.ts` |
+| `POST` | `/api/auth/sessions/revoke-all` | Authenticated account | `backend/src/identity/routes.ts` |
+| `POST` | `/api/auth/sessions/revoke-others` | Authenticated account | `backend/src/identity/routes.ts` |
 | `GET` | `/api/candles` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/catalog` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/health` | Public | `backend/src/identity/serverRoutes.ts` |
@@ -138,4 +148,4 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **118 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **128 HTTP endpoints** and **6 WebSocket endpoints**.

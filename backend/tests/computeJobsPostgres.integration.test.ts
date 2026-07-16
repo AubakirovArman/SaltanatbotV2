@@ -57,6 +57,23 @@ describePostgres("compute jobs against isolated PostgreSQL", () => {
     ]);
   });
 
+  it("never claims queued work for a disabled owner", async () => {
+    const disabled = await enqueue(OWNER_A, "disabled-owner-job");
+    const active = await enqueue(OWNER_B, "active-owner-job");
+    await pool.query("UPDATE users SET status = 'disabled' WHERE id = $1", [OWNER_A]);
+
+    try {
+      const claimed = await repository.claim("worker-active-only", 30_000);
+      expect(claimed?.id).toBe(active.id);
+      expect(await repository.get(OWNER_A, disabled.id)).toMatchObject({
+        id: disabled.id,
+        status: "queued"
+      });
+    } finally {
+      await pool.query("UPDATE users SET status = 'active' WHERE id = $1", [OWNER_A]);
+    }
+  });
+
   it("advances the durable authorization revision only for authorization changes", async () => {
     const identities = new PostgresIdentityRepository(pool);
     const before = await identities.findUserById(OWNER_A);
@@ -256,7 +273,11 @@ describePostgres("compute jobs against isolated PostgreSQL", () => {
         [legacyJob, legacyOwner, legacyTimestamp]
       );
 
-      await expect(migrateDatabase(migrationPool)).resolves.toMatchObject({
+      await expect(
+        migrateDatabase(migrationPool, {
+          migrations: DATABASE_MIGRATIONS.slice(0, 8)
+        })
+      ).resolves.toMatchObject({
         fromVersion: 7,
         toVersion: 8,
         applied: [{ version: 8, name: "bounded_compute_job_artifact_retention" }]

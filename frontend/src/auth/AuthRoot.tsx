@@ -5,7 +5,7 @@ import { AccountDialog } from "./AccountDialog";
 import { AuthLoadingScreen, AuthUnavailableScreen, ChangePasswordScreen, PendingScreen, SignInScreen } from "./AuthScreens";
 import { AuthApiError, changePassword, getAuthConfig, getCurrentSession, login, logout, register } from "./client";
 import { authText, loadAuthMessages } from "./messages";
-import { publishAuthSessionChange, subscribeAuthSessionChanges, type AuthSessionChangeKind } from "./sessionSync";
+import { AUTH_SESSION_INVALIDATED_EVENT, publishAuthSessionChange, subscribeAuthSessionChanges, type AuthSessionChangeKind } from "./sessionSync";
 import type { AuthConfig, AuthSession, AuthUser } from "./types";
 
 export interface AuthContextValue {
@@ -144,6 +144,22 @@ export function AuthRoot({ children }: { children: ReactNode }) {
   }, [acceptSession, config?.authRequired]);
 
   useEffect(() => {
+    if (!config?.authRequired) return;
+    let active = true;
+    const reconcileInvalidatedSession = () => {
+      const resolution = ++sessionResolutionRef.current;
+      void getCurrentSession()
+        .then((next) => acceptSession(next, resolution, () => active))
+        .catch(() => undefined);
+    };
+    window.addEventListener(AUTH_SESSION_INVALIDATED_EVENT, reconcileInvalidatedSession);
+    return () => {
+      active = false;
+      window.removeEventListener(AUTH_SESSION_INVALIDATED_EVENT, reconcileInvalidatedSession);
+    };
+  }, [acceptSession, config?.authRequired]);
+
+  useEffect(() => {
     if (!config?.authRequired || !session) return;
     let active = true;
     const refreshSilently = () => {
@@ -156,7 +172,7 @@ export function AuthRoot({ children }: { children: ReactNode }) {
         })
         .catch(() => undefined);
     };
-    const timer = window.setInterval(refreshSilently, 5 * 60_000);
+    const timer = window.setInterval(refreshSilently, 60_000);
     const onVisibility = () => {
       if (document.visibilityState === "visible") refreshSilently();
     };
@@ -248,6 +264,9 @@ export function AuthRoot({ children }: { children: ReactNode }) {
         tradingRoleAssignmentsEnabled={config.tradingRoleAssignmentsEnabled}
         onClose={() => setAccountOpen(false)}
         onChangePassword={replacePassword}
+        onSessionChanged={async () => {
+          await refreshSession();
+        }}
         onLogout={async () => {
           ++sessionResolutionRef.current;
           await logout();

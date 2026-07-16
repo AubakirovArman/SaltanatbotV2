@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import { loadRuntimeConfig, type AuthMode } from "../config/runtimeConfig.js";
 import { createDatabasePool, loadDatabaseConfig, migrateDatabase, verifyDatabaseConnection } from "../database/index.js";
 import { configureIdentityAuth } from "../auth.js";
+import { createIdentityCleanupScheduler } from "./cleanupScheduler.js";
 import { PostgresIdentityRepository } from "./postgresRepository.js";
 import { IdentityService } from "./service.js";
 
@@ -43,6 +44,8 @@ export async function initializeIdentityRuntime(
       allowRegistration: env.AUTH_REGISTRATION_ENABLED !== "0" && env.AUTH_REGISTRATION_ENABLED !== "false",
       allowNonAdminTrading: env.AUTH_TRADING_ROLES_ENABLED !== "0" && env.AUTH_TRADING_ROLES_ENABLED !== "false"
     });
+    const cleanup = createIdentityCleanupScheduler(service);
+    cleanup.start();
     configureIdentityAuth(service);
     console.log(
       `Identity database ready at ${config.description.host}:${config.description.port}/${connection.database} ` +
@@ -58,6 +61,8 @@ export async function initializeIdentityRuntime(
         serverVersionNumber: connection.serverVersionNumber
       },
       async close() {
+        cleanup.quiesce();
+        await cleanup.drain();
         configureIdentityAuth(undefined);
         await pool.end();
       }

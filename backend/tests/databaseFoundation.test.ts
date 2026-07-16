@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { isDatabaseConfigured, loadDatabaseConfig } from "../src/database/config.js";
 import { migrateDatabase } from "../src/database/migrations.js";
@@ -88,18 +89,23 @@ function createPoolDouble(
 
 describe("PostgreSQL schema migrations", () => {
   it("uses contiguous checksummed versions and no extensions", () => {
-    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(8);
-    expect(DATABASE_MIGRATIONS.map((migration) => migration.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(8);
+    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(9);
+    expect(DATABASE_MIGRATIONS.map((migration) => migration.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(9);
     expect(DATABASE_MIGRATIONS.every((migration) => /^[0-9a-f]{64}$/.test(migration.checksum))).toBe(true);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.sql).join("\n")).not.toMatch(/CREATE\s+EXTENSION/i);
   });
 
-  it("keeps the published v1-v3 checksums stable and adds client workspace IDs in v4", () => {
-    expect(DATABASE_MIGRATIONS.slice(0, 3).map((migration) => migration.checksum)).toEqual([
+  it("keeps the published v1-v8 checksums stable and adds the identity control plane only in v9", () => {
+    expect(DATABASE_MIGRATIONS.slice(0, 8).map((migration) => migration.checksum)).toEqual([
       "9b538a4d07aad7251604f6f3b9a32e069cf9419efa993725762f00e4191cfd94",
       "4a164f3c2a96af3e7941cca8fd06e96147da4af10b2c9b1411713be32816192a",
-      "6f37bfa7d8330ff1474525f95c81e85b21212986c53a8cd81b26568ce3f7ab05"
+      "6f37bfa7d8330ff1474525f95c81e85b21212986c53a8cd81b26568ce3f7ab05",
+      "645cf8965961a0bb817b9918074330764d270e0768a4a337307ab653223848c7",
+      "cec8a2438dea7afa2bb9751a9e37181b400ca411fe79613bd647aa94b79ed0b7",
+      "f341253187e03b73f60981f35d11ce558c43d6301ed6ef7da9ddb68be467b34b",
+      "19144479136344c3f09e4fd78ac6f57b1cb9813e4148af756457ad7842c0503e",
+      "3d62620312b302e48475629898a318bfb7fd31fea79f9b0cc47ecb19a9a13d22"
     ]);
     expect(DATABASE_MIGRATIONS[3].sql).toContain("ADD COLUMN client_id VARCHAR(160)");
     expect(DATABASE_MIGRATIONS[3].sql).toContain("ON workspaces (owner_user_id, client_id)");
@@ -120,14 +126,32 @@ describe("PostgreSQL schema migrations", () => {
     expect(DATABASE_MIGRATIONS[7].sql).toContain("maintain_compute_job_retention_usage");
     expect(DATABASE_MIGRATIONS[7].sql).toContain("compute_jobs_full_artifact_retention_index");
     expect(DATABASE_MIGRATIONS[7].sql).toContain("compute_jobs_tombstone_retention_index");
+    expect(DATABASE_MIGRATIONS[8].sql).toContain("ADD COLUMN public_id UUID");
+    expect(DATABASE_MIGRATIONS[8].sql).toContain("pre_https_live_role_downgrade");
+    expect(DATABASE_MIGRATIONS[8].sql).toContain("users_non_admin_live_trading_forbidden");
+    expect(DATABASE_MIGRATIONS[8].sql).toContain("saltanatbotv2-auth-session-public-id:v1:");
+    expect(DATABASE_MIGRATIONS[8].sql).not.toMatch(/substr\(id_hash/i);
+  });
+
+  it("derives legacy public session IDs opaquely from the full secret hash", () => {
+    const idHash = "0123456789abcdef".repeat(4);
+    const digest = createHash("md5")
+      .update(`saltanatbotv2-auth-session-public-id:v1:${idHash}`)
+      .digest("hex");
+    const publicId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-${digest.slice(12, 16)}-${digest.slice(16, 20)}-${digest.slice(20)}`;
+    const compact = publicId.replaceAll("-", "");
+
+    expect(publicId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(idHash).not.toContain(compact);
+    expect(compact).not.toBe(idHash.slice(0, 32));
   });
 
   it("holds an advisory lock and applies every new migration atomically", async () => {
     const database = createPoolDouble();
     const result = await migrateDatabase(database.pool);
 
-    expect(result).toMatchObject({ fromVersion: 0, toVersion: 8 });
-    expect(result.applied).toHaveLength(8);
+    expect(result).toMatchObject({ fromVersion: 0, toVersion: 9 });
+    expect(result.applied).toHaveLength(9);
     expect(database.queries.some((query) => query.text.includes("pg_advisory_xact_lock"))).toBe(true);
     expect(database.queries.at(0)?.text).toBe("BEGIN");
     expect(database.queries.at(-1)?.text).toBe("COMMIT");

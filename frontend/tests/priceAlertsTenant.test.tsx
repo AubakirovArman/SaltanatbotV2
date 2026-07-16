@@ -22,7 +22,8 @@ const auth = (id: string): AuthContextValue => ({
     status: "active",
     appRole: "user",
     tradingRole: "none",
-    mustChangePassword: false
+    mustChangePassword: false,
+    authorizationRevision: 1
   }
 });
 

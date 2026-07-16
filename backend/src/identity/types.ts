@@ -29,6 +29,7 @@ export interface PublicIdentityUser {
   appRole: AppRole;
   tradingRole: TradingRole;
   mustChangePassword: boolean;
+  authorizationRevision: number;
   approvedBy?: string;
   approvedAt?: string;
   lastLoginAt?: string;
@@ -37,6 +38,7 @@ export interface PublicIdentityUser {
 }
 
 export interface IdentitySession {
+  publicId: string;
   idHash: string;
   userId: string;
   csrfHash: string;
@@ -44,8 +46,59 @@ export interface IdentitySession {
   lastSeenAt: Date;
   createdAt: Date;
   revokedAt?: Date;
+  revokeReason?: string;
   userAgent?: string;
   ipAddress?: string;
+}
+
+export interface PublicIdentitySession {
+  publicId: string;
+  current: boolean;
+  expiresAt: string;
+  lastSeenAt: string;
+  createdAt: string;
+  revokedAt?: string;
+  revokeReason?: string;
+  userAgent?: string;
+  ipAddress?: string;
+}
+
+export interface IdentityAuditEvent {
+  id: string;
+  eventType: string;
+  actorUserId?: string;
+  actorLogin?: string;
+  subjectUserId?: string;
+  subjectLogin?: string;
+  requestId?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  metadata: Record<string, unknown>;
+  occurredAt: Date;
+}
+
+export interface PublicIdentityAuditEvent {
+  id: string;
+  eventType: string;
+  actorUserId?: string;
+  actorLogin?: string;
+  subjectUserId?: string;
+  subjectLogin?: string;
+  requestId?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  reason?: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  occurredAt: string;
+}
+
+export interface PageInfo {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 }
 
 export interface IdentityPrincipal {
@@ -78,6 +131,7 @@ export function publicIdentityUser(user: IdentityUser): PublicIdentityUser {
     appRole: user.appRole,
     tradingRole: user.tradingRole,
     mustChangePassword: user.mustChangePassword,
+    authorizationRevision: user.authorizationRevision,
     approvedBy: user.approvedBy,
     approvedAt: user.approvedAt?.toISOString(),
     lastLoginAt: user.lastLoginAt?.toISOString(),

@@ -29,8 +29,15 @@ describe("trading permission revocation", () => {
       (await service.login(admin.login, "temporary-Admin-password-2026")).sessionToken
     ))!;
 
-    await service.activateUser(adminPrincipal, trader.id);
-    await service.updatePermissions(adminPrincipal, trader.id, { tradingRole: "paper-trade" });
+    await service.activateUser(adminPrincipal, trader.id, {
+      reason: "trading revocation test activation",
+      expectedAuthorizationRevision: (await repository.findUserById(trader.id))!.authorizationRevision
+    });
+    await service.updatePermissions(adminPrincipal, trader.id, {
+      reason: "trading revocation test permission",
+      expectedAuthorizationRevision: (await repository.findUserById(trader.id))!.authorizationRevision,
+      tradingRole: "paper-trade"
+    });
 
     const firstSession = await service.login(trader.login, "correct-horse-battery-staple");
     const secondSession = await service.login(trader.login, "correct-horse-battery-staple");
@@ -50,7 +57,11 @@ describe("trading permission revocation", () => {
       shutdownActions.push(`stop:${ownerUserId}`);
     });
 
-    await service.updatePermissions(adminPrincipal, trader.id, { tradingRole: "none" });
+    await service.updatePermissions(adminPrincipal, trader.id, {
+      reason: "trading revocation test downgrade",
+      expectedAuthorizationRevision: (await repository.findUserById(trader.id))!.authorizationRevision,
+      tradingRole: "none"
+    });
 
     expect(await service.authenticate(firstSession.sessionToken)).toBeUndefined();
     expect(await service.authenticate(secondSession.sessionToken)).toBeUndefined();

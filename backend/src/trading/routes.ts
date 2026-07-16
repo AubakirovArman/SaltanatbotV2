@@ -423,9 +423,10 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
 
   registerNotificationRoutes(router, requireRole, telegramControl);
 
-  registerArbitrageAlertRoutes(router, arbitrageAlerts, requireRole("admin"));
-  registerResearchAlertRoutes(router, options.researchAlerts, requireRole("admin"));
-  if (paperMultiLeg) router.use("/paper-multi-leg", requireRole("admin"), createPaperMultiLegRouter(paperMultiLeg));
+  const requireLegacyOperatorResearch = requireLegacyOperatorRole("admin", options.legacyOwnerUserId);
+  registerArbitrageAlertRoutes(router, arbitrageAlerts, requireLegacyOperatorResearch);
+  registerResearchAlertRoutes(router, options.researchAlerts, requireLegacyOperatorResearch);
+  if (paperMultiLeg) router.use("/paper-multi-leg", requireLegacyOperatorResearch, createPaperMultiLegRouter(paperMultiLeg));
 
   return {
     router,
@@ -447,6 +448,29 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
 
 function rejectPaperOnly(res: Response, operation: string): void {
   res.status(403).json(paperOnlyErrorBody(operation));
+}
+
+function requireLegacyOperatorRole(required: AuthRole, legacyOwnerUserId?: string) {
+  return (_req: Request, res: Response, next: NextFunction) => {
+    if (!ensureRole(res, required)) return;
+    const ownerUserId = tradingOwnerFromResponse(res);
+    if (legacyOperatorSurfaceAllowed(isDatabaseAuthMode(), ownerUserId, legacyOwnerUserId)) {
+      next();
+      return;
+    }
+    res.status(403).json({
+      error: "This legacy research surface is available only to its migrated owner until tenant-scoped storage is delivered.",
+      code: "owner_scoped_surface_pending"
+    });
+  };
+}
+
+export function legacyOperatorSurfaceAllowed(
+  databaseAuth: boolean,
+  ownerUserId: string,
+  legacyOwnerUserId?: string
+): boolean {
+  return !databaseAuth || ownerUserId === (legacyOwnerUserId ?? LEGACY_TRADING_OWNER_ID);
 }
 
 function bybitUta(ownerUserId: string, accountId: string): BybitUtaService {

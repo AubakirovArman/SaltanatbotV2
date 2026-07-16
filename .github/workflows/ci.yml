@@ -70,6 +70,7 @@ jobs:
     env:
       ALLOW_DESTRUCTIVE_POSTGRES_TESTS: "1"
       JOBS_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
+      IDENTITY_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_identity_ci_test
       EXECUTION_LEDGER_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
       WORKSPACES_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
     steps:
@@ -101,16 +102,18 @@ jobs:
             "CREATE ROLE saltanatbotv2_test LOGIN PASSWORD 'ci-test-password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT"
           );
           await admin.query("CREATE DATABASE saltanatbotv2_ci_test OWNER saltanatbotv2_test");
+          await admin.query("CREATE DATABASE saltanatbotv2_identity_ci_test OWNER saltanatbotv2_test");
           await admin.end();
           NODE
 
       # The integration suites require an explicit destructive-test opt-in,
       # verify a test-only database and unprivileged role, apply checksum-locked
-      # migrations, then exercise real queue, execution-ledger and workspace
-      # tenant/concurrency invariants.
+      # migrations, then exercise real identity, queue, execution-ledger and
+      # workspace tenant/concurrency invariants.
       - name: Run migrations and PostgreSQL security integration tests
         run: |
           npx --no-install vitest run backend/tests/computeJobsPostgres.integration.test.ts
+          npx --no-install vitest run backend/tests/identityLifecyclePostgres.integration.test.ts
           npx --no-install vitest run backend/tests/executionStepLedgerPostgres.integration.test.ts
           npx --no-install vitest run backend/tests/workspacesPostgres.integration.test.ts
 

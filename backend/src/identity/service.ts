@@ -1,7 +1,54 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import type { IdentityRepository } from "./repository.js";
+import { IdentityControlPlaneService } from "./identityControlPlaneService.js";
+import {
+  IdentityRuntimeAuthorizationService,
+  type ExecutionAuthorizationSnapshot
+} from "./identityRuntimeAuthorization.js";
+import type {
+  AdminLifecycleMutationInput,
+  AdminUserMutationOutcome,
+  PublicPage,
+  RequestMetadata,
+  SessionRevocationHandler,
+  SessionRevocationOutcome,
+  TradingAccessChangeHandler
+} from "./identityServiceTypes.js";
+import {
+  IdentityError,
+  normalizeLogin,
+  validateLogin
+} from "./identityValidation.js";
 import { hashPassword, passwordPolicyError, verifyPassword } from "./password.js";
-import { effectiveTradingRole, publicIdentityUser, type AppRole, type IdentityPrincipal, type IdentityUser, type PublicIdentityUser, type SessionCredentials, type TradingRole, type UserStatus } from "./types.js";
+import type { IdentityRepository, PageRequest } from "./repository.js";
+import {
+  effectiveTradingRole,
+  publicIdentityUser,
+  type AppRole,
+  type IdentityPrincipal,
+  type IdentityUser,
+  type PublicIdentityAuditEvent,
+  type PublicIdentitySession,
+  type PublicIdentityUser,
+  type SessionCredentials,
+  type TradingRole,
+  type UserStatus
+} from "./types.js";
+
+export { IdentityError, normalizeLogin };
+export type {
+  AdminLifecycleMutationInput,
+  AdminUserMutationOutcome,
+  PublicPage,
+  PublicSessionPage,
+  RequestMetadata,
+  SessionRevocationHandler,
+  SessionRevocationNotice,
+  SessionRevocationOutcome,
+  SessionRevocationReason,
+  TradingAccessChangeAction,
+  TradingAccessChangeHandler
+} from "./identityServiceTypes.js";
+export type { ExecutionAuthorizationSnapshot } from "./identityRuntimeAuthorization.js";
 
 export interface IdentityServiceOptions {
   sessionTtlMs?: number;
@@ -11,51 +58,40 @@ export interface IdentityServiceOptions {
   now?: () => Date;
 }
 
-export type TradingAccessChangeAction = "revoke" | "restore";
-export type TradingAccessChangeHandler = (userId: string, action: TradingAccessChangeAction) => void | Promise<void>;
-
-export type SessionRevocationReason = "logout" | "password_changed" | "user_activated" | "user_disabled" | "permissions_changed";
-
-export interface SessionRevocationNotice {
-  userId: string;
-  /** Present when only one session was revoked (normal logout). */
-  sessionIdHash?: string;
-  reason: SessionRevocationReason;
-}
-
-export type SessionRevocationHandler = (notice: SessionRevocationNotice) => void | Promise<void>;
-
-export interface RequestMetadata {
-  ipAddress?: string;
-  userAgent?: string;
-}
-
-export interface ExecutionAuthorizationSnapshot {
-  ownerUserId: string;
-  authorizationRevision: number;
-  authorizationEpoch: number;
-  role: Exclude<ReturnType<typeof effectiveTradingRole>, undefined>;
-}
-
-export class IdentityError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string
-  ) {
-    super(message);
-  }
-}
-
 export class IdentityService {
   readonly allowRegistration: boolean;
   readonly allowNonAdminTrading: boolean;
+  readonly recoverAdminPassword: IdentityControlPlaneService["recoverAdminPassword"];
+  readonly listUsers: IdentityControlPlaneService["listUsers"];
+  readonly listUsersPage: IdentityControlPlaneService["listUsersPage"];
+  readonly activateUser: IdentityControlPlaneService["activateUser"];
+  readonly reactivateUser: IdentityControlPlaneService["reactivateUser"];
+  readonly disableUser: IdentityControlPlaneService["disableUser"];
+  readonly updatePermissions: IdentityControlPlaneService["updatePermissions"];
+  readonly listOwnSessions: IdentityControlPlaneService["listOwnSessions"];
+  readonly listAdminSessions: IdentityControlPlaneService["listAdminSessions"];
+  readonly revokeOwnSession: IdentityControlPlaneService["revokeOwnSession"];
+  readonly revokeOtherSessions: IdentityControlPlaneService["revokeOtherSessions"];
+  readonly revokeAllOwnSessions: IdentityControlPlaneService["revokeAllOwnSessions"];
+  readonly revokeAdminSession: IdentityControlPlaneService["revokeAdminSession"];
+  readonly revokeAllUserSessionsAdmin: IdentityControlPlaneService["revokeAllUserSessionsAdmin"];
+  readonly listAuditEvents: IdentityControlPlaneService["listAuditEvents"];
+  readonly issueWsTicket: IdentityRuntimeAuthorizationService["issueWsTicket"];
+  readonly consumeWsTicket: IdentityRuntimeAuthorizationService["consumeWsTicket"];
+  readonly tradingRoleForUser: IdentityRuntimeAuthorizationService["tradingRoleForUser"];
+  readonly executionAuthorizationSnapshot: IdentityRuntimeAuthorizationService["executionAuthorizationSnapshot"];
+  readonly isExecutionAuthorizationCurrent: IdentityRuntimeAuthorizationService["isExecutionAuthorizationCurrent"];
+  readonly cleanup: IdentityRuntimeAuthorizationService["cleanup"];
   private readonly sessionTtlMs: number;
   private readonly wsTicketTtlMs: number;
   private readonly now: () => Date;
-  private readonly fallbackPasswordHash = hashPassword("saltanatbotv2-invalid-account-timing-sentinel");
+  private readonly fallbackPasswordHash = hashPassword(
+    "saltanatbotv2-invalid-account-timing-sentinel"
+  );
   private readonly authorizationEpochs = new Map<string, number>();
   private readonly authorizationTransitions = new Map<string, number>();
+  private readonly controlPlane: IdentityControlPlaneService;
+  private readonly runtimeAuthorization: IdentityRuntimeAuthorizationService;
   private tradingAccessChangeHandler?: TradingAccessChangeHandler;
   private sessionRevocationHandler?: SessionRevocationHandler;
 
@@ -63,29 +99,121 @@ export class IdentityService {
     readonly repository: IdentityRepository,
     options: IdentityServiceOptions = {}
   ) {
-    this.sessionTtlMs = boundedPositive(options.sessionTtlMs, 12 * 60 * 60_000, 15 * 60_000, 30 * 24 * 60 * 60_000);
-    this.wsTicketTtlMs = boundedPositive(options.wsTicketTtlMs, 30_000, 5_000, 120_000);
+    this.sessionTtlMs = boundedPositive(
+      options.sessionTtlMs,
+      12 * 60 * 60_000,
+      15 * 60_000,
+      30 * 24 * 60 * 60_000
+    );
+    this.wsTicketTtlMs = boundedPositive(
+      options.wsTicketTtlMs,
+      30_000,
+      5_000,
+      120_000
+    );
     this.allowRegistration = options.allowRegistration ?? true;
-    // Trading resources are owner-scoped. Deployments may still disable role
-    // assignment explicitly during maintenance, but the safe default no longer
-    // relies on the former shared-account escape hatch.
     this.allowNonAdminTrading = options.allowNonAdminTrading ?? true;
     this.now = options.now ?? (() => new Date());
+    this.controlPlane = new IdentityControlPlaneService(repository, {
+      allowNonAdminTrading: this.allowNonAdminTrading,
+      now: () => this.now(),
+      beginAuthorizationTransition: (userId) =>
+        this.beginAuthorizationTransition(userId),
+      notifySessionRevocation: async (notice) => {
+        await this.sessionRevocationHandler?.(notice);
+      },
+      changeTradingAccess: async (userId, action) => {
+        await this.tradingAccessChangeHandler?.(userId, action);
+      },
+      userHasTradingAccess: (user) => this.userHasTradingAccess(user)
+    });
+    this.runtimeAuthorization = new IdentityRuntimeAuthorizationService(
+      repository,
+      {
+        wsTicketTtlMs: this.wsTicketTtlMs,
+        now: () => this.now(),
+        roleForUser: (user) => this.roleForUser(user),
+        authorizationTransitionPending: (userId) =>
+          this.authorizationTransitionPending(userId),
+        authorizationEpoch: (userId) => this.authorizationEpoch(userId)
+      }
+    );
+    this.recoverAdminPassword =
+      this.controlPlane.recoverAdminPassword.bind(this.controlPlane);
+    this.listUsers = this.controlPlane.listUsers.bind(this.controlPlane);
+    this.listUsersPage = this.controlPlane.listUsersPage.bind(this.controlPlane);
+    this.activateUser = this.controlPlane.activateUser.bind(this.controlPlane);
+    this.reactivateUser =
+      this.controlPlane.reactivateUser.bind(this.controlPlane);
+    this.disableUser = this.controlPlane.disableUser.bind(this.controlPlane);
+    this.updatePermissions =
+      this.controlPlane.updatePermissions.bind(this.controlPlane);
+    this.listOwnSessions =
+      this.controlPlane.listOwnSessions.bind(this.controlPlane);
+    this.listAdminSessions =
+      this.controlPlane.listAdminSessions.bind(this.controlPlane);
+    this.revokeOwnSession =
+      this.controlPlane.revokeOwnSession.bind(this.controlPlane);
+    this.revokeOtherSessions =
+      this.controlPlane.revokeOtherSessions.bind(this.controlPlane);
+    this.revokeAllOwnSessions =
+      this.controlPlane.revokeAllOwnSessions.bind(this.controlPlane);
+    this.revokeAdminSession =
+      this.controlPlane.revokeAdminSession.bind(this.controlPlane);
+    this.revokeAllUserSessionsAdmin =
+      this.controlPlane.revokeAllUserSessionsAdmin.bind(this.controlPlane);
+    this.listAuditEvents =
+      this.controlPlane.listAuditEvents.bind(this.controlPlane);
+    this.issueWsTicket =
+      this.runtimeAuthorization.issueWsTicket.bind(this.runtimeAuthorization);
+    this.consumeWsTicket =
+      this.runtimeAuthorization.consumeWsTicket.bind(this.runtimeAuthorization);
+    this.tradingRoleForUser =
+      this.runtimeAuthorization.tradingRoleForUser.bind(
+        this.runtimeAuthorization
+      );
+    this.executionAuthorizationSnapshot =
+      this.runtimeAuthorization.executionAuthorizationSnapshot.bind(
+        this.runtimeAuthorization
+      );
+    this.isExecutionAuthorizationCurrent =
+      this.runtimeAuthorization.isExecutionAuthorizationCurrent.bind(
+        this.runtimeAuthorization
+      );
+    this.cleanup = this.runtimeAuthorization.cleanup.bind(
+      this.runtimeAuthorization
+    );
   }
 
-  setTradingAccessChangeHandler(handler: TradingAccessChangeHandler | undefined): void {
+  setTradingAccessChangeHandler(
+    handler: TradingAccessChangeHandler | undefined
+  ): void {
     this.tradingAccessChangeHandler = handler;
   }
 
-  setSessionRevocationHandler(handler: SessionRevocationHandler | undefined): void {
+  setSessionRevocationHandler(
+    handler: SessionRevocationHandler | undefined
+  ): void {
     this.sessionRevocationHandler = handler;
   }
 
-  async register(login: string, password: string, metadata: RequestMetadata = {}): Promise<PublicIdentityUser> {
-    if (!this.allowRegistration) throw new IdentityError(403, "registration_disabled", "Registration is disabled by the administrator.");
+  async register(
+    login: string,
+    password: string,
+    metadata: RequestMetadata = {}
+  ): Promise<PublicIdentityUser> {
+    if (!this.allowRegistration) {
+      throw new IdentityError(
+        403,
+        "registration_disabled",
+        "Registration is disabled by the administrator."
+      );
+    }
     const validated = validateLogin(login);
     const passwordError = passwordPolicyError(password, validated.login);
-    if (passwordError) throw new IdentityError(400, "password_policy", passwordError);
+    if (passwordError) {
+      throw new IdentityError(400, "password_policy", passwordError);
+    }
     const now = this.now();
     const user: IdentityUser = {
       id: randomUUID(),
@@ -100,15 +228,26 @@ export class IdentityService {
       createdAt: now,
       updatedAt: now
     };
-    if (!(await this.repository.createUser(user))) throw new IdentityError(409, "login_exists", "This login is already registered.");
+    if (!(await this.repository.createUser(user))) {
+      throw new IdentityError(
+        409,
+        "login_exists",
+        "This login is already registered."
+      );
+    }
     await this.audit("user.registered", metadata, undefined, user.id);
     return publicIdentityUser(user);
   }
 
-  async bootstrapAdmin(login: string, password: string): Promise<PublicIdentityUser> {
+  async bootstrapAdmin(
+    login: string,
+    password: string
+  ): Promise<PublicIdentityUser> {
     const validated = validateLogin(login);
     const passwordError = passwordPolicyError(password, validated.login);
-    if (passwordError) throw new IdentityError(400, "password_policy", passwordError);
+    if (passwordError) {
+      throw new IdentityError(400, "password_policy", passwordError);
+    }
     const now = this.now();
     const user: IdentityUser = {
       id: randomUUID(),
@@ -125,50 +264,114 @@ export class IdentityService {
       updatedAt: now
     };
     const created = await this.repository.createFirstAdmin(user);
-    if (created === "admin_exists") throw new IdentityError(409, "admin_exists", "An administrator already exists.");
-    if (created === "login_exists") throw new IdentityError(409, "login_exists", "This login is already registered.");
+    if (created === "admin_exists") {
+      throw new IdentityError(
+        409,
+        "admin_exists",
+        "An administrator already exists."
+      );
+    }
+    if (created === "login_exists") {
+      throw new IdentityError(
+        409,
+        "login_exists",
+        "This login is already registered."
+      );
+    }
     await this.audit("admin.bootstrapped", {}, user.id, user.id);
     return publicIdentityUser(user);
   }
 
-  async login(login: string, password: string, metadata: RequestMetadata = {}): Promise<SessionCredentials> {
+  async login(
+    login: string,
+    password: string,
+    metadata: RequestMetadata = {}
+  ): Promise<SessionCredentials> {
     const normalized = normalizeLogin(login);
-    const user = normalized ? await this.repository.findUserByLogin(normalized) : undefined;
-    const passwordMatches = await verifyPassword(password, user?.passwordHash ?? (await this.fallbackPasswordHash));
+    const user = normalized
+      ? await this.repository.findUserByLogin(normalized)
+      : undefined;
+    const passwordMatches = await verifyPassword(
+      password,
+      user?.passwordHash ?? (await this.fallbackPasswordHash)
+    );
     if (!user || !passwordMatches) {
-      await this.audit("login.failed", metadata, undefined, user?.id, { loginNormalized: normalized || "invalid" });
-      throw new IdentityError(401, "invalid_credentials", "Invalid login or password.");
+      await this.audit("login.failed", metadata, undefined, user?.id, {
+        loginNormalized: normalized || "invalid"
+      });
+      throw new IdentityError(
+        401,
+        "invalid_credentials",
+        "Invalid login or password."
+      );
     }
-    if (user.status === "pending") throw new IdentityError(403, "pending_approval", "The account is waiting for administrator approval.");
-    if (user.status !== "active") throw new IdentityError(403, "account_disabled", "The account is disabled.");
+    if (user.status === "pending") {
+      throw new IdentityError(
+        403,
+        "pending_approval",
+        "The account is waiting for administrator approval."
+      );
+    }
+    if (user.status !== "active") {
+      throw new IdentityError(
+        403,
+        "account_disabled",
+        "The account is disabled."
+      );
+    }
     const now = this.now();
-    const current = (await this.repository.updateUser(user.id, { lastLoginAt: now, updatedAt: now })) ?? user;
+    const current =
+      (await this.repository.updateUser(user.id, {
+        lastLoginAt: now,
+        updatedAt: now
+      })) ?? user;
     const credentials = await this.createSession(current, metadata);
     await this.audit("login.succeeded", metadata, user.id, user.id);
     return credentials;
   }
 
-  async authenticate(sessionToken: string | undefined): Promise<IdentityPrincipal | undefined> {
+  async authenticate(
+    sessionToken: string | undefined
+  ): Promise<IdentityPrincipal | undefined> {
     if (!sessionToken) return undefined;
     return this.principalForSessionHash(secretHash(sessionToken));
   }
 
-  /** Re-read a request principal after it has waited behind a lifecycle lock. */
-  async revalidatePrincipal(principal: IdentityPrincipal): Promise<IdentityPrincipal | undefined> {
-    const current = await this.principalForSessionHash(principal.sessionIdHash);
+  async revalidatePrincipal(
+    principal: IdentityPrincipal
+  ): Promise<IdentityPrincipal | undefined> {
+    const current = await this.principalForSessionHash(
+      principal.sessionIdHash
+    );
     return current?.user.id === principal.user.id ? current : undefined;
   }
 
-  /** Synchronous final check immediately before a queued in-process mutation. */
   isAuthorizationCurrent(principal: IdentityPrincipal): boolean {
-    return !this.authorizationTransitionPending(principal.user.id) && principal.authorizationEpoch === this.authorizationEpoch(principal.user.id) && principal.expiresAt > this.now();
+    return (
+      !this.authorizationTransitionPending(principal.user.id) &&
+      principal.authorizationEpoch ===
+        this.authorizationEpoch(principal.user.id) &&
+      principal.expiresAt > this.now()
+    );
   }
 
-  private async principalForSessionHash(idHash: string): Promise<IdentityPrincipal | undefined> {
+  private async principalForSessionHash(
+    idHash: string
+  ): Promise<IdentityPrincipal | undefined> {
     const found = await this.repository.findSession(idHash);
     const now = this.now();
-    if (!found || found.session.revokedAt || found.session.expiresAt <= now || found.user.status !== "active" || this.authorizationTransitionPending(found.user.id)) return undefined;
-    if (now.getTime() - found.session.lastSeenAt.getTime() >= 5 * 60_000) void this.repository.touchSession(idHash, now);
+    if (
+      !found ||
+      found.session.revokedAt ||
+      found.session.expiresAt <= now ||
+      found.user.status !== "active" ||
+      this.authorizationTransitionPending(found.user.id)
+    ) {
+      return undefined;
+    }
+    if (now.getTime() - found.session.lastSeenAt.getTime() >= 5 * 60_000) {
+      void this.repository.touchSession(idHash, now);
+    }
     return {
       user: publicIdentityUser(found.user),
       sessionIdHash: idHash,
@@ -181,201 +384,108 @@ export class IdentityService {
 
   async rotateCsrf(principal: IdentityPrincipal): Promise<string> {
     const token = opaqueSecret();
-    await this.repository.updateSessionCsrf(principal.sessionIdHash, secretHash(token), this.now());
+    await this.repository.updateSessionCsrf(
+      principal.sessionIdHash,
+      secretHash(token),
+      this.now()
+    );
     return token;
   }
 
-  verifyCsrf(principal: IdentityPrincipal, candidate: string | undefined): boolean {
-    if (!candidate) return false;
-    return constantTimeEqual(secretHash(candidate), principal.csrfHash);
+  verifyCsrf(
+    principal: IdentityPrincipal,
+    candidate: string | undefined
+  ): boolean {
+    return !!candidate && constantTimeEqual(secretHash(candidate), principal.csrfHash);
   }
 
-  async logout(principal: IdentityPrincipal | undefined, metadata: RequestMetadata = {}): Promise<void> {
+  async logout(
+    principal: IdentityPrincipal | undefined,
+    metadata: RequestMetadata = {}
+  ): Promise<void> {
     if (!principal) return;
-    const now = this.now();
-    const finishTransition = this.beginAuthorizationTransition(principal.user.id);
+    const finishTransition = this.beginAuthorizationTransition(
+      principal.user.id
+    );
     try {
-      await this.repository.revokeSession(principal.sessionIdHash, now);
+      await this.repository.revokeSession(
+        principal.sessionIdHash,
+        this.now()
+      );
       await this.sessionRevocationHandler?.({
         userId: principal.user.id,
         sessionIdHash: principal.sessionIdHash,
         reason: "logout"
       });
-      await this.audit("logout", metadata, principal.user.id, principal.user.id);
+      await this.audit(
+        "logout",
+        metadata,
+        principal.user.id,
+        principal.user.id
+      );
     } finally {
       finishTransition();
     }
   }
 
-  async changePassword(principal: IdentityPrincipal, currentPassword: string, newPassword: string, metadata: RequestMetadata = {}): Promise<void> {
+  async changePassword(
+    principal: IdentityPrincipal,
+    currentPassword: string,
+    newPassword: string,
+    metadata: RequestMetadata = {}
+  ): Promise<void> {
     const user = await this.repository.findUserById(principal.user.id);
     if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
-      throw new IdentityError(401, "invalid_current_password", "The current password is incorrect.");
+      throw new IdentityError(
+        401,
+        "invalid_current_password",
+        "The current password is incorrect."
+      );
     }
     const passwordError = passwordPolicyError(newPassword, user.login);
-    if (passwordError) throw new IdentityError(400, "password_policy", passwordError);
-    if (await verifyPassword(newPassword, user.passwordHash)) throw new IdentityError(400, "password_reused", "Choose a different password.");
+    if (passwordError) {
+      throw new IdentityError(400, "password_policy", passwordError);
+    }
+    if (await verifyPassword(newPassword, user.passwordHash)) {
+      throw new IdentityError(
+        400,
+        "password_reused",
+        "Choose a different password."
+      );
+    }
     const now = this.now();
-    const passwordHash = await hashPassword(newPassword);
     const finishTransition = this.beginAuthorizationTransition(user.id);
     try {
       const updated = await this.repository.updateUser(user.id, {
-        passwordHash,
+        passwordHash: await hashPassword(newPassword),
         mustChangePassword: false,
         updatedAt: now
       });
       await this.repository.revokeUserSessions(user.id, now);
-      await this.sessionRevocationHandler?.({ userId: user.id, reason: "password_changed" });
-      // Password changes advance the durable authorization revision. Stop the
-      // old execution authority (including private exchange streams) before
-      // allowing future starts under the new login credentials.
+      await this.sessionRevocationHandler?.({
+        userId: user.id,
+        reason: "password_changed"
+      });
       await this.tradingAccessChangeHandler?.(user.id, "revoke");
-      if (updated && this.userHasTradingAccess(updated)) await this.tradingAccessChangeHandler?.(user.id, "restore");
+      if (updated && this.userHasTradingAccess(updated)) {
+        await this.tradingAccessChangeHandler?.(user.id, "restore");
+      }
       await this.audit("password.changed", metadata, user.id, user.id);
     } finally {
       finishTransition();
     }
   }
 
-  async listUsers(actor: IdentityPrincipal, status?: UserStatus): Promise<PublicIdentityUser[]> {
-    requireAdmin(actor);
-    return (await this.repository.listUsers(status)).map(publicIdentityUser);
-  }
-
-  async activateUser(actor: IdentityPrincipal, subjectId: string, metadata: RequestMetadata = {}): Promise<PublicIdentityUser> {
-    requireAdmin(actor);
-    const now = this.now();
-    const finishTransition = this.beginAuthorizationTransition(subjectId);
-    try {
-      const result = await this.repository.updateUserAsAdmin(actor.user.id, subjectId, {
-        status: "active",
-        approvedBy: actor.user.id,
-        approvedAt: now,
-        updatedAt: now
-      });
-      const user = adminGuardedUser(result);
-      await this.repository.revokeUserSessions(subjectId, now);
-      await this.sessionRevocationHandler?.({ userId: subjectId, reason: "user_activated" });
-      if (this.userHasTradingAccess(user)) await this.tradingAccessChangeHandler?.(subjectId, "restore");
-      await this.audit("user.activated", metadata, actor.user.id, subjectId);
-      return publicIdentityUser(user);
-    } finally {
-      finishTransition();
-    }
-  }
-
-  async disableUser(actor: IdentityPrincipal, subjectId: string, metadata: RequestMetadata = {}): Promise<PublicIdentityUser> {
-    requireAdmin(actor);
-    if (actor.user.id === subjectId) throw new IdentityError(409, "self_disable", "You cannot disable your own account.");
-    const now = this.now();
-    const finishTransition = this.beginAuthorizationTransition(subjectId);
-    try {
-      const result = await this.repository.updateUserAsAdmin(actor.user.id, subjectId, { status: "disabled", updatedAt: now });
-      const user = adminGuardedUser(result);
-      await this.repository.revokeUserSessions(subjectId, now);
-      await this.sessionRevocationHandler?.({ userId: subjectId, reason: "user_disabled" });
-      await this.tradingAccessChangeHandler?.(subjectId, "revoke");
-      await this.audit("user.disabled", metadata, actor.user.id, subjectId);
-      return publicIdentityUser(user);
-    } finally {
-      finishTransition();
-    }
-  }
-
-  async updatePermissions(actor: IdentityPrincipal, subjectId: string, input: { appRole?: AppRole; tradingRole?: TradingRole }, metadata: RequestMetadata = {}): Promise<PublicIdentityUser> {
-    requireAdmin(actor);
-    if (input.tradingRole && input.tradingRole !== "none" && !this.allowNonAdminTrading) {
-      throw new IdentityError(409, "trading_ownership_pending", "Per-user trading is disabled until account and robot ownership migration is complete.");
-    }
-    if (actor.user.id === subjectId && input.appRole === "user") throw new IdentityError(409, "self_demote", "You cannot remove your own administrator role.");
-    const now = this.now();
-    const finishTransition = this.beginAuthorizationTransition(subjectId);
-    try {
-      const result = await this.repository.updateUserAsAdmin(actor.user.id, subjectId, { ...input, updatedAt: now });
-      const user = adminGuardedUser(result);
-      await this.repository.revokeUserSessions(subjectId, now);
-      await this.sessionRevocationHandler?.({ userId: subjectId, reason: "permissions_changed" });
-      // Every permission mutation first stops/disarms the old authority. A grant
-      // re-opens starts only after that revocation has completed.
-      await this.tradingAccessChangeHandler?.(subjectId, "revoke");
-      if (this.userHasTradingAccess(user)) await this.tradingAccessChangeHandler?.(subjectId, "restore");
-      await this.audit("user.permissions_changed", metadata, actor.user.id, subjectId, input);
-      return publicIdentityUser(user);
-    } finally {
-      finishTransition();
-    }
-  }
-
-  async issueWsTicket(principal: IdentityPrincipal): Promise<{ ticket: string; expiresAt: Date }> {
-    if (!principal.effectiveTradingRole) throw new IdentityError(403, "trading_not_allowed", "Trading access has not been granted.");
-    const ticket = opaqueSecret();
-    const createdAt = this.now();
-    const expiresAt = new Date(createdAt.getTime() + this.wsTicketTtlMs);
-    await this.repository.createWsTicket({
-      ticketHash: secretHash(ticket),
-      sessionIdHash: principal.sessionIdHash,
-      userId: principal.user.id,
-      expiresAt,
-      createdAt
-    });
-    return { ticket, expiresAt };
-  }
-
-  async consumeWsTicket(ticket: string): Promise<IdentityPrincipal | undefined> {
-    const found = await this.repository.consumeWsTicket(secretHash(ticket), this.now());
-    if (!found || found.user.status !== "active" || found.session.revokedAt || found.session.expiresAt <= this.now() || this.authorizationTransitionPending(found.user.id)) return undefined;
-    const role = this.roleForUser(found.user);
-    if (!role) return undefined;
-    return {
-      user: publicIdentityUser(found.user),
-      sessionIdHash: found.session.idHash,
-      csrfHash: found.session.csrfHash,
-      expiresAt: found.session.expiresAt,
-      authorizationEpoch: this.authorizationEpoch(found.user.id),
-      effectiveTradingRole: role
-    };
-  }
-
-  /** Current durable role used by crash-recovery before any browser session exists. */
-  async tradingRoleForUser(userId: string): Promise<ReturnType<typeof effectiveTradingRole>> {
-    const user = await this.repository.findUserById(userId);
-    if (!user || user.status !== "active" || user.mustChangePassword) return undefined;
-    return this.roleForUser(user);
-  }
-
-  /** Durable + in-process fencing snapshot used only by the internal permit broker. */
-  async executionAuthorizationSnapshot(userId: string): Promise<ExecutionAuthorizationSnapshot | undefined> {
-    const user = await this.repository.findUserById(userId);
-    if (!user || user.status !== "active" || user.mustChangePassword || this.authorizationTransitionPending(userId)) {
-      return undefined;
-    }
-    const role = this.roleForUser(user);
-    if (!role) return undefined;
-    return {
-      ownerUserId: user.id,
-      authorizationRevision: user.authorizationRevision,
-      authorizationEpoch: this.authorizationEpoch(user.id),
-      role
-    };
-  }
-
-  /** Synchronous final fence immediately before signed I/O. Process restart drops all permits. */
-  isExecutionAuthorizationCurrent(snapshot: ExecutionAuthorizationSnapshot): boolean {
-    return !this.authorizationTransitionPending(snapshot.ownerUserId)
-      && this.authorizationEpoch(snapshot.ownerUserId) === snapshot.authorizationEpoch;
-  }
-
-  async cleanup(): Promise<void> {
-    const now = this.now();
-    await Promise.all([this.repository.deleteExpiredSessions(now), this.repository.deleteExpiredWsTickets(now)]);
-  }
-
-  private async createSession(user: IdentityUser, metadata: RequestMetadata): Promise<SessionCredentials> {
+  private async createSession(
+    user: IdentityUser,
+    metadata: RequestMetadata
+  ): Promise<SessionCredentials> {
     const sessionToken = opaqueSecret();
     const csrfToken = opaqueSecret();
     const now = this.now();
     const expiresAt = new Date(now.getTime() + this.sessionTtlMs);
     await this.repository.createSession({
+      publicId: randomUUID(),
       idHash: secretHash(sessionToken),
       userId: user.id,
       csrfHash: secretHash(csrfToken),
@@ -385,10 +495,17 @@ export class IdentityService {
       userAgent: metadata.userAgent,
       ipAddress: metadata.ipAddress
     });
-    return { sessionToken, csrfToken, expiresAt, user: publicIdentityUser(user) };
+    return {
+      sessionToken,
+      csrfToken,
+      expiresAt,
+      user: publicIdentityUser(user)
+    };
   }
 
-  private roleForUser(user: IdentityUser): ReturnType<typeof effectiveTradingRole> {
+  private roleForUser(
+    user: IdentityUser
+  ): ReturnType<typeof effectiveTradingRole> {
     if (user.appRole === "admin") return "admin";
     return this.allowNonAdminTrading ? effectiveTradingRole(user) : undefined;
   }
@@ -396,10 +513,9 @@ export class IdentityService {
   private userHasTradingAccess(user: IdentityUser): boolean {
     if (user.status !== "active" || user.mustChangePassword) return false;
     const role = this.roleForUser(user);
-    // Restoring engine starts is stronger than allowing read-only inspection.
-    // Keep direct control planes (for example Telegram) suspended unless the
-    // durable role may actually start at least a paper bot.
-    return role === "paper-trade" || role === "live-trade" || role === "admin";
+    return (
+      role === "paper-trade" || role === "live-trade" || role === "admin"
+    );
   }
 
   private authorizationEpoch(userId: string): number {
@@ -410,14 +526,12 @@ export class IdentityService {
     this.authorizationEpochs.set(userId, this.authorizationEpoch(userId) + 1);
   }
 
-  /**
-   * Linearize in-process authorization before a durable mutation can commit.
-   * The pending count also rejects principals created while the database call
-   * is in flight; nested/concurrent transitions remain fail-closed.
-   */
   private beginAuthorizationTransition(userId: string): () => void {
     this.bumpAuthorizationEpoch(userId);
-    this.authorizationTransitions.set(userId, (this.authorizationTransitions.get(userId) ?? 0) + 1);
+    this.authorizationTransitions.set(
+      userId,
+      (this.authorizationTransitions.get(userId) ?? 0) + 1
+    );
     let finished = false;
     return () => {
       if (finished) return;
@@ -432,45 +546,24 @@ export class IdentityService {
     return (this.authorizationTransitions.get(userId) ?? 0) > 0;
   }
 
-  private async audit(eventType: string, metadata: RequestMetadata, actorUserId?: string, subjectUserId?: string, details?: Record<string, unknown>): Promise<void> {
+  private async audit(
+    eventType: string,
+    metadata: RequestMetadata,
+    actorUserId?: string,
+    subjectUserId?: string,
+    details?: Record<string, unknown>
+  ): Promise<void> {
     await this.repository.appendAuditEvent({
       eventType,
       actorUserId,
       subjectUserId,
+      requestId: metadata.requestId,
       ipAddress: metadata.ipAddress,
+      userAgent: metadata.userAgent,
       metadata: details,
       createdAt: this.now()
     });
   }
-}
-
-export function normalizeLogin(value: string): string {
-  return value.trim().normalize("NFKC").toLocaleLowerCase("en-US");
-}
-
-function validateLogin(value: string): { login: string; normalized: string } {
-  const login = value.trim().normalize("NFKC");
-  const normalized = normalizeLogin(login);
-  if (login.length < 3 || login.length > 64 || !/^[\p{L}\p{N}_.@-]+$/u.test(login)) {
-    throw new IdentityError(400, "invalid_login", "Login must contain 3–64 letters, digits, dots, dashes, underscores or @.");
-  }
-  return { login, normalized };
-}
-
-function requireAdmin(principal: IdentityPrincipal): void {
-  if (principal.user.appRole !== "admin") throw new IdentityError(403, "admin_required", "Administrator access is required.");
-}
-
-function adminGuardedUser(result: Awaited<ReturnType<IdentityRepository["updateUserAsAdmin"]>>): IdentityUser {
-  if (result.status === "subject_not_found") throw new IdentityError(404, "user_not_found", "User not found.");
-  if (result.status === "last_active_admin") {
-    throw new IdentityError(409, "last_active_admin", "At least one active administrator account is required.");
-  }
-  if (result.status === "actor_password_change_required") {
-    throw new IdentityError(403, "password_change_required", "Change the temporary password before using administrator functions.");
-  }
-  if (result.status !== "updated") throw new IdentityError(403, "admin_required", "Administrator access is required.");
-  return result.user;
 }
 
 function opaqueSecret(): string {
@@ -484,9 +577,19 @@ export function secretHash(value: string): string {
 function constantTimeEqual(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+  return (
+    leftBuffer.length === rightBuffer.length &&
+    timingSafeEqual(leftBuffer, rightBuffer)
+  );
 }
 
-function boundedPositive(value: number | undefined, fallback: number, minimum: number, maximum: number): number {
-  return Number.isFinite(value) ? Math.min(maximum, Math.max(minimum, Math.floor(value!))) : fallback;
+function boundedPositive(
+  value: number | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number
+): number {
+  return Number.isFinite(value)
+    ? Math.min(maximum, Math.max(minimum, Math.floor(value!)))
+    : fallback;
 }

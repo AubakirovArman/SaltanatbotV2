@@ -75,6 +75,24 @@ docker compose exec saltanatbotv2 \
 её из панели аккаунта. PostgreSQL проекта доступна только на `127.0.0.1:55434` и не затрагивает
 другие PostgreSQL или существующие SQLite.
 
+Если пароль существующего администратора утрачен, сначала остановите только API и research worker
+этого проекта, сделайте проверенный backup и выполните guarded recovery из той же версии:
+
+```bash
+docker compose stop saltanatbotv2 research-worker
+docker compose run --rm --no-deps saltanatbotv2 \
+  node backend/dist/cli/recoverAdmin.js \
+  --login ваш-логин-администратора \
+  --confirm-login ваш-логин-администратора \
+  --reason "Восстановление оператором после подтверждённой утраты пароля"
+docker compose up -d saltanatbotv2 research-worker
+```
+
+Команда не принимает пароль через аргументы или environment, не запускает migrations, отзывает все
+сессии и только после успеха один раз показывает новый временный пароль. Для временного закрытия
+регистрации установите `AUTH_REGISTRATION_ENABLED=0` и перезапустите только API проекта; существующие
+и ожидающие подтверждения учётные записи не удаляются.
+
 В режиме разработки сначала запустите базу, затем приложение:
 
 ```bash

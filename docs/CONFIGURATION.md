@@ -18,7 +18,7 @@ Variables outside that first slice are still owned by their feature modules and 
 | `PORT`            | `4180`        | TCP port the HTTP + WebSocket server listens on.                                        |
 | `HOST`            | `127.0.0.1`   | Interface the server binds to. Loopback by default (fail-safe). Set `0.0.0.0` to expose. |
 | `AUTH_MODE` | `database` | `database` enables account login. `NODE_ENV` never changes this default. `legacy` requires an explicit value, except for the documented deprecated `DEMO_MODE=true` plus explicit `AUTH_TOKEN` compatibility path. |
-| `AUTH_REGISTRATION_ENABLED` | `1` | Set `0` to hide/disable new registration. Registrations are pending until admin approval. |
+| `AUTH_REGISTRATION_ENABLED` | `1` | Set `0` to hide/disable new registration after the next API restart. Existing users, pending requests and sessions are preserved. Registrations are pending until admin approval. |
 | `AUTH_SESSION_TTL_MS` | `43200000` | HttpOnly browser session TTL (default 12 hours). |
 | `AUTH_WS_TICKET_TTL_MS` | `30000` | One-time `/trade-stream` ticket TTL. |
 | `AUTH_TRADING_ROLES_ENABLED` | `1` | Allows non-admin trading-role grants. Set `0` only as a maintenance switch; owner isolation remains enforced. |
@@ -42,7 +42,7 @@ Variables outside that first slice are still owned by their feature modules and 
 | `DATABASE_URL` | *(unset)* | PostgreSQL URL. Takes precedence over individual `PG*` parameters and cannot be combined with `PGPASSWORD_FILE`. |
 | `PGHOST` / `PGPORT` | `127.0.0.1` / `55434` | Isolated project PostgreSQL address. Compose uses `postgres:5432` internally. |
 | `PGDATABASE` / `PGUSER` | `saltanatbotv2` | Dedicated database and role. |
-| `PGPASSWORD_FILE` | *(unset)* | Preferred absolute regular file containing the database password. |
+| `PGPASSWORD_FILE` | *(unset)* | Preferred absolute regular file containing the database password for SaltanatbotV2. It is not libpq's `PGPASSFILE`; `pg_dump`, `pg_restore` and `psql` do not read this application-only format. |
 | `PGPOOL_MAX` | `12` | Maximum API PostgreSQL connections. |
 | `RESEARCH_WORKER_CONCURRENCY` | `2` | Concurrent bounded research jobs in the separate worker process; accepted range 1–4. |
 | `RESEARCH_JOB_TIMEOUT_MS` | `120000` | Per-job wall-time limit; accepted range 5 seconds–15 minutes. |
@@ -72,6 +72,26 @@ a password change:
 ```
 npm --workspace backend run admin:bootstrap -- --login your-admin-login
 ```
+
+Bootstrap is only for a database with no administrator. To recover an existing administrator, stop
+this project's API and worker, take a verified backup, and run:
+
+```bash
+npm run admin:recover -- \
+  --login your-admin-login \
+  --confirm-login your-admin-login \
+  --reason "Operator recovery after verified credential loss"
+```
+
+Recovery accepts no plaintext password from argv or the environment. It first verifies that every
+checked-in PostgreSQL migration is already applied, without changing the schema. Only after a
+successful transaction does it print the generated password; every existing session is revoked and
+the next login must change that password. See [Self-hosting](./SELF_HOSTING.md) for Compose and
+systemd stop/start procedures.
+
+For temporary registration maintenance, set `AUTH_REGISTRATION_ENABLED=0` in the supervised API
+environment and restart only that API process. Pending accounts are not deleted. Restore the value
+to `1` and restart the same process when review capacity is available again.
 
 If you bind to a non-loopback address during this HTTP phase, restrict access to a trusted private
 network/VPN or a strict source-IP allowlist. HTTPS remains a separate future release (see
