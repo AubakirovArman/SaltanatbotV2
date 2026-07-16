@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Bot, CandlestickChart, ChevronDown, Command, Download, HardDriveDownload, LayoutDashboard, Keyboard, MoreHorizontal, Moon, PanelLeft, PanelRight, Plus, RotateCcw, ScanSearch, Sun, Trash2, Upload, Workflow } from "lucide-react";
+import { ArrowLeftRight, Bot, CandlestickChart, ChevronDown, Command, HardDriveDownload, Keyboard, MoreHorizontal, Moon, PanelLeft, PanelRight, ScanSearch, Sun, Workflow } from "lucide-react";
 import { useContext, useEffect, useRef, useState } from "react";
 import { AccountLauncher } from "../auth/AccountDialog";
 import { AuthContext } from "../auth/AuthRoot";
@@ -8,10 +8,13 @@ import { shellText } from "../i18n/shell";
 import type { CatalogResponse, ChartType, Instrument, Timeframe } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
 import type { ChartLayoutPreset, Workspace } from "../workspace/workspaces";
+import type { WorkspaceImportOutcome, WorkspaceStrategyRestoreResult, WorkspaceTemplateKind } from "../app/useAppShell";
+import type { WorkspaceConflictAction, WorkspaceSyncStatus } from "../workspace/remoteSync";
 import { chartTypeIcons, chartTypeLabel } from "./chartTypePresentation";
 import { LayoutMenu } from "./topbar/LayoutMenu";
 import { RuntimeProfileBadge } from "./RuntimeProfileBadge";
 import { useRunningBotsSummary } from "../trading/useRunningBotsSummary";
+import { WorkspacesMenu } from "./topbar/WorkspacesMenu";
 
 interface TopBarProps {
   catalog?: CatalogResponse;
@@ -27,14 +30,26 @@ interface TopBarProps {
   mobilePanels?: boolean;
   panelsSwapped: boolean;
   workspaces: Workspace[];
+  workspaceSyncStatus: WorkspaceSyncStatus;
+  workspaceStrategyRestore: WorkspaceStrategyRestoreResult;
+  workspaceMigrationMissingIndicators: number;
   activeWorkspaceId?: string;
   layoutPreset: ChartLayoutPreset;
   onSaveWorkspace: (name: string) => void;
-  onApplyWorkspace: (id: string) => void;
+  onApplyWorkspace: (id: string) => WorkspaceStrategyRestoreResult;
   onDeleteWorkspace: (id: string) => void;
+  onRestoreWorkspace: (id: string) => void;
+  onPurgeWorkspace: (id: string) => Promise<boolean>;
+  onRenameWorkspace: (id: string, name: string) => boolean;
+  onDuplicateWorkspace: (id: string) => boolean;
+  onCreateWorkspaceTemplate: (kind: WorkspaceTemplateKind) => boolean;
+  canCreatePaperWorkspace: boolean;
+  serverWorkspaceHistory: boolean;
   onExportWorkspace: (id: string) => Promise<void>;
-  onImportWorkspace: (raw: string) => Promise<boolean>;
-  onRollbackWorkspace: (id: string, revision: number) => boolean;
+  onImportWorkspace: (raw: string) => Promise<WorkspaceImportOutcome>;
+  onRollbackWorkspace: (id: string, revision: number) => Promise<boolean>;
+  onRetryWorkspaceSync: () => void;
+  onResolveWorkspaceConflict: (action: WorkspaceConflictAction) => void;
   onLayoutPresetChange: (preset: ChartLayoutPreset) => void;
   canUseDistinctMarkets: boolean;
   onDistinctMarkets: () => void;
@@ -71,14 +86,26 @@ export function TopBar({
   mobilePanels = false,
   panelsSwapped,
   workspaces,
+  workspaceSyncStatus,
+  workspaceStrategyRestore,
+  workspaceMigrationMissingIndicators,
   activeWorkspaceId,
   layoutPreset,
   onSaveWorkspace,
   onApplyWorkspace,
   onDeleteWorkspace,
+  onRestoreWorkspace,
+  onPurgeWorkspace,
+  onRenameWorkspace,
+  onDuplicateWorkspace,
+  onCreateWorkspaceTemplate,
+  canCreatePaperWorkspace,
+  serverWorkspaceHistory,
   onExportWorkspace,
   onImportWorkspace,
   onRollbackWorkspace,
+  onRetryWorkspaceSync,
+  onResolveWorkspaceConflict,
   onLayoutPresetChange,
   canUseDistinctMarkets,
   onDistinctMarkets,
@@ -246,7 +273,29 @@ export function TopBar({
                 )}
               </>
             )}
-            <WorkspacesMenu locale={locale} workspaces={workspaces} activeWorkspaceId={activeWorkspaceId} onSave={onSaveWorkspace} onApply={onApplyWorkspace} onDelete={onDeleteWorkspace} onExport={onExportWorkspace} onImport={onImportWorkspace} onRollback={onRollbackWorkspace} />
+            <WorkspacesMenu
+              locale={locale}
+              workspaces={workspaces}
+              syncStatus={workspaceSyncStatus}
+              strategyRestore={workspaceStrategyRestore}
+              migrationMissingIndicators={workspaceMigrationMissingIndicators}
+              activeWorkspaceId={activeWorkspaceId}
+              onSave={onSaveWorkspace}
+              onApply={onApplyWorkspace}
+              onArchive={onDeleteWorkspace}
+              onRestore={onRestoreWorkspace}
+              onPurge={onPurgeWorkspace}
+              onRename={onRenameWorkspace}
+              onDuplicate={onDuplicateWorkspace}
+              onCreateTemplate={onCreateWorkspaceTemplate}
+              canCreatePaperTemplate={canCreatePaperWorkspace}
+              serverHistory={serverWorkspaceHistory}
+              onExport={onExportWorkspace}
+              onImport={onImportWorkspace}
+              onRollback={onRollbackWorkspace}
+              onRetrySync={onRetryWorkspaceSync}
+              onResolveConflict={onResolveWorkspaceConflict}
+            />
             <button
               type="button"
               className="icon-button"
@@ -465,133 +514,6 @@ function ChartTypeMenu({
               </button>
             );
           })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function WorkspacesMenu({
-  locale,
-  workspaces,
-  activeWorkspaceId,
-  onSave,
-  onApply,
-  onDelete,
-  onExport,
-  onImport,
-  onRollback
-}: {
-  locale: Locale;
-  workspaces: Workspace[];
-  activeWorkspaceId?: string;
-  onSave: (name: string) => void;
-  onApply: (id: string) => void;
-  onDelete: (id: string) => void;
-  onExport: (id: string) => Promise<void>;
-  onImport: (raw: string) => Promise<boolean>;
-  onRollback: (id: string, revision: number) => boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState("");
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: PointerEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("pointerdown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const saveCurrent = () => {
-    const name = window.prompt(shellText(locale, "saveLayoutPrompt"));
-    if (name === null) return;
-    if (name.trim()) onSave(name);
-  };
-
-  return (
-    <div className="charttype-menu-wrap workspaces-menu-wrap" ref={wrapRef}>
-      <button type="button" className="icon-button" onClick={() => setOpen((value) => !value)} title={shellText(locale, "savedWorkspaces")} aria-label={shellText(locale, "savedWorkspaces")} aria-haspopup="menu" aria-expanded={open}>
-        <LayoutDashboard size={15} strokeWidth={1.75} aria-hidden="true" />
-      </button>
-      {open && (
-        <div className="charttype-menu workspaces-menu" role="menu">
-          <button
-            type="button"
-            className="workspace-save"
-            onClick={() => {
-              saveCurrent();
-              setOpen(false);
-            }}
-          >
-            <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
-            {shellText(locale, "saveCurrentAs")}
-          </button>
-          <button type="button" className="workspace-save" onClick={() => fileRef.current?.click()}>
-            <Upload size={14} strokeWidth={1.75} aria-hidden="true" />
-            {shellText(locale, "importWorkspace")}
-          </button>
-          <input
-            ref={fileRef}
-            className="sr-only"
-            type="file"
-            accept=".json,.saltanat-workspace.json,application/json"
-            onChange={async (event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (!file) return;
-              const ok = await onImport(await file.text());
-              setStatus(shellText(locale, ok ? "workspaceImported" : "workspaceImportInvalid"));
-            }}
-          />
-          <span className="sr-only" role="status" aria-live="polite">
-            {status}
-          </span>
-          {workspaces.length === 0 ? (
-            <div className="workspace-empty">{shellText(locale, "noSavedWorkspaces")}</div>
-          ) : (
-            <div className="workspace-list">
-              {workspaces.map((workspace) => (
-                <div className={`workspace-row ${workspace.id === activeWorkspaceId ? "active" : ""}`} key={workspace.id}>
-                  <button
-                    type="button"
-                    className="workspace-apply"
-                    onClick={() => {
-                      onApply(workspace.id);
-                      setOpen(false);
-                    }}
-                    title={`${workspace.symbol} · ${workspace.timeframe} · ${workspace.chartType}`}
-                  >
-                    <strong>{workspace.name}</strong>
-                    <span>
-                      {workspace.symbol} · {workspace.timeframe} · {workspace.chartType} · v{workspace.revision}
-                    </span>
-                  </button>
-                  {workspace.history.length > 0 && (
-                    <button type="button" className="workspace-delete" onClick={() => onRollback(workspace.id, workspace.history.at(-1)!.revision)} title={shellText(locale, "rollbackWorkspace")} aria-label={`${shellText(locale, "rollbackWorkspace")} ${workspace.name}`}>
-                      <RotateCcw size={13} strokeWidth={1.75} aria-hidden="true" />
-                    </button>
-                  )}
-                  <button type="button" className="workspace-delete" onClick={() => void onExport(workspace.id)} title={shellText(locale, "exportWorkspace")} aria-label={`${shellText(locale, "exportWorkspace")} ${workspace.name}`}>
-                    <Download size={13} strokeWidth={1.75} aria-hidden="true" />
-                  </button>
-                  <button type="button" className="workspace-delete" onClick={() => onDelete(workspace.id)} title={shellText(locale, "deleteWorkspace")} aria-label={`${shellText(locale, "deleteWorkspace")} ${workspace.name}`}>
-                    <Trash2 size={13} strokeWidth={1.75} aria-hidden="true" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
     </div>

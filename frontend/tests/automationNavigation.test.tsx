@@ -31,13 +31,25 @@ describe("primary workspace navigation", () => {
           rightOpen
           panelsSwapped={false}
           workspaces={[]}
+          workspaceSyncStatus={{ phase: "saved", pendingCount: 0 }}
+          workspaceStrategyRestore="none"
+          workspaceMigrationMissingIndicators={0}
           layoutPreset="single"
           onSaveWorkspace={() => {}}
-          onApplyWorkspace={() => {}}
+          onApplyWorkspace={() => "none"}
           onDeleteWorkspace={() => {}}
+          onRestoreWorkspace={() => {}}
+          onPurgeWorkspace={async () => false}
+          onRenameWorkspace={() => true}
+          onDuplicateWorkspace={() => true}
+          onCreateWorkspaceTemplate={() => true}
+          canCreatePaperWorkspace
+          serverWorkspaceHistory={false}
           onExportWorkspace={async () => {}}
-          onImportWorkspace={async () => true}
-          onRollbackWorkspace={() => true}
+          onImportWorkspace={async () => ({ ok: true })}
+          onRollbackWorkspace={async () => true}
+          onRetryWorkspaceSync={() => {}}
+          onResolveWorkspaceConflict={() => {}}
           onLayoutPresetChange={() => {}}
           canUseDistinctMarkets={false}
           onDistinctMarkets={() => {}}

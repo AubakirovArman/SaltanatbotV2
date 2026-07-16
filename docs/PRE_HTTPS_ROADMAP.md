@@ -9,6 +9,10 @@ or secure-cookie activation work. Until a separate future security release is
 approved, every deployed instance must use
 `RUNTIME_PROFILE=public-http-paper`.
 
+No R0-R12 release depends on a domain, certificate, reverse proxy or TLS. That
+boundary changes only if the project owner separately initiates and approves a
+new HTTPS/security roadmap.
+
 > Important: HTTP does not protect passwords or session cookies from network
 > interception. Before HTTPS, expose the instance only through a private
 > network/VPN/IP allowlist, or use unique disposable test passwords. The runtime
@@ -69,6 +73,17 @@ Each phase is shipped independently and must include:
 13. Before public beta, `main` must have either a required-check GitHub ruleset
     or a documented owner-only exception with an equivalent mandatory local
     pre-push gate and post-push GitHub Actions verification.
+14. Every accepted release installs from a fresh clone without a mandatory
+    hosted-only dependency. External providers are optional, disabled by default
+    and documented as BYO; Monitoring, Research, Backtest and Paper workflows
+    remain self-hosted.
+15. Before any mutating release command, evidence records the exact project
+    root, user-systemd units, Compose project/container, listener ports,
+    database names and data directories. Identity mismatch or a port collision
+    stops the operation. Kill-by-port, broad `pkill`, global Docker prune/down,
+    root-systemd changes, `DROP/ALTER` against another database and reuse of
+    another project's volumes are forbidden. A collision uses another free
+    project-owned port; the foreign process is never stopped.
 
 ## Phase 0 — enforce Research / Paper mode
 
@@ -174,8 +189,9 @@ must be implemented and reviewed before any future live activation.
 - add request/job correlation, queue depth, duration and failure counters;
 - bound terminal artifacts by the first of 30 days, 200 jobs or 256 MiB per
   owner; retain at most 1,000 compact exact-request tombstones for 90 days;
-- decide an ADR early: one PostgreSQL system of record, or a PostgreSQL outbox
-  with formally specified reconciliation to legacy SQLite.
+- apply the accepted ADR: PostgreSQL owns identity, sessions, workspaces, jobs
+  and tenant alert/outbox data, while a fenced executor owns protected legacy
+  execution data with durable command IDs and idempotent acknowledgements.
 
 The accepted decision is [ADR 0001: execution authority and system of record](adr/0001-execution-authority-and-system-of-record.md).
 
@@ -265,7 +281,10 @@ VoiceOver/NVDA/TalkBack records are complete.
 
 ## R3 — administrator lifecycle, workspaces and first-run workflow
 
-**Status:** R3.1 is delivered and deployed; R3.2 is next.
+**Status:** R3.1 is delivered and deployed. The R3.2 release candidate passed
+local backend, isolated PostgreSQL, frontend, Chromium, Firefox and visual
+gates; its production schema-v10 cutover remains pending commit/push and green
+CI.
 
 **Baseline:**
 
@@ -274,7 +293,8 @@ VoiceOver/NVDA/TalkBack records are complete.
 - the bootstrap administrator receives a one-time password and must change it;
 - atomic lifecycle and permission changes require a reason and expected
   authorization revision, retain before/after audit state, and revoke sessions
-  and owner-scoped private streams;
+  and owner-scoped application event streams; these are not exchange-private
+  WebSocket streams;
 - users and administrators can list/revoke opaque public session IDs; current
   session revocation clears cookies and reconciles the UI;
 - guarded administrator recovery verifies the exact checked-in schema, never
@@ -283,25 +303,23 @@ VoiceOver/NVDA/TalkBack records are complete.
   affected sessions/tickets and prevents the role from being re-granted;
 - administrators do not inherit access to another owner's workspace, journal,
   portfolio or Telegram binding;
-- owner-scoped workspace CRUD, optimistic revision conflicts, rollback and at
-  most 20 retained revisions are implemented; the HTTP document limit is 1 MiB.
+- owner-scoped workspace CRUD, archive/restore/purge, strict import/export,
+  optimistic conflicts, server rollback and configurable count/byte quotas are
+  implemented;
+- the schema-v8 browser document retains layout, per-pane market/timezone,
+  indicators, drawings, panels, mode and an exact strategy revision/hash
+  binding; synchronization exposes explicit saved/offline/conflict/quota/error
+  states without silent last-write-wins.
 
-R3.1 evidence:
-[identity control-plane acceptance](./evidence/R3_1_IDENTITY_CONTROL_PLANE.md).
+Evidence:
+[R3.1 identity control-plane acceptance](./evidence/R3_1_IDENTITY_CONTROL_PLANE.md)
+and [R3.2 workspace workflow](./evidence/R3_2_WORKSPACE_WORKFLOW.md).
 
-**Remaining — workspaces and onboarding:**
+**Remaining — R3.2 cutover and R3.3 onboarding:**
 
-- persist layout, symbols, timeframes, timezone, indicators, drawings, panel
-  state and selected strategy revision as one versioned owner document;
-- add list, rename, duplicate, archive, import/export and explicit
-  `Saved / Saving / Conflict / Failed` states;
-- keep optimistic revision checks: a stale tab receives `409` with current
-  metadata and must reload, keep a conflict copy or explicitly retry; silent
-  last-write-wins is forbidden;
-- enforce configurable initial quotas of 25 active workspaces, 75 total
-  including archived workspaces, 20 revisions per workspace, 1 MiB per imported
-  document and 64 MiB retained workspace payload per owner; over-limit writes
-  fail without deleting existing revisions;
+- commit and push R3.2, obtain green GitHub Actions, take the final coordinated
+  project-only backup and perform an API-first atomic schema 9→10 migration
+  before starting the research worker;
 - add owner-scoped onboarding from goal selection to a first chart, backtest,
   research alert or paper robot, never requesting exchange keys;
 - provide 192×192, 512×512, maskable and Apple Touch icons and enforce the
@@ -710,7 +728,7 @@ and stabilization.
 | --- | --- | --- | ---: |
 | R1 | Safety, execution ledger, minimal workers and ADR | delivered Phase 0 | delivered foundation |
 | R2 | Mobile chart/navigation/Strategy Studio | R1 | 2-3 |
-| R3 | R3.1 delivered; workspace workflow and onboarding remain | R1-R2 | remaining R3.2-R3.3 delta |
+| R3 | R3.1 deployed; R3.2 candidate accepted locally; cutover and onboarding remain | R1-R2 | production R3.2 cutover + R3.3 delta |
 | O1 | Operational hardening increments | starts in R3 and ships with each new workload | included in R3-R10 estimates |
 | R4 | “Running” and paper portfolio/journal contract | R1-R3 | 3-5 |
 | R5 | Alerts + technical screener MVP + notifications/Telegram | R3-R4 | 5-7 |
@@ -723,11 +741,22 @@ and stabilization.
 | R11 | 100-user capacity and operational proof | accepted workload contracts | 5-9 |
 | R12 | Documentation, fresh clone, recovery and release consolidation | R2-R11 | 2-4 |
 
-R8, R9 and the R10A capture implementation may overlap after their shared
-contracts stabilize, but one state machine or schema must not be changed by two
-releases without an explicit integration migration.
+Acceptance, publication to `main` and production cutover of the remaining work
+are strictly sequential: R3.2 → R3.3 with its O1 slice → R4 → R5 → R6 → R7 →
+R8 → R9 → R10A → R10B → R11 → R12. Parallel work is allowed only inside the
+current increment after its contracts are fixed. Code or migrations for a later
+release do not enter `main` or production before the preceding release is
+accepted. The R10A calendar soak may continue in the background only as evidence;
+R10B does not start or pass until the corpus gate.
 
 The implementation remains useful to self-hosters at every release: default
 configuration is safe, all required services are documented and no hosted-only
 dependency is required for monitoring, research, backtests or paper trading.
 There is no “temporarily enable live” or active SSL/HTTPS task in this roadmap.
+
+## Reference boundary outside the backlog: a possible future HTTPS/security roadmap
+
+The following conditions are not tasks, dependencies or blockers for R0-R12.
+Only a separately initiated and owner-approved roadmap may add TLS termination,
+domains, HSTS, secure cookies, exchange API-key entry, private exchange streams,
+signed REST conformance, testnet soak or any discussion of mainnet execution.

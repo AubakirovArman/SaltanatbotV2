@@ -209,6 +209,22 @@ sudo install -d -o saltanatbotv2 -g saltanatbotv2 -m 0700 \
   /opt/saltanatbotv2/backend/data
 ```
 
+For a direct-host production cutover, do not keep serving the mutable checkout output. Package the
+verified backend and frontend into one exact release directory, make that generation read-only to
+the service account, and set the API environment to its normalized absolute frontend path:
+
+```text
+FRONTEND_DIST_DIR=/opt/saltanatbotv2/releases/<commit>/frontend/dist
+```
+
+Use the same `<commit>` generation in the API `ExecStart`. Do not use a moving `current` symlink and
+do not run a build inside the active protected slot. The API checks the real `index.html`,
+`service-worker.js` and every local script/link resource referenced by the shell before opening its
+listener; a missing, symlinked, empty or oversized generation stops startup. The default repository
+`frontend/dist` remains useful for local source-checkout runs, while a later local build cannot alter
+an API pinned to the separate protected slot. The Compose image already contains one
+self-consistent immutable generation and normally leaves this variable unset.
+
 The production application has exactly two independently supervised Node processes:
 
 1. `saltanatbotv2.service` serves the built frontend, API, public WebSockets and the single
@@ -350,12 +366,12 @@ strategy/indicator libraries and parameter overrides, plugin trust, the paper-ar
 saved trading commands use a separate browser-storage namespace for each user ID. Plugin signing
 identities are also separate IndexedDB records; the old shared legacy private key is deliberately
 not assigned to any database-auth account. Pre-authentication non-key browser data can be claimed
-once by the first authenticated user in that browser profile when the browser supports the Web Locks
-API; the exclusive origin-wide lock keeps simultaneous tabs from assigning different owners.
-Browsers without Web Locks leave legacy data unclaimed instead of guessing an owner. Later users
-never inherit claimed data. After upgrading a shared installation, use a current browser and sign in
-with the intended legacy-data owner first. File export/import remains available so a fork is not
-locked to one server.
+once by the first authenticated user in that browser profile. Web Locks provide the primary
+origin-wide exclusion; browsers without Web Locks use an IndexedDB atomic add-if-absent owner
+claim. If neither safe primitive is available, migration fails closed and leaves legacy data
+unclaimed instead of guessing an owner. Later users never inherit claimed data. After upgrading a
+shared installation, use a current browser and sign in with the intended legacy-data owner first.
+File export/import remains available so a fork is not locked to one server.
 
 This browser namespace prevents accidental disclosure when accounts take turns in the same browser,
 but it is not an operating-system security boundary: someone with access to the same browser profile
@@ -404,13 +420,29 @@ The API also applies hard, owner-local quotas before allocating trading control-
 | `TRADING_MAX_BOTS_PER_USER` | 24 | saved robot configurations |
 | `TRADING_MAX_RUNNING_PAPER_BOTS_PER_USER` | 4 | concurrently running paper robots |
 | `TRADING_MAX_RUNNING_LIVE_BOTS_PER_USER` | 2 | concurrently running live robots |
+| `WORKSPACE_MAX_ACTIVE_PER_USER` | 25 | active saved workspaces |
+| `WORKSPACE_MAX_TOTAL_PER_USER` | 75 | active plus archived workspaces |
+| `WORKSPACE_MAX_REVISIONS_PER_WORKSPACE` | 20 | retained content snapshots for one workspace |
+| `WORKSPACE_MAX_DOCUMENT_BYTES` | 1048576 | one persisted workspace payload; compact request/import envelopes have a fixed additional 65536-byte transport allowance |
+| `WORKSPACE_MAX_RETAINED_PAYLOAD_BYTES_PER_USER` | 67108864 | current plus revision payload bytes for one owner |
 
-These conservative defaults target the first roughly 100 users on one API/executor process. A
-limit must be a positive integer; invalid configuration stops startup. Lowering a limit never
-deletes data: excess existing accounts and robots remain readable, editable and stoppable, while a
-new create/start returns HTTP `429` with a stable `*_QUOTA_EXCEEDED` code. Raise limits only after
-measuring event-loop lag, exchange connections, memory and API latency. The current executor is
-single-process; do not run two API replicas against the same trading SQLite database.
+These are conservative per-owner defaults, not an integrated proof for 100 simultaneous users;
+global admission and load evidence remain R11 work. Workspace list/history pages are metadata-first,
+keyset-paginated and capped at 4 MiB including response wrappers. Supported operator maxima are
+3200 total workspaces, 100 revisions, a 1 MiB compact document and 64 MiB retained payload; the
+browser independently bounds page count and aggregate bytes. A limit must be a positive integer;
+invalid configuration stops startup. Lowering a limit never
+deletes data: excess existing accounts, robots and workspaces remain readable. Workspace archive
+and archived-only permanent purge stay available so an owner can recover quota; restore is
+quota-enforced. Permanent purge is destructive and cascades retained revisions, so recovery
+requires the matching PostgreSQL backup. New over-limit create/start/restore operations return
+HTTP `429` with stable quota codes.
+
+Compose reads these values from the deployment `.env` and passes them to the web service. A direct
+systemd installation should set them in a project-service drop-in before `daemon-reload`; the
+research worker does not need workspace limits. Raise limits only after measuring event-loop lag,
+exchange connections, memory and API latency. The current executor is single-process; do not run
+two API replicas against the same trading SQLite database.
 
 Per-user Telegram/VK notifications are outbound-only in database auth mode. Inbound Telegram bot
 commands remain available only in explicit legacy single-operator mode until the poller can bind a

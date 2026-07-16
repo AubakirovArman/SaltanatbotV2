@@ -17,6 +17,7 @@ Variables outside that first slice are still owned by their feature modules and 
 | ----------------- | ------------- | --------------------------------------------------------------------------------------- |
 | `PORT`            | `4180`        | TCP port the HTTP + WebSocket server listens on.                                        |
 | `HOST`            | `127.0.0.1`   | Interface the server binds to. Loopback by default (fail-safe). Set `0.0.0.0` to expose. |
+| `FRONTEND_DIST_DIR` | repository `frontend/dist` | Optional normalized absolute path to the exact frontend release generation served by the API. Direct-host production should pin a protected release slot; Compose normally uses the immutable path baked into its image. |
 | `AUTH_MODE` | `database` | `database` enables account login. `NODE_ENV` never changes this default. `legacy` requires an explicit value, except for the documented deprecated `DEMO_MODE=true` plus explicit `AUTH_TOKEN` compatibility path. |
 | `AUTH_REGISTRATION_ENABLED` | `1` | Set `0` to hide/disable new registration after the next API restart. Existing users, pending requests and sessions are preserved. Registrations are pending until admin approval. |
 | `AUTH_SESSION_TTL_MS` | `43200000` | HttpOnly browser session TTL (default 12 hours). |
@@ -37,6 +38,11 @@ Variables outside that first slice are still owned by their feature modules and 
 | `TRADING_MAX_BOTS_PER_USER` | `24` | Hard per-owner cap for saved robot configurations; excess existing rows are preserved. |
 | `TRADING_MAX_RUNNING_PAPER_BOTS_PER_USER` | `4` | Concurrent paper-robot cap per owner in the single trading executor. |
 | `TRADING_MAX_RUNNING_LIVE_BOTS_PER_USER` | `2` | Reserved compatibility limit for a future separately reviewed live release; it cannot enable live work in this build. |
+| `WORKSPACE_MAX_ACTIVE_PER_USER` | `25` | Maximum non-archived workspaces per owner. Archive remains available when this value is lowered below current usage. |
+| `WORKSPACE_MAX_TOTAL_PER_USER` | `75` | Maximum active plus archived workspaces per owner, supported up to 3200 so the bounded browser pager can exhaust the collection. Permanent purge of an archived workspace is the owner recovery path. |
+| `WORKSPACE_MAX_REVISIONS_PER_WORKSPACE` | `20` | Retained PostgreSQL content snapshots per workspace. Oldest snapshots are pruned in the same transaction as a successful save. |
+| `WORKSPACE_MAX_DOCUMENT_BYTES` | `1048576` | Maximum compact UTF-8 JSON bytes for one persisted workspace payload; 1 MiB is also the supported maximum. PostgreSQL text expansion is separately bounded below the 4 MiB response ceiling. A compact request/import envelope may add at most a fixed 65536-byte transport overhead. |
+| `WORKSPACE_MAX_RETAINED_PAYLOAD_BYTES_PER_USER` | `67108864` | Maximum retained current plus revision payload bytes per owner; supported values are 8–64 MiB. Over-limit writes roll back without deleting an existing revision. |
 | `COOKIE_SECURE`   | *(off)*       | Marks session cookies `Secure`; use only when the browser really reaches the app through HTTPS. It does not enable private/live execution. |
 | `PUBLIC_ORIGIN` | *(unset)* | Optional exact canonical browser and WebSocket origin, without path/query/credentials. WebSocket `Origin` must match it or `ALLOWED_ORIGINS`; it does not enable private/live execution. |
 | `DATABASE_URL` | *(unset)* | PostgreSQL URL. Takes precedence over individual `PG*` parameters and cannot be combined with `PGPASSWORD_FILE`. |
@@ -416,17 +422,33 @@ instead of decrypting under the wrong tenant.
 
 ## Production deployment
 
-In production the frontend is compiled to static assets and served by the backend itself — there is no separate web server for the SPA. The relevant serving code in `backend/src/server.ts`:
+In production the frontend is compiled to static assets and served by the backend itself — there is no separate web server for the SPA. The backend resolves the path once from the frozen runtime configuration and validates the release before it opens databases or a network listener:
 
 ```ts
-const frontendDist = path.resolve(__dirname, "../../frontend/dist");
-app.use(express.static(frontendDist));
-app.get(/.*/, (_request, response) => {
-  response.sendFile(path.join(frontendDist, "index.html"));
-});
+const runtimeConfig = initializeRuntimeConfig(process.env);
+const frontendDistribution = validateFrontendDistribution(runtimeConfig.frontend.distDir);
+installFrontendDistribution(app, frontendDistribution);
 ```
 
-`express.static` serves the built assets, and the catch-all route returns `index.html` for client-side routing. This means a single process on a single port (default `4180`) serves both the API/WebSockets and the UI.
+`express.static` serves the built assets, and the catch-all route returns the already validated
+`index.html` for client-side routing. This means a single process on a single port (default `4180`)
+serves both the API/WebSockets and the UI.
+
+`FRONTEND_DIST_DIR` is optional for local development and source-checkout installs; its default is
+the repository's `frontend/dist`. A direct-host production release should set it to the normalized
+absolute path of one exact protected generation, for example
+`/opt/saltanatbotv2/releases/2b0d86a/frontend/dist`. Do not point it at a moving `current` symlink.
+The distribution directory, `index.html`, `service-worker.js` and every local script/link resource
+referenced by `index.html` must be real rather than symlinked. Startup also bounds `index.html` to
+1 MiB, the worker to 2 MiB, at most eight module entries, at most 64 referenced resources and each
+referenced file to 32 MiB. Missing, empty, oversized, non-UTF-8 or external shell inputs fail closed
+without echoing the configured filesystem path.
+
+The protected slot is the release boundary: build and verify a candidate outside it, publish a
+root-owned/read-only generation, then update `ExecStart` and `FRONTEND_DIST_DIR` to paths from that
+same generation while the project API and worker are stopped. A later `npm run build` in the source
+checkout can then update only the checkout's `frontend/dist`; it cannot replace the UI served by
+the already running production API.
 
 ### Build and start
 
@@ -441,7 +463,7 @@ npm install
 #    frontend → type-check → staged Vite build → PWA/budget checks → atomic frontend/dist publication
 npm run build
 
-# 3. Start the backend, which also serves frontend/dist
+# 3. Start the backend, which serves the configured frontend distribution
 npm start
 ```
 
@@ -518,10 +540,14 @@ must be started in Research / Paper mode:
 
 ```bash
 HOST=127.0.0.1 PORT=4180 AUTH_MODE=database \
+FRONTEND_DIST_DIR=/opt/saltanatbotv2/releases/<commit>/frontend/dist \
 RUNTIME_PROFILE=public-http-paper npm start
 ```
 
-Point your process manager (systemd, pm2, Docker, etc.) at this command, ensure `backend/data/` is on persistent storage, and restart on failure.
+Point your direct-host process manager (systemd, pm2, etc.) at an exact protected release
+generation, ensure `backend/data/` is on persistent storage, and restart on failure. A
+self-contained Compose image normally leaves `FRONTEND_DIST_DIR` unset because `/app/frontend/dist`
+already belongs to that immutable image generation.
 
 ## Security hardening
 

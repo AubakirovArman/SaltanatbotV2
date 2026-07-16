@@ -65,15 +65,51 @@ caller's owner-scoped, redacted SQLite `audit_log`. Token/bearer login exists on
 
 ### Workspaces and research jobs
 
-`/api/workspaces` is owner-scoped. Create a document with `clientId`, `name`, `schemaVersion` and a
-JSON-object `payload`. Updates and deletes include the last `revision`; stale writes return `409` plus
-the current document. `GET /api/workspaces/:id/revisions` returns at most 20 snapshots and
-`POST /api/workspaces/:id/rollback` creates a new revision from an older snapshot.
+`/api/workspaces` is owner-scoped. Schema-v8 documents keep their workflow content revision
+separate from the PostgreSQL wrapper `revision` used for optimistic concurrency. Create with
+`{clientId,name,schemaVersion,payload}`; full updates, rename, archive, restore, rollback and purge
+must carry the latest wrapper revision. Stale writes return `409` with current metadata and are
+never overwritten automatically.
+
+The workflow routes include:
+
+- UUID-keyset `GET /api/workspaces?status=active|archived|all&cursor=<uuid>&limit=1..25`
+  and `GET /api/workspaces/quota`;
+- create, full update and `PATCH /:id/name`;
+- duplicate, archive and restore;
+- archived-only `DELETE /:id/permanent?revision=N`, which cascades retained revisions;
+- SHA-256 export plus strict schema-v8/schema-v7 import;
+- descending revision-keyset history
+  (`GET /:id/revisions?cursor=<revision>&limit=1..10`) and same-schema rollback.
+
+Every list/history response has explicit
+`page={itemLimit,responseByteLimit,returnedItems,returnedPayloadBytes,responseBytes,hasMore,nextCursor}`.
+The complete serialized response is capped at 4 MiB. PostgreSQL is queried metadata-first, so the
+API process never materializes an unbounded payload set. Workspace list rows and quota come from one
+read-only repeatable-read snapshot. Each subsequent keyset page has its own snapshot; UUID order is
+independent of `updated_at`, and clients de-duplicate IDs while traversing concurrent changes.
+
+Default owner quotas are 25 active workspaces, 75 total, 20 revisions, 1 MiB per persisted payload
+and 64 MiB of retained current-plus-revision payload. Request/import envelopes receive a bounded
+64 KiB protocol allowance, which permits a compact API export at the payload limit to be imported
+again. Compact payloads are additionally checked against a conservative PostgreSQL `jsonb::text`
+upper bound: separator spaces plus exact finite exponent-number expansion. Current and revision
+rows have a 4 MiB-minus-64 KiB database constraint, reserving room for response metadata; the
+retained quota must be at least 8 MiB for one current row and its first revision. Rejections use stable
+`workspace_active_quota_exceeded`, `workspace_total_quota_exceeded`,
+`workspace_storage_quota_exceeded`, `workspace_document_too_large` or
+`workspace_database_document_too_large` or `workspace_envelope_too_large` codes. Their `quota`
+object is durable committed usage; optional
+`attempted` values describe only the rejected projection.
+Archive and archived-only purge remain available after limits are lowered; restore remains
+quota-enforced.
+
 In database-auth mode every workspace request must also send
 `X-SBV2-Expected-User: <current session user ID>`. The browser client captures this value when it
 starts synchronization. If a shared cookie changes users in another tab, a missing or stale header
 returns `409 workspace_owner_mismatch` before any workspace is read or written; refresh the session
-and restart synchronization. Legacy-auth compatibility mode does not require this header.
+and restart synchronization. Every mutation also fences the exact durable authorization revision.
+Legacy-auth compatibility mode does not require the expected-owner header.
 
 `POST /api/jobs` accepts a bounded `kind: "backtest"` strategy/candle/config payload and returns
 `202` with a durable job. `GET /api/jobs`, `GET /api/jobs/metrics`, `GET /api/jobs/:id` and

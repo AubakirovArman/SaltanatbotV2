@@ -18,6 +18,10 @@ export interface TenantLegacyLockManager {
   request<T>(name: string, options: { mode: "exclusive" }, callback: () => T | Promise<T>): Promise<T>;
 }
 
+export interface TenantLegacyClaimStore {
+  claim(ownerId: string): Promise<string | undefined>;
+}
+
 export function tenantLocalStorageKey(baseKey: string, ownerId?: string): string | undefined {
   if (ownerId === undefined) return baseKey;
   const owner = ownerId.trim();
@@ -35,13 +39,33 @@ export function claimLegacyTenantLocalData(storage: TenantLocalStorage, ownerId:
 
 /**
  * Selects at most one owner for pre-authentication browser data. Assignment is
- * serialized across every tab on this origin. Without Web Locks, no new owner
- * is assigned and legacy data remains untouched.
+ * serialized across every tab on this origin. Web Locks are preferred; an
+ * IndexedDB add-if-absent transaction is the public-HTTP fallback. If neither
+ * primitive is available, legacy data remains untouched.
  */
-export async function prepareTenantLocalStorageOwner(storage: TenantLocalStorage, ownerId: string, locks: TenantLegacyLockManager | null | undefined = browserLockManager()): Promise<boolean> {
+export async function prepareTenantLocalStorageOwner(
+  storage: TenantLocalStorage,
+  ownerId: string,
+  locks: TenantLegacyLockManager | null | undefined = browserLockManager(),
+  claims: TenantLegacyClaimStore | null | undefined = browserLegacyClaimStore()
+): Promise<boolean> {
   const owner = ownerId.trim();
   if (!owner) return false;
-  if (!locks) return claimLegacyTenantLocalData(storage, owner);
+  if (!locks) {
+    const markers = reconcileLegacyOwnerMarkers(storage);
+    if (markers.kind === "conflict") return false;
+    if (markers.kind === "matched") return markers.owner === owner;
+    if (!claims) return false;
+    try {
+      const selectedOwner = await claims.claim(owner);
+      if (!selectedOwner) return false;
+      storage.setItem(TENANT_LOCAL_LEGACY_OWNER_KEY, selectedOwner);
+      storage.setItem(LEGACY_WORKSPACE_OWNER_KEY, selectedOwner);
+      return selectedOwner === owner;
+    } catch {
+      return claimLegacyTenantLocalData(storage, owner);
+    }
+  }
 
   try {
     return await locks.request(TENANT_LOCAL_LEGACY_LOCK_NAME, { mode: "exclusive" }, () => {
@@ -83,4 +107,70 @@ export function removeTenantLocalItem(storage: TenantLocalStorage, baseKey: stri
 function browserLockManager(): TenantLegacyLockManager | undefined {
   if (typeof navigator === "undefined" || !navigator.locks) return undefined;
   return navigator.locks as unknown as TenantLegacyLockManager;
+}
+
+type LegacyOwnerMarkers =
+  | { kind: "absent" }
+  | { kind: "matched"; owner: string }
+  | { kind: "conflict" };
+
+function reconcileLegacyOwnerMarkers(storage: TenantLocalStorage): LegacyOwnerMarkers {
+  const claimedOwner = storage.getItem(TENANT_LOCAL_LEGACY_OWNER_KEY)?.trim();
+  const workspaceOwner = storage.getItem(LEGACY_WORKSPACE_OWNER_KEY)?.trim();
+  if (claimedOwner && workspaceOwner && claimedOwner !== workspaceOwner) return { kind: "conflict" };
+  const selectedOwner = claimedOwner || workspaceOwner;
+  if (!selectedOwner) return { kind: "absent" };
+  if (!claimedOwner) storage.setItem(TENANT_LOCAL_LEGACY_OWNER_KEY, selectedOwner);
+  if (!workspaceOwner) storage.setItem(LEGACY_WORKSPACE_OWNER_KEY, selectedOwner);
+  return { kind: "matched", owner: selectedOwner };
+}
+
+function browserLegacyClaimStore(): TenantLegacyClaimStore | undefined {
+  if (typeof indexedDB === "undefined") return undefined;
+  return {
+    claim: (ownerId) =>
+      new Promise((resolve, reject) => {
+        const request = indexedDB.open("sbv2-tenant-legacy-claim", 1);
+        request.onupgradeneeded = () => {
+          if (!request.result.objectStoreNames.contains("claims")) request.result.createObjectStore("claims");
+        };
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const database = request.result;
+          const transaction = database.transaction("claims", "readwrite");
+          const store = transaction.objectStore("claims");
+          let selectedOwner: string | undefined;
+          let operationError: unknown;
+          const add = store.add(ownerId, "legacy-owner");
+          add.onsuccess = () => {
+            selectedOwner = ownerId;
+          };
+          add.onerror = (event) => {
+            if (add.error?.name !== "ConstraintError") {
+              operationError = add.error;
+              transaction.abort();
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const read = store.get("legacy-owner");
+            read.onsuccess = () => {
+              selectedOwner = typeof read.result === "string" ? read.result : undefined;
+            };
+            read.onerror = () => {
+              operationError = read.error;
+              transaction.abort();
+            };
+          };
+          transaction.oncomplete = () => {
+            database.close();
+            resolve(selectedOwner);
+          };
+          transaction.onabort = () => {
+            database.close();
+            reject(operationError ?? transaction.error);
+          };
+        };
+      })
+  };
 }

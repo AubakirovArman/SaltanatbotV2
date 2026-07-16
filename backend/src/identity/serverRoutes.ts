@@ -39,7 +39,7 @@ export function registerIdentityServerRoutes(app: Express, runtime: IdentityRunt
   app.use("/api", requireAppAuth);
   app.use("/api", apiRateLimit);
   if (runtime.pool) {
-    app.use("/api/workspaces", express.json({ limit: "1mb" }), createWorkspaceRouter(runtime.pool));
+    app.use("/api/workspaces", createWorkspaceRouter(runtime.pool));
     app.use("/api/jobs", express.json({ limit: "3mb" }), createComputeJobsRouter(runtime.pool));
   }
 }

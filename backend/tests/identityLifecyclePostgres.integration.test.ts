@@ -471,7 +471,9 @@ describePostgres("identity lifecycle against isolated PostgreSQL", () => {
         [ticketHash, sessionHash, ownerId, new Date("2026-07-16T02:00:00.000Z"), createdAt]
       );
 
-      await expect(migrateDatabase(legacyPool)).resolves.toMatchObject({
+      await expect(
+        migrateDatabase(legacyPool, { migrations: DATABASE_MIGRATIONS.slice(0, 9) })
+      ).resolves.toMatchObject({
         fromVersion: 8,
         toVersion: 9,
         applied: [{ version: 9, name: "identity_admin_control_plane" }]

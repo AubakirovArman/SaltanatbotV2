@@ -4,7 +4,7 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
-## Unreleased / PostgreSQL schema 8 and trading SQLite schema 8
+## Unreleased / PostgreSQL schema 10 and trading SQLite schema 8
 
 - PostgreSQL schema v5 adds a monotonic `users.authorization_revision`. Every status, role,
   temporary-password or password mutation advances it; login timestamps do not. It is a durable
@@ -26,6 +26,19 @@ migration.
   pass under the enqueue advisory lock. A compact tombstone preserves exact-request idempotency and
   returns HTTP 410 for at most 90 days and 1,000 tombstones per owner. Content-only dedupe may run
   again after compaction; conflicting reuse of the same request ID remains HTTP 409.
+- PostgreSQL schema v9 adds the administrator identity control plane: pending/active/disabled user
+  lifecycle, application and trading roles, authorization revisions, temporary-password state,
+  session revocation metadata and atomic administrator audit records. Retained non-administrator
+  live roles are downgraded to paper and cannot be granted again in the pre-HTTPS release.
+- PostgreSQL schema v10 adds reversible workspace archive metadata plus exact current/revision
+  payload-byte counters. Trigger-maintained counters and owner/archive/revision indexes support
+  count and retained-byte quotas without deleting existing data. After backfill, an explicit
+  preflight fails closed if a legacy `jsonb::text` payload exceeds the 4 MiB-minus-64 KiB
+  bounded-response payload allowance; current and revision tables retain that limit as CHECK
+  constraints. Repair or export an oversized legacy row before retrying v10. The migration is
+  transactional, but the chain remains forward-only: rollback means restoring the verified
+  schema-v9 dump into a new replacement database, never dropping v10 objects or migration history
+  in place. See [Workspace schema v10 upgrade and rollback](BACKUP_RESTORE.md#workspace-schema-v10-upgrade-and-rollback).
 - Trading SQLite schema v8 adds monotonic account and credential revisions plus a per-owner
   arm/disarm epoch. Migration always starts every owner disarmed and removes legacy boolean arm
   settings; it never deletes accounts, credentials, bots or journals.
@@ -55,13 +68,15 @@ migration.
   adding semantic version, bounded immutable history, parameters, dependencies and provenance.
 - Legacy `.strategy` envelope v1 can be imported through an explicit unverified migration path. New
   exports are checksum-verified schema-v2 envelopes; import never silently downgrades them.
-- Chart workspace exports use schema 3 with SHA-256 verification, bounded revisions and a persisted
-  visible-time-range link flag. Existing schema-1/2 local workspaces default that link on during
-  boundary normalization and remain preserved by ID.
-- Named chart workspaces now normalize to schema 7 and automatic chart sessions to version 5 so every
-  pane carries a validated display time zone. Existing schema 1–6 workspaces and session versions 1–4
-  retain browser-local labels; new panes default to exchange UTC. Unknown zones fail closed to UTC and
-  no migration rewrites candle timestamps, session membership or strategy data.
+- Portable workspace exports currently carry the exact schema-v8 workspace document under a
+  SHA-256-protected envelope. Schema v8 retains layout, per-pane market/timeframe/chart type and
+  timezone, link settings, full indicators, comparisons, drawings, panels, mode and an exact
+  strategy artifact revision/hash/parameter binding. Schema v7 is the only accepted portable legacy
+  payload and is validated strictly before hydration to v8.
+- Older schema 1–6 named workspaces remain eligible only for bounded browser-local normalization
+  during one-time owner migration; they are not accepted as portable imports. Automatic chart
+  sessions remain separately versioned. Unknown time zones fail closed to UTC, and normalization
+  never rewrites candle timestamps, session membership or strategy artifacts.
 
 For server data, follow [Backup and restore](BACKUP_RESTORE.md) before deployment. A breaking future
 IR, API, storage or event-trace change must add a dated section here and executable backward-compatibility

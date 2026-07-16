@@ -134,8 +134,16 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `DELETE` | `/api/workspaces/:id` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
 | `GET` | `/api/workspaces/:id` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
 | `PUT` | `/api/workspaces/:id` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `POST` | `/api/workspaces/:id/archive` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `POST` | `/api/workspaces/:id/duplicate` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `GET` | `/api/workspaces/:id/export` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `PATCH` | `/api/workspaces/:id/name` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `DELETE` | `/api/workspaces/:id/permanent` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `POST` | `/api/workspaces/:id/restore` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
 | `GET` | `/api/workspaces/:id/revisions` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
 | `POST` | `/api/workspaces/:id/rollback` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `POST` | `/api/workspaces/import` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
+| `GET` | `/api/workspaces/quota` | Authenticated · owner-scoped | `backend/src/workspaces/routes.ts` |
 
 ## WebSocket endpoints
 
@@ -148,4 +156,4 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **128 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **136 HTTP endpoints** and **6 WebSocket endpoints**.

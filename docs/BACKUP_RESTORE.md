@@ -127,6 +127,43 @@ Keep the PostgreSQL dump and SQLite backup generation together. They are not a t
 both engines, so record the time and stop all research/job mutations when an exact coordinated
 recovery point is required. Live trading must remain disarmed during a full recovery.
 
+### Workspace schema v10 upgrade and rollback
+
+Database migration v10 is additive: it adds archive metadata, exact payload-byte accounting,
+bounded-workspace indexes and payload-byte maintenance triggers. Existing workspace JSON and
+revision rows are retained and backfilled. A preflight aborts the transaction if an existing
+`jsonb::text` payload exceeds 4 MiB minus the 64 KiB response-envelope reserve; inspect and repair
+that legacy row before retrying instead of deploying a workspace that bounded pages cannot read.
+Take and verify the PostgreSQL custom-format dump before starting the first v10 API process;
+startup applies the migration atomically.
+
+If the project units were deliberately pinned to a schema-v9 safety launcher during review, keep
+both units stopped after the backup, switch both effective `ExecStart` values to the verified
+schema-v10 candidate launcher, run `systemctl --user daemon-reload`, and confirm the resolved
+commands with `systemctl --user show ... -p ExecStart` before starting anything. Start only the API,
+verify schema 10 plus health/readiness/auth/workspaces, and start the research worker afterward.
+Leaving the v9 safety override active would republish v9 code and prevent the intended cutover.
+
+The candidate API launcher must also export `FRONTEND_DIST_DIR` as the normalized absolute
+`frontend/dist` inside that same protected candidate release. Do not rely on the repository default
+or a moving symlink during a production cutover: a later local frontend build could otherwise
+replace the UI independently of the reviewed backend. Startup validates the release shell and
+module entry files before the listener opens. Record the exact backend command, frontend directory
+and release checksum together in the cutover evidence.
+
+The migration chain is forward-only. An older v9 binary correctly refuses a database whose schema
+history already contains v10. Do not drop v10 columns, triggers or migration history in place.
+Rollback means stopping this project's API and worker, restoring the matching pre-upgrade dump into
+a new replacement database, verifying it, then changing only this project's `PGDATABASE` during
+the stopped-service cutover. Switch both the backend launcher and `FRONTEND_DIST_DIR` to the same
+verified rollback release generation before starting the API. Workspaces created after that dump
+are not present in the replacement; export any required workspace files before the rollback window
+closes.
+
+Permanent workspace purge is deliberately owner-scoped and archived-only, but it deletes that
+workspace and cascades its retained revisions. Recovery after a successful purge requires a
+PostgreSQL backup; ordinary archive remains reversible.
+
 For a non-default Docker volume mount or a recovery drill, specify the source explicitly:
 
 ```bash

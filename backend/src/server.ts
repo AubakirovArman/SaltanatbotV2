@@ -1,8 +1,6 @@
 import cors from "cors";
 import express from "express";
 import { createServer } from "node:http";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
 import { verifyAppWsSession, verifyTradeWsRequest } from "./auth.js";
@@ -35,7 +33,7 @@ import { createOrderBookMlResearchRouter } from "./orderbook/ml/researchRoutes.j
 import { ProviderRouter } from "./providers/router.js";
 import { securityHeaders } from "./securityHeaders.js";
 import { configureTrustedProxy } from "./secureTradingOrigin.js";
-import { frontendCacheControl } from "./staticCache.js";
+import { installFrontendDistribution, validateFrontendDistribution } from "./frontendDistribution.js";
 import { createTradingApi } from "./trading/routes.js";
 import { TradeFlowHub } from "./tradeflow/hub.js";
 import type { Candle, OrderBookStreamMessage, QuoteStreamMessage, StreamMessage, Timeframe, TradeFlowStreamMessage } from "./types.js";
@@ -50,6 +48,7 @@ import { SingleFlightGate } from "./http/singleFlightGate.js";
 import { websocketOriginAllowed } from "./http/websocketOrigin.js";
 import { isPaperOnlyRuntime, runtimePolicyFromConfig } from "./runtimeProfile.js";
 const runtimeConfig = initializeRuntimeConfig(process.env);
+const frontendDistribution = validateFrontendDistribution(runtimeConfig.frontend.distDir);
 const { port, host } = runtimeConfig.server;
 const runtimePolicy = runtimePolicyFromConfig(runtimeConfig);
 const identityRuntime = await initializeIdentityRuntime(process.env, runtimeConfig.auth.mode);
@@ -519,24 +518,8 @@ function sparklineSeries(candles: Candle[]) {
   return { last: last ?? null, changePct: first && last ? ((last - first) / first) * 100 : 0, points };
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const frontendDist = path.resolve(__dirname, "../../frontend/dist");
-
 app.use(apiErrorHandler);
-
-app.use(
-  express.static(frontendDist, {
-    setHeaders(response, filePath) {
-      const relative = path.relative(frontendDist, filePath);
-      response.setHeader("Cache-Control", frontendCacheControl(relative));
-      if (relative === "service-worker.js") response.setHeader("Service-Worker-Allowed", "/");
-    }
-  })
-);
-app.get(/.*/, (_request, response) => {
-  response.sendFile(path.join(frontendDist, "index.html"), { headers: { "Cache-Control": "no-cache" } });
-});
+installFrontendDistribution(app, frontendDistribution);
 
 server.listen(port, host, () => {
   console.log(`SaltanatbotV2 backend listening on http://${host}:${port}`);

@@ -1,4 +1,6 @@
 import { isIP } from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { normalizeExactHttpOrigin } from "../http/exactOrigin.js";
 
 export const RUNTIME_PROFILES = ["public-http-paper", "private-live"] as const;
@@ -10,6 +12,9 @@ export type TrustProxySetting = false | number | string | readonly string[];
 
 export interface RuntimeConfig {
   readonly runtimeProfile: RuntimeProfileName;
+  readonly frontend: Readonly<{
+    distDir: string;
+  }>;
   readonly server: Readonly<{
     host: string;
     port: number;
@@ -37,6 +42,7 @@ export class RuntimeConfigError extends Error {
 }
 
 const defaultAllowedOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"] as const;
+const defaultFrontendDistDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../frontend/dist");
 const namedProxyRanges = new Set(["loopback", "linklocal", "uniquelocal"]);
 let configuredRuntimeConfig: RuntimeConfig | undefined;
 
@@ -66,6 +72,7 @@ export function validateFuturePrivateLiveBoundary(env: NodeJS.ProcessEnv): void 
 
 function parseRuntimeConfig(env: NodeJS.ProcessEnv, runtimeProfile: RuntimeProfileName): RuntimeConfig {
   const demoMode = parseOptionalBoolean("DEMO_MODE", env.DEMO_MODE);
+  const frontendDistDir = parseFrontendDistDir(env.FRONTEND_DIST_DIR);
   const host = parseHost(env.HOST);
   const port = parsePort(env.PORT);
   const publicOrigin = parseOptionalOrigin("PUBLIC_ORIGIN", env.PUBLIC_ORIGIN);
@@ -91,11 +98,20 @@ function parseRuntimeConfig(env: NodeJS.ProcessEnv, runtimeProfile: RuntimeProfi
 
   return freezeRuntimeConfig({
     runtimeProfile,
+    frontend: { distDir: frontendDistDir },
     server: { host, port, publicOrigin, allowedOrigins, trustProxy },
     auth: { mode: authMode, cookieSecure },
     security: { allowInsecureTradingMutations },
     trading: { enableLiveSpot }
   });
+}
+
+function parseFrontendDistDir(value: string | undefined): string {
+  if (value === undefined || value === "") return defaultFrontendDistDir;
+  if (value !== value.trim() || value.length > 4_096 || /[\0\r\n]/.test(value) || !path.isAbsolute(value) || path.normalize(value) !== value) {
+    throw new RuntimeConfigError("Invalid FRONTEND_DIST_DIR. Expected a normalized absolute filesystem path.");
+  }
+  return value;
 }
 
 /** Pin configuration once, before startup opens databases/files or listeners. */
@@ -312,6 +328,7 @@ function freezeRuntimeConfig(config: RuntimeConfig): RuntimeConfig {
   const trustProxy = Array.isArray(config.server.trustProxy) ? Object.freeze([...config.server.trustProxy]) : config.server.trustProxy;
   return Object.freeze({
     runtimeProfile: config.runtimeProfile,
+    frontend: Object.freeze({ ...config.frontend }),
     server: Object.freeze({ ...config.server, allowedOrigins, trustProxy }),
     auth: Object.freeze({ ...config.auth }),
     security: Object.freeze({ ...config.security }),

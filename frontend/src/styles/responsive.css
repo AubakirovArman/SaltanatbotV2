@@ -344,6 +344,70 @@
     overflow-y: auto;
   }
 
+  .workspaces-menu {
+    position: fixed;
+    inset-inline: 8px;
+    inset-block-start: max(70px, calc(env(safe-area-inset-top) + 58px));
+    inline-size: auto;
+    max-inline-size: none;
+    max-block-size: calc(100dvh - max(86px, calc(env(safe-area-inset-top) + 74px)) - env(safe-area-inset-bottom));
+    overflow: auto;
+  }
+
+  .workspace-create-form,
+  .workspace-rename-form {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-create-form input,
+  .workspace-create-form button,
+  .workspace-rename-form input,
+  .workspace-rename-form button,
+  .workspace-tabs button,
+  .workspace-conflict-actions button,
+  .workspace-retry,
+  .workspaces-menu .workspace-save {
+    min-block-size: 44px;
+  }
+
+  .workspace-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+    padding-block: 3px;
+  }
+
+  .workspace-purge-confirm {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-purge-confirm button {
+    min-block-size: 44px;
+  }
+
+  .workspaces-menu .workspace-apply {
+    min-block-size: 44px;
+  }
+
+  .workspace-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+    padding: 0 4px 4px;
+  }
+
+  .workspace-templates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-templates button {
+    min-block-size: 44px;
+  }
+
+  .workspace-actions button {
+    inline-size: auto;
+    min-inline-size: 44px;
+    block-size: 44px;
+  }
+
   .topbar-utility-actions.open {
     display: grid;
   }

@@ -495,13 +495,212 @@
 .workspaces-menu {
   inset-inline-start: auto;
   inset-inline-end: 0;
-  min-inline-size: 232px;
-  max-inline-size: 288px;
+  inline-size: min(440px, calc(100vw - 20px));
+  max-inline-size: 440px;
+  padding: 8px;
+  gap: 6px;
+}
+
+.workspace-trigger {
+  position: relative;
+}
+
+.workspace-trigger-state {
+  position: absolute;
+  inset-block-start: 3px;
+  inset-inline-end: 3px;
+  inline-size: 7px;
+  block-size: 7px;
+  border: 1px solid var(--panel);
+  border-radius: 999px;
+  background: var(--up);
+}
+
+.workspace-trigger.loading .workspace-trigger-state,
+.workspace-trigger.saving .workspace-trigger-state {
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.workspace-trigger.offline .workspace-trigger-state,
+.workspace-trigger.conflict .workspace-trigger-state,
+.workspace-trigger.quota .workspace-trigger-state,
+.workspace-trigger.failed .workspace-trigger-state {
+  background: var(--warn);
 }
 
 .workspace-save {
   justify-content: flex-start;
   font-weight: 600;
+}
+
+.workspace-create-form,
+.workspace-rename-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.workspace-create-form label,
+.workspace-rename-form label {
+  min-inline-size: 0;
+}
+
+.workspace-create-form input,
+.workspace-rename-form input {
+  inline-size: 100%;
+  min-block-size: 36px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-deep);
+  color: var(--text);
+}
+
+.workspace-create-form button,
+.workspace-rename-form button {
+  min-block-size: 36px;
+}
+
+.workspace-rename-form {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 5px;
+}
+
+.workspace-import-status {
+  min-block-size: 14px;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.workspace-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.workspace-templates {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.workspace-templates button {
+  min-block-size: 34px;
+  padding-inline: 5px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: var(--fs-xs);
+}
+
+.workspace-tabs button {
+  display: inline-flex;
+  justify-content: center;
+  gap: 6px;
+  min-block-size: 34px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--dim);
+}
+
+.workspace-tabs button.active {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.workspace-tabs span,
+.workspace-sync-banner > div:first-child > span {
+  min-inline-size: 18px;
+  padding-inline: 4px;
+  border-radius: 999px;
+  background: var(--panel-deep);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+
+.workspace-sync-banner {
+  display: grid;
+  gap: 5px;
+  padding: 7px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--dim);
+}
+
+.workspace-sync-banner > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace-sync-banner strong {
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+
+.workspace-sync-banner.saved {
+  border-color: color-mix(in srgb, var(--up) 30%, var(--line-soft));
+}
+
+.workspace-sync-banner.offline,
+.workspace-sync-banner.conflict,
+.workspace-sync-banner.quota,
+.workspace-sync-banner.failed {
+  border-color: color-mix(in srgb, var(--warn) 48%, var(--line-soft));
+}
+
+.workspace-sync-banner small {
+  font-family: var(--font-mono);
+  color: var(--dim);
+}
+
+.workspace-conflict-actions {
+  display: grid;
+  gap: 5px;
+}
+
+.workspace-conflict-actions p {
+  margin: 0;
+  color: var(--dim);
+  line-height: 1.35;
+}
+
+.workspace-strategy-warning,
+.workspace-purge-confirm {
+  margin: 0;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--warn) 42%, var(--line-soft));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 8%, var(--panel-soft));
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.workspace-purge-confirm {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  margin: 4px;
+}
+
+.workspace-purge-confirm p {
+  margin: 0;
+}
+
+.workspace-conflict-actions button,
+.workspace-retry {
+  justify-content: flex-start;
+  min-block-size: 34px;
 }
 
 .workspace-empty {
@@ -513,7 +712,7 @@
 .workspace-list {
   display: grid;
   gap: 2px;
-  max-block-size: 320px;
+  max-block-size: min(360px, 50dvh);
   overflow: auto;
   overscroll-behavior: contain;
   padding-block-start: 2px;
@@ -523,7 +722,7 @@
 
 .workspace-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   border-radius: var(--radius-sm);
 }
@@ -567,10 +766,16 @@
   white-space: nowrap;
 }
 
-.workspace-delete {
-  inline-size: 26px;
-  block-size: 26px;
-  margin-inline-end: 4px;
+.workspace-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-inline-end: 3px;
+}
+
+.workspace-actions button {
+  inline-size: 30px;
+  block-size: 30px;
   display: inline-grid;
   place-content: center;
   border: 1px solid transparent;
@@ -578,16 +783,11 @@
   background: transparent;
   color: var(--dim);
   cursor: pointer;
-  opacity: 0;
 }
 
-.workspace-row:hover .workspace-delete,
-.workspace-delete:focus-visible {
-  opacity: 1;
-}
-
-.workspace-delete:hover {
-  color: var(--down);
+.workspace-actions button:hover,
+.workspace-actions button:focus-visible {
+  color: var(--text);
   background: var(--hover);
 }
 

@@ -2035,7 +2035,7 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
   await expect(page.getByLabel("Статистика свечи")).toBeVisible();
   await expect(page.getByRole("button", { name: "Линия тренда", exact: true })).toBeVisible();
   await expect(page.locator(".indicator-add")).toHaveText("Добавить");
-  await expect(page.getByRole("button", { name: "Сохранённые рабочие пространства", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Сохранённые рабочие пространства" })).toBeVisible();
   await expect(page.locator(".compare-add")).toContainText("Сравнить");
   await page.keyboard.press("Control+k");
   const localizedPalette = page.getByRole("dialog", { name: "Палитра команд" });
@@ -2084,13 +2084,70 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
 test("saves and restores a named chart workspace", async ({ page }) => {
   await selectChartSymbol(page, "EURUSD");
 
-  page.once("dialog", async (dialog) => dialog.accept("EUR research"));
   await page.getByRole("button", { name: "Saved workspaces" }).click();
-  await page.getByRole("button", { name: "Save current as…" }).click();
+  await page.getByRole("textbox", { name: "Workspace name" }).fill("EUR research");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.locator(".workspace-apply").filter({ hasText: "EUR research" })).toContainText("EURUSD");
 
   await page.reload();
   await page.getByRole("button", { name: "Saved workspaces" }).click();
   await expect(page.locator(".workspace-apply").filter({ hasText: "EUR research" })).toContainText("EURUSD");
+});
+
+test("archives, restores and permanently removes a workspace with confirmation", async ({ page }) => {
+  await page.getByRole("button", { name: "Saved workspaces" }).click();
+  const menu = page.getByRole("region", { name: "Saved workspaces" });
+  await menu.getByRole("textbox", { name: "Workspace name" }).fill("Lifecycle workspace");
+  await menu.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(menu.locator(".workspace-apply").filter({ hasText: "Lifecycle workspace" })).toBeVisible();
+
+  await menu.getByRole("button", { name: "Archive workspace Lifecycle workspace" }).click();
+  await expect(menu.locator(".workspace-apply").filter({ hasText: "Lifecycle workspace" })).toHaveCount(0);
+  await menu.getByRole("button", { name: /Archived/ }).click();
+  await expect(menu.locator(".workspace-apply").filter({ hasText: "Lifecycle workspace" })).toBeDisabled();
+
+  await menu.getByRole("button", { name: "Restore workspace Lifecycle workspace" }).click();
+  await menu.getByRole("button", { name: /Active/ }).click();
+  await expect(menu.locator(".workspace-apply").filter({ hasText: "Lifecycle workspace" })).toBeEnabled();
+
+  await menu.getByRole("button", { name: "Archive workspace Lifecycle workspace" }).click();
+  await menu.getByRole("button", { name: /Archived/ }).click();
+  await menu.getByRole("button", { name: "Delete permanently Lifecycle workspace" }).click();
+  const confirmation = menu.getByRole("group", { name: /Permanently delete this archived workspace/ });
+  await expect(confirmation).toBeVisible();
+  await expectNoAxeViolations(page);
+  await confirmation.getByRole("button", { name: "Delete permanently", exact: true }).click();
+
+  await expect(menu.locator(".workspace-apply").filter({ hasText: "Lifecycle workspace" })).toHaveCount(0);
+  await expect(menu).toContainText("No saved workspaces yet.");
+});
+
+test("keeps the workspace menu inside a 320px viewport with touch-sized controls", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.reload();
+  await page.getByRole("button", { name: "More tools" }).click();
+  await page.getByRole("button", { name: "Saved workspaces" }).click();
+  const menu = page.getByRole("region", { name: "Saved workspaces" });
+  await menu.getByRole("textbox", { name: "Workspace name" }).fill("Mobile workspace");
+  await menu.getByRole("button", { name: "Create", exact: true }).click();
+
+  const geometry = await menu.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const controls = Array.from(element.querySelectorAll<HTMLElement>("button, input"))
+      .filter((control) => !control.classList.contains("sr-only") && control.getClientRects().length > 0);
+    return {
+      left: bounds.left,
+      right: bounds.right,
+      viewportWidth: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      shortestControl: Math.min(...controls.map((control) => control.getBoundingClientRect().height))
+    };
+  });
+  expect(geometry.left).toBeGreaterThanOrEqual(-1);
+  expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+  expect(geometry.shortestControl).toBeGreaterThanOrEqual(43);
+  await expectNoAxeViolations(page);
 });
 
 test("runs a backtest and exposes assumptions and metrics", { tag: "@smoke" }, async ({ page }) => {

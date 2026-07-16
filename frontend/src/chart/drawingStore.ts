@@ -4,6 +4,15 @@ import { readTenantLocalItem, removeTenantLocalItem, writeTenantLocalItem } from
 const LEGACY_PREFIX = "mf:drawings:";
 const STORAGE_PREFIX = "sbv2:drawings:v2:";
 export const MAX_DRAWINGS_PER_PANE = 500;
+export const DRAWINGS_CHANGED_EVENT = "sbv2:drawings-changed";
+export const DRAWINGS_RESTORED_EVENT = "sbv2:drawings-restored";
+
+export interface DrawingStorageEventDetail {
+  chartId: string;
+  symbol: string;
+  ownerId?: string;
+  drawings: DrawingObject[];
+}
 
 /** Drawings follow a symbol across timeframes, but never leak into another chart pane. */
 export function drawingStorageKey(symbol: string, chartId = "chart-1"): string {
@@ -36,14 +45,35 @@ export function loadDrawings(symbol: string, chartId = "chart-1", ownerId?: stri
 }
 
 export function saveDrawings(symbol: string, drawings: DrawingObject[], chartId = "chart-1", ownerId?: string) {
+  const normalized = normalizeDrawings(drawings);
   try {
     const key = drawingStorageKey(symbol, chartId);
-    const normalized = normalizeDrawings(drawings);
     if (normalized.length === 0) removeTenantLocalItem(window.localStorage, key, ownerId);
     else writeTenantLocalItem(window.localStorage, key, JSON.stringify(normalized), ownerId);
   } catch {
     // Non-fatal: private mode etc.
   }
+  publishDrawingsChanged(symbol, normalized, chartId, ownerId);
+}
+
+/** Publishes the latest in-memory snapshot before the debounced storage write completes. */
+export function publishDrawingsChanged(symbol: string, drawings: DrawingObject[], chartId = "chart-1", ownerId?: string): DrawingObject[] {
+  const normalized = normalizeDrawings(drawings);
+  dispatchDrawingEvent(DRAWINGS_CHANGED_EVENT, { chartId, symbol, ownerId, drawings: normalized });
+  return normalized;
+}
+
+export function restoreDrawings(symbol: string, drawings: DrawingObject[], chartId = "chart-1", ownerId?: string): DrawingObject[] {
+  const normalized = normalizeDrawings(drawings);
+  try {
+    const key = drawingStorageKey(symbol, chartId);
+    if (normalized.length === 0) removeTenantLocalItem(window.localStorage, key, ownerId);
+    else writeTenantLocalItem(window.localStorage, key, JSON.stringify(normalized), ownerId);
+  } catch {
+    // The in-memory restore event still lets the open chart recover the snapshot.
+  }
+  dispatchDrawingEvent(DRAWINGS_RESTORED_EVENT, { chartId, symbol, ownerId, drawings: normalized });
+  return normalized;
 }
 
 export function normalizeDrawings(value: unknown): DrawingObject[] {
@@ -118,4 +148,9 @@ function finite(value: unknown): number | undefined {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function dispatchDrawingEvent(type: string, detail: DrawingStorageEventDetail): void {
+  if (typeof window === "undefined" || typeof CustomEvent === "undefined") return;
+  window.dispatchEvent(new CustomEvent<DrawingStorageEventDetail>(type, { detail }));
 }

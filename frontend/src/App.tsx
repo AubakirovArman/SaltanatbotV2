@@ -33,6 +33,8 @@ import { clearPwaShareTargetLaunch, discardPwaShareTarget, loadPwaShareTarget, p
 import { useAuth } from "./auth/AuthRoot";
 import { PriceAlertFeed } from "./market/PriceAlertFeed";
 import { recordBrowserRender } from "./performance/browserProbe";
+import type { WorkspaceStrategySelection } from "./workspace/workspaces";
+import { artifactHash } from "./strategy/artifactLibraryModel";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
@@ -69,6 +71,7 @@ export default function App() {
   const [chartType, setChartType] = useState<ChartType>(initialPrimaryChart.chartType);
   const [asset, setAsset] = useState<AssetClass | "all">("all");
   const [mode, setMode] = useState<AppMode>(launchView);
+  const openStrategyWorkspace = useCallback(() => setMode("strategy"), []);
   const [robotsCenterRequest, setRobotsCenterRequest] = useState(0);
   const [offlineResearchOpen, setOfflineResearchOpen] = useState(false);
   const [launchedFiles, setLaunchedFiles] = useState<QueuedPwaLaunch[]>([]);
@@ -79,6 +82,37 @@ export default function App() {
   const [chartConnection, setChartConnection] = useState<ConnectionState>("connecting");
   const primaryCandlesRef = useRef<Candle[]>([]);
   const [mobilePanel, setMobilePanel] = useState<"markets" | "instrument">();
+  const artifactLibrary = useArtifactLibrary({
+    initialArtifacts: initialWorkspaceState.strategyLibrary,
+    setIndicators,
+    openStrategyWorkspace,
+    storageOwnerId: localStorageOwner
+  });
+  const strategyLibrary = artifactLibrary.artifacts;
+  const activeArtifactId = artifactLibrary.activeArtifactId;
+  const selectedStrategy = useMemo(() => {
+    const artifact = strategyLibrary.find((item) => item.id === activeArtifactId);
+    if (!artifact || artifact.kind !== "strategy") return undefined;
+    return {
+      id: artifact.id,
+      revision: Math.max(1, artifact.version ?? 1),
+      hash: artifact.hash ?? artifactHash(artifact),
+      parameters: { ...(artifactLibrary.inputOverrides[artifact.id] ?? {}) }
+    };
+  }, [activeArtifactId, artifactLibrary.inputOverrides, strategyLibrary]);
+  const restoreWorkspaceStrategy = useCallback(
+    (selection?: WorkspaceStrategySelection) => {
+      if (!selection) return "none" as const;
+      const artifact = strategyLibrary.find((candidate) => candidate.id === selection.id && candidate.kind === "strategy");
+      if (!artifact) return "missing" as const;
+      if (Math.max(1, artifact.version ?? 1) !== selection.revision) return "revision_mismatch" as const;
+      if (selection.hash && (artifact.hash ?? artifactHash(artifact)).toLowerCase() !== selection.hash.toLowerCase()) return "hash_mismatch" as const;
+      artifactLibrary.setActiveArtifactId(selection.id);
+      artifactLibrary.setInputOverrides((current) => ({ ...current, [selection.id]: { ...selection.parameters } }));
+      return "restored" as const;
+    },
+    [artifactLibrary.setActiveArtifactId, artifactLibrary.setInputOverrides, strategyLibrary]
+  );
   const shell = useAppShell({
     symbol,
     setSymbol,
@@ -86,9 +120,12 @@ export default function App() {
     setTimeframe,
     chartType,
     setChartType,
+    mode,
     setMode,
     indicators,
     setIndicators,
+    selectedStrategy,
+    onRestoreStrategy: restoreWorkspaceStrategy,
     initialChartSession
   });
   const { cryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, workspaces, activeWorkspaceId } = shell;
@@ -161,15 +198,6 @@ export default function App() {
     setMode("strategy");
     warmStrategyLab();
   }, [launchedFiles]);
-  const openStrategyWorkspace = useCallback(() => setMode("strategy"), []);
-  const artifactLibrary = useArtifactLibrary({
-    initialArtifacts: initialWorkspaceState.strategyLibrary,
-    setIndicators,
-    openStrategyWorkspace,
-    storageOwnerId: localStorageOwner
-  });
-  const strategyLibrary = artifactLibrary.artifacts;
-  const activeArtifactId = artifactLibrary.activeArtifactId;
   const primaryChart = shell.charts[0];
   const primaryExchange = primaryChart?.exchange ?? cryptoExchange;
   const activeChart = shell.activeChart ?? shell.charts[0];
@@ -252,14 +280,26 @@ export default function App() {
         mobilePanels={isMobile}
         panelsSwapped={shell.panelsSwapped}
         workspaces={workspaces}
+        workspaceSyncStatus={shell.workspaceSyncStatus}
+        workspaceStrategyRestore={shell.workspaceStrategyRestore}
+        workspaceMigrationMissingIndicators={shell.workspaceMigrationMissingIndicators}
         activeWorkspaceId={activeWorkspaceId}
         layoutPreset={shell.layoutPreset}
         onSaveWorkspace={shell.saveWorkspace}
         onApplyWorkspace={shell.applyWorkspace}
         onDeleteWorkspace={shell.deleteWorkspace}
+        onRestoreWorkspace={shell.restoreArchivedWorkspace}
+        onPurgeWorkspace={shell.purgeArchivedWorkspace}
+        onRenameWorkspace={shell.renameWorkspace}
+        onDuplicateWorkspace={shell.duplicateWorkspace}
+        onCreateWorkspaceTemplate={shell.createWorkspaceTemplate}
+        canCreatePaperWorkspace={shell.canCreatePaperWorkspace}
+        serverWorkspaceHistory={accountAuth.authRequired}
         onExportWorkspace={shell.exportWorkspace}
         onImportWorkspace={shell.importWorkspace}
         onRollbackWorkspace={shell.rollbackWorkspaceVersion}
+        onRetryWorkspaceSync={shell.retryWorkspaceSync}
+        onResolveWorkspaceConflict={shell.resolveWorkspaceConflict}
         onLayoutPresetChange={shell.setLayoutPreset}
         canUseDistinctMarkets={distinctMarketSymbols.length === 4}
         onDistinctMarkets={() => shell.setDistinctMarketLayout(distinctMarketSymbols)}

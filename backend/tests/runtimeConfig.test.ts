@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import path from "node:path";
 import { initializeRuntimeConfig, loadRuntimeConfig, resetRuntimeConfigForTests, type RuntimeConfig, validateFuturePrivateLiveBoundary } from "../src/config/runtimeConfig.js";
 
 const privateLiveEnv: NodeJS.ProcessEnv = {
@@ -22,6 +23,9 @@ describe("typed runtime configuration", () => {
 
     expect(config).toEqual({
       runtimeProfile: "public-http-paper",
+      frontend: {
+        distDir: path.resolve(import.meta.dirname, "../../frontend/dist")
+      },
       server: {
         host: "127.0.0.1",
         port: 4180,
@@ -34,6 +38,17 @@ describe("typed runtime configuration", () => {
       trading: { enableLiveSpot: false }
     });
     expect(allRuntimeConfigObjects(config).every(Object.isFrozen)).toBe(true);
+  });
+
+  it("pins one normalized absolute frontend release directory without echoing invalid input", () => {
+    const configured = path.resolve(import.meta.dirname, "../../protected-release/frontend/dist");
+    expect(loadRuntimeConfig({ NODE_ENV: "production", FRONTEND_DIST_DIR: configured } as NodeJS.ProcessEnv).frontend.distDir).toBe(configured);
+
+    const secretBearingPath = "relative/operator-secret/frontend";
+    expect(() => loadRuntimeConfig({ NODE_ENV: "production", FRONTEND_DIST_DIR: secretBearingPath } as NodeJS.ProcessEnv)).toThrowError(
+      expect.objectContaining({ message: expect.not.stringContaining("operator-secret") })
+    );
+    expect(() => loadRuntimeConfig({ NODE_ENV: "production", FRONTEND_DIST_DIR: `${configured}/../dist` } as NodeJS.ProcessEnv)).toThrow(/normalized absolute filesystem path/);
   });
 
   it("does not let NODE_ENV select legacy authentication", () => {
@@ -125,5 +140,5 @@ describe("typed runtime configuration", () => {
 
 function allRuntimeConfigObjects(config: RuntimeConfig): object[] {
   const trustProxy = config.server.trustProxy;
-  return [config, config.server, config.server.allowedOrigins, config.auth, config.security, config.trading, ...(Array.isArray(trustProxy) ? [trustProxy] : [])];
+  return [config, config.frontend, config.server, config.server.allowedOrigins, config.auth, config.security, config.trading, ...(Array.isArray(trustProxy) ? [trustProxy] : [])];
 }

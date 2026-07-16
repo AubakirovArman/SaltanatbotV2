@@ -141,7 +141,7 @@ may be lowered or raised only from measured evidence.
 | Enabled alert rules | 5,000 | 100 | reject new rule; existing rules continue | R5 planned |
 | Alert evaluation batch | 500 rules/tick | bounded by owner fairness | carry remaining work to next lease; expose age | R5 planned |
 | Telegram deliveries | lower of provider budget or 20 sends/second | 2 sends/second | token-bucket delay, retry/backoff and dead-letter state | R5 planned |
-| Workspaces | 75 total, 25 active and 64 MiB retained payload per owner | same | reject create/import; preserve existing revisions | R3 planned |
+| Workspaces | 75 total, 25 active and 64 MiB retained payload per owner | same | reject create/import; preserve existing revisions | per-owner quotas plus 4 MiB metadata-first keyset responses implemented; global admission/load proof remains R11 |
 | L2 capture scopes | 24 selected scopes | operator-governed owner access | stop new capture when disk free space falls below 30% | R10A planned |
 
 All caps must be configuration-validated, visible in metrics and applied before

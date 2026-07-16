@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
-import { TENANT_LOCAL_LEGACY_LOCK_NAME, TENANT_LOCAL_LEGACY_OWNER_KEY, claimLegacyTenantLocalData, prepareTenantLocalStorageOwner, readTenantLocalItem, writeTenantLocalItem } from "../src/app/tenantLocalStorage";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TENANT_LOCAL_LEGACY_LOCK_NAME, TENANT_LOCAL_LEGACY_OWNER_KEY, claimLegacyTenantLocalData, prepareTenantLocalStorageOwner, readTenantLocalItem, writeTenantLocalItem, type TenantLegacyClaimStore } from "../src/app/tenantLocalStorage";
 import type { ArbitragePaperPosition } from "../src/arbitrage/paper";
 import { createOpenEvent, loadPaperEvents, storePaperEvents } from "../src/arbitrage/paperLedger";
 import type { StrategyArtifact } from "../src/strategy/library";
@@ -21,7 +21,7 @@ describe("tenant-private browser storage", () => {
   it("does not auto-claim legacy data when Web Locks are unavailable", async () => {
     localStorage.setItem("legacy:strategies", "private-strategy");
 
-    await expect(prepareTenantLocalStorageOwner(localStorage, "user-a", null)).resolves.toBe(false);
+    await expect(prepareTenantLocalStorageOwner(localStorage, "user-a", null, null)).resolves.toBe(false);
     expect(localStorage.getItem(TENANT_LOCAL_LEGACY_OWNER_KEY)).toBeNull();
     expect(readTenantLocalItem(localStorage, "legacy:strategies", "user-a")).toBeNull();
   });
@@ -41,6 +41,35 @@ describe("tenant-private browser storage", () => {
     expect(readTenantLocalItem(localStorage, "legacy:strategies", owner)).toBe("private-strategy");
     expect(readTenantLocalItem(localStorage, "legacy:commands", owner)).toBe("private-command");
     expect(readTenantLocalItem(localStorage, "legacy:strategies", other)).toBeNull();
+  });
+
+  it("uses atomic add-if-absent fallback so only one owner wins without Web Locks", async () => {
+    localStorage.setItem("legacy:strategies", "private-strategy");
+    const claims = serializedClaimStore();
+
+    const [claimedA, claimedB] = await Promise.all([
+      prepareTenantLocalStorageOwner(localStorage, "user-a", null, claims),
+      prepareTenantLocalStorageOwner(localStorage, "user-b", null, claims)
+    ]);
+
+    expect([claimedA, claimedB].filter(Boolean)).toHaveLength(1);
+    const owner = claimedA ? "user-a" : "user-b";
+    const other = claimedA ? "user-b" : "user-a";
+    expect(localStorage.getItem(TENANT_LOCAL_LEGACY_OWNER_KEY)).toBe(owner);
+    expect(readTenantLocalItem(localStorage, "legacy:strategies", owner)).toBe("private-strategy");
+    expect(readTenantLocalItem(localStorage, "legacy:strategies", other)).toBeNull();
+  });
+
+  it("fails closed without IndexedDB claim when legacy owner markers conflict", async () => {
+    localStorage.setItem(TENANT_LOCAL_LEGACY_OWNER_KEY, "user-a");
+    localStorage.setItem("sbv2:workspaces:legacy-owner", "user-b");
+    const claim = vi.fn(async () => "user-c");
+
+    await expect(prepareTenantLocalStorageOwner(localStorage, "user-c", null, { claim })).resolves.toBe(false);
+
+    expect(claim).not.toHaveBeenCalled();
+    expect(localStorage.getItem(TENANT_LOCAL_LEGACY_OWNER_KEY)).toBe("user-a");
+    expect(localStorage.getItem("sbv2:workspaces:legacy-owner")).toBe("user-b");
   });
 
   it("reconciles an owner selected by an earlier workspace migration under the common lock", async () => {
@@ -99,6 +128,21 @@ function serializedLockManager() {
         () => undefined,
         () => undefined
       );
+      return run;
+    }
+  };
+}
+
+function serializedClaimStore(): TenantLegacyClaimStore {
+  let selectedOwner: string | undefined;
+  let tail = Promise.resolve();
+  return {
+    claim(ownerId: string): Promise<string | undefined> {
+      const run = tail.then(() => {
+        selectedOwner ??= ownerId;
+        return selectedOwner;
+      });
+      tail = run.then(() => undefined);
       return run;
     }
   };
