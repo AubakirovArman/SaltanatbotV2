@@ -103,6 +103,29 @@ test("keeps the RU/KK arbitrage screener keyboard and screen-reader operable on 
   await expectNoAxeViolations(page);
 });
 
+test("keeps the screener mode chooser compact across the complete mobile breakpoint", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("sbv2:locale", "ru"));
+  await installScannerMocks(page);
+  await page.goto("/");
+  await page.locator(".workspace-navigation").getByRole("button", { name: "Скринер", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Арбитражный скринер спот/фьючерс" })).toBeVisible();
+
+  const trigger = page.locator(".arb-mode-trigger");
+  for (const width of [320, 390, 600, 760]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(trigger).toBeVisible();
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1))
+      .toBe(true);
+    expect(await page.locator(".arb-mode-bar").evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(80);
+  }
+
+  await page.setViewportSize({ width: 761, height: 844 });
+  await expect(trigger).toBeHidden();
+  await expect(page.getByRole("group", { name: "Режим арбитражного скринера" })).toBeVisible();
+});
+
 async function installScannerMocks(page: Page) {
   await page.routeWebSocket("/arbitrage-stream", () => {
     // REST provides the deterministic snapshot; the open socket prevents reconnect churn.

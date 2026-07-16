@@ -6,9 +6,9 @@
 
 # SaltanatbotV2 🐘
 
-**Деректерді жергілікті сақтайтын тегін әрі ашық кодты сауда терминалы.**
+**Деректерді жергілікті сақтайтын зерттеу және paper-саудаға арналған ашық кодты терминал.**
 
-Нақты уақыттағы графиктер · визуалды стратегия құрастырушы · Pine Script импорты · backtest · paper/live trading
+Нақты уақыттағы графиктер · визуалды стратегия құрастырушы · Pine Script импорты · backtest · paper automation
 
 </div>
 
@@ -42,14 +42,14 @@ SaltanatbotV2 — сауда идеяларын зерттеуге және ав
 - `next_open`, комиссия, slippage, funding, gap-aware stop/target және liquidation бар backtest;
 - optimizer, walk-forward және Monte Carlo зерттеулері;
 - seed, mutation, crossover және elitism бар bounded генетикалық параметр оптимизаторы: train/validation рейтингі бекітілген соң тек №1 кандидат қол тимеген final test-тен өтеді, ал өткен мәндер дәл research scope-пен Blockly-ге жазылады;
-- paper trading және эксперименттік Binance/Bybit live adapter-лері;
-- жергілікті SQLite, API кілттерін шифрлау және әрекеттер журналы.
+- paper trading; эксперименттік Binance/Bybit live adapter-лері кодта сақталғанымен, ағымдағы `public-http-paper` профилінде қосылмайды;
+- account metadata және dormant legacy credentials owner мен нақты account бойынша оқшауланған; admin activation басқа пайдаланушының account, key, workspace немесе paper portfolio деректерін ашпайды, ал ағымдағы профиль биржа кілттерін қабылдамайды және пайдалану үшін ашпайды;
+- жергілікті SQLite, owner-scoped legacy API кілттерін шифрлау және әрекеттер журналы.
 
 > Pine импорты TradingView-пен толық үйлесімді дегенді білдірмейді. Қолданба қателер мен
 > жуықтаулар туралы ескертулерді көрсетеді. Нәтижені графикте және paper режимінде тексеріңіз.
 
-> Live trading эксперименттік күйде. Алдымен paper/testnet қолданыңыз, қаражат шығаруға құқығы жоқ
-> API кілттерін және жеке тәуекел лимиттерін орнатыңыз.
+> Ағымдағы release тек Research / Paper режимінде жұмыс істейді. Live trading және биржа API кілттерін енгізу бөлек HTTPS/security release-ке дейін бұғатталған.
 
 ## Жылдам бастау
 
@@ -88,8 +88,9 @@ npm run dev
 Жоғарғы панельдегі тіл батырмасы EN → RU → KK ретімен ауысады және таңдалған тілді reload-тан кейін
 сақтайды; нақты API schemas мен ішкі developer documentation canonical English күйінде қалады.
 
-Production backend әдепкіде тек `127.0.0.1:4180` мекенжайында қолжетімді. Сыртқы қолжетімділік
-үшін TLS reverse proxy және firewall пайдаланыңыз.
+Production backend әдепкіде тек `127.0.0.1:4180` мекенжайында қолжетімді. Бөлек HTTPS release
+шыққанға дейін оны сенімсіз public network-ке ашпаңыз; тек private network/VPN/IP allowlist және
+firewall пайдаланыңыз.
 
 ## Тексеру
 
@@ -114,12 +115,13 @@ npm run build
 - [Скринер математикасы және болжамдары](docs/ARBITRAGE_MATH_AND_ASSUMPTIONS.md)
 - [Current және planned exchange матрицасы](docs/VENUE_CAPABILITIES.md)
 - [Арбитраж market data сапасы](docs/MARKET_DATA_QUALITY.md)
-- [Paper/live trading](docs/kk/TRADING.md)
+- [Paper trading және белсенді емес legacy live contracts](docs/kk/TRADING.md)
 - [Оқиғалар мен орындалу трассалары](docs/kk/EVENT_TRACES.md)
 - [Қауіпсіздік бойынша қысқаша нұсқаулық](docs/kk/SECURITY.md)
 - [Backup және қалпына келтіру](docs/kk/BACKUP_RESTORE.md)
 - [Account authentication бар self-host орнату](docs/SELF_HOSTING.md)
 - [Алғашқы 100 user capacity жоспары](docs/CAPACITY_100_USERS.md)
+- [HTTPS пайда болғанға дейінгі толық R2–R12 жоспары](docs/PRE_HTTPS_ROADMAP.md)
 - [Жергілікті офлайн зерттеу](docs/kk/OFFLINE_RESEARCH.md)
 - [PWA арқылы файлдарды қауіпсіз ашу және бөлісу](docs/kk/PWA_FILE_HANDLING.md)
 - [90 коммит жаңартуы](docs/kk/RELEASE_2026-07-11.md)
@@ -131,9 +133,9 @@ npm run build
 ## Қауіпсіздік
 
 - `backend/data/`, `.secrets/`, `.env`, PostgreSQL dump және API кілттерін жарияламаңыз.
-- Қаражат шығаруға рұқсаты жоқ бөлек API кілтін қолданыңыз.
-- Сыртқы қолжетімділікке HTTPS және firewall міндетті; жаңа account тек admin approval-дан кейін ашылады.
-- Paper mode әдепкіде қосулы; live бірнеше анық растауды қажет етеді.
+- Public HTTP арқылы биржа API кілттерін енгізбеңіз; бұрынғы encrypted мәндер белсенді қолданылмайды.
+- HTTPS пайда болғанша private network/VPN/IP allowlist және firewall ғана қолданыңыз; жаңа account тек admin approval-дан кейін ашылады.
+- `public-http-paper` профилі live, signed REST және private WebSocket-ті өзгермейтін түрде бұғаттайды.
 - Арбитраж скринері order орналастырмайды: continuous entry basis пен fee estimate тек public entry
   бағаларын салыстырады; бөлек модельденетін paper нәтижесі де зерттеу үшін, ал әртүрлі биржа
   quote-тары атомдық емес.

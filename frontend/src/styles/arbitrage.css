@@ -1927,7 +1927,7 @@
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 760px) {
   .arb-screener,
   .arb-live-routes {
     padding: 12px;
@@ -1951,6 +1951,9 @@
   }
   .arb-mode-trigger span {
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .arb-mode-trigger svg {
     flex: none;

@@ -5,11 +5,12 @@
   z-index: 3;
   display: grid;
   gap: 6px;
-  max-inline-size: min(760px, calc(100% - 90px));
+  max-inline-size: min(760px, calc(100% - var(--chart-axis-safe-inline, 90px)));
   pointer-events: none;
 }
 
 .chart-indicator-overlay:has(.indicator-editor, .indicator-menu) { z-index: 12; }
+.compare-control:has(.compare-menu, .compare-settings) { z-index: 12; }
 
 .indicator-strip,
 .indicator-chip,
@@ -123,6 +124,7 @@
 .indicator-editor {
   pointer-events: auto;
   inline-size: min(340px, calc(100dvw - 32px));
+  max-inline-size: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--panel) 96%, transparent);
@@ -317,7 +319,7 @@
   z-index: 3;
   display: grid;
   gap: 6px;
-  max-inline-size: min(760px, calc(100% - 90px));
+  max-inline-size: min(760px, calc(100% - var(--chart-axis-safe-inline, 90px)));
   pointer-events: none;
 }
 
@@ -506,6 +508,7 @@
 .compare-menu {
   pointer-events: auto;
   inline-size: min(300px, calc(100dvw - 32px));
+  max-inline-size: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--panel) 96%, transparent);
@@ -514,6 +517,24 @@
   display: grid;
   gap: 4px;
   padding: 6px;
+}
+
+@media (max-width: 761px) and (pointer: coarse) {
+  .chart-indicator-overlay > :is(.indicator-menu, .indicator-editor) {
+    inline-size: min(340px, calc(100dvw - var(--chart-axis-safe-inline, 90px) - 16px));
+    max-inline-size: none;
+  }
+
+  .compact-chart .chart-indicator-overlay > :is(.indicator-menu, .indicator-editor),
+  .compact-chart .compare-control > :is(.compare-menu, .compare-settings) {
+    position: fixed;
+    inset-block-start: max(128px, calc(env(safe-area-inset-top) + 96px));
+    inset-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));
+    inline-size: auto;
+    max-inline-size: none;
+    max-block-size: calc(100dvh - 144px - env(safe-area-inset-bottom));
+    overflow-y: auto;
+  }
 }
 
 .compare-search {
@@ -589,4 +610,30 @@
   padding: 8px;
   color: var(--muted);
   font-size: 11px;
+}
+
+@media (pointer: coarse) {
+  .indicator-add,
+  .indicator-chip,
+  .indicator-menu button,
+  .indicator-menu button.menu-strategy,
+  .indicator-editor input,
+  .indicator-editor select,
+  .indicator-logic button,
+  .compare-add,
+  .compare-chip,
+  .compare-search,
+  .compare-menu-list button,
+  .compare-settings select,
+  .compare-settings input[type="color"] {
+    min-block-size: 44px;
+  }
+
+  .indicator-chip button,
+  .indicator-editor-head button,
+  .compare-chip button,
+  .compare-settings header button {
+    min-inline-size: 44px;
+    min-block-size: 44px;
+  }
 }

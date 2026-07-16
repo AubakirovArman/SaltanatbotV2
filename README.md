@@ -6,8 +6,8 @@
 
 # SaltanatbotV2 🐘
 
-**A self-hosted, open-source crypto trading terminal.**
-Live charts · a no-code visual strategy builder · one-click backtests · paper & live trading.
+**A self-hosted, open-source crypto research and paper-trading terminal.**
+Live charts · a no-code visual strategy builder · one-click backtests · paper automation.
 
 [![CI](https://github.com/AubakirovArman/SaltanatbotV2/actions/workflows/ci.yml/badge.svg)](https://github.com/AubakirovArman/SaltanatbotV2/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-14b8a6.svg)](LICENSE)
@@ -23,11 +23,11 @@ Live charts · a no-code visual strategy builder · one-click backtests · paper
 
 ## What is this?
 
-**SaltanatbotV2** is a trading terminal you run yourself. It streams live crypto candles from **Binance or Bybit** (switchable at runtime), renders them on a fast custom canvas chart with indicators and drawing tools, lets you **assemble trading strategies from visual blocks** (no code), **backtest them on historical data in seconds**, and then run them as **paper or experimental live bots** driven by a compact Antares-style command language. Telegram is configurable in the current UI; the backend also supports an optional VK channel through its authenticated notification API.
+**SaltanatbotV2** is a trading terminal you run yourself. It streams live crypto candles from **Binance or Bybit** (switchable at runtime), renders them on a fast custom canvas chart with indicators and drawing tools, lets you **assemble trading strategies from visual blocks** (no code), **backtest them on historical data in seconds**, and run them as isolated **paper bots**. The current release is deliberately Research / Paper only: dormant experimental live-adapter code cannot be activated until a separate HTTPS and security release.
 
 Application state and credentials stay on your self-hosted SaltanatbotV2 instance: there is no
-Saltanatbot cloud account or built-in telemetry. Live market data, exchange execution and optional
-Telegram/VK delivery still require outbound network requests to the services you enable.
+Saltanatbot cloud account or built-in telemetry. Live public market data and optional Telegram/VK
+delivery still require outbound network requests to the services you enable.
 
 > 🐘 *Why the elephant with a raised trunk?* A raised trunk is the classic symbol of good fortune — and the candlesticks rising over its back point the way we all hope the market goes.
 
@@ -42,8 +42,8 @@ Telegram/VK delivery still require outbound network requests to the services you
 
 ### 🧭 Monitoring, automation & research
 - The primary navigation separates **Monitoring** (charts and manual research), **Automation** (Strategies and Robots) and the read-only **Screener** instead of mixing those workflows in one tab.
-- A global **Running** counter opens the browser robots/portfolio center. It groups live exchange accounts and isolated paper robots, and shows available balances/equity, realized P&L, positions and open orders; unavailable margin or borrowing values are labeled instead of inferred.
-- Admins can maintain non-secret Binance/Bybit account metadata, including **own** versus **managed** ownership and enabled state. This is currently an organizational registry: there is still only **one encrypted credential set per exchange**, so additional rows are not independently executable accounts.
+- A global **Running** counter opens the browser robots/portfolio center. It groups the current owner's saved account metadata and isolated paper robots. In `public-http-paper`, paper balance/equity, realized P&L, positions and open orders are available where modeled; private exchange telemetry, margin and borrowing remain unavailable rather than being inferred.
+- Trading-account metadata and dormant legacy credentials are isolated by owner and concrete account. Administrator activation or role management does not grant access to another user's accounts, credentials, workspaces or paper portfolio, and the current profile neither accepts nor decrypts exchange credentials for use.
 
 ### 📈 Charting
 - Custom **canvas chart engine** (no heavy chart library) with its own viewport / time-scale coordinate system.
@@ -77,10 +77,10 @@ Telegram/VK delivery still require outbound network requests to the services you
 - The optimizer offers bounded grid and seeded **genetic parameter search** with crossover, mutation, elitism and train/validation fitness. Only the frozen #1 candidate receives the untouched final test gate; a passing assignment is written back to Blockly under its exact research scope. A separate structural generator creates validated trend, mean-reversion, breakout and momentum IR candidates with reproducible provenance; its browser panel generates diversity but does **not** yet run or rank multi-market fitness.
 - Metrics + trade markers on the chart; share a strategy as a **URL** or a **`.strategy` file** (import as a remixable copy).
 
-### 🤖 Paper & live trading
-- Run any saved strategy as a bot in **paper** (default), **Binance**, or **Bybit** mode.
+### 🤖 Paper trading and automation
+- Run saved strategies as isolated **paper** bots. Binance/Bybit live execution is disabled by the immutable `public-http-paper` runtime profile.
 - Strategy signals are translated into an **Antares-style command language**: `param=value;` params, `::` command chaining, `pause` / `randpause`, `!`/`^` flags and **14 order actions** (market/limit/stop/take-profit, partial closes, reverses, and more).
-- Built-in **paper order engine** with pending limit/stop/TP orders and tick-based fills at real market prices; live orders round to exchange filters and place **exchange-side protective stops**.
+- Built-in **paper order engine** with pending limit/stop/TP orders and tick-based fills at public market prices. Dormant live formatting code remains unavailable to the deployed runtime.
 - A cross-bot portfolio API and dedicated browser robots/portfolio center, Telegram summary, per-bot risk caps + a **kill switch**, and **two-way Telegram control** (`/status` `/stop` `/start` `/kill`).
 - UI-configurable **Telegram** notifications and an authenticated backend configuration path for **VK**, covering start/stop/open/close/error/signal events.
 
@@ -93,7 +93,7 @@ Telegram/VK delivery still require outbound network requests to the services you
 - Pick the crypto **data source** (Binance ⇄ Bybit) right in the Markets panel — the whole chart, sparklines and stream re-point instantly.
 
 ### 🔒 Local-first & secure
-- Exchange API keys are **encrypted at rest** with AES-256-GCM (`node:crypto`) and are never sent back to the browser. The self-hosted backend uses them only to sign the outbound exchange requests you explicitly enable.
+- Legacy exchange API keys, if present from an older installation, remain **encrypted at rest** with AES-256-GCM (`node:crypto`) and are never sent back to the browser. The current Research / Paper profile does not accept or decrypt them for use.
 - PostgreSQL stores accounts, revocable sessions, named workspaces and durable research jobs; the existing built-in **`node:sqlite`** stores keep legacy trading state, encrypted exchange settings and candle/paper journals without an automatic destructive migration.
 - The production terminal is **installable as a PWA** and can reopen its static interface offline. APIs, authentication, quotes, order books, trades and trading commands are never cached or replayed; offline does not mean fresh market data or available execution.
 - Strategy Studio can be made available offline from the top bar as an optional static research bundle; local artifacts stay on-device and trading remains network-only. See [Offline local research](docs/OFFLINE_RESEARCH.md).
@@ -188,17 +188,18 @@ published by the `Deploy documentation site` workflow and is also set as the rep
 | [**Architecture**](docs/ARCHITECTURE.md) | Monorepo layout, backend/frontend tiers, the provider router, the shared strategy IR, end-to-end data flow |
 | [**API reference**](docs/API.md) | Every REST endpoint and WebSocket message — params, types, and `curl` examples |
 | [**Generated endpoint index**](docs/API_ENDPOINTS.generated.md) | Route-presence and access-level index generated from Express sources |
-| [**Strategies & backtesting**](docs/STRATEGIES.md) | Building from blocks, the IR, `runBacktest` / `previewStrategy`, sharing, and live parity |
+| [**Strategies & backtesting**](docs/STRATEGIES.md) | Building from blocks, the IR, `runBacktest` / `previewStrategy`, sharing, and deterministic replay/paper parity |
 | [**Declarative plugins**](docs/PLUGINS.md) | Checksummed local indicator/strategy packages, permissions, limits and trust boundaries |
 | [**Generated block catalog**](docs/BLOCK_CATALOG.generated.md) | Stable Blockly type identifiers and canonical trader-facing help generated from metadata |
 | [**Generated Pine compatibility**](docs/PINE_COMPATIBILITY.generated.md) | Corpus-backed exact, display-only, approximation and rejected feature matrix |
 | [**Arbitrage screener and research reference**](docs/ARBITRAGE_SCREENER.md) | Read-only triangular L2 verification, funding scenarios, fork guide and fail-closed continuous entry basis plus canonical [vocabulary](docs/ARBITRAGE_TAXONOMY.md), [math](docs/ARBITRAGE_MATH_AND_ASSUMPTIONS.md), [data quality](docs/MARKET_DATA_QUALITY.md), [venue status](docs/VENUE_CAPABILITIES.md) and [test gates](docs/ARBITRAGE_TEST_MATRIX.md) |
 | [**Research alerts**](docs/RESEARCH_ALERTS.md) | Protected notification-only policy/outbox UI and runtime, including the still-unconnected engine-producer boundary |
 | [**Network identity**](docs/NETWORK_IDENTITY.md) | Synthetic-only reviewed identity/transfer-proof contract; no real network mapping or transfer execution claim |
-| [**Trading & command language**](docs/TRADING.md) | The Trade tab, all 14 Antares-style actions, paper/Binance/Bybit modes, notifications |
+| [**Trading & command language**](docs/TRADING.md) | The Trade tab, all 14 Antares-style actions, paper mode, dormant legacy exchange contracts and notifications |
 | [**Configuration & deployment**](docs/CONFIGURATION.md) | Env vars, runtime data, exchange keys, encryption, production & hardening checklist |
 | [**Self-hosting with accounts**](docs/SELF_HOSTING.md) | Clone, PostgreSQL secret, first admin, pending-user approval, updates and storage boundaries |
 | [**Capacity for 100 users**](docs/CAPACITY_100_USERS.md) | Measured host headroom, queue/worker limits, monitoring and safe scaling order |
+| [**Pre-HTTPS development roadmap**](docs/PRE_HTTPS_ROADMAP.md) | The active R2-R12 Research/Paper plan, delivered baselines, remaining work, dependencies and release gates |
 | [**Backup & restore**](docs/BACKUP_RESTORE.md) | Verified online SQLite snapshots, checksums, atomic restore and recovery drills |
 | [**Release policy & verification**](docs/RELEASING.md) | Nightly/alpha/beta/stable channels, SBOM, SHA-256 and Sigstore attestation verification |
 | [**Roadmap**](docs/ROADMAP.md) | What has shipped and what's next |
@@ -246,9 +247,9 @@ SaltanatbotV2/
 ## Security & responsible use
 
 - **The application requires an activated account.** Registration is pending until an administrator approves it. The browser receives an HttpOnly, SameSite session cookie; mutations require CSRF and the trade socket uses a session-bound one-time ticket. Token login remains only as an explicit legacy test/demo mode. Database mode protects application REST and market WebSockets; foreign browser origins are also constrained by the CORS allowlist.
-- **Binds to `127.0.0.1` by default.** Set `HOST=0.0.0.0` deliberately, and only behind a **reverse proxy with TLS** + firewall. See the hardening checklist in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+- **Binds to `127.0.0.1` by default.** Before HTTPS exists, expose it only through a private network/VPN/IP allowlist with a firewall; do not place login traffic on an untrusted public HTTP network. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 - **Public HTTP is research/paper only.** The fail-closed default `RUNTIME_PROFILE=public-http-paper` blocks live bots, key writes/decryption for use, signed REST and private exchange WebSockets in the engine as well as the UI. `DEMO_MODE=1` remains a deprecated alias. Keep this profile until a separately audited HTTPS deployment exists.
-- **Your keys stay yours.** Exchange API keys are AES-256-GCM encrypted on disk and never returned to the browser. **Never commit `backend/data/`, `.secrets/` or a PostgreSQL dump.** Use trade-only keys without withdrawal permission.
+- **Do not enter exchange keys over public HTTP.** Existing encrypted values remain dormant. **Never commit `backend/data/`, `.secrets/` or a PostgreSQL dump.**
 
 > ⚠️ **Disclaimer.** SaltanatbotV2 is provided as-is for research and educational purposes. Trading cryptocurrencies carries substantial risk. Nothing here is financial advice — you are solely responsible for any orders placed with your keys. Test on paper first.
 

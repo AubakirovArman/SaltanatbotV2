@@ -1,6 +1,16 @@
-# Trading & the Antares-style command language
+# Paper trading & the Antares-style command language
 
-The Trade tab drives every SaltanatbotV2 bot through a single, exchange-agnostic instruction pipeline: an **Antares-style command string** is parsed into structured steps, each step is normalised into an `ExecOrder`, and that order is executed by an **exchange adapter**. Three adapters implement the same interface — a fully simulated **paper** engine (the default), plus live **Binance** and **Bybit** adapters that talk to the real REST APIs with HMAC-signed requests. This document describes the command language exactly as implemented in `backend/src/trading/commands.ts`, the three execution modes, notifications, and how API keys are encrypted at rest. **Paper mode is the default; live trading only happens when you supply your own API keys, which are encrypted at rest and never returned to the browser.**
+> **Current release boundary — `public-http-paper`:** only research, backtests and paper execution are
+> supported. Do not enter exchange API keys, select Binance/Bybit execution, enable live feature flags
+> or attempt any real-money workflow. The adapter and key-storage sections below are retained only as
+> a dormant legacy/private-live engineering reference for a separate future HTTPS/live release.
+
+The Trade tab drives SaltanatbotV2 paper bots through a single, exchange-agnostic instruction
+pipeline: an **Antares-style command string** is parsed into structured steps, each step is
+normalised into an `ExecOrder`, and the simulated **paper** adapter executes it. This document
+describes the command language exactly as implemented in `backend/src/trading/commands.ts`, the
+current paper workflow, notifications, and the dormant live-adapter code boundary. Backtests and
+paper results do not guarantee future performance and never represent real exchange fills.
 
 ---
 
@@ -12,18 +22,27 @@ as **Automation**, and market discovery as the read-only **Screener**. Automatio
 count and opens the robots/portfolio center without requiring the operator to find a particular bot
 first.
 
-The center combines the state the trading backend can actually prove: live exchange-account and
-isolated paper-bot balance/equity, realized P&L, positions, open orders and associated bots. It has a
-literal empty state when nothing is active. Margin and borrowing are displayed as unavailable when
-the portfolio response does not contain them; the protected Bybit UTA telemetry described in
-[section 4.3](#43-bybit-uta-cross-collateral-and-manual-debt) remains a separate settings workflow.
+In the current release, the center combines the isolated paper state the backend can prove:
+balance/equity, realized P&L, positions, open orders and associated bots. It has a literal empty
+state when nothing is active. Real exchange margin, borrowing and account telemetry are unavailable
+in `public-http-paper`.
 
-Admins can create, rename, enable, disable and remove non-secret Binance/Bybit entries in the
-trading-account registry and label them as **own** or **managed**. Mutations require HTTPS or
-localhost, and an account bound to a bot cannot be disabled or deleted. This registry is currently
-organizational metadata, not credential isolation: SaltanatbotV2 still stores one encrypted API-key
-set per exchange. Additional account rows cannot authenticate or execute live orders independently,
-and the registry itself supplies no margin or borrowing data.
+Legacy Binance/Bybit registry and credential code is not an operator workflow in this release.
+Existing installations may retain dormant metadata for compatibility, but users and administrators
+must not add keys or treat those rows as executable accounts before the separate HTTPS/live release.
+
+## Current paper workflow
+
+1. Sign in with an activated account and open **Trading** or **Automation → Robots**.
+2. Save and validate a strategy in Strategy Studio.
+3. Create a bot and explicitly select **Paper (simulation)**.
+4. Choose the symbol, timeframe, virtual position size and simulated leverage.
+5. Start the bot, then monitor its isolated virtual balance, positions, open orders, fills and logs.
+6. Stop the bot or use the paper-only controls when the experiment is complete.
+
+Paper bots require no exchange credentials and cannot withdraw funds or submit exchange requests.
+If a screen or imported legacy configuration names Binance, Bybit, API keys, borrowing or live
+execution, leave it unused in the current release.
 
 ## 1. The command language
 
@@ -256,13 +275,17 @@ action allowlist below; a risk limit never converts an unsupported compound comm
 
 ---
 
-## 4. Live execution — Binance & Bybit
+## 4. Dormant legacy/private-live reference — Binance & Bybit
 
-Setting a bot's `exchange` to `binance` or `bybit` selects a live adapter with the stored keys
-(`keys:binance` / `keys:bybit`). Binance USDⓈ-M and Bybit linear remain experimental. Bybit spot is
-also experimental and requires `ENABLE_LIVE_SPOT`; Binance live spot is disabled until the project
-has authenticated spot execution accounting. If no keys are stored, signed calls fail with
-`"… API keys are not set"` — public price reads still work, but nothing can trade.
+> **Not available in `public-http-paper`.** This section documents dormant implementation details for
+> maintainers; it is not a setup guide. Do not store exchange credentials, change `DEMO_MODE`, enable
+> `ENABLE_LIVE_SPOT`, arm live trading or create a Binance/Bybit execution bot. A future release must
+> introduce HTTPS, isolated per-user credentials, reviewed deployment controls and a separately
+> verified live rollout before any of these paths may become operator-accessible.
+
+The repository retains Binance and Bybit adapter code and legacy setting names
+(`keys:binance` / `keys:bybit`) for compatibility and future hardening. In the current release,
+non-paper execution remains outside the supported runtime contract.
 
 Live bots are fail-closed unless `maxPositionQuote`, `maxOrderQuote`, `maxDailyLossQuote` and
 `maxOpenOrders` are all positive; leverage is the bot's maximum permitted leverage. The server
@@ -313,11 +336,12 @@ distinct `…-safety` client identity and must return its own venue order ID. It
 separately and both entry/close executions must still reach authenticated accounting; a missing ID or
 failed close is surfaced explicitly as a possible unprotected-position incident.
 
-Exchange-key storage and every risk-increasing live/account mutation require HTTPS or a direct
-localhost socket. `X-Forwarded-Proto` is honoured only when the operator configured `TRUST_PROXY`.
-Paper trading is not subject to this transport gate.
+The retained live code includes a transport gate for exchange-key storage and risk-increasing
+mutations. Passing that gate through HTTPS or localhost would still **not** enable live execution in
+`public-http-paper`; transport security alone is not authorization for a dormant feature.
+`X-Forwarded-Proto` is honoured only when the operator configured `TRUST_PROXY`.
 
-### Account-level emergency stop
+### Dormant account-level emergency-stop design
 
 `POST /api/trade/kill` is a durable, idempotent workflow rather than a UI-only bot stop. It first
 disarms live trading and atomically changes the execution gate to `stopping`, so strategies and
@@ -335,14 +359,15 @@ restored as `partial_failure`; unresolved orders, positions, adapter errors, or 
 produce `partial_failure` (HTTP 207), never a false success. Live trading cannot be re-armed until a
 new retry reaches `terminal` with `ok=true`.
 
-Bybit live spot is fail-closed by default and requires the explicit `ENABLE_LIVE_SPOT` override. The
+The dormant Bybit live-spot path is fail-closed by default and contains an
+`ENABLE_LIVE_SPOT` override in legacy code. The
 engine tracks bot-attributed quantity, weighted average, base/quote fee assets and remaining quantity
 from deduplicated confirmed v5 executions. Automated and manual bot closes use only that attributed
 quantity, never the account-wide base balance. A restart restores inventory but pauses the bot until
 the operator verifies the exchange balance and confirms resume. Binance live spot remains disabled
 until authenticated spot execution accounting exists.
-Paper and futures testnet validation should still be completed first; Bybit live spot remains
-experimental.
+A future live rollout would require paper and funded testnet validation before any mainnet review;
+the retained Bybit live-spot path remains experimental.
 
 No live path is presented as mainnet-ready. The continuous funded 7–14-day Binance/Bybit exchange
 soak is explicitly excluded from the current verified scope.
@@ -389,7 +414,7 @@ rather than falling back to an unrelated account balance.
 
 Before a live bot resumes after process restart, the engine sequentially queries signed order status for every `intent`, `unknown`, `accepted`, and `partially_filled` journal row. A matching open order is only a fallback proof for ordinary order placement; it cannot prove that an interrupted cancel or legacy replace command completed. Missing, conflicting, regressing, or action-ambiguous evidence leaves the existing durable state intact, records crash-left intent as `unknown`, and pauses trading for operator review. Already-terminal journal rows are not blindly queried or rewritten, but any unaccounted terminal execution remains reserved and blocks or pauses automation.
 
-### 4.1 Binance (`exchange/binance.ts`)
+### 4.1 Dormant Binance adapter (`exchange/binance.ts`)
 
 - **Markets:** signed REST code exists for Spot (`api.binance.com`) and USDⓈ-M Futures
   (`fapi.binance.com`), but live Spot submission is disabled until authenticated spot execution
@@ -404,7 +429,7 @@ Before a live bot resumes after process restart, the engine sequentially queries
 - **Set:** adapter methods exist for futures `LEVERAGE`, `ISOLATEDMARGIN` (`marginType`) and
   `DUALSIDE` (`positionSide/dual`), but the common manual live preflight currently blocks `set`.
 
-### 4.2 Bybit (`exchange/bybit.ts`)
+### 4.2 Dormant Bybit adapter (`exchange/bybit.ts`)
 
 - **Markets:** v5 unified API. `linear` category for USDT futures, `spot` for spot.
 - **Signing:** execution and account operations share `exchange/bybitClient.ts`; it builds an **HMAC-SHA256** signature over `timestamp + apiKey + recvWindow + payload` (query string for GET, JSON body for POST) and sends `X-BAPI-API-KEY`, `X-BAPI-TIMESTAMP`, `X-BAPI-RECV-WINDOW`, and `X-BAPI-SIGN` headers with `recvWindow=5000`. A non-zero `retCode` is raised as an error.
@@ -416,21 +441,31 @@ Before a live bot resumes after process restart, the engine sequentially queries
   (`switch-isolated`) and `DUALSIDE` (`switch-mode`), but the common manual live preflight currently
   blocks `set`.
 
-### 4.3 Bybit UTA cross collateral and manual debt
+### 4.3 Dormant Bybit UTA cross-collateral and debt design
 
-The Trade settings screen reads Bybit Unified Trading Account margin and debt without flattening the account into one balance. It shows account IMR/MMR, initial and maintenance margin, per-coin wallet/equity/USD value, spot versus derivatives liability, accrued interest, hourly variable rate, borrowing quota/usage, collateral switches and platform collateral restrictions.
+This code is not exposed as a supported workflow in `public-http-paper`. Its retained design reads
+Bybit Unified Trading Account margin and debt without flattening the account into one balance. It
+models account IMR/MMR, initial and maintenance margin, per-coin wallet/equity/USD value, spot versus
+derivatives liability, accrued interest, hourly variable rate, borrowing quota/usage, collateral
+switches and platform collateral restrictions.
 
-Mutations are deliberately separated:
+The dormant mutation design separates:
 
 - `POST /bybit/uta/borrow` creates only a manually confirmed variable-rate loan. Live trading must be armed; the server rejects isolated margin, missing funded collateral, unavailable coins, account MMR at or above 50%, and projected borrowing usage above 80%.
 - `POST /bybit/uta/repay` uses Bybit's no-conversion repayment by default. Allowing Bybit to convert collateral requires a separate second confirmation because it can sell collateral and charge a conversion fee.
 - `POST /bybit/uta/collateral` explicitly changes a supported coin's collateral switch. USDT/USDC are exchange-managed and cannot be toggled here.
 
-A Bybit futures bot only enters this mode when **Use Bybit UTA cross collateral** is selected. Start then requires a Unified Trading Account, a funded enabled collateral asset and a passing risk snapshot. Strategy code cannot request a loan: borrow and repay remain operator-only admin actions, CSRF-protected and audit logged. The browser disables all UTA mutations on insecure public HTTP; configure HTTPS before using this surface.
+The future live release would have to keep borrowing and repayment operator-only, CSRF-protected and
+audit logged. The current release disables this surface completely; do not enter keys, borrow funds,
+toggle collateral or try to work around the public-HTTP boundary.
 
 ### 4.4 The strategy-driven path
 
-Beyond manual commands, a running strategy emits entry/exit intents on each closed bar (`onClosedBar()`). Paper entries and live entries with trailing protection keep stop/target management inside the engine (`onTick()`). Live futures entries with fixed stop or target request exchange-side protection so it survives a process/network failure. The adapter must explicitly confirm every requested protection order. If protection fails after the entry acknowledgement, the accepted entry remains managed and reserved, the bot pauses, and the separately identified best-effort emergency close is reported without pretending the entry was rejected. Position sizing follows the bot's `sizeMode` when the strategy does not specify a size.
+Beyond manual commands, a running strategy emits entry/exit intents on each closed bar
+(`onClosedBar()`). In the current release those intents are handled only by the paper engine, which
+keeps stop/target management inside `onTick()`. The remaining live-protection behavior in this
+section is dormant reference code and must not be treated as an available execution mode. Position
+sizing follows the bot's `sizeMode` when the strategy does not specify a size.
 
 ---
 
@@ -454,9 +489,15 @@ A channel is only used when it is `enabled` **and** its token and destination id
 
 ---
 
-## 6. API-key storage & encryption at rest
+## 6. Dormant API-key storage reference
 
-Secrets are stored via the `store.ts` settings table in a local SQLite database (`data/trading.db`), with an `encrypted` flag per row. Exchange keys are written encrypted and are **never sent back to the browser** — they are read server-side only, inside `buildAdapter()`.
+> `public-http-paper` does not require exchange credentials. Do not enter or provision API keys for
+> the current release. The details below describe retained legacy storage code for migration and
+> security review before the separate HTTPS/live release.
+
+Legacy secrets are stored via the `store.ts` settings table in a local SQLite database
+(`data/trading.db`), with an `encrypted` flag per row. Retained exchange-key rows are encrypted and
+are not returned to the browser.
 
 **Key derivation.** Only a first run with no `trading.db` may atomically create `data/.secret` from
 32 random bytes with `0o600` permissions. Existing databases require their existing owner-only,
@@ -474,11 +515,16 @@ data/.secret          → 32 random bytes, mode 0600, scrypt → 256-bit key
 settings.value        → "<iv>.<tag>.<ciphertext>"  (AES-256-GCM, per-row IV)
 ```
 
-> **Security summary:** Paper mode is the default and needs no credentials. Live trading requires *your own* exchange API keys. Those keys are encrypted at rest with a per-install key and are only ever decrypted on the server to sign requests — they are never returned to the frontend.
+> **Current security summary:** paper mode needs no exchange credentials and is the only supported
+> execution mode. Encryption-at-rest does not make public HTTP suitable for credentials or live
+> trading. Key entry and all live workflows remain unavailable until the separate HTTPS/live release.
 
 ---
 
 ## 7. Worked examples
+
+All commands in this section are for a bot explicitly configured with `exchange=paper`. Do not run
+them against an exchange adapter or reinterpret simulated fills as executable venue instructions.
 
 **Simple spot market buy (default `neworder`):**
 
@@ -530,7 +576,7 @@ set=LEVERAGE;symbol=BTCUSDT;lev=10;mktype=futures::action=cancelall;symbol=BTCUS
 
 ---
 
-## 8. Rate limits and host clock
+## 8. Dormant live-adapter rate-limit and host-clock reference
 
 Signed Binance and Bybit calls share one in-process circuit per exchange. HTTP `429` and Binance
 `418` open the circuit for `Retry-After` (with bounded safe defaults), so other bots cannot continue
@@ -541,9 +587,10 @@ and retains headroom for protection/reconciliation. Binance
 `X-MBX-USED-WEIGHT-1M` and Bybit `X-Bapi-Limit*` headers reconcile local usage;
 exhaustion opens the circuit until reset instead of waiting for HTTP 429.
 
-Binance error `-1021` and Bybit error `10002` are treated as explicit host clock-skew failures. Stop
-live execution and synchronize the operating-system clock (for example with NTP/chrony) before
-resuming. Increasing `recvWindow` is not a substitute for a reliable host clock.
+Binance error `-1021` and Bybit error `10002` are treated as explicit host clock-skew failures in the
+dormant adapter code. A future live release must require a synchronized operating-system clock
+(for example through NTP/chrony); increasing `recvWindow` is not a substitute for a reliable host
+clock.
 
 ## See also
 

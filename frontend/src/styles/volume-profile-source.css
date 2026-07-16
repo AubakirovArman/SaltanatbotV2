@@ -60,3 +60,15 @@
     display: none;
   }
 }
+
+@media (max-width: 360px) {
+  .volume-profile-source-field {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .volume-profile-source-field select {
+    inline-size: 100%;
+    min-inline-size: 0;
+  }
+}

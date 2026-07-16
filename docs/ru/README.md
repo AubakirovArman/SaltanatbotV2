@@ -9,7 +9,7 @@ API-схем и инженерных внутренних контрактов.
 - [Обзор и быстрый старт](../../README.ru.md)
 - [График и доступные табличные данные](CHART.md)
 - [Студия стратегий, импорт Pine Script, бэктест и оптимизация](STRATEGY_STUDIO.md)
-- [Paper/live trading, ключи, безопасность и журналы](TRADING.md)
+- [Paper trading, неактивные legacy-ключи, безопасность и журналы](TRADING.md)
 - [Возможности бирж и operator checklist](EXCHANGE_CAPABILITIES.md)
 - [Арбитражный скринер: triangular L2, funding-сценарии и справочник вилок](ARBITRAGE_SCREENER.md)
 - [Защищённая телеметрия комиссий, займа, сетей и stablecoin FX](ACCOUNT_TELEMETRY.md)

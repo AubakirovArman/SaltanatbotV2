@@ -51,6 +51,21 @@
   container-type: inline-size;
 }
 
+@media (max-width: 761px) and (pointer: coarse) {
+  .chart-panel:has(.compact-chart :is(.indicator-menu, .indicator-editor, .compare-menu, .compare-settings)),
+  .multi-chart-grid:has(.compact-chart :is(.indicator-menu, .indicator-editor, .compare-menu, .compare-settings)),
+  .multi-chart-pane:has(.compact-chart :is(.indicator-menu, .indicator-editor, .compare-menu, .compare-settings)),
+  .chart-surface.compact-chart:has(:is(.indicator-menu, .indicator-editor, .compare-menu, .compare-settings)),
+  .chart-surface.compact-chart:has(:is(.indicator-menu, .indicator-editor, .compare-menu, .compare-settings)) > .chart-stage {
+    overflow: visible;
+  }
+
+  .multi-chart-pane:has(.compact-chart :is(.indicator-menu, .indicator-editor, .compare-menu, .compare-settings)) {
+    z-index: 40;
+    content-visibility: visible;
+  }
+}
+
 .multi-chart-pane.active { box-shadow: inset 0 0 0 2px var(--accent); }
 .multi-chart-pane:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
 
@@ -313,6 +328,9 @@
 }
 
 .chart-surface {
+  --chart-axis-inline-size: 74px;
+  --chart-axis-safe-inline: 90px;
+  --chart-bottom-control-safe-block: 30px;
   min-block-size: 0;
   min-inline-size: 0;
   display: grid;
@@ -432,9 +450,9 @@
 .price-axis-control {
   position: absolute;
   z-index: 8;
-  inset-block: 0 30px;
+  inset-block: 0 var(--chart-bottom-control-safe-block);
   inset-inline-end: 0;
-  inline-size: 74px;
+  inline-size: var(--chart-axis-inline-size);
   border-inline-start: 1px solid transparent;
   background: transparent;
   cursor: ns-resize;
@@ -568,6 +586,10 @@
 .price-representation-panel button:hover { border-color: var(--accent); color: var(--accent); }
 
 @media (pointer: coarse) {
+  .chart-surface {
+    --chart-bottom-control-safe-block: 56px;
+  }
+
   .price-representation-control summary,
   .price-representation-input input,
   .price-representation-panel button,
@@ -869,7 +891,7 @@
 }
 
 .compact-chart :is(.indicator-chip, .compare-chip) { flex: 0 0 auto; }
-.compact-chart :is(.chart-indicator-overlay, .compare-control) { max-inline-size: calc(100% - 16px); }
+.compact-chart :is(.chart-indicator-overlay, .compare-control) { max-inline-size: calc(100% - var(--chart-axis-safe-inline)); }
 
 .session-liquidity-badge.compact[open] {
   inline-size: min(210px, calc(100% - 90px));
@@ -1175,27 +1197,33 @@
 
 .chart-data-panel {
   position: absolute;
-  inset-inline-end: 8px;
+  inset-inline-end: var(--chart-axis-safe-inline, 90px);
   inset-block-end: 30px;
   z-index: 9;
   display: grid;
   justify-items: end;
-  max-inline-size: min(780px, calc(100% - 16px));
+  min-inline-size: 44px;
+  max-inline-size: min(780px, calc(100% - var(--chart-axis-safe-inline, 90px) - 8px));
   max-block-size: calc(100% - 44px);
   pointer-events: auto;
 }
 
 .chart-data-panel.open {
-  inline-size: min(780px, calc(100% - 16px));
+  inline-size: min(780px, calc(100% - var(--chart-axis-safe-inline, 90px) - 8px));
 }
 
 .chart-data-toggle {
+  min-block-size: 24px;
+  max-inline-size: 100%;
   padding: 4px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--chart-bg) 92%, transparent);
   color: var(--muted);
   font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -1203,6 +1231,13 @@
 .chart-data-toggle:focus-visible {
   color: var(--text);
   border-color: var(--accent-line);
+}
+
+@media (pointer: coarse) {
+  .chart-data-toggle {
+    min-block-size: 44px;
+    min-inline-size: 44px;
+  }
 }
 
 .chart-data-content {

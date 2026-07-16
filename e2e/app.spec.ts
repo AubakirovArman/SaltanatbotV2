@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { createPluginSigningKeyPair, encodeSignedPluginFile, parsePluginFile, rotatePluginSigningKeyPair, type PluginManifest } from "@saltanatbotv2/plugin-core";
 import { readFile } from "node:fs/promises";
@@ -187,6 +187,167 @@ test("adds, configures and removes the visible-range volume profile accessibly",
   await page.getByRole("button", { name: "Remove Volume Profile" }).click();
   await expect(page.getByRole("button", { name: "Remove Volume Profile" })).toHaveCount(0);
   await expect(page.locator(".volume-profile-badge")).toHaveCount(0);
+});
+
+test("keeps mobile touch indicator controls clear of the price axis in single and split layouts", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "CDP touch emulation is Chromium-specific.");
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const client = await page.context().newCDPSession(page);
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await expect.poll(() => page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+
+  const expectTouchTarget = async (target: Locator) => {
+    const box = await target.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  };
+
+  const expectOverlayClearOfAxis = async (scope = page.locator(".multi-chart-pane.primary")) => {
+    const overlayBox = await scope.locator(".chart-indicator-overlay").boundingBox();
+    const axisBox = await scope.getByRole("slider", { name: /Price axis scale/i }).boundingBox();
+    expect(overlayBox).not.toBeNull();
+    expect(axisBox).not.toBeNull();
+    expect(overlayBox!.x + overlayBox!.width).toBeLessThanOrEqual(axisBox!.x + 1);
+  };
+
+  const expectChartDataClearOfAxis = async (scope: Locator) => {
+    const toggle = scope.locator(".chart-data-toggle");
+    const toggleBox = await toggle.boundingBox();
+    const axisBox = await scope.getByRole("slider", { name: /Price axis scale/i }).boundingBox();
+    expect(toggleBox).not.toBeNull();
+    expect(axisBox).not.toBeNull();
+    expect(toggleBox!.x + toggleBox!.width).toBeLessThanOrEqual(axisBox!.x + 1);
+    await expectTouchTarget(toggle);
+  };
+
+  const primary = page.locator(".multi-chart-pane.primary");
+  await expectOverlayClearOfAxis(primary);
+  await expectTouchTarget(primary.locator(".indicator-add"));
+  await expectTouchTarget(primary.locator(".compare-add"));
+
+  await primary.locator(".indicator-add").click();
+  await page.getByRole("menuitem", { name: /Volume Profile/i }).click();
+  const settings = page.getByRole("dialog", { name: "Volume Profile settings" });
+  await expect(settings).toBeVisible();
+  const settingsBox = await settings.boundingBox();
+  const priceAxisBox = await primary.getByRole("slider", { name: /Price axis scale/i }).boundingBox();
+  expect(settingsBox).not.toBeNull();
+  expect(priceAxisBox).not.toBeNull();
+  expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(priceAxisBox!.x + 1);
+  const closeSettings = settings.getByRole("button", { name: "Close indicator editor" });
+  await expectTouchTarget(closeSettings);
+  await closeSettings.click();
+  await expect(settings).toBeHidden();
+
+  const indicatorStrip = primary.locator(".indicator-strip");
+  await indicatorStrip.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+  const removeProfile = primary.getByRole("button", { name: "Remove Volume Profile" });
+  await expect(removeProfile).toBeVisible();
+  const removeBox = await removeProfile.boundingBox();
+  const currentAxisBox = await primary.getByRole("slider", { name: /Price axis scale/i }).boundingBox();
+  expect(removeBox).not.toBeNull();
+  expect(currentAxisBox).not.toBeNull();
+  expect(removeBox!.x + removeBox!.width).toBeLessThanOrEqual(currentAxisBox!.x + 1);
+  expect(removeBox!.width).toBeGreaterThanOrEqual(44);
+  await removeProfile.click();
+
+  const axisBox = await primary.getByRole("slider", { name: /Price axis scale/i }).boundingBox();
+  const scaleBox = await primary.locator(".scale-toggle").boundingBox();
+  expect(axisBox).not.toBeNull();
+  expect(scaleBox).not.toBeNull();
+  expect(axisBox!.y + axisBox!.height).toBeLessThanOrEqual(scaleBox!.y + 1);
+  await expectChartDataClearOfAxis(primary);
+
+  await primary.locator(".compare-add").click();
+  const compareMenu = primary.locator(".compare-menu");
+  await expect(compareMenu).toBeVisible();
+  await expectTouchTarget(compareMenu.locator(".compare-search"));
+  const firstCompareOption = compareMenu.getByRole("option").first();
+  await expect(firstCompareOption).toBeVisible();
+  await expectTouchTarget(firstCompareOption);
+  await firstCompareOption.click();
+  const compareChip = primary.locator(".compare-chip").first();
+  await expect(compareChip).toBeVisible();
+  for (const button of await compareChip.locator("button").all()) await expectTouchTarget(button);
+  const compareSettings = primary.locator(".compare-settings");
+  await expect(compareSettings).toBeVisible();
+  await expectTouchTarget(compareSettings.locator("header button"));
+  await compareSettings.locator("header button").click();
+  await expect(compareSettings).toBeHidden();
+  await compareChip.locator("button").last().click();
+  await expect(compareChip).toHaveCount(0);
+
+  await openMobileTools(page);
+  await page.getByRole("button", { name: "Chart layout" }).click();
+  await page.getByRole("menuitemradio", { name: "Vertical split" }).click();
+  const mobileTools = page.getByRole("button", { name: "More tools" });
+  if ((await mobileTools.getAttribute("aria-expanded")) === "true") await mobileTools.click();
+  await expect(page.locator(".multi-chart-pane")).toHaveCount(2);
+  await expect(primary.locator(".compact-chart")).toBeVisible();
+  await expectOverlayClearOfAxis(primary);
+  await expectChartDataClearOfAxis(primary);
+
+  await primary.locator(".indicator-add").click();
+  const indicatorMenu = primary.locator(".indicator-menu");
+  await expect(indicatorMenu).toBeVisible();
+  const menuItems = indicatorMenu.getByRole("menuitem");
+  expect(await menuItems.count()).toBeGreaterThan(8);
+  const indicatorMenuBox = await indicatorMenu.boundingBox();
+  const primaryPaneBox = await primary.boundingBox();
+  const viewport = page.viewportSize();
+  expect(indicatorMenuBox).not.toBeNull();
+  expect(primaryPaneBox).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(indicatorMenuBox!.x).toBeGreaterThanOrEqual(8);
+  expect(indicatorMenuBox!.y).toBeGreaterThanOrEqual(96);
+  expect(indicatorMenuBox!.x + indicatorMenuBox!.width).toBeLessThanOrEqual(viewport!.width - 8);
+  expect(indicatorMenuBox!.y + indicatorMenuBox!.height).toBeLessThanOrEqual(viewport!.height - 8);
+  expect(indicatorMenuBox!.y + indicatorMenuBox!.height).toBeGreaterThan(primaryPaneBox!.y + primaryPaneBox!.height + 44);
+  const crossingPoint = {
+    x: indicatorMenuBox!.x + indicatorMenuBox!.width / 2,
+    y: Math.min(indicatorMenuBox!.y + indicatorMenuBox!.height - 8, primaryPaneBox!.y + primaryPaneBox!.height + 16)
+  };
+  expect(crossingPoint.y).toBeGreaterThan(primaryPaneBox!.y + primaryPaneBox!.height);
+  expect(
+    await indicatorMenu.evaluate((element, point) => {
+      const hit = document.elementFromPoint(point.x, point.y);
+      return Boolean(hit && element.contains(hit));
+    }, crossingPoint)
+  ).toBe(true);
+  const lastMenuItem = menuItems.last();
+  await lastMenuItem.scrollIntoViewIfNeeded();
+  await expectTouchTarget(lastMenuItem);
+  const lastMenuItemBox = await lastMenuItem.boundingBox();
+  expect(lastMenuItemBox).not.toBeNull();
+  expect(lastMenuItemBox!.y).toBeGreaterThanOrEqual(indicatorMenuBox!.y);
+  expect(lastMenuItemBox!.y + lastMenuItemBox!.height).toBeLessThanOrEqual(indicatorMenuBox!.y + indicatorMenuBox!.height);
+  expect(
+    await lastMenuItem.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return Boolean(hit && element.contains(hit));
+    })
+  ).toBe(true);
+  await page.getByRole("menuitem", { name: /Volume Profile/i }).click();
+  await expect(settings).toBeVisible();
+  const compactSettingsBox = await settings.boundingBox();
+  expect(compactSettingsBox).not.toBeNull();
+  expect(compactSettingsBox!.x).toBeGreaterThanOrEqual(8);
+  expect(compactSettingsBox!.x + compactSettingsBox!.width).toBeLessThanOrEqual(382);
+  expect(compactSettingsBox!.y).toBeGreaterThanOrEqual(96);
+  expect(compactSettingsBox!.y + compactSettingsBox!.height).toBeLessThanOrEqual(836);
+  await settings.getByRole("button", { name: "Close indicator editor" }).click();
+  await expect(settings).toBeHidden();
+
+  await page.setViewportSize({ width: 761, height: 844 });
+  await expect.poll(() => page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+  await expect.poll(() => page.evaluate(() => matchMedia("(max-width: 760px)").matches)).toBe(false);
+  await expectTouchTarget(primary.locator(".indicator-add"));
+  await expectTouchTarget(primary.locator(".compare-add"));
+  await expectChartDataClearOfAxis(primary);
 });
 
 test("shows and toggles the semantic UTC session liquidity map", async ({ page }) => {
@@ -2396,7 +2557,11 @@ test("keeps every mobile Strategy Studio pane full-width and operable", { tag: "
           const gridElement = pane.closest(".strategy-grid");
           if (!gridElement) return false;
           const gridRect = gridElement.getBoundingClientRect();
-          return gridElement.scrollWidth <= gridElement.clientWidth + 1 && paneRect.width > 0 && paneRect.height > 0 && paneRect.left >= gridRect.left - 1 && paneRect.right <= gridRect.right + 1;
+          return gridElement.scrollWidth <= gridElement.clientWidth + 1
+            && paneRect.width > 0
+            && paneRect.height >= gridRect.height - 2
+            && paneRect.left >= gridRect.left - 1
+            && paneRect.right <= gridRect.right + 1;
         })
       )
       .toBe(true);
@@ -2435,6 +2600,15 @@ test("keeps every mobile Strategy Studio pane full-width and operable", { tag: "
   await expect(page.locator(".blocklySvg")).toBeVisible({ timeout: 20_000 });
   await expectPaneFits(".strategy-authoring");
   expect(await grid.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+
+  for (const width of [320, 760]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(paneTabs).toBeVisible();
+    await expectPaneFits(".strategy-authoring");
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1))
+      .toBe(true);
+  }
 });
 
 test("reconnects the market stream without duplicating candles", async ({ page }) => {
