@@ -1,5 +1,6 @@
 import type { ErrorRequestHandler } from "express";
 import { IdentityError } from "../identity/service.js";
+import { RuntimeProfileError } from "../runtimeProfile.js";
 
 export const apiErrorHandler: ErrorRequestHandler = (error, request, response, next) => {
   if (response.headersSent) {
@@ -8,6 +9,10 @@ export const apiErrorHandler: ErrorRequestHandler = (error, request, response, n
   }
   if (error instanceof IdentityError) {
     response.status(error.status).json({ error: error.message, code: error.code });
+    return;
+  }
+  if (error instanceof RuntimeProfileError) {
+    response.status(403).json({ error: error.message, code: error.code });
     return;
   }
   const bodyError = error as { status?: unknown; type?: unknown };

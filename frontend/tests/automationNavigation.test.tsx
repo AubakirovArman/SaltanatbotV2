@@ -5,6 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import { TopBar } from "../src/components/TopBar";
 import type { AppMode } from "../src/app/useAppShell";
 
+vi.mock("../src/trading/useRunningBotsSummary", () => ({
+  useRunningBotsSummary: () => ({ count: 2, status: "ready", paperOnly: true, refresh: vi.fn() })
+}));
+
 describe("primary workspace navigation", () => {
   it("groups the existing modes into Monitoring, Automation and Screener and opens the robots center", async () => {
     const container = document.createElement("div");
@@ -25,8 +29,6 @@ describe("primary workspace navigation", () => {
           locale="ru"
           leftOpen
           rightOpen
-          runningBotsCount={2}
-          runningBotsStatus="ready"
           panelsSwapped={false}
           workspaces={[]}
           layoutPreset="single"
@@ -58,6 +60,7 @@ describe("primary workspace navigation", () => {
 
     await act(async () => root.render(<Harness />));
     const primary = container.querySelector<HTMLElement>('nav[aria-label="Основные пространства"]');
+    expect(container.querySelector(".runtime-profile-badge")?.textContent).toContain("Research / Paper");
     expect(primary?.textContent).toContain("Мониторинг");
     expect(primary?.textContent).toContain("Автоматизация");
     expect(primary?.textContent).toContain("Скринер");

@@ -43,6 +43,7 @@ vi.mock("../src/trading/store.js", () => {
     updateTradingAccountForOwner: () => false,
     deleteTradingAccountForOwner: () => false,
     getTradingAccountCredentialsForOwner: () => undefined,
+    hasTradingAccountCredentialsForOwner: () => false,
     setTradingAccountCredentialsForOwner: () => undefined,
     deleteTradingAccountCredentialsForOwner: () => false,
     listBotsForOwner: (owner: string) => owned(state.bots, owner),

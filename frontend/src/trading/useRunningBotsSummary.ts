@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthRoot";
 import { RUNNING_BOTS_CHANGED_EVENT, TRADING_SESSION_CHANGED_EVENT } from "./sessionEvents";
 import { checkAuth, listBots } from "./tradeClient";
+import { resolveTradingRuntime } from "./runtimeProfile";
 
 export type RunningBotsSummaryStatus = "loading" | "ready" | "locked" | "error";
 
 export interface RunningBotsSummary {
   count?: number;
+  paperOnly?: boolean;
   status: RunningBotsSummaryStatus;
   refresh: () => void;
 }
@@ -18,6 +20,7 @@ export interface RunningBotsSummary {
 export function useRunningBotsSummary(): RunningBotsSummary {
   const accountAuth = useAuth();
   const [count, setCount] = useState<number>();
+  const [paperOnly, setPaperOnly] = useState<boolean>();
   const [status, setStatus] = useState<RunningBotsSummaryStatus>("loading");
   const mounted = useRef(true);
   const inFlight = useRef(false);
@@ -30,12 +33,15 @@ export function useRunningBotsSummary(): RunningBotsSummary {
         if (accountAuth.authRequired && !accountAuth.tradingAvailable) {
           if (mounted.current) {
             setCount(undefined);
+            setPaperOnly(undefined);
             setStatus("locked");
           }
           return;
         }
         const auth = await checkAuth(undefined, !accountAuth.authRequired);
         if (!mounted.current) return;
+        const runtime = resolveTradingRuntime(auth);
+        setPaperOnly(runtime.paperOnly);
         if (!auth.ok) {
           setCount(undefined);
           setStatus("locked");
@@ -43,7 +49,7 @@ export function useRunningBotsSummary(): RunningBotsSummary {
         }
         const bots = await listBots();
         if (!mounted.current) return;
-        setCount(bots.filter((bot) => bot.status === "running").length);
+        setCount(bots.filter((bot) => bot.status === "running" && (!runtime.paperOnly || bot.exchange === "paper")).length);
         setStatus("ready");
       })
       .catch(() => {
@@ -74,5 +80,5 @@ export function useRunningBotsSummary(): RunningBotsSummary {
     };
   }, [refresh]);
 
-  return { count, status, refresh };
+  return { count, paperOnly, status, refresh };
 }

@@ -63,6 +63,7 @@ vi.mock("../src/trading/store.js", () => {
       return storeState.accounts.delete(accountId);
     },
     getTradingAccountCredentialsForOwner: (ownerUserId: string, accountId: string) => clone(storeState.credentials.get(`${ownerUserId}:${accountId}`)),
+    hasTradingAccountCredentialsForOwner: (ownerUserId: string, accountId: string) => storeState.credentials.has(`${ownerUserId}:${accountId}`),
     setTradingAccountCredentialsForOwner: (ownerUserId: string, accountId: string, value: unknown) => storeState.credentials.set(`${ownerUserId}:${accountId}`, clone(value)),
     deleteTradingAccountCredentialsForOwner: (ownerUserId: string, accountId: string) => storeState.credentials.delete(`${ownerUserId}:${accountId}`),
     listFillsForOwner: (ownerUserId: string, botId: string) => ownedBot(ownerUserId, botId) ? clone(storeState.fills.get(botId) ?? []) : [],
@@ -76,6 +77,16 @@ vi.mock("../src/trading/store.js", () => {
     listAuditLogForOwner: (ownerUserId: string, limit: number) => storeState.audit.filter((row) => ownerOf(row) === ownerUserId).slice(0, limit).map(clone),
     getSetting: (key: string) => clone(storeState.settings.get(key)),
     setSetting: (key: string, value: unknown) => storeState.settings.set(key, clone(value)),
+    disarmAllLiveTradingSettings: () => {
+      let changed = 0;
+      for (const key of storeState.settings.keys()) {
+        if (key === "liveTradingEnabled" || (key.startsWith("owner:") && key.endsWith(":liveTradingEnabled"))) {
+          storeState.settings.set(key, false);
+          changed += 1;
+        }
+      }
+      return changed;
+    },
     deleteSetting: (key: string) => storeState.settings.delete(key),
     insertFill: () => true,
     listFills: () => [],

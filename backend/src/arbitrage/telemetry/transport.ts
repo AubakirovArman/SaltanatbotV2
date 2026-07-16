@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import type { ExchangeKeys } from "../../trading/exchange/binance.js";
 import { getExchangeRequestGuard, type ExchangeRequestGuard } from "../../trading/exchange/requestGuard.js";
 import { boundedFetchJson, invalid, object, safeMessage } from "./helpers.js";
+import { assertPrivateExchangeAccess, getRuntimePolicy, type RuntimePolicy } from "../../runtimeProfile.js";
 
 export interface ReadonlyTelemetryResponse {
   payload: unknown;
@@ -24,6 +25,7 @@ export interface ReadonlyTelemetryTransportOptions {
   binanceSpotBase?: string;
   binanceFuturesBase?: string;
   bybitBase?: string;
+  runtimePolicy?: RuntimePolicy;
 }
 
 interface EndpointPolicy {
@@ -55,6 +57,7 @@ export class BinanceReadonlyTelemetryTransport implements BinanceTelemetryReques
   private readonly guard: ExchangeRequestGuard;
   private readonly spotBase: string;
   private readonly futuresBase: string;
+  private readonly runtimePolicy: RuntimePolicy;
 
   constructor(private readonly keys: ExchangeKeys, options: ReadonlyTelemetryTransportOptions = {}) {
     this.fetcher = options.fetch ?? fetch;
@@ -63,9 +66,11 @@ export class BinanceReadonlyTelemetryTransport implements BinanceTelemetryReques
     this.guard = options.requestGuard ?? getExchangeRequestGuard("binance");
     this.spotBase = validatedBase(options.binanceSpotBase ?? "https://api.binance.com");
     this.futuresBase = validatedBase(options.binanceFuturesBase ?? "https://fapi.binance.com");
+    this.runtimePolicy = options.runtimePolicy ?? getRuntimePolicy();
   }
 
   async read(target: "spot" | "futures", path: string, params: Readonly<Record<string, string>>, signal: AbortSignal): Promise<ReadonlyTelemetryResponse> {
+    assertPrivateExchangeAccess("Binance private account telemetry", "read", this.runtimePolicy);
     requireKeys(this.keys, "Binance");
     const policy = BINANCE_ENDPOINTS.get(`${target}:${path}`);
     if (!policy) throw new Error("Binance telemetry endpoint is not allowlisted");
@@ -95,6 +100,7 @@ export class BybitReadonlyTelemetryTransport implements BybitTelemetryRequester 
   private readonly timeoutMs: number;
   private readonly guard: ExchangeRequestGuard;
   private readonly base: string;
+  private readonly runtimePolicy: RuntimePolicy;
 
   constructor(private readonly keys: ExchangeKeys, options: ReadonlyTelemetryTransportOptions = {}) {
     this.fetcher = options.fetch ?? fetch;
@@ -102,9 +108,11 @@ export class BybitReadonlyTelemetryTransport implements BybitTelemetryRequester 
     this.timeoutMs = options.timeoutMs ?? 5_000;
     this.guard = options.requestGuard ?? getExchangeRequestGuard("bybit");
     this.base = validatedBase(options.bybitBase ?? "https://api.bybit.com");
+    this.runtimePolicy = options.runtimePolicy ?? getRuntimePolicy();
   }
 
   async read(path: string, params: Readonly<Record<string, string>>, signal: AbortSignal): Promise<ReadonlyTelemetryResponse> {
+    assertPrivateExchangeAccess("Bybit private account telemetry", "read", this.runtimePolicy);
     requireKeys(this.keys, "Bybit");
     const policy = BYBIT_ENDPOINTS.get(path);
     if (!policy) throw new Error("Bybit telemetry endpoint is not allowlisted");

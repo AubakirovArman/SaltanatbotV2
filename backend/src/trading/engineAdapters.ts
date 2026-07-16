@@ -5,9 +5,12 @@ import { PaperAdapter } from "./exchange/paper.js";
 import { getTradingAccountCredentialsForOwner, getTradingAccountForOwner, listTradingAccountsForOwner } from "./store.js";
 import type { BotConfig, ExchangeAdapter } from "./types.js";
 import { botTradingAccountId, tradingAccountBindingIssue } from "./tradingAccounts.js";
+import { assertLiveExecutionAllowed, assertPrivateExchangeAccess, getRuntimePolicy, type RuntimePolicy } from "../runtimeProfile.js";
 
-export function buildEngineAdapter(config: BotConfig, getPrice: () => number): ExchangeAdapter {
+export function buildEngineAdapter(config: BotConfig, getPrice: () => number, policy: RuntimePolicy = getRuntimePolicy()): ExchangeAdapter {
   if (config.exchange === "binance" || config.exchange === "bybit") {
+    assertLiveExecutionAllowed("live bot adapter construction", policy);
+    assertPrivateExchangeAccess("live bot credential access", "read", policy);
     const ownerUserId = config.ownerUserId?.trim();
     if (!ownerUserId) throw new Error("Live bot owner is missing; refusing to load trading credentials.");
     const accountId = botTradingAccountId(config);
@@ -31,7 +34,9 @@ export function buildEngineAdapter(config: BotConfig, getPrice: () => number): E
 }
 
 /** Signed account adapters for one owner, including accounts with no running bot. */
-export function buildEmergencyAdapters(ownerUserId: string): ExchangeAdapter[] {
+export function buildEmergencyAdapters(ownerUserId: string, policy: RuntimePolicy = getRuntimePolicy()): ExchangeAdapter[] {
+  if (!policy.privateExchangeMutationsAllowed) return [];
+  assertPrivateExchangeAccess("emergency exchange adapter construction", "mutation", policy);
   const adapters: ExchangeAdapter[] = [];
   for (const account of listTradingAccountsForOwner(ownerUserId)) {
     const keys = getTradingAccountCredentialsForOwner<ExchangeKeys>(ownerUserId, account.id);

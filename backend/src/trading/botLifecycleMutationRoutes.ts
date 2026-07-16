@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Response, Router } from "express";
 import { z } from "zod";
-import { isDemoMode, revalidateTradingAuthorization, roleAllows } from "../auth.js";
+import { revalidateTradingAuthorization, roleAllows } from "../auth.js";
 import { timeframes } from "../market/timeframes.js";
 import { ensureSecureTradingOrigin } from "../secureTradingOrigin.js";
 import type { Timeframe } from "../types.js";
@@ -14,6 +14,7 @@ import { parseStrategyIR } from "./strategy/irSchema.js";
 import { paperTradingAccountId, tradingAccountBindingIssue } from "./tradingAccounts.js";
 import type { AuthRole, BotConfig, ExchangeId } from "./types.js";
 import { isTradingResourceQuotaError } from "./resourceQuotas.js";
+import { getRuntimePolicy, isPaperOnlyRuntime, paperOnlyErrorBody, type RuntimePolicy } from "../runtimeProfile.js";
 
 const botBodySchema = z.object({
   id: z.string().optional(),
@@ -39,9 +40,11 @@ const botBodySchema = z.object({
 interface BotLifecycleRouteOptions {
   view(ownerUserId: string, bot: BotConfig): Omit<BotConfig, "ownerUserId">;
   maxBotsPerOwner: number;
+  runtimePolicy?: RuntimePolicy;
 }
 
 export function registerBotLifecycleMutationRoutes(router: Router, engine: TradingEngine, options: BotLifecycleRouteOptions): void {
+  const runtimePolicy = options.runtimePolicy ?? getRuntimePolicy();
   router.post("/bots", async (req, res) => {
     const parsed = botBodySchema.safeParse(req.body);
     if (!parsed.success) return void res.status(400).json({ error: parsed.error.flatten() });
@@ -53,10 +56,12 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
       if (persistedOwner && persistedOwner !== ownerUserId) return void res.status(404).json({ error: "Bot not found" });
       const existing = body.id ? getBotForOwner(ownerUserId, id) : undefined;
       if (body.id && !existing) return void res.status(400).json({ error: "Bot ids are assigned by the server.", code: "BOT_ID_SERVER_MANAGED" });
+      if (body.exchange !== "paper" && isPaperOnlyRuntime(runtimePolicy)) {
+        return void res.status(403).json(paperOnlyErrorBody("live bot configuration"));
+      }
       const { runtime, role, secureOrigin } = mutationAuthority(engine, ownerUserId, existing, body.id, body.exchange);
       if (!ensureRole(res, role) || (secureOrigin && !ensureSecureTradingOrigin(req, res))) return;
       if (runtime) return void res.status(409).json({ error: "Stop the running bot before changing its configuration." });
-      if (isDemoMode() && body.exchange !== "paper") return void res.status(403).json({ error: "Only paper trading is available in DEMO_MODE." });
       const liveRiskErrors = liveRiskValidationErrors(body);
       if (liveRiskErrors.length) return void res.status(400).json({ error: `Live risk limits are incomplete: ${liveRiskErrors.join("; ")}` });
       const irResult = parseStrategyIR(body.ir);

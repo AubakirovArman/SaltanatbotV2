@@ -14,6 +14,7 @@ interface CreateBotFormProps {
   catalog?: CatalogResponse;
   locale: Locale;
   canReadAccounts?: boolean;
+  paperOnly?: boolean;
   onCreated: (bot: TradingBot) => void;
   loadAccounts?: () => Promise<TradingAccountView[]>;
   saveTradingBot?: (bot: Partial<TradingBot>) => Promise<TradingBot>;
@@ -24,6 +25,7 @@ export function CreateBotForm({
   catalog,
   locale,
   canReadAccounts = false,
+  paperOnly = false,
   onCreated,
   loadAccounts = listTradingAccounts,
   saveTradingBot = saveBot
@@ -51,14 +53,16 @@ export function CreateBotForm({
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const strategy = runnable.find((item) => item.id === strategyId);
+  const selectedExchange: ExchangeId = paperOnly ? "paper" : exchange;
+  const liveAccountsAvailable = canReadAccounts && !paperOnly;
   const exchangeAccounts = useMemo(
-    () => exchange === "paper" ? [] : (accounts ?? []).filter((account) => account.exchange === exchange),
-    [accounts, exchange]
+    () => selectedExchange === "paper" ? [] : (accounts ?? []).filter((account) => account.exchange === selectedExchange),
+    [accounts, selectedExchange]
   );
   const selectedLiveAccount = exchangeAccounts.find((account) => account.id === accountId && selectableLiveAccount(account));
 
   useEffect(() => {
-    if (!canReadAccounts) return;
+    if (!liveAccountsAvailable) return;
     let active = true;
     setAccountsLoading(true);
     setAccountsLoadFailed(false);
@@ -78,7 +82,7 @@ export function CreateBotForm({
     return () => {
       active = false;
     };
-  }, [canReadAccounts, loadAccounts]);
+  }, [liveAccountsAvailable, loadAccounts]);
 
   const create = async () => {
     if (!strategy) {
@@ -91,15 +95,15 @@ export function CreateBotForm({
       return;
     }
     const riskLimits = { maxPositionQuote, maxOrderQuote, maxDailyLossQuote, maxOpenOrders };
-    if (exchange === "binance" && market === "spot") {
+    if (selectedExchange === "binance" && market === "spot") {
       setError(tradingText(locale, "binanceSpotDisabled"));
       return;
     }
-    if (exchange !== "paper" && !validLiveRiskLimits(riskLimits)) {
+    if (selectedExchange !== "paper" && !validLiveRiskLimits(riskLimits)) {
       setError(tradingText(locale, "riskLimitsInvalid"));
       return;
     }
-    if (exchange !== "paper" && !selectedLiveAccount) {
+    if (selectedExchange !== "paper" && !selectedLiveAccount) {
       setError(tradingText(locale, "liveAccountInvalid"));
       return;
     }
@@ -112,15 +116,15 @@ export function CreateBotForm({
         ir: compiled.ir,
         symbol,
         timeframe,
-        exchange,
+        exchange: selectedExchange,
         market,
         sizeMode,
         sizeValue,
         leverage: market === "spot" ? 1 : leverage,
-        bybitCrossCollateral: exchange === "bybit" && market === "futures" && bybitCrossCollateral,
+        bybitCrossCollateral: selectedExchange === "bybit" && market === "futures" && bybitCrossCollateral,
         notifyMarkers,
         ...(selectedLiveAccount ? { accountId: selectedLiveAccount.id } : {}),
-        ...(exchange === "paper" ? {} : riskLimits)
+        ...(selectedExchange === "paper" ? {} : riskLimits)
       });
       onCreated(bot);
     } catch (cause) {
@@ -135,7 +139,7 @@ export function CreateBotForm({
       <div className="trade-form-title">
         <Bot size={16} aria-hidden="true" />
         <strong>{tradingText(locale, "newTradingBot")}</strong>
-        <span>{tradingText(locale, "runStrategy")}</span>
+        <span>{tradingText(locale, paperOnly ? "runPaperOnly" : "runStrategy")}</span>
       </div>
 
       <fieldset className="form-section">
@@ -172,27 +176,27 @@ export function CreateBotForm({
         <legend>{tradingText(locale, "execution")}</legend>
         <div className="form-grid">
           <label>{tradingText(locale, "exchange")}
-            <select name="exchange" value={exchange} onChange={(event) => {
+            <select name="exchange" value={selectedExchange} onChange={(event) => {
               const next = event.target.value as ExchangeId;
               setExchange(next);
               setAccountId("");
               if (next === "binance" && market === "spot") setMarket("futures");
             }}>
               <option value="paper">{tradingText(locale, "paperSimulated")}</option>
-              {canReadAccounts && <option value="binance">Binance</option>}
-              {canReadAccounts && <option value="bybit">Bybit</option>}
+              {liveAccountsAvailable && <option value="binance">Binance</option>}
+              {liveAccountsAvailable && <option value="bybit">Bybit</option>}
             </select>
           </label>
           <label>{tradingText(locale, "marketType")}
             <select name="market" value={market} onChange={(event) => setMarket(event.target.value as "spot" | "futures")}>
-              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot" disabled={exchange === "binance"}>{tradingText(locale, "spot")}</option>
+              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot" disabled={selectedExchange === "binance"}>{tradingText(locale, "spot")}</option>
             </select>
           </label>
         </div>
-        {exchange === "binance" && <p className="field-help">{tradingText(locale, "binanceSpotDisabled")}</p>}
-        {exchange === "paper" ? (
+        {selectedExchange === "binance" && <p className="field-help">{tradingText(locale, "binanceSpotDisabled")}</p>}
+        {selectedExchange === "paper" ? (
           <p className="field-help" role="note">{tradingText(locale, "paperAccountHelp")}</p>
-        ) : canReadAccounts ? (
+        ) : liveAccountsAvailable ? (
           <>
             <label>{tradingText(locale, "liveAccount")}
               <select
@@ -238,7 +242,7 @@ export function CreateBotForm({
           <input name="notify-markers" type="checkbox" checked={notifyMarkers} onChange={(event) => setNotifyMarkers(event.target.checked)} />
           {tradingText(locale, "notifyMarkers")}
         </label>
-        {exchange === "bybit" && market === "futures" && (
+        {selectedExchange === "bybit" && market === "futures" && (
           <div className="uta-opt-in">
             <label className="check-row">
               <input name="bybit-cross-collateral" type="checkbox" checked={bybitCrossCollateral} onChange={(event) => setBybitCrossCollateral(event.target.checked)} />
@@ -249,7 +253,7 @@ export function CreateBotForm({
         )}
       </fieldset>
 
-      {exchange !== "paper" && (
+      {selectedExchange !== "paper" && (
         <fieldset className="form-section live-risk-limits" aria-describedby="live-risk-limits-help">
           <legend>{tradingText(locale, "liveRiskLimits")}</legend>
           <p id="live-risk-limits-help" className="field-help">{tradingText(locale, "liveRiskLimitsHelp")}</p>
@@ -270,7 +274,7 @@ export function CreateBotForm({
         </fieldset>
       )}
 
-      {exchange !== "paper" && <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> {tradingText(locale, "realTradingWarning")}</div>}
+      {selectedExchange !== "paper" && <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> {tradingText(locale, "realTradingWarning")}</div>}
       {error && <div className="strategy-warnings" role="alert"><span><AlertTriangle size={12} aria-hidden="true" /> {error}</span></div>}
       <button type="submit" className="run-button form-submit" disabled={busy}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
     </form>

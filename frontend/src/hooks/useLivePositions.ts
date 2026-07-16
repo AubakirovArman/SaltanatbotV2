@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthRoot";
 import type { ChartLivePosition } from "../chart/types";
-import { getLive, getToken, listBots } from "../trading/tradeClient";
+import { checkAuth, getLive, getToken, listBots, type TradingBot } from "../trading/tradeClient";
+import { resolveTradingRuntime } from "../trading/runtimeProfile";
 
 /**
  * Poll running bots' open positions for `symbol` so the chart can draw live entry
@@ -21,8 +22,10 @@ export function useLivePositions(symbol: string): ChartLivePosition[] {
     let alive = true;
     const poll = async () => {
       try {
+        const auth = await checkAuth(undefined, !accountAuth.authRequired);
+        const runtime = resolveTradingRuntime(auth);
         const bots = await listBots();
-        const running = bots.filter((bot) => bot.status === "running" && bot.symbol === symbol);
+        const running = readableRunningBots(bots, symbol, runtime.paperOnly);
         const states = await Promise.all(running.map((bot) => getLive(bot.id).catch(() => null)));
         if (!alive) return;
         const next: ChartLivePosition[] = [];
@@ -44,4 +47,8 @@ export function useLivePositions(symbol: string): ChartLivePosition[] {
   }, [accountAuth.authRequired, accountAuth.tradingAvailable, symbol]);
 
   return positions;
+}
+
+export function readableRunningBots(bots: TradingBot[], symbol: string, paperOnly: boolean): TradingBot[] {
+  return bots.filter((bot) => bot.status === "running" && bot.symbol === symbol && (!paperOnly || bot.exchange === "paper"));
 }

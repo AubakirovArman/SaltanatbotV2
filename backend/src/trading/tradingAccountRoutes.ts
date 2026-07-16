@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Request, RequestHandler, Response, Router } from "express";
 import { z } from "zod";
 import { AccountTelemetryService, createAccountTelemetryHandler } from "../arbitrage/telemetry/index.js";
-import { isDemoMode, revalidateTradingAuthorization } from "../auth.js";
+import { revalidateTradingAuthorization } from "../auth.js";
 import { requireSecureTradingOrigin } from "../secureTradingOrigin.js";
 import { createBybitUtaHandlers, type BybitUtaHandlers } from "./bybitUtaRoutes.js";
 import type { ExchangeKeys } from "./exchange/binance.js";
@@ -11,6 +11,7 @@ import {
   deleteTradingAccountForOwner,
   getTradingAccountCredentialsForOwner,
   getTradingAccountForOwner,
+  hasTradingAccountCredentialsForOwner,
   insertTradingAccountForOwner,
   listBotsForOwner,
   listTradingAccountsForOwner,
@@ -22,6 +23,7 @@ import { botTradingAccountId, describeTradingAccount } from "./tradingAccounts.j
 import type { ExchangeId, TradingAccount } from "./types.js";
 import { tradingOwnerFromResponse } from "./ownership.js";
 import { isTradingResourceQuotaError } from "./resourceQuotas.js";
+import { getRuntimePolicy, isPaperOnlyRuntime, paperOnlyErrorBody, type RuntimePolicy } from "../runtimeProfile.js";
 
 const accountCreateSchema = z.object({
   label: z.string().trim().min(1).max(120),
@@ -49,6 +51,7 @@ export interface TradingAccountRegistryRouteOptions {
   isBotRunning?: (ownerUserId: string, botId: string) => boolean;
   maxAccountsPerOwner?: number;
   withAccountLifecycleLock?: <T>(ownerUserId: string, accountId: string, operation: () => Promise<T>) => Promise<T>;
+  runtimePolicy?: RuntimePolicy;
 }
 
 /**
@@ -56,6 +59,7 @@ export interface TradingAccountRegistryRouteOptions {
  * in the authenticated trading route stack.
  */
 export function registerTradingAccountRegistryRoutes(router: Router, requireLiveRole: RequestHandler, options: TradingAccountRegistryRouteOptions = {}): void {
+  const runtimePolicy = options.runtimePolicy ?? getRuntimePolicy();
   router.get("/accounts", (_req, res) => {
     const ownerUserId = tradingOwnerFromResponse(res);
     res.json({ accounts: listTradingAccountsForOwner(ownerUserId).map((account) => accountView(ownerUserId, account)) });
@@ -74,7 +78,7 @@ export function registerTradingAccountRegistryRoutes(router: Router, requireLive
     res.json({ account: accountView(ownerUserId, account) });
   });
 
-  router.post("/accounts", requireLiveRole, requireSecureTradingOrigin, (req, res) => {
+  router.post("/accounts", requireLiveRole, requirePaperModeCapability(runtimePolicy, "live trading account creation"), requireSecureTradingOrigin, (req, res) => {
     const parsed = accountCreateSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.flatten() });
@@ -169,11 +173,7 @@ export function registerTradingAccountRegistryRoutes(router: Router, requireLive
     }).catch(next);
   });
 
-  router.put("/accounts/:id/credentials", requireLiveRole, requireSecureTradingOrigin, (req, res, next) => {
-    if (isDemoMode()) {
-      res.status(403).json({ error: "Exchange keys cannot be stored in DEMO_MODE." });
-      return;
-    }
+  router.put("/accounts/:id/credentials", requireLiveRole, requirePaperModeCapability(runtimePolicy, "exchange credential storage"), requireSecureTradingOrigin, (req, res, next) => {
     const parsed = keysBodySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.flatten() });
@@ -229,16 +229,18 @@ export function registerTradingAccountRegistryRoutes(router: Router, requireLive
  */
 export interface TradingAccountIntegrationRouteOptions {
   liveEnabled(ownerUserId: string): boolean;
+  runtimePolicy?: RuntimePolicy;
 }
 
 export function registerTradingAccountIntegrationRoutes(router: Router, requireLiveRole: RequestHandler, options: TradingAccountIntegrationRouteOptions): void {
+  const runtimePolicy = options.runtimePolicy ?? getRuntimePolicy();
   // Compatibility status contains booleans only and is scoped to the current
   // tenant. New clients manage credentials on a concrete account resource.
   router.get("/keys", requireLiveRole, (_req, res) => {
     const ownerUserId = tradingOwnerFromResponse(res);
     res.json({
-      binance: firstConfiguredAccount(ownerUserId, "binance") !== undefined,
-      bybit: firstConfiguredAccount(ownerUserId, "bybit") !== undefined
+      binance: firstAccountWithStoredCredentials(ownerUserId, "binance") !== undefined,
+      bybit: firstAccountWithStoredCredentials(ownerUserId, "bybit") !== undefined
     });
   });
 
@@ -249,7 +251,7 @@ export function registerTradingAccountIntegrationRoutes(router: Router, requireL
     });
   });
 
-  router.get("/account-telemetry", requireLiveRole, (req, res, next) => {
+  router.get("/account-telemetry", requireLiveRole, requirePaperModeCapability(runtimePolicy, "private account telemetry"), (req, res, next) => {
     const ownerUserId = tradingOwnerFromResponse(res);
     const accountTelemetry = new AccountTelemetryService({
       keys: (venue) => firstConfiguredAccount(ownerUserId, venue)?.keys
@@ -265,7 +267,7 @@ export function registerTradingAccountIntegrationRoutes(router: Router, requireL
       if (selected === "not-found") return accountNotFound(res);
       if (selected === "disabled") return accountDisabled(res);
       const handlers = createBybitUtaHandlers({
-        demo: isDemoMode,
+        demo: () => isPaperOnlyRuntime(runtimePolicy),
         liveEnabled: () => options.liveEnabled(ownerUserId),
         keys: () => selected?.keys,
         authorizeMutation: () => revalidateTradingAuthorization(res, "live-trade")
@@ -273,15 +275,14 @@ export function registerTradingAccountIntegrationRoutes(router: Router, requireL
       return handlers[kind](req, res, next);
     };
 
-  router.get("/bybit/uta", requireLiveRole, uta("status"));
-  router.post("/bybit/uta/borrow", requireLiveRole, requireSecureTradingOrigin, uta("borrow"));
-  router.post("/bybit/uta/repay", requireLiveRole, requireSecureTradingOrigin, uta("repay"));
-  router.post("/bybit/uta/collateral", requireLiveRole, requireSecureTradingOrigin, uta("collateral"));
+  router.get("/bybit/uta", requireLiveRole, requirePaperModeCapability(runtimePolicy, "private Bybit UTA telemetry"), uta("status"));
+  router.post("/bybit/uta/borrow", requireLiveRole, requirePaperModeCapability(runtimePolicy, "private Bybit UTA mutation"), requireSecureTradingOrigin, uta("borrow"));
+  router.post("/bybit/uta/repay", requireLiveRole, requirePaperModeCapability(runtimePolicy, "private Bybit UTA mutation"), requireSecureTradingOrigin, uta("repay"));
+  router.post("/bybit/uta/collateral", requireLiveRole, requirePaperModeCapability(runtimePolicy, "private Bybit UTA mutation"), requireSecureTradingOrigin, uta("collateral"));
 }
 
 function hasCredentials(ownerUserId: string, accountId: string): boolean {
-  const keys = getTradingAccountCredentialsForOwner<ExchangeKeys>(ownerUserId, accountId);
-  return !!(keys?.apiKey && keys.apiSecret);
+  return hasTradingAccountCredentialsForOwner(ownerUserId, accountId);
 }
 
 function accountView(ownerUserId: string, account: TradingAccount) {
@@ -305,6 +306,17 @@ function firstConfiguredAccount(ownerUserId: string, exchange: Exclude<ExchangeI
     if (keys?.apiKey && keys.apiSecret) return { account, keys };
   }
   return undefined;
+}
+
+function firstAccountWithStoredCredentials(ownerUserId: string, exchange: Exclude<ExchangeId, "paper">): TradingAccount | undefined {
+  return listTradingAccountsForOwner(ownerUserId).find((account) => account.enabled && account.exchange === exchange && hasCredentials(ownerUserId, account.id));
+}
+
+function requirePaperModeCapability(runtimePolicy: RuntimePolicy, operation: string): RequestHandler {
+  return (_req, res, next) => {
+    if (!isPaperOnlyRuntime(runtimePolicy)) return next();
+    res.status(403).json(paperOnlyErrorBody(operation));
+  };
 }
 
 function selectedAccountCredentials(req: Request, ownerUserId: string, exchange: Exclude<ExchangeId, "paper">): ReturnType<typeof firstConfiguredAccount> | "not-found" | "disabled" {

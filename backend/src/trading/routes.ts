@@ -4,7 +4,7 @@ import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
-import { clearAuthSession, createAuthSession, isDatabaseAuthMode, isDemoMode, issueWsTicketForRequest, requireAuth, revalidateTradingAuthorization, roleAllows, roleForToken } from "../auth.js";
+import { clearAuthSession, createAuthSession, isDatabaseAuthMode, issueWsTicketForRequest, requireAuth, revalidateTradingAuthorization, roleAllows, roleForToken } from "../auth.js";
 import type { IdentityPrincipal } from "../identity/types.js";
 import type { ProviderRouter } from "../providers/router.js";
 import { TradingEngine } from "./engine.js";
@@ -14,7 +14,7 @@ import { BybitV5Client } from "./exchange/bybitClient.js";
 import { BybitUtaService } from "./bybitUta.js";
 import { roleForBot } from "./botRouteIdentity.js";
 import { TelegramControl } from "./telegramControl.js";
-import { getBotForOwner, getSetting, getTradingAccountCredentialsForOwner, getTradingAccountForOwner, initStore, LEGACY_TRADING_OWNER_ID, listAuditLogForOwner, listBotsForOwner, listFillsForOwner, listLogsForOwner, listOrderEventsForOwner, listOrderJournalForOwner, setSetting } from "./store.js";
+import { disarmAllLiveTradingSettings, getBotForOwner, getSetting, getTradingAccountCredentialsForOwner, getTradingAccountForOwner, initStore, LEGACY_TRADING_OWNER_ID, listAuditLogForOwner, listBotsForOwner, listFillsForOwner, listLogsForOwner, listOrderEventsForOwner, listOrderJournalForOwner, setSetting } from "./store.js";
 import type { AuthRole, BotConfig, ExchangeId, ExecOrder } from "./types.js";
 import type { ArbitrageAlertService } from "../arbitrage/alerts.js";
 import { registerArbitrageAlertRoutes } from "../arbitrage/alertRoutes.js";
@@ -31,6 +31,7 @@ import { registerNotificationRoutes } from "./notificationRoutes.js";
 import { registerBotLifecycleMutationRoutes } from "./botLifecycleMutationRoutes.js";
 import { isTradingResourceQuotaError, loadTradingResourceLimits, type TradingResourceLimits } from "./resourceQuotas.js";
 import { pausedOrderAllowed } from "./managedExecution.js";
+import { getRuntimePolicy, isPaperOnlyRuntime, paperOnlyErrorBody, runtimeProfilePublicState, type RuntimePolicy } from "../runtimeProfile.js";
 
 const commandBodySchema = z.object({
   command: z.string().min(1).max(2000),
@@ -67,6 +68,8 @@ export interface TradingApiOptions {
   telegramControlEnabled?: boolean;
   /** Per-owner hard caps. Environment defaults are loaded when omitted. */
   resourceLimits?: TradingResourceLimits;
+  /** Immutable process execution boundary; production resolves it once at boot. */
+  runtimePolicy?: RuntimePolicy;
 }
 
 interface OwnerAccessRevocationOperations {
@@ -107,6 +110,8 @@ export async function revokeTradingOwnerAccess(ownerUserId: string, operations: 
 
 export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: ArbitrageAlertService, options: TradingApiOptions = {}): TradingApi {
   initStore({ legacyOwnerUserId: options.legacyOwnerUserId });
+  const runtimePolicy = options.runtimePolicy ?? getRuntimePolicy();
+  if (isPaperOnlyRuntime(runtimePolicy)) disarmAllLiveTradingSettings();
   const resourceLimits = options.resourceLimits ?? loadTradingResourceLimits();
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
@@ -120,8 +125,8 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     tradeStream.attach(socket, principal?.user.id ?? LEGACY_TRADING_OWNER_ID, principal?.expiresAt.getTime(), principal?.sessionIdHash);
   });
 
-  const engine = new TradingEngine(provider, (event: TradeEvent) => tradeStream.publish(event), options.emergencyAdapters, resourceLimits);
-  const telegramControl = new TelegramControl(engine, options.legacyOwnerUserId ?? LEGACY_TRADING_OWNER_ID, options.telegramControlEnabled ?? !isDatabaseAuthMode());
+  const engine = new TradingEngine(provider, (event: TradeEvent) => tradeStream.publish(event), options.emergencyAdapters, resourceLimits, runtimePolicy);
+  const telegramControl = new TelegramControl(engine, options.legacyOwnerUserId ?? LEGACY_TRADING_OWNER_ID, options.telegramControlEnabled ?? !isDatabaseAuthMode(), runtimePolicy);
   const router = Router();
 
   const withStatus = (ownerUserId: string, bot: BotConfig): Omit<BotConfig, "ownerUserId"> => {
@@ -129,7 +134,8 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     return { ...publicBot, status: engine.isRunningForOwner(ownerUserId, bot.id) ? "running" : "stopped" };
   };
 
-  const liveEnabled = (ownerUserId: string) => getSetting<boolean>(tenantSettingKey(ownerUserId, "liveTradingEnabled")) === true || (ownerUserId === LEGACY_TRADING_OWNER_ID && getSetting<boolean>("liveTradingEnabled") === true);
+  const liveEnabled = (ownerUserId: string) => runtimePolicy.liveBotConfigsAllowed && (getSetting<boolean>(tenantSettingKey(ownerUserId, "liveTradingEnabled")) === true || (ownerUserId === LEGACY_TRADING_OWNER_ID && getSetting<boolean>("liveTradingEnabled") === true));
+  const runtimeState = runtimeProfilePublicState(runtimePolicy);
   const paperMultiLeg = options.paperMultiLeg === false ? undefined : (options.paperMultiLeg ?? (process.env.NODE_ENV === "test" ? undefined : getPaperMultiLegRuntime()));
 
   router.post("/session", (req, res) => {
@@ -144,19 +150,19 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       return;
     }
     const session = createAuthSession(res, role);
-    res.json({ ok: true, demo: isDemoMode(), liveTradingEnabled: liveEnabled(LEGACY_TRADING_OWNER_ID), secureTradingOrigin: isSecureTradingOrigin(req), role: session.role, csrfToken: session.csrfToken, expiresAt: session.expiresAt });
+    res.json({ ok: true, demo: isPaperOnlyRuntime(runtimePolicy), ...runtimeState, liveTradingEnabled: liveEnabled(LEGACY_TRADING_OWNER_ID), secureTradingOrigin: isSecureTradingOrigin(req), role: session.role, csrfToken: session.csrfToken, expiresAt: session.expiresAt });
   });
 
   // Public status probe for the Trade tab. It avoids a noisy browser-console 401
   // on first load, while every actual trading endpoint below remains gated.
   router.get("/auth", (req, res) => {
     if (!req.headers.authorization && !req.headers.cookie) {
-      res.json({ ok: false, demo: isDemoMode(), liveTradingEnabled: false, secureTradingOrigin: isSecureTradingOrigin(req) });
+      res.json({ ok: false, demo: isPaperOnlyRuntime(runtimePolicy), ...runtimeState, liveTradingEnabled: false, secureTradingOrigin: isSecureTradingOrigin(req) });
       return;
     }
     requireAuth(req, res, () => {
       const ownerUserId = tradingOwnerFromResponse(res);
-      res.json({ ok: true, demo: isDemoMode(), liveTradingEnabled: liveEnabled(ownerUserId), secureTradingOrigin: isSecureTradingOrigin(req), role: res.locals.authRole, csrfToken: res.locals.csrfToken });
+      res.json({ ok: true, demo: isPaperOnlyRuntime(runtimePolicy), ...runtimeState, liveTradingEnabled: liveEnabled(ownerUserId), secureTradingOrigin: isSecureTradingOrigin(req), role: res.locals.authRole, csrfToken: res.locals.csrfToken });
     });
   });
 
@@ -178,13 +184,14 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
 
   router.get("/settings", (req, res) => {
     const ownerUserId = tradingOwnerFromResponse(res);
-    res.json({ demo: isDemoMode(), liveTradingEnabled: liveEnabled(ownerUserId), secureTradingOrigin: isSecureTradingOrigin(req), role: res.locals.authRole });
+    res.json({ demo: isPaperOnlyRuntime(runtimePolicy), ...runtimeState, liveTradingEnabled: liveEnabled(ownerUserId), secureTradingOrigin: isSecureTradingOrigin(req), role: res.locals.authRole });
   });
 
   registerTradingAccountRegistryRoutes(router, requireRole("live-trade"), {
     isBotRunning: (ownerUserId, botId) => engine.isRunningForOwner(ownerUserId, botId),
     maxAccountsPerOwner: resourceLimits.maxAccountsPerOwner,
-    withAccountLifecycleLock: (ownerUserId, accountId, operation) => engine.withAccountLifecycleLock(ownerUserId, accountId, operation)
+    withAccountLifecycleLock: (ownerUserId, accountId, operation) => engine.withAccountLifecycleLock(ownerUserId, accountId, operation),
+    runtimePolicy
   });
 
   router.post("/settings", requireRole("live-trade"), (req, res) => {
@@ -194,11 +201,8 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       res.status(400).json({ error: parsed.error.flatten() });
       return;
     }
+    if (parsed.data.liveTradingEnabled && isPaperOnlyRuntime(runtimePolicy)) return void rejectPaperOnly(res, "live trading arm");
     if (parsed.data.liveTradingEnabled && !ensureSecureTradingOrigin(req, res)) return;
-    if (isDemoMode() && parsed.data.liveTradingEnabled) {
-      res.status(403).json({ error: "Live trading is disabled in DEMO_MODE." });
-      return;
-    }
     if (parsed.data.liveTradingEnabled && !ensureEmergencyCanRearm(engine, res, ownerUserId)) return;
     setSetting(tenantSettingKey(ownerUserId, "liveTradingEnabled"), parsed.data.liveTradingEnabled);
     res.json({ liveTradingEnabled: parsed.data.liveTradingEnabled });
@@ -224,7 +228,8 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
 
   registerBotLifecycleMutationRoutes(router, engine, {
     view: withStatus,
-    maxBotsPerOwner: resourceLimits.maxBotsPerOwner
+    maxBotsPerOwner: resourceLimits.maxBotsPerOwner,
+    runtimePolicy
   });
 
   router.post("/bots/:id/start", async (req, res) => {
@@ -239,14 +244,11 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     if (!ensureRole(res, requiredRole)) return;
     // Live trading is double-gated: a global arm flag AND per-request confirmation.
     if (bot.exchange !== "paper") {
+      if (isPaperOnlyRuntime(runtimePolicy)) return void rejectPaperOnly(res, "live bot start");
       if (!ensureSecureTradingOrigin(req, res)) return;
       const issue = tradingAccountBindingIssue(bot, getTradingAccountForOwner(ownerUserId, botTradingAccountId(bot)));
       if (issue) {
         res.status(409).json({ error: issue.message, code: issue.code });
-        return;
-      }
-      if (isDemoMode()) {
-        res.status(403).json({ error: "Live trading is disabled in DEMO_MODE." });
         return;
       }
       if (!liveEnabled(ownerUserId)) {
@@ -317,6 +319,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     }
     const requiredRole = roleForBot(bot);
     if (!ensureRole(res, requiredRole)) return;
+    if (bot.exchange !== "paper" && isPaperOnlyRuntime(runtimePolicy)) return void rejectPaperOnly(res, "live bot resume");
     if (bot.exchange !== "paper" && !ensureSecureTradingOrigin(req, res)) return;
     const authorization = await revalidateTradingAuthorization(res, requiredRole);
     if (!authorization) return;
@@ -340,6 +343,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     const requiredRole = roleForBot(bot);
     if (!ensureRole(res, requiredRole)) return;
     const dryRun = parsed.data.dryRun === true;
+    if (bot.exchange !== "paper" && !dryRun && isPaperOnlyRuntime(runtimePolicy)) return void rejectPaperOnly(res, "live bot command");
     if (bot.exchange !== "paper" && !dryRun && !ensureSecureTradingOrigin(req, res)) return;
     const authorization = dryRun ? undefined : await revalidateTradingAuthorization(res, requiredRole);
     if (!dryRun && !authorization) return;
@@ -396,7 +400,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     res.json({ events: listAuditLogForOwner(ownerUserId, limit) });
   });
 
-  registerTradingAccountIntegrationRoutes(router, requireRole("live-trade"), { liveEnabled });
+  registerTradingAccountIntegrationRoutes(router, requireRole("live-trade"), { liveEnabled, runtimePolicy });
 
   registerNotificationRoutes(router, requireRole, telegramControl);
 
@@ -419,6 +423,10 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       }),
     restoreOwnerAccess: (ownerUserId) => engine.resumeOwnerStarts(ownerUserId)
   };
+}
+
+function rejectPaperOnly(res: Response, operation: string): void {
+  res.status(403).json(paperOnlyErrorBody(operation));
 }
 
 function bybitUta(ownerUserId: string, accountId: string): BybitUtaService {

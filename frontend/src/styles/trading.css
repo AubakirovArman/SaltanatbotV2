@@ -218,6 +218,30 @@
   color: var(--dim);
 }
 
+.runtime-paper-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line-soft));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+
+.runtime-paper-notice svg {
+  flex: 0 0 auto;
+  margin-block-start: 1px;
+  color: var(--accent);
+}
+
+.runtime-paper-notice strong {
+  color: var(--accent);
+}
+
 .trade-empty {
   max-inline-size: 440px;
   margin: 8vh auto;

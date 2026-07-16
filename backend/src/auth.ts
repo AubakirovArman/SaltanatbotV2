@@ -7,6 +7,7 @@ import type { AuthRole } from "./trading/types.js";
 import { csrfFromRequest, principalFromRequest, readCookie, requestNeedsCsrf, sessionCookieName } from "./identity/http.js";
 import { IdentityError, type IdentityService } from "./identity/service.js";
 import type { IdentityPrincipal } from "./identity/types.js";
+import { isPaperOnlyRuntime } from "./runtimeProfile.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../data");
@@ -86,9 +87,9 @@ export function wasAuthTokenGeneratedThisRun(): boolean {
   return generatedThisRun;
 }
 
-/** DEMO_MODE disables key storage + live trading and opens the read-only surface. */
+/** Compatibility facade for older clients. New code should use runtimeProfile. */
 export function isDemoMode(): boolean {
-  return process.env.DEMO_MODE === "1" || process.env.DEMO_MODE === "true";
+  return isPaperOnlyRuntime();
 }
 
 /** Constant-time token comparison — avoids leaking length/prefix via timing. */

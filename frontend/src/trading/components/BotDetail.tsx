@@ -28,11 +28,13 @@ interface BotDetailProps {
   onDeleted: () => void;
   locale: Locale;
   canControl?: boolean;
+  executionDisabled?: boolean;
   storageOwnerId?: string;
 }
 
-export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChanged, onDeleted, locale, canControl = true, storageOwnerId }: BotDetailProps) {
+export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChanged, onDeleted, locale, canControl = true, executionDisabled = false, storageOwnerId }: BotDetailProps) {
   const [commandOutput, setCommandOutput] = useState<string>();
+  const controlsAvailable = canControl && !executionDisabled;
   const position = live?.position;
   const unrealizedPnl = position && live
     ? position.side === "long" ? position.qty * (live.price - position.entryPrice) : position.qty * (position.entryPrice - live.price)
@@ -72,9 +74,10 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
         <div>
           <strong>{bot.name}</strong>
           <span>{bot.exchange} · {bot.market} · {bot.symbol} · {bot.timeframe} · {bot.strategyName}</span>
+          {executionDisabled && bot.exchange !== "paper" && <span className="trade-runtime-badge">{tradingText(locale, "liveExecutionDisabled")}</span>}
           {live?.runtimeStatus === "requires_manual_action" && <span className="trade-runtime-badge" title={live.pauseReason ?? tradingText(locale, "operatorConfirmation")}>{tradingText(locale, "requiresAction")}</span>}
         </div>
-        {canControl && (
+        {controlsAvailable && (
           <div className="trade-detail-actions">
             <button type="button" className={bot.status === "running" ? "danger" : "run-button"} onClick={() => void toggle()}>
               {bot.status === "running" ? <><Square size={13} aria-hidden="true" /> {tradingText(locale, "stop")}</> : <><Play size={13} aria-hidden="true" /> {tradingText(locale, "start")}</>}
@@ -103,8 +106,8 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
         </section>
       )}
 
-      {canControl && <BotCommandConsole bot={bot} output={commandOutput} onRun={runCommand} locale={locale} storageOwnerId={storageOwnerId} />}
-      <BotActivity symbol={bot.symbol} orders={orders} orderJournal={orderJournal} fills={fills} logs={logs} onCommand={runCommand} locale={locale} canControl={canControl} />
+      {controlsAvailable && <BotCommandConsole bot={bot} output={commandOutput} onRun={runCommand} locale={locale} storageOwnerId={storageOwnerId} />}
+      <BotActivity symbol={bot.symbol} orders={orders} orderJournal={orderJournal} fills={fills} logs={logs} onCommand={runCommand} locale={locale} canControl={controlsAvailable} />
     </div>
   );
 }

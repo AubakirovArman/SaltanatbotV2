@@ -3,6 +3,7 @@ import type { BotConfig, TradingAccount, TradingAccountExchange } from "./types.
 import { botTradingAccountId, legacyTradingAccountId, withResolvedBotAccountId } from "./tradingAccounts.js";
 import { LEGACY_TRADING_OWNER_ID } from "./storeSchema.js";
 import { assertTradingAccountCapacity } from "./resourceQuotas.js";
+import { assertCredentialWriteAllowed, assertPrivateExchangeAccess } from "../runtimeProfile.js";
 
 interface CredentialsCodec {
   seal(plain: string, aad: string): string;
@@ -233,6 +234,7 @@ export function deleteTradingAccountFromForOwner(db: DatabaseSync, ownerUserId: 
 }
 
 export function getTradingAccountCredentialsForOwner<T = unknown>(ownerUserId: string, accountId: string): T | undefined {
+  assertPrivateExchangeAccess("exchange credential decryption", "read");
   const db = database();
   const owner = normalizeOwnerUserId(ownerUserId);
   const account = getTradingAccountFromForOwner(db, owner, accountId);
@@ -247,7 +249,19 @@ export function getTradingAccountCredentialsForOwner<T = unknown>(ownerUserId: s
   return JSON.parse(codec().open(row.encryptedValue, credentialAad(owner, accountId, account.exchange))) as T;
 }
 
+/** Credential presence for UI/status surfaces without decrypting secret data. */
+export function hasTradingAccountCredentialsForOwner(ownerUserId: string, accountId: string): boolean {
+  const owner = normalizeOwnerUserId(ownerUserId);
+  return database()
+    .prepare(`
+      SELECT 1 AS present FROM trading_account_credentials
+      WHERE ownerUserId = ? AND accountId = ? LIMIT 1
+    `)
+    .get(owner, accountId) !== undefined;
+}
+
 export function setTradingAccountCredentialsForOwner(ownerUserId: string, accountId: string, value: unknown): void {
+  assertCredentialWriteAllowed();
   const db = database();
   const owner = normalizeOwnerUserId(ownerUserId);
   const account = getTradingAccountFromForOwner(db, owner, accountId);

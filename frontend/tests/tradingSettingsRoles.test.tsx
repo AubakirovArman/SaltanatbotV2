@@ -79,6 +79,28 @@ describe("trading settings role contract", () => {
     await act(async () => root.unmount());
   });
 
+  it("does not mount private exchange, credential or live controls in the public HTTP paper profile", async () => {
+    vi.mocked(getSettings).mockResolvedValue({
+      ...settings("admin"),
+      runtimeProfile: "public-http-paper",
+      executionMode: "paper-only",
+      privateExchangeRequests: false,
+      credentialWrites: false
+    });
+    const { container, root } = await renderSettings();
+
+    expect(container.textContent).toContain("Research / Paper");
+    expect(container.querySelector('input[name="live-trading-enabled"]')).toBeNull();
+    expect(container.querySelector('[data-testid="account-registry"]')).toBeNull();
+    expect(container.querySelector('[data-testid="account-telemetry"]')).toBeNull();
+    expect(container.querySelector('[data-testid="bybit-uta"]')).toBeNull();
+    expect(container.querySelector('[data-testid="research-alerts"]')).not.toBeNull();
+    expect(container.querySelector('input[name="telegram-enabled"]')).not.toBeNull();
+    expect(getEmergencyStop).not.toHaveBeenCalled();
+    expect(getNotify).toHaveBeenCalledOnce();
+    await act(async () => root.unmount());
+  });
+
   it("does not call mutation-only settings endpoints for read-only users", async () => {
     vi.mocked(getSettings).mockResolvedValue(settings("read-only"));
     const { container, root } = await renderSettings();

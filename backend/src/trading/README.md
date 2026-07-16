@@ -82,6 +82,9 @@ The trading domain owns bot lifecycle, strategy evaluation, risk checks, order e
 - Connected private streams suppress periodic polling; disconnect and reconnect edges trigger an immediate signed-REST gap reconciliation.
 - Replayed, duplicate, identity-conflicting and state-regressing exchange events never mutate a durable order.
 - Paper is the default; live requires an owner-scoped arm plus explicit per-bot authorization.
+- The process-level `public-http-paper` runtime profile is resolved before databases/listeners and
+  overrides every role/arm: live configs, credential use, private transports and live restart are
+  rejected with `PAPER_ONLY_MODE`; persisted arm flags are cleared without deleting user data.
 - The authenticated session is the only source of trading ownership. Request fields cannot select
   another tenant, and foreign bot/account/order IDs fail as not found even for an application admin.
 - Trading-account metadata is durable and owner-scoped. Every enabled Binance/Bybit account may

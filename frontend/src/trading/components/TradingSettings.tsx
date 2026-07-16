@@ -1,4 +1,4 @@
-import { AlertTriangle, XOctagon } from "lucide-react";
+import { AlertTriangle, FlaskConical, XOctagon } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import type { Locale } from "../../i18n";
 import { tradingText } from "../../i18n/trading";
@@ -6,6 +6,7 @@ import { AccountTelemetryPanel } from "./AccountTelemetryPanel";
 import { AccountRegistryPanel } from "./AccountRegistryPanel";
 import type { TradingAccountView } from "../accountClient";
 import { getEmergencyStop, getNotify, getSettings, killAll, createEmergencyOperationId, saveNotify, setLiveTrading, testNotify, type AuthState, type EmergencyStopStatus, type NotifyStatus } from "../tradeClient";
+import { resolveTradingRuntime } from "../runtimeProfile";
 
 const BybitUtaPanel = lazy(() => import("./bybit-uta/BybitUtaPanel").then((module) => ({ default: module.BybitUtaPanel })));
 const ResearchAlertPanel = lazy(() => import("./research-alerts/ResearchAlertPanel").then((module) => ({ default: module.ResearchAlertPanel })));
@@ -17,6 +18,7 @@ export function TradingSettings({ locale }: { locale: Locale }) {
   const [emergency, setEmergency] = useState<EmergencyStopStatus>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const runtime = resolveTradingRuntime(settings);
 
   useEffect(() => {
     getSettings()
@@ -25,14 +27,15 @@ export function TradingSettings({ locale }: { locale: Locale }) {
   }, []);
 
   useEffect(() => {
-    if (settings?.role !== "live-trade" && settings?.role !== "admin") {
+    const roleAllowsLive = settings?.role === "live-trade" || settings?.role === "admin";
+    if (!roleAllowsLive || !resolveTradingRuntime(settings).privateExchangeRequests) {
       setEmergency(undefined);
       return;
     }
     getEmergencyStop()
       .then(setEmergency)
       .catch(() => undefined);
-  }, [settings?.role]);
+  }, [settings]);
 
   useEffect(() => {
     if (settings?.role !== "paper-trade" && settings?.role !== "live-trade" && settings?.role !== "admin") {
@@ -64,8 +67,10 @@ export function TradingSettings({ locale }: { locale: Locale }) {
 
   const secureTradingOrigin = settings?.secureTradingOrigin === true;
   const isAdmin = settings?.role === "admin";
-  const canUseLiveTrading = settings?.role === "live-trade" || isAdmin;
-  const canUseNotifications = settings?.role === "paper-trade" || canUseLiveTrading;
+  const roleAllowsLiveTrading = settings?.role === "live-trade" || isAdmin;
+  const canUseLiveTrading = roleAllowsLiveTrading && runtime.privateExchangeRequests;
+  const canWriteCredentials = canUseLiveTrading && runtime.credentialWrites;
+  const canUseNotifications = settings?.role === "paper-trade" || roleAllowsLiveTrading;
 
   const kill = async (flatten: boolean) => {
     if (!window.confirm(tradingText(locale, flatten ? "killFlattenConfirm" : "killConfirm"))) return;
@@ -85,6 +90,12 @@ export function TradingSettings({ locale }: { locale: Locale }) {
 
   return (
     <div className="trade-settings">
+      {runtime.paperOnly && (
+        <p className="runtime-paper-notice" role="note">
+          <FlaskConical size={14} aria-hidden="true" />
+          <span><strong>{tradingText(locale, "researchPaperMode")}</strong> — {tradingText(locale, "researchPaperModeDescription")}</span>
+        </p>
+      )}
       {canUseLiveTrading && (
         <>
           <div className="panel-header">
@@ -138,7 +149,7 @@ export function TradingSettings({ locale }: { locale: Locale }) {
         </>
       )}
 
-      {canUseLiveTrading && <AccountRegistryPanel locale={locale} secureTradingOrigin={secureTradingOrigin} onAccountsChange={syncCredentialStatus} />}
+      {canWriteCredentials && <AccountRegistryPanel locale={locale} secureTradingOrigin={secureTradingOrigin} onAccountsChange={syncCredentialStatus} />}
       {error && (
         <div className="strategy-warnings" role="alert">
           <span>

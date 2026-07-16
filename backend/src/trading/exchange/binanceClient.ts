@@ -8,6 +8,7 @@ import {
   requireExchangeObject
 } from "./errors.js";
 import { getExchangeRequestGuard } from "./requestGuard.js";
+import { assertPrivateExchangeAccess, getRuntimePolicy, type RuntimePolicy } from "../../runtimeProfile.js";
 
 export type BinanceMethod = "GET" | "POST" | "DELETE";
 
@@ -17,10 +18,12 @@ export class BinanceSignedClient {
 
   constructor(
     private readonly keys: ExchangeKeys,
-    private readonly market: MarketType
+    private readonly market: MarketType,
+    private readonly runtimePolicy: RuntimePolicy = getRuntimePolicy()
   ) {}
 
   async request(method: BinanceMethod, path: string, params: Record<string, string> = {}): Promise<unknown> {
+    assertPrivateExchangeAccess(`Binance signed ${method} request`, method === "GET" ? "read" : "mutation", this.runtimePolicy);
     if (!this.keys.apiKey || !this.keys.apiSecret) throw new Error("Binance API keys are not set");
     this.requestGuard.assertAvailable();
     const query = new URLSearchParams({ ...params, timestamp: String(Date.now()), recvWindow: "5000" });

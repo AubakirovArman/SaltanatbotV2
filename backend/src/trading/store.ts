@@ -532,6 +532,11 @@ export function setSetting(key: string, value: unknown, encrypted = false) {
   db.prepare("INSERT INTO settings (key, value, encrypted) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, encrypted = excluded.encrypted").run(key, stored, encrypted ? 1 : 0);
 }
 
+/** Clear all live arms without deleting tenant data or audit history. */
+export function disarmAllLiveTradingSettings(): number {
+  return Number(db.prepare("UPDATE settings SET value = 'false', encrypted = 0 WHERE key = 'liveTradingEnabled' OR key LIKE 'owner:%:liveTradingEnabled'").run().changes);
+}
+
 // ---------- public arbitrage research history ----------
 
 export interface ArbitrageHistoryRecord {

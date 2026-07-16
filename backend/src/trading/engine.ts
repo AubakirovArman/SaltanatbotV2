@@ -34,6 +34,7 @@ import { botBelongsToOwner, tradingOwnerForBot } from "./ownership.js";
 import { EngineTenantRuntime } from "./engineTenantRuntime.js";
 import { resumePersistedBots, type ResumeAuthorization } from "./engineResume.js";
 import type { TradingResourceLimits } from "./resourceQuotas.js";
+import { assertLiveExecutionAllowed, assertPrivateExchangeAccess, getRuntimePolicy, type RuntimePolicy } from "../runtimeProfile.js";
 const BUFFER_CAP = 1500;
 const SEED_BARS = 500;
 type EngineStartOptions = { override?: boolean; resumed?: boolean; preflight?: () => Promise<void>; validateCurrent?: () => void };
@@ -46,9 +47,10 @@ export class TradingEngine {
   private readonly orderCoordinator: EngineOrderCoordinator;
   private readonly stopCoordinator: EngineStopCoordinator;
   private readonly tenants: EngineTenantRuntime;
-  constructor(private readonly provider: ProviderRouter, broadcast: (event: TradeEvent) => void, emergencyAdapters: (ownerUserId: string) => Iterable<ExchangeAdapter> = buildEmergencyAdapters, resourceLimits?: TradingResourceLimits) {
+  constructor(private readonly provider: ProviderRouter, broadcast: (event: TradeEvent) => void, emergencyAdapters: (ownerUserId: string) => Iterable<ExchangeAdapter> = buildEmergencyAdapters, resourceLimits?: TradingResourceLimits, private readonly runtimePolicy: RuntimePolicy = getRuntimePolicy()) {
     this.muted = new Set(getSetting<string[]>("mutedBots") ?? []);
-    this.tenants = new EngineTenantRuntime((id) => this.running.get(id), () => this.running.values(), (id) => this.stop(id), broadcast, emergencyAdapters, resourceLimits);
+    const guardedEmergencyAdapters = (ownerUserId: string) => this.runtimePolicy.privateExchangeMutationsAllowed ? emergencyAdapters(ownerUserId) : [];
+    this.tenants = new EngineTenantRuntime((id) => this.running.get(id), () => this.running.values(), (id) => this.stop(id), broadcast, guardedEmergencyAdapters, resourceLimits);
     this.orderCoordinator = new EngineOrderCoordinator(
       (id) => this.running.get(id),
       (botId, level, message) => this.log(botId, level, message),
@@ -98,21 +100,17 @@ export class TradingEngine {
   }
   isRunning(id: string) { return this.running.has(id); }
   isRunningForOwner(ownerUserId: string, id: string): boolean { return this.ownedRuntime(ownerUserId, id) !== undefined; }
-
   /** Configuration that owns the actual running adapter (authoritative for auth). */
   runtimeConfig(id: string): BotConfig | undefined {
     const config = this.running.get(id)?.config;
     return config ? structuredClone(config) : undefined;
   }
-
   runtimeConfigForOwner(ownerUserId: string, id: string): BotConfig | undefined {
     const config = this.ownedRuntime(ownerUserId, id)?.config;
     return config ? structuredClone(config) : undefined;
   }
-
   async liveState(id: string) { const bot = this.running.get(id); return bot ? liveRuntimeState(bot) : null; }
   async liveStateForOwner(ownerUserId: string, id: string) { const bot = this.ownedRuntime(ownerUserId, id); return bot ? liveRuntimeState(bot) : null; }
-
   liveCollision(config: BotConfig): BotConfig | undefined {
     const ownerUserId = tradingOwnerForBot(config);
     return findLiveCollision(
@@ -121,6 +119,7 @@ export class TradingEngine {
     );
   }
   async start(config: BotConfig, options: EngineStartOptions = {}) {
+    if (config.exchange !== "paper") assertLiveExecutionAllowed("live bot start", this.runtimePolicy);
     if (config.exchange !== "paper" && !config.ownerUserId?.trim()) {
       throw new Error("Live bot owner is missing; refusing to access trading credentials.");
     }
@@ -158,7 +157,7 @@ export class TradingEngine {
       await options.preflight();
       assertStartCurrent();
     }
-    const adapter = buildEngineAdapter(config, () => this.running.get(config.id)?.price ?? 0);
+    const adapter = buildEngineAdapter(config, () => this.running.get(config.id)?.price ?? 0, this.runtimePolicy);
     const bot: RunningBot = { config, adapter, instrument, buffer: [], price: 0, vars: new Map(), eventQueue: Promise.resolve() };
     if (adapter instanceof PaperAdapter) {
       bot.paper = adapter;
@@ -566,6 +565,7 @@ export class TradingEngine {
     if (this.stopCoordinator.isStopping(bot.config.id)) throw new Error("Bot is stopping; new exchange orders are disabled.");
     return this.orderExecutionLock.run(engineOrderLockKey(bot), async () => {
       if (this.stopCoordinator.isStopping(bot.config.id)) throw new Error("Bot is stopping; new exchange orders are disabled.");
+      if (bot.config.exchange !== "paper") assertPrivateExchangeAccess("live order execution", "mutation", this.runtimePolicy);
       if (bot.paused && !pausedOrderAllowed(order)) throw new Error("Trading is paused; only reduce-only exits, cancellation, and reads are allowed.");
       const release = bot.config.exchange !== "paper" ? this.emergencyForOwner(tradingOwnerForBot(bot.config)).beginLiveOrder() : undefined;
       try {

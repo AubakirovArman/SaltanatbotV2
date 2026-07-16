@@ -1,5 +1,5 @@
 import { GitFork, LayoutDashboard, Plus, Search, Settings2 } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MarketOpportunityEnvelope } from "@saltanatbotv2/arbitrage-sdk";
 import { MARKET_OPPORTUNITY_HANDOFF_EVENT, consumeMarketOpportunityHandoff, type MarketOpportunityHandoffRecord } from "../arbitrage/marketOpportunityHandoff";
 import { useAuth } from "../auth/AuthRoot";
@@ -37,6 +37,7 @@ import { loadPaperMultiLegPanel } from "../trading/loadPaperMultiLegPanel";
 import { paperMultiLegText } from "../trading/paperMultiLegText";
 import { notifyRunningBotsChanged } from "../trading/sessionEvents";
 import { OpportunityResearchPanel } from "../trading/components/OpportunityResearchPanel";
+import { resolveTradingRuntime } from "../trading/runtimeProfile";
 import "../styles/trading.css";
 
 const PaperMultiLegPanel = lazy(loadPaperMultiLegPanel);
@@ -106,12 +107,15 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
   }, [accountAuth.authRequired, accountAuth.tradingAvailable]);
 
   const authed = !!auth?.ok;
+  const runtime = resolveTradingRuntime(auth);
+  const paperOnly = runtime.paperOnly;
   const canUsePaperTrading = auth?.role === "paper-trade" || auth?.role === "live-trade" || auth?.role === "admin";
-  const canUseLiveTrading = auth?.role === "live-trade" || auth?.role === "admin";
+  const canUseLiveTrading = (auth?.role === "live-trade" || auth?.role === "admin") && runtime.privateExchangeRequests;
   // The current paper multi-leg runtime is a single administrator research
   // journal, not a tenant-owned resource yet. Keep the UI aligned with the API.
   const canUsePaperMultiLeg = auth?.role === "admin";
   const canReadTradingAccounts = canUseLiveTrading;
+  const presentedBots = useMemo(() => bots.map((bot) => presentBotForRuntime(bot, paperOnly)), [bots, paperOnly]);
 
   const acceptOpportunityHandoff = useCallback(() => {
     const record = consumeMarketOpportunityHandoff();
@@ -209,7 +213,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
 
   // Poll the live state of the selected running bot for price / equity / uPnL.
   const selectedId = view.kind === "bot" ? view.id : undefined;
-  const selectedBot = bots.find((bot) => bot.id === selectedId);
+  const selectedBot = presentedBots.find((bot) => bot.id === selectedId);
   useEffect(() => {
     if (!selectedId || selectedBot?.status !== "running") return;
     let alive = true;
@@ -246,38 +250,34 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
     };
   }, [selectedId, selectedBot?.status]);
 
+  const loadBotData = useCallback(async (bot: TradingBot) => {
+    const historyPromise = Promise.allSettled([getFills(bot.id), getLogs(bot.id), getOrderJournal(bot.id)] as const);
+    const runtimePromise = shouldLoadBotRuntime(bot, paperOnly)
+      ? Promise.allSettled([getLive(bot.id), getOrders(bot.id)] as const)
+      : Promise.resolve(undefined);
+    const [historyResults, runtimeResults] = await Promise.all([historyPromise, runtimePromise]);
+    const [fillsResult, logsResult, journalResult] = historyResults;
+    if (fillsResult.status === "fulfilled") setFills((current) => ({ ...current, [bot.id]: fillsResult.value }));
+    if (logsResult.status === "fulfilled") setLogs((current) => ({ ...current, [bot.id]: logsResult.value }));
+    if (journalResult.status === "fulfilled") setOrderJournal((current) => ({ ...current, [bot.id]: journalResult.value }));
+    if (runtimeResults) {
+      const [liveResult, ordersResult] = runtimeResults;
+      if (liveResult.status === "fulfilled") setLive((current) => ({ ...current, [bot.id]: liveResult.value }));
+      if (ordersResult.status === "fulfilled") setOrders((current) => ({ ...current, [bot.id]: ordersResult.value }));
+    }
+    const failures = [...historyResults, ...(runtimeResults ?? [])].filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failures.length === 0) {
+      setLastRefreshAt(Date.now());
+      setDataError(undefined);
+    } else {
+      setDataError(failures.map((failure) => failure.reason instanceof Error ? failure.reason.message : String(failure.reason)).join(" · "));
+    }
+  }, [paperOnly]);
+
   const openBot = (id: string) => {
     setView({ kind: "bot", id });
-    void Promise.allSettled([getFills(id), getLogs(id), getLive(id), getOrders(id), getOrderJournal(id)] as const).then((results) => {
-      const [fillsResult, logsResult, liveResult, ordersResult, journalResult] = results;
-      if (fillsResult.status === "fulfilled") {
-        const value = fillsResult.value;
-        setFills((current) => ({ ...current, [id]: value }));
-      }
-      if (logsResult.status === "fulfilled") {
-        const value = logsResult.value;
-        setLogs((current) => ({ ...current, [id]: value }));
-      }
-      if (liveResult.status === "fulfilled") {
-        const value = liveResult.value;
-        setLive((current) => ({ ...current, [id]: value }));
-      }
-      if (ordersResult.status === "fulfilled") {
-        const value = ordersResult.value;
-        setOrders((current) => ({ ...current, [id]: value }));
-      }
-      if (journalResult.status === "fulfilled") {
-        const value = journalResult.value;
-        setOrderJournal((current) => ({ ...current, [id]: value }));
-      }
-      const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
-      if (failures.length === 0) {
-        setLastRefreshAt(Date.now());
-        setDataError(undefined);
-      } else {
-        setDataError(failures.map((failure) => failure.reason instanceof Error ? failure.reason.message : String(failure.reason)).join(" · "));
-      }
-    });
+    const bot = bots.find((candidate) => candidate.id === id);
+    if (bot) void loadBotData(bot);
   };
 
   const stale = selectedBot?.status === "running" && (!lastRefreshAt || clock - lastRefreshAt > 7_000);
@@ -339,7 +339,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
                 <LayoutDashboard size={17} aria-hidden="true" />
                 <span className="trade-bot-id">
                   <strong>{automationText(locale, "overview")}</strong>
-                  <small>{automationText(locale, "running")}: {bots.filter((bot) => bot.status === "running").length}</small>
+                  <small>{automationText(locale, "running")}: {presentedBots.filter((bot) => bot.status === "running").length}</small>
                 </span>
                 <span aria-hidden="true">›</span>
               </button>
@@ -368,8 +368,8 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
                 </button>
               </li>
             )}
-            {bots.length === 0 && <li><p className="empty-note">{tradingText(locale, "noBots")}</p></li>}
-            {bots.map((bot) => {
+            {presentedBots.length === 0 && <li><p className="empty-note">{tradingText(locale, "noBots")}</p></li>}
+            {presentedBots.map((bot) => {
               const pos = live[bot.id]?.position;
               return (
                 <li key={bot.id}>
@@ -412,7 +412,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
         </div>
         {view.kind === "portfolio" && (
           <PortfolioCenter
-            bots={bots}
+            bots={presentedBots}
             locale={locale}
             canReadAccounts={canReadTradingAccounts}
             canCreate={canUsePaperTrading}
@@ -427,6 +427,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
             catalog={catalog}
             locale={locale}
             canReadAccounts={canReadTradingAccounts}
+            paperOnly={paperOnly}
             onCreated={(bot) => {
               refreshBots();
               openBot(bot.id);
@@ -464,6 +465,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
             locale={locale}
             storageOwnerId={localStorageOwner}
             canControl={selectedBot.exchange === "paper" ? canUsePaperTrading : canUseLiveTrading}
+            executionDisabled={paperOnly && selectedBot.exchange !== "paper"}
             onChanged={refreshBots}
             onDeleted={() => {
               refreshBots();
@@ -482,4 +484,16 @@ export function parseTradeEvent(value: unknown): TradeEvent {
   const event = parsed as Partial<TradeEvent>;
   if ((event.type !== "bot" && event.type !== "fill" && event.type !== "log" && event.type !== "signal") || typeof event.botId !== "string" || !event.botId) throw new Error("event type or botId is invalid");
   return event as TradeEvent;
+}
+
+/** Present persisted live bots as inert while the server is paper-only. */
+export function presentBotForRuntime(bot: TradingBot, paperOnly: boolean): TradingBot {
+  return paperOnly && bot.exchange !== "paper" && bot.status !== "stopped"
+    ? { ...bot, status: "stopped" }
+    : bot;
+}
+
+/** Private live/account snapshots must never be requested in paper-only mode. */
+export function shouldLoadBotRuntime(bot: TradingBot, paperOnly: boolean): boolean {
+  return !paperOnly || bot.exchange === "paper";
 }

@@ -2,6 +2,7 @@ import type { StrategyIR } from "../strategy/ir";
 import type { Timeframe } from "../types";
 import { getCsrfToken as getAccountCsrfToken } from "../auth/client";
 import { accountTelemetrySearch, parseAccountTelemetrySnapshot, type AccountTelemetryQuery, type AccountTelemetrySnapshot } from "./accountTelemetry";
+import type { TradingRuntimeDescriptor } from "./runtimeProfile";
 
 export type ExchangeId = "paper" | "binance" | "bybit";
 export type MarketType = "spot" | "futures";
@@ -321,7 +322,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 /** Internal authenticated transport for modular trading panels. */
 export const tradeApiRequest = <T>(path: string, init?: RequestInit) => req<T>(path, init);
 
-export interface AuthState {
+export interface AuthState extends TradingRuntimeDescriptor {
   ok: boolean;
   demo: boolean;
   liveTradingEnabled: boolean;

@@ -13,6 +13,7 @@ import {
   upsertBotForOwner
 } from "../src/trading/store.js";
 import { PaperMultiLegJournal, PaperMultiLegService, type PaperMultiLegPlan } from "../src/arbitrage/paperMultiLeg/index.js";
+import { resolveRuntimeProfile } from "../src/runtimeProfile.js";
 
 // The HTTP tests never start a bot, so a no-op provider is enough — and it avoids
 // pulling the real provider layer (and its native node:sqlite candle store).
@@ -112,6 +113,7 @@ vi.mock("../src/trading/store.js", () => {
       return !!account && (account.ownerUserId ?? LEGACY_TRADING_OWNER_ID) === owner && accounts.delete(id);
     },
     getTradingAccountCredentialsForOwner: (owner: string, id: string) => clone(credentials.get(`${owner}:${id}`)),
+    hasTradingAccountCredentialsForOwner: (owner: string, id: string) => credentials.has(`${owner}:${id}`),
     setTradingAccountCredentialsForOwner: (owner: string, id: string, value: unknown) => credentials.set(`${owner}:${id}`, clone(value)),
     deleteTradingAccountCredentialsForOwner: (owner: string, id: string) => credentials.delete(`${owner}:${id}`),
     TradingAccountInUseError,
@@ -135,7 +137,17 @@ vi.mock("../src/trading/store.js", () => {
     listAuditLog: (limit: number) => audit.slice(0, limit).map((row) => clone(row)),
     listAuditLogForOwner: (owner: string, limit: number) => audit.filter((row) => (row as { ownerUserId?: string }).ownerUserId === owner).slice(0, limit).map((row) => clone(row)),
     getSetting: (k: string) => (settings.has(k) ? clone(settings.get(k)) : undefined),
-    setSetting: (k: string, v: unknown) => settings.set(k, clone(v))
+    setSetting: (k: string, v: unknown) => settings.set(k, clone(v)),
+    disarmAllLiveTradingSettings: () => {
+      let changed = 0;
+      for (const key of settings.keys()) {
+        if (key === "liveTradingEnabled" || (key.startsWith("owner:") && key.endsWith(":liveTradingEnabled"))) {
+          settings.set(key, false);
+          changed += 1;
+        }
+      }
+      return changed;
+    }
   };
 });
 
@@ -857,6 +869,73 @@ describe("trading API E2E (real router, in-memory store)", () => {
   it("delivers a price alert through the notify channel", async () => {
     expect((await post("/notify-alert", { symbol: "BTCUSDT", price: 65000, direction: "above", hitPrice: 65010 })).status).toBe(200);
     expect((await post("/notify-alert", { symbol: "", price: "x", direction: "sideways" })).status).toBe(400);
+  });
+});
+
+describe("public-http-paper API boundary", () => {
+  it("keeps research/paper available while every private entry point fails closed", async () => {
+    const runtimePolicy = resolveRuntimeProfile({ RUNTIME_PROFILE: "public-http-paper" } as NodeJS.ProcessEnv);
+    const emergencyAdapters = vi.fn(() => []);
+    const api = createTradingApi(fakeProvider, undefined, { emergencyAdapters, paperMultiLeg: false, runtimePolicy });
+    const paperApp = express();
+    paperApp.use(express.json());
+    paperApp.use("/api/trade", api.router);
+    const paperServer = await new Promise<Server>((resolve) => {
+      const listener = paperApp.listen(0, "127.0.0.1", () => resolve(listener));
+    });
+    const address = paperServer.address();
+    if (!address || typeof address === "string") throw new Error("paper-only test server did not bind");
+    const paperBase = `http://127.0.0.1:${address.port}/api/trade`;
+
+    try {
+      const login = await fetch(`${paperBase}/session`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: getAuthToken() })
+      });
+      expect(login.status).toBe(200);
+      const loginBody = await login.json() as { csrfToken: string; runtimeProfile: string; executionMode: string };
+      const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+      const mutationHeaders = { cookie, "x-csrf-token": loginBody.csrfToken, "content-type": "application/json" };
+      expect(loginBody).toMatchObject({ runtimeProfile: "public-http-paper", executionMode: "paper-only" });
+
+      const paperBot = await fetch(`${paperBase}/bots`, {
+        method: "POST",
+        headers: mutationHeaders,
+        body: JSON.stringify(validBody({ name: "Paper-only allowed" }))
+      });
+      expect(paperBot.status).toBe(200);
+
+      const liveId = `paper-boundary-live-${Date.now()}`;
+      upsertBotForOwner(LEGACY_TRADING_OWNER_ID, {
+        ...validBody({ id: liveId, name: "Persisted live", exchange: "binance", market: "futures" }),
+        id: liveId,
+        ownerUserId: LEGACY_TRADING_OWNER_ID,
+        status: "stopped",
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      } as never);
+
+      const rejected = await Promise.all([
+        fetch(`${paperBase}/bots`, { method: "POST", headers: mutationHeaders, body: JSON.stringify(validBody({ exchange: "binance", market: "futures" })) }),
+        fetch(`${paperBase}/bots/${liveId}/start`, { method: "POST", headers: mutationHeaders, body: JSON.stringify({ confirmLive: true }) }),
+        fetch(`${paperBase}/settings`, { method: "POST", headers: mutationHeaders, body: JSON.stringify({ liveTradingEnabled: true }) }),
+        fetch(`${paperBase}/accounts/${binanceAccountId}/credentials`, { method: "PUT", headers: mutationHeaders, body: JSON.stringify({ apiKey: "abcdefgh", apiSecret: "supersecret" }) }),
+        fetch(`${paperBase}/account-telemetry`, { headers: { cookie } }),
+        fetch(`${paperBase}/bybit/uta`, { headers: { cookie } })
+      ]);
+      for (const response of rejected) {
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({ code: "PAPER_ONLY_MODE" });
+      }
+
+      const kill = await fetch(`${paperBase}/kill`, { method: "POST", headers: mutationHeaders, body: "{}" });
+      expect(kill.status).toBe(200);
+      expect(emergencyAdapters).not.toHaveBeenCalled();
+    } finally {
+      api.engine.shutdown();
+      await new Promise<void>((resolve, reject) => paperServer.close((error) => error ? reject(error) : resolve()));
+    }
   });
 });
 

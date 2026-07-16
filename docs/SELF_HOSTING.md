@@ -9,6 +9,13 @@ research jobs. SQLite stores owner-partitioned trading accounts, robots, journal
 per-account exchange credentials, plus candles and paper journals. Forward migrations preserve
 existing records; make a verified backup before every upgrade.
 
+The default execution boundary is `RUNTIME_PROFILE=public-http-paper`. It keeps monitoring, public
+market data, screeners, backtests and paper robots available, while the backend rejects live robot
+configuration/start/resume, credential writes and every signed REST/private WebSocket request with
+stable code `PAPER_ONLY_MODE`. It also clears persisted live-arm flags at startup without deleting
+bots, accounts, credentials or audit history. Keep this profile on any deployment that does not yet
+have HTTPS. `private-live` is reserved for a later, separately audited HTTPS deployment.
+
 At startup the trading store enforces mode `0700` on `backend/data/` and `0600` on both
 `trading.db` and its `.secret`, including files created by older versions with broader modes.
 
@@ -79,6 +86,7 @@ npm ci
 npm run build
 
 export AUTH_MODE=database
+export RUNTIME_PROFILE=public-http-paper
 export PGHOST=127.0.0.1
 export PGPORT=55434
 export PGDATABASE=saltanatbotv2
@@ -141,6 +149,10 @@ Trading-role assignment is enabled by default after the owner migration. Set
 `AUTH_TRADING_ROLES_ENABLED=0` only as a maintenance kill switch for non-admin trading access;
 changing or removing a user's permission revokes sessions, disconnects private streams and stops
 that user's running robots.
+
+Roles do not override the runtime profile. Even an administrator with `live-trade` receives
+`PAPER_ONLY_MODE` while `public-http-paper` is active; the interface hides API-key, live-arm, private
+telemetry and UTA controls and labels the workspace `Research / Paper`.
 
 The API also applies hard, owner-local quotas before allocating trading control-plane resources:
 

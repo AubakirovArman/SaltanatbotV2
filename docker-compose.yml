@@ -78,7 +78,9 @@ services:
       # Port the server binds inside the container (matches the EXPOSE/mapping).
       PORT: 4180
       # HOST is fixed to 0.0.0.0 in the image so the mapped port is reachable.
-      # Set DEMO_MODE=1 to disable exchange keys and live trading.
+      # Fail closed until an HTTPS deployment is deliberately designed/audited.
+      RUNTIME_PROFILE: ${RUNTIME_PROFILE:-public-http-paper}
+      # Deprecated compatibility alias for public-http-paper.
       DEMO_MODE: ${DEMO_MODE:-}
       # Comma-separated CORS allowlist for cross-origin dev/proxy setups.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}

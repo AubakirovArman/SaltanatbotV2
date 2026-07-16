@@ -38,7 +38,6 @@ import { launchView } from "./app/launchView";
 import { createPwaFileLaunchBatch, registerPwaFileLaunch, type PwaFileLaunchBatch, type PwaLaunchWindow } from "./pwa/fileLaunch";
 import { PwaFileLaunchDialog } from "./pwa/PwaFileLaunchDialog";
 import { clearPwaShareTargetLaunch, discardPwaShareTarget, loadPwaShareTarget, parsePwaShareTargetLaunch } from "./pwa/shareTarget";
-import { useRunningBotsSummary } from "./trading/useRunningBotsSummary";
 import { useAuth } from "./auth/AuthRoot";
 
 const StrategyLab = lazy(loadStrategyLab);
@@ -84,7 +83,6 @@ export default function App() {
   const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
   const [paneStreams, setPaneStreams] = useState<Record<string, PaneMarketStream>>({});
   const [mobilePanel, setMobilePanel] = useState<"markets" | "instrument">();
-  const runningBotsSummary = useRunningBotsSummary();
   const shell = useAppShell({
     symbol,
     setSymbol,
@@ -341,8 +339,6 @@ export default function App() {
         locale={locale}
         leftOpen={isMobile ? mobilePanel === "markets" : leftOpen}
         rightOpen={isMobile ? mobilePanel === "instrument" : rightOpen}
-        runningBotsCount={runningBotsSummary.count}
-        runningBotsStatus={runningBotsSummary.status}
         mobilePanels={isMobile}
         panelsSwapped={shell.panelsSwapped}
         workspaces={workspaces}

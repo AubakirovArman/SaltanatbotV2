@@ -113,6 +113,22 @@ describe("live account selection when creating a bot", () => {
     }
     await act(async () => root.unmount());
   });
+
+  it("forces Paper and skips account requests when the server runtime is paper-only", async () => {
+    const loadAccounts = vi.fn(async () => [bybitReady]);
+    const saveTradingBot = vi.fn(async (input: Partial<TradingBot>) => savedBot(input));
+    const { container, root } = await render({ canReadAccounts: true, paperOnly: true, loadAccounts, saveTradingBot });
+
+    expect([...container.querySelectorAll<HTMLOptionElement>('select[name="exchange"] option')].map((item) => item.value)).toEqual(["paper"]);
+    expect(container.querySelector('select[name="account-id"]')).toBeNull();
+    expect(container.textContent).toContain(tradingText("en", "runPaperOnly"));
+    expect(loadAccounts).not.toHaveBeenCalled();
+
+    await submit(container.querySelector<HTMLFormElement>("form")!);
+    expect(saveTradingBot).toHaveBeenCalledWith(expect.objectContaining({ exchange: "paper" }));
+    expect(saveTradingBot).not.toHaveBeenCalledWith(expect.objectContaining({ accountId: expect.any(String) }));
+    await act(async () => root.unmount());
+  });
 });
 
 async function render(props: Partial<ComponentProps<typeof CreateBotForm>> = {}) {

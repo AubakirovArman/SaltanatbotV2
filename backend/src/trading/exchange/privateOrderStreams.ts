@@ -3,6 +3,7 @@ import WebSocket from "ws";
 import type { ExchangeOrderSnapshot, PrivateOrderSubscription } from "../types.js";
 import type { ExchangeKeys } from "./binance.js";
 import { normalizeBinanceOrderStatus, normalizeBybitOrderStatus } from "./orderStatus.js";
+import { assertPrivateExchangeAccess, getRuntimePolicy, type RuntimePolicy } from "../../runtimeProfile.js";
 
 interface StreamCallbacks {
   onSnapshot(snapshot: ExchangeOrderSnapshot): void;
@@ -18,6 +19,7 @@ export interface PrivateStreamDependencies {
   clearTimeout?: typeof clearTimeout;
   setInterval?: typeof setInterval;
   clearInterval?: typeof clearInterval;
+  runtimePolicy?: RuntimePolicy;
 }
 
 type Dependencies = Required<PrivateStreamDependencies>;
@@ -27,6 +29,7 @@ export async function subscribeBinanceOrders(
   callbacks: StreamCallbacks,
   dependencies: PrivateStreamDependencies = {}
 ): Promise<PrivateOrderSubscription> {
+  assertPrivateExchangeAccess("Binance private order stream", "stream", dependencies.runtimePolicy ?? getRuntimePolicy());
   requireKeys("Binance", keys);
   const deps = resolveDependencies(dependencies);
   let listenKey = await createBinanceListenKey(keys, deps);
@@ -117,6 +120,7 @@ export async function subscribeBybitOrders(
   callbacks: StreamCallbacks,
   dependencies: PrivateStreamDependencies = {}
 ): Promise<PrivateOrderSubscription> {
+  assertPrivateExchangeAccess("Bybit private order stream", "stream", dependencies.runtimePolicy ?? getRuntimePolicy());
   requireKeys("Bybit", keys);
   const deps = resolveDependencies(dependencies);
   let socket: WebSocket | undefined;
@@ -286,7 +290,8 @@ function resolveDependencies(dependencies: PrivateStreamDependencies): Dependenc
     setTimeout: dependencies.setTimeout ?? globalThis.setTimeout,
     clearTimeout: dependencies.clearTimeout ?? globalThis.clearTimeout,
     setInterval: dependencies.setInterval ?? globalThis.setInterval,
-    clearInterval: dependencies.clearInterval ?? globalThis.clearInterval
+    clearInterval: dependencies.clearInterval ?? globalThis.clearInterval,
+    runtimePolicy: dependencies.runtimePolicy ?? getRuntimePolicy()
   };
 }
 

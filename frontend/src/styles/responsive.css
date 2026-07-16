@@ -169,6 +169,14 @@
     display: none;
   }
 
+  .runtime-profile-badge .runtime-profile-full {
+    display: none;
+  }
+
+  .runtime-profile-badge .runtime-profile-short {
+    display: inline;
+  }
+
   .symbol-chip {
     max-inline-size: 166px;
   }

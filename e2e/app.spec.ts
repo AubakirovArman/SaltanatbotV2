@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { installMarketSocketMock, mockCandleHistory, mockCandles, mockChartCandles } from "./support/marketMocks";
 import { encodeStrategyFile } from "../frontend/src/strategy/strategyFile";
 import type { StrategyArtifact } from "../frontend/src/strategy/library";
+import type { EmergencyStopStatus } from "../frontend/src/trading/tradeClient";
 
 test.beforeEach(async ({ page }) => {
   // Keep ordinary chart journeys independent from public exchange availability.
@@ -1579,10 +1580,10 @@ test("switches and persists the interface locale", { tag: "@smoke" }, async ({ p
   await page.getByLabel("Access token").fill("e2e-local-admin-token");
   await page.getByRole("button", { name: "Құлыпты ашу", exact: true }).click();
   await page.getByRole("button", { name: "Параметрлер", exact: true }).click();
-  await expect(page.getByText("Demo режимі қосулы — тек paper сауда қолжетімді.")).toBeVisible();
-  const accountRegistry = page.getByRole("region", { name: "Сауда аккаунттарының тізілімі" });
-  await expect(accountRegistry).toBeVisible();
-  await expect(accountRegistry.getByRole("button", { name: "Аккаунт қосу", exact: true })).toBeVisible();
+  const paperNotice = page.locator(".runtime-paper-notice");
+  await expect(paperNotice).toContainText("Research / Paper");
+  await expect(paperNotice).toContainText("Тек зерттеу және симуляция қолжетімді.");
+  await expect(page.getByRole("region", { name: "Сауда аккаунттарының тізілімі" })).toHaveCount(0);
   await expect(page.getByLabel("Бот token-і")).toBeVisible();
 });
 
@@ -1715,8 +1716,11 @@ test("creates, starts, journals and stops a paper bot", { tag: "@smoke" }, async
   await page.getByLabel("Bot name").fill(botName);
   // Keep lifecycle E2E deterministic: EURUSD is backed by the local synthetic
   // provider, while BTCUSDT startup depends on public exchange latency.
-  await page.locator('.trade-form select[name="symbol"]').selectOption("EURUSD");
-  await page.getByLabel("Exchange").selectOption("paper");
+  const botForm = page.locator("form.trade-form");
+  await botForm.locator('select[name="symbol"]').selectOption("EURUSD");
+  const exchange = botForm.locator('select[name="exchange"]');
+  await expect(exchange).toHaveValue("paper");
+  await expect(exchange.locator("option")).toHaveCount(1);
   await page.getByRole("button", { name: "Create bot", exact: true }).click();
 
   const detail = page.locator(".trade-detail");
@@ -1744,8 +1748,10 @@ test("creates, starts, journals and stops a paper bot", { tag: "@smoke" }, async
   await detail.getByRole("button", { name: "Delete bot" }).click();
 });
 
-test("exposes safe demo trading settings and labeled secret forms", async ({ page }) => {
+test("keeps research and paper settings usable without exposing exchange secrets", async ({ page }) => {
+  let accountRequests = 0;
   await page.route("**/api/trade/accounts", async (route) => {
+    accountRequests += 1;
     if (route.request().method() === "GET") {
       await route.fulfill({ json: { accounts: [tradingAccountFixture("binance", false), tradingAccountFixture("bybit", true)] } });
     } else await route.continue();
@@ -1755,13 +1761,13 @@ test("exposes safe demo trading settings and labeled secret forms", async ({ pag
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
 
-  await expect(page.getByText("Running in demo mode — only paper trading is available.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Demo binance account" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Demo bybit account" })).toBeVisible();
-  await expect(page.getByLabel("API key").first()).toHaveAttribute("type", "password");
-  await expect(page.getByLabel("API secret").first()).toHaveAttribute("autocomplete", "off");
-  await expect(page.getByRole("button", { name: "Set credentials" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Rotate credentials" })).toBeVisible();
+  const paperNotice = page.locator(".runtime-paper-notice");
+  await expect(paperNotice).toContainText("Research / Paper");
+  await expect(paperNotice).toContainText("Private exchange requests, API keys and live orders are disabled on this server.");
+  await expect(page.getByRole("region", { name: "Trading account registry" })).toHaveCount(0);
+  await expect(page.locator('.account-credential-form, input[name="apiKey"], input[name="apiSecret"]')).toHaveCount(0);
+  await expect(page.locator(".account-telemetry, .uta-panel")).toHaveCount(0);
+  expect(accountRequests).toBe(0);
   await expect(page.getByLabel("Bot token")).toHaveAttribute("autocomplete", "new-password");
   await expect(page.getByLabel("Chat ID")).toHaveAttribute("inputmode", "numeric");
 });
@@ -1800,6 +1806,14 @@ test("shows protected account economics as read-only admin evidence", async ({ p
 
 test("confirms account emergency stop and requires a separate flatten confirmation", async ({ page }) => {
   const mutations: Array<Record<string, unknown>> = [];
+  let emergencyStatus: EmergencyStopStatus = {
+    phase: "idle",
+    ok: true,
+    flattenRequested: false,
+    botsStopped: 0,
+    accounts: [],
+    errors: []
+  };
   await page.route("**/api/trade/settings", async (route) => {
     if (route.request().method() === "GET") await route.fulfill({ json: { demo: false, liveTradingEnabled: true, secureTradingOrigin: true, role: "admin" } });
     else await route.continue();
@@ -1811,24 +1825,23 @@ test("confirms account emergency stop and requires a separate flatten confirmati
   await page.route("**/api/trade/kill", async (route) => {
     const request = route.request();
     if (request.method() === "GET") {
-      await route.fulfill({ json: { phase: "idle", ok: true, flattenRequested: false, botsStopped: 0, accounts: [], errors: [] } });
+      await route.fulfill({ json: emergencyStatus });
       return;
     }
     const body = request.postDataJSON() as Record<string, unknown>;
     mutations.push(body);
-    await route.fulfill({
-      json: {
-        operationId: body.operationId,
-        phase: "terminal",
-        ok: true,
-        flattenRequested: body.flatten,
-        startedAt: 1,
-        completedAt: 2,
-        botsStopped: 2,
-        accounts: [],
-        errors: []
-      }
-    });
+    emergencyStatus = {
+      operationId: String(body.operationId),
+      phase: "terminal",
+      ok: true,
+      flattenRequested: body.flatten === true,
+      startedAt: 1,
+      completedAt: 2,
+      botsStopped: 2,
+      accounts: [],
+      errors: []
+    };
+    await route.fulfill({ json: emergencyStatus });
   });
 
   await openRobotsWorkspace(page);
@@ -1898,14 +1911,12 @@ test("shows Bybit UTA collateral risk and requires explicit debt confirmations",
 
   await page.getByRole("button", { name: "New bot" }).click();
   const botForm = page.locator("form.trade-form");
-  await botForm.locator('select[name="exchange"]').selectOption("bybit");
-  await botForm.locator('select[name="market"]').selectOption("futures");
-  await expect(page.getByLabel("Use Bybit UTA cross collateral")).toBeVisible();
-  await expect(page.getByText(/require a Unified Trading Account/i)).toBeVisible();
-  await expect(botForm.getByLabel("Max position")).toHaveValue("1000");
-  await expect(botForm.getByLabel("Max order")).toHaveValue("250");
-  await expect(botForm.getByLabel("Max daily loss")).toHaveValue("100");
-  await expect(botForm.getByLabel("Max open orders")).toHaveValue("10");
+  const exchange = botForm.locator('select[name="exchange"]');
+  await expect(exchange).toHaveValue("paper");
+  await expect(exchange.locator("option")).toHaveCount(1);
+  await expect(exchange.locator('option[value="bybit"]')).toHaveCount(0);
+  await expect(page.getByLabel("Use Bybit UTA cross collateral")).toHaveCount(0);
+  await expect(botForm.getByRole("note")).toContainText("paper account");
 });
 
 test("filters basis research candidates without placing orders", { tag: "@smoke" }, async ({ page }) => {

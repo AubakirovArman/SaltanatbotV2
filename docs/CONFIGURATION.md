@@ -40,7 +40,8 @@ The backend reads these environment variables in `backend/src/server.ts` / `back
 | `PGDATABASE` / `PGUSER` | `saltanatbotv2` | Dedicated database and role. |
 | `PGPASSWORD_FILE` | *(unset)* | Preferred absolute regular file containing the database password. |
 | `PGPOOL_MAX` | `12` | Maximum API PostgreSQL connections. |
-| `DEMO_MODE`       | *(off)*       | `1`/`true` disables exchange keys and live trading — paper only. For public demos.       |
+| `RUNTIME_PROFILE` | `public-http-paper` | Immutable execution boundary loaded before databases/listeners. `public-http-paper` permits public data, research, backtests and paper robots but forbids live configs, credential writes/decryption for use, signed REST and private WebSockets. `private-live` is reserved for a separately audited HTTPS deployment. |
+| `DEMO_MODE`       | *(off)*       | Deprecated compatibility alias: `1`/`true` selects `public-http-paper`. Unknown values and conflicts stop startup. |
 | `ENABLE_LIVE_SPOT` | *(off)* | `1`/`true` permits experimental Bybit spot after the normal live gates. It does not enable Binance spot, which remains disabled until authenticated spot execution accounting exists. |
 | `ALLOWED_ORIGINS` | dev localhost | Comma-separated HTTP CORS and WebSocket `Origin` allowlist for cross-origin browser access. Same-origin always works. |
 | `TRUST_PROXY` | *(unset)* | Explicit Express trusted-proxy IP/CIDR/name list (for example `loopback`). Only trusted proxies may establish HTTPS through `X-Forwarded-Proto`. |
@@ -49,10 +50,10 @@ The backend reads these environment variables in `backend/src/server.ts` / `back
 | `ARBITRAGE_CONTINUOUS_ROUTES_FILE` | *(unset)* | Preferred absolute path to one bounded, regular, non-symlinked UTF-8 public-feed allowlist. Mutually exclusive with the inline JSON variable. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_JSON` | *(unset)* | Optional bounded public-feed allowlist for continuous multi-venue research discovery; exact reviewed identity and fee metadata only, never credentials. |
 
-To run on a different application port after configuring PostgreSQL:
+To run on a different application port after configuring PostgreSQL (paper/research only, safe default):
 
 ```bash
-PORT=8080 HOST=127.0.0.1 AUTH_MODE=database npm start
+PORT=8080 HOST=127.0.0.1 AUTH_MODE=database RUNTIME_PROFILE=public-http-paper npm start
 ```
 
 Create the first administrator once. The generated password is shown once and the first login forces

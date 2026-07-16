@@ -10,6 +10,8 @@ import type { ConnectionState } from "../hooks/useMarketStream";
 import type { ChartLayoutPreset, Workspace } from "../workspace/workspaces";
 import { chartTypeIcons, chartTypeLabel } from "./chartTypePresentation";
 import { LayoutMenu } from "./topbar/LayoutMenu";
+import { RuntimeProfileBadge } from "./RuntimeProfileBadge";
+import { useRunningBotsSummary } from "../trading/useRunningBotsSummary";
 
 interface TopBarProps {
   catalog?: CatalogResponse;
@@ -22,8 +24,6 @@ interface TopBarProps {
   locale: Locale;
   leftOpen: boolean;
   rightOpen: boolean;
-  runningBotsCount?: number;
-  runningBotsStatus: "loading" | "ready" | "locked" | "error";
   mobilePanels?: boolean;
   panelsSwapped: boolean;
   workspaces: Workspace[];
@@ -68,8 +68,6 @@ export function TopBar({
   locale,
   leftOpen,
   rightOpen,
-  runningBotsCount,
-  runningBotsStatus,
   mobilePanels = false,
   panelsSwapped,
   workspaces,
@@ -100,6 +98,7 @@ export function TopBar({
 }: TopBarProps) {
   const targetLocale = nextLocale(locale);
   const auth = useContext(AuthContext);
+  const { count: runningBotsCount, status: runningBotsStatus, paperOnly: paperOnlyRuntime } = useRunningBotsSummary();
   const [mobileUtilitiesOpen, setMobileUtilitiesOpen] = useState(false);
   const utilityRef = useRef<HTMLDivElement | null>(null);
   const utilityLabel = locale === "ru" ? "Дополнительные инструменты" : locale === "kk" ? "Қосымша құралдар" : "More tools";
@@ -131,6 +130,8 @@ export function TopBar({
         <strong aria-hidden="true">SaltanatbotV2</strong>
         <span className="sr-only">SaltanatbotV2</span>
       </div>
+
+      {paperOnlyRuntime && <RuntimeProfileBadge locale={locale} />}
 
       <button type="button" className="symbol-chip" onClick={onOpenPalette} title={shellText(locale, "switchSymbol")} aria-label={`${shellText(locale, "currentInstrument")} ${instrument.symbol}. ${shellText(locale, "openSymbolSearch")}`}>
         <strong>{instrument.symbol}</strong>

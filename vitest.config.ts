@@ -17,6 +17,10 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
+    // Unit/integration suites exercise both live adapters and the paper-only
+    // boundary. Production has the opposite, fail-closed default; tests opt in
+    // explicitly and paper-only cases inject/resolve that policy directly.
+    env: { RUNTIME_PROFILE: "private-live" },
     include: [
       "backend/tests/**/*.test.ts",
       "frontend/tests/**/*.test.{ts,tsx}",

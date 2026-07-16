@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
-import { isDemoMode, verifyAppWsSession, verifyTradeWsRequest } from "./auth.js";
+import { verifyAppWsSession, verifyTradeWsRequest } from "./auth.js";
 import { createArbitrageDepthHandler, createArbitrageHandler, createArbitrageHistoryHandler } from "./arbitrage/routes.js";
 import { ArbitrageScannerService } from "./arbitrage/service.js";
 import { ArbitrageStreamHub } from "./arbitrage/stream.js";
@@ -46,10 +46,11 @@ import { registerIdentityServerRoutes } from "./identity/serverRoutes.js";
 import { apiErrorHandler } from "./http/apiErrorHandler.js";
 import { installGracefulShutdown } from "./http/gracefulShutdown.js";
 import { SingleFlightGate } from "./http/singleFlightGate.js";
-
+import { getRuntimePolicy, isPaperOnlyRuntime } from "./runtimeProfile.js";
 const port = Number(process.env.PORT ?? 4180);
 // Fail safe: bind to loopback unless the operator explicitly opts into a wider bind.
 const host = process.env.HOST ?? "127.0.0.1";
+const runtimePolicy = getRuntimePolicy();
 const identityRuntime = await initializeIdentityRuntime();
 const legacyTradingOwnerUserId = await resolveLegacyTradingOwnerUserId(identityRuntime);
 const provider = new ProviderRouter();
@@ -68,7 +69,7 @@ const tradeFlowHub = new TradeFlowHub();
 const venueClockCalibration = new VenueClockCalibrationService();
 const arbitrageAlerts = new ArbitrageAlertService({ clockCalibration: venueClockCalibration });
 const researchAlerts = new ResearchAlertService();
-const trading = createTradingApi(provider, arbitrageAlerts, { researchAlerts, legacyOwnerUserId: legacyTradingOwnerUserId, telegramControlEnabled: identityRuntime.mode === "legacy" });
+const trading = createTradingApi(provider, arbitrageAlerts, { researchAlerts, legacyOwnerUserId: legacyTradingOwnerUserId, telegramControlEnabled: identityRuntime.mode === "legacy", runtimePolicy });
 identityRuntime.service?.setTradingAccessChangeHandler((ownerUserId, action) => action === "restore" ? trading.restoreOwnerAccess(ownerUserId) : trading.revokeOwnerAccess(ownerUserId));
 identityRuntime.service?.setSessionRevocationHandler(({ userId, sessionIdHash, reason }) => sessionIdHash ? trading.disconnectSession(sessionIdHash, `Session ${reason.replaceAll("_", " ")}`) : trading.disconnectOwner(userId, `Session ${reason.replaceAll("_", " ")}`));
 const arbitrageScanner = new ArbitrageScannerService({ clockCalibration: venueClockCalibration });
@@ -553,15 +554,15 @@ server.listen(port, host, () => {
   void initCatalog()
     .then(() => console.log(`Instrument catalog ready (${getCatalog().instruments.length} instruments).`))
     .catch((error) => console.log(`Catalog fetch failed, using curated fallback: ${String(error)}`));
-  if (isDemoMode()) {
-    console.log("⚠️  DEMO_MODE is ON — exchange keys and live trading are disabled.");
+  if (isPaperOnlyRuntime(runtimePolicy)) {
+    console.log("🔒 Runtime profile public-http-paper — private exchange access and live trading are disabled.");
   }
   const loopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
   if (!loopback) {
     console.log(`⚠️  Bound to ${host} (reachable off-machine). Put this behind a reverse proxy with TLS,\n` + "   restrict access, and keep account/database secrets private. See docs/CONFIGURATION.md.");
   }
   // Bring back bots that were running before the last shutdown/crash.
-  void trading.engine.resume(createTradingResumeAuthorization(identityRuntime));
+  void trading.engine.resume(createTradingResumeAuthorization(identityRuntime, runtimePolicy));
   // Start the inbound Telegram control poller. No-op unless a token+chatId are
   // configured and Telegram is enabled; it can also be activated later from the
   // UI (POST /notify calls refresh()).

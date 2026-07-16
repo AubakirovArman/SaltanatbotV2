@@ -23,6 +23,7 @@ import { LEGACY_TRADING_OWNER_ID, getSetting, listBotsForOwner, listLogsForOwner
 import { type BotDetail, escapeHtml, formatBotDetail, formatPortfolio, formatStatus, HELP_TEXT, parseCommand, type StatusRow } from "./telegramCommands.js";
 import type { BotConfig } from "./types.js";
 import { tenantSettingKey } from "./ownership.js";
+import { getRuntimePolicy, isPaperOnlyRuntime, type RuntimePolicy } from "../runtimeProfile.js";
 
 /** An inline-keyboard reply: rows of buttons carrying callback `data`. */
 type Keyboard = { text: string; data: string }[][];
@@ -58,7 +59,8 @@ export class TelegramControl {
   constructor(
     private readonly engine: TradingEngine,
     private readonly ownerUserId = LEGACY_TRADING_OWNER_ID,
-    private readonly inboundEnabled = true
+    private readonly inboundEnabled = true,
+    private readonly runtimePolicy: RuntimePolicy = getRuntimePolicy()
   ) {}
 
   /**
@@ -204,6 +206,9 @@ export class TelegramControl {
       case "unmute":
         return { text: this.muteReply(arg, false) };
       case "kill":
+        if (isPaperOnlyRuntime(this.runtimePolicy)) {
+          return { text: "🔒 Private exchange emergency actions are disabled in Research / Paper mode. Use /stop all to stop paper bots." };
+        }
         // Require an explicit button press before the destructive kill.
         return { text: "⚠️ Confirm: disarm live trading, stop ALL bots and cancel account orders? Positions stay open.", keyboard: [[{ text: "🛑 Confirm kill", data: "kill:yes" }]] };
       case "":
@@ -218,6 +223,7 @@ export class TelegramControl {
     const [action, id] = data.split(":");
     switch (action) {
       case "kill":
+        if (isPaperOnlyRuntime(this.runtimePolicy)) return { toast: "Paper only", text: "🔒 Private exchange emergency actions are disabled in Research / Paper mode." };
         setSetting(tenantSettingKey(this.ownerUserId, "liveTradingEnabled"), false);
         {
           const result = await this.engine.emergencyStopForOwner(this.ownerUserId);
@@ -227,6 +233,7 @@ export class TelegramControl {
           return { toast: "Confirmed", text: "🛑 Emergency stop confirmed — bots stopped, open orders cancelled, live trading disarmed." };
         }
       case "resume":
+        if (this.isLiveActionBlocked(id)) return { toast: "Paper only" };
         return { toast: (await this.engine.confirmResumeForOwner(this.ownerUserId, id)) ? "Resumed" : "Not paused" };
       case "stop":
         try {
@@ -237,6 +244,7 @@ export class TelegramControl {
           return { toast: "Stop failed" };
         }
       case "close": {
+        if (this.isLiveActionBlocked(id)) return { toast: "Paper only" };
         const ok = this.engine.runtimeConfigForOwner(this.ownerUserId, id)
           ? await this.engine.closeNow(id).catch(() => false)
           : false;
@@ -251,8 +259,10 @@ export class TelegramControl {
     const bot = findBotByName(arg, this.ownerUserId);
     if (!bot || !this.engine.isRunningForOwner(this.ownerUserId, bot.id)) return undefined;
     const row: { text: string; data: string }[] = [];
-    if (this.engine.isPausedForOwner(this.ownerUserId, bot.id)) row.push({ text: "▶️ Resume", data: `resume:${bot.id}` });
-    row.push({ text: "✋ Close", data: `close:${bot.id}` }, { text: "⏹️ Stop", data: `stop:${bot.id}` });
+    const privateActionBlocked = bot.exchange !== "paper" && isPaperOnlyRuntime(this.runtimePolicy);
+    if (!privateActionBlocked && this.engine.isPausedForOwner(this.ownerUserId, bot.id)) row.push({ text: "▶️ Resume", data: `resume:${bot.id}` });
+    if (!privateActionBlocked) row.push({ text: "✋ Close", data: `close:${bot.id}` });
+    row.push({ text: "⏹️ Stop", data: `stop:${bot.id}` });
     return [row];
   }
 
@@ -299,6 +309,7 @@ export class TelegramControl {
   private async closeReply(arg: string): Promise<string> {
     const bot = findBotByName(arg.trim(), this.ownerUserId);
     if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
+    if (bot.exchange !== "paper" && isPaperOnlyRuntime(this.runtimePolicy)) return "🔒 Live position actions are disabled in Research / Paper mode.";
     const ok = this.engine.runtimeConfigForOwner(this.ownerUserId, bot.id)
       ? await this.engine.closeNow(bot.id).catch(() => false)
       : false;
@@ -308,6 +319,7 @@ export class TelegramControl {
   private async resumeReply(arg: string): Promise<string> {
     const bot = findBotByName(arg.trim(), this.ownerUserId);
     if (!bot) return `No bot named "${escapeHtml(arg.trim())}".`;
+    if (bot.exchange !== "paper" && isPaperOnlyRuntime(this.runtimePolicy)) return "🔒 Live bot resume is disabled in Research / Paper mode.";
     return (await this.engine.confirmResumeForOwner(this.ownerUserId, bot.id)) ? `▶️ Resumed <b>${escapeHtml(bot.name)}</b>.` : `<b>${escapeHtml(bot.name)}</b> isn't paused.`;
   }
 
@@ -390,6 +402,10 @@ export class TelegramControl {
     if (!bot) return `No bot named "${escapeHtml(target)}".`;
     if (this.engine.isRunningForOwner(this.ownerUserId, bot.id)) return `<b>${escapeHtml(bot.name)}</b> is already running.`;
 
+    if (bot.exchange !== "paper" && isPaperOnlyRuntime(this.runtimePolicy)) {
+      return `🔒 <b>${escapeHtml(bot.name)}</b> cannot start while the server is in Research / Paper mode.`;
+    }
+
     // LIVE bots honour the same arm gate as the HTTP route. Telegram is the
     // confirm step for an already-armed account — it must NOT bypass the arm.
     if (bot.exchange !== "paper" && getSetting<boolean>(tenantSettingKey(this.ownerUserId, "liveTradingEnabled")) !== true) {
@@ -422,6 +438,10 @@ export class TelegramControl {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ callback_query_id: callbackId, text })
     });
+  }
+
+  private isLiveActionBlocked(botId: string): boolean {
+    return isPaperOnlyRuntime(this.runtimePolicy) && this.engine.runtimeConfigForOwner(this.ownerUserId, botId)?.exchange !== "paper";
   }
 }
 

@@ -7,6 +7,7 @@ import {
   requireExchangeObject
 } from "./errors.js";
 import { getExchangeRequestGuard, type ExchangeRequestGuard } from "./requestGuard.js";
+import { assertPrivateExchangeAccess, getRuntimePolicy, type RuntimePolicy } from "../../runtimeProfile.js";
 
 export type BybitMethod = "GET" | "POST";
 
@@ -23,6 +24,7 @@ interface BybitClientOptions {
   fetch?: typeof fetch;
   now?: () => number;
   requestGuard?: ExchangeRequestGuard;
+  runtimePolicy?: RuntimePolicy;
 }
 
 /** Shared signed Bybit V5 transport for execution and UTA account services. */
@@ -32,6 +34,7 @@ export class BybitV5Client {
   private readonly fetcher: typeof fetch;
   private readonly now: () => number;
   private readonly requestGuard: ExchangeRequestGuard;
+  private readonly runtimePolicy: RuntimePolicy;
 
   constructor(private readonly keys: ExchangeKeys, options: BybitClientOptions = {}) {
     this.base = options.base ?? "https://api.bybit.com";
@@ -39,9 +42,11 @@ export class BybitV5Client {
     this.fetcher = options.fetch ?? fetch;
     this.now = options.now ?? Date.now;
     this.requestGuard = options.requestGuard ?? getExchangeRequestGuard("bybit");
+    this.runtimePolicy = options.runtimePolicy ?? getRuntimePolicy();
   }
 
   async request<T>(method: BybitMethod, path: string, params: Record<string, unknown> = {}): Promise<BybitEnvelope<T>> {
+    assertPrivateExchangeAccess(`Bybit signed ${method} request`, method === "GET" ? "read" : "mutation", this.runtimePolicy);
     if (!this.keys.apiKey || !this.keys.apiSecret) throw new Error("Bybit API keys are not set");
     this.requestGuard.assertAvailable();
     const timestamp = String(this.now());
