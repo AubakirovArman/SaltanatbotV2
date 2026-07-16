@@ -7,6 +7,7 @@ import { formatVolume } from "./drawingInteraction";
 import { createChartTimeFormatter, type ChartTimeZone } from "../../chart/timeAxis";
 
 interface ChartPriceHudProps {
+  active?: boolean;
   candle?: Candle;
   latest?: Candle;
   timeframe: Timeframe;
@@ -17,13 +18,15 @@ interface ChartPriceHudProps {
   crosshair?: { x: number; y: number };
 }
 
-export function ChartPriceHud({ candle, latest, timeframe, decimals, locale, timeZone, viewport, crosshair }: ChartPriceHudProps) {
+export function ChartPriceHud({ active = true, candle, latest, timeframe, decimals, locale, timeZone, viewport, crosshair }: ChartPriceHudProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [active]);
 
   const priceStyle = useMemo<CSSProperties | undefined>(() => {
     if (!latest || !viewport) return undefined;

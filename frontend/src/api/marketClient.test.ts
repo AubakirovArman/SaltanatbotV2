@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getCandles } from "./marketClient";
+import { createQuoteSocket, getCandles, getSparklines } from "./marketClient";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,5 +29,37 @@ describe("chart market route transport", () => {
     expect(url).toContain("exchange=binance");
     expect(url).toContain("marketType=linear");
     expect(url).toContain("priceType=mark");
+  });
+
+  it("preserves exchange, market and price types in batched quote requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      timeframe: "1m",
+      series: { BTCUSDT: { last: 100, changePct: 0, points: [100, 100] } }
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getSparklines(["BTCUSDT"], "1m", 32, "bybit", { marketType: "linear", priceType: "last", strict: true });
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain("exchange=bybit");
+    expect(url).toContain("marketType=linear");
+    expect(url).toContain("priceType=last");
+    expect(url).toContain("strict=1");
+  });
+
+  it("preserves the strict route in batched quote websocket subscriptions", () => {
+    let openedUrl = "";
+    vi.stubGlobal("WebSocket", class {
+      constructor(url: string | URL) {
+        openedUrl = String(url);
+      }
+    });
+
+    createQuoteSocket(["BTCUSDT"], "1m", 32, "binance", { marketType: "linear", priceType: "mark", strict: true });
+
+    expect(openedUrl).toContain("exchange=binance");
+    expect(openedUrl).toContain("marketType=linear");
+    expect(openedUrl).toContain("priceType=mark");
+    expect(openedUrl).toContain("strict=1");
   });
 });

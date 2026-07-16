@@ -2,7 +2,7 @@ import type { BollingerPoint, MacdPoint, SeriesPoint, StochasticPoint } from "..
 import type { ChartTheme, PlotArea, PriceScale } from "../types";
 
 interface LineInput {
-  points: SeriesPoint[];
+  points: readonly SeriesPoint[];
   start: number;
   end: number;
   plot: PlotArea;
@@ -13,47 +13,51 @@ interface LineInput {
 }
 
 export function drawSeriesLine(ctx: CanvasRenderingContext2D, input: LineInput) {
-  const visible = input.points.slice(input.start, input.end);
+  drawFieldLine(ctx, { ...input, key: "value" });
+}
+
+type NumericPointKey<T> = {
+  [K in keyof T]-?: Exclude<T[K], undefined> extends number ? K : never;
+}[keyof T];
+
+interface FieldLineInput<T, K extends NumericPointKey<T>> {
+  points: readonly T[];
+  start: number;
+  end: number;
+  plot: PlotArea;
+  scale: PriceScale;
+  step: number;
+  color: string;
+  width?: number;
+  key: K;
+}
+
+function drawFieldLine<T, K extends NumericPointKey<T>>(ctx: CanvasRenderingContext2D, input: FieldLineInput<T, K>) {
+  const { start, end } = visibleBounds(input.points.length, input.start, input.end);
   ctx.strokeStyle = input.color;
   ctx.lineWidth = input.width ?? 1.5;
   ctx.beginPath();
   let hasPoint = false;
-  visible.forEach((point, index) => {
-    if (point.value === undefined) return;
-    const x = input.plot.left + index * input.step + input.step / 2;
-    const y = input.scale.y(point.value);
+  for (let index = start; index < end; index += 1) {
+    const value = input.points[index]?.[input.key] as number | undefined;
+    if (value === undefined) continue;
+    const x = input.plot.left + (index - start) * input.step + input.step / 2;
+    const y = input.scale.y(value);
     if (!hasPoint) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
     hasPoint = true;
-  });
+  }
   if (hasPoint) ctx.stroke();
   ctx.lineWidth = 1;
 }
 
-export function drawBollinger(
-  ctx: CanvasRenderingContext2D,
-  points: BollingerPoint[],
-  start: number,
-  end: number,
-  plot: PlotArea,
-  scale: PriceScale,
-  step: number,
-  colors: { middle: string; band: string }
-) {
+export function drawBollinger(ctx: CanvasRenderingContext2D, points: BollingerPoint[], start: number, end: number, plot: PlotArea, scale: PriceScale, step: number, colors: { middle: string; band: string }) {
   drawBandLine(ctx, points, start, end, plot, scale, step, "upper", colors.band);
   drawBandLine(ctx, points, start, end, plot, scale, step, "lower", colors.band);
   drawBandLine(ctx, points, start, end, plot, scale, step, "middle", colors.middle);
 }
 
-export function drawRsiPanel(
-  ctx: CanvasRenderingContext2D,
-  panel: PlotArea,
-  points: SeriesPoint[],
-  start: number,
-  end: number,
-  color: string,
-  theme: ChartTheme
-) {
+export function drawRsiPanel(ctx: CanvasRenderingContext2D, panel: PlotArea, points: SeriesPoint[], start: number, end: number, color: string, theme: ChartTheme) {
   const scale = fixedScale(panel, 0, 100);
   drawPanelFrame(ctx, panel, theme, "RSI");
   drawThreshold(ctx, panel, scale, 70, theme.down, "70");
@@ -70,105 +74,95 @@ export function drawRsiPanel(
   });
 }
 
-export function drawMacdPanel(
-  ctx: CanvasRenderingContext2D,
-  panel: PlotArea,
-  points: MacdPoint[],
-  start: number,
-  end: number,
-  colors: { macd: string; signal: string; up: string; down: string },
-  theme: ChartTheme
-) {
-  const visible = points.slice(start, end);
-  const values = visible.flatMap((point) => [point.macd, point.signal, point.histogram]);
-  const finite = values.filter((value): value is number => Number.isFinite(value));
-  const max = Math.max(...finite.map(Math.abs), 1);
+export function drawMacdPanel(ctx: CanvasRenderingContext2D, panel: PlotArea, points: MacdPoint[], start: number, end: number, colors: { macd: string; signal: string; up: string; down: string }, theme: ChartTheme) {
+  const visible = visibleBounds(points.length, start, end);
+  let max = 1;
+  for (let index = visible.start; index < visible.end; index += 1) {
+    const point = points[index];
+    if (!point) continue;
+    max = maxAbsolute(max, point.macd);
+    max = maxAbsolute(max, point.signal);
+    max = maxAbsolute(max, point.histogram);
+  }
   const scale = fixedScale(panel, -max * 1.2, max * 1.2);
-  const step = panel.width / Math.max(1, visible.length);
+  const step = panel.width / Math.max(1, visible.end - visible.start);
   drawPanelFrame(ctx, panel, theme, "MACD");
   drawThreshold(ctx, panel, scale, 0, theme.muted, "0");
 
-  visible.forEach((point, index) => {
-    if (point.histogram === undefined) return;
-    const x = panel.left + index * step + step * 0.25;
+  for (let index = visible.start; index < visible.end; index += 1) {
+    const point = points[index];
+    if (!point || point.histogram === undefined) continue;
+    const x = panel.left + (index - visible.start) * step + step * 0.25;
     const y = scale.y(Math.max(point.histogram, 0));
     const zero = scale.y(0);
     ctx.fillStyle = point.histogram >= 0 ? colors.up : colors.down;
     ctx.fillRect(x, y, Math.max(1, step * 0.5), Math.max(1, Math.abs(zero - y)));
-  });
-  drawSeriesLine(ctx, {
-    points: points.map((point) => ({ time: point.time, value: point.macd })),
+  }
+  drawFieldLine(ctx, {
+    points,
     start,
     end,
     plot: panel,
     scale,
     step,
-    color: colors.macd
+    color: colors.macd,
+    key: "macd"
   });
-  drawSeriesLine(ctx, {
-    points: points.map((point) => ({ time: point.time, value: point.signal })),
+  drawFieldLine(ctx, {
+    points,
     start,
     end,
     plot: panel,
     scale,
     step,
-    color: colors.signal
+    color: colors.signal,
+    key: "signal"
   });
 }
 
-export function drawStochasticPanel(
-  ctx: CanvasRenderingContext2D,
-  panel: PlotArea,
-  points: StochasticPoint[],
-  start: number,
-  end: number,
-  colors: { k: string; d: string },
-  theme: ChartTheme
-) {
+export function drawStochasticPanel(ctx: CanvasRenderingContext2D, panel: PlotArea, points: StochasticPoint[], start: number, end: number, colors: { k: string; d: string }, theme: ChartTheme) {
   const scale = fixedScale(panel, 0, 100);
   drawPanelFrame(ctx, panel, theme, "Stoch");
   drawThreshold(ctx, panel, scale, 80, theme.down, "80");
   drawThreshold(ctx, panel, scale, 20, theme.up, "20");
   const step = panel.width / Math.max(1, end - start);
-  drawSeriesLine(ctx, {
-    points: points.map((point) => ({ time: point.time, value: point.k })),
+  drawFieldLine(ctx, {
+    points,
     start,
     end,
     plot: panel,
     scale,
     step,
     color: colors.k,
-    width: 1.7
+    width: 1.7,
+    key: "k"
   });
-  drawSeriesLine(ctx, {
-    points: points.map((point) => ({ time: point.time, value: point.d })),
+  drawFieldLine(ctx, {
+    points,
     start,
     end,
     plot: panel,
     scale,
     step,
     color: colors.d,
-    width: 1.4
+    width: 1.4,
+    key: "d"
   });
 }
 
 /** Auto-scaled single-series oscillator panel (ATR, OBV). */
-export function drawOscillatorPanel(
-  ctx: CanvasRenderingContext2D,
-  panel: PlotArea,
-  points: SeriesPoint[],
-  start: number,
-  end: number,
-  color: string,
-  theme: ChartTheme,
-  label: string
-) {
-  const visible = points.slice(start, end);
-  const finite = visible.map((point) => point.value).filter((value): value is number => Number.isFinite(value));
+export function drawOscillatorPanel(ctx: CanvasRenderingContext2D, panel: PlotArea, points: SeriesPoint[], start: number, end: number, color: string, theme: ChartTheme, label: string) {
+  const bounds = visibleBounds(points.length, start, end);
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (let index = bounds.start; index < bounds.end; index += 1) {
+    const value = points[index]?.value;
+    if (!Number.isFinite(value)) continue;
+    min = Math.min(min, value as number);
+    max = Math.max(max, value as number);
+  }
   drawPanelFrame(ctx, panel, theme, label);
-  if (finite.length === 0) return;
-  let min = Math.min(...finite);
-  let max = Math.max(...finite);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return;
   if (min === max) {
     min -= 1;
     max += 1;
@@ -188,26 +182,28 @@ export function drawOscillatorPanel(
   });
 }
 
-function drawBandLine(
-  ctx: CanvasRenderingContext2D,
-  points: BollingerPoint[],
-  start: number,
-  end: number,
-  plot: PlotArea,
-  scale: PriceScale,
-  step: number,
-  key: "middle" | "upper" | "lower",
-  color: string
-) {
-  drawSeriesLine(ctx, {
-    points: points.map((point) => ({ time: point.time, value: point[key] })),
+function drawBandLine(ctx: CanvasRenderingContext2D, points: BollingerPoint[], start: number, end: number, plot: PlotArea, scale: PriceScale, step: number, key: "middle" | "upper" | "lower", color: string) {
+  drawFieldLine(ctx, {
+    points,
     start,
     end,
     plot,
     scale,
     step,
-    color
+    color,
+    key
   });
+}
+
+function visibleBounds(length: number, start: number, end: number) {
+  return {
+    start: Math.min(length, Math.max(0, start)),
+    end: Math.min(length, Math.max(0, end))
+  };
+}
+
+function maxAbsolute(current: number, value: number | undefined) {
+  return Number.isFinite(value) ? Math.max(current, Math.abs(value as number)) : current;
 }
 
 function drawPanelFrame(ctx: CanvasRenderingContext2D, panel: PlotArea, theme: ChartTheme, label: string) {
@@ -218,14 +214,7 @@ function drawPanelFrame(ctx: CanvasRenderingContext2D, panel: PlotArea, theme: C
   ctx.fillText(label, panel.left + 8, panel.top + 13);
 }
 
-function drawThreshold(
-  ctx: CanvasRenderingContext2D,
-  panel: PlotArea,
-  scale: PriceScale,
-  value: number,
-  color: string,
-  label: string
-) {
+function drawThreshold(ctx: CanvasRenderingContext2D, panel: PlotArea, scale: PriceScale, value: number, color: string, label: string) {
   const y = scale.y(value);
   ctx.strokeStyle = color;
   ctx.fillStyle = color;

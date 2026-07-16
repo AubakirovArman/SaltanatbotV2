@@ -43,12 +43,20 @@ export function drawMarketStructureBackground(ctx: CanvasRenderingContext2D, vie
 
 export function drawMarketStructureOverlay(ctx: CanvasRenderingContext2D, viewport: Viewport, snapshot: MarketStructureSnapshot) {
   const { plot } = viewport;
+  if (viewport.end <= viewport.start) return;
+  const swingStart = lowerBound(snapshot.swings, viewport.start, (swing) => swing.index);
+  const swingEnd = lowerBound(snapshot.swings, viewport.end, (swing) => swing.index);
+  const visibleStartTime = viewport.xToTime(viewport.indexToX(viewport.start));
+  const visibleEndTime = viewport.xToTime(viewport.indexToX(Math.max(viewport.start, viewport.end - 1)));
+  const breakStart = lowerBound(snapshot.breaks, visibleStartTime, (event) => event.time);
+  const breakEnd = upperBound(snapshot.breaks, visibleEndTime, (event) => event.time);
   ctx.save();
   ctx.beginPath();
   ctx.rect(plot.left, plot.top, plot.width, plot.height);
   ctx.clip();
-  for (const swing of snapshot.swings) {
-    const x = viewport.timeToX(swing.time);
+  for (let index = swingStart; index < swingEnd; index += 1) {
+    const swing = snapshot.swings[index];
+    const x = viewport.indexToX(swing.index);
     const y = viewport.priceToY(swing.price);
     if (x < plot.left || x > plot.right || y < plot.top || y > plot.bottom) continue;
     const color = swing.kind === "high" ? COLORS.bearish : COLORS.bullish;
@@ -62,7 +70,8 @@ export function drawMarketStructureOverlay(ctx: CanvasRenderingContext2D, viewpo
     ctx.textBaseline = swing.kind === "high" ? "bottom" : "top";
     ctx.fillText(swing.label, x, y + (swing.kind === "high" ? -4 : 4));
   }
-  for (const event of snapshot.breaks) {
+  for (let index = breakStart; index < breakEnd; index += 1) {
+    const event = snapshot.breaks[index];
     const left = viewport.timeToX(event.sourceTime);
     const right = viewport.timeToX(event.time);
     if (right < plot.left || left > plot.right) continue;
@@ -86,4 +95,26 @@ export function drawMarketStructureOverlay(ctx: CanvasRenderingContext2D, viewpo
     ctx.fillText(`${event.kind.toUpperCase()} ${event.direction === "bullish" ? "↑" : "↓"}`, labelX, y + (event.direction === "bullish" ? -3 : 3));
   }
   ctx.restore();
+}
+
+function lowerBound<T>(items: readonly T[], target: number, keyOf: (item: T) => number) {
+  let low = 0;
+  let high = items.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (keyOf(items[middle]) < target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function upperBound<T>(items: readonly T[], target: number, keyOf: (item: T) => number) {
+  let low = 0;
+  let high = items.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (keyOf(items[middle]) <= target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
 }

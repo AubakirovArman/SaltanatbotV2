@@ -29,6 +29,7 @@ interface UseChartPointerInteractionInput {
   interactionCanvasRef: RefObject<HTMLCanvasElement | null>;
   magnet: boolean;
   onLinkedCrosshairChange?: ChartCanvasProps["onLinkedCrosshairChange"];
+  operational?: boolean;
   resetKey: string;
   selectedId?: string;
   setDraft: Dispatch<SetStateAction<{ tool: ShapeTool; points: Anchor[] } | undefined>>;
@@ -55,6 +56,7 @@ export function useChartPointerInteraction({
   interactionCanvasRef,
   magnet,
   onLinkedCrosshairChange,
+  operational = true,
   resetKey,
   selectedId,
   setDraft,
@@ -146,21 +148,22 @@ export function useChartPointerInteraction({
       updateTouchMode("pan");
     },
     onReset: resetTouchTransient
-  });
+  }, operational);
 
   useEffect(() => {
+    if (!operational) return;
     const resetForOrientationChange = () => {
       resetTouchNavigation();
       resetTouchTransient();
     };
     window.addEventListener("orientationchange", resetForOrientationChange);
     return () => window.removeEventListener("orientationchange", resetForOrientationChange);
-  }, [resetTouchNavigation, resetTouchTransient]);
+  }, [operational, resetTouchNavigation, resetTouchTransient]);
 
   useEffect(() => {
     resetTouchNavigation();
     resetTouchTransient();
-  }, [resetKey, resetTouchNavigation, resetTouchTransient]);
+  }, [operational, resetKey, resetTouchNavigation, resetTouchTransient]);
 
   useEffect(() => () => clearLongPressTimer(), [clearLongPressTimer]);
 
@@ -206,6 +209,7 @@ export function useChartPointerInteraction({
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!operational) return;
     if (!event.isPrimary || event.button !== 0) return;
     event.preventDefault();
     try {
@@ -295,6 +299,7 @@ export function useChartPointerInteraction({
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!operational) return;
     if (event.pointerType === "touch" && gestureActiveRef.current) return;
     const viewport = viewportRef.current;
     const { x, y } = pointerPoint(event);
@@ -381,6 +386,7 @@ export function useChartPointerInteraction({
   };
 
   const onPointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!operational) return;
     if (event.pointerType === "touch") {
       const session = touchSessionRef.current;
       if (session?.pointerId === event.pointerId) {
@@ -408,17 +414,20 @@ export function useChartPointerInteraction({
   };
 
   const onPointerCancel = () => {
+    if (!operational) return;
     resetTouchNavigation();
     resetTouchTransient();
   };
 
   const onLostPointerCapture = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!operational) return;
     if (expectedCaptureReleaseRef.current.delete(event.pointerId)) return;
     resetTouchNavigation();
     resetTouchTransient();
   };
 
   const onPointerLeave = () => {
+    if (!operational) return;
     if (gestureActiveRef.current || touchModeRef.current !== "idle") return;
     setView((current) => ({ ...current, crosshair: undefined }));
     setHoveredId(undefined);

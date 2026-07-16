@@ -20,25 +20,31 @@ export interface CompareSeriesState {
   errors: Record<string, string | undefined>;
 }
 
+export interface UseCompareSeriesOptions {
+  enabled?: boolean;
+}
+
 export function useCompareSeries(
   overlays: CompareOverlayConfig[],
-  exchange: DataExchange = "binance"
+  exchange: DataExchange = "binance",
+  options: UseCompareSeriesOptions = {}
 ): CompareSeriesState {
   const [series, setSeries] = useState<Record<string, Candle[]>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const key = overlays.map((overlay) => `${overlay.id}:${overlay.symbol}:${overlay.timeframe}`).join(",");
+  const enabled = options.enabled ?? true;
   // Keep already-fetched series around so re-adding a symbol is instant and so
   // an in-flight refetch doesn't flash empty overlays.
   const cacheRef = useRef<Record<string, { requestKey: string; candles: Candle[] }>>({});
 
   useEffect(() => {
     const list = overlays;
-    if (list.length === 0) {
+    if (!enabled || list.length === 0) {
       cacheRef.current = {};
-      setSeries({});
-      setLoading({});
-      setErrors({});
+      setSeries((current) => (Object.keys(current).length === 0 ? current : {}));
+      setLoading((current) => (Object.keys(current).length === 0 ? current : {}));
+      setErrors((current) => (Object.keys(current).length === 0 ? current : {}));
       return;
     }
     let alive = true;
@@ -95,7 +101,7 @@ export function useCompareSeries(
       alive = false;
       window.clearInterval(refreshId);
     };
-  }, [key, overlays, exchange]);
+  }, [enabled, key, overlays, exchange]);
 
   return { series, loading, errors };
 }

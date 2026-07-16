@@ -34,7 +34,7 @@ export class ProviderRouter implements MarketProvider {
     const isHistory = range.endTime !== undefined && range.endTime < now - 60_000;
     const marketKey = this.marketKey(instrument, timeframe, exchange, marketType, priceType);
     const source = this.sourceKey(instrument, marketKey);
-    const cacheKey = `${source}:${instrument.symbol}:${timeframe}:${range.limit}:${range.endTime ?? "live"}:${range.startTime ?? ""}`;
+    const cacheKey = `${source}:${instrument.symbol}:${timeframe}:${range.limit}:${range.endTime ?? "live"}:${range.startTime ?? ""}:${strict ? "strict" : "fallback"}`;
     const cached = this.cache.get(cacheKey, now);
     if (cached) return cached;
 
@@ -136,7 +136,7 @@ export class ProviderRouter implements MarketProvider {
       return this.synthetic.subscribe(instrument, timeframe, onCandle, onStatus);
     }
 
-    const streamKey = `${this.sourceKey(instrument, marketKey)}:${instrument.symbol}:${timeframe}`;
+    const streamKey = `${this.sourceKey(instrument, marketKey)}:${instrument.symbol}:${timeframe}:${strict ? "strict" : "fallback"}`;
     const existing = this.streams.get(streamKey);
     if (existing) return this.addStreamListener(streamKey, existing, onCandle, onStatus);
 

@@ -3,11 +3,30 @@ import { createMarketSocket, getCandles, parseStreamMessage } from "../api/marke
 import type { SharedSocketClient } from "../api/sharedWebSocketPool";
 import type { Candle, DataExchange, DataMarketType, PriceType, StreamMessage, Timeframe } from "../types";
 import { analyzeCandleGaps } from "../market/dataQuality";
+import {
+  createCandleSeriesBuffer,
+  EMPTY_CANDLE_SERIES,
+  mergeCandleSeriesBuffer,
+  prependCandleSeriesBuffer
+} from "../market/candleSeries";
+import { recordBrowserMetric } from "../performance/browserProbe";
 
-export type ConnectionState = "connecting" | "connected" | "fallback" | "error";
+export type ConnectionState = "idle" | "connecting" | "connected" | "fallback" | "error";
 
 const MAX_CANDLES = 12_000;
-const EMPTY_CANDLES: Candle[] = [];
+const PROVISIONAL_COMMIT_INTERVAL_MS = 250;
+type CandleCopyReason = "snapshot" | "newBar" | "finalization" | "prepend";
+
+function recordCopiedCandleElements(reason: CandleCopyReason, elements: number): void {
+  recordBrowserMetric("candle.copiedElements", elements);
+  recordBrowserMetric(`candle.copiedElements.${reason}`, elements);
+}
+
+interface MarketStreamOptions {
+  marketType?: DataMarketType;
+  priceType?: PriceType;
+  enabled?: boolean;
+}
 
 export interface MarketStreamState {
   candles: Candle[];
@@ -27,58 +46,133 @@ export function useMarketStream(
   symbol: string,
   timeframe: Timeframe,
   exchange: DataExchange = "binance",
-  route: { marketType?: DataMarketType; priceType?: PriceType } = {}
+  route: MarketStreamOptions = {}
 ): MarketStreamState {
   const marketType = route.marketType ?? "spot";
   const priceType = route.priceType ?? "last";
+  const enabled = route.enabled ?? true;
   const marketKey = `${exchange}:${marketType}:${priceType}:${symbol}:${timeframe}`;
-  const [candles, setCandles] = useState<Candle[]>([]);
+  const [series, setSeries] = useState(EMPTY_CANDLE_SERIES);
   const [dataKey, setDataKey] = useState(marketKey);
-  const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [connection, setConnection] = useState<ConnectionState>(enabled ? "connecting" : "idle");
   const [provider, setProvider] = useState("Loading");
-  const [message, setMessage] = useState("Connecting");
+  const [message, setMessage] = useState(enabled ? "Connecting" : "Market stream paused");
   const [latencyMs, setLatencyMs] = useState<number>();
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const seriesRef = useRef(series);
   const candlesRef = useRef<Candle[]>([]);
   const loadingRef = useRef(false);
   const generationRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
-  const activeCandles = dataKey === marketKey ? candles : EMPTY_CANDLES;
-  const gapSummary = useMemo(() => analyzeCandleGaps(activeCandles, timeframe), [activeCandles, timeframe]);
+  const activeSeries = dataKey === marketKey ? series : EMPTY_CANDLE_SERIES;
+  const activeCandles = activeSeries.candles;
+  const gapSummary = useMemo(() => analyzeCandleGaps(activeSeries.structuralCandles, timeframe), [activeSeries.structuralCandles, timeframe]);
   candlesRef.current = activeCandles;
+  seriesRef.current = series;
 
   useEffect(() => {
     setHasMore(true);
   }, [symbol, timeframe, exchange, marketType, priceType]);
 
   useEffect(() => {
+    interface PendingCandle {
+      candle: Candle;
+      latencyMs: number;
+      provider: string;
+    }
+
     let alive = true;
     let socket: SharedSocketClient | undefined;
     let reconnect: number | undefined;
+    let pendingCandle: PendingCandle | undefined;
+    let provisionalFlush: number | undefined;
+    let lastCandleCommitAt = 0;
     const generation = generationRef.current + 1;
     generationRef.current = generation;
-    const historyAbort = new AbortController();
     let attempts = 0;
     loadingRef.current = false;
     loadAbortRef.current?.abort();
+    if (!enabled) {
+      setConnection("idle");
+      setMessage("Market stream paused");
+      setLatencyMs(undefined);
+      setLoadingMore(false);
+      return () => {
+        alive = false;
+      };
+    }
+
+    const historyAbort = new AbortController();
     setConnection("connecting");
     setProvider("Loading");
     setMessage(`Loading ${symbol} ${timeframe}`);
     setLatencyMs(undefined);
     setLoadingMore(false);
 
-    const mergeCandle = (next: Candle) => {
+    const cancelProvisionalFlush = () => {
+      if (provisionalFlush !== undefined) window.clearTimeout(provisionalFlush);
+      provisionalFlush = undefined;
+    };
+
+    const commitCandle = ({ candle, latencyMs: nextLatency, provider: nextProvider }: PendingCandle) => {
+      cancelProvisionalFlush();
+      pendingCandle = undefined;
       setDataKey(marketKey);
-      setCandles((current) => {
-        const last = current[current.length - 1];
-        if (last?.time === next.time) {
-          return [...current.slice(0, -1), next];
-        }
-        // Keep a large ring so lazily-loaded history survives new live bars.
-        return [...current.slice(-(MAX_CANDLES - 1)), next];
-      });
+      const current = seriesRef.current;
+      const merged = mergeCandleSeriesBuffer(current, candle, MAX_CANDLES);
+      const provisional = current.tailTime === candle.time
+        && current.candles.length > 0
+        && merged.structuralCandles === current.structuralCandles;
+      seriesRef.current = merged;
+      setSeries(merged);
+      setLatencyMs(nextLatency);
+      setProvider(nextProvider);
+      lastCandleCommitAt = Date.now();
+      recordBrowserMetric("candle.committed");
+      if (provisional) recordBrowserMetric("candle.provisionalTail");
+      else {
+        const reason: CandleCopyReason = current.tailTime === candle.time ? "finalization" : "newBar";
+        recordCopiedCandleElements(reason, merged.structuralCandles.length);
+      }
+    };
+
+    const flushPendingCandle = () => {
+      const pending = pendingCandle;
+      if (pending) commitCandle(pending);
+      else cancelProvisionalFlush();
+    };
+
+    const scheduleCandle = (next: PendingCandle) => {
+      const effectiveTailTime = pendingCandle?.candle.time ?? seriesRef.current.tailTime;
+      if (effectiveTailTime !== next.candle.time) {
+        flushPendingCandle();
+        commitCandle(next);
+        return;
+      }
+
+      const remaining = PROVISIONAL_COMMIT_INTERVAL_MS - (Date.now() - lastCandleCommitAt);
+      if (lastCandleCommitAt === 0 || remaining <= 0) {
+        commitCandle(next);
+        return;
+      }
+
+      pendingCandle = next;
+      recordBrowserMetric("candle.coalesced");
+      if (provisionalFlush === undefined) {
+        provisionalFlush = window.setTimeout(flushPendingCandle, remaining);
+      }
+    };
+
+    const commitSnapshot = (candles: Candle[]) => {
+      cancelProvisionalFlush();
+      pendingCandle = undefined;
+      const snapshot = createCandleSeriesBuffer(candles, MAX_CANDLES);
+      seriesRef.current = snapshot;
+      setSeries(snapshot);
+      lastCandleCommitAt = Date.now();
+      recordCopiedCandleElements("snapshot", snapshot.structuralCandles.length);
     };
 
     const connect = () => {
@@ -103,21 +197,25 @@ export function useMarketStream(
           setMessage(error instanceof Error ? `Invalid market message: ${error.message}` : "Invalid market message");
           return;
         }
-        setLatencyMs(Math.max(0, Date.now() - data.ts));
+        recordBrowserMetric("stream.processed");
+        const nextLatency = Math.max(0, Date.now() - data.ts);
 
         if (data.type === "snapshot") {
           setDataKey(marketKey);
-          setCandles(data.candles);
+          commitSnapshot(data.candles);
+          setLatencyMs(nextLatency);
           setProvider(data.provider);
           setMessage(`${data.symbol} ${data.timeframe} snapshot loaded`);
         } else if (data.type === "candle") {
-          mergeCandle(data.candle);
-          setProvider(data.provider);
+          recordBrowserMetric("candle.received");
+          scheduleCandle({ candle: data.candle, latencyMs: nextLatency, provider: data.provider });
         } else if (data.type === "status") {
+          setLatencyMs(nextLatency);
           setConnection(data.status === "fallback" ? "fallback" : "connected");
           setProvider(data.provider);
           setMessage(data.message);
         } else if (data.type === "error") {
+          setLatencyMs(nextLatency);
           setConnection("error");
           setMessage(data.message);
         }
@@ -142,7 +240,7 @@ export function useMarketStream(
       .then((payload) => {
         if (!alive || generationRef.current !== generation) return;
         setDataKey(marketKey);
-        setCandles(payload.candles);
+        commitSnapshot(payload.candles);
         setProvider(payload.provider);
         connect();
       })
@@ -159,12 +257,14 @@ export function useMarketStream(
       historyAbort.abort();
       loadAbortRef.current?.abort();
       if (reconnect) window.clearTimeout(reconnect);
+      cancelProvisionalFlush();
+      pendingCandle = undefined;
       socket?.close();
     };
-  }, [symbol, timeframe, exchange, marketKey, marketType, priceType]);
+  }, [enabled, symbol, timeframe, exchange, marketKey, marketType, priceType]);
 
   const loadOlder = useCallback(() => {
-    if (loadingRef.current || !hasMore) return;
+    if (!enabled || loadingRef.current || !hasMore) return;
     const oldest = candlesRef.current[0];
     if (!oldest) return;
     const generation = generationRef.current;
@@ -181,11 +281,12 @@ export function useMarketStream(
           setHasMore(false);
           return;
         }
-        setCandles((current) => {
-          const firstTime = current[0]?.time ?? Infinity;
-          const merged = [...older.filter((candle) => candle.time < firstTime), ...current];
-          return merged.slice(-MAX_CANDLES);
-        });
+        const current = seriesRef.current;
+        const firstTime = current.candles[0]?.time ?? Infinity;
+        const merged = prependCandleSeriesBuffer(current, older.filter((candle) => candle.time < firstTime), MAX_CANDLES);
+        seriesRef.current = merged;
+        setSeries(merged);
+        recordCopiedCandleElements("prepend", merged.structuralCandles.length);
         setHasMore(payload.hasMore ?? older.length >= 1000);
       })
       .catch((error: unknown) => {
@@ -197,7 +298,7 @@ export function useMarketStream(
         loadingRef.current = false;
         setLoadingMore(false);
       });
-  }, [symbol, timeframe, hasMore, exchange, marketType, priceType]);
+  }, [enabled, symbol, timeframe, hasMore, exchange, marketType, priceType]);
 
   return useMemo(
     () => ({ candles: activeCandles, connection, provider, message, latencyMs, hasMore, loadingMore, loadOlder, gapCount: gapSummary.gapCount, missingBars: gapSummary.missingBars, fallbackActive: connection === "fallback" || provider.toLowerCase().includes("synthetic") }),

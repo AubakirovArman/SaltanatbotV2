@@ -39,4 +39,24 @@ describe("TimeZoneControl", () => {
     expect(container.textContent).toBe("");
     await act(async () => root.unmount());
   });
+
+  it("releases the countdown interval while its chart pane is not operational", async () => {
+    vi.useFakeTimers();
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const latest = { time: Date.UTC(2026, 6, 12), open: 100, high: 101, low: 99, close: 101, volume: 10 };
+    try {
+      await act(async () => root.render(<ChartPriceHud active={false} latest={latest} timeframe="1m" decimals={2} locale="en" timeZone="UTC" />));
+      expect(vi.getTimerCount()).toBe(0);
+
+      await act(async () => root.render(<ChartPriceHud active latest={latest} timeframe="1m" decimals={2} locale="en" timeZone="UTC" />));
+      expect(vi.getTimerCount()).toBe(1);
+
+      await act(async () => root.render(<ChartPriceHud active={false} latest={latest} timeframe="1m" decimals={2} locale="en" timeZone="UTC" />));
+      expect(vi.getTimerCount()).toBe(0);
+      await act(async () => root.unmount());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

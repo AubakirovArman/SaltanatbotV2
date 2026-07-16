@@ -99,7 +99,7 @@ paper-портфелю или Telegram-каналу пользователя.
 | --- | --- | --- | --- | --- |
 | R0 | done | Research/Paper hard gate | только сопровождение | security suites + runtime diagnostics |
 | R1 | done | permits, execution ledger, bounded PostgreSQL queue, retention, ADR | future-live blockers остаются вне pre-HTTPS | migration/backup/restore + green CI |
-| R2 | active | mobile drawing sheet, gesture FSM, safe-area, компактные cards, Volume Profile/price-axis fixes, автоматизированная 320–1440 matrix и обязательный 10% bundle reserve | stream/render soak и ручные Android Opera/assistive-tech smoke | 74 Chromium + 18 Firefox + 6 visual + performance/manual artifacts |
+| R2 | active | mobile drawing sheet, gesture FSM, safe-area, компактные cards, Volume Profile/price-axis fixes, автоматизированная 320–1440 matrix, chart-only runtime ownership, lifecycle-gated subscriptions, O(1) provisional candle tail, принятый threshold-enforced soak и обязательный 10% bundle reserve | ручные Android Opera/assistive-tech smoke | 74 Chromium + 18 Firefox + 6 visual + soak `2/2` + manual artifacts |
 | R3 | pending | auth/registration/admin roles и PostgreSQL owner-scoped workspace CRUD/revisions/409/rollback | полный user lifecycle, frontend workflow payload, quotas, import/export и onboarding | two-tenant isolation + migration + recovery CLI |
 | R4 | pending | browser Running/portfolio center и owner-scoped paper/dormant legacy records | канонический paper-account, capital reservation, PnL/reconciliation и journal UX | golden ledger + restart/partial-fill tests |
 | R5 | pending | research alert/outbox slices, arbitrage screener, canonical indicators | unified alerts, technical screener MVP, notification worker и Telegram | scheduler/outbox crash tests + alert/chart parity |
@@ -265,16 +265,29 @@ reset; добавлены `viewport-fit=cover`, safe-area, compact arbitrage car
 отдельный full-table view. Strategy Studio, short landscape и coarse tablets
 проверены без half-width и horizontal document overflow. Bundle checker теперь
 оставляет обязательные 10% резерва относительно круглых reviewed caps вместо
-порогов, выставленных почти байт в байт.
+порогов, выставленных почти байт в байт. Высокочастотные candle/compare/position
+и видимые watchlist resources перенесены в `ChartWorkspaceRuntime`, который
+существует только в Monitoring. Скрытые/maximized panes и закрытая markets panel
+отключают hooks и освобождают sockets/timers/polling. Отдельный
+`PriceAlertFeed` вне chart runtime сохраняет quote subscription только для
+уникальных не сработавших/armed alerts и не открывает socket при пустом наборе.
+Обновление формирующейся свечи с тем же timestamp coalesce-ится до одного
+React commit за 250 мс и использует O(1) provisional tail поверх неизменяемой
+structural history; полное копирование остаётся для snapshot, нового timestamp
+или явного prepend истории.
 
 Текущий автоматизированный evidence: 74 Chromium E2E, 18 Firefox critical
 journeys, 6 container visual snapshots, 2 231 unit/integration tests и зелёные
-type/lint/build/docs/architecture gates.
+type/lint/build/docs/architecture gates. Отдельный synthetic desktop/mobile
+Chromium soak harness использует 12 000 candles, tick каждые 100 мс,
+Monitoring → Strategy → Monitoring, CDP heap/DOM/task counters и обязательную
+render/stream instrumentation. Авторитетный запуск 2026-07-16 прошёл оба
+пятиминутных профиля без retry (`2/2` за `11.7 min`); все strict summary checks
+равны `true`. Точные метрики и SHA-256 записаны в
+[R2 stream/render soak evidence](../evidence/R2_STREAM_RENDER_SOAK.md).
 
 Оставшийся R2.3:
 
-- скрытые разделы не держат ненужные market subscriptions, а один tick не
-  перерисовывает всё дерево приложения и не копирует полный candle history;
 - выполнить ручной Opera smoke на реальном Android/Opera окружении и
   VoiceOver/NVDA/TalkBack smoke с записью версий и результата.
 
@@ -289,13 +302,27 @@ type/lint/build/docs/architecture gates.
   smoke остаётся в R2.3;
 - автоматизированные keyboard/axe и масштаб текста 200% выполнены; ручной
   VoiceOver/NVDA/TalkBack smoke остаётся в R2.3;
-- 5–10 минут synthetic market stream на mobile и desktop без устойчивых long
-  tasks больше 50 мс, неограниченного роста памяти и лишних скрытых подписок;
+- принятый полный soak 2026-07-16 использовал пять минут на каждый
+  mobile/desktop профиль и проверил: после ограниченного GC warm-up стабильность трёх
+  paused/frame-settled/post-GC замеров
+  retained JS heap, консервативный retained growth `<= max(8 MiB, 10%)`,
+  retained growth rate `<= 1 MiB/min`, long task `<= 150 ms`, total blocking `<= 250 ms`,
+  event-loop delay `<= 250 ms`, task duty `<= 0.35` desktop / `<= 0.45`
+  mobile, DOM delta `<= 0 documents / 50 nodes / 10 listeners`, candle copy
+  pressure `<= 64` элементов на message, каждая копия классифицирована как
+  snapshot/new bar/finalization/prepend, и App render ratio `<= 0.01`;
+- OLS slope обычных raw V8 heap samples сохраняется только как диагностика:
+  GC-driven «пила» не используется как доказательство retained leak;
+- в no-alert fixture visible subscriptions равны одному chart stream и одной
+  desktop/нулю mobile watchlist quote subscription; в Strategy workspace обе
+  равны нулю и после возврата восстанавливаются ровно один раз;
 - нулевой horizontal page overflow, полный dismiss editor/dialog, доступность
   последней кнопки indicator strip и touch targets не меньше 44×44 px.
 
 Критерий: на каждом размере доступны цена, управление индикаторами, рисунками и
-стратегией; ни один control не лежит поверх шкалы цены или другого control.
+стратегией; ни один control не лежит поверх шкалы цены или другого control;
+полный soak artifact прошёл review; ручные Android Opera и
+VoiceOver/NVDA/TalkBack gates завершены. До этого R2 остаётся `active`.
 
 ## 7. R3 — жизненный цикл пользователя, рабочие пространства и первый запуск
 
@@ -814,7 +841,7 @@ tests/evidence → docs/rollback → production smoke. Частично гото
 | --- | --- | --- |
 | R2.1 | drawing-tools sheet, gesture FSM, safe-area и mobile dense cards | touch/rotation E2E |
 | R2.2 | landscape/tablet/desktop matrix, accessibility и visual baselines | Chromium + Firefox + visual green |
-| R2.3 | stream/render benchmark и ручные Android Opera/assistive-tech smoke; bundle reserve уже обеспечен checker-ом | 5–10 minute browser soak + device/AT record |
+| R2.3 | chart-only runtime, armed-alert-only quotes, hidden subscription release, O(1) provisional candle tail и threshold-enforced browser soak приняты; ручные Android Opera/assistive-tech smoke остаются | device/AT record |
 | R3.1 | pending/active/disabled, роли только research/read-only/paper, sessions/revoke и admin audit | two-tenant lifecycle isolation |
 | R3.2 | полный workspace document, explicit save/conflict/error, quotas и import/export | reload/two-tab/rollback tests |
 | R3.3 | onboarding, empty states, docs links и HTTP-safe PWA boundary | fresh-account journey |
@@ -855,11 +882,11 @@ tests/evidence → docs/rollback → production smoke. Частично гото
 
 ### 18.3. Ближайшая очередь работ
 
-1. Закрыть R2.3: synthetic stream/render soak, устранение лишних скрытых
-   subscriptions/re-renders, реальный Android Opera и assistive-tech smoke.
-2. Зафиксировать финальный R2 performance/manual evidence, обновить status до
-   `done`, перезапустить только project-owned приложение и проверить
-   health/readiness.
+1. Закрыть R2.3: выполнить реальный Android Opera и VoiceOver/NVDA/TalkBack
+   smoke. Threshold-enforced desktop/mobile artifact уже принят и связан
+   SHA-256 в evidence.
+2. Зафиксировать manual evidence, обновить R2 status до `done`, перезапустить
+   только project-owned приложение и проверить health/readiness.
 3. Затем начать R3.1 с удаления возможности выдавать новую `live-trade` роль в
    `public-http-paper`, session lifecycle и admin audit.
 4. Параллельно заложить O1: безопасный replacement-restore, readiness/metrics и

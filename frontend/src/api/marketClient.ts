@@ -34,7 +34,8 @@ export async function getSparklines(
   symbols: string[],
   timeframe: Timeframe,
   points = 32,
-  exchange: DataExchange = "binance"
+  exchange: DataExchange = "binance",
+  route: { marketType?: DataMarketType; priceType?: PriceType; strict?: boolean } = {}
 ) {
   const query = new URLSearchParams({
     symbols: symbols.join(","),
@@ -42,6 +43,9 @@ export async function getSparklines(
     points: String(points),
     exchange
   });
+  if (route.marketType) query.set("marketType", route.marketType);
+  if (route.priceType) query.set("priceType", route.priceType);
+  if (route.strict) query.set("strict", "1");
   return request(`/api/sparklines?${query}`, undefined, parseSparklinesResponse);
 }
 
@@ -70,9 +74,18 @@ export function createTradeFlowSocket(symbol: string, exchange: DataExchange = "
   return new WebSocket(`${protocol}://${window.location.host}/trade-flow?${params}`);
 }
 
-export function createQuoteSocket(symbols: string[], timeframe: Timeframe, points = 32, exchange: DataExchange = "binance") {
+export function createQuoteSocket(
+  symbols: string[],
+  timeframe: Timeframe,
+  points = 32,
+  exchange: DataExchange = "binance",
+  route: { marketType?: DataMarketType; priceType?: PriceType; strict?: boolean } = {}
+) {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const params = new URLSearchParams({ symbols: symbols.join(","), timeframe, points: String(points), exchange });
+  if (route.marketType) params.set("marketType", route.marketType);
+  if (route.priceType) params.set("priceType", route.priceType);
+  if (route.strict) params.set("strict", "1");
   return new WebSocket(`${protocol}://${window.location.host}/quotes?${params}`);
 }
 

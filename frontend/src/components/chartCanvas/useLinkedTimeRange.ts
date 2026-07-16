@@ -4,11 +4,12 @@ import type { LinkedTimeRange, Viewport } from "../../chart/types";
 import type { Candle } from "../../types";
 import type { ChartNavigationView } from "./useChartNavigation";
 
-export function useLinkedTimeRange({ candles, chartId, linkedRange, onLinkedRangeChange, setView, view, viewportRef }: {
+export function useLinkedTimeRange({ candles, chartId, linkedRange, onLinkedRangeChange, operational = true, setView, view, viewportRef }: {
   candles: Candle[];
   chartId: string;
   linkedRange?: LinkedTimeRange;
   onLinkedRangeChange?: (range?: LinkedTimeRange) => void;
+  operational?: boolean;
   setView: Dispatch<SetStateAction<ChartNavigationView>>;
   view: ChartNavigationView;
   viewportRef: RefObject<Viewport | undefined>;
@@ -21,7 +22,7 @@ export function useLinkedTimeRange({ candles, chartId, linkedRange, onLinkedRang
   const lastTime = candles.at(-1)?.time;
 
   useEffect(() => {
-    if (!linkedRange || linkedRange.sourceId === chartId) return;
+    if (!operational || !linkedRange || linkedRange.sourceId === chartId) return;
     const frame = requestAnimationFrame(() => {
       const viewport = viewportRef.current;
       if (!viewport) return;
@@ -34,9 +35,10 @@ export function useLinkedTimeRange({ candles, chartId, linkedRange, onLinkedRang
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [chartId, firstTime, linkedRange, setView, viewportRef]);
+  }, [chartId, firstTime, linkedRange, operational, setView, viewportRef]);
 
   useEffect(() => {
+    if (!operational) return;
     const previous = previousViewRef.current;
     previousViewRef.current = { zoom: view.zoom, offset: view.offset };
     if (previous.zoom === view.zoom && previous.offset === view.offset) return;
@@ -50,15 +52,15 @@ export function useLinkedTimeRange({ candles, chartId, linkedRange, onLinkedRang
       if (range) onLinkedRangeChange?.(range);
     });
     return () => cancelAnimationFrame(frame);
-  }, [chartId, onLinkedRangeChange, view.offset, view.zoom, viewportRef]);
+  }, [chartId, onLinkedRangeChange, operational, view.offset, view.zoom, viewportRef]);
 
   useEffect(() => {
-    if (!lastTime || linkedRange?.sourceId !== chartId || view.offset !== 0) return;
+    if (!operational || !lastTime || linkedRange?.sourceId !== chartId || view.offset !== 0) return;
     const frame = requestAnimationFrame(() => {
       const viewport = viewportRef.current;
       const range = viewport ? linkedRangeFromViewport(viewport, chartId) : undefined;
       if (range) onLinkedRangeChange?.(range);
     });
     return () => cancelAnimationFrame(frame);
-  }, [chartId, lastTime, linkedRange?.sourceId, onLinkedRangeChange, view.offset, viewportRef]);
+  }, [chartId, lastTime, linkedRange?.sourceId, onLinkedRangeChange, operational, view.offset, viewportRef]);
 }

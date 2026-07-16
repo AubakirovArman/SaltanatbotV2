@@ -1,19 +1,33 @@
 import { useEffect, useState } from "react";
 import { createQuoteSocket, getSparklines, parseQuoteStreamMessage, type SparklineSeries } from "../api/marketClient";
-import type { DataExchange, Timeframe } from "../types";
+import type { DataExchange, DataMarketType, PriceType, Timeframe } from "../types";
+
+export interface UseSparklinesOptions {
+  enabled?: boolean;
+  marketType?: DataMarketType;
+  priceType?: PriceType;
+  strict?: boolean;
+  streaming?: boolean;
+}
 
 /** Fetches mini price series for a set of symbols and refreshes periodically. */
 export function useSparklines(
   symbols: string[],
   timeframe: Timeframe,
-  exchange: DataExchange = "binance"
+  exchange: DataExchange = "binance",
+  options: UseSparklinesOptions = {}
 ): Record<string, SparklineSeries> {
   const [map, setMap] = useState<Record<string, SparklineSeries>>({});
   const key = symbols.join(",");
+  const enabled = options.enabled ?? true;
+  const marketType = options.marketType ?? "spot";
+  const priceType = options.priceType ?? "last";
+  const strict = options.strict ?? false;
+  const streaming = options.streaming ?? true;
 
   useEffect(() => {
-    if (!key) {
-      setMap({});
+    if (!enabled || !key) {
+      setMap((current) => (Object.keys(current).length === 0 ? current : {}));
       return;
     }
     let alive = true;
@@ -24,7 +38,7 @@ export function useSparklines(
     let attempts = 0;
 
     const load = () => {
-      getSparklines(list, timeframe, 32, exchange)
+      getSparklines(list, timeframe, 32, exchange, { marketType, priceType, strict })
         .then((response) => {
           if (!alive) return;
           const next: Record<string, SparklineSeries> = {};
@@ -37,11 +51,13 @@ export function useSparklines(
     };
 
     const connect = () => {
-      socket = createQuoteSocket(list, timeframe, 32, exchange);
+      socket = createQuoteSocket(list, timeframe, 32, exchange, { marketType, priceType, strict });
       socket.onopen = () => {
         attempts = 0;
-        if (fallbackPoll) window.clearInterval(fallbackPoll);
-        fallbackPoll = undefined;
+        if (fallbackPoll && !strict) {
+          window.clearInterval(fallbackPoll);
+          fallbackPoll = undefined;
+        }
       };
       socket.onmessage = (event) => {
         if (!alive || typeof event.data !== "string") return;
@@ -66,14 +82,15 @@ export function useSparklines(
     };
 
     load();
-    connect();
+    if (strict || !streaming) fallbackPoll = window.setInterval(load, 30_000);
+    if (streaming) connect();
     return () => {
       alive = false;
       if (reconnect) window.clearTimeout(reconnect);
       if (fallbackPoll) window.clearInterval(fallbackPoll);
       socket?.close();
     };
-  }, [key, timeframe, exchange]);
+  }, [enabled, key, timeframe, exchange, marketType, priceType, strict, streaming]);
 
   return map;
 }

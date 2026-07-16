@@ -36,8 +36,10 @@ import type { ChartTimeZone } from "./timeAxis";
 import type { Locale } from "../i18n";
 import { prepareCanvasContext, resizeCanvasToEntry } from "./canvasDensity";
 import type { VisibleTimeRange, VolumeProfileTimeframe } from "./volumeProfileSource";
+import { recordBrowserMetric } from "../performance/browserProbe";
 
 interface UseChartRendererOptions {
+  operational?: boolean;
   candles: Candle[];
   displayCandles: Candle[];
   chartType: ChartType;
@@ -73,7 +75,8 @@ interface UseChartRendererOptions {
 }
 
 export function useChartRenderer(options: UseChartRendererOptions) {
-  const anchoredVwaps = useMemo(() => calculateDrawingAvwaps(options.candles, options.drawings), [options.candles, options.drawings]);
+  const operational = options.operational ?? true;
+  const anchoredVwaps = useMemo(() => operational ? calculateDrawingAvwaps(options.candles, options.drawings) : {}, [operational, options.candles, options.drawings]);
   const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const primaryCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const indicatorsCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -100,6 +103,14 @@ export function useChartRenderer(options: UseChartRendererOptions) {
   useEffect(() => () => schedulerRef.current?.dispose(), []);
 
   useEffect(() => {
+    if (operational) return;
+    schedulerRef.current?.dispose();
+    renderPlanRef.current = undefined;
+    viewportRef.current = undefined;
+  }, [operational]);
+
+  useEffect(() => {
+    if (!operational) return;
     const backgroundCanvas = backgroundCanvasRef.current;
     const primaryCanvas = primaryCanvasRef.current;
     const indicatorsCanvas = indicatorsCanvasRef.current;
@@ -108,79 +119,87 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     if (!backgroundCanvas || !primaryCanvas || !indicatorsCanvas || !overlaysCanvas || !interactionCanvas) return;
 
     schedulerRef.current?.schedule("background", () => {
-      const surface = prepareCanvasContext(backgroundCanvas);
-      if (!surface) return;
-      applyCanvasTheme(backgroundCanvas);
-      viewportRef.current = undefined;
-      const plan = prepareChartRender({
-        width: surface.width,
-        height: surface.height,
-        candles: options.candles,
-        displayCandles: options.displayCandles,
-        chartType: options.chartType,
-        decimals: options.decimals,
-        locale: options.locale,
-        timeZone: options.timeZone,
-        view: { zoom: options.view.zoom, offset: options.view.offset, priceMode: options.view.priceMode, priceZoom: options.view.priceZoom },
-        indicators: options.indicators,
-        drawings: options.drawings,
-        draftDrawing: options.draftDrawing,
-        selectedDrawingId: options.selectedDrawingId,
-        hoveredDrawingId: options.hoveredDrawingId,
-        signals: options.signals,
-        trades: options.trades,
-        plots: options.plots,
-        shapes: options.shapes,
-        alerts: options.alerts,
-        livePositions: options.livePositions,
-        showVolume: options.showVolume,
-        showVolumeProfile: options.showVolumeProfile,
-        volumeProfileCandles: options.volumeProfileCandles,
-        volumeProfileTimeframe: options.volumeProfileTimeframe,
-        volumeProfileRange: options.volumeProfileRange,
-        marketSessions: options.marketSessions,
-        marketStructure: options.marketStructure,
-        compare: options.compare,
-        baseSymbol: options.symbol,
-        onViewport: (viewport) => { viewportRef.current = viewport; },
-        onVisibleTimeRange: (range) => {
-          const previous = visibleTimeRangeRef.current;
-          if (previous?.startTime === range?.startTime && previous?.endTime === range?.endTime) return;
-          visibleTimeRangeRef.current = range;
-          visibleTimeRangeCallbackRef.current(range);
-        },
-        onCompareLegend: (entries) => legendCallbackRef.current(entries),
-        onVolumeProfile: (profile) => volumeProfileCallbackRef.current(profile)
+      measureChartWork("chart.background.totalMs", () => {
+        const surface = prepareCanvasContext(backgroundCanvas);
+        if (!surface) return;
+        applyCanvasTheme(backgroundCanvas);
+        viewportRef.current = undefined;
+        const plan = measureChartWork("chart.prepare.ms", () => prepareChartRender({
+          width: surface.width,
+          height: surface.height,
+          candles: options.candles,
+          displayCandles: options.displayCandles,
+          chartType: options.chartType,
+          decimals: options.decimals,
+          locale: options.locale,
+          timeZone: options.timeZone,
+          view: { zoom: options.view.zoom, offset: options.view.offset, priceMode: options.view.priceMode, priceZoom: options.view.priceZoom },
+          indicators: options.indicators,
+          drawings: options.drawings,
+          draftDrawing: options.draftDrawing,
+          selectedDrawingId: options.selectedDrawingId,
+          hoveredDrawingId: options.hoveredDrawingId,
+          signals: options.signals,
+          trades: options.trades,
+          plots: options.plots,
+          shapes: options.shapes,
+          alerts: options.alerts,
+          livePositions: options.livePositions,
+          showVolume: options.showVolume,
+          showVolumeProfile: options.showVolumeProfile,
+          volumeProfileCandles: options.volumeProfileCandles,
+          volumeProfileTimeframe: options.volumeProfileTimeframe,
+          volumeProfileRange: options.volumeProfileRange,
+          marketSessions: options.marketSessions,
+          marketStructure: options.marketStructure,
+          compare: options.compare,
+          baseSymbol: options.symbol,
+          onViewport: (viewport) => { viewportRef.current = viewport; },
+          onVisibleTimeRange: (range) => {
+            const previous = visibleTimeRangeRef.current;
+            if (previous?.startTime === range?.startTime && previous?.endTime === range?.endTime) return;
+            visibleTimeRangeRef.current = range;
+            visibleTimeRangeCallbackRef.current(range);
+          },
+          onCompareLegend: (entries) => legendCallbackRef.current(entries),
+          onVolumeProfile: (profile) => volumeProfileCallbackRef.current(profile)
+        }));
+        renderPlanRef.current = plan;
+        measureChartWork("chart.background.drawMs", () => drawChartBackground(surface.ctx, plan));
       });
-      renderPlanRef.current = plan;
-      drawChartBackground(surface.ctx, plan);
     });
-    schedulerRef.current?.schedule("primary", () => drawPrimary(primaryCanvas, renderPlanRef.current, options.compare, options.symbol, legendCallbackRef));
+    schedulerRef.current?.schedule("primary", () => measureChartWork("chart.primary.drawMs", () => drawPrimary(primaryCanvas, renderPlanRef.current, options.compare, options.symbol, legendCallbackRef)));
     schedulerRef.current?.schedule("indicators", () => {
-      const plan = renderPlanRef.current;
-      const surface = prepareCanvasContext(indicatorsCanvas);
-      if (plan && surface) drawChartIndicators(surface.ctx, plan);
+      measureChartWork("chart.indicators.drawMs", () => {
+        const plan = renderPlanRef.current;
+        const surface = prepareCanvasContext(indicatorsCanvas);
+        if (plan && surface) drawChartIndicators(surface.ctx, plan);
+      });
     });
-    schedulerRef.current?.schedule("overlays", () => drawOverlays(overlaysCanvas, renderPlanRef.current, options, anchoredVwaps));
-    schedulerRef.current?.schedule("interaction", () => drawInteraction(interactionCanvas, viewportRef.current, options));
-  }, [options.candles, options.displayCandles, options.chartType, options.indicators, options.decimals, options.locale, options.timeZone, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.volumeProfileCandles, options.volumeProfileTimeframe, options.volumeProfileRange, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, options.view.priceZoom, renderRevision]);
+    schedulerRef.current?.schedule("overlays", () => drawMeasuredOverlays(overlaysCanvas, renderPlanRef.current, options, anchoredVwaps));
+    schedulerRef.current?.schedule("interaction", () => measureChartWork("chart.interaction.drawMs", () => drawInteraction(interactionCanvas, viewportRef.current, options)));
+  }, [operational, options.candles, options.displayCandles, options.chartType, options.indicators, options.decimals, options.locale, options.timeZone, options.symbol, options.plots, options.shapes, options.showVolume, options.showVolumeProfile, options.volumeProfileCandles, options.volumeProfileTimeframe, options.volumeProfileRange, options.marketSessions, options.marketStructure, options.theme, options.view.zoom, options.view.offset, options.view.priceMode, options.view.priceZoom, renderRevision]);
 
   useEffect(() => {
+    if (!operational) return;
     const canvas = primaryCanvasRef.current;
     if (canvas) schedulerRef.current?.schedule("primary", () => drawPrimary(canvas, renderPlanRef.current, options.compare, options.symbol, legendCallbackRef));
-  }, [options.compare, options.symbol]);
+  }, [operational, options.compare, options.symbol]);
 
   useEffect(() => {
+    if (!operational) return;
     const canvas = overlaysCanvasRef.current;
-    if (canvas) schedulerRef.current?.schedule("overlays", () => drawOverlays(canvas, renderPlanRef.current, options, anchoredVwaps));
-  }, [options.draftDrawing, options.drawings, options.hoveredDrawingId, options.selectedDrawingId, options.signals, options.trades, options.plots, options.shapes, options.alerts, options.livePositions, options.sessionLiquidity, anchoredVwaps]);
+    if (canvas) schedulerRef.current?.schedule("overlays", () => drawMeasuredOverlays(canvas, renderPlanRef.current, options, anchoredVwaps));
+  }, [operational, options.draftDrawing, options.drawings, options.hoveredDrawingId, options.selectedDrawingId, options.signals, options.trades, options.plots, options.shapes, options.alerts, options.livePositions, options.sessionLiquidity, anchoredVwaps]);
 
   useEffect(() => {
+    if (!operational) return;
     const canvas = interactionCanvasRef.current;
     if (canvas) schedulerRef.current?.schedule("interaction", () => drawInteraction(canvas, viewportRef.current, options));
-  }, [options.decimals, options.locale, options.timeZone, options.view.crosshair]);
+  }, [operational, options.decimals, options.locale, options.timeZone, options.view.crosshair]);
 
   useEffect(() => {
+    if (!operational) return;
     const canvases = [backgroundCanvasRef.current, primaryCanvasRef.current, indicatorsCanvasRef.current, overlaysCanvasRef.current, interactionCanvasRef.current];
     const backgroundCanvas = canvases[0];
     if (!backgroundCanvas || canvases.some((canvas) => !canvas)) return;
@@ -194,9 +213,19 @@ export function useChartRenderer(options: UseChartRendererOptions) {
     });
     observer.observe(backgroundCanvas);
     return () => observer.disconnect();
-  }, []);
+  }, [operational]);
 
   return { backgroundCanvasRef, primaryCanvasRef, indicatorsCanvasRef, overlaysCanvasRef, interactionCanvasRef, viewportRef };
+}
+
+function measureChartWork<T>(name: string, work: () => T): T {
+  if (typeof window === "undefined" || !window.__SBV2_BROWSER_PERF_PROBE__) return work();
+  const startedAt = performance.now();
+  try {
+    return work();
+  } finally {
+    recordBrowserMetric(name, performance.now() - startedAt);
+  }
 }
 
 function drawPrimary(
@@ -231,6 +260,10 @@ function drawOverlays(canvas: HTMLCanvasElement, plan: ChartRenderPlan | undefin
     marketStructure: options.marketStructure,
     anchoredVwapSeries
   }));
+}
+
+function drawMeasuredOverlays(canvas: HTMLCanvasElement, plan: ChartRenderPlan | undefined, options: UseChartRendererOptions, anchoredVwapSeries: AnchoredVwapSeries) {
+  measureChartWork("chart.overlays.drawMs", () => drawOverlays(canvas, plan, options, anchoredVwapSeries));
 }
 
 function drawInteraction(canvas: HTMLCanvasElement, viewport: Viewport | undefined, options: UseChartRendererOptions) {

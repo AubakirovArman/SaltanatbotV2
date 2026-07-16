@@ -119,14 +119,15 @@ const candleQuery = z.object({
   marketType: marketTypeParam,
   priceType: priceTypeParam
 });
-
 const sparklineQuery = z.object({
   symbols: z.string().min(1),
   timeframe: z.enum(timeframes as [Timeframe, ...Timeframe[]]).default("1h"),
   points: z.coerce.number().int().min(2).max(120).default(32),
-  exchange: exchangeParam
+  exchange: exchangeParam,
+  marketType: marketTypeParam,
+  priceType: priceTypeParam,
+  strict: z.enum(["0", "1"]).default("0").transform((value) => value === "1")
 });
-
 const orderBookQuery = z.object({
   symbol: z.string().min(1),
   exchange: exchangeParam
@@ -232,7 +233,7 @@ app.get("/api/sparklines", async (request, response) => {
       if (!instrument) return [symbol, null] as const;
       try {
         const candles = await marketDataGate.run(JSON.stringify(["spark", instrument.symbol, parsed.data]), () =>
-          provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data.exchange));
+          provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data));
         const closes = candles.map((candle) => candle.close);
         const first = closes[0];
         const last = closes.at(-1);
@@ -386,7 +387,7 @@ quoteWss.on("connection", async (socket, request) => {
     instruments.map(async (instrument) => {
       try {
         const candles = await marketDataGate.run(JSON.stringify(["quote", instrument.symbol, parsed.data]), () =>
-          provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data.exchange));
+          provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data));
         histories.set(instrument.symbol, candles);
         series[instrument.symbol] = sparklineSeries(candles);
       } catch {
@@ -418,7 +419,7 @@ quoteWss.on("connection", async (socket, request) => {
           });
         },
         () => undefined,
-        parsed.data.exchange
+        parsed.data
       );
       subscriptions.push(subscription);
     })

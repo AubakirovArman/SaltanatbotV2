@@ -95,12 +95,12 @@ export const OrderBookHeatmapLayer = memo(function OrderBookHeatmapLayer({
   }, [enabled, viewportRef]);
 
   const scheduleDraw = useCallback(() => {
-    if (rafRef.current !== undefined) return;
+    if (!enabled || rafRef.current !== undefined) return;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = undefined;
       draw();
     });
-  }, [draw]);
+  }, [draw, enabled]);
 
   useEffect(() => {
     scheduleDraw();

@@ -1,8 +1,8 @@
 import { Bell, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
-import type { PriceAlert } from "../market/alerts";
+import { samePriceAlertRoute, type PriceAlert } from "../market/alerts";
 import type { NewAlertInput } from "../hooks/usePriceAlerts";
-import type { Candle, DataMarketType, Instrument, PriceType } from "../types";
+import type { Candle, DataExchange, DataMarketType, Instrument, PriceType } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
 import { localeTag, type Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
@@ -18,6 +18,7 @@ interface StatsPanelProps {
   gapCount?: number;
   missingBars?: number;
   fallbackActive?: boolean;
+  exchange: DataExchange;
   marketType?: DataMarketType;
   priceType?: PriceType;
   alerts: PriceAlert[];
@@ -37,6 +38,7 @@ export function StatsPanel({
   gapCount = 0,
   missingBars = 0,
   fallbackActive = false,
+  exchange,
   marketType = "spot",
   priceType = "last",
   alerts,
@@ -90,7 +92,10 @@ export function StatsPanel({
         locale={locale}
         instrument={instrument}
         price={latest?.close}
-        alerts={alerts.filter((alert) => alert.symbol === instrument.symbol)}
+        exchange={exchange}
+        marketType={marketType}
+        priceType={priceType}
+        alerts={alerts.filter((alert) => alert.symbol === instrument.symbol && samePriceAlertRoute(alert, { exchange, marketType, priceType }))}
         onAddAlert={onAddAlert}
         onRemoveAlert={onRemoveAlert}
         onResetAlert={onResetAlert}
@@ -119,6 +124,9 @@ function AlertsSection({
   locale,
   instrument,
   price,
+  exchange,
+  marketType,
+  priceType,
   alerts,
   onAddAlert,
   onRemoveAlert,
@@ -127,6 +135,9 @@ function AlertsSection({
   locale: Locale;
   instrument: Instrument;
   price?: number;
+  exchange: DataExchange;
+  marketType: DataMarketType;
+  priceType: PriceType;
   alerts: PriceAlert[];
   onAddAlert: (input: NewAlertInput) => void;
   onRemoveAlert: (id: string) => void;
@@ -140,7 +151,7 @@ function AlertsSection({
     if (!Number.isFinite(value) || value <= 0) return;
     // Direction is inferred from where the target sits relative to the last price.
     const direction = price !== undefined && value < price ? "below" : "above";
-    onAddAlert({ symbol: instrument.symbol, price: value, direction });
+    onAddAlert({ symbol: instrument.symbol, price: value, direction, exchange, marketType, priceType });
     setDraft("");
   };
 
@@ -231,10 +242,20 @@ export function sessionRange(candles: Candle[]) {
   const latest = candles.at(-1);
   if (!latest) return undefined;
   const cutoff = latest.time - 86_400_000;
-  const window = candles.filter((candle) => candle.time >= cutoff);
-  const source = window.length > 0 ? window : candles;
-  const low = Math.min(...source.map((candle) => candle.low));
-  const high = Math.max(...source.map((candle) => candle.high));
+  let lowIndex = 0;
+  let highIndex = candles.length;
+  while (lowIndex < highIndex) {
+    const middle = (lowIndex + highIndex) >>> 1;
+    if (candles[middle].time < cutoff) lowIndex = middle + 1;
+    else highIndex = middle;
+  }
+  const start = lowIndex < candles.length ? lowIndex : 0;
+  let low = Number.POSITIVE_INFINITY;
+  let high = Number.NEGATIVE_INFINITY;
+  for (let index = start; index < candles.length; index += 1) {
+    low = Math.min(low, candles[index].low);
+    high = Math.max(high, candles[index].high);
+  }
   const position = high === low ? 50 : Math.min(100, Math.max(0, (latest.close - low) / (high - low) * 100));
   return { low, high, position };
 }

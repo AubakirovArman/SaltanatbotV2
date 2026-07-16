@@ -41,6 +41,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".status-pill.connected")).toBeVisible();
+  await expect(page.locator(".runtime-profile-badge")).toBeVisible();
 });
 
 test("desktop trading terminal", async ({ page }) => {

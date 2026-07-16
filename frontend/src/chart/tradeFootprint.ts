@@ -30,7 +30,7 @@ export interface TradeFootprint {
 }
 
 /** Aggregate real exchange prints into visible candle × screen-price cells. */
-export function aggregateTradeFootprint(trades: TradeFlowTrade[], viewport: Viewport, priceRowPx = 9): TradeFootprint {
+export function aggregateTradeFootprint(trades: Iterable<TradeFlowTrade>, viewport: Viewport, priceRowPx = 9): TradeFootprint {
   const cells = new Map<string, FootprintCell>();
   const barTotals = new Map<number, { buyNotional: number; sellNotional: number; prints: number }>();
   let buyNotional = 0;

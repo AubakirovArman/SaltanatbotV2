@@ -1,14 +1,6 @@
 import type { Candle } from "../types";
-import { atr, bollinger, ema, macd, obv, rsi, sma, stochastic, vwap } from "./indicatorMath";
 import { isIndicatorVisible } from "./indicatorTypes";
-import type {
-  BollingerConfig,
-  IndicatorConfig,
-  MacdConfig,
-  ObvConfig,
-  PeriodIndicatorConfig,
-  StochasticConfig
-} from "./indicatorTypes";
+import type { IndicatorConfig } from "./indicatorTypes";
 import {
   drawBollinger,
   drawMacdPanel,
@@ -46,6 +38,9 @@ import { calculateDrawingAvwaps } from "./anchoredVwap";
 import { preparePriceCandles } from "./priceRepresentation";
 import type { ChartShapes, DrawChartOptions, PlotArea, PriceMode, PriceScale, Viewport } from "./types";
 import { createChartTimeFormatter } from "./timeAxis";
+import { recordBrowserMetric } from "../performance/browserProbe";
+import { structuralCandlesOf } from "../market/candleSeries";
+import { computeIndicator, patchIndicatorTail, type ComputedIndicator } from "./indicatorTail";
 
 let theme = {
   background: "#0b0d10",
@@ -133,7 +128,7 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
   const visible = visibleCandles(chartCandles, plot, view.zoom, view.offset, rightPaddingBars);
   const data = visible.data;
   const { start, end } = visible;
-  const computed = computeIndicators(chartCandles, indicators);
+  const computed = measureChartEngine("chart.indicators.computeMs", () => computeIndicators(chartCandles, indicators));
   const extraValues = collectMainValues(computed, start, end);
 
   const viewport = buildViewport({
@@ -169,6 +164,16 @@ export function prepareChartRender(input: ChartRenderInput): ChartRenderPlan {
     panelTop: plot.bottom + 22,
     volumeProfile: showVolumeProfile ? buildVolumeProfile(profileCandles) : undefined
   };
+}
+
+function measureChartEngine<T>(name: string, work: () => T): T {
+  if (typeof window === "undefined" || !window.__SBV2_BROWSER_PERF_PROBE__) return work();
+  const startedAt = performance.now();
+  try {
+    return work();
+  } finally {
+    recordBrowserMetric(name, performance.now() - startedAt);
+  }
 }
 
 export function drawChartBackground(ctx: CanvasRenderingContext2D, plan: ChartRenderPlan) {
@@ -337,16 +342,18 @@ function makePanel(plot: PlotArea, top: number, panelHeight: number): PlotArea {
   };
 }
 
-type ComputedIndicator =
-  | { config: PeriodIndicatorConfig; kind: "sma" | "ema" | "rsi" | "vwap" | "atr"; points: ReturnType<typeof sma> }
-  | { config: BollingerConfig; kind: "bollinger"; points: ReturnType<typeof bollinger> }
-  | { config: MacdConfig; kind: "macd"; points: ReturnType<typeof macd> }
-  | { config: StochasticConfig; kind: "stochastic"; points: ReturnType<typeof stochastic> }
-  | { config: ObvConfig; kind: "obv"; points: ReturnType<typeof obv> };
-
 const indicatorCache = new WeakMap<Candle[], Map<string, ComputedIndicator>>();
 
 function computeIndicators(candles: Candle[], configs: IndicatorConfig[]): ComputedIndicator[] {
+  const structuralCandles = structuralCandlesOf(candles);
+  if (structuralCandles !== candles && structuralCandles.length === candles.length) {
+    return computeDenseIndicators(structuralCandles as Candle[], configs)
+      .map((indicator) => patchIndicatorTail(indicator, candles));
+  }
+  return computeDenseIndicators(candles, configs);
+}
+
+function computeDenseIndicators(candles: Candle[], configs: IndicatorConfig[]): ComputedIndicator[] {
   let cache = indicatorCache.get(candles);
   if (!cache) {
     cache = new Map();
@@ -356,36 +363,7 @@ function computeIndicators(candles: Candle[], configs: IndicatorConfig[]): Compu
     const key = indicatorCalcKey(config);
     const cached = cache.get(key);
     if (cached) return { ...cached, config } as ComputedIndicator;
-    let computed: ComputedIndicator;
-    switch (config.kind) {
-      case "sma":
-        computed = { config, kind: config.kind, points: sma(candles, config.period) };
-        break;
-      case "ema":
-        computed = { config, kind: config.kind, points: ema(candles, config.period) };
-        break;
-      case "rsi":
-        computed = { config, kind: config.kind, points: rsi(candles, config.period) };
-        break;
-      case "vwap":
-        computed = { config, kind: config.kind, points: vwap(candles, config.period) };
-        break;
-      case "atr":
-        computed = { config, kind: config.kind, points: atr(candles, config.period) };
-        break;
-      case "bollinger":
-        computed = { config, kind: config.kind, points: bollinger(candles, config.period, config.deviation) };
-        break;
-      case "macd":
-        computed = { config, kind: config.kind, points: macd(candles, config.fast, config.slow, config.signal) };
-        break;
-      case "stochastic":
-        computed = { config, kind: config.kind, points: stochastic(candles, config.period, config.smooth) };
-        break;
-      case "obv":
-        computed = { config, kind: config.kind, points: obv(candles) };
-        break;
-    }
+    const computed = computeIndicator(candles, config);
     cache.set(key, computed);
     return computed;
   });
@@ -400,19 +378,18 @@ function indicatorCalcKey(config: IndicatorConfig): string {
 }
 
 function collectMainValues(computed: ComputedIndicator[], start: number, end: number) {
-  return computed.flatMap((indicator) => {
-    if (isLowerIndicator(indicator.config)) return [];
+  const values: number[] = [];
+  computed.forEach((indicator) => {
+    if (isLowerIndicator(indicator.config)) return;
     if (indicator.kind === "bollinger") {
-      return indicator.points
-        .slice(start, end)
-        .flatMap((point) => [point.middle, point.upper, point.lower])
-        .filter(isNumber);
+      appendVisibleValues(values, indicator.points, start, end, ["middle", "upper", "lower"]);
+      return;
     }
     if (indicator.kind === "sma" || indicator.kind === "ema" || indicator.kind === "vwap") {
-      return indicator.points.slice(start, end).map((point) => point.value).filter(isNumber);
+      appendVisibleValues(values, indicator.points, start, end, ["value"]);
     }
-    return [];
   });
+  return values;
 }
 
 function drawMainIndicators(
@@ -453,18 +430,17 @@ function drawLowerPanels(
     const panel = makePanel(plot, top, lowerHeight);
     const indicator = computed.find((item) => item.config.id === config.id);
     if (!indicator) return;
+    const bounds = indicatorValueBounds(indicator, start, end);
     let panelScale: PriceScale | undefined;
     if (indicator.kind === "sma" || indicator.kind === "ema" || indicator.kind === "vwap") {
-      const values = indicator.points.slice(start, end).map((point) => point.value).filter(isNumber);
-      if (values.length > 0) {
-        panelScale = independentScale(panel, values);
+      if (bounds) {
+        panelScale = independentScale(panel, bounds);
         drawSeriesLine(ctx, { points: indicator.points, start, end, plot: panel, scale: panelScale, step: panel.width / Math.max(1, end - start), color: indicator.config.color });
       }
     }
     if (indicator.kind === "bollinger") {
-      const values = indicator.points.slice(start, end).flatMap((point) => [point.middle, point.upper, point.lower]).filter(isNumber);
-      if (values.length > 0) {
-        panelScale = independentScale(panel, values);
+      if (bounds) {
+        panelScale = independentScale(panel, bounds);
         drawBollinger(ctx, indicator.points, start, end, panel, panelScale, panel.width / Math.max(1, end - start), { middle: indicator.config.color, band: indicator.config.bandColor });
       }
     }
@@ -491,8 +467,7 @@ function drawLowerPanels(
     if (indicator.kind === "obv") {
       drawOscillatorPanel(ctx, panel, indicator.points, start, end, indicator.config.color, theme, "OBV");
     }
-    const values = indicatorValues(indicator, start, end);
-    if (!panelScale && values.length > 0) panelScale = independentScale(panel, values);
+    if (!panelScale && bounds) panelScale = independentScale(panel, bounds);
     if (panelScale) drawPanelScale(ctx, panel, panelScale, indicator.config.scalePlacement ?? "right");
   });
 }
@@ -502,21 +477,69 @@ function isLowerIndicator(config: IndicatorConfig) {
   return config.kind === "rsi" || config.kind === "macd" || config.kind === "stochastic" || config.kind === "atr" || config.kind === "obv";
 }
 
-function indicatorValues(indicator: ComputedIndicator, start: number, end: number): number[] {
-  if (indicator.kind === "bollinger") return indicator.points.slice(start, end).flatMap((point) => [point.middle, point.upper, point.lower]).filter(isNumber);
-  if (indicator.kind === "macd") return indicator.points.slice(start, end).flatMap((point) => [point.macd, point.signal, point.histogram]).filter(isNumber);
-  if (indicator.kind === "stochastic") return indicator.points.slice(start, end).flatMap((point) => [point.k, point.d]).filter(isNumber);
-  return indicator.points.slice(start, end).map((point) => point.value).filter(isNumber);
+interface IndicatorValueBounds {
+  min: number;
+  max: number;
+  base: number;
 }
 
-function independentScale(plot: PlotArea, values: number[]): PriceScale {
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
+function indicatorValueBounds(indicator: ComputedIndicator, start: number, end: number): IndicatorValueBounds | undefined {
+  if (indicator.kind === "bollinger") return visibleValueBounds(indicator.points, start, end, ["middle", "upper", "lower"]);
+  if (indicator.kind === "macd") return visibleValueBounds(indicator.points, start, end, ["macd", "signal", "histogram"]);
+  if (indicator.kind === "stochastic") return visibleValueBounds(indicator.points, start, end, ["k", "d"]);
+  return visibleValueBounds(indicator.points, start, end, ["value"]);
+}
+
+function visibleValueBounds<T extends object, K extends keyof T>(
+  points: readonly T[],
+  start: number,
+  end: number,
+  keys: readonly K[]
+): IndicatorValueBounds | undefined {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  let base: number | undefined;
+  const visibleEnd = Math.min(points.length, end);
+  for (let index = Math.max(0, start); index < visibleEnd; index += 1) {
+    const point = points[index];
+    if (!point) continue;
+    keys.forEach((key) => {
+      const value = point[key];
+      if (typeof value !== "number" || !Number.isFinite(value)) return;
+      base ??= value;
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    });
+  }
+  return base === undefined ? undefined : { min, max, base };
+}
+
+function appendVisibleValues<T extends object, K extends keyof T>(
+  target: number[],
+  points: readonly T[],
+  start: number,
+  end: number,
+  keys: readonly K[]
+) {
+  const visibleEnd = Math.min(points.length, end);
+  for (let index = Math.max(0, start); index < visibleEnd; index += 1) {
+    const point = points[index];
+    if (!point) continue;
+    keys.forEach((key) => {
+      const value = point[key];
+      if (typeof value === "number" && Number.isFinite(value)) target.push(value);
+    });
+  }
+}
+
+function independentScale(plot: PlotArea, values: IndicatorValueBounds): PriceScale {
+  const rawMin = values.min;
+  const rawMax = values.max;
   const span = Math.max(Math.abs(rawMax - rawMin), Math.abs(rawMax) * 0.01, 1e-9);
   const min = rawMin - span * 0.08;
   const max = rawMax + span * 0.08;
   return {
-    min, max, mode: "linear", base: values[0] ?? 0,
+    min, max, mode: "linear", base: values.base,
     y: (value) => plot.top + ((max - value) / (max - min)) * plot.height,
     priceAt: (y) => max - ((y - plot.top) / plot.height) * (max - min)
   };
@@ -537,8 +560,4 @@ function drawPanelScale(ctx: CanvasRenderingContext2D, panel: PlotArea, scale: P
 function formatScaleValue(value: number) {
   const absolute = Math.abs(value);
   return absolute >= 1_000 ? value.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 }) : value.toFixed(absolute >= 10 ? 2 : 4);
-}
-
-function isNumber(value: number | undefined): value is number {
-  return typeof value === "number" && Number.isFinite(value);
 }

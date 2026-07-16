@@ -15,5 +15,6 @@ export const kkCore: Record<MessageKey, string> = {
   statusConnected: "онлайн",
   statusFallback: "синт.",
   statusError: "офлайн",
+  statusPaused: "үзіліс",
   statusConnecting: "синхр."
 };

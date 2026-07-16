@@ -48,7 +48,7 @@ export function evaluateMicrostructureAlerts({
   settings
 }: {
   symbol: string;
-  trades: TradeFlowTrade[];
+  trades: Iterable<TradeFlowTrade>;
   footprint: TradeFootprint;
   insights: FootprintInsights;
   settings: MicrostructureAlertSettings;
@@ -97,9 +97,12 @@ export function evaluateMicrostructureAlerts({
     }
   }
   if (settings.largePrint) {
-    const large = trades
-      .filter((trade) => trade.price * trade.size >= settings.largePrintNotional)
-      .slice(-20);
+    const large: TradeFlowTrade[] = [];
+    for (const trade of trades) {
+      if (trade.price * trade.size < settings.largePrintNotional) continue;
+      if (large.length === 20) large.shift();
+      large.push(trade);
+    }
     for (const trade of large) {
       events.push({
         id: `${symbol}:print:${trade.id}`,

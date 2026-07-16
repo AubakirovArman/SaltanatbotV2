@@ -462,12 +462,14 @@
   background: var(--warn);
 }
 
+.status-pill.idle,
 .status-pill.error,
 .status-pill.connecting {
   color: var(--down);
   border-color: color-mix(in srgb, var(--down) 25%, transparent);
 }
 
+.status-pill.idle i,
 .status-pill.error i,
 .status-pill.connecting i {
   background: var(--down);

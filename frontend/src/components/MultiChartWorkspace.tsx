@@ -34,6 +34,7 @@ interface MultiChartWorkspaceProps {
   activeChartId?: string;
   onActiveChartChange: (id: string) => void;
   onMarketStreamChange: (id: string, stream?: PaneMarketStream) => void;
+  onPrimaryOperationalChange?: (operational: boolean) => void;
   compareOverlays: CompareOverlayConfig[];
   compareState: CompareSeriesState;
   maximizeShortcut: string;
@@ -71,6 +72,7 @@ export function MultiChartWorkspace({
   activeChartId,
   onActiveChartChange,
   onMarketStreamChange,
+  onPrimaryOperationalChange,
   compareOverlays,
   compareState,
   maximizeShortcut,
@@ -136,6 +138,10 @@ export function MultiChartWorkspace({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeChartId, canMaximize, maximizeShortcut, maximizedChartId, moveActiveChart, nextChartShortcut, previousChartShortcut]);
 
+  useEffect(() => {
+    onPrimaryOperationalChange?.(!maximizedChartId || maximizedChartId === primaryChart?.id);
+  }, [maximizedChartId, onPrimaryOperationalChange, primaryChart?.id]);
+
   const paneProps = (id: string) => ({
     className: `multi-chart-pane ${id === primaryChart?.id ? "primary" : "secondary"} ${activeChartId === id && canMaximize ? "active" : ""} ${maximizedChartId === id ? "maximized" : ""}`,
     "data-active": activeChartId === id ? "true" : "false",
@@ -162,6 +168,7 @@ export function MultiChartWorkspace({
           key={chart.id}
           paneProps={paneProps(chart.id)}
           active={activeChartId === chart.id}
+          operational={!maximizedChartId || maximizedChartId === chart.id}
           chart={chart}
           paneNumber={index + 2}
           canMaximize={canMaximize}
@@ -195,6 +202,7 @@ function SecondaryChartPane({
   paneNumber,
   paneProps,
   active,
+  operational,
   canMaximize,
   maximized,
   maximizeShortcut,
@@ -220,6 +228,7 @@ function SecondaryChartPane({
   paneNumber: number;
   paneProps: ComponentPropsWithRef<"section">;
   active: boolean;
+  operational: boolean;
   canMaximize: boolean;
   maximized: boolean;
   onToggleMaximize: () => void;
@@ -228,11 +237,11 @@ function SecondaryChartPane({
   const paneExchange = chart.exchange ?? exchange;
   const marketType = chart.marketType ?? "spot";
   const priceType = paneExchange === "bybit" ? "last" : (chart.priceType ?? "last");
-  const stream = useMarketStream(chart.symbol, chart.timeframe, paneExchange, { marketType, priceType });
+  const stream = useMarketStream(chart.symbol, chart.timeframe, paneExchange, { marketType, priceType, enabled: operational });
   const instrument = catalog?.instruments.find((item) => item.symbol === chart.symbol) ?? fallbackInstrument(chart.symbol);
   const paneIndicators = chart.linkIndicators ? indicators : applyPaneIndicatorOverrides(indicators, chart.indicatorOverrides);
   const paneCompareOverlays = useMemo(() => (chart.linkCompare ? compareOverlays : (chart.compareOverlays ?? [])).filter((overlay) => overlay.symbol !== chart.symbol), [chart.compareOverlays, chart.linkCompare, chart.symbol, compareOverlays]);
-  const localCompareState = useCompareSeries(chart.linkCompare ? EMPTY_COMPARE_OVERLAYS : paneCompareOverlays, paneExchange);
+  const localCompareState = useCompareSeries(chart.linkCompare ? EMPTY_COMPARE_OVERLAYS : paneCompareOverlays, paneExchange, { enabled: operational });
   const paneCompareState = chart.linkCompare ? compareState : localCompareState;
   const compareCandidates = useMemo(() => (catalog?.instruments ?? []).filter((item) => item.symbol !== chart.symbol).map((item) => ({ symbol: item.symbol, displayName: item.displayName })), [catalog, chart.symbol]);
   const commitCompare = (next: CompareOverlayConfig[]) => onUpdate(chart.id, { linkCompare: false, compareOverlays: normalizeCompareOverlays(next, chart.timeframe, chart.chartType) });
@@ -243,8 +252,8 @@ function SecondaryChartPane({
   const updateCompare = (id: string, patch: Partial<CompareOverlayConfig>) => commitCompare(paneCompareOverlays.map((overlay) => (overlay.id === id ? { ...overlay, ...patch } : overlay)));
   const removeCompare = (id: string) => commitCompare(paneCompareOverlays.filter((overlay) => overlay.id !== id));
   useEffect(() => {
-    onMarketStreamChange(chart.id, active ? { ...stream, symbol: chart.symbol, timeframe: chart.timeframe, exchange: paneExchange, marketType, priceType } : undefined);
-  }, [active, chart.id, chart.symbol, chart.timeframe, marketType, onMarketStreamChange, paneExchange, priceType, stream]);
+    onMarketStreamChange(chart.id, active && operational ? { ...stream, symbol: chart.symbol, timeframe: chart.timeframe, exchange: paneExchange, marketType, priceType } : undefined);
+  }, [active, chart.id, chart.symbol, chart.timeframe, marketType, onMarketStreamChange, operational, paneExchange, priceType, stream]);
   useEffect(() => () => onMarketStreamChange(chart.id), [chart.id, onMarketStreamChange]);
   const linkButton = (field: "linkSymbol" | "linkTimeframe" | "linkChartType" | "linkCrosshair" | "linkTimeRange" | "linkIndicators" | "linkCompare", linkLabel: string, unlinkLabel: string, ActiveIcon = Link2) => {
     const linked = chart[field];
@@ -341,6 +350,7 @@ function SecondaryChartPane({
         </span>
       </div>
       <ChartCanvas
+        operational={operational}
         compactChrome={!maximized}
         showIndicatorControls={maximized}
         candles={stream.candles}

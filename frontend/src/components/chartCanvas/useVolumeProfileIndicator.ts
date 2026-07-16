@@ -2,12 +2,14 @@ import { useState } from "react";
 import type { VolumeProfileIndicatorControl } from "../ChartIndicatorOverlay";
 import { useVolumeProfileSource } from "./useVolumeProfileSource";
 
-type VolumeProfileIndicatorOptions = Omit<Parameters<typeof useVolumeProfileSource>[0], "enabled">;
+type VolumeProfileIndicatorOptions = Omit<Parameters<typeof useVolumeProfileSource>[0], "enabled"> & {
+  operational?: boolean;
+};
 
 export function useVolumeProfileIndicator(options: VolumeProfileIndicatorOptions) {
   const [added, setAdded] = useState(false);
   const [visible, setVisible] = useState(false);
-  const source = useVolumeProfileSource({ ...options, enabled: visible });
+  const source = useVolumeProfileSource({ ...options, enabled: visible && (options.operational ?? true) });
   const control: VolumeProfileIndicatorControl = {
     added,
     visible,

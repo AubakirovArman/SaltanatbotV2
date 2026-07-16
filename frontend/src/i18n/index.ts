@@ -26,6 +26,7 @@ const en = {
   statusConnected: "live",
   statusFallback: "synth",
   statusError: "offline",
+  statusPaused: "paused",
   statusConnecting: "sync"
 } as const;
 
@@ -46,6 +47,7 @@ const ru: Record<MessageKey, string> = {
   statusConnected: "онлайн",
   statusFallback: "синт.",
   statusError: "офлайн",
+  statusPaused: "пауза",
   statusConnecting: "синхр."
 };
 

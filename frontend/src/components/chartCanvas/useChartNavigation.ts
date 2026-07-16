@@ -131,12 +131,14 @@ export function useChartWheelNavigation(
   canvasRef: RefObject<HTMLCanvasElement | null>,
   viewportRef: RefObject<Viewport | undefined>,
   candles: Candle[],
-  setView: Dispatch<SetStateAction<ChartNavigationView>>
+  setView: Dispatch<SetStateAction<ChartNavigationView>>,
+  enabled = true
 ) {
   const candlesRef = useRef(candles);
   candlesRef.current = candles;
 
   useEffect(() => {
+    if (!enabled) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     let frame = 0;
@@ -172,7 +174,7 @@ export function useChartWheelNavigation(
       canvas.removeEventListener("wheel", onWheel);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [canvasRef, setView, viewportRef]);
+  }, [canvasRef, enabled, setView, viewportRef]);
 }
 
 export function useChartTouchNavigation(
@@ -181,7 +183,8 @@ export function useChartTouchNavigation(
   candles: Candle[],
   view: ChartNavigationView,
   setView: Dispatch<SetStateAction<ChartNavigationView>>,
-  callbacks: ChartTouchNavigationCallbacks = {}
+  callbacks: ChartTouchNavigationCallbacks = {},
+  enabled = true
 ) {
   const candlesRef = useRef(candles);
   const viewRef = useRef(view);
@@ -194,6 +197,11 @@ export function useChartTouchNavigation(
   const reset = useCallback(() => resetRef.current(), []);
 
   useEffect(() => {
+    if (!enabled) {
+      resetRef.current();
+      resetRef.current = () => undefined;
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const points = new Map<number, ChartTouchPoint>();
@@ -321,7 +329,7 @@ export function useChartTouchNavigation(
       resetState();
       resetRef.current = () => undefined;
     };
-  }, [canvasRef, setView, viewportRef]);
+  }, [canvasRef, enabled, setView, viewportRef]);
 
   return { gestureActiveRef, reset };
 }

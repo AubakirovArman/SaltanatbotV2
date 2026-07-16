@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createDrawing, TOOL_POINT_COUNT, type Anchor, type DrawingObject, type DrawingTool, type ShapeTool } from "../chart/drawings";
 import { useChartRenderer } from "../chart/useChartRenderer";
 import { hitTest } from "../chart/objects/hitTest";
@@ -33,10 +33,15 @@ import { usePersistentDrawings } from "./chartCanvas/usePersistentDrawings";
 import { TimeZoneControl } from "./chartCanvas/TimeZoneControl";
 import { useVolumeProfileIndicator } from "./chartCanvas/useVolumeProfileIndicator";
 import { normalizeChartTimeZone } from "../chart/timeAxis";
+import { recordBrowserRender } from "../performance/browserProbe";
+import { samePriceAlertRoute } from "../market/alerts";
+import { structuralCandlesOf } from "../market/candleSeries";
+import type { Candle } from "../types";
 
 const MAX_COMPARE = 3;
+const EMPTY_CANDLES: Candle[] = [];
 
-export function ChartCanvas({
+export const ChartCanvas = memo(function ChartCanvas({
   candles,
   chartType,
   instrument,
@@ -87,8 +92,10 @@ export function ChartCanvas({
   linkedTimeRange,
   onLinkedTimeRangeChange,
   compactChrome = false,
-  showIndicatorControls = true
+  showIndicatorControls = true,
+  operational = true
 }: ChartCanvasProps) {
+  recordBrowserRender(`ChartCanvas:${chartId}`);
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const drawingsRef = useRef<DrawingObject[]>([]);
   const historyRef = useRef<DrawingObject[][]>([]);
@@ -108,7 +115,10 @@ export function ChartCanvas({
   const [draft, setDraft] = useState<{ tool: ShapeTool; points: Anchor[] }>();
   const [quickMeasure, setQuickMeasure] = useState<DraftDrawing>();
   const [quickMeasureActive, setQuickMeasureActive] = useState(false);
-  const chartAlerts = useMemo(() => (alerts ?? []).filter((a) => a.symbol === instrument.symbol).map((a) => ({ price: a.price, direction: a.direction, triggered: a.triggered })), [alerts, instrument.symbol]);
+  const chartAlerts = useMemo(
+    () => (alerts ?? []).filter((alert) => alert.symbol === instrument.symbol && samePriceAlertRoute(alert, { exchange: dataExchange, marketType: dataMarketType, priceType: dataPriceType })).map((alert) => ({ price: alert.price, direction: alert.direction, triggered: alert.triggered })),
+    [alerts, dataExchange, dataMarketType, dataPriceType, instrument.symbol]
+  );
   const [hoverAnchor, setHoverAnchor] = useState<Anchor>();
   const [selectedId, setSelectedId] = useState<string>();
   const [hoveredId, setHoveredId] = useState<string>();
@@ -122,18 +132,26 @@ export function ChartCanvas({
   const chartTimeZone = normalizeChartTimeZone(timeZone);
 
   const latest = candles.at(-1);
-  const displayCandles = useMemo(() => preparePriceCandles(candles, chartType, instrument.decimals, priceRepresentation.settings), [candles, chartType, instrument.decimals, priceRepresentation.settings]);
+  const structuralCandles = operational ? structuralCandlesOf(candles) : EMPTY_CANDLES;
+  const displayCandles = useMemo(
+    () => operational ? preparePriceCandles(candles, chartType, instrument.decimals, priceRepresentation.settings) : EMPTY_CANDLES,
+    [candles, chartType, instrument.decimals, operational, priceRepresentation.settings]
+  );
+  const structuralDisplayCandles = useMemo(
+    () => operational ? preparePriceCandles(structuralCandles as Candle[], chartType, instrument.decimals, priceRepresentation.settings) : EMPTY_CANDLES,
+    [chartType, instrument.decimals, operational, priceRepresentation.settings, structuralCandles]
+  );
   const orderBookAvailable = instrument.assetClass === "crypto" && instrument.provider === "binance" && dataMarketType === "spot";
   const heatmapRenderKey = `${latest?.time ?? 0}:${candles.length}:${view.zoom}:${view.offset}:${view.priceMode}:${view.priceZoom}`;
-  const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange, displayCandles, dataMarketType, dataPriceType);
-  const volumeProfileIndicator = useVolumeProfileIndicator({ symbol: instrument.symbol, chartTimeframe: timeframe, visibleRange: visibleProfileRange, exchange: dataExchange, marketType: dataMarketType, priceType: dataPriceType, storageOwnerId });
+  const sessionLiquidity = useSessionLiquidity(candles, instrument.symbol, timeframe, dataExchange, structuralDisplayCandles, dataMarketType, dataPriceType, operational);
+  const volumeProfileIndicator = useVolumeProfileIndicator({ symbol: instrument.symbol, chartTimeframe: timeframe, visibleRange: visibleProfileRange, exchange: dataExchange, marketType: dataMarketType, priceType: dataPriceType, storageOwnerId, operational });
   drawingsRef.current = drawings;
 
   useEffect(() => setShowArtifactSettings(false), [activeArtifactId]);
 
   // Assemble the compare overlay from configured layers and the fetched data.
   const compare = useMemo<CompareSeries[]>(() => {
-    if (!compareOverlays || compareOverlays.length === 0 || !compareSeries) return [];
+    if (!operational || !compareOverlays || compareOverlays.length === 0 || !compareSeries) return [];
     return compareOverlays.map((overlay) => ({
       id: overlay.id,
       symbol: overlay.symbol,
@@ -144,7 +162,7 @@ export function ChartCanvas({
       downColor: overlay.downColor,
       candles: compareSeries[overlay.id] ?? []
     }));
-  }, [compareOverlays, compareSeries]);
+  }, [compareOverlays, compareSeries, operational]);
 
   // Reset transient editing state whenever the pane/symbol drawing scope changes.
   useEffect(() => {
@@ -188,6 +206,7 @@ export function ChartCanvas({
 
   // Keyboard: Esc cancels/deselects, Delete removes selected, Ctrl/Cmd+Z undoes.
   useEffect(() => {
+    if (!operational) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
@@ -216,7 +235,7 @@ export function ChartCanvas({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId]);
+  }, [operational, selectedId]);
 
   const draftPreview = useMemo(() => {
     if (!draft) return undefined;
@@ -225,6 +244,7 @@ export function ChartCanvas({
   }, [draft, hoverAnchor]);
 
   const { backgroundCanvasRef, primaryCanvasRef, indicatorsCanvasRef, overlaysCanvasRef, interactionCanvasRef, viewportRef } = useChartRenderer({
+    operational,
     candles,
     displayCandles,
     chartType,
@@ -245,7 +265,7 @@ export function ChartCanvas({
     alerts: chartAlerts,
     livePositions,
     showVolume,
-    showVolumeProfile: volumeProfileIndicator.visible,
+    showVolumeProfile: operational && volumeProfileIndicator.visible,
     volumeProfileCandles: volumeProfileIndicator.source.profileCandles,
     volumeProfileTimeframe: volumeProfileIndicator.source.source === "chart" ? undefined : volumeProfileIndicator.source.source,
     volumeProfileRange: volumeProfileIndicator.source.range,
@@ -258,7 +278,7 @@ export function ChartCanvas({
     onVolumeProfile: (profile) => setVolumeProfile((current) => (sameVolumeProfile(current, profile) ? current : profile)),
     onVisibleTimeRange: setVisibleProfileRange
   });
-  useChartWheelNavigation(interactionCanvasRef, viewportRef, displayCandles, setView);
+  useChartWheelNavigation(interactionCanvasRef, viewportRef, displayCandles, setView, operational);
   const pointerInteraction = useChartPointerInteraction({
     chartId,
     displayCandles,
@@ -267,6 +287,7 @@ export function ChartCanvas({
     interactionCanvasRef,
     magnet,
     onLinkedCrosshairChange,
+    operational,
     resetKey: drawingScopeKey,
     selectedId,
     setDraft,
@@ -284,27 +305,28 @@ export function ChartCanvas({
     view,
     viewportRef
   });
-  useLinkedTimeRange({ candles: displayCandles, chartId, linkedRange: linkedTimeRange, onLinkedRangeChange: onLinkedTimeRangeChange, setView, view, viewportRef });
+  useLinkedTimeRange({ candles: displayCandles, chartId, linkedRange: linkedTimeRange, onLinkedRangeChange: onLinkedTimeRangeChange, operational, setView, view, viewportRef });
 
   // Lazy-load older history when the viewport nears the left (oldest) edge.
   useEffect(() => {
+    if (!operational) return;
     const viewport = viewportRef.current;
     if (viewport && viewport.start <= 40 && candles.length > 0) onNeedHistory?.();
-  }, [view.zoom, view.offset, candles.length, onNeedHistory]);
+  }, [operational, view.zoom, view.offset, candles.length, onNeedHistory]);
 
   // Scroll to a requested time (e.g. the latest backtest signal).
   useEffect(() => {
-    if (focusTime === undefined || displayCandles.length === 0) return;
+    if (!operational || focusTime === undefined || displayCandles.length === 0) return;
     let idx = displayCandles.length - 1;
     while (idx > 0 && displayCandles[idx].time > focusTime) idx -= 1;
     setView((current) => ({
       ...current,
       offset: Math.max(0, displayCandles.length - 1 - idx - 20)
     }));
-  }, [focusTime]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [focusTime, operational]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!linkedCrosshair || linkedCrosshair.sourceId === chartId) return;
+    if (!operational || !linkedCrosshair || linkedCrosshair.sourceId === chartId) return;
     const viewport = viewportRef.current;
     if (!viewport) return;
     let index = displayCandles.findIndex((candle) => candle.time >= linkedCrosshair.time);
@@ -315,7 +337,7 @@ export function ChartCanvas({
       ...current,
       crosshair: { x: viewport.indexToX(index), y: viewport.priceToY(linkedCrosshair.price) }
     }));
-  }, [displayCandles, chartId, linkedCrosshair]);
+  }, [displayCandles, chartId, linkedCrosshair, operational]);
 
   const cyclePriceMode = () => setView((current) => ({ ...current, priceMode: nextPriceMode(current.priceMode) }));
 
@@ -411,11 +433,11 @@ export function ChartCanvas({
         </button>
         <VolumeProfileBadge visible={volumeProfileIndicator.visible} profile={volumeProfile} decimals={instrument.decimals} locale={locale} />
         <canvas ref={backgroundCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-background" role="img" aria-label={chartTypeAriaLabel(locale, chartType, instrument.symbol, timeframe, priceRepresentation.settings)} aria-describedby={chartDataSummaryId} />
-        <OrderBookHeatmapLayer enabled={showOrderBookHeatmap && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} viewportRef={viewportRef} renderKey={heatmapRenderKey} />
+        <OrderBookHeatmapLayer enabled={operational && showOrderBookHeatmap && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} viewportRef={viewportRef} renderKey={heatmapRenderKey} />
         <canvas ref={primaryCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-primary" aria-hidden="true" />
         <SessionLiquidityBadge state={sessionLiquidity} decimals={instrument.decimals} locale={locale} compact={compactChrome} />
-        <AnchoredVwapLegend drawings={drawings} candles={candles} decimals={instrument.decimals} locale={locale} timeZone={chartTimeZone} />
-        <TradeFootprintLayer enabled={showTradeFootprint && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} timeZone={chartTimeZone} candles={candles} viewportRef={viewportRef} renderKey={heatmapRenderKey} storageOwnerId={storageOwnerId} />
+        <AnchoredVwapLegend drawings={drawings} candles={operational ? candles : EMPTY_CANDLES} decimals={instrument.decimals} locale={locale} timeZone={chartTimeZone} />
+        <TradeFootprintLayer enabled={operational && showTradeFootprint && orderBookAvailable} symbol={instrument.symbol} exchange={dataExchange} locale={locale} timeZone={chartTimeZone} candles={candles} viewportRef={viewportRef} renderKey={heatmapRenderKey} storageOwnerId={storageOwnerId} />
         <canvas ref={indicatorsCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-indicators" aria-hidden="true" />
         <canvas ref={overlaysCanvasRef} className="chart-canvas chart-canvas-layer chart-canvas-overlays" aria-hidden="true" />
         <canvas
@@ -442,7 +464,7 @@ export function ChartCanvas({
             setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, id: hit?.id, price: viewport?.yToPrice(y) });
           }}
         />
-        <ChartPriceHud candle={legendCandle} latest={latest} timeframe={timeframe} decimals={instrument.decimals} locale={locale} timeZone={chartTimeZone} viewport={viewportRef.current} crosshair={quickMeasure ? undefined : view.crosshair} />
+        <ChartPriceHud active={operational} candle={legendCandle} latest={latest} timeframe={timeframe} decimals={instrument.decimals} locale={locale} timeZone={chartTimeZone} viewport={viewportRef.current} crosshair={quickMeasure ? undefined : view.crosshair} />
         <QuickMeasureSummary active={quickMeasureActive} decimals={instrument.decimals} locale={locale} measurement={quickMeasure} viewport={viewportRef.current} />
         {!showArtifactSettings && tables && tables.length > 0 && <ChartTablesOverlay locale={locale} tables={tables} />}
         <ChartDataPanel candles={displayCandles} decimals={instrument.decimals} focusedIndex={hoverIndex} signals={signals} trades={trades} symbol={instrument.symbol} timeframe={timeframe} locale={locale} timeZone={chartTimeZone} summaryId={chartDataSummaryId} />
@@ -503,4 +525,4 @@ export function ChartCanvas({
       </div>
     </div>
   );
-}
+}, (previous, next) => previous.operational === false && next.operational === false);

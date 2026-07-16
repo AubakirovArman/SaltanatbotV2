@@ -194,10 +194,11 @@ is not mistaken for completed product work:
 
 **Status:** active. The reported volume-profile, screener, price-axis and
 half-width Strategy Studio defects are fixed. Mobile drawing tools, the touch
-state machine, short landscape, coarse tablets and the automated viewport/browser
-matrix are now accepted; the streamed-data performance soak plus manual Android
-Opera and assistive-technology smoke checks remain. The bundle checker now
-enforces a mandatory 10% reserve against reviewed round caps.
+state machine, short landscape, coarse tablets, the automated viewport/browser
+matrix and the threshold-enforced stream/render soak are now accepted. Manual
+Android Opera and assistive-technology smoke checks remain, so R2 is still
+`active`. The bundle checker enforces a mandatory 10% reserve against reviewed
+round caps.
 
 **Baseline:**
 
@@ -216,12 +217,25 @@ enforces a mandatory 10% reserve against reviewed round caps.
   with pointer-cancel, lost-capture and orientation-reset handling;
 - dense arbitrage results default to compact cards with an explicit full-table
   alternative.
+- `ChartWorkspaceRuntime` owns high-frequency candle/compare/position/watchlist
+  work and is mounted only in Monitoring, so market ticks do not own the
+  application shell or hidden Strategy/Trading/Screener trees;
+- hidden/maximized panes and closed markets panels disable their hooks and
+  release sockets, timers and polling. The separate alert feed intentionally
+  keeps quotes only for distinct untriggered/armed alert symbols and opens no
+  socket when none are armed;
+- same-timestamp forming-candle updates are coalesced to 250 ms and use an O(1)
+  provisional tail over immutable structural history; copying the retained
+  series is reserved for snapshots, new timestamps and history prepend;
+- a synthetic desktop/mobile Chromium soak harness now records subscriptions,
+  render scopes, candle-copy pressure, long tasks, event-loop delay, CDP
+  heap/DOM counters and task duty, including a Monitoring → Strategy →
+  Monitoring release/recovery phase;
+- the authoritative 2026-07-16 pinned run passed both five-minute profiles
+  without retry (`2/2` in `11.7 min`), with every strict summary check true.
 
 **Remaining:**
 
-- run the 5–10 minute synthetic market-stream benchmark and prove that hidden
-  panels release unnecessary subscriptions, ticks do not rerender the whole
-  application and candle updates do not copy the full retained history;
 - complete the manual Android Opera and VoiceOver/NVDA/TalkBack smoke record.
 
 **Dependencies:** R1 runtime boundary and the existing chart/strategy state
@@ -230,12 +244,18 @@ contracts.
 **Evidence:** 74 Chromium E2E journeys, 18 Firefox critical journeys, six
 container visual snapshots, screenshots and geometry assertions at 320, 360,
 390, 430, 600, 760, 761, 768, 1024 and 1440 CSS pixels, mobile landscape,
-touch/keyboard journeys, `pointercancel`, 200% text, plus the remaining
-performance artifact and manual Opera record.
+touch/keyboard journeys, `pointercancel`, 200% text and the accepted automated
+stream/render artifact. The manual Opera/assistive-technology record remains.
+See the exact metrics and SHA-256 values in the
+[R2 stream/render soak evidence](evidence/R2_STREAM_RENDER_SOAK.md);
+the authoritative commands are `npm run test:soak:container` for the full
+pinned run and `npm run test:soak:quick:container` for non-acceptance wiring.
 
 **Exit criteria:** the chart price, price axis, indicator controls, volume
 profile, drawings and all Strategy Studio panels remain visible, dismissible and
-operable at every accepted size, with no horizontal document overflow.
+operable at every accepted size, with no horizontal document overflow; the
+full soak passes its documented thresholds; and the manual Android Opera and
+VoiceOver/NVDA/TalkBack records are complete.
 
 ## R3 — administrator lifecycle, workspaces and first-run workflow
 

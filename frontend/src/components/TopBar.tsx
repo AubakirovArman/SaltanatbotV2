@@ -309,7 +309,7 @@ export function TopBar({
             </button>
             <div className={`status-pill ${connection}`} title={`${shellText(locale, "feedStatus")}: ${connection}`} role="status">
               <i aria-hidden="true" />
-              {translate(locale, connection === "connected" ? "statusConnected" : connection === "fallback" ? "statusFallback" : connection === "error" ? "statusError" : "statusConnecting")}
+              {translate(locale, connection === "connected" ? "statusConnected" : connection === "fallback" ? "statusFallback" : connection === "error" ? "statusError" : connection === "idle" ? "statusPaused" : "statusConnecting")}
             </div>
             {auth?.user && (
               <AccountLauncher

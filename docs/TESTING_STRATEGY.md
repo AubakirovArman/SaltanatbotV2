@@ -116,6 +116,18 @@ stop-before-target rule when both prices occur in one candle.
 - typed English/Russian/Kazakh parity for Strategy Studio, Pine-import diagnostics, backtest assumptions/metrics and optimizer controls;
 - production-browser switching and reload persistence for `lang=ru` and `lang=kk`, localized document titles and safety-critical trading copy;
 - browser flow proving the Canvas alternative opens from the keyboard and exposes named native tables.
+- lifecycle tests proving that high-frequency candle, compare, position and
+  watchlist resources are owned by the Monitoring-only chart runtime, release
+  sockets/timers when disabled and cannot keep rendering the application shell
+  after that runtime unmounts;
+- quote-feed tests proving that the watchlist subscribes only while its desktop
+  panel or mobile sheet is visible, while the shell-level alert feed subscribes
+  only to distinct untriggered/armed alert symbols and opens no socket for an
+  empty armed set;
+- candle-buffer tests proving that a same-timestamp provisional update creates
+  an O(1) tail snapshot over an immutable structural history, while snapshots,
+  new timestamps and explicit history prepends remain the only operations that
+  copy retained candle elements.
 
 Avoid pixel snapshots for every candle. Use semantic renderer assertions for logic and a small stable visual suite for integration.
 
@@ -288,6 +300,96 @@ must not be reported as bytes downloaded on initial navigation.
 - backtest throughput benchmark for 10k/100k bars;
 - no unbounded DOM growth in watchlists, journals or reports;
 - reconnect does not increase active subscriptions/listeners.
+
+### R2 stream/render soak
+
+The R2.3 harness is implemented in `e2e/stream-render-soak.spec.ts`. It installs
+an entirely synthetic same-origin market runtime, loads 12,000 retained candles,
+emits a forming-candle update every 100 ms by default and runs desktop
+`1440x900` and mobile `390x844` Chromium profiles serially. Each profile warms
+up, measures an active Monitoring phase, switches to Strategy Studio to verify
+resource release, returns to Monitoring and measures exact subscription
+recovery. It makes no external market request and is not exchange, production
+capacity or live-trading evidence.
+
+The application boundary exercised by the harness is:
+
+- `ChartWorkspaceRuntime` owns candle streams, compare polling, visible
+  watchlist quotes and chart-position polling and is mounted only for
+  Monitoring;
+- panes hidden by maximize are marked non-operational and release their market
+  and compare resources;
+- closing the desktop markets panel or mobile markets sheet releases its
+  watchlist quote feed;
+- `PriceAlertFeed` stays outside the chart runtime so an armed alert may still
+  be evaluated in another workspace, but it subscribes only to distinct
+  untriggered alert symbols and an empty armed set creates no quote socket;
+- a provisional update of the current candle is coalesced to at most one React
+  commit per 250 ms and replaces only the O(1) tail view; a structural copy is
+  recorded only for an initial snapshot, a new candle timestamp or an explicit
+  history prepend.
+
+Run a short wiring check locally or in the pinned container:
+
+```bash
+npm run test:soak:quick
+npm run test:soak:quick:container
+```
+
+The 15-second quick profile is diagnostic only and cannot close R2. The
+acceptance-shaped command enables strict thresholds and required
+instrumentation, uses five minutes per desktop/mobile profile by default and
+attaches one JSON summary per profile:
+
+```bash
+npm run test:soak
+npm run test:soak:container
+```
+
+The JSON `acceptanceDuration` field must be true; lowering the default duration
+or disabling `SOAK_ENFORCE_THRESHOLDS`/`SOAK_REQUIRE_INSTRUMENTATION` is not
+acceptance evidence. Current harness thresholds are:
+
+| Signal | Gate |
+| --- | --- |
+| Stream delivery | at least 75% of the expected synthetic candle count |
+| Visible subscriptions | exactly one chart stream; desktop watchlist quotes `1`, closed mobile markets quotes `0` |
+| Hidden workspace | chart and watchlist quote subscriptions both `0` when the no-alert fixture is in Strategy Studio |
+| Recovery | one exact close/recreate cycle with no duplicate active subscription |
+| Retained-heap checkpoint stability | after bounded GC warm-up, each three-reading paused/frame-settled/post-GC checkpoint spread at most `max(1 MiB, 5% of its median)` |
+| Retained JS heap | conservative upper growth at most `max(8 MiB, 10% of recovered baseline)` |
+| Retained JS heap rate | conservative upper net growth rate at most `1 MiB/min` across resumed Monitoring |
+| Long tasks | maximum `150 ms`, total blocking time at most `250 ms` |
+| Event-loop delay | maximum `250 ms` |
+| Main-thread duty | desktop at most `0.35`, mobile at most `0.45` |
+| DOM retention | documents delta `<= 0`, nodes `<= 50`, listeners `<= 10` |
+| Candle copy pressure | at most `64` copied retained elements per processed message; every copy classified as snapshot, new bar, finalization or prepend |
+| Root render isolation | `App` renders / processed market messages at most `0.01` |
+| Integrity | render/stream probes present; no page error, console error or external HTTP request |
+
+Ordinary `Runtime.getHeapUsage.usedSize` samples are retained in the summary,
+including `rawJsHeapOlsSlopeMiBPerMinute`, but that GC-driven sawtooth is
+diagnostic only. Memory acceptance uses equivalent paused, frame-settled,
+post-GC checkpoints and records both their median net growth and the
+conservative `max(final) - min(baseline)` upper bound. This measures V8
+JavaScript heap retention, not total renderer/process memory.
+
+Record the environment, both attached summaries and the still-manual device
+results in [R2 stream/render soak evidence](./evidence/R2_STREAM_RENDER_SOAK.md).
+The authoritative 2026-07-16 pinned run passed desktop and mobile without retry
+(`2/2` in `11.7 min`). Both profiles emitted `2,402` candles against the
+`1,800` minimum, released hidden subscriptions and recovered exactly, reported
+zero `App` renders per message, and kept copy pressure at `34.9854`/`35.0146`
+elements per message. Desktop/mobile retained upper heap growth was
+`-3,055,496`/`-1,046,944 B`; maximum long tasks were `50`/`114 ms`, total
+blocking time `0`/`204 ms`, event-loop delay `14`/`42.6 ms`, and task duty
+`0.16577`/`0.21037`. Every strict summary check is true; the evidence page
+retains the full table and SHA-256 hashes.
+
+This accepts the automated browser soak only. R2 remains open until real Android
+Opera and VoiceOver/NVDA/TalkBack smoke checks are recorded. HTTPS, live
+execution and external exchange readiness remain separate, explicitly deferred
+gates.
 
 ## PWA and offline boundary
 

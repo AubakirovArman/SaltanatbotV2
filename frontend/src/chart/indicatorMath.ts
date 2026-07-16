@@ -27,11 +27,19 @@ export function ema(candles: Candle[], period: number): SeriesPoint[] {
 }
 
 export function bollinger(candles: Candle[], period: number, deviation: number): BollingerPoint[] {
+  let sum = 0;
+  let squareSum = 0;
   return candles.map((candle, index) => {
+    sum += candle.close;
+    squareSum += candle.close * candle.close;
+    if (index >= period) {
+      const removed = candles[index - period].close;
+      sum -= removed;
+      squareSum -= removed * removed;
+    }
     if (index < period - 1) return { time: candle.time };
-    const window = candles.slice(index - period + 1, index + 1);
-    const mean = window.reduce((sum, item) => sum + item.close, 0) / period;
-    const variance = window.reduce((sum, item) => sum + (item.close - mean) ** 2, 0) / period;
+    const mean = sum / period;
+    const variance = Math.max(0, squareSum / period - mean * mean);
     const band = Math.sqrt(variance) * deviation;
     return {
       time: candle.time,
@@ -66,10 +74,7 @@ export function macd(candles: Candle[], fast: number, slow: number, signal: numb
   const slowEma = ema(candles, slow);
   const macdSeries = candles.map((candle, index) => ({
     time: candle.time,
-    value:
-      fastEma[index].value !== undefined && slowEma[index].value !== undefined
-        ? fastEma[index].value! - slowEma[index].value!
-        : undefined
+    value: fastEma[index].value !== undefined && slowEma[index].value !== undefined ? fastEma[index].value! - slowEma[index].value! : undefined
   }));
   const signalInput = macdSeries.map((point) => ({
     time: point.time,
@@ -114,11 +119,7 @@ export function atr(candles: Candle[], period: number): SeriesPoint[] {
   const tr = candles.map((candle, index) => {
     if (index === 0) return candle.high - candle.low;
     const prevClose = candles[index - 1].close;
-    return Math.max(
-      candle.high - candle.low,
-      Math.abs(candle.high - prevClose),
-      Math.abs(candle.low - prevClose)
-    );
+    return Math.max(candle.high - candle.low, Math.abs(candle.high - prevClose), Math.abs(candle.low - prevClose));
   });
   const points: SeriesPoint[] = candles.map((candle) => ({ time: candle.time }));
   let prev = 0;
@@ -162,7 +163,10 @@ export function stochastic(candles: Candle[], period: number, smooth: number): S
       let count = 0;
       for (let j = index - smooth + 1; j <= index; j += 1) {
         const value = rawK[j];
-        if (value === undefined) { count = -1; break; }
+        if (value === undefined) {
+          count = -1;
+          break;
+        }
         sum += value;
         count += 1;
       }

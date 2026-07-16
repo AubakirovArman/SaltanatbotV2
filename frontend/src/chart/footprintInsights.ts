@@ -42,6 +42,16 @@ export interface FootprintInsightOptions {
   minimumAbsorptionPrints?: number;
 }
 
+export interface FootprintCandleLookup {
+  get(time: number): Candle | undefined;
+}
+
+export function indexFootprintCandles(candles: readonly Candle[]): ReadonlyMap<number, Candle> {
+  const indexed = new Map<number, Candle>();
+  for (const candle of candles) indexed.set(candle.time, candle);
+  return indexed;
+}
+
 /**
  * Derive transparent live-only cluster heuristics from already aggregated public prints.
  * Buy rows compare against sells one screen row below; sell rows compare against buys
@@ -50,7 +60,7 @@ export interface FootprintInsightOptions {
  */
 export function detectFootprintInsights(
   footprint: TradeFootprint,
-  candles: Candle[],
+  candles: readonly Candle[] | FootprintCandleLookup,
   options: FootprintInsightOptions = {}
 ): FootprintInsights {
   const ratioThreshold = options.imbalanceRatio ?? 3;
@@ -80,7 +90,7 @@ export function detectFootprintInsights(
   }
 
   const stacks = buildStacks(imbalances, stackRows);
-  const candleByTime = new Map(candles.map((candle) => [candle.time, candle]));
+  const candleByTime: FootprintCandleLookup = "get" in candles ? candles : indexFootprintCandles(candles);
   const maximumBarNotional = Math.max(...footprint.bars.map((bar) => bar.buyNotional + bar.sellNotional), 0);
   const absorptions: PotentialAbsorption[] = [];
   for (const bar of footprint.bars) {

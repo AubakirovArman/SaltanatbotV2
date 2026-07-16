@@ -25,7 +25,7 @@ describe("shell localization", () => {
 
   it("renders Russian statistics, alert form and toast semantics", () => {
     const stats = renderToStaticMarkup(
-      <StatsPanel locale="ru" instrument={instrument} candles={[]} provider="binance" connection="connected" message="ok" alerts={[]} onAddAlert={() => {}} onRemoveAlert={() => {}} onResetAlert={() => {}} />
+      <StatsPanel locale="ru" instrument={instrument} candles={[]} provider="binance" connection="connected" message="ok" exchange="binance" alerts={[]} onAddAlert={() => {}} onRemoveAlert={() => {}} onResetAlert={() => {}} />
     );
     const toasts = renderToStaticMarkup(
       <AlertToasts locale="ru" toasts={[{ id: "a", symbol: "BTCUSDT", direction: "above", price: 100, hitPrice: 101 }]} decimalsFor={() => 2} onDismiss={() => {}} />
@@ -40,7 +40,7 @@ describe("shell localization", () => {
 
   it("renders Kazakh statistics and alert semantics", () => {
     const stats = renderToStaticMarkup(
-      <StatsPanel locale="kk" instrument={instrument} candles={[]} provider="binance" connection="connected" message="ok" alerts={[]} onAddAlert={() => {}} onRemoveAlert={() => {}} onResetAlert={() => {}} />
+      <StatsPanel locale="kk" instrument={instrument} candles={[]} provider="binance" connection="connected" message="ok" exchange="binance" alerts={[]} onAddAlert={() => {}} onRemoveAlert={() => {}} onResetAlert={() => {}} />
     );
     const toasts = renderToStaticMarkup(
       <AlertToasts locale="kk" toasts={[{ id: "a", symbol: "BTCUSDT", direction: "above", price: 100, hitPrice: 101 }]} decimalsFor={() => 2} onDismiss={() => {}} />

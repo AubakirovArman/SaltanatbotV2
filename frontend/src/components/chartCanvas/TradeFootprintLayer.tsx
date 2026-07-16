@@ -1,22 +1,25 @@
 import { parseTradeFlowStreamMessage } from "@saltanatbotv2/contracts";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createTradeFlowSocket } from "../../api/marketClient";
 import { aggregateTradeFootprint, tradeFlowDeltaPercent } from "../../chart/tradeFootprint";
-import { detectFootprintInsights } from "../../chart/footprintInsights";
+import { detectFootprintInsights, indexFootprintCandles, type FootprintCandleLookup } from "../../chart/footprintInsights";
 import { drawFootprintInsights } from "../../chart/renderers/footprintInsights";
 import { evaluateMicrostructureAlerts, type MicrostructureAlertEvent } from "../../chart/microstructureAlerts";
 import { loadMicrostructureAlertSettings, storeMicrostructureAlertSettings } from "../../chart/microstructureAlertStore";
+import { RecentAlertIdWindow, TradeFlowRetentionBuffer } from "../../chart/tradeFlowRetention";
 import type { Viewport } from "../../chart/types";
 import type { Locale } from "../../i18n";
 import { shellText } from "../../i18n/shell";
 import { prepareCanvasContext, resizeCanvasToEntry } from "../../chart/canvasDensity";
 import { playAlertBeep, showSystemNotification } from "../../market/alerts";
-import type { Candle, DataExchange, TradeFlowStatus, TradeFlowStreamMessage, TradeFlowTrade } from "../../types";
+import { structuralCandlesOf } from "../../market/candleSeries";
+import type { Candle, DataExchange, TradeFlowStatus, TradeFlowStreamMessage } from "../../types";
 import { TradeFlowAlertCenter } from "./TradeFlowAlertCenter";
 import type { ChartTimeZone } from "../../chart/timeAxis";
 
 const RETENTION_MS = 30 * 60_000;
 const MAX_TRADES = 20_000;
+const MAX_ALERT_IDS = 8_192;
 
 interface FlowMeta {
   status: TradeFlowStatus | "paused";
@@ -55,11 +58,12 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const tradesRef = useRef<TradeFlowTrade[]>([]);
-  const seenRef = useRef(new Set<string>());
-  const alertSeenRef = useRef(new Set<string>());
+  const tradesRef = useRef<TradeFlowRetentionBuffer>();
+  const alertSeenRef = useRef<RecentAlertIdWindow>();
   const statusRef = useRef<FlowMeta["status"]>("connecting");
   const rafRef = useRef<number>();
+  const drawRef = useRef<() => void>(() => undefined);
+  const enabledRef = useRef(enabled);
   const insightMetaRef = useRef<InsightMeta>({ imbalances: 0, stacks: 0, absorptions: 0 });
   const pendingInsightMetaRef = useRef<InsightMeta>();
   const insightMetaTimerRef = useRef<number>();
@@ -69,10 +73,31 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   const [alertSettings, setAlertSettings] = useState(() => loadMicrostructureAlertSettings(storageOwnerId));
   const [alertEvents, setAlertEvents] = useState<MicrostructureAlertEvent[]>([]);
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
+  if (!tradesRef.current) tradesRef.current = new TradeFlowRetentionBuffer(MAX_TRADES, RETENTION_MS);
+  if (!alertSeenRef.current) alertSeenRef.current = new RecentAlertIdWindow(MAX_ALERT_IDS, RETENTION_MS);
+  enabledRef.current = enabled;
+  const structuralCandles = structuralCandlesOf(candles);
+  const candleIndex = useMemo(() => indexFootprintCandles(structuralCandles), [structuralCandles]);
+  const candleLookup = useMemo<FootprintCandleLookup>(() => {
+    const provisionalTail = structuralCandles === candles ? undefined : candles.at(-1);
+    return {
+      get(time) {
+        return provisionalTail?.time === time ? provisionalTail : candleIndex.get(time);
+      }
+    };
+  }, [candleIndex, candles, structuralCandles]);
 
   useEffect(() => storeMicrostructureAlertSettings(alertSettings, storageOwnerId), [alertSettings, storageOwnerId]);
 
-  const draw = useCallback(() => {
+  const scheduleDraw = useCallback(() => {
+    if (!enabledRef.current || rafRef.current !== undefined) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = undefined;
+      drawRef.current();
+    });
+  }, []);
+
+  drawRef.current = () => {
     const canvas = canvasRef.current;
     const viewport = viewportRef.current;
     if (!canvas || !viewport || !enabled) return;
@@ -80,8 +105,8 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
     if (!surface) return;
     const { ctx } = surface;
     ctx.clearRect(0, 0, surface.width, surface.height);
-    const footprint = aggregateTradeFootprint(tradesRef.current, viewport);
-    const insights = detectFootprintInsights(footprint, candles);
+    const footprint = aggregateTradeFootprint(tradesRef.current!, viewport);
+    const insights = detectFootprintInsights(footprint, candleLookup);
     const styles = getComputedStyle(canvas);
     const up = styles.getPropertyValue("--up").trim() || "#23b99a";
     const down = styles.getPropertyValue("--down").trim() || "#ef6a65";
@@ -100,11 +125,10 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
     drawDeltaRibbon(ctx, footprint, viewport, up, down, accent, panel, grid, dimmed);
     drawFootprintInsights(ctx, insights, viewport, cellWidth, up, down, accent, panel, dimmed);
     ctx.restore();
-    const candidates = evaluateMicrostructureAlerts({ symbol, trades: tradesRef.current, footprint, insights, settings: alertSettings });
+    const candidates = evaluateMicrostructureAlerts({ symbol, trades: tradesRef.current!, footprint, insights, settings: alertSettings });
+    const observedAt = Date.now();
     const fresh = candidates.filter((event) => {
-      if (alertSeenRef.current.has(event.id)) return false;
-      alertSeenRef.current.add(event.id);
-      return true;
+      return alertSeenRef.current!.rememberIfNew(event.id, observedAt);
     });
     if (fresh.length > 0) {
       const newest = [...fresh].sort((left, right) => right.time - left.time);
@@ -136,19 +160,11 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
         }, remaining);
       }
     }
-  }, [alertSettings, candles, enabled, locale, symbol, viewportRef]);
-
-  const scheduleDraw = useCallback(() => {
-    if (rafRef.current !== undefined) return;
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = undefined;
-      draw();
-    });
-  }, [draw]);
+  };
 
   useEffect(() => {
     scheduleDraw();
-  }, [renderKey, scheduleDraw]);
+  }, [alertSettings, candleLookup, enabled, locale, renderKey, scheduleDraw, symbol]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -162,8 +178,10 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
   }, [enabled, scheduleDraw]);
 
   useEffect(() => {
-    tradesRef.current = [];
-    seenRef.current.clear();
+    const trades = tradesRef.current!;
+    const alertIds = alertSeenRef.current!;
+    trades.clear();
+    alertIds.clear();
     if (!enabled) return;
     let socket: WebSocket | undefined;
     let stopped = false;
@@ -181,9 +199,8 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
       scheduleDraw();
     };
     const resetObservation = () => {
-      tradesRef.current = [];
-      seenRef.current.clear();
-      alertSeenRef.current.clear();
+      trades.clear();
+      alertIds.clear();
       setAlertEvents([]);
       lastTradeAt = 0;
       setMeta((current) => ({ ...current, prints: 0, buyNotional: 0, sellNotional: 0 }));
@@ -221,25 +238,11 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
         if (message.symbol !== symbol || message.exchange !== exchange) return;
         const now = Date.now();
         lastTradeAt = now;
-        const unique = message.trades.filter((trade) => {
-          if (seenRef.current.has(trade.id)) return false;
-          seenRef.current.add(trade.id);
-          return true;
-        });
-        if (unique.length === 0) return;
-        const cutoff = now - RETENTION_MS;
-        tradesRef.current = [...tradesRef.current, ...unique].filter((trade) => trade.exchangeTs >= cutoff).slice(-MAX_TRADES);
-        if (seenRef.current.size > MAX_TRADES * 2) seenRef.current = new Set(tradesRef.current.map((trade) => trade.id));
+        if (trades.append(message.trades, now) === 0) return;
         statusRef.current = "connected";
         if (now - lastMetaAt >= 1_000 || lastMetaAt === 0) {
           lastMetaAt = now;
-          let buyNotional = 0;
-          let sellNotional = 0;
-          for (const trade of tradesRef.current) {
-            if (trade.side === "buy") buyNotional += trade.price * trade.size;
-            else sellNotional += trade.price * trade.size;
-          }
-          setMeta({ status: "connected", message: `${exchange} public trades`, prints: tradesRef.current.length, buyNotional, sellNotional });
+          setMeta({ status: "connected", message: `${exchange} public trades`, prints: trades.size, buyNotional: trades.buyNotional, sellNotional: trades.sellNotional });
         }
         scheduleDraw();
       };
@@ -296,8 +299,14 @@ export const TradeFootprintLayer = memo(function TradeFootprintLayer({
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       if (staleTimer) window.clearInterval(staleTimer);
       socket?.close();
-      if (rafRef.current !== undefined) cancelAnimationFrame(rafRef.current);
-      if (insightMetaTimerRef.current !== undefined) window.clearTimeout(insightMetaTimerRef.current);
+      if (rafRef.current !== undefined) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = undefined;
+      }
+      if (insightMetaTimerRef.current !== undefined) {
+        window.clearTimeout(insightMetaTimerRef.current);
+        insightMetaTimerRef.current = undefined;
+      }
     };
   }, [enabled, exchange, scheduleDraw, symbol]);
 

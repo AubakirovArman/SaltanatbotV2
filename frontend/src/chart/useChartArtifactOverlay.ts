@@ -41,7 +41,8 @@ interface UseChartArtifactOverlayOptions {
   setInputOverrides: Dispatch<SetStateAction<Record<string, Record<string, number>>>>;
   symbol: string;
   timeframe: Timeframe;
-  candles: Candle[];
+  candles?: Candle[];
+  getCandles?: () => Candle[];
   exchange: DataExchange;
   showChart(symbol: string, timeframe: Timeframe): void;
   buildOverlay?: ArtifactOverlayBuilder;
@@ -77,14 +78,14 @@ export function useChartArtifactOverlay(options: UseChartArtifactOverlayOptions)
         overrides: explicitOverrides ?? options.inputOverrides[id] ?? {},
         symbol: options.symbol,
         timeframe: options.timeframe,
-        candles: options.candles,
+        candles: options.getCandles?.() ?? options.candles ?? [],
         exchange: options.exchange
       });
       if (!built || !mounted.current || currentRequest !== requestId.current) return;
       setOverlay(built.overlay);
       setFocusTime(built.focusTime);
     },
-    [options.artifacts, options.buildOverlay, options.candles, options.exchange, options.inputOverrides, options.symbol, options.timeframe]
+    [options.artifacts, options.buildOverlay, options.candles, options.exchange, options.getCandles, options.inputOverrides, options.symbol, options.timeframe]
   );
 
   const updateInput = useCallback(

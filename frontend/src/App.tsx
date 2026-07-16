@@ -1,33 +1,25 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useChartArtifactOverlay } from "./chart/useChartArtifactOverlay";
 import { AlertToasts } from "./components/AlertToasts";
-import { ChartCanvas } from "./components/ChartCanvas";
 import { CommandPalette } from "./components/CommandPalette";
-import { StatsPanel } from "./components/StatsPanel";
 import { TopBar } from "./components/TopBar";
-import { PanelResizeHandle } from "./components/PanelResizeHandle";
-import { MultiChartWorkspace, type PaneMarketStream } from "./components/MultiChartWorkspace";
-import { MobilePanelDialog } from "./components/MobilePanelDialog";
 import { ShortcutSettingsDialog } from "./components/ShortcutSettingsDialog";
 import { OfflineResearchDialog } from "./components/OfflineResearchDialog";
 import type { LinkedCrosshair, LinkedTimeRange } from "./chart/types";
-import { Watchlist } from "./components/Watchlist";
 import { useCatalog } from "./hooks/useCatalog";
-import { useCompareSeries } from "./hooks/useCompareSeries";
-import { useMarketStream } from "./hooks/useMarketStream";
+import type { ConnectionState } from "./hooks/useMarketStream";
 import { MOBILE_SHELL_MEDIA_QUERY, useMediaQuery } from "./hooks/useMediaQuery";
-import { useLivePositions } from "./hooks/useLivePositions";
 import { usePriceAlerts } from "./hooks/usePriceAlerts";
-import { useSparklines } from "./hooks/useSparklines";
 import { loadStrategyLab, warmStrategyLab } from "./strategy/loadStrategyLab";
 import { loadTradingView } from "./trading/loadTradingView";
 import { loadArbitrageScreener } from "./arbitrage/loadArbitrageScreener";
 import { MARKET_OPPORTUNITY_HANDOFF_EVENT } from "./arbitrage/marketOpportunityHandoffEvent";
 import { loadInitialWorkspaceState } from "./strategy/storage";
 import { useArtifactLibrary } from "./strategy/useArtifactLibrary";
-import type { AssetClass, ChartType, Instrument, Timeframe } from "./types";
+import type { AssetClass, Candle, ChartDataRoute, ChartType, Instrument, Timeframe } from "./types";
 import { useAppShell, type AppMode } from "./app/useAppShell";
 import { useAppCommands } from "./app/useAppCommands";
+import { ChartWorkspaceRuntime } from "./app/ChartWorkspaceRuntime";
 import { shellText } from "./i18n/shell";
 import { automationText } from "./i18n/automation";
 import type { Locale } from "./i18n";
@@ -39,6 +31,8 @@ import { createPwaFileLaunchBatch, registerPwaFileLaunch, type PwaFileLaunchBatc
 import { PwaFileLaunchDialog } from "./pwa/PwaFileLaunchDialog";
 import { clearPwaShareTargetLaunch, discardPwaShareTarget, loadPwaShareTarget, parsePwaShareTargetLaunch } from "./pwa/shareTarget";
 import { useAuth } from "./auth/AuthRoot";
+import { PriceAlertFeed } from "./market/PriceAlertFeed";
+import { recordBrowserRender } from "./performance/browserProbe";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
@@ -63,6 +57,7 @@ const fallbackInstrument: Instrument = {
 };
 
 export default function App() {
+  recordBrowserRender("App");
   const accountAuth = useAuth();
   const localStorageOwner = accountAuth.authRequired ? (accountAuth.user?.id ?? "") : undefined;
   const [initialWorkspaceState] = useState(() => loadInitialWorkspaceState(localStorageOwner));
@@ -81,7 +76,8 @@ export default function App() {
   const [indicators, setIndicators] = useState(initialWorkspaceState.indicators);
   const [linkedCrosshair, setLinkedCrosshair] = useState<LinkedCrosshair>();
   const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
-  const [paneStreams, setPaneStreams] = useState<Record<string, PaneMarketStream>>({});
+  const [chartConnection, setChartConnection] = useState<ConnectionState>("connecting");
+  const primaryCandlesRef = useRef<Candle[]>([]);
   const [mobilePanel, setMobilePanel] = useState<"markets" | "instrument">();
   const shell = useAppShell({
     symbol,
@@ -95,7 +91,7 @@ export default function App() {
     setIndicators,
     initialChartSession
   });
-  const { cryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, workspaces, activeWorkspaceId, compareOverlays } = shell;
+  const { cryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, workspaces, activeWorkspaceId } = shell;
   const isMobile = useMediaQuery(MOBILE_SHELL_MEDIA_QUERY);
   useEffect(() => {
     const workspace = mode === "chart" ? automationText(locale, "monitoring") : mode === "screener" ? automationText(locale, "screener") : `${automationText(locale, "automation")} · ${automationText(locale, mode === "strategy" ? "strategies" : "robots")}`;
@@ -176,13 +172,7 @@ export default function App() {
   const activeArtifactId = artifactLibrary.activeArtifactId;
   const primaryChart = shell.charts[0];
   const primaryExchange = primaryChart?.exchange ?? cryptoExchange;
-  const primaryMarketType = primaryChart?.marketType ?? "spot";
-  const primaryPriceType = primaryExchange === "bybit" ? "last" : (primaryChart?.priceType ?? "last");
-  const stream = useMarketStream(symbol, timeframe, primaryExchange, { marketType: primaryMarketType, priceType: primaryPriceType });
   const activeChart = shell.activeChart ?? shell.charts[0];
-  const activeExchange = activeChart?.exchange ?? cryptoExchange;
-  const activeMarketType = activeChart?.marketType ?? "spot";
-  const activePriceType = activeExchange === "bybit" ? "last" : (activeChart?.priceType ?? "last");
   const activeInstrument = catalog?.instruments.find((item) => item.symbol === activeChart?.symbol) ?? {
     ...fallbackInstrument,
     symbol: activeChart?.symbol ?? fallbackInstrument.symbol,
@@ -191,71 +181,35 @@ export default function App() {
   const setActiveSymbol = useCallback((nextSymbol: string) => shell.updateActiveChart({ symbol: nextSymbol }), [shell.updateActiveChart]);
   const setActiveTimeframe = useCallback((nextTimeframe: Timeframe) => shell.updateActiveChart({ timeframe: nextTimeframe }), [shell.updateActiveChart]);
   const setActiveChartType = useCallback((nextChartType: ChartType) => shell.updateActiveChart({ chartType: nextChartType }), [shell.updateActiveChart]);
-  const updatePaneStream = useCallback((id: string, next?: PaneMarketStream) => {
-    setPaneStreams((current) => {
-      if (next) return current[id] === next ? current : { ...current, [id]: next };
-      if (!(id in current)) return current;
-      const copy = { ...current };
-      delete copy[id];
-      return copy;
-    });
-  }, []);
-  const activeIsPrimary = activeChart?.id === shell.charts[0]?.id;
-  const secondaryStream = paneStreams[activeChart?.id ?? ""];
-  const activeStream = activeIsPrimary
-    ? stream
-    : secondaryStream?.symbol === activeChart?.symbol && secondaryStream.timeframe === activeChart?.timeframe && secondaryStream.exchange === activeExchange && secondaryStream.marketType === activeMarketType && secondaryStream.priceType === activePriceType
-      ? secondaryStream
-      : undefined;
-  const activeCandles = activeStream?.candles ?? [];
-  const compareState = useCompareSeries(compareOverlays, primaryExchange);
   const showChart = useCallback((nextSymbol: string, nextTimeframe: Timeframe) => {
     setSymbol(nextSymbol);
     setTimeframe(nextTimeframe);
     setMode("chart");
   }, []);
+  const getPrimaryCandles = useCallback(() => primaryCandlesRef.current, []);
   const artifactOverlay = useChartArtifactOverlay({
     artifacts: strategyLibrary,
     inputOverrides: artifactLibrary.inputOverrides,
     setInputOverrides: artifactLibrary.setInputOverrides,
     symbol,
     timeframe,
-    candles: stream.candles,
+    getCandles: getPrimaryCandles,
     exchange: primaryExchange,
     showChart
   });
 
   const instrument = catalog?.instruments.find((item) => item.symbol === symbol) ?? fallbackInstrument;
-
-  const instruments = useMemo(() => {
-    const list = catalog?.instruments ?? [fallbackInstrument];
-    return asset === "all" ? list : list.filter((item) => item.assetClass === asset);
-  }, [asset, catalog]);
   const distinctMarketSymbols = useMemo(() => pickDistinctMarketSymbols(symbol, catalog?.instruments ?? []), [catalog, symbol]);
-
-  const allSymbols = useMemo(() => catalog?.instruments.map((item) => item.symbol) ?? [], [catalog]);
-  const sparklines = useSparklines(allSymbols, activeChart?.timeframe ?? timeframe, cryptoExchange);
-
-  // Compare picker candidates — every catalog symbol except the active base one.
-  const compareCandidates = useMemo(() => (catalog?.instruments ?? []).filter((item) => item.symbol !== symbol).map((item) => ({ symbol: item.symbol, displayName: item.displayName })), [catalog, symbol]);
-
-  // Live price map for alert detection: the active symbol streams tick-by-tick, other
-  // symbols fall back to the periodically-refreshed sparkline `last`.
-  const latestClose = stream.candles.at(-1)?.close;
-  const activeLatestClose = activeCandles.at(-1)?.close;
-  const prices = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const [sym, series] of Object.entries(sparklines)) {
-      if (series?.last != null) map[sym] = series.last;
-    }
-    if (latestClose !== undefined) map[symbol] = latestClose;
-    if (activeLatestClose !== undefined && activeChart) map[activeChart.symbol] = activeLatestClose;
-    return map;
-  }, [activeChart, activeLatestClose, sparklines, latestClose, symbol]);
-
   const decimalsFor = useCallback((sym: string) => catalog?.instruments.find((item) => item.symbol === sym)?.decimals ?? 2, [catalog]);
-  const priceAlerts = usePriceAlerts(prices, decimalsFor);
-  const livePositions = useLivePositions(instrument.symbol);
+  const legacyAlertRoute = useMemo<ChartDataRoute>(() => {
+    const exchange = activeChart?.exchange ?? cryptoExchange;
+    return {
+      exchange,
+      marketType: activeChart?.marketType ?? "spot",
+      priceType: exchange === "bybit" ? "last" : (activeChart?.priceType ?? "last")
+    };
+  }, [activeChart?.exchange, activeChart?.marketType, activeChart?.priceType, cryptoExchange]);
+  const priceAlerts = usePriceAlerts(decimalsFor, legacyAlertRoute);
   const appCommands = useAppCommands({
     locale,
     catalog,
@@ -272,50 +226,6 @@ export default function App() {
     removeAlert: priceAlerts.removeAlert,
     storageOwnerId: localStorageOwner
   });
-
-  const chartCustomIndicators = artifactLibrary.customIndicators;
-  const chartStrategies = artifactLibrary.strategies;
-  const watchlistPanel = (
-    <Watchlist
-      locale={locale}
-      instruments={instruments}
-      selectedSymbol={activeChart?.symbol ?? symbol}
-      selectedAsset={asset}
-      latest={activeCandles.at(-1)}
-      sparklines={sparklines}
-      cryptoExchange={activeExchange}
-      onSelectSymbol={(nextSymbol) => {
-        setActiveSymbol(nextSymbol);
-        if (isMobile) setMobilePanel(undefined);
-      }}
-      onSelectAsset={setAsset}
-      onSelectExchange={(nextExchange) => {
-        shell.setCryptoExchange(nextExchange);
-        shell.updateActiveChart({ exchange: nextExchange, priceType: "last" });
-      }}
-      storageOwnerId={localStorageOwner}
-    />
-  );
-  const statsPanel = (
-    <StatsPanel
-      locale={locale}
-      instrument={activeInstrument}
-      candles={activeCandles}
-      provider={activeStream?.provider ?? "Loading"}
-      connection={activeStream?.connection ?? "connecting"}
-      message={activeStream?.message ?? `Loading ${activeChart?.symbol ?? symbol} ${activeChart?.timeframe ?? timeframe}`}
-      latencyMs={activeStream?.latencyMs}
-      gapCount={activeStream?.gapCount}
-      missingBars={activeStream?.missingBars}
-      fallbackActive={activeStream?.fallbackActive}
-      marketType={activeMarketType}
-      priceType={activePriceType}
-      alerts={priceAlerts.alerts}
-      onAddAlert={priceAlerts.addAlert}
-      onRemoveAlert={priceAlerts.removeAlert}
-      onResetAlert={priceAlerts.resetAlert}
-    />
-  );
   const actualLeftOpen = shell.panelsSwapped ? rightOpen : leftOpen;
   const actualRightOpen = shell.panelsSwapped ? leftOpen : rightOpen;
   const openRobotsCenter = useCallback(() => {
@@ -334,7 +244,7 @@ export default function App() {
         timeframe={activeChart?.timeframe ?? timeframe}
         chartType={activeChart?.chartType ?? chartType}
         mode={mode}
-        connection={activeStream?.connection ?? "connecting"}
+        connection={mode === "chart" ? chartConnection : "idle"}
         theme={theme}
         locale={locale}
         leftOpen={isMobile ? mobilePanel === "markets" : leftOpen}
@@ -374,171 +284,104 @@ export default function App() {
         className={["workspace", mode !== "chart" ? "strategy-workspace" : "", !actualLeftOpen && mode === "chart" ? "left-closed" : "", !actualRightOpen && mode === "chart" ? "right-closed" : ""].filter(Boolean).join(" ")}
         style={{ "--left-panel-size": `${leftSize}px`, "--right-panel-size": `${rightSize}px` } as CSSProperties}
       >
-        {mode === "chart" && !isMobile && (actualLeftOpen ? shell.panelsSwapped ? statsPanel : watchlistPanel : <span aria-hidden="true" />)}
-
-        {mode === "chart" && isMobile && (
-          <>
-            <MobilePanelDialog id="markets-panel" open={mobilePanel === "markets"} label={shellText(locale, "markets")} closeLabel={localized(locale, { en: "Close markets", ru: "Закрыть рынки", kk: "Нарықтарды жабу" })} initialFocus=".market-search input" onClose={() => setMobilePanel(undefined)}>
-              {watchlistPanel}
-            </MobilePanelDialog>
-            <MobilePanelDialog id="instrument-panel" open={mobilePanel === "instrument"} label={shellText(locale, "currentInstrument")} closeLabel={localized(locale, { en: "Close instrument details", ru: "Закрыть данные инструмента", kk: "Құрал деректерін жабу" })} onClose={() => setMobilePanel(undefined)}>
-              {statsPanel}
-            </MobilePanelDialog>
-          </>
-        )}
-
-        <section className="chart-panel">
-          {error && (
-            <div className="error-banner" role="alert">
-              {error}
-            </div>
-          )}
-          {loading && (
-            <div className="loading-banner" role="status" aria-live="polite">
-              {shellText(locale, "loadingCatalog")}
-            </div>
-          )}
-          {mode === "chart" && (
-            <MultiChartWorkspace
-              preset={shell.layoutPreset}
-              charts={shell.charts}
-              catalog={catalog}
-              exchange={cryptoExchange}
-              locale={locale}
-              indicators={indicators}
-              onIndicatorsChange={setIndicators}
-              onEditIndicatorLogic={artifactLibrary.selectIndicatorLogic}
-              theme={theme}
-              linkedCrosshair={linkedCrosshair}
-              onLinkedCrosshairChange={setLinkedCrosshair}
-              linkedTimeRange={linkedTimeRange}
-              onLinkedTimeRangeChange={setLinkedTimeRange}
-              onUpdateChart={shell.updateChart}
-              activeChartId={shell.activeChartId}
-              onActiveChartChange={shell.setActiveChartId}
-              onMarketStreamChange={updatePaneStream}
-              compareOverlays={compareOverlays}
-              compareState={compareState}
-              maximizeShortcut={appCommands.shortcuts.maximizeChart}
-              previousChartShortcut={appCommands.shortcuts.previousChart}
-              nextChartShortcut={appCommands.shortcuts.nextChart}
-              storageOwnerId={localStorageOwner}
-              primary={
-                <ChartCanvas
-                  compactChrome={shell.layoutPreset !== "single"}
-                  candles={stream.candles}
-                  chartType={chartType}
-                  instrument={instrument}
-                  timeframe={timeframe}
+        {mode === "chart" ? (
+          <ChartWorkspaceRuntime
+            catalog={catalog}
+            loading={loading}
+            error={error}
+            symbol={symbol}
+            timeframe={timeframe}
+            chartType={chartType}
+            asset={asset}
+            setAsset={setAsset}
+            indicators={indicators}
+            setIndicators={setIndicators}
+            shell={shell}
+            isMobile={isMobile}
+            mobilePanel={mobilePanel}
+            setMobilePanel={setMobilePanel}
+            locale={locale}
+            theme={theme}
+            primaryInstrument={instrument}
+            activeInstrument={activeInstrument}
+            artifactLibrary={artifactLibrary}
+            artifactOverlay={artifactOverlay}
+            priceAlerts={priceAlerts}
+            storageOwnerId={localStorageOwner}
+            primaryCandlesRef={primaryCandlesRef}
+            onConnectionChange={setChartConnection}
+            linkedCrosshair={linkedCrosshair}
+            onLinkedCrosshairChange={setLinkedCrosshair}
+            linkedTimeRange={linkedTimeRange}
+            onLinkedTimeRangeChange={setLinkedTimeRange}
+            maximizeShortcut={appCommands.shortcuts.maximizeChart}
+            previousChartShortcut={appCommands.shortcuts.previousChart}
+            nextChartShortcut={appCommands.shortcuts.nextChart}
+          />
+        ) : (
+          <section className="chart-panel">
+            {error && (
+              <div className="error-banner" role="alert">
+                {error}
+              </div>
+            )}
+            {loading && (
+              <div className="loading-banner" role="status" aria-live="polite">
+                {shellText(locale, "loadingCatalog")}
+              </div>
+            )}
+            {mode === "trade" && (
+              <Suspense fallback={<WorkspaceLoading locale={locale} mode="trade" />}>
+                <TradingView strategies={strategyLibrary} catalog={catalog} locale={locale} portfolioRequest={robotsCenterRequest} />
+              </Suspense>
+            )}
+            {mode === "screener" && (
+              <Suspense fallback={<WorkspaceLoading locale={locale} mode="screener" />}>
+                <ArbitrageScreener
                   locale={locale}
-                  timeZone={shell.charts[0]?.timeZone}
-                  onTimeZoneChange={(timeZone) => shell.updateChart(shell.charts[0]?.id ?? "chart-1", { timeZone })}
-                  dataExchange={primaryExchange}
-                  dataMarketType={primaryMarketType}
-                  dataPriceType={primaryPriceType}
-                  indicators={indicators}
-                  onIndicatorsChange={setIndicators}
-                  onEditIndicatorLogic={artifactLibrary.selectIndicatorLogic}
-                  signals={artifactOverlay.activeOverlay?.signals}
-                  trades={artifactOverlay.activeOverlay?.trades}
-                  plots={artifactOverlay.activeOverlay?.plots}
-                  shapes={artifactOverlay.activeOverlay?.shapes}
-                  tables={artifactOverlay.activeOverlay?.tables}
-                  alerts={priceAlerts.alerts}
-                  onAddAlert={(price) =>
-                    priceAlerts.addAlert({
-                      symbol: instrument.symbol,
-                      price,
-                      direction: price >= (stream.candles.at(-1)?.close ?? price) ? "above" : "below"
-                    })
-                  }
-                  livePositions={livePositions}
-                  strategyName={artifactOverlay.activeOverlay?.name}
-                  strategySummary={artifactOverlay.activeOverlay?.summary}
-                  strategyInputs={artifactOverlay.activeOverlay?.inputs}
-                  onStrategyInputChange={artifactOverlay.updateInput}
-                  onClearStrategy={artifactOverlay.clear}
-                  customIndicators={chartCustomIndicators}
-                  strategies={chartStrategies}
-                  activeArtifactId={artifactOverlay.activeOverlay?.id}
-                  onAddArtifact={artifactOverlay.addArtifact}
-                  focusTime={artifactOverlay.activeOverlay ? artifactOverlay.focusTime : undefined}
-                  theme={theme}
-                  onNeedHistory={stream.loadOlder}
-                  compareSeries={compareState.series}
-                  compareLoading={compareState.loading}
-                  compareErrors={compareState.errors}
-                  compareOverlays={compareOverlays}
-                  compareCandidates={compareCandidates}
-                  compareTimeframes={catalog?.timeframes ?? []}
-                  compareChartTypes={catalog?.chartTypes ?? []}
-                  onAddCompare={shell.addCompare}
-                  onUpdateCompare={shell.updateCompare}
-                  onRemoveCompare={shell.removeCompare}
-                  chartId={shell.charts[0]?.id}
-                  storageOwnerId={localStorageOwner}
-                  linkedCrosshair={linkedCrosshair}
-                  onLinkedCrosshairChange={setLinkedCrosshair}
-                  linkedTimeRange={linkedTimeRange}
-                  onLinkedTimeRangeChange={setLinkedTimeRange}
+                  onOpenChart={(target) => {
+                    shell.updateActiveChart({ symbol: target.symbol, exchange: target.exchange, marketType: target.marketType, priceType: target.priceType });
+                    shell.setCryptoExchange(target.exchange);
+                    setMode("chart");
+                  }}
                 />
-              }
-            />
-          )}
-          {mode === "trade" && (
-            <Suspense fallback={<WorkspaceLoading locale={locale} mode="trade" />}>
-              <TradingView strategies={strategyLibrary} catalog={catalog} locale={locale} portfolioRequest={robotsCenterRequest} />
-            </Suspense>
-          )}
-          {mode === "screener" && (
-            <Suspense fallback={<WorkspaceLoading locale={locale} mode="screener" />}>
-              <ArbitrageScreener
-                locale={locale}
-                onOpenChart={(target) => {
-                  shell.updateActiveChart({ symbol: target.symbol, exchange: target.exchange, marketType: target.marketType, priceType: target.priceType });
-                  shell.setCryptoExchange(target.exchange);
-                  setMode("chart");
-                }}
-              />
-            </Suspense>
-          )}
-          {mode === "strategy" && (
-            <Suspense fallback={<WorkspaceLoading locale={locale} mode="strategy" />}>
-              <StrategyLab
-                artifacts={strategyLibrary}
-                activeArtifactId={activeArtifactId}
-                onSelectArtifact={artifactLibrary.setActiveArtifactId}
-                onCreateArtifact={artifactLibrary.createArtifact}
-                onSaveArtifact={artifactLibrary.saveArtifact}
-                onUseTemplate={artifactLibrary.useTemplate}
-                onImportStrategy={artifactLibrary.importStrategy}
-                onImportPlugin={artifactLibrary.importPlugin}
-                onUninstallPlugin={artifactLibrary.uninstallPlugin}
-                onImportPineMany={artifactLibrary.importPineMany}
-                launchedBatch={launchedFiles[0]?.approved ? launchedFiles[0].batch : undefined}
-                onLaunchedBatchConsumed={consumeLaunchedFiles}
-                onRollbackArtifact={artifactLibrary.rollbackArtifactVersion}
-                onUpdateArtifactDependencies={artifactLibrary.updateArtifactDependencies}
-                catalog={catalog}
-                initialSymbol={symbol}
-                initialTimeframe={timeframe}
-                exchange={cryptoExchange}
-                theme={theme}
-                locale={locale}
-                storageOwnerId={localStorageOwner}
-                onApplyResult={artifactOverlay.applyBacktestResult}
-                onShowOnChart={artifactOverlay.showOnChart}
-                onOpenTrading={() => setMode("trade")}
-              />
-            </Suspense>
-          )}
-        </section>
-
-        {mode === "chart" && !isMobile && (actualRightOpen ? shell.panelsSwapped ? watchlistPanel : statsPanel : <span aria-hidden="true" />)}
-        {mode === "chart" && !isMobile && actualLeftOpen && <PanelResizeHandle side="left" value={leftSize} min={180} max={520} label={shellText(locale, "resizeMarketsPanel")} onResize={shell.setLeftSize} />}
-        {mode === "chart" && !isMobile && actualRightOpen && <PanelResizeHandle side="right" value={rightSize} min={220} max={520} label={shellText(locale, "resizeInstrumentPanel")} onResize={shell.setRightSize} />}
+              </Suspense>
+            )}
+            {mode === "strategy" && (
+              <Suspense fallback={<WorkspaceLoading locale={locale} mode="strategy" />}>
+                <StrategyLab
+                  artifacts={strategyLibrary}
+                  activeArtifactId={activeArtifactId}
+                  onSelectArtifact={artifactLibrary.setActiveArtifactId}
+                  onCreateArtifact={artifactLibrary.createArtifact}
+                  onSaveArtifact={artifactLibrary.saveArtifact}
+                  onUseTemplate={artifactLibrary.useTemplate}
+                  onImportStrategy={artifactLibrary.importStrategy}
+                  onImportPlugin={artifactLibrary.importPlugin}
+                  onUninstallPlugin={artifactLibrary.uninstallPlugin}
+                  onImportPineMany={artifactLibrary.importPineMany}
+                  launchedBatch={launchedFiles[0]?.approved ? launchedFiles[0].batch : undefined}
+                  onLaunchedBatchConsumed={consumeLaunchedFiles}
+                  onRollbackArtifact={artifactLibrary.rollbackArtifactVersion}
+                  onUpdateArtifactDependencies={artifactLibrary.updateArtifactDependencies}
+                  catalog={catalog}
+                  initialSymbol={symbol}
+                  initialTimeframe={timeframe}
+                  exchange={cryptoExchange}
+                  theme={theme}
+                  locale={locale}
+                  storageOwnerId={localStorageOwner}
+                  onApplyResult={artifactOverlay.applyBacktestResult}
+                  onShowOnChart={artifactOverlay.showOnChart}
+                  onOpenTrading={() => setMode("trade")}
+                />
+              </Suspense>
+            )}
+          </section>
+        )}
       </main>
 
+      <PriceAlertFeed alerts={priceAlerts.alerts} evaluatePrices={priceAlerts.evaluatePrices} />
       <CommandPalette locale={locale} open={appCommands.paletteOpen} onClose={appCommands.closePalette} commands={appCommands.commands} />
       <ShortcutSettingsDialog locale={locale} open={appCommands.shortcutSettingsOpen} shortcuts={appCommands.shortcuts} onChange={appCommands.setShortcuts} onClose={appCommands.closeShortcutSettings} />
       <OfflineResearchDialog locale={locale} open={offlineResearchOpen} onClose={() => setOfflineResearchOpen(false)} />

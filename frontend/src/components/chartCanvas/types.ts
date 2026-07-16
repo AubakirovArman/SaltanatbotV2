@@ -69,4 +69,6 @@ export interface ChartCanvasProps {
   compactChrome?: boolean;
   /** Indicator editing is global today, so embedded sibling panes can omit duplicate controls. */
   showIndicatorControls?: boolean;
+  /** False while another pane is maximized; pauses rendering and background resources without resetting controls. */
+  operational?: boolean;
 }

@@ -72,7 +72,7 @@ export function MobilePanelDialog({
       <button type="button" className="mobile-panel-close" onClick={onClose} aria-label={closeLabel}>
         <X size={18} aria-hidden="true" />
       </button>
-      <div className="mobile-panel-content">{children}</div>
+      {open ? <div className="mobile-panel-content">{children}</div> : null}
     </dialog>
   );
 }

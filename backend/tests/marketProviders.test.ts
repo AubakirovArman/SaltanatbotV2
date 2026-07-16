@@ -136,6 +136,39 @@ describe("synthetic fallback safety", () => {
     await expect(router.getCandles(unseeded, "1m", { limit: 10 })).rejects.toThrow(/Market data unavailable.*no positive reference price/i);
     await expect(router.subscribe(unseeded, "1m", () => {})).rejects.toThrow(/Market stream unavailable.*no positive reference price/i);
   });
+
+  it("never serves a cached synthetic fallback to a later strict request", async () => {
+    const failing = {
+      async getCandles() { throw new Error("exchange offline"); },
+      async subscribe() { throw new Error("stream offline"); }
+    };
+    const router = new ProviderRouter() as unknown as {
+      binance: typeof failing;
+      getCandles: ProviderRouter["getCandles"];
+    };
+    router.binance = failing;
+    const route = { exchange: "binance", marketType: "spot", priceType: "last" } as const;
+
+    await expect(router.getCandles(instrument, "1m", { limit: 10 }, route)).resolves.toHaveLength(10);
+    await expect(router.getCandles(instrument, "1m", { limit: 10 }, { ...route, strict: true })).rejects.toThrow("exchange offline");
+  });
+
+  it("never shares a synthetic fallback stream with a later strict subscriber", async () => {
+    const failing = {
+      async getCandles() { throw new Error("exchange offline"); },
+      async subscribe() { throw new Error("stream offline"); }
+    };
+    const router = new ProviderRouter() as unknown as {
+      binance: typeof failing;
+      subscribe: ProviderRouter["subscribe"];
+    };
+    router.binance = failing;
+    const route = { exchange: "binance", marketType: "spot", priceType: "last" } as const;
+
+    const fallback = await router.subscribe(instrument, "1m", () => {}, undefined, route);
+    await expect(router.subscribe(instrument, "1m", () => {}, undefined, { ...route, strict: true })).rejects.toThrow("stream offline");
+    fallback.close();
+  });
 });
 
 describe("ProviderRouter stream fan-out", () => {
