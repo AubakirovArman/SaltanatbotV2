@@ -12,7 +12,7 @@ const runId = "11111111-1111-4111-8111-111111111111";
 const sourceContainerId = "a".repeat(64);
 const helperContainerId = "b".repeat(64);
 const imageId = `sha256:${"c".repeat(64)}`;
-const password = "unit-only-compose-password";
+const fixtureCredential = "unit-only-compose-password";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -44,8 +44,10 @@ describe("safe Compose PostgreSQL recovery wrappers", () => {
 
     expect(result).toEqual({ code: 0, signal: null });
     expect(readFileSync(output, "utf8")).toBe("PGDMP-safe-unit-archive");
-    expect(fake.createArgs.join("\0")).not.toContain(password);
-    expect(JSON.stringify(fake.helperInspection)).not.toContain(password);
+    expect(fake.createArgs.join("\0")).not.toContain(fixtureCredential);
+    expect(JSON.stringify(fake.helperInspection)).not.toContain(
+      fixtureCredential
+    );
     expect(fake.createArgs).toContain(`container:${sourceContainerId}`);
     expect(fake.createArgs).toContain(imageId);
     expect(fake.createArgs).toContain("--read-only");
@@ -90,7 +92,7 @@ describe("safe Compose PostgreSQL recovery wrappers", () => {
     expect(fake.createArgs.at(-1)).toBe("--dbname=saltanatbotv2_restore_unit");
     expect(fake.createArgs).not.toContain("-");
     expect(fake.createArgs.join("\0")).not.toContain(archive);
-    expect(fake.createArgs.join("\0")).not.toContain(password);
+    expect(fake.createArgs.join("\0")).not.toContain(fixtureCredential);
     expect(fake.removedIds).toEqual([helperContainerId]);
   });
 
@@ -322,10 +324,10 @@ describe("safe Compose PostgreSQL recovery wrappers", () => {
       "/usr/bin/docker",
       ["start", "--attach", helperContainerId],
       {
-        env: { PGPASSWORD: password },
+        env: { PGPASSWORD: fixtureCredential },
         stderr: { write: (value: string) => stderr.push(value) },
         stdout: { write: vi.fn() },
-        redactions: [password]
+        redactions: [fixtureCredential]
       },
       {
         spawn: () => child,
@@ -333,7 +335,7 @@ describe("safe Compose PostgreSQL recovery wrappers", () => {
       }
     );
 
-    child.stderr.write(`failure near ${password}\n`);
+    child.stderr.write(`failure near ${fixtureCredential}\n`);
     processLike.emit("SIGTERM");
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
     child.emit("close", null, null);
@@ -365,7 +367,7 @@ function createFixture() {
   writeFileSync(path.resolve(root, "docker-compose.yml"), "services: {}\n", {
     mode: 0o600
   });
-  writeFileSync(secretFile, `${password}\n`, { mode: 0o600 });
+  writeFileSync(secretFile, `${fixtureCredential}\n`, { mode: 0o600 });
   chmodSync(secretFile, 0o600);
   return {
     root,
@@ -386,7 +388,7 @@ function recoveryEnvironment(overrides: Record<string, string> = {}) {
     PGPORT: "55434",
     PGDATABASE: "saltanatbotv2",
     PGUSER: "saltanatbotv2",
-    PGPASSWORD: password,
+    PGPASSWORD: fixtureCredential,
     PGCONNECT_TIMEOUT: "10",
     SALTANAT_RECOVERY_TOOL_RUN_ID: runId,
     SALTANAT_RECOVERY_TOOL_TIMEOUT_MS: "60000",

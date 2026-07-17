@@ -112,8 +112,11 @@ test("paper-robot onboarding opens the paper workspace and completes after creat
   expectOwnerFence(fixture);
 });
 
-test("actual non-localhost insecure origin never registers PWA shell and keeps verified workspace export", async ({ page }) => {
+test("actual non-localhost insecure origin never registers PWA shell and keeps verified workspace export", async ({ page, baseURL }) => {
   test.setTimeout(60_000);
+  if (!baseURL) throw new Error("R3.3 insecure-origin test requires a Playwright baseURL");
+  const insecureUrl = new URL("/", baseURL);
+  insecureUrl.hostname = "saltanat-r33.test";
   await page.addInitScript(() => {
     const target = window as Window & { __r33ServiceWorkerRegisterCalls?: number };
     target.__r33ServiceWorkerRegisterCalls = 0;
@@ -141,7 +144,7 @@ test("actual non-localhost insecure origin never registers PWA shell and keeps v
   await mockCandleHistory(page, candles);
   await installR33SocketFixture(page, candles);
 
-  await page.goto("http://saltanat-r33.test:4193/", { waitUntil: "domcontentloaded" });
+  await page.goto(insecureUrl.href, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("navigation", { name: "Primary workspaces" })).toBeVisible({ timeout: 20_000 });
   expect(
     await page.evaluate(() => ({

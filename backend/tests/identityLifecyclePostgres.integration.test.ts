@@ -14,6 +14,8 @@ const connectionString = process.env.IDENTITY_TEST_DATABASE_URL;
 const describePostgres = connectionString ? describe : describe.skip;
 const PASSWORD_HASH = "integration-password-hash-placeholder";
 const BAD_AUDIT_REQUEST_ID = "x".repeat(129);
+const TEST_EPOCH_MS = Date.parse("2026-07-16T00:00:00.000Z");
+const TEST_NOW_MS = TEST_EPOCH_MS + 12 * 60 * 60_000;
 
 let pool: Pool;
 let repository: PostgresIdentityRepository;
@@ -287,7 +289,7 @@ describePostgres("identity lifecycle against isolated PostgreSQL", () => {
       appRole: "admin"
     });
     const session = await seedSession(admin.id, "uppercase-session-current");
-    const service = new IdentityService(repository);
+    const service = identityService();
 
     await expect(
       service.updatePermissions(
@@ -324,7 +326,7 @@ describePostgres("identity lifecycle against isolated PostgreSQL", () => {
     const ownerBSession = await seedSession(ownerB.id, "session-owner-b");
     await seedWsTicket(ownerA.id, ownerAOther.idHash, "session-owner-a-ticket");
     await seedWsTicket(ownerB.id, ownerBSession.idHash, "session-owner-b-ticket");
-    const service = new IdentityService(repository);
+    const service = identityService();
     const ownerAPrincipal = principal(ownerA, ownerACurrent);
     const adminPrincipal = principal(admin, adminSession);
 
@@ -741,7 +743,13 @@ async function ticketCount(userId: string): Promise<number> {
 
 function nextTime(): Date {
   mutationSequence += 1;
-  return new Date(Date.parse("2026-07-16T00:00:00.000Z") + mutationSequence);
+  return new Date(TEST_EPOCH_MS + mutationSequence);
+}
+
+function identityService(): IdentityService {
+  return new IdentityService(repository, {
+    now: () => new Date(TEST_NOW_MS)
+  });
 }
 
 function digest(value: string): string {

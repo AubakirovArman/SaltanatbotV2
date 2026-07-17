@@ -4,6 +4,9 @@ const port = 4192;
 const visualSpec = /visual\.spec\.ts/;
 const soakSpec = /stream-render-soak\.spec\.ts/;
 const ordinaryBrowserIgnore = [visualSpec, soakSpec];
+const chromiumLaunchOptions = {
+  args: ["--host-resolver-rules=MAP saltanat-r33.test 127.0.0.1"]
+};
 
 export default defineConfig({
   testDir: "./e2e",
@@ -22,7 +25,14 @@ export default defineConfig({
     video: "retain-on-failure"
   },
   projects: [
-    { name: "chromium", testIgnore: ordinaryBrowserIgnore, use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      testIgnore: ordinaryBrowserIgnore,
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: chromiumLaunchOptions
+      }
+    },
     { name: "firefox-smoke", testIgnore: ordinaryBrowserIgnore, grep: /@smoke/, use: { ...devices["Desktop Firefox"] } },
     { name: "firefox", testIgnore: ordinaryBrowserIgnore, use: { ...devices["Desktop Firefox"] } },
     { name: "webkit", testIgnore: ordinaryBrowserIgnore, use: { ...devices["Desktop Safari"] } },
