@@ -323,6 +323,8 @@ async function assertTimeframeControlContainsTrigger(page: Page): Promise<void> 
       rightDelta: controlBox.right - triggerBox.right
     };
   });
+  expect(geometry.triggerWidth).toBeGreaterThanOrEqual(24);
+  expect(geometry.controlWidth).toBeGreaterThan(0);
   expect(geometry.controlWidth).toBeGreaterThanOrEqual(geometry.triggerWidth);
   expect(geometry.leftDelta).toBeGreaterThanOrEqual(-1);
   expect(geometry.rightDelta).toBeGreaterThanOrEqual(-1);

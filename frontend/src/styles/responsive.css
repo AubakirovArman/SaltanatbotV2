@@ -5,6 +5,11 @@
 }
 
 @media (min-width: 761px) and (max-width: 1500px) {
+  .timeframe-control {
+    flex: 0 0 auto;
+    min-inline-size: max-content;
+  }
+
   .segmented.timeframes {
     display: none;
   }

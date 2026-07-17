@@ -327,8 +327,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 0 0 auto;
-  min-inline-size: max-content;
+  min-inline-size: 0;
 }
 
 .timeframe-more-wrap {
