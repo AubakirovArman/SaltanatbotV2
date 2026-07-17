@@ -687,6 +687,27 @@ small {
   background: var(--hover);
 }
 
+/* Server screener-kind alert rules (records only, never price subscriptions). */
+.screener-alert-block {
+  display: grid;
+  gap: 4px;
+  border-block-start: 1px solid var(--line-soft);
+  padding-block-start: 5px;
+}
+
+.screener-alert-list .alert-item {
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+}
+
+.alert-name {
+  min-inline-size: 0;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Toast stack (fixed to the viewport, above all panels). */
 .alert-toasts {
   position: fixed;

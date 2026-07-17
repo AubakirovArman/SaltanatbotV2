@@ -7,6 +7,7 @@ import {
   parseNotificationEnvelopeV1,
   parseNotificationOutboxItemV1,
   parsePriceThresholdAlertDefinitionV1,
+  parseScreenerAlertDefinitionV1,
   type AlertEventTypeV1,
   type AlertEventV1,
   type AlertRuleDocumentV1,
@@ -14,7 +15,8 @@ import {
   type PriceThresholdAlertDefinitionV1,
 } from "@saltanatbotv2/contracts";
 import { priceThresholdAlertScopeKey, type PriceThresholdAlertRuntimeStateV1 } from "./priceEvaluator.js";
-import type { AlertRuleRecord, ClaimedPriceAlertRule } from "./repositoryTypes.js";
+import { defaultScreenerAlertRuntimeState, parseScreenerAlertRuntimeStateStrict, screenerAlertStateKey } from "./screenerAlertEvaluator.js";
+import type { AlertRuleRecord, ClaimedPriceAlertRule, ClaimedScreenerAlertRule } from "./repositoryTypes.js";
 
 type Timestamp = Date | string;
 
@@ -50,6 +52,18 @@ export interface ClaimedPriceAlertRow extends AlertRuleRow {
   state: unknown | null;
   state_rule_revision: string | number | null;
   state_revision: string | number | null;
+}
+
+export interface ClaimedScreenerAlertRow extends AlertRuleRow {
+  lease_owner: string;
+  lease_token: string;
+  lease_generation: string | number;
+  lease_expires_at: Timestamp;
+  state_key: string | null;
+  state: unknown | null;
+  state_rule_revision: string | number | null;
+  state_revision: string | number | null;
+  state_cooldown_until: Timestamp | null;
 }
 
 export interface AlertEventRow {
@@ -175,6 +189,35 @@ export function mapClaimedPriceAlert(row: ClaimedPriceAlertRow): ClaimedPriceAle
       storedRuleRevision === undefined || storedRuleRevision < base.currentRevision
         ? defaultPriceAlertRuntimeState(row.revision_created_at ?? row.created_at)
         : parsePriceAlertRuntimeStateStrict(row.state),
+  };
+}
+
+export function mapClaimedScreenerAlert(row: ClaimedScreenerAlertRow): ClaimedScreenerAlertRule {
+  const base = mapAlertRule(row);
+  const definition = parseScreenerAlertDefinitionV1(base.definition);
+  const expectedStateKey = screenerAlertStateKey(definition.screen, base.definitionHash);
+  if (row.state_key !== null && row.state_key !== expectedStateKey) {
+    throw new Error("Stored screener alert state scope does not match its immutable rule revision.");
+  }
+  const stateRevision = row.state_revision === null ? 0 : positiveSafeInteger(row.state_revision, "state revision");
+  const storedRuleRevision = row.state_rule_revision === null ? undefined : positiveSafeInteger(row.state_rule_revision, "state rule revision");
+  if (storedRuleRevision !== undefined && storedRuleRevision > base.currentRevision) {
+    throw new Error("Stored screener alert state belongs to a future rule revision.");
+  }
+  const carried = storedRuleRevision === base.currentRevision;
+  const cooldownUntil = carried && row.state_cooldown_until !== null ? new Date(row.state_cooldown_until).getTime() : undefined;
+  if (cooldownUntil !== undefined && !Number.isFinite(cooldownUntil)) throw new Error("Stored screener alert cooldown timestamp is invalid.");
+  return {
+    ...base,
+    definition,
+    workerId: row.lease_owner,
+    leaseToken: row.lease_token,
+    leaseGeneration: nonnegativeSafeInteger(row.lease_generation, "lease generation"),
+    leaseExpiresAt: iso(row.lease_expires_at),
+    stateKey: expectedStateKey,
+    stateRevision,
+    state: carried ? parseScreenerAlertRuntimeStateStrict(row.state) : defaultScreenerAlertRuntimeState(),
+    ...(cooldownUntil === undefined ? {} : { cooldownUntil })
   };
 }
 

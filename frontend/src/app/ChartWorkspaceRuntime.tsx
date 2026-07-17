@@ -199,9 +199,12 @@ export function ChartWorkspaceRuntime({
       timeframe={activeChart?.timeframe ?? timeframe}
       alerts={priceAlerts.alerts}
       alertSync={priceAlerts.sync}
+      screenerAlerts={priceAlerts.screenerRules}
       onAddAlert={priceAlerts.addAlert}
       onRemoveAlert={priceAlerts.removeAlert}
       onResetAlert={priceAlerts.resetAlert}
+      onToggleScreenerAlert={priceAlerts.setScreenerAlertEnabled}
+      onArchiveScreenerAlert={priceAlerts.archiveScreenerAlert}
     />
   );
 

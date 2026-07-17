@@ -1,5 +1,6 @@
-import { Bell, RefreshCw, RotateCcw, X } from "lucide-react";
+import { Archive, Bell, Power, RefreshCw, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
+import type { AlertRuleRecordV1 } from "@saltanatbotv2/contracts";
 import { samePriceAlertRoute, type PriceAlert } from "../market/alerts";
 import type { NewAlertInput, PriceAlertSyncState } from "../hooks/usePriceAlerts";
 import type { Candle, DataExchange, DataMarketType, Instrument, PriceType, Timeframe } from "../types";
@@ -25,9 +26,13 @@ interface StatsPanelProps {
   timeframe: Timeframe;
   alerts: PriceAlert[];
   alertSync: PriceAlertSyncState;
+  /** Server screener-kind rules; rendered as records, never as price rows. */
+  screenerAlerts?: AlertRuleRecordV1[];
   onAddAlert: (input: NewAlertInput) => void | Promise<void>;
   onRemoveAlert: (id: string) => void | Promise<void>;
   onResetAlert: (id: string) => void | Promise<void>;
+  onToggleScreenerAlert?: (ruleId: string, enabled: boolean) => void | Promise<void>;
+  onArchiveScreenerAlert?: (ruleId: string) => void | Promise<void>;
 }
 
 export function StatsPanel({
@@ -47,9 +52,12 @@ export function StatsPanel({
   timeframe,
   alerts,
   alertSync,
+  screenerAlerts = [],
   onAddAlert,
   onRemoveAlert,
-  onResetAlert
+  onResetAlert,
+  onToggleScreenerAlert,
+  onArchiveScreenerAlert
 }: StatsPanelProps) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const latest = candles.at(-1);
@@ -102,10 +110,13 @@ export function StatsPanel({
         priceType={priceType}
         timeframe={timeframe}
         alerts={alerts.filter((alert) => alert.symbol === instrument.symbol && (alert.timeframe === timeframe || alert.timeframe === undefined) && samePriceAlertRoute(alert, { exchange, marketType, priceType }))}
+        screenerAlerts={screenerAlerts}
         sync={alertSync}
         onAddAlert={onAddAlert}
         onRemoveAlert={onRemoveAlert}
         onResetAlert={onResetAlert}
+        onToggleScreenerAlert={onToggleScreenerAlert}
+        onArchiveScreenerAlert={onArchiveScreenerAlert}
       />
 
       <section>
@@ -136,10 +147,13 @@ function AlertsSection({
   priceType,
   timeframe,
   alerts,
+  screenerAlerts,
   sync,
   onAddAlert,
   onRemoveAlert,
-  onResetAlert
+  onResetAlert,
+  onToggleScreenerAlert,
+  onArchiveScreenerAlert
 }: {
   locale: Locale;
   instrument: Instrument;
@@ -149,10 +163,13 @@ function AlertsSection({
   priceType: PriceType;
   timeframe: Timeframe;
   alerts: PriceAlert[];
+  screenerAlerts: AlertRuleRecordV1[];
   sync: PriceAlertSyncState;
   onAddAlert: (input: NewAlertInput) => void | Promise<void>;
   onRemoveAlert: (id: string) => void | Promise<void>;
   onResetAlert: (id: string) => void | Promise<void>;
+  onToggleScreenerAlert?: (ruleId: string, enabled: boolean) => void | Promise<void>;
+  onArchiveScreenerAlert?: (ruleId: string) => void | Promise<void>;
 }) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const [draft, setDraft] = useState("");
@@ -189,7 +206,10 @@ function AlertsSection({
 
   const serverRouteSupported = priceType === "last" && timeframe !== "1M";
   const creationReady = sync.status === "legacy" || (sync.status === "synced" && serverRouteSupported);
-  const visibleRuleIds = new Set(alerts.map(({ serverRuleId }) => serverRuleId).filter((id): id is string => Boolean(id)));
+  const visibleRuleIds = new Set([
+    ...alerts.map(({ serverRuleId }) => serverRuleId).filter((id): id is string => Boolean(id)),
+    ...screenerAlerts.map(({ id }) => id)
+  ]);
   const recentEvents = sync.events.filter((event) => visibleRuleIds.has(event.ruleId)).slice(0, 5);
   const outboxByEvent = new Map(sync.outbox.map((item) => [item.envelope.alertEventId, item]));
 
@@ -243,9 +263,10 @@ function AlertsSection({
               {recentEvents.map((event) => {
                 const delivery = outboxByEvent.get(event.id);
                 const eventAlert = alerts.find((alert) => alert.serverRuleId === event.ruleId);
+                const eventScreen = screenerAlerts.find((rule) => rule.id === event.ruleId);
                 return (
                   <li key={event.id}>
-                    <span title={event.summary}>{eventAlert ? `${eventAlert.symbol} · ` : ""}{t(alertEventMessageKey(event.eventType))}</span>
+                    <span title={event.summary}>{eventAlert ? `${eventAlert.symbol} · ` : eventScreen ? `${eventScreen.definition.name} · ` : ""}{t(alertEventMessageKey(event.eventType))}</span>
                     <time dateTime={event.occurredAt}>{new Intl.DateTimeFormat(localeTag(locale), { hour: "2-digit", minute: "2-digit" }).format(new Date(event.occurredAt))}</time>
                     {delivery && <small className={`delivery-${delivery.status}`}>{t(delivery.status === "delivered" ? "alertDeliveryDelivered" : delivery.status === "dead-letter" || delivery.status === "cancelled" ? "alertDeliveryFailed" : "alertDeliveryPending")}</small>}
                   </li>
@@ -281,8 +302,58 @@ function AlertsSection({
             ))}
         </ul>
       )}
+      {sync.status !== "legacy" && screenerAlerts.length > 0 && (
+        <div className="screener-alert-block">
+          <div className="panel-header">
+            <strong>{t("screenerAlerts")}</strong>
+            <span>{screenerAlerts.length}</span>
+          </div>
+          <ul className="alert-list screener-alert-list" aria-label={t("screenerAlerts")}>
+            {screenerAlerts.map((rule) => {
+              const enabled = rule.definition.enabled;
+              const toggleLabel = t(enabled ? "screenerAlertDisable" : "screenerAlertEnable");
+              return (
+                <li key={rule.id} className="alert-item screener-alert-item">
+                  <span className={`alert-source-badge ${enabled ? "server" : "disabled"}`}>{t("screenerAlertKind")}</span>
+                  <span className="alert-name" title={rule.definition.name}>{rule.definition.name}</span>
+                  <span className="alert-state">{t(screenerAlertStateKey(rule))}</span>
+                  {onToggleScreenerAlert && (
+                    <button
+                      type="button"
+                      disabled={pending !== undefined}
+                      aria-label={`${toggleLabel} ${rule.definition.name}`}
+                      title={toggleLabel}
+                      onClick={() => void runAction(`screener-toggle:${rule.id}`, () => onToggleScreenerAlert(rule.id, !enabled))}
+                    >
+                      {enabled ? <Power size={12} aria-hidden="true" /> : <Bell size={12} aria-hidden="true" />}
+                    </button>
+                  )}
+                  {onArchiveScreenerAlert && (
+                    <button
+                      type="button"
+                      disabled={pending !== undefined}
+                      aria-label={`${t("screenerAlertArchive")} ${rule.definition.name}`}
+                      title={t("screenerAlertArchive")}
+                      onClick={() => void runAction(`screener-archive:${rule.id}`, () => onArchiveScreenerAlert(rule.id))}
+                    >
+                      <Archive size={12} aria-hidden="true" />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </section>
   );
+}
+
+function screenerAlertStateKey(rule: AlertRuleRecordV1) {
+  if (!rule.definition.enabled || rule.lifecycleState === "disabled") return "alertDisabled" as const;
+  if (rule.lifecycleState === "stale") return "alertStale" as const;
+  if (rule.lifecycleState === "error") return "alertError" as const;
+  return "armed" as const;
 }
 
 function StatRow({ label, value, tone }: { label: string; value: string; tone?: "up" | "down" }) {

@@ -6,6 +6,60 @@ import { shellText } from "../src/i18n/shell";
 
 const instrument = { symbol: "BTCUSDT", displayName: "Bitcoin", assetClass: "crypto" as const, exchange: "Binance", currency: "USDT", provider: "binance" as const, basePrice: 100, decimals: 2 };
 
+const SCREEN_RULE_ID = "00000000-0000-4000-8000-000000000042";
+
+const screenerAlertRule = {
+  schemaVersion: "alert-rule-record-v1" as const,
+  id: SCREEN_RULE_ID,
+  clientId: "screen-alert-01",
+  revision: 1,
+  definition: {
+    schemaVersion: "alert-rule-v1" as const,
+    kind: "screener" as const,
+    name: "Momentum screen",
+    enabled: true,
+    cooldownSeconds: 3600,
+    deliveryChannels: ["in-app" as const],
+    screen: {
+      schemaVersion: "screener-definition-v1" as const,
+      kind: "technical" as const,
+      name: "Momentum screen",
+      exchange: "binance" as const,
+      marketType: "spot" as const,
+      priceType: "last" as const,
+      timeframe: "1h" as const,
+      universeLimit: 100,
+      sort: { key: "quoteVolume24h" as const, direction: "desc" as const },
+      filters: [{ kind: "quote-volume-24h" as const, min: "1000000" }],
+      researchOnly: true as const,
+      executionPermission: false as const
+    },
+    repeat: "on-change" as const,
+    researchOnly: true as const,
+    executionPermission: false as const
+  },
+  lifecycleState: "armed" as const,
+  createdAt: "2026-07-17T08:00:00.000Z",
+  updatedAt: "2026-07-17T08:01:00.000Z",
+  researchOnly: true as const,
+  executionPermission: false as const
+};
+
+const screenerAlertEvent = {
+  schemaVersion: "alert-event-v1" as const,
+  id: "00000000-0000-4000-8000-000000000051",
+  ruleId: SCREEN_RULE_ID,
+  ruleRevision: 1,
+  ruleKind: "screener" as const,
+  eventType: "triggered" as const,
+  subjectKey: `${"d".repeat(64)}:bar:1752739200000`,
+  transitionKey: "1".padStart(64, "0"),
+  occurredAt: "2026-07-17T08:04:00.000Z",
+  summary: "Screen match set changed.",
+  researchOnly: true as const,
+  executionPermission: false as const
+};
+
 describe("shell localization", () => {
   it("provides typed Russian navigation and market vocabulary", () => {
     expect(shellText("ru", "commandPalette")).toBe("Палитра команд");
@@ -82,6 +136,46 @@ describe("shell localization", () => {
     expect(toast).toContain("Серверный алерт сработал");
     expect(toast).toContain('title="Raw backend summary."');
     expect(toast).not.toContain(">Raw backend summary.<");
+  });
+
+  it("labels screener alert records and their controls in every shipped locale", () => {
+    expect(shellText("en", "screenerAlerts")).toBe("Screen alerts");
+    expect(shellText("ru", "screenerAlerts")).toBe("Алерты скринера");
+    expect(shellText("kk", "screenerAlerts")).toBe("Скринер ескертулері");
+    for (const locale of ["en", "ru", "kk"] as const) {
+      for (const key of ["screenerAlerts", "screenerAlertKind", "screenerAlertEnable", "screenerAlertDisable", "screenerAlertArchive"] as const) {
+        expect(shellText(locale, key).trim(), `shell.${key} (${locale})`).not.toBe("");
+      }
+    }
+    expect(shellText("kk", "screenerAlertArchive")).toBe("Скринер ескертуін мұрағаттау");
+
+    const stats = renderToStaticMarkup(
+      <StatsPanel
+        locale="ru"
+        instrument={instrument}
+        candles={[]}
+        provider="binance"
+        connection="connected"
+        message="ok"
+        exchange="binance"
+        timeframe="1m"
+        alerts={[]}
+        alertSync={{ status: "synced", events: [screenerAlertEvent], outbox: [], refresh: () => undefined }}
+        screenerAlerts={[screenerAlertRule]}
+        onAddAlert={() => {}}
+        onRemoveAlert={() => {}}
+        onResetAlert={() => {}}
+        onToggleScreenerAlert={() => {}}
+        onArchiveScreenerAlert={() => {}}
+      />
+    );
+    expect(stats).toContain("Алерты скринера");
+    expect(stats).toContain(">скрин<");
+    expect(stats).toContain("Momentum screen");
+    expect(stats).toContain('aria-label="Отключить алерт скринера Momentum screen"');
+    expect(stats).toContain('aria-label="Архивировать алерт скринера Momentum screen"');
+    // Recent activity names the screen because screener events have no symbol.
+    expect(stats).toContain("Momentum screen · Алерт сработал");
   });
 
   it("labels a disabled server projection honestly", () => {

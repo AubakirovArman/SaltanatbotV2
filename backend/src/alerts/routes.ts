@@ -13,7 +13,11 @@ import {
   AlertIdempotencyConflictError,
   AlertNotFoundError,
   AlertQuotaError,
+  AlertRearmUnsupportedError,
   AlertRevisionConflictError,
+  SCREENER_ALERT_MAX_ACTIVE_GLOBAL,
+  ScreenerAlertCapacityError,
+  ScreenerAlertQuotaError,
   type AlertRuleRecord,
   type ArchiveAlertRuleInput,
   type CreateAlertRuleInput,
@@ -344,6 +348,17 @@ function alertErrorHandler(error: unknown, _request: Request, response: Response
     response.status(404).json({ error: error.message, code: "alert_not_found" });
     return;
   }
+  if (error instanceof ScreenerAlertQuotaError) {
+    response.status(429).json({ error: error.message, code: "screener_alert_quota_exceeded" });
+    return;
+  }
+  if (error instanceof ScreenerAlertCapacityError) {
+    response.status(429).json({
+      error: `The R5.3a beta supports at most ${SCREENER_ALERT_MAX_ACTIVE_GLOBAL} globally active screener alert rules.`,
+      code: "screener_alert_capacity_exhausted"
+    });
+    return;
+  }
   if (error instanceof AlertQuotaError) {
     response.status(429).json({ error: error.message, code: "alert_quota_exceeded" });
     return;
@@ -371,6 +386,10 @@ function alertErrorHandler(error: unknown, _request: Request, response: Response
   }
   if (error instanceof AlertIdempotencyConflictError) {
     response.status(409).json({ error: error.message, code: "alert_idempotency_conflict" });
+    return;
+  }
+  if (error instanceof AlertRearmUnsupportedError) {
+    response.status(409).json({ error: error.message, code: "alert_rearm_unsupported" });
     return;
   }
   if (error instanceof AlertRevisionConflictError) {
@@ -447,7 +466,10 @@ function assertSupportedDefinition(input: {
   kind: string;
   deliveryChannels?: readonly string[];
 }): void {
-  if (input.kind !== "price-threshold") throw new UnsupportedAlertKindError();
+  // R5.3a serves price-threshold and screener kinds; other reserved kinds stay
+  // rejected until their evaluator lanes exist. Delivery remains in-app only
+  // for every kind (screener telegram delivery arrives with R5.3b).
+  if (input.kind !== "price-threshold" && input.kind !== "screener") throw new UnsupportedAlertKindError();
   if (input.deliveryChannels?.length !== 1 || input.deliveryChannels[0] !== "in-app") {
     throw new UnsupportedAlertDeliveryChannelError();
   }

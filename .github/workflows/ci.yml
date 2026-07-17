@@ -126,6 +126,7 @@ jobs:
           npx --no-install vitest run backend/tests/alertManagementCapacityPostgres.integration.test.ts
           npx --no-install vitest run backend/tests/workspacesPostgres.integration.test.ts
           npx --no-install vitest run backend/tests/screenerRepositoryPostgres.integration.test.ts
+          npx --no-install vitest run backend/tests/screenerAlertPostgres.integration.test.ts
 
   browser-e2e:
     name: end-to-end (Chromium)

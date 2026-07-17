@@ -4,7 +4,9 @@ import type { AlertEventV1, AlertRuleDocumentV1, NotificationOutboxItemV1 } from
 import { timeframeMs } from "../market/timeframes.js";
 import { priceThresholdAlertScopeKey } from "./priceEvaluator.js";
 import { completePriceEvaluation as completePriceEvaluationTransaction } from "./repositoryCompletion.js";
-import { mapAlertEvent, mapAlertRule, mapClaimedPriceAlert, mapNotificationOutbox, parseAndHashAlertDefinition, positiveSafeInteger, selectAlertRuleSql, sha256, type AlertEventRow, type AlertRuleRow, type ClaimedPriceAlertRow, type NotificationOutboxRow } from "./repositoryRows.js";
+import { completeScreenerEvaluation as completeScreenerEvaluationTransaction } from "./repositoryScreenerCompletion.js";
+import { mapAlertEvent, mapAlertRule, mapClaimedPriceAlert, mapClaimedScreenerAlert, mapNotificationOutbox, parseAndHashAlertDefinition, positiveSafeInteger, selectAlertRuleSql, sha256, type AlertEventRow, type AlertRuleRow, type ClaimedPriceAlertRow, type ClaimedScreenerAlertRow, type NotificationOutboxRow } from "./repositoryRows.js";
+import { screenerAlertStateKey } from "./screenerAlertEvaluator.js";
 import {
   ALERT_REPOSITORY_DEFAULT_LIST_LIMIT,
   ALERT_REPOSITORY_MAX_LIST_LIMIT,
@@ -13,20 +15,32 @@ import {
   AlertIdempotencyConflictError,
   AlertNotFoundError,
   AlertQuotaError,
+  AlertRearmUnsupportedError,
   AlertRevisionConflictError,
   MAX_ENABLED_ALERT_RULES_PER_OWNER,
   MAX_ACTIVE_ALERT_RULES_GLOBAL,
   MAX_RETAINED_ALERT_RULES_PER_OWNER,
   MAX_TOTAL_ALERT_RULE_HISTORY_PER_OWNER,
+  SCREENER_ALERT_LEASE_MS,
+  SCREENER_ALERT_MAX_ACTIVE_GLOBAL,
+  SCREENER_ALERT_MAX_ENABLED_PER_OWNER,
+  ScreenerAlertCapacityError,
+  ScreenerAlertQuotaError,
   type AlertRuleRecord,
   type ArchiveAlertRuleInput,
   type ClaimedPriceAlertRule,
+  type ClaimedScreenerAlertRule,
   type ClaimPriceAlertInput,
+  type ClaimScreenerAlertInput,
   type CompletePriceEvaluationInput,
   type CompletePriceEvaluationResult,
+  type CompleteScreenerEvaluationInput,
+  type CompleteScreenerEvaluationResult,
   type CreateAlertRuleInput,
   type DeferPriceEvaluationInput,
+  type DeferScreenerEvaluationInput,
   type FailPriceEvaluationInput,
+  type FailScreenerEvaluationInput,
   type RearmAlertRuleInput,
   type RecoverExpiredLeasesResult,
   type UpdateAlertRuleInput
@@ -39,7 +53,10 @@ export {
   AlertIdempotencyConflictError,
   AlertNotFoundError,
   AlertQuotaError,
-  AlertRevisionConflictError
+  AlertRearmUnsupportedError,
+  AlertRevisionConflictError,
+  ScreenerAlertCapacityError,
+  ScreenerAlertQuotaError
 } from "./repositoryTypes.js";
 
 const ALERT_ADVISORY_LOCK_NAMESPACE = 1_895_696_368;
@@ -65,6 +82,10 @@ export class AlertRepository {
         return mapAlertRule(existing.rows[0]);
       }
       if (parsed.definition.enabled) await assertGlobalActiveCapacity(client);
+      if (parsed.definition.kind === "screener" && parsed.definition.enabled) {
+        await assertScreenerAlertCapacity(client);
+        await assertScreenerAlertQuota(client, input.ownerUserId);
+      }
       const quota = await client.query<{ enabled: string; retained: string; total: string }>(
         `SELECT count(*) FILTER (WHERE status = 'active')::text AS enabled,
            count(*) FILTER (WHERE status <> 'archived')::text AS retained,
@@ -117,6 +138,10 @@ export class AlertRepository {
       if (parsed.definition.enabled && current.status !== "active") {
         await assertGlobalActiveCapacity(client);
         await assertEnabledQuota(client, input.ownerUserId);
+      }
+      if (parsed.definition.kind === "screener" && parsed.definition.enabled && (current.status !== "active" || current.rule_kind !== "screener")) {
+        await assertScreenerAlertCapacity(client, input.ruleId);
+        await assertScreenerAlertQuota(client, input.ownerUserId, input.ruleId);
       }
       const nextRevision = currentRevision + 1;
       const interval = evaluationIntervalSeconds(parsed.definition);
@@ -171,6 +196,7 @@ export class AlertRepository {
         throw new AlertRevisionConflictError("The alert rule revision has changed.");
       }
       const definition = parseAndHashAlertDefinition(current.definition).definition;
+      if (definition.kind === "screener") throw new AlertRearmUnsupportedError("Screener alerts repeat on change and never need rearming.");
       if (definition.kind !== "price-threshold") throw new AlertRevisionConflictError("Only price-threshold alerts support rearming in this worker.");
       if (current.status === "archived") throw new AlertRevisionConflictError("Archived alert rules cannot be rearmed.");
       if (definition.enabled && current.status !== "active") {
@@ -254,6 +280,41 @@ export class AlertRepository {
     }
   }
 
+  async claimDueScreenerAlert(input: ClaimScreenerAlertInput): Promise<ClaimedScreenerAlertRule | undefined> {
+    assertWorker(input.workerId);
+    if (!Number.isInteger(input.leaseMs) || input.leaseMs < 1_000 || input.leaseMs > SCREENER_ALERT_LEASE_MS) throw new Error("Alert lease duration is invalid.");
+    const leaseToken = randomUUID();
+    try {
+      return await this.transaction(async (client) => {
+        const claimed = await client.query<Omit<ClaimedScreenerAlertRow, "state_key" | "state" | "state_rule_revision" | "state_revision" | "state_cooldown_until">>(claimScreenerAlertSql(), [input.workerId, leaseToken, input.leaseMs]);
+        const row = claimed.rows[0];
+        if (!row) return undefined;
+        const definition = parseAndHashAlertDefinition(row.definition).definition;
+        if (definition.kind !== "screener") throw new Error("Claimed screener alert revision has a non-screener definition.");
+        // The durable scope key hashes the embedded screen, so it cannot be
+        // rebuilt inside SQL; one keyed follow-up read stays in the claim
+        // transaction and completion re-verifies the state revision fence.
+        const stateKey = screenerAlertStateKey(definition.screen, row.definition_hash);
+        const state = await client.query<{ state_key: string; state: unknown; rule_revision: string | number; state_revision: string | number; cooldown_until: Date | string | null }>(
+          "SELECT state_key, state, rule_revision, state_revision, cooldown_until FROM alert_rule_states WHERE owner_user_id = $1 AND alert_rule_id = $2 AND state_key = $3",
+          [row.owner_user_id, row.id, stateKey]
+        );
+        const stateRow = state.rows[0];
+        return mapClaimedScreenerAlert({
+          ...row,
+          state_key: stateRow?.state_key ?? null,
+          state: stateRow?.state ?? null,
+          state_rule_revision: stateRow?.rule_revision ?? null,
+          state_revision: stateRow?.state_revision ?? null,
+          state_cooldown_until: stateRow?.cooldown_until ?? null
+        });
+      });
+    } catch (error) {
+      if (isOneLeasePerOwnerConflict(error)) return undefined;
+      throw error;
+    }
+  }
+
   async recoverExpiredLeases(): Promise<RecoverExpiredLeasesResult> {
     const result = await this.pool.query(
       `UPDATE alert_rules SET lease_owner = NULL, lease_token = NULL, lease_acquired_at = NULL, lease_expires_at = NULL,
@@ -266,6 +327,19 @@ export class AlertRepository {
 
   async completePriceEvaluation(input: CompletePriceEvaluationInput): Promise<CompletePriceEvaluationResult> {
     return completePriceEvaluationTransaction(this.pool, input);
+  }
+
+  async completeScreenerEvaluation(input: CompleteScreenerEvaluationInput): Promise<CompleteScreenerEvaluationResult> {
+    return completeScreenerEvaluationTransaction(this.pool, input);
+  }
+
+  /** Screener defers share the lease fence and rescheduling of the price lane exactly. */
+  async deferScreenerEvaluation(input: DeferScreenerEvaluationInput): Promise<boolean> {
+    return this.deferPriceEvaluation(input);
+  }
+
+  async failScreenerEvaluation(input: FailScreenerEvaluationInput): Promise<boolean> {
+    return this.failEvaluation(input, "Screener alert evaluation unavailable.");
   }
 
   async deferPriceEvaluation(input: DeferPriceEvaluationInput): Promise<boolean> {
@@ -286,6 +360,10 @@ export class AlertRepository {
   }
 
   async failPriceEvaluation(input: FailPriceEvaluationInput): Promise<boolean> {
+    return this.failEvaluation(input, "Price alert evaluation unavailable.");
+  }
+
+  private async failEvaluation(input: FailPriceEvaluationInput, summary: string): Promise<boolean> {
     validateFailureInput(input);
     return this.transaction(async (client) => {
       const result = await client.query<{ evaluation_failure_count: number }>(
@@ -308,7 +386,7 @@ export class AlertRepository {
         `INSERT INTO alert_rule_events (id, owner_user_id, alert_rule_id, rule_revision, state_key, idempotency_key, event_type, to_state, evidence, notification_requested, occurred_at)
          VALUES ($1,$2,$3,$4,$5,$6,'evaluation_error','unavailable',$7::jsonb,FALSE,statement_timestamp())
          ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING`,
-        [randomUUID(), input.ownerUserId, input.ruleId, input.expectedRevision, input.stateKey, eventKey, JSON.stringify({ summary: "Price alert evaluation unavailable.", errorCode: input.errorCode })]
+        [randomUUID(), input.ownerUserId, input.ruleId, input.expectedRevision, input.stateKey, eventKey, JSON.stringify({ summary, errorCode: input.errorCode })]
       );
       return true;
     });
@@ -376,12 +454,38 @@ async function assertGlobalActiveCapacity(client: PoolClient): Promise<void> {
   }
 }
 
+async function assertScreenerAlertQuota(client: PoolClient, ownerUserId: string, excludeRuleId?: string): Promise<void> {
+  const result = await client.query<{ enabled: string }>(
+    "SELECT count(*)::text AS enabled FROM alert_rules WHERE owner_user_id = $1 AND status = 'active' AND rule_kind = 'screener' AND ($2::uuid IS NULL OR id <> $2::uuid)",
+    [ownerUserId, excludeRuleId ?? null]
+  );
+  if (Number(result.rows[0]?.enabled ?? 0) >= SCREENER_ALERT_MAX_ENABLED_PER_OWNER) {
+    throw new ScreenerAlertQuotaError(`At most ${SCREENER_ALERT_MAX_ENABLED_PER_OWNER} screener alert rules may be enabled per owner.`);
+  }
+}
+
+/** Counted under the same advisory capacity lock as the shared global cap. */
+async function assertScreenerAlertCapacity(client: PoolClient, excludeRuleId?: string): Promise<void> {
+  await client.query("SELECT pg_advisory_xact_lock($1::integer)", [ALERT_GLOBAL_CAPACITY_LOCK]);
+  const result = await client.query<{ active: string }>(
+    "SELECT count(*)::text AS active FROM alert_rules WHERE status = 'active' AND rule_kind = 'screener' AND ($1::uuid IS NULL OR id <> $1::uuid)",
+    [excludeRuleId ?? null]
+  );
+  if (Number(result.rows[0]?.active ?? 0) >= SCREENER_ALERT_MAX_ACTIVE_GLOBAL) {
+    throw new ScreenerAlertCapacityError(`The R5.3a beta supports at most ${SCREENER_ALERT_MAX_ACTIVE_GLOBAL} globally active screener alert rules.`);
+  }
+}
+
 function evaluationIntervalSeconds(definition: AlertRuleDocumentV1, override?: number): number {
   if (override !== undefined && (!Number.isInteger(override) || override < 60 || override > 86_400)) {
     throw new Error("Alert evaluation interval is invalid.");
   }
   if (definition.kind === "price-threshold") {
     return Math.max(60, Math.min(86_400, Math.floor(timeframeMs[definition.timeframe] / 1_000)));
+  }
+  if (definition.kind === "screener") {
+    // Whole-universe scans reuse the price timeframe cadence with a 5m floor.
+    return Math.max(300, Math.min(86_400, Math.floor(timeframeMs[definition.screen.timeframe] / 1_000)));
   }
   return override ?? 60;
 }
@@ -462,4 +566,32 @@ function claimPriceAlertSql(): string {
       AND s.state_key = concat('market:', revision.definition->>'exchange', ':', revision.definition->>'marketType',
         ':', revision.definition->>'priceType', ':', revision.definition->>'symbol', ':', revision.definition->>'timeframe')
     LIMIT 1) state ON TRUE`;
+}
+
+function claimScreenerAlertSql(): string {
+  return `WITH owner_heads AS MATERIALIZED (
+    SELECT DISTINCT ON (r.owner_user_id) r.id, r.owner_user_id, r.next_evaluation_at, owner_user.authorization_revision
+    FROM alert_rules r INNER JOIN users owner_user ON owner_user.id = r.owner_user_id
+      AND owner_user.status = 'active' AND owner_user.must_change_password = FALSE
+    WHERE r.status = 'active' AND r.rule_kind = 'screener' AND r.lease_owner IS NULL
+      AND r.next_evaluation_at <= clock_timestamp()
+      AND NOT EXISTS (SELECT 1 FROM alert_rules leased WHERE leased.owner_user_id = r.owner_user_id AND leased.lease_owner IS NOT NULL)
+    ORDER BY r.owner_user_id, r.next_evaluation_at, r.id
+  ), candidate AS MATERIALIZED (
+    SELECT r.id, r.owner_user_id, head.authorization_revision FROM alert_rules r INNER JOIN owner_heads head ON head.id = r.id
+    ORDER BY head.next_evaluation_at, head.owner_user_id, head.id FOR UPDATE OF r SKIP LOCKED LIMIT 1
+  ), claimed AS (
+    UPDATE alert_rules r SET authorization_revision = candidate.authorization_revision,
+      lease_generation = r.lease_generation + 1, lease_owner = $1, lease_token = $2,
+      lease_acquired_at = clock_timestamp(), lease_expires_at = clock_timestamp() + ($3 * interval '1 millisecond'),
+      updated_at = clock_timestamp() FROM candidate WHERE r.id = candidate.id AND r.owner_user_id = candidate.owner_user_id
+    RETURNING r.*
+  )
+  SELECT r.id, r.owner_user_id, r.client_id, r.status, r.current_revision, r.authorization_revision,
+    r.evaluation_interval_seconds, r.next_evaluation_at, r.evaluation_failure_count, r.last_evaluated_at,
+    r.last_success_at, r.last_error_code, r.last_error_at, r.created_at, r.updated_at, r.archived_at,
+    r.rule_kind, r.lease_owner, r.lease_token, r.lease_generation, r.lease_expires_at,
+    revision.definition, revision.definition_hash, revision.created_at AS revision_created_at
+  FROM claimed r INNER JOIN alert_rule_revisions revision ON revision.owner_user_id = r.owner_user_id
+    AND revision.alert_rule_id = r.id AND revision.revision = r.current_revision`;
 }

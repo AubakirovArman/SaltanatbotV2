@@ -9,13 +9,20 @@
 
 .tech-screener-run-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
 
 .tech-screener-submit,
-.tech-screener-cancel {
+.tech-screener-cancel,
+.tech-screener-create-alert {
   justify-content: center;
+}
+
+.tech-screener-alert-created {
+  border-color: color-mix(in srgb, var(--up) 55%, var(--line));
+  color: var(--up);
 }
 
 .tech-screener-filters {

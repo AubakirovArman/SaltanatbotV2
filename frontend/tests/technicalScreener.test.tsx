@@ -119,6 +119,83 @@ describe("technical screener workspace", () => {
     expect(container.querySelector(".tech-screener-table")).toBeNull();
   });
 
+  it("promotes the current screen to a server alert with the exact rule envelope", async () => {
+    const creates: Array<{ body: Record<string, any>; headers: Headers }> = [];
+    const fetchMock = vi.fn((path: string, init?: RequestInit) => {
+      if (path === "/api/screener/presets" && (init?.method ?? "GET") === "GET") return Promise.resolve(json(presetList()));
+      if (path === "/api/alerts" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as Record<string, any>;
+        creates.push({ body, headers: new Headers(init.headers) });
+        return Promise.resolve(json({ rule: alertRuleRecord(body) }, 201));
+      }
+      return Promise.resolve(json({ code: "unexpected_mock_request", error: `${init?.method ?? "GET"} ${path}` }, 501));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const container = await renderScreener(vi.fn());
+
+    await click(required(container.querySelector<HTMLButtonElement>('[aria-label="Create alert from this screen"]')));
+    await act(async () => flushAsync());
+
+    expect(creates).toHaveLength(1);
+    const { body, headers } = creates[0]!;
+    expect(Object.keys(body).sort()).toEqual(["clientId", "definition"]);
+    expect(body.clientId).toMatch(/^screen-alert-/);
+    // The promotion embeds the screen definition by value, so the alert keeps
+    // this exact revision even if the form changes later.
+    expect(body.definition).toEqual({
+      schemaVersion: "alert-rule-v1",
+      kind: "screener",
+      name: "Momentum screen",
+      enabled: true,
+      cooldownSeconds: 3600,
+      deliveryChannels: ["in-app"],
+      screen: {
+        schemaVersion: "screener-definition-v1",
+        kind: "technical",
+        name: "Momentum screen",
+        exchange: "binance",
+        marketType: "spot",
+        priceType: "last",
+        timeframe: "1h",
+        universeLimit: 100,
+        sort: { key: "quoteVolume24h", direction: "desc" },
+        filters: [{ kind: "quote-volume-24h", min: "1000000" }],
+        researchOnly: true,
+        executionPermission: false
+      },
+      repeat: "on-change",
+      researchOnly: true,
+      executionPermission: false
+    });
+    expect(headers.get("X-SBV2-Expected-User")).toBe(OWNER);
+    expect(headers.get("X-CSRF-Token")).toBe("tech-csrf");
+    expect(headers.get("Content-Type")).toBe("application/json");
+
+    const status = required(container.querySelector(".tech-screener-alert-created"));
+    expect(status.getAttribute("role")).toBe("status");
+    expect(status.textContent).toContain("Server alert “Momentum screen” created");
+    expect(fetchMock.mock.calls.some(([path]) => path === "/api/jobs")).toBe(false);
+  });
+
+  it("surfaces the screen-alert quota as an actionable error without pretending success", async () => {
+    const fetchMock = vi.fn((path: string, init?: RequestInit) => {
+      if (path === "/api/screener/presets" && (init?.method ?? "GET") === "GET") return Promise.resolve(json(presetList()));
+      if (path === "/api/alerts" && init?.method === "POST") {
+        return Promise.resolve(json({ code: "screener_alert_quota_exceeded", error: "Too many enabled screener alerts." }, 429));
+      }
+      return Promise.resolve(json({ code: "unexpected_mock_request", error: `${init?.method ?? "GET"} ${path}` }, 501));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const container = await renderScreener(vi.fn());
+
+    await click(required(container.querySelector<HTMLButtonElement>('[aria-label="Create alert from this screen"]')));
+    await act(async () => flushAsync());
+
+    const alert = required(container.querySelector('[role="alert"]'));
+    expect(alert.textContent).toContain("Screen alert limit reached. Disable or archive one first.");
+    expect(container.querySelector(".tech-screener-alert-created")).toBeNull();
+  });
+
   it("reports a network failure as service unavailability, not as an empty result", async () => {
     vi.stubGlobal(
       "fetch",
@@ -208,6 +285,21 @@ function runResult(overrides: Partial<ScreenerRunResultV1> = {}): ScreenerRunRes
     researchOnly: true,
     executionPermission: false,
     ...overrides
+  };
+}
+
+function alertRuleRecord(body: Record<string, any>) {
+  return {
+    schemaVersion: "alert-rule-record-v1" as const,
+    id: "00000000-0000-4000-8000-000000000091",
+    clientId: body.clientId as string,
+    revision: 1,
+    definition: body.definition as Record<string, unknown>,
+    lifecycleState: "armed" as const,
+    createdAt: "2026-07-17T08:00:00.000Z",
+    updatedAt: "2026-07-17T08:00:00.000Z",
+    researchOnly: true as const,
+    executionPermission: false as const
   };
 }
 

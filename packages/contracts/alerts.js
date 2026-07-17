@@ -1,3 +1,4 @@
+import { parseScreenerDefinitionV1 } from "./screener.js";
 /** Public, notification-only alert contracts shared by the API and browser. */
 export const ALERT_RULE_SCHEMA_V1 = "alert-rule-v1";
 export const ALERT_EVENT_SCHEMA_V1 = "alert-event-v1";
@@ -46,6 +47,8 @@ export function parseAlertRuleDocumentV1(value) {
         return parseBasisSpreadAlertDefinitionV1(input);
     if (kind === "research-route")
         return parseResearchRouteAlertDefinitionV1(input);
+    if (kind === "screener")
+        return parseScreenerAlertDefinitionV1(input);
     throw new Error("alert rule.kind is unsupported");
 }
 export function parsePriceThresholdAlertDefinitionV1(value) {
@@ -125,6 +128,17 @@ export function parseResearchRouteAlertDefinitionV1(value) {
         result.maximumRiskCapitalValuation = boundedDecimal(input.maximumRiskCapitalValuation, "research route alert.maximumRiskCapitalValuation", Number.MIN_VALUE, 1e15);
     }
     return result;
+}
+export function parseScreenerAlertDefinitionV1(value) {
+    const input = object(value, "screener alert");
+    exact(input, [...RULE_COMMON_KEYS, "screen", "repeat"], [], "screener alert");
+    const common = parseRuleCommon(input, "screener", "screener alert");
+    return {
+        ...common,
+        kind: "screener",
+        screen: parseScreenerDefinitionV1(input.screen),
+        repeat: literal(input.repeat, "on-change", "screener alert.repeat"),
+    };
 }
 export function parseAlertEventV1(value) {
     const input = object(value, "alert event");
@@ -338,7 +352,7 @@ function deliveryChannel(value, label) {
     return oneOf(value, ["in-app", "telegram"], label);
 }
 function ruleKind(value, label) {
-    return oneOf(value, ["price-threshold", "basis-spread", "research-route"], label);
+    return oneOf(value, ["price-threshold", "basis-spread", "research-route", "screener"], label);
 }
 function timestamp(value, label) {
     if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value))

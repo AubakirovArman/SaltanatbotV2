@@ -30,6 +30,74 @@ R5.1 never reads an exchange credential. The evaluator uses direct public REST
 candle endpoints and rejects synthetic, cached, private or unsigned substitute
 evidence.
 
+## Screener alerts (R5.3a)
+
+R5.3a adds a second server-evaluated rule kind, `screener`, which promotes a
+[technical screen](./SCREENER.md) into a durable on-change alert. The
+increment is code-complete in this tree but **not yet accepted**; acceptance
+status is tracked in [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md).
+Like every alert, it is notification-only research: `researchOnly: true`,
+`executionPermission: false`, and it cannot place an order.
+
+A screener rule embeds a full `screener-definition-v1` document by value. The
+embedded screen is immutable with the rule revision; editing the rule creates
+a new revision with its own definition. There is no new PostgreSQL schema: the
+rule, its durable state and its receipts fit the existing schema-14 alert
+tables.
+
+### On-change semantics
+
+The worker evaluates the embedded screen on closed candles only and compares
+the full matched symbol set (before result truncation) with the durable
+previous set:
+
+- the first evaluation initializes the baseline without triggering;
+- a trigger requires the effective matched set to differ from the previous
+  set;
+- entering and leaving symbols are listed in the event summary, capped at 12
+  symbols in text;
+- the notification envelope title is `Screen match changed: <name>`; the body
+  lists entered/left symbols and the matched count;
+- after a trigger the rule **stays active** and keeps evaluating; no rearm is
+  needed. `POST /api/alerts/:id/rearm` stays price-only and answers `409
+  alert_rearm_unsupported` for a screener rule.
+
+Unavailable symbols are **unknown, not departed**: a previous member that is
+unavailable this run stays a member, and a previous non-member stays a
+non-member. If more than 30% of the requested universe is unavailable, the
+evaluation defers without advancing state (`screener-availability-floor`).
+
+`cooldownSeconds` (0–86 400; the browser promotion default is 3600) sets
+`cooldown_until` at each trigger. During cooldown an observed change defers
+without advancing state, so the change still fires after the cooldown passes
+instead of being silently swallowed.
+
+### Cadence, worker lane and delivery
+
+Evaluation cadence derives from the screen's timeframe (`5m` → 300 s, `15m` →
+900 s, `1h` → 3600 s, `4h` → 14 400 s, `1d` → 86 400 s), clamped to
+300–86 400 seconds. The research worker admits at most one screener-alert
+evaluation per sweep under a 300-second lease with a 90-second
+market-evidence budget, and reports a dedicated screener-alert lane metrics
+block. Completion writes the immutable receipt (producer
+`screener-alert-worker`), the event, the outbox row and the pre-delivered
+in-app row in one transaction; the transition key deduplicates replays.
+
+Delivery is `in-app` only until R5.3b. A screener rule that requests
+`telegram` is rejected with a clear `400`, exactly like any other unsupported
+delivery channel.
+
+### Screener-alert quotas
+
+| Boundary | Limit |
+| --- | ---: |
+| Enabled screener rules per owner | 5 |
+| Globally active screener rules | 40 |
+
+Screener rules also count toward the shared R5.1 caps (100/200/480); both
+limits apply. Exceeding them maps to `429 screener_alert_quota_exceeded` and
+`429 screener_alert_capacity_exhausted`.
+
 ## HTTP-only deployment boundary
 
 The current pre-HTTPS release deliberately does not configure TLS. Login
@@ -275,6 +343,6 @@ The release gate includes:
 - exact-commit GitHub CI and backup/restore/rollback evidence.
 
 R5.2.1 adds the separate [on-demand technical screener](./SCREENER.md); it
-runs screens, not alerts, and the reserved rule kind `screener` remains a
-placeholder until screen-to-alert promotion ships. R5.3 will add the separate
-notification worker and Telegram binding/revoke/delivery flow.
+runs screens on demand, and R5.3a promotes a screen into the `screener` rule
+kind described above. R5.3 will add the separate notification worker and
+Telegram binding/revoke/delivery flow.

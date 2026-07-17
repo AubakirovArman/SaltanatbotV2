@@ -1,4 +1,5 @@
 import type { DataExchange, DataMarketType, Timeframe } from "./index.js";
+import { parseScreenerDefinitionV1, type ScreenerDefinitionV1 } from "./screener.js";
 
 /** Public, notification-only alert contracts shared by the API and browser. */
 
@@ -23,7 +24,7 @@ export const RESEARCH_ALERT_FAMILIES_V1 = [
 ] as const;
 
 export type ResearchAlertFamilyV1 = (typeof RESEARCH_ALERT_FAMILIES_V1)[number];
-export type AlertRuleKindV1 = "price-threshold" | "basis-spread" | "research-route";
+export type AlertRuleKindV1 = "price-threshold" | "basis-spread" | "research-route" | "screener";
 export type AlertDeliveryChannelV1 = "in-app" | "telegram";
 export type AlertDecimalV1 = string;
 /** Calendar-month candles are excluded until the evaluator has an unambiguous month boundary. */
@@ -81,10 +82,18 @@ export interface ResearchRouteAlertDefinitionV1 extends AlertRuleCommonV1 {
   crossing: "ineligible-to-eligible";
 }
 
+/** Embeds the screen definition by value so the rule revision stays immutable. */
+export interface ScreenerAlertDefinitionV1 extends AlertRuleCommonV1 {
+  kind: "screener";
+  screen: ScreenerDefinitionV1;
+  repeat: "on-change";
+}
+
 export type AlertRuleDocumentV1 =
   | PriceThresholdAlertDefinitionV1
   | BasisSpreadAlertDefinitionV1
-  | ResearchRouteAlertDefinitionV1;
+  | ResearchRouteAlertDefinitionV1
+  | ScreenerAlertDefinitionV1;
 
 export type AlertEventTypeV1 =
   | "armed"
@@ -184,6 +193,7 @@ export function parseAlertRuleDocumentV1(value: unknown): AlertRuleDocumentV1 {
   if (kind === "price-threshold") return parsePriceThresholdAlertDefinitionV1(input);
   if (kind === "basis-spread") return parseBasisSpreadAlertDefinitionV1(input);
   if (kind === "research-route") return parseResearchRouteAlertDefinitionV1(input);
+  if (kind === "screener") return parseScreenerAlertDefinitionV1(input);
   throw new Error("alert rule.kind is unsupported");
 }
 
@@ -277,6 +287,18 @@ export function parseResearchRouteAlertDefinitionV1(value: unknown): ResearchRou
     result.maximumRiskCapitalValuation = boundedDecimal(input.maximumRiskCapitalValuation, "research route alert.maximumRiskCapitalValuation", Number.MIN_VALUE, 1e15);
   }
   return result;
+}
+
+export function parseScreenerAlertDefinitionV1(value: unknown): ScreenerAlertDefinitionV1 {
+  const input = object(value, "screener alert");
+  exact(input, [...RULE_COMMON_KEYS, "screen", "repeat"], [], "screener alert");
+  const common = parseRuleCommon(input, "screener", "screener alert");
+  return {
+    ...common,
+    kind: "screener",
+    screen: parseScreenerDefinitionV1(input.screen),
+    repeat: literal(input.repeat, "on-change", "screener alert.repeat"),
+  };
 }
 
 export function parseAlertEventV1(value: unknown): AlertEventV1 {
@@ -501,7 +523,7 @@ function deliveryChannel(value: unknown, label: string): AlertDeliveryChannelV1 
 }
 
 function ruleKind(value: unknown, label: string): AlertRuleKindV1 {
-  return oneOf(value, ["price-threshold", "basis-spread", "research-route"] as const, label);
+  return oneOf(value, ["price-threshold", "basis-spread", "research-route", "screener"] as const, label);
 }
 
 function timestamp(value: unknown, label: string): string {

@@ -96,6 +96,44 @@ and a Bybit-primary universe remain explicitly outside this increment.
 Canonical behavior is documented in
 [On-demand technical screener](./SCREENER.md).
 
+## R5.3a screener alert promotion — in progress, not accepted
+
+R5.3a promotes a saved technical screen into a durable server alert rule of
+kind `screener` with repeat-on-change semantics. The working tree contains the
+candidate implementation and its test suites, but the increment is **not
+accepted**: there is no exact-SHA CI acceptance run, no protected release
+slot, no recovery rehearsal and no cutover evidence yet. Production remains on
+the R5.2.1 slot `r5b-schema14-20be5b1` (PostgreSQL schema 14); R5.3a adds no
+migration.
+
+- [x] Widen the shared alert contracts with the `screener` rule kind and
+  `ScreenerAlertDefinitionV1`, embedding a full `screener-definition-v1` by
+  value with `repeat: "on-change"`.
+- [x] Add the pure transition evaluator: baseline initialization without
+  triggering, unknown carry-over for unavailable symbols, the 30% availability
+  deferral floor, cooldown deferral without state advance and deterministic
+  state/fingerprint/transition keys.
+- [x] Add the repository claim/completion lane: `screener-alert-worker`
+  receipts with duplicate-receipt replay, transition re-verification against
+  durable prior state, one-transaction event/outbox/pre-delivered in-app
+  delivery, cooldown fencing and rules that stay active after a trigger while
+  rearm stays price-only (`409 alert_rearm_unsupported`).
+- [x] Admit at most one screener-alert evaluation per research-worker sweep
+  under a 300-second lease and a 90-second market-evidence budget with a
+  dedicated lane metrics block.
+- [x] Enforce screener-kind quotas (5 enabled per owner, 40 globally active,
+  inside the shared caps) with typed `429` errors, and keep delivery in-app
+  only until R5.3b.
+- [x] Deliver the browser "Create alert from this screen" promotion, screener
+  rule listing/toggle/archive, envelope-titled toasts and EN/RU/KK strings.
+- [ ] Pass exact-commit GitHub CI, create a protected release slot, run the
+  backup/restore rehearsal, cut production over and record acceptance
+  evidence per [RELEASING.md](./RELEASING.md).
+
+Candidate behavior is documented in [Screener alerts (R5.3a)](./ALERTS.md)
+and the promotion paragraph in [SCREENER.md](./SCREENER.md); those sections
+describe this working tree, not the deployed R5.2.1 production slot.
+
 ## Delivered slices (not full roadmap completion)
 
 ### Product workspaces, strategy research and market evidence — 2026-07-15

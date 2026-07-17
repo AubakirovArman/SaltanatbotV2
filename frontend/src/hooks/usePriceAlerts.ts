@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AlertEventV1, AlertRuleRecordV1, NotificationOutboxItemV1, PriceThresholdAlertDefinitionV1 } from "@saltanatbotv2/contracts";
 import { AlertApiError, archiveAlertRule, createAlertRule, listAlertEvents, listAlertOutbox, listAlertRules, rearmAlertRule, updateAlertRule } from "../alerts/client";
 import { advanceAlertEventWatermark, alertEventWatermarkStorageKey, estimateServerSessionStartFromElapsed, legacyEventWindowHasOverlap, loadAlertEventWatermark, storeAlertEventWatermark, type AlertEventWatermark } from "../alerts/eventWatermark";
-import { ALERT_EVENT_PAGE_LIMIT, alertEventsToPublish, drainAlertEventPages, mergeAlertEventHistory } from "../alerts/eventPolling";
+import { ALERT_EVENT_PAGE_LIMIT, alertEventsToPublish, drainAlertEventPages, mergeAlertEventHistory, publishServerEventToasts } from "../alerts/eventPolling";
 import { isOwnerStorageMessage, prepareLocalSnapshot, sameLocalSnapshot, validateAlertThresholdPrecision } from "../alerts/localSnapshot";
 import { isServerPriceAlertCandidate, localPriceAlertStatus, mergePriceAlertProjections, priceAlertDefinition, reconcilePriceAlerts, stablePriceAlertClientId } from "../alerts/priceAlertMigration";
 import { useAuth } from "../auth/AuthRoot";
@@ -25,6 +25,10 @@ export interface ServerAlertToast {
   id: string;
   source: "server";
   symbol?: string;
+  /** Delivery-envelope headline; present for rule kinds without a single symbol. */
+  title?: string;
+  /** Delivery-envelope body rendered instead of the raw event summary. */
+  body?: string;
   summary: string;
   occurredAt: string;
 }
@@ -240,7 +244,7 @@ export function usePriceAlerts(decimalsFor: (symbol: string) => number, legacyRo
         const unseenEvents = cursorResetBaseline ? [] : alertEventsToPublish(eventPage.events, watermarkAtStart, advancedEvents.unseen, forwardCursorResponse);
         // At-least-once delivery: surface the event before advancing the durable
         // cursor. A crash may repeat a toast, but cannot permanently suppress it.
-        publishServerEventToasts(unseenEvents, listed.rules, setToasts);
+        publishServerEventToasts(unseenEvents, listed.rules, outboxList.items, setToasts);
         if (!storeAlertEventWatermark(ownerId, advancedEvents.watermark)) {
           throw new Error("Browser storage is unavailable; the alert event delivery watermark is not durable.");
         }
@@ -314,6 +318,15 @@ export function usePriceAlerts(decimalsFor: (symbol: string) => number, legacyRo
       .map((alert) => ({ ...alert, source: "browser" as const, syncState: localPriceAlertStatus(alert, databaseAuth, currentServerState.status === "error") })),
     [currentServerState.status, databaseAuth, localAlerts]
   );
+
+  // Screener-kind rules stay server-owned records: they are never projected
+  // into PriceAlert rows, so they can never open a price-quote subscription.
+  const screenerRules = useMemo(
+    () => currentServerState.rules.filter((rule) => rule.definition.kind === "screener" && rule.lifecycleState !== "archived"),
+    [currentServerState.rules]
+  );
+  const screenerRulesRef = useRef(screenerRules);
+  screenerRulesRef.current = screenerRules;
 
   const updateServerRule = useCallback((rule: AlertRuleRecordV1) => {
     if (ownerRef.current !== ownerId) return;
@@ -459,6 +472,30 @@ export function usePriceAlerts(decimalsFor: (symbol: string) => number, legacyRo
     [databaseAuth, ownerId, setLocalAlerts, updateServerRule]
   );
 
+  const setScreenerAlertEnabled = useCallback(
+    async (ruleId: string, enabled: boolean) => {
+      if (!databaseAuth || !ownerId) throw new Error("Alert owner is unavailable.");
+      const rule = screenerRulesRef.current.find((candidate) => candidate.id === ruleId);
+      const definition = rule?.definition;
+      if (!rule || definition?.kind !== "screener") throw new Error("The screen alert is unavailable.");
+      if (definition.enabled === enabled) return;
+      const updated = await updateAlertRule(ownerId, rule.id, { expectedRevision: rule.revision, definition: { ...definition, enabled } });
+      if (ownerRef.current === ownerId) updateServerRule(updated);
+    },
+    [databaseAuth, ownerId, updateServerRule]
+  );
+
+  const archiveScreenerAlert = useCallback(
+    async (ruleId: string) => {
+      if (!databaseAuth || !ownerId) throw new Error("Alert owner is unavailable.");
+      const rule = screenerRulesRef.current.find((candidate) => candidate.id === ruleId);
+      if (!rule) return;
+      const archived = await archiveAlertRule(ownerId, rule.id, rule.revision);
+      if (ownerRef.current === ownerId) updateServerRule(archived);
+    },
+    [databaseAuth, ownerId, updateServerRule]
+  );
+
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
@@ -522,29 +559,7 @@ export function usePriceAlerts(decimalsFor: (symbol: string) => number, legacyRo
     refresh
   };
 
-  return { alerts, browserAlerts, toasts, activeCount, sync, addAlert, updateAlert, removeAlert, resetAlert, dismissToast, evaluatePrices };
-}
-
-function publishServerEventToasts(events: AlertEventV1[], rules: AlertRuleRecordV1[], publish: (action: (current: AlertToast[]) => AlertToast[]) => void): void {
-  const unseen = events.filter((event) => event.eventType === "triggered");
-  if (unseen.length === 0) return;
-  const symbols = new Map<string, string>();
-  for (const rule of rules) {
-    if (rule.definition.kind === "price-threshold") symbols.set(rule.id, rule.definition.symbol);
-  }
-  publish((current) => {
-    const visible = new Set(current.map(({ id }) => id));
-    return [
-      ...current,
-      ...unseen.filter((event) => !visible.has(`server:${event.id}`)).map((event): ServerAlertToast => ({
-      id: `server:${event.id}`,
-      source: "server",
-      ...(symbols.get(event.ruleId) ? { symbol: symbols.get(event.ruleId) } : {}),
-      summary: event.summary,
-      occurredAt: event.occurredAt
-      }))
-    ];
-  });
+  return { alerts, browserAlerts, screenerRules, toasts, activeCount, sync, addAlert, updateAlert, removeAlert, resetAlert, setScreenerAlertEnabled, archiveScreenerAlert, dismissToast, evaluatePrices };
 }
 
 function compareServerRuleFreshness(left: AlertRuleRecordV1, right: AlertRuleRecordV1): number {

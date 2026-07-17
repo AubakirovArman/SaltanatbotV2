@@ -43,6 +43,10 @@ describe("technical screener localization", () => {
     expect(screenerText("ru", "truncated", { limit: "100" })).toBe("Показаны только первые 100 совпадений. Сузьте фильтры, чтобы увидеть все.");
     expect(screenerText("ru", "filterLimit", { limit: "12" })).toBe("Скрин принимает до 12 фильтров.");
     expect(screenerText("ru", "risk")).toContain("не размещает ордера");
+    expect(screenerText("ru", "createAlert")).toBe("Создать алерт из этого скрина");
+    expect(screenerText("ru", "alertCreated", { name: "Momentum" })).toContain("«Momentum» создан");
+    expect(screenerText("ru", "alertQuotaExceeded")).toContain("лимит алертов скринера");
+    expect(screenerText("ru", "alertCapacityExhausted")).toContain("не принимает новые алерты");
   });
 
   it("provides typed Kazakh screener vocabulary with interpolation", () => {
@@ -54,6 +58,10 @@ describe("technical screener localization", () => {
     expect(screenerText("kk", "truncated", { limit: "100" })).toBe("Тек алғашқы 100 сәйкестік көрсетілді. Барлығын көру үшін сүзгілерді тарылтыңыз.");
     expect(screenerText("kk", "filterLimit", { limit: "12" })).toBe("Скрин ең көбі 12 сүзгі қабылдайды.");
     expect(screenerText("kk", "risk")).toContain("пайда уәде етпейді");
+    expect(screenerText("kk", "createAlert")).toBe("Осы скриннен ескерту жасау");
+    expect(screenerText("kk", "alertCreated", { name: "Momentum" })).toContain("«Momentum» серверлік ескертуі жасалды");
+    expect(screenerText("kk", "alertQuotaExceeded")).toContain("шегіне жеттіңіз");
+    expect(screenerText("kk", "alertCapacityExhausted")).toContain("қабылдамайды");
   });
 
   it("renders Russian filter rows, results and the scanner mode label with aria semantics", () => {

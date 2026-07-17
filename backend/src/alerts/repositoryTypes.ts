@@ -1,5 +1,6 @@
-import type { AlertEventV1, AlertRuleDocumentV1, NotificationOutboxItemV1, PriceThresholdAlertDefinitionV1 } from "@saltanatbotv2/contracts";
+import type { AlertEventV1, AlertRuleDocumentV1, NotificationOutboxItemV1, PriceThresholdAlertDefinitionV1, ScreenerAlertDefinitionV1 } from "@saltanatbotv2/contracts";
 import type { PriceThresholdAlertRuntimeStateV1, PriceThresholdObservationV1, PriceThresholdTriggeredTransitionInputV1 } from "./priceEvaluator.js";
+import type { ScreenerAlertObservationV1, ScreenerAlertRuntimeStateV1, ScreenerAlertTriggeredTransitionInputV1 } from "./screenerAlertEvaluator.js";
 
 export const MAX_ENABLED_ALERT_RULES_PER_OWNER = 100;
 export const MAX_RETAINED_ALERT_RULES_PER_OWNER = 200;
@@ -11,6 +12,12 @@ export const MAX_TOTAL_ALERT_RULE_HISTORY_PER_OWNER = 400;
 // conservative single-provider scheduler admission ceiling. R11 must soak and
 // explicitly raise this beta bound rather than silently overcommitting it.
 export const MAX_ACTIVE_ALERT_RULES_GLOBAL = 480;
+// Screener-kind rules run whole-universe scans, so their beta caps sit far
+// below and strictly inside the shared per-owner and global alert budgets.
+export const SCREENER_ALERT_MAX_ENABLED_PER_OWNER = 5;
+export const SCREENER_ALERT_MAX_ACTIVE_GLOBAL = 40;
+/** One full screener evaluation (market data + engine) must finish inside this lease. */
+export const SCREENER_ALERT_LEASE_MS = 300_000;
 // The retained-rule quota and the management-list ceiling are intentionally
 // identical so every retained rule remains manageable without hidden rows.
 export const ALERT_REPOSITORY_DEFAULT_LIST_LIMIT = MAX_RETAINED_ALERT_RULES_PER_OWNER;
@@ -84,6 +91,42 @@ export interface ClaimPriceAlertInput {
   leaseMs: number;
 }
 
+export interface ClaimScreenerAlertInput extends ClaimPriceAlertInput {}
+
+export interface ClaimedScreenerAlertRule extends AlertRuleRecord {
+  definition: ScreenerAlertDefinitionV1;
+  workerId: string;
+  leaseToken: string;
+  leaseGeneration: number;
+  leaseExpiresAt: string;
+  stateKey: string;
+  /** Exact durable state row revision observed while the lease was claimed; zero means no row exists. */
+  stateRevision: number;
+  state: ScreenerAlertRuntimeStateV1;
+  /** Millisecond epoch until which triggering is suppressed; absent when no cooldown is pending. */
+  cooldownUntil?: number;
+}
+
+export interface CompleteScreenerEvaluationInput {
+  ownerUserId: string;
+  ruleId: string;
+  expectedRevision: number;
+  authorizationRevision: number;
+  workerId: string;
+  leaseToken: string;
+  leaseGeneration: number;
+  expectedStateRevision: number;
+  observation: ScreenerAlertObservationV1;
+  nextState: ScreenerAlertRuntimeStateV1;
+  transition?: ScreenerAlertTriggeredTransitionInputV1;
+}
+
+export interface CompleteScreenerEvaluationResult {
+  outcome: "applied" | "duplicate";
+  event?: AlertEventV1;
+  outbox?: NotificationOutboxItemV1;
+}
+
 export interface CompletePriceEvaluationInput {
   ownerUserId: string;
   ruleId: string;
@@ -128,6 +171,10 @@ export interface DeferPriceEvaluationInput {
   retryAfterSeconds?: number;
 }
 
+export interface DeferScreenerEvaluationInput extends DeferPriceEvaluationInput {}
+
+export interface FailScreenerEvaluationInput extends FailPriceEvaluationInput {}
+
 export interface RecoverExpiredLeasesResult {
   recovered: number;
 }
@@ -137,6 +184,12 @@ export class AlertNotFoundError extends Error {}
 export class AlertQuotaError extends Error {}
 
 export class AlertCapacityError extends Error {}
+
+export class ScreenerAlertQuotaError extends Error {}
+
+export class ScreenerAlertCapacityError extends Error {}
+
+export class AlertRearmUnsupportedError extends Error {}
 
 export class AlertIdempotencyConflictError extends Error {}
 

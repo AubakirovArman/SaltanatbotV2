@@ -1,4 +1,5 @@
 import type { DataExchange, DataMarketType, Timeframe } from "./index.js";
+import { type ScreenerDefinitionV1 } from "./screener.js";
 /** Public, notification-only alert contracts shared by the API and browser. */
 export declare const ALERT_RULE_SCHEMA_V1: "alert-rule-v1";
 export declare const ALERT_EVENT_SCHEMA_V1: "alert-event-v1";
@@ -6,7 +7,7 @@ export declare const NOTIFICATION_ENVELOPE_SCHEMA_V1: "notification-envelope-v1"
 export declare const NOTIFICATION_OUTBOX_SCHEMA_V1: "notification-outbox-v1";
 export declare const RESEARCH_ALERT_FAMILIES_V1: readonly ["basis", "cross-venue-spot-spot", "reverse-cash-and-carry", "perpetual-perpetual-funding", "spot-dated-future", "calendar-spread", "perpetual-future", "triangular", "native-spread", "options-parity", "n-leg", "cex-dex"];
 export type ResearchAlertFamilyV1 = (typeof RESEARCH_ALERT_FAMILIES_V1)[number];
-export type AlertRuleKindV1 = "price-threshold" | "basis-spread" | "research-route";
+export type AlertRuleKindV1 = "price-threshold" | "basis-spread" | "research-route" | "screener";
 export type AlertDeliveryChannelV1 = "in-app" | "telegram";
 export type AlertDecimalV1 = string;
 /** Calendar-month candles are excluded until the evaluator has an unambiguous month boundary. */
@@ -59,7 +60,13 @@ export interface ResearchRouteAlertDefinitionV1 extends AlertRuleCommonV1 {
     maximumIdentityAgeMs: number;
     crossing: "ineligible-to-eligible";
 }
-export type AlertRuleDocumentV1 = PriceThresholdAlertDefinitionV1 | BasisSpreadAlertDefinitionV1 | ResearchRouteAlertDefinitionV1;
+/** Embeds the screen definition by value so the rule revision stays immutable. */
+export interface ScreenerAlertDefinitionV1 extends AlertRuleCommonV1 {
+    kind: "screener";
+    screen: ScreenerDefinitionV1;
+    repeat: "on-change";
+}
+export type AlertRuleDocumentV1 = PriceThresholdAlertDefinitionV1 | BasisSpreadAlertDefinitionV1 | ResearchRouteAlertDefinitionV1 | ScreenerAlertDefinitionV1;
 export type AlertEventTypeV1 = "armed" | "rearmed" | "eligible" | "ineligible" | "triggered" | "suppressed" | "stale" | "disabled" | "error";
 export interface AlertEventV1 {
     schemaVersion: typeof ALERT_EVENT_SCHEMA_V1;
@@ -113,6 +120,7 @@ export declare function parseAlertRuleDocumentV1(value: unknown): AlertRuleDocum
 export declare function parsePriceThresholdAlertDefinitionV1(value: unknown): PriceThresholdAlertDefinitionV1;
 export declare function parseBasisSpreadAlertDefinitionV1(value: unknown): BasisSpreadAlertDefinitionV1;
 export declare function parseResearchRouteAlertDefinitionV1(value: unknown): ResearchRouteAlertDefinitionV1;
+export declare function parseScreenerAlertDefinitionV1(value: unknown): ScreenerAlertDefinitionV1;
 export declare function parseAlertEventV1(value: unknown): AlertEventV1;
 export declare function parseNotificationEnvelopeV1(value: unknown): NotificationEnvelopeV1;
 export declare function parseNotificationOutboxItemV1(value: unknown): NotificationOutboxItemV1;

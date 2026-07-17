@@ -44,9 +44,11 @@ function AlertToastCard({
       <Bell size={15} strokeWidth={1.75} aria-hidden="true" />
       <div className="alert-toast-body">
         {toast.source === "server" ? (
+          // Rule kinds without a single symbol (e.g. screener) carry the
+          // delivery-envelope title/body instead of a price sentence.
           <>
-            <strong>{toast.symbol ?? shellText(locale, "alerts")}</strong>
-            <span title={toast.summary}>{shellText(locale, "alertServerTriggered")}</span>
+            <strong>{toast.title ?? toast.symbol ?? shellText(locale, "alerts")}</strong>
+            <span title={toast.summary}>{toast.body ?? shellText(locale, "alertServerTriggered")}</span>
           </>
         ) : (
           <>

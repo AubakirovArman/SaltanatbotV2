@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { AlertRuleListV1, AlertRuleRecordV1, PriceThresholdAlertDefinitionV1 } from "@saltanatbotv2/contracts";
+import type { AlertRuleListV1, AlertRuleRecordV1, PriceThresholdAlertDefinitionV1, ScreenerAlertDefinitionV1 } from "@saltanatbotv2/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALERT_API_MAX_ERROR_MESSAGE_LENGTH, ALERT_API_MAX_RESPONSE_BYTES, ALERT_API_TIMEOUT_MS, AlertApiError, archiveAlertRule, createAlertRule, listAlertEvents, listAlertOutbox, listAlertRules, rearmAlertRule, updateAlertRule } from "../src/alerts/client";
 
@@ -59,6 +59,39 @@ describe("owner-scoped alert API client", () => {
     expect(headers.get("Content-Type")).toBe("application/json");
     expect(headers.get("X-SBV2-Expected-User")).toBe(OWNER);
     expect(headers.get("X-CSRF-Token")).toBe("alert-csrf");
+  });
+
+  it("carries screener-kind rules through create and list without price-only narrowing", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ rule: screenerRecord() }, 201))
+      .mockResolvedValueOnce(json(screenerList()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createAlertRule(OWNER, { clientId: "screen-alert-01", definition: screenerDefinition }, SIGNAL)).resolves.toEqual(screenerRecord());
+    await expect(listAlertRules(OWNER, SIGNAL)).resolves.toEqual(screenerList());
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe("/api/alerts");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      clientId: "screen-alert-01",
+      definition: screenerDefinition
+    });
+    expect(new Headers(init.headers).get("X-CSRF-Token")).toBe("alert-csrf");
+  });
+
+  it("rejects a malformed screener definition locally without issuing a request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(() => createAlertRule(OWNER, { clientId: "screen-alert-02", definition: { ...screenerDefinition, repeat: "once-until-rearmed" } as unknown as ScreenerAlertDefinitionV1 })).toThrowError(
+      expect.objectContaining({ status: 0, code: "invalid_request" })
+    );
+    expect(() => createAlertRule(OWNER, { clientId: "screen-alert-03", definition: { ...screenerDefinition, symbol: "BTCUSDT" } as unknown as ScreenerAlertDefinitionV1 })).toThrowError(
+      expect.objectContaining({ status: 0, code: "invalid_request" })
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("uses exact update, archive and rearm routes with optimistic revisions", async () => {
@@ -218,6 +251,43 @@ const definition: PriceThresholdAlertDefinitionV1 = {
   researchOnly: true,
   executionPermission: false
 };
+
+const screenerDefinition: ScreenerAlertDefinitionV1 = {
+  schemaVersion: "alert-rule-v1",
+  kind: "screener",
+  name: "Momentum screen",
+  enabled: true,
+  cooldownSeconds: 3600,
+  deliveryChannels: ["in-app"],
+  screen: {
+    schemaVersion: "screener-definition-v1",
+    kind: "technical",
+    name: "Momentum screen",
+    exchange: "binance",
+    marketType: "spot",
+    priceType: "last",
+    timeframe: "1h",
+    universeLimit: 100,
+    sort: { key: "quoteVolume24h", direction: "desc" },
+    filters: [
+      { kind: "quote-volume-24h", min: "1000000" },
+      { kind: "rsi", period: 14, condition: "below", value: "30" }
+    ],
+    researchOnly: true,
+    executionPermission: false
+  },
+  repeat: "on-change",
+  researchOnly: true,
+  executionPermission: false
+};
+
+function screenerRecord(): AlertRuleRecordV1 {
+  return record({ id: "00000000-0000-4000-8000-000000000042", clientId: "screen-alert-01", definition: screenerDefinition });
+}
+
+function screenerList(): AlertRuleListV1 {
+  return { ...list(), rules: [record(), screenerRecord()] };
+}
 
 function record(overrides: Partial<AlertRuleRecordV1> = {}): AlertRuleRecordV1 {
   return {

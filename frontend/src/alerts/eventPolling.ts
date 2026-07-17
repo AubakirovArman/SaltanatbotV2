@@ -1,4 +1,5 @@
-import type { AlertEventV1 } from "@saltanatbotv2/contracts";
+import type { AlertEventV1, AlertRuleRecordV1, NotificationOutboxItemV1 } from "@saltanatbotv2/contracts";
+import type { AlertToast, ServerAlertToast } from "../hooks/usePriceAlerts";
 import { listAlertEvents, type AlertEventList } from "./client";
 import type { AlertEventWatermark } from "./eventWatermark";
 
@@ -50,4 +51,36 @@ export function compareAlertEventsAscending(left: AlertEventV1, right: AlertEven
 /** Forward-cursor rows are new by owner sequence even when producer timestamps move backwards. */
 export function alertEventsToPublish(events: AlertEventV1[], watermark: AlertEventWatermark | undefined, legacyUnseen: AlertEventV1[], forwardCursorResponse = true): AlertEventV1[] {
   return forwardCursorResponse && watermark?.cursor ? events.slice().sort(compareAlertEventsAscending) : legacyUnseen;
+}
+
+export function publishServerEventToasts(events: AlertEventV1[], rules: AlertRuleRecordV1[], outbox: NotificationOutboxItemV1[], publish: (action: (current: AlertToast[]) => AlertToast[]) => void): void {
+  const unseen = events.filter((event) => event.eventType === "triggered");
+  if (unseen.length === 0) return;
+  const symbols = new Map<string, string>();
+  const screenNames = new Map<string, string>();
+  for (const rule of rules) {
+    if (rule.definition.kind === "price-threshold") symbols.set(rule.id, rule.definition.symbol);
+    if (rule.definition.kind === "screener") screenNames.set(rule.id, rule.definition.name);
+  }
+  const envelopes = new Map(outbox.map((item) => [item.envelope.alertEventId, item.envelope]));
+  publish((current) => {
+    const visible = new Set(current.map(({ id }) => id));
+    return [
+      ...current,
+      ...unseen.filter((event) => !visible.has(`server:${event.id}`)).map((event): ServerAlertToast => {
+        // Screener events carry no single symbol; the delivery envelope holds
+        // their human-readable title/body. The rule name is the honest fallback.
+        const envelope = event.ruleKind === "screener" ? envelopes.get(event.id) : undefined;
+        const screenName = event.ruleKind === "screener" ? screenNames.get(event.ruleId) : undefined;
+        return {
+          id: `server:${event.id}`,
+          source: "server",
+          ...(symbols.get(event.ruleId) ? { symbol: symbols.get(event.ruleId) } : {}),
+          ...(envelope ? { title: envelope.title, body: envelope.body } : screenName ? { title: screenName } : {}),
+          summary: event.summary,
+          occurredAt: event.occurredAt
+        };
+      })
+    ];
+  });
 }

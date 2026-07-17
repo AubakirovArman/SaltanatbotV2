@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 import { createDefaultPriceAlertEvaluatorScheduler, type PriceAlertSweepResult } from "../alerts/evaluatorScheduler.js";
+import { createDefaultScreenerAlertLane, SCREENER_ALERT_EVALUATIONS_PER_SWEEP, type ScreenerAlertSweepResult } from "../alerts/screenerAlertRunner.js";
 import { AlertOperabilityRepository } from "../alerts/operability.js";
 import { AlertControlPlaneRetention } from "../alerts/retention.js";
 import { loadRuntimeConfig } from "../config/runtimeConfig.js";
@@ -60,8 +61,36 @@ const priceAlertScheduler = createDefaultPriceAlertEvaluatorScheduler(pool, {
     );
   }
 });
+let screenerAlertLaneFailureCount = 0;
+let lastScreenerAlertLaneFailureAt: string | undefined;
+let lastScreenerAlertLaneFailurePhase: string | undefined;
+let lastScreenerAlertSweep: ScreenerAlertSweepResult | undefined;
+let lastScreenerAlertSweepAt: string | undefined;
+// Second low-frequency lane: at most one screener-alert evaluation per sweep.
+const screenerAlertLane = createDefaultScreenerAlertLane(pool, {
+  workerId,
+  onSweep: (result) => {
+    lastScreenerAlertSweep = result;
+    lastScreenerAlertSweepAt = new Date().toISOString();
+  },
+  onError: (error, context) => {
+    screenerAlertLaneFailureCount = Math.min(Number.MAX_SAFE_INTEGER, screenerAlertLaneFailureCount + 1);
+    lastScreenerAlertLaneFailureAt = new Date().toISOString();
+    lastScreenerAlertLaneFailurePhase = context.phase;
+    console.error(
+      JSON.stringify({
+        event: "screener_alert_evaluator_failed",
+        workerId,
+        phase: context.phase,
+        ...(context.ruleId ? { ruleId: context.ruleId } : {}),
+        error: safeErrorMessage(error, "screener alert evaluator error")
+      })
+    );
+  }
+});
 await repository.recoverExpiredLeases();
 await priceAlertScheduler.start();
+await screenerAlertLane.start();
 await componentHeartbeat.start({
   component: "research-worker",
   generationId,
@@ -85,6 +114,7 @@ console.info(
     timeoutMs,
     taskMemoryMb: memoryMb,
     priceAlertEvaluatorLane: "ready",
+    screenerAlertEvaluatorLane: "ready",
     alertDeliveryLane: "in-app-only",
     telegramDeliveryLane: "not-available-r5.1"
   })
@@ -177,6 +207,14 @@ function triggerMetrics(): Promise<void> {
           ...(lastAlertLaneFailurePhase ? { lastFailurePhase: lastAlertLaneFailurePhase } : {}),
           ...(lastAlertSweep ? { lastSweep: lastAlertSweep } : {}),
           ...(lastAlertSweepAt ? { lastSweepAt: lastAlertSweepAt } : {}),
+          screenerAlertLane: {
+            evaluationsPerSweep: SCREENER_ALERT_EVALUATIONS_PER_SWEEP,
+            failuresSinceStart: screenerAlertLaneFailureCount,
+            ...(lastScreenerAlertLaneFailureAt ? { lastFailureAt: lastScreenerAlertLaneFailureAt } : {}),
+            ...(lastScreenerAlertLaneFailurePhase ? { lastFailurePhase: lastScreenerAlertLaneFailurePhase } : {}),
+            ...(lastScreenerAlertSweep ? { lastSweep: lastScreenerAlertSweep } : {}),
+            ...(lastScreenerAlertSweepAt ? { lastSweepAt: lastScreenerAlertSweepAt } : {})
+          },
           ...alertMetrics.value
         })
       );
@@ -423,6 +461,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     clearInterval(componentHeartbeatTimer);
     clearInterval(retentionTimer);
     priceAlertScheduler.quiesce();
+    screenerAlertLane.quiesce();
     const forcedExit = setTimeout(() => {
       console.error(
         JSON.stringify({
@@ -436,6 +475,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     const finishClaims = Promise.resolve(pollPromise);
     const finishRetention = Promise.resolve(retentionPromise);
     const finishPriceAlerts = priceAlertScheduler.drain();
+    const finishScreenerAlerts = screenerAlertLane.drain();
     void drainResearchWorkerExecutions({
       currentHeartbeat: componentHeartbeatPromise,
       markDraining: () => componentHeartbeat.mark("research-worker", generationId, "draining"),
@@ -458,7 +498,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         );
       }
     })
-      .then(() => Promise.allSettled([finishClaims, finishRetention, finishPriceAlerts]))
+      .then(() => Promise.allSettled([finishClaims, finishRetention, finishPriceAlerts, finishScreenerAlerts]))
       .then(() => Promise.allSettled([...setups]))
       .then(() =>
         closeResearchWorkerDatabase({

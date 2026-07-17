@@ -49,9 +49,23 @@ interface RankedRow {
   sortValues: Partial<Record<"quoteVolume24h" | "change24hPercent" | "lastClose" | "rsi" | "atrPercent", number>>;
 }
 
+/** Contract result plus the full pre-truncation symbol sets the alert lane consumes. */
+export interface ScreenerEngineRunV1 {
+  result: ScreenerRunResultV1;
+  /** Every matched symbol before the public row cap, ascending. */
+  matchedSymbols: string[];
+  /** Every symbol that could not be evaluated honestly this run, ascending. */
+  unavailableSymbols: string[];
+}
+
 export function evaluateScreener(input: ScreenerEngineInputV1): ScreenerRunResultV1 {
+  return runScreenerEngine(input).result;
+}
+
+export function runScreenerEngine(input: ScreenerEngineInputV1): ScreenerEngineRunV1 {
   const reasons: Record<string, number> = {};
   const ranked: RankedRow[] = [];
+  const unavailableSymbols: string[] = [];
   let evaluated = 0;
   let unavailable = 0;
   let closedBarTimeMin: number | undefined;
@@ -61,6 +75,7 @@ export function evaluateScreener(input: ScreenerEngineInputV1): ScreenerRunResul
     if (evaluation.status === "unavailable") {
       unavailable += 1;
       reasons[evaluation.reason] = (reasons[evaluation.reason] ?? 0) + 1;
+      unavailableSymbols.push(universeRow.symbol);
       continue;
     }
     evaluated += 1;
@@ -70,7 +85,7 @@ export function evaluateScreener(input: ScreenerEngineInputV1): ScreenerRunResul
   }
   ranked.sort(rowComparator(input.definition.sort));
   const rows = ranked.slice(0, SCREENER_RESULT_ROW_LIMIT_V1).map((entry) => entry.row);
-  return parseScreenerRunResultV1({
+  const result = parseScreenerRunResultV1({
     schemaVersion: SCREENER_RUN_RESULT_SCHEMA_V1,
     definitionHash: input.definitionHash,
     generatedAt: new Date(input.now).toISOString(),
@@ -89,6 +104,11 @@ export function evaluateScreener(input: ScreenerEngineInputV1): ScreenerRunResul
     researchOnly: true,
     executionPermission: false
   });
+  return {
+    result,
+    matchedSymbols: ranked.map((entry) => entry.row.symbol).sort(compareSymbols),
+    unavailableSymbols: [...unavailableSymbols].sort(compareSymbols)
+  };
 }
 
 /** toFixed(8) with trailing zeros trimmed; negative zero collapses to "0". */

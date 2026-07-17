@@ -22,9 +22,11 @@ R5.2.1 supports one screen shape:
 - bounded run history through the existing compute-job retention;
 - click-to-chart carrying symbol, timeframe and indicator context.
 
-Not in scope: scheduled or continuously re-run screens, promotion of a screener
-row into a server alert (the alert rule kind `screener` remains a reserved
-placeholder), a Bybit-primary universe and non-USDT quote assets. The
+Not in scope for R5.2.1: scheduled or continuously re-run screens, a
+Bybit-primary universe and non-USDT quote assets. Promotion of a screen into a
+server alert was also excluded here; it is delivered separately by R5.3a as
+the alert rule kind `screener` — see
+[Screener alerts (R5.3a)](./ALERTS.md). The
 definition contract accepts only `exchange: "binance"`, `marketType: "spot"`
 and `priceType: "last"` in this increment; the schema leaves room for later
 exchanges without a version break.
@@ -244,5 +246,15 @@ R5.2.1 is accepted and deployed: production runs PostgreSQL schema 14 from
 protected slot `r5b-schema14-20be5b1` (commit
 `20be5b1d2fb87df38cc298953dfe7a2f414dd831`, exact-SHA CI run `29584556266`,
 6/6 jobs). The acceptance and cutover record is
-[R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md). Alert promotion
-from screener rows and scheduled screens remain future work.
+[R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md).
+
+Screen-to-alert promotion is now delivered by R5.3a: the "Create alert from
+this screen" action turns the current valid definition into a durable server
+rule of kind `screener` that re-runs the screen at the timeframe cadence and
+raises an on-change alert event when the matched symbol set changes, with
+in-app delivery only until R5.3b. Semantics, unknown carry-over, the
+availability floor, cooldown and the 5-per-owner/40-global quotas are
+documented in [Screener alerts (R5.3a)](./ALERTS.md). R5.3a is in progress
+and not yet accepted
+([implementation status](./IMPLEMENTATION_STATUS.md)); scheduled screens and
+a Bybit-primary universe remain future work.

@@ -1,12 +1,14 @@
-import { AlertTriangle, RefreshCw, ShieldAlert, Square } from "lucide-react";
+import { AlertTriangle, BellRing, RefreshCw, ShieldAlert, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ALERT_RULE_SCHEMA_V1,
   SCREENER_RESULT_ROW_LIMIT_V1,
   SCREENER_RUN_REQUEST_SCHEMA_V1,
   SCREENER_SORT_KEYS_V1,
   SCREENER_TIMEFRAMES_V1,
   SCREENER_UNIVERSE_LIMIT_MAXIMUM_V1,
   SCREENER_UNIVERSE_LIMIT_MINIMUM_V1,
+  type ScreenerAlertDefinitionV1,
   type ScreenerDefinitionV1,
   type ScreenerRowV1,
   type ScreenerRunResultV1,
@@ -18,6 +20,7 @@ import { localeTag, type Locale } from "../i18n";
 import { screenerText, type ScreenerMessageKey } from "../i18n/screener";
 import { useAuth } from "../auth/AuthRoot";
 import type { ArbitrageChartTarget } from "../arbitrage/chartTarget";
+import { AlertApiError, createAlertRule } from "../alerts/client";
 import { runScreener, ScreenerApiError } from "./client";
 import { buildScreenerDefinition, defaultScreenerFormState, formStateFromDefinition, type ScreenerFormState } from "./definitionForm";
 import { screenerChartIndicators } from "./chartContext";
@@ -32,6 +35,10 @@ interface Props {
 }
 
 type RunState = { phase: "idle" } | { phase: "running" } | { phase: "done"; result: ScreenerRunResultV1; definition: ScreenerDefinitionV1 } | { phase: "error"; messageKey: ScreenerMessageKey };
+type AlertCreateState = { phase: "idle" } | { phase: "saving" } | { phase: "created"; name: string } | { phase: "error"; messageKey: ScreenerMessageKey };
+
+/** Spec default: one hour between screener-alert notifications per rule. */
+const SCREEN_ALERT_DEFAULT_COOLDOWN_SECONDS = 3600;
 
 const SORT_KEY_TEXT: Record<ScreenerSortKeyV1, ScreenerMessageKey> = {
   quoteVolume24h: "sortQuoteVolume24h",
@@ -48,10 +55,16 @@ export function TechnicalScreener({ locale, onOpenChart }: Props) {
   const [form, setForm] = useState<ScreenerFormState>(defaultScreenerFormState);
   const [name, setName] = useState("Momentum screen");
   const [run, setRun] = useState<RunState>({ phase: "idle" });
+  const [alertCreate, setAlertCreate] = useState<AlertCreateState>({ phase: "idle" });
   const runControllerRef = useRef<AbortController>();
+  const alertControllerRef = useRef<AbortController>();
   const running = run.phase === "running";
+  const creatingAlert = alertCreate.phase === "saving";
 
-  useEffect(() => () => runControllerRef.current?.abort(), []);
+  useEffect(() => () => {
+    runControllerRef.current?.abort();
+    alertControllerRef.current?.abort();
+  }, []);
 
   const startRun = useCallback(async () => {
     if (!ownerId) return;
@@ -80,6 +93,39 @@ export function TechnicalScreener({ locale, onOpenChart }: Props) {
     runControllerRef.current?.abort();
     setRun({ phase: "error", messageKey: "runCancelled" });
   }, []);
+
+  const createScreenAlert = useCallback(async () => {
+    if (!ownerId) return;
+    const built = buildScreenerDefinition(form, name);
+    if (!built.ok) {
+      setAlertCreate({ phase: "error", messageKey: "invalidDefinition" });
+      return;
+    }
+    alertControllerRef.current?.abort();
+    const controller = new AbortController();
+    alertControllerRef.current = controller;
+    setAlertCreate({ phase: "saving" });
+    // The screen definition is embedded by value, so the alert keeps evaluating
+    // this exact revision even if the form or a preset changes later.
+    const definition: ScreenerAlertDefinitionV1 = {
+      schemaVersion: ALERT_RULE_SCHEMA_V1,
+      kind: "screener",
+      name: built.definition.name,
+      enabled: true,
+      cooldownSeconds: SCREEN_ALERT_DEFAULT_COOLDOWN_SECONDS,
+      deliveryChannels: ["in-app"],
+      screen: built.definition,
+      repeat: "on-change",
+      researchOnly: true,
+      executionPermission: false
+    };
+    try {
+      const rule = await createAlertRule(ownerId, { clientId: createAlertClientId(), definition }, controller.signal);
+      if (!controller.signal.aborted) setAlertCreate({ phase: "created", name: rule.definition.name });
+    } catch (error) {
+      if (!controller.signal.aborted) setAlertCreate({ phase: "error", messageKey: alertErrorKey(error) });
+    }
+  }, [form, name, ownerId]);
 
   const openRow = useCallback(
     (row: ScreenerRowV1, definition: ScreenerDefinitionV1) => {
@@ -183,8 +229,29 @@ export function TechnicalScreener({ locale, onOpenChart }: Props) {
                   {screenerText(locale, "cancelRun")}
                 </button>
               )}
+              <button
+                className="arb-refresh tech-screener-create-alert"
+                type="button"
+                disabled={running || creatingAlert}
+                aria-label={screenerText(locale, "createAlert")}
+                onClick={() => void createScreenAlert()}
+              >
+                <BellRing size={15} aria-hidden="true" />
+                {screenerText(locale, creatingAlert ? "creatingAlert" : "createAlert")}
+              </button>
             </span>
           </form>
+
+          {alertCreate.phase === "created" && (
+            <div className="arb-notice tech-screener-alert-created" role="status">
+              <BellRing size={15} aria-hidden="true" /> {screenerText(locale, "alertCreated", { name: alertCreate.name })}
+            </div>
+          )}
+          {alertCreate.phase === "error" && (
+            <div className="arb-notice danger" role="alert">
+              <AlertTriangle size={15} aria-hidden="true" /> {screenerText(locale, alertCreate.messageKey)}
+            </div>
+          )}
 
           <TechnicalFilters locale={locale} filters={form.filters} disabled={running} onChange={(filters) => setForm((value) => ({ ...value, filters }))} />
 
@@ -268,13 +335,31 @@ function runErrorKey(error: unknown): ScreenerMessageKey {
   return "runFailed";
 }
 
+function alertErrorKey(error: unknown): ScreenerMessageKey {
+  if (error instanceof AlertApiError) {
+    if (error.code === "screener_alert_quota_exceeded") return "alertQuotaExceeded";
+    if (error.code === "screener_alert_capacity_exhausted") return "alertCapacityExhausted";
+    if (error.code === "network_error" || error.code === "request_timeout") return "alertServiceUnavailable";
+  }
+  return "alertCreateFailed";
+}
+
 function clampUniverse(value: number): number {
   if (!Number.isFinite(value)) return SCREENER_UNIVERSE_LIMIT_MINIMUM_V1;
   return Math.max(SCREENER_UNIVERSE_LIMIT_MINIMUM_V1, Math.min(SCREENER_UNIVERSE_LIMIT_MAXIMUM_V1, Math.trunc(value)));
 }
 
 function createRunRequestId(): string {
+  return clientScopedId("techrun");
+}
+
+/** Owner-local idempotency key; each click intentionally creates a new rule. */
+function createAlertClientId(): string {
+  return clientScopedId("screen-alert");
+}
+
+function clientScopedId(prefix: string): string {
   const time = Date.now().toString(36);
   const random = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID().slice(0, 12) : Math.random().toString(36).slice(2, 14);
-  return `techrun-${time}-${random}`;
+  return `${prefix}-${time}-${random}`;
 }
