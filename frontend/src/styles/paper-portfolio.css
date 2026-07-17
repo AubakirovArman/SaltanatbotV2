@@ -557,7 +557,11 @@
   .paper-binding-lock-note dl { grid-template-columns: minmax(0, 1fr); }
 }
 
-@media (pointer: coarse) {
+@media (max-width: 760px), (pointer: coarse) {
+  .paper-portfolio-menu summary {
+    min-inline-size: 44px;
+  }
+
   .paper-portfolio-menu > div button,
   .paper-robot-actions button,
   .paper-center-alert button,

@@ -151,6 +151,9 @@ test.describe("R4 canonical paper portfolio center", () => {
     await expect(summary).toContainText("Gross exposure");
     await expect(center.locator(".paper-robot-table-wrap")).toBeHidden();
     await expect(center.locator(".paper-robot-cards")).toBeVisible();
+    await assertMinimumTouchTargets(page.locator(
+      ".trade-sidebar-actions button:visible, .trade-bot-row:visible, .robots-center-actions .secondary-button:visible, .paper-portfolio-menu > summary:visible"
+    ), 44);
     await assertNoHorizontalOverflow(page);
 
     const robotTrigger = center.locator(".paper-robot-card-open").filter({ hasText: "Momentum Guardian" });
@@ -314,7 +317,6 @@ async function captureAudit(page: Page, name: string): Promise<void> {
 
 async function expectNoAxeViolations(page: Page): Promise<void> {
   const audit = await new AxeBuilder({ page })
-    .include(".paper-portfolio-center")
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();
   expect(
