@@ -1,47 +1,68 @@
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
+import { loadRuntimeConfig } from "../config/runtimeConfig.js";
 import { createDatabasePool, loadDatabaseConfig, migrateDatabase, verifyDatabaseConnection } from "../database/index.js";
 import { ComputeJobArtifactRetention } from "../jobs/artifactRetention.js";
 import { claimJobForExecution, ComputeJobRepository, type ClaimedJob } from "../jobs/repository.js";
+import { RuntimeComponentHeartbeatRepository } from "../operations/componentHeartbeat.js";
 import { LeaseGenerationRegistry } from "./leaseGenerationRegistry.js";
+import { closeResearchWorkerDatabase, drainResearchWorkerExecutions } from "./researchWorkerShutdown.js";
 
+loadRuntimeConfig(process.env);
 const concurrency = boundedEnv("RESEARCH_WORKER_CONCURRENCY", 2, 1, 4);
 const timeoutMs = boundedEnv("RESEARCH_JOB_TIMEOUT_MS", 120_000, 5_000, 15 * 60_000);
 const memoryMb = boundedEnv("RESEARCH_JOB_MEMORY_MB", 512, 128, 2_048);
 const metricsIntervalMs = boundedEnv("RESEARCH_WORKER_METRICS_INTERVAL_MS", 30_000, 5_000, 300_000);
+const componentHeartbeatIntervalMs = boundedEnv("RESEARCH_WORKER_HEARTBEAT_INTERVAL_MS", 15_000, 5_000, 60_000);
 const retentionIntervalMs = boundedEnv("RESEARCH_JOB_RETENTION_INTERVAL_MS", 60_000, 60_000, 3_600_000);
 const shutdownTimeoutMs = boundedEnv("RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS", 20_000, 5_000, 25_000);
 const leaseMs = Math.max(30_000, Math.min(timeoutMs + 30_000, 20 * 60_000));
+const generationId = randomUUID();
 const workerId = `${process.env.HOSTNAME ?? "worker"}:${process.pid}:${randomUUID().slice(0, 8)}`.slice(0, 128);
+const releaseCommit = optionalReleaseCommit(process.env.RELEASE_COMMIT);
 const pool = createDatabasePool(loadDatabaseConfig());
 await verifyDatabaseConnection(pool);
-await migrateDatabase(pool);
+const migration = await migrateDatabase(pool);
 const repository = new ComputeJobRepository(pool);
 const artifactRetention = new ComputeJobArtifactRetention(pool);
+const componentHeartbeat = new RuntimeComponentHeartbeatRepository(pool);
 await repository.recoverExpiredLeases();
+await componentHeartbeat.start({
+  component: "research-worker",
+  generationId,
+  status: "ready",
+  releaseCommit,
+  databaseSchemaVersion: migration.toVersion
+});
 const active = new LeaseGenerationRegistry<{ worker: Worker; shutdown: () => Promise<void> }>();
 const setups = new Set<Promise<void>>();
 let stopping = false;
 let pollPromise: Promise<void> | undefined;
 let metricsPromise: Promise<void> | undefined;
+let componentHeartbeatPromise: Promise<void> | undefined;
 let retentionPromise: Promise<void> | undefined;
 
-console.info(JSON.stringify({
-  event: "research_worker_ready",
-  workerId,
-  concurrency,
-  timeoutMs,
-  taskMemoryMb: memoryMb
-}));
+console.info(
+  JSON.stringify({
+    event: "research_worker_ready",
+    workerId,
+    concurrency,
+    timeoutMs,
+    taskMemoryMb: memoryMb
+  })
+);
 // This timer intentionally remains referenced: it is the daemon's idle
 // keepalive after PostgreSQL closes idle sockets.
 const timer = setInterval(() => void triggerPoll(), 750);
 const metricsTimer = setInterval(() => void triggerMetrics(), metricsIntervalMs);
 metricsTimer.unref();
+const componentHeartbeatTimer = setInterval(() => void triggerComponentHeartbeat(), componentHeartbeatIntervalMs);
+componentHeartbeatTimer.unref();
 const retentionTimer = setInterval(() => void triggerRetention(), retentionIntervalMs);
 retentionTimer.unref();
 void triggerPoll();
 void triggerMetrics();
+void triggerComponentHeartbeat();
 void triggerRetention();
 
 function triggerPoll(): Promise<void> {
@@ -84,23 +105,28 @@ function launch(job: ClaimedJob): void {
 function triggerMetrics(): Promise<void> {
   if (stopping) return Promise.resolve();
   if (metricsPromise) return metricsPromise;
-  const running = repository.getAggregateMetrics()
+  const running = repository
+    .getAggregateMetrics()
     .then((metrics) => {
-      console.info(JSON.stringify({
-        event: "research_queue_metrics",
-        workerId,
-        activeWorkers: active.size,
-        workerConcurrency: concurrency,
-        workerSaturation: Math.round((active.size / concurrency) * 1_000) / 1_000,
-        ...metrics
-      }));
+      console.info(
+        JSON.stringify({
+          event: "research_queue_metrics",
+          workerId,
+          activeWorkers: active.size,
+          workerConcurrency: concurrency,
+          workerSaturation: Math.round((active.size / concurrency) * 1_000) / 1_000,
+          ...metrics
+        })
+      );
     })
     .catch((error) => {
-      console.error(JSON.stringify({
-        event: "research_queue_metrics_failed",
-        workerId,
-        error: safeErrorMessage(error, "database error")
-      }));
+      console.error(
+        JSON.stringify({
+          event: "research_queue_metrics_failed",
+          workerId,
+          error: safeErrorMessage(error, "database error")
+        })
+      );
     });
   metricsPromise = running;
   void running.finally(() => {
@@ -109,24 +135,61 @@ function triggerMetrics(): Promise<void> {
   return running;
 }
 
+function triggerComponentHeartbeat(): Promise<void> {
+  if (stopping) return Promise.resolve();
+  if (componentHeartbeatPromise) return componentHeartbeatPromise;
+  const running = componentHeartbeat
+    .pulse("research-worker", generationId, "ready")
+    .then((updated) => {
+      if (updated) return;
+      console.error(
+        JSON.stringify({
+          event: "research_worker_component_heartbeat_rejected",
+          workerId
+        })
+      );
+    })
+    .catch((error) => {
+      console.error(
+        JSON.stringify({
+          event: "research_worker_component_heartbeat_failed",
+          workerId,
+          error: safeErrorMessage(error, "database error")
+        })
+      );
+    });
+  componentHeartbeatPromise = running;
+  void running.finally(() => {
+    if (componentHeartbeatPromise === running) {
+      componentHeartbeatPromise = undefined;
+    }
+  });
+  return running;
+}
+
 function triggerRetention(): Promise<void> {
   if (stopping) return Promise.resolve();
   if (retentionPromise) return retentionPromise;
-  const running = artifactRetention.enforce()
+  const running = artifactRetention
+    .enforce()
     .then((result) => {
       if (result.artifactsCompacted + result.tombstonesDeleted === 0) return;
-      console.info(JSON.stringify({
-        event: "research_job_artifact_retention",
-        workerId,
-        ...result
-      }));
+      console.info(
+        JSON.stringify({
+          event: "research_job_artifact_retention",
+          workerId,
+          ...result
+        })
+      );
     })
     .catch((error) => {
-      console.error(JSON.stringify({
-        event: "research_job_artifact_retention_failed",
-        workerId,
-        error: safeErrorMessage(error, "database error")
-      }));
+      console.error(
+        JSON.stringify({
+          event: "research_job_artifact_retention_failed",
+          workerId,
+          error: safeErrorMessage(error, "database error")
+        })
+      );
     });
   retentionPromise = running;
   void running.finally(() => {
@@ -174,7 +237,8 @@ async function execute(job: ClaimedJob): Promise<void> {
   const heartbeat = setInterval(() => {
     if (heartbeatRunning || settled) return;
     heartbeatRunning = true;
-    void repository.cancellationRequested(job.id, job.leaseToken)
+    void repository
+      .cancellationRequested(job.id, job.leaseToken)
       .then((cancelled) => {
         if (cancelled) return finish(() => repository.fail(job.id, job.leaseToken, "cancelled", "Cancelled by user."));
         return repository.heartbeat(job.id, job.leaseToken, leaseMs, 0.5).then((healthy) => {
@@ -182,7 +246,9 @@ async function execute(job: ClaimedJob): Promise<void> {
         });
       })
       .catch((error) => console.error(`Research heartbeat failed: ${safeErrorMessage(error, "database error")}`))
-      .finally(() => { heartbeatRunning = false; });
+      .finally(() => {
+        heartbeatRunning = false;
+      });
   }, 5_000);
   active.add(job.id, job.leaseToken, {
     worker,
@@ -209,21 +275,67 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     stopping = true;
     clearInterval(timer);
     clearInterval(metricsTimer);
+    clearInterval(componentHeartbeatTimer);
     clearInterval(retentionTimer);
     const forcedExit = setTimeout(() => {
-      console.error(JSON.stringify({
-        event: "research_worker_shutdown_timeout",
-        workerId,
-        timeoutMs: shutdownTimeoutMs
-      }));
+      console.error(
+        JSON.stringify({
+          event: "research_worker_shutdown_timeout",
+          workerId,
+          timeoutMs: shutdownTimeoutMs
+        })
+      );
       process.exit(1);
     }, shutdownTimeoutMs);
-    const stopActive = Promise.allSettled([...active.values()].map((execution) => execution.shutdown()));
     const finishClaims = Promise.resolve(pollPromise);
     const finishRetention = Promise.resolve(retentionPromise);
-    void Promise.allSettled([stopActive, finishClaims, finishRetention])
+    void drainResearchWorkerExecutions({
+      currentHeartbeat: componentHeartbeatPromise,
+      markDraining: () => componentHeartbeat.mark("research-worker", generationId, "draining"),
+      stopActive: () => Promise.allSettled([...active.values()].map((execution) => execution.shutdown())),
+      heartbeatRejected: () => {
+        console.error(
+          JSON.stringify({
+            event: "research_worker_component_drain_rejected",
+            workerId
+          })
+        );
+      },
+      heartbeatFailed: (error) => {
+        console.error(
+          JSON.stringify({
+            event: "research_worker_component_drain_failed",
+            workerId,
+            error: safeErrorMessage(error, "database error")
+          })
+        );
+      }
+    })
+      .then(() => Promise.allSettled([finishClaims, finishRetention]))
       .then(() => Promise.allSettled([...setups]))
-      .then(() => pool.end())
+      .then(() =>
+        closeResearchWorkerDatabase({
+          markStopped: () => componentHeartbeat.mark("research-worker", generationId, "stopped"),
+          closePool: () => pool.end(),
+          heartbeatRejected: () => {
+            console.error(
+              JSON.stringify({
+                event: "research_worker_component_stop_rejected",
+                workerId
+              })
+            );
+          },
+          heartbeatFailed: (error) => {
+            console.error(
+              JSON.stringify({
+                event: "research_worker_component_stop_failed",
+                workerId,
+                error: safeErrorMessage(error, "database error")
+              })
+            );
+          }
+        })
+      )
       .catch((error) => console.error(`Research worker shutdown failed: ${safeErrorMessage(error, "database error")}`))
       .finally(() => {
         clearTimeout(forcedExit);
@@ -235,8 +347,14 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 function boundedEnv(name: string, fallback: number, minimum: number, maximum: number): number {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
+  }
   const value = Number(raw);
-  return Number.isFinite(value) ? Math.floor(Math.min(maximum, Math.max(minimum, value))) : fallback;
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return value;
 }
 
 async function finalizeFailedClaim(job: ClaimedJob, code: string, message: string): Promise<void> {
@@ -273,4 +391,13 @@ function workerErrorMessage(value: unknown): string {
 
 function safeErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message.slice(0, 4_000) : fallback;
+}
+
+function optionalReleaseCommit(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (!/^[0-9a-f]{7,64}$/.test(normalized)) {
+    throw new Error("RELEASE_COMMIT must be a lowercase hexadecimal Git commit identifier");
+  }
+  return normalized;
 }

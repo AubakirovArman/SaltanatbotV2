@@ -22,6 +22,7 @@ interface UseStrategyResearchOptions {
   initialTimeframe: Timeframe;
   exchange: DataExchange;
   onApplyResult?: (result: BacktestResult, symbol: string, timeframe: Timeframe, visuals: { plots: PlotSeries[]; shapes: ShapeOverlays } | undefined, exchange: DataExchange) => void;
+  onBacktestCompleted?: () => void;
 }
 
 interface OptimizationEvidence {
@@ -205,6 +206,7 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
         setResult(undefined);
         setOptimizeResult(undefined);
         setGeneticResult(undefined);
+        options.onBacktestCompleted?.();
         return;
       }
       const candles = await loadHistory(operation.signal);
@@ -229,6 +231,7 @@ export function useStrategyResearch(options: UseStrategyResearchOptions) {
       setOptimizeResult(undefined);
       setGeneticResult(undefined);
       options.onApplyResult?.(backtest, symbol, timeframe, { plots: visuals.plots, shapes: visuals.shapes }, options.exchange);
+      options.onBacktestCompleted?.();
     } catch (cause) {
       if (isCurrent(operation.id) && !operation.signal.aborted) {
         setErrors([cause instanceof Error ? cause.message : "History request failed."]);

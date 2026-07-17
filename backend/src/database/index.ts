@@ -58,6 +58,7 @@ export {
   type ComputeJobStatus,
   type TradingRole,
   type UserDatabaseRow,
+  type UserOnboardingDatabaseRow,
   type UserStatus,
   type WorkspaceDatabaseRow
 } from "./types.js";

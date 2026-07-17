@@ -58,22 +58,34 @@
       "short_name": "Chart",
       "description": "Open the multi-market chart workspace.",
       "url": "/?view=chart",
-      "icons": [{ "src": "/logo.png", "sizes": "512x512", "type": "image/png" }]
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Open Strategy Studio",
       "short_name": "Strategy",
       "description": "Open local indicators, strategies and Pine research.",
       "url": "/?view=strategy",
-      "icons": [{ "src": "/logo.png", "sizes": "512x512", "type": "image/png" }]
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ],
   "icons": [
     {
-      "src": "/logo.png",
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

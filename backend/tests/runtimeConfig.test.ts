@@ -35,7 +35,30 @@ describe("typed runtime configuration", () => {
       },
       auth: { mode: "database", cookieSecure: false },
       security: { allowInsecureTradingMutations: false },
-      trading: { enableLiveSpot: false }
+      trading: { enableLiveSpot: false },
+      operations: {
+        recoveryStatusFile: undefined,
+        admission: {
+          maxActive: 128,
+          reservedControlSlots: 16,
+          maxQueued: 256,
+          queueTimeoutMs: 2_000
+        },
+        readiness: {
+          researchWorkerHeartbeatStaleMs: 90_000,
+          resultTtlMs: 1_000,
+          rateLimit: {
+            refillPerSecond: 2,
+            burst: 10,
+            maxBuckets: 4_096
+          },
+          diskPath: path.resolve(import.meta.dirname, "../data"),
+          diskSoftFreeBytes: 5 * 1_024 ** 3,
+          diskHardFreeBytes: 2 * 1_024 ** 3,
+          diskSoftFreePercent: 5,
+          diskHardFreePercent: 2
+        }
+      }
     });
     expect(allRuntimeConfigObjects(config).every(Object.isFrozen)).toBe(true);
   });
@@ -45,10 +68,24 @@ describe("typed runtime configuration", () => {
     expect(loadRuntimeConfig({ NODE_ENV: "production", FRONTEND_DIST_DIR: configured } as NodeJS.ProcessEnv).frontend.distDir).toBe(configured);
 
     const secretBearingPath = "relative/operator-secret/frontend";
-    expect(() => loadRuntimeConfig({ NODE_ENV: "production", FRONTEND_DIST_DIR: secretBearingPath } as NodeJS.ProcessEnv)).toThrowError(
-      expect.objectContaining({ message: expect.not.stringContaining("operator-secret") })
-    );
+    expect(() => loadRuntimeConfig({ NODE_ENV: "production", FRONTEND_DIST_DIR: secretBearingPath } as NodeJS.ProcessEnv)).toThrowError(expect.objectContaining({ message: expect.not.stringContaining("operator-secret") }));
     expect(() => loadRuntimeConfig({ NODE_ENV: "production", FRONTEND_DIST_DIR: `${configured}/../dist` } as NodeJS.ProcessEnv)).toThrow(/normalized absolute filesystem path/);
+  });
+
+  it("accepts only an optional normalized absolute recovery status file", () => {
+    const configured = path.resolve(import.meta.dirname, "../data/recovery-status.json");
+    expect(
+      loadRuntimeConfig({
+        NODE_ENV: "production",
+        OPERATIONS_RECOVERY_STATUS_FILE: configured
+      } as NodeJS.ProcessEnv).operations.recoveryStatusFile
+    ).toBe(configured);
+    expect(
+      loadRuntimeConfig({
+        NODE_ENV: "production",
+        OPERATIONS_RECOVERY_STATUS_FILE: ""
+      } as NodeJS.ProcessEnv).operations.recoveryStatusFile
+    ).toBeUndefined();
   });
 
   it("does not let NODE_ENV select legacy authentication", () => {
@@ -97,7 +134,35 @@ describe("typed runtime configuration", () => {
     ["TRUST_PROXY global", { TRUST_PROXY: "true" }, /Invalid TRUST_PROXY=true/],
     ["TRUST_PROXY hostname", { TRUST_PROXY: "proxy.internal" }, /Invalid TRUST_PROXY/],
     ["live spot in paper mode", { ENABLE_LIVE_SPOT: "1" }, /conflicts with RUNTIME_PROFILE=public-http-paper/],
-    ["insecure mutations in paper mode", { ALLOW_INSECURE_TRADING_MUTATIONS: "true" }, /conflicts with RUNTIME_PROFILE=public-http-paper/]
+    ["insecure mutations in paper mode", { ALLOW_INSECURE_TRADING_MUTATIONS: "true" }, /conflicts with RUNTIME_PROFILE=public-http-paper/],
+    ["admission active type", { GLOBAL_ADMISSION_MAX_ACTIVE: "16.5" }, /GLOBAL_ADMISSION_MAX_ACTIVE/],
+    ["admission reserve range", { GLOBAL_ADMISSION_MAX_ACTIVE: "16", GLOBAL_ADMISSION_RESERVED_CONTROL: "16" }, /must be lower/],
+    ["admission queue range", { GLOBAL_ADMISSION_MAX_QUEUED: "0" }, /GLOBAL_ADMISSION_MAX_QUEUED/],
+    ["admission timeout range", { GLOBAL_ADMISSION_QUEUE_TIMEOUT_MS: "99" }, /GLOBAL_ADMISSION_QUEUE_TIMEOUT_MS/],
+    ["worker heartbeat range", { RESEARCH_WORKER_HEARTBEAT_STALE_MS: "9999" }, /RESEARCH_WORKER_HEARTBEAT_STALE_MS/],
+    ["readiness result TTL range", { READINESS_RESULT_TTL_MS: "99" }, /READINESS_RESULT_TTL_MS/],
+    ["readiness refill type", { READINESS_RATE_REFILL_PER_SECOND: "1.5" }, /READINESS_RATE_REFILL_PER_SECOND/],
+    ["readiness burst range", { READINESS_RATE_BURST: "0" }, /READINESS_RATE_BURST/],
+    ["readiness bucket range", { READINESS_RATE_MAX_BUCKETS: "255" }, /READINESS_RATE_MAX_BUCKETS/],
+    ["operations path", { OPERATIONS_DISK_PATH: "relative/data" }, /OPERATIONS_DISK_PATH/],
+    ["recovery status path", { OPERATIONS_RECOVERY_STATUS_FILE: "relative/status.json" }, /OPERATIONS_RECOVERY_STATUS_FILE/],
+    ["recovery status whitespace", { OPERATIONS_RECOVERY_STATUS_FILE: " /tmp/status.json" }, /OPERATIONS_RECOVERY_STATUS_FILE/],
+    [
+      "disk bytes ordering",
+      {
+        OPERATIONS_DISK_HARD_FREE_BYTES: String(6 * 1_024 ** 3),
+        OPERATIONS_DISK_SOFT_FREE_BYTES: String(5 * 1_024 ** 3)
+      },
+      /HARD_FREE_BYTES must be lower/
+    ],
+    [
+      "disk percent ordering",
+      {
+        OPERATIONS_DISK_HARD_FREE_PERCENT: "5",
+        OPERATIONS_DISK_SOFT_FREE_PERCENT: "5"
+      },
+      /HARD_FREE_PERCENT must be lower/
+    ]
   ])("rejects invalid %s configuration", (_label, overrides, expected) => {
     expect(() => loadRuntimeConfig({ NODE_ENV: "production", ...overrides } as NodeJS.ProcessEnv)).toThrow(expected);
   });
@@ -140,5 +205,5 @@ describe("typed runtime configuration", () => {
 
 function allRuntimeConfigObjects(config: RuntimeConfig): object[] {
   const trustProxy = config.server.trustProxy;
-  return [config, config.frontend, config.server, config.server.allowedOrigins, config.auth, config.security, config.trading, ...(Array.isArray(trustProxy) ? [trustProxy] : [])];
+  return [config, config.frontend, config.server, config.server.allowedOrigins, config.auth, config.security, config.trading, config.operations, config.operations.admission, config.operations.readiness, config.operations.readiness.rateLimit, ...(Array.isArray(trustProxy) ? [trustProxy] : [])];
 }

@@ -1,10 +1,19 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppErrorBoundary } from "../src/app/AppErrorBoundary";
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  vi.stubGlobal("caches", {});
+  vi.stubGlobal("navigator", {
+    language: "en-US",
+    serviceWorker: {}
+  });
+});
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("AppErrorBoundary", () => {
   it("replaces a render crash with localized, non-destructive recovery controls", async () => {
@@ -20,16 +29,18 @@ describe("AppErrorBoundary", () => {
       return <p>Recovered interface</p>;
     }
 
-    await act(async () => root.render(<AppErrorBoundary><CrashingView /></AppErrorBoundary>));
+    await act(async () =>
+      root.render(
+        <AppErrorBoundary>
+          <CrashingView />
+        </AppErrorBoundary>
+      )
+    );
 
     expect(container.querySelector("main")?.getAttribute("role")).toBe("alert");
     expect(container.querySelector("h1")?.textContent).toBe("Не удалось запустить приложение");
     expect(container.textContent).toContain("торговые записи не удалены");
-    expect([...container.querySelectorAll("button")].map((button) => button.textContent)).toEqual([
-      "Повторить запуск интерфейса",
-      "Перезагрузить страницу",
-      "Обновить файлы приложения"
-    ]);
+    expect([...container.querySelectorAll("button")].map((button) => button.textContent)).toEqual(["Повторить запуск интерфейса", "Перезагрузить страницу", "Обновить файлы приложения"]);
 
     shouldThrow = false;
     await act(async () => container.querySelector<HTMLButtonElement>("button")?.click());

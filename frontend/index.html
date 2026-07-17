@@ -15,7 +15,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="alternate icon" type="image/png" href="/logo.png" />
-    <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
     <title>SaltanatbotV2</title>
   </head>
   <body>
@@ -28,9 +28,9 @@
           <p id="startup-help">Loading the chart, saved workspace and market connections.</p>
           <div id="startup-actions" class="startup-recovery-actions" hidden>
             <button id="startup-reload" class="primary" type="button">Reload page</button>
-            <button id="startup-refresh" type="button">Refresh application files</button>
+            <button id="startup-refresh" type="button" hidden>Refresh application files</button>
           </div>
-          <p id="startup-footnote" class="startup-recovery-footnote">Refreshing removes only SaltanatbotV2 offline shell files and its service-worker registration.</p>
+          <p id="startup-footnote" class="startup-recovery-footnote" hidden>Refreshing removes only SaltanatbotV2 offline shell files and its service-worker registration.</p>
           <noscript><p>JavaScript is required to run the application.</p><a href="/">Reload page</a></noscript>
         </div>
       </main>

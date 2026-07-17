@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { IDENTITY_CONTROL_PLANE_MIGRATION_SQL } from "./identityControlPlaneMigration.js";
+import { ONBOARDING_AND_RUNTIME_HEARTBEATS_MIGRATION_SQL } from "./onboardingMigration.js";
 import { WORKSPACE_WORKFLOW_MIGRATION_SQL } from "./workspaceWorkflowMigration.js";
 
 export interface DatabaseMigration {
@@ -554,6 +555,11 @@ const migrationDefinitions = [
     version: 10,
     name: "versioned_workspace_workflow",
     sql: WORKSPACE_WORKFLOW_MIGRATION_SQL
+  },
+  {
+    version: 11,
+    name: "owner_onboarding_and_runtime_heartbeats",
+    sql: ONBOARDING_AND_RUNTIME_HEARTBEATS_MIGRATION_SQL
   }
 ] as const;
 

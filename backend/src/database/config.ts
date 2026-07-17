@@ -112,7 +112,7 @@ function commonPoolConfig(env: NodeJS.ProcessEnv): Pick<PoolConfig,
   | "application_name"
 > {
   return {
-    max: parseInteger(env.PGPOOL_MAX, 12, "PGPOOL_MAX", 1, 100),
+    max: parseInteger(env.PGPOOL_MAX, 12, "PGPOOL_MAX", 2, 100),
     idleTimeoutMillis: parseInteger(env.PGPOOL_IDLE_TIMEOUT_MS, 30_000, "PGPOOL_IDLE_TIMEOUT_MS", 1_000, 3_600_000),
     connectionTimeoutMillis: parseInteger(
       env.PGPOOL_CONNECTION_TIMEOUT_MS,

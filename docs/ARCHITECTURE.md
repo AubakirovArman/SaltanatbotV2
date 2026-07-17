@@ -63,7 +63,18 @@ Key pieces wired up in `backend/src/server.ts`:
   consumes a session-bound one-time ticket. Every unknown upgrade path is destroyed.
 - **REST endpoints** — health/catalog/instruments/venue capabilities, candles/sparklines, bounded
   read-only public venue data, basis/triangular/native-spread/pairwise arbitrage research and the
-  authenticated trading router mounted at `/api/trade`.
+  authenticated onboarding, workspace, research-job and trading routers.
+- **Admission and operational state** — API metrics and one process-wide admission controller run
+  before route registration. Only cheap liveness bypasses admission; dependency-heavy readiness
+  uses the bounded ordinary lane and then a separate bounded per-IP limiter. Accepted overlapping
+  readiness calls share one process-wide dependency evaluation, and its result has a short typed
+  TTL to impose an absolute probe-rate cap; rejected evaluations are retried rather than cached.
+  Authentication and stop/cancel/kill controls use reserved capacity, while ordinary requests share
+  a bounded FIFO queue. The public no-store readiness probe returns only categorical component
+  states; exact migration/checksum, PostgreSQL latency, worker age/state, disk and admission
+  measurements are exposed only through the administrator router, including readiness-limiter
+  bounds and counters. Migration and worker-heartbeat queries run sequentially, and the supported
+  PostgreSQL pool minimum of two leaves a connection beside the readiness probe.
 - **Validation** — route inputs are parsed with bounded schemas (for example, `candleQuery` checks
   symbol, timeframe, page size, venue, market type and price type); shared public payloads have
   runtime parsers at the client boundary as well. Public upstream HTTP bodies are byte-limited while
@@ -76,8 +87,9 @@ Key pieces wired up in `backend/src/server.ts`:
 ### Persistence and secrets
 
 PostgreSQL stores users, Argon2id password hashes, revocable sessions, one-use WebSocket tickets,
-authentication audit events, owner-scoped workspace revisions and durable research jobs. Checked-in
-migrations run atomically under an advisory lock and refuse checksum drift.
+authentication audit events, owner-scoped onboarding/workspace revisions, durable research jobs and
+the current research-worker heartbeat. Checked-in migrations run atomically under an advisory lock
+and refuse checksum drift.
 
 The trading executor still uses built-in **`node:sqlite`** (`DatabaseSync`) in
 `backend/src/trading/store.ts`. Accounts, credentials, bots and journals are owner-scoped; exchange
@@ -88,8 +100,11 @@ mandatory fail-closed transport gate before timestamping, HMAC and network I/O. 
 are claimed fairly from PostgreSQL and run by a separate supervisor in bounded worker threads; the
 API process never executes them synchronously. Queue telemetry uses a bounded 24-hour/10,000-row
 terminal sample and exposes only owner-scoped metrics to HTTP clients. The latest PostgreSQL schema
-is v8: v7 adds an owner-scoped prepared-step replay ledger and v8 adds bounded terminal-job artifact
-retention. A stable per-step `intentId` is checked against
+is v11: v7 adds an owner-scoped prepared-step replay ledger, v8 adds bounded terminal-job artifact
+retention, v9 adds the administrator control plane, v10 adds bounded versioned workspace workflow,
+and v11 adds owner onboarding plus runtime-component heartbeats. Existing accounts are seeded with
+dismissed onboarding state; future accounts remain virtual revision-0 until their first onboarding
+mutation. A stable per-step `intentId` is checked against
 the exact permit-binding digest, compact keys are durable and owner-capped, and non-secret
 reservation metadata has bounded retention. It provides durable at-most-once network admission, not
 proof that an exchange accepted an order; unknown outcomes still require venue idempotency and
@@ -99,6 +114,21 @@ production factory is intentionally not called by routes or adapters. Production
 deny-only and the pre-HTTPS configuration loader rejects `private-live`, so that boundary is
 unreachable in the current release.
 
+### Recovery boundary
+
+Root recovery commands create one checksummed generation containing a PostgreSQL custom dump from
+an exported read-only snapshot plus the existing verified SQLite runtime backup. The manifest binds
+the release/profile, capture window, complete migration chain, PostgreSQL row counts (including
+onboarding), runtime file digests/user versions and a cross-store owner-set checksum. Verification
+does not mutate either store.
+
+Restore and drill operate only on a new database name and a separate absent/empty data directory.
+Database creation is tagged with a generation/operation marker and its OID; cleanup refuses to drop
+anything whose identity no longer matches. Paths reject symbolic-link components and are pinned
+into tool-owned private staging before restore to close source/target replacement races. Successful
+restore performs no service, Compose, `PGDATABASE` or active-path cutover; the drill removes only
+the verified temporary resources.
+
 ### Backend source tree
 
 ```text
@@ -106,7 +136,10 @@ backend/src/
 ├── server.ts                 # Express app, WS upgrade routing, static SPA hosting
 ├── types.ts                  # Instrument, Candle, StreamMessage, CatalogResponse
 ├── database/                 # pg configuration, pool and checksum-locked migrations
+├── http/                     # global admission, API rate limits and request gates
 ├── identity/                 # registration, sessions, roles, admin approval and audit
+├── onboarding/               # owner-scoped goals, milestones and optimistic revisions
+├── operations/               # API metrics, readiness and worker heartbeat repository
 ├── workspaces/               # owner-scoped documents, revisions and optimistic updates
 ├── jobs/                     # durable research queue, leases, quotas and API
 ├── workers/                  # isolated backtest supervisor/task entry points
@@ -158,7 +191,12 @@ backend/src/
 
 The frontend is a React 18 single-page app built with Vite 8. Its notable dependencies are `blockly` (visual strategy builder), `lucide-react` (icons), and `react`/`react-dom`. There is no third-party charting library — charts are drawn by a hand-written engine.
 
-`frontend/src/App.tsx` is the workspace composition root. It restores selected market/chart routing from the bounded `chartSession.ts` schema and switches between `chart`, `strategy`, `screener`, and `trade`. `frontend/src/app/useAppShell.ts` owns cross-workspace preferences, panels, exchange, named workspaces and compare overlays; `useAppCommands.ts` owns commands and global shortcuts.
+`frontend/src/App.tsx` is the workspace composition root. It restores selected market/chart routing
+from the bounded `chartSession.ts` schema and switches between `chart`, `strategy`, `screener`, and
+`trade`. The owner-scoped onboarding controller selects one first-use goal and records only actual
+chart, alert, backtest or confirmed paper-bot milestones. `frontend/src/app/useAppShell.ts` owns
+cross-workspace preferences, panels, exchange, named workspaces and compare overlays;
+`useAppCommands.ts` owns commands and global shortcuts.
 
 - **Custom canvas chart engine** — `frontend/src/chart/ChartEngine.ts` prepares one viewport/indicator render plan consumed by five cached canvases: background/axes, primary series, indicators, drawing/strategy overlays, and pointer interaction. `useChartRenderer` owns sizing and dirty invalidation, while `canvasDensity.ts` sizes every backing store to CSS size × DPR and transforms all renderers back into one logical CSS-pixel space. A coalescing scheduler preserves pass order. `priceRepresentation.ts` prepares full-history Heikin-Ashi, confirmed Renko, Three-Line-Break, Kagi or Point-and-Figure columns once for every Canvas/DOM consumer; exact timestamp interpolation preserves alignment. The chart supports `candles`, `hollow`, `heikin`, `bars`, `line`, `step`, `area`, `baseline`, `renko`, `linebreak`, `kagi`, and `pnf`.
 - **Price-representation settings** — `priceRepresentationSettings.ts` validates and stores Renko/Kagi/P&F percentages, Line Break depth and P&F reversal boxes, then synchronizes same-page panes and other tabs. `PriceRepresentationControl.tsx` uses one native disclosure and explicitly labelled numeric inputs; updates cross the same preparation boundary, so Canvas, pointer math, indicators, market structure and semantic data never disagree.
@@ -167,7 +205,14 @@ The frontend is a React 18 single-page app built with Vite 8. Its notable depend
 - **Runtime exchange selector** — for crypto instruments the user can pick `binance` or `bybit`; the choice is persisted in `localStorage` (`mf:cryptoExchange`) and threaded through candle/sparkline/stream requests.
 - **Command palette + hotkeys** — `⌘/Ctrl-K` toggles a command palette; number keys `1..6` select timeframes.
 - **Local workspace persistence** — indicators, the strategy library, theme, and panel state are stored in `localStorage`; a bounded versioned last-chart-session record restores layout/panes independently of named workspace revision history and rejects corrupt, oversized or future payloads. A strategy can be imported from a `#s=…` URL hash as a remixable copy.
-- **Safe installable shell** — `pwa/registerServiceWorker.ts` registers only in a production build. `vite/pwaPlugin.ts` fingerprints the emitted Vite graph and generates an exact initial-shell precache without eager Strategy Studio/Blockly chunks. Publication copies the candidate assets first, atomically swaps `index.html`, and only then exposes the new worker, so install-time precaching of `/` cannot capture the previous HTML under the new cache name. Navigations are network-first; APIs and every market/trading stream are network-only, with no background sync or deferred request replay.
+- **Safe installable shell** — `pwa/registerServiceWorker.ts` registers only in a production build
+  and only in a secure context (or localhost development). Public-IP HTTP therefore exposes neither
+  a service worker nor an install launcher. `vite/pwaPlugin.ts` fingerprints the emitted Vite graph
+  and generates an exact initial-shell precache without eager Strategy Studio/Blockly chunks.
+  Publication copies the candidate assets first, atomically swaps `index.html`, and only then
+  exposes the new worker, so install-time precaching of `/` cannot capture the previous HTML under
+  the new cache name. Navigations are network-first; APIs and every market/trading stream are
+  network-only, with no background sync or deferred request replay.
 
 ### Frontend source tree
 
@@ -184,7 +229,8 @@ frontend/src/
 │   └── useSparklines.ts      # Watchlist sparkline series
 ├── components/               # Shell UI plus ChartCanvas and its semantic ChartDataPanel fallback
 ├── chart/                    # Canvas ChartEngine, renderers, indicators, drawings
-├── pwa/                      # Production registration and offline trust-boundary notes
+├── onboarding/               # owner-fenced API state and first-use application flow
+├── pwa/                      # capability boundary, lifecycle and offline research state
 ├── arbitrage/                # Lazy read-only screener, costs, depth, alerts and paper ledger
 ├── strategy/                 # Blockly blocks, shared IR, compiler, backtester, library
 ├── trading/                  # TradingView (lazy) client
@@ -375,7 +421,9 @@ The frontend backtest facade delegates trading bars to the reusable `strategy-co
 
 REST and purpose-specific WebSocket hubs connect the SPA to the backend over the same origin/port:
 
-- **REST** (`fetch`) for catalog, candle windows, sparklines, arbitrage scan/depth/history and authenticated trading operations. Requests are same-origin relative paths (`/api/...`).
+- **REST** (`fetch`) for catalog, candle windows, sparklines, arbitrage scan/depth/history,
+  owner-scoped onboarding/workspaces/jobs and authenticated trading operations. Requests are
+  same-origin relative paths (`/api/...`).
 - **Account-authenticated browser WebSocket** hubs at `/stream`, `/quotes`, `/orderbook`, `/trade-flow` and `/arbitrage-stream`; their payloads come from credential-free public market feeds but the hosted application no longer exposes them anonymously.
 - **Authenticated WebSocket** at `/trade-stream`, opened only with a one-use ticket for account/order state. Every URL uses `wss` when the page is served over HTTPS.
 

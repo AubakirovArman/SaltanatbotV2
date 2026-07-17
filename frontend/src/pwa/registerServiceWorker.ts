@@ -1,4 +1,12 @@
 import { clearApplicationShellFiles } from "../app/startupRecovery";
+import { browserPwaLifecycleEnvironment, createPwaLifecycleController, type PwaLifecycleController, type PwaLifecycleSnapshot } from "./lifecycle";
+
+let singleton: PwaLifecycleController | undefined;
+
+function lifecycle(): PwaLifecycleController {
+  singleton ??= createPwaLifecycleController(browserPwaLifecycleEnvironment());
+  return singleton;
+}
 
 /** Register the generated same-origin worker only for production builds. */
 export function registerServiceWorker() {
@@ -6,17 +14,21 @@ export function registerServiceWorker() {
     void clearApplicationShellFiles();
     return;
   }
-  if (!("serviceWorker" in navigator)) return;
-  window.addEventListener("load", () => {
-    const register = () => {
-      void navigator.serviceWorker.register("/service-worker.js", {
-        scope: "/",
-        updateViaCache: "none"
-      }).catch(() => {
-        // Offline support is progressive enhancement; startup must remain unaffected.
-      });
-    };
-    if (navigator.serviceWorker.controller) register();
-    else window.setTimeout(register, 5_000);
-  }, { once: true });
+  lifecycle().start();
+}
+
+export function getPwaLifecycleSnapshot(): PwaLifecycleSnapshot {
+  return lifecycle().getSnapshot();
+}
+
+export function subscribePwaLifecycle(listener: () => void): () => void {
+  return lifecycle().subscribe(listener);
+}
+
+export function promptPwaInstall() {
+  return lifecycle().promptInstall();
+}
+
+export function checkForPwaUpdate() {
+  return lifecycle().checkForUpdate();
 }

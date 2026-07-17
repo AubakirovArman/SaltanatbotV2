@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { loadLocale, localized } from "../i18n";
-import { claimAutomaticApplicationShellRecovery, isRecoverableApplicationAssetError, refreshApplicationFiles } from "./startupRecovery";
+import { canManageApplicationShellFiles, claimAutomaticApplicationShellRecovery, isRecoverableApplicationAssetError, refreshApplicationFiles } from "./startupRecovery";
 
 interface AppErrorBoundaryState {
   failed: boolean;
@@ -23,6 +23,7 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, AppErro
   render() {
     if (!this.state.failed) return this.props.children;
     const copy = recoveryCopy(loadLocale());
+    const canRefreshApplicationFiles = canManageApplicationShellFiles();
     return (
       <main className="startup-recovery" role="alert" aria-labelledby="startup-recovery-title">
         <div className="startup-recovery-card">
@@ -31,12 +32,28 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, AppErro
           <h1 id="startup-recovery-title">{this.state.recovering ? copy.refreshing : copy.title}</h1>
           <p>{copy.help}</p>
           <p className="startup-recovery-note">{copy.preserved}</p>
-          {!this.state.recovering && <div className="startup-recovery-actions">
-            <button type="button" className="primary" onClick={() => this.setState({ failed: false, recovering: false })}>{copy.retry}</button>
-            <button type="button" onClick={() => window.location.reload()}>{copy.reload}</button>
-            <button type="button" onClick={() => { this.setState({ recovering: true }); void refreshApplicationFiles(); }}>{copy.refresh}</button>
-          </div>}
-          <p className="startup-recovery-footnote">{copy.refreshHelp}</p>
+          {!this.state.recovering && (
+            <div className="startup-recovery-actions">
+              <button type="button" className="primary" onClick={() => this.setState({ failed: false, recovering: false })}>
+                {copy.retry}
+              </button>
+              <button type="button" onClick={() => window.location.reload()}>
+                {copy.reload}
+              </button>
+              {canRefreshApplicationFiles && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    this.setState({ recovering: true });
+                    void refreshApplicationFiles();
+                  }}
+                >
+                  {copy.refresh}
+                </button>
+              )}
+            </div>
+          )}
+          {canRefreshApplicationFiles && <p className="startup-recovery-footnote">{copy.refreshHelp}</p>}
         </div>
       </main>
     );

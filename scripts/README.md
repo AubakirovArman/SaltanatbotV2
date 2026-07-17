@@ -37,6 +37,23 @@ This folder contains deterministic maintenance and release helpers invoked by ro
   checksum-manifested online SQLite backups, always keeps `trading.db` with `.secret`, proves that the
   owner-only key authenticates every encrypted row without printing secret data, verifies integrity
   and performs explicit atomic restore of `backend/data`.
+- `project-recovery.mjs`: creates and verifies one PostgreSQL/SQLite recovery generation from an
+  exported PostgreSQL snapshot, restores only into a newly created marker-owned replacement database
+  plus an absent/empty data directory, and runs disposable drills without changing the active service,
+  Compose, `PGDATABASE` or runtime path. Successful `verify` may publish a bounded,
+  owner-only, newline-committed admin-metrics receipt journal through an explicit absolute
+  `--status-file`; failed verification never creates or replaces the configured status path.
+  Publication is serialized through a permanent owner-only `.recovery-status.lock` and trusted
+  `/usr/bin/flock`; operators must never remove or rotate that lock inode.
+- `recovery-pg-dump.mjs` / `recovery-pg-restore.mjs`: host-only, fail-closed adapters for a
+  default-name Compose deployment when matching PostgreSQL client binaries are unavailable on the
+  host. They bind to this checkout, the local Docker socket, the exact healthy `postgres` service,
+  its loopback port, immutable image digest, named volume and owner-only password secret. Each
+  accepted operation runs in a uniquely named, labeled, read-only, capability-free helper container
+  sharing only the exact PostgreSQL container network namespace. The password is read from the
+  read-only secret inside that helper and is absent from Docker arguments, labels and inspectable
+  environment. Recovery core supplies a UUID/deadline and performs stable-absence cleanup after
+  timeout; the wrappers are not general-purpose `pg_dump`/`pg_restore` replacements.
 
 ## Invariants
 

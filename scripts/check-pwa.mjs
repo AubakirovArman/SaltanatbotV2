@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { publishedFrontendFiles } from "./lib/frontend-publication.mjs";
@@ -20,6 +20,10 @@ for (const name of ["index.html", "manifest.webmanifest", "service-worker.js", "
 
 const index = readFileSync(resolve(dist, "index.html"), "utf8");
 if (!/<link[^>]+rel="manifest"[^>]+href="\/manifest\.webmanifest"/.test(index)) fail("index.html does not link the root manifest");
+const appleTouchMatch = index.match(
+  /<link[^>]+rel="apple-touch-icon"[^>]+sizes="180x180"[^>]+href="(\/[^"]+\.png)"/
+);
+if (!appleTouchMatch) fail("index.html needs an exact 180x180 Apple touch icon");
 
 const manifest = JSON.parse(readFileSync(resolve(dist, "manifest.webmanifest"), "utf8"));
 if (!manifest.name || !manifest.short_name || manifest.id !== "/" || manifest.start_url !== "/" || manifest.scope !== "/") fail("manifest identity/start scope is incomplete");
@@ -55,10 +59,38 @@ const expectedShareAccept = [
 if (JSON.stringify(shareBuckets[0]?.accept) !== JSON.stringify(expectedShareAccept)) fail("share target accept list is incomplete or over-broad");
 const serializedShareTarget = JSON.stringify(shareTarget);
 if (/trade|order/i.test(serializedShareTarget) || serializedShareTarget.includes('"application/json"') || serializedShareTarget.includes('"text/plain"') || serializedShareTarget.includes('".json"')) fail("share target must not expose generic text/JSON or trading actions");
-const pngIcons = (manifest.icons ?? []).filter((icon) => icon.type === "image/png" && icon.purpose?.split(" ").includes("any"));
-const iconSizes = pngIcons.map((icon) => pngSize(resolve(dist, icon.src.replace(/^\//, ""))));
-if (!iconSizes.some(({ width, height }) => width >= 192 && height >= 192)) fail("manifest needs a PNG icon at least 192x192");
-if (!iconSizes.some(({ width, height }) => width >= 512 && height >= 512)) fail("manifest needs a PNG icon at least 512x512");
+const manifestIcons = manifest.icons ?? [];
+if (manifestIcons.length !== 3) fail("manifest must declare exactly 192 any, 512 any and 512 maskable icons");
+const expectedIcons = new Map([
+  ["any:192x192", "/icons/icon-192.png"],
+  ["any:512x512", "/icons/icon-512.png"],
+  ["maskable:512x512", "/icons/icon-maskable-512.png"]
+]);
+const seenIconPaths = new Set();
+const iconSizes = [];
+for (const icon of manifestIcons) {
+  if (icon.type !== "image/png") fail("manifest application icons must be PNG");
+  if (typeof icon.src !== "string" || !icon.src.startsWith("/") || icon.src.startsWith("//") || icon.src.includes("?") || icon.src.includes("#")) {
+    fail("manifest icon paths must be same-origin absolute paths without query or fragment");
+  }
+  const purposes = icon.purpose?.trim().split(/\s+/) ?? [];
+  if (purposes.length !== 1 || !["any", "maskable"].includes(purposes[0])) fail("manifest icon purpose must be exactly any or maskable");
+  const key = `${purposes[0]}:${icon.sizes}`;
+  if (expectedIcons.get(key) !== icon.src) fail(`unexpected manifest icon contract: ${key}`);
+  if (seenIconPaths.has(icon.src)) fail("one icon file cannot satisfy multiple manifest contracts");
+  seenIconPaths.add(icon.src);
+  const iconPath = resolvePublishedFile(icon.src);
+  const expectedSize = icon.sizes.split("x").map(Number);
+  const actual = pngSize(iconPath);
+  if (actual.width !== expectedSize[0] || actual.height !== expectedSize[1]) {
+    fail(`manifest icon dimensions do not match ${icon.sizes}: ${icon.src}`);
+  }
+  iconSizes.push(actual);
+}
+if (seenIconPaths.size !== expectedIcons.size) fail("manifest icon set is incomplete");
+const appleTouchPath = resolvePublishedFile(appleTouchMatch[1]);
+const appleTouchSize = pngSize(appleTouchPath);
+if (appleTouchSize.width !== 180 || appleTouchSize.height !== 180) fail("Apple touch icon dimensions must be exactly 180x180");
 
 const worker = readFileSync(resolve(dist, "service-worker.js"), "utf8");
 const match = worker.match(/const PRECACHE = (\[[^\n]+\]);/);
@@ -69,7 +101,7 @@ if (!researchMatch) fail("generated worker does not expose a parseable optional 
 const research = JSON.parse(researchMatch[1]);
 if (!precache.includes("/")) fail("root navigation shell is not precached");
 if (precache.includes("/manifest.webmanifest") || precache.includes("/service-worker.js")) fail("update-sensitive manifest/worker must remain network-managed");
-const runtimePrefixes = ["/api/", "/stream", "/quotes", "/orderbook", "/trade-flow", "/trade-stream"];
+const runtimePrefixes = ["/api/", "/stream", "/quotes", "/orderbook", "/trade-flow", "/arbitrage-stream", "/trade-stream"];
 if (precache.some((url) => runtimePrefixes.some((prefix) => url.startsWith(prefix)))) fail("runtime API or stream leaked into precache");
 if (!worker.includes('request.method !== "GET"') || runtimePrefixes.some((prefix) => !worker.includes(JSON.stringify(prefix)))) fail("network-only request guards are missing");
 if (!worker.includes('request.method === "POST"') || !worker.includes('url.pathname === SHARE_TARGET.action') || !worker.includes("request.formData()")) fail("bounded share-target POST interception is missing");
@@ -111,7 +143,15 @@ for (const url of research) {
 const bundles = generatedAssets.filter((path) => extname(path) === ".js").map((path) => readFileSync(path, "utf8")).join("\n");
 if (!bundles.includes("/service-worker.js") || !bundles.includes("updateViaCache")) fail("production bundle does not register the generated worker safely");
 
-console.log(`PWA shell verified: ${precache.length} same-origin files, ${iconSizes.map(({ width, height }) => `${width}x${height}`).join(", ")} icon.`);
+console.log(`PWA shell verified: ${precache.length} same-origin files, ${iconSizes.map(({ width, height }) => `${width}x${height}`).join(", ")} manifest icons and 180x180 Apple icon.`);
+
+function resolvePublishedFile(url) {
+  const path = resolve(dist, decodeURIComponent(url.slice(1)));
+  if (!path.startsWith(`${dist}/`) || !existsSync(path)) fail(`published icon is missing: ${url}`);
+  const entry = lstatSync(path);
+  if (entry.isSymbolicLink() || !entry.isFile()) fail(`published icon must be a regular non-symlink file: ${url}`);
+  return path;
+}
 
 function pngSize(path) {
   const bytes = readFileSync(path);

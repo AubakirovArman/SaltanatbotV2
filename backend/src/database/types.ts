@@ -70,6 +70,22 @@ export interface WorkspaceDatabaseRow {
   updated_at: Date;
 }
 
+export interface UserOnboardingDatabaseRow {
+  owner_user_id: string;
+  schema_version: number;
+  revision: string;
+  goal: "monitoring" | "price-alert" | "backtest" | "paper-robot" | null;
+  goal_selected_at: Date | null;
+  first_chart_at: Date | null;
+  first_alert_at: Date | null;
+  first_backtest_at: Date | null;
+  first_paper_robot_at: Date | null;
+  completed_at: Date | null;
+  dismissed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface ComputeJobDatabaseRow {
   id: string;
   owner_user_id: string;

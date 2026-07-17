@@ -54,6 +54,11 @@ Each phase is shipped independently and must include:
 4. Unit and integration tests, Chromium E2E, Firefox critical journeys and
    container-based visual regression where UI changes are involved.
 5. Type, lint, documentation, bundle, PWA and source-architecture checks.
+   Coverage is measured and retained as a release artifact: after recording an
+   honest baseline, new modules and changed authorization, worker, paper-ledger
+   and notification paths may not reduce line/branch/function coverage and
+   require direct failure-path tests. A high aggregate percentage alone is not
+   sufficient evidence.
 6. A safe rollback path and no destructive cleanup of user records.
 7. A self-hosting documentation update for new configuration or services.
 8. No new listener, database or container outside this project's declared
@@ -70,9 +75,11 @@ Each phase is shipped independently and must include:
 12. Test accounts are created through bootstrap/admin APIs in an isolated
     project-owned database. Direct SQL role assignment in a running environment
     is not an accepted audit or E2E setup procedure.
-13. Before public beta, `main` must have either a required-check GitHub ruleset
-    or a documented owner-only exception with an equivalent mandatory local
-    pre-push gate and post-push GitHub Actions verification.
+13. Accepted decision D1 applies to `main`: the documented owner-only exception
+    permits direct publication only after exact-worktree local gates and a
+    remote-head recheck, with mandatory GitHub Actions verification for the
+    exact pushed SHA. Production cutover before green is forbidden; the full
+    contract is [ADR 0002](adr/0002-owner-only-direct-main-release-gate.md).
 14. Every accepted release installs from a fresh clone without a mandatory
     hosted-only dependency. External providers are optional, disabled by default
     and documented as BYO; Monitoring, Research, Backtest and Paper workflows
@@ -84,6 +91,19 @@ Each phase is shipped independently and must include:
     root-systemd changes, `DROP/ALTER` against another database and reuse of
     another project's volumes are forbidden. A collision uses another free
     project-owned port; the foreign process is never stopped.
+
+## Central decision log
+
+An open decision may not be hidden inside implementation work. Its owner records
+the selected option and evidence in an ADR or issue before the stated gate. While
+the status remains `open`, the fail-closed fallback applies; it cannot waive a
+dependency or enable HTTPS/live execution.
+
+| ID | Status | Decision | Owner | Decide-by gate | Fail-closed fallback |
+| --- | --- | --- | --- | --- | --- |
+| D1 | decided | [ADR 0002: owner-only direct-main release gate](adr/0002-owner-only-direct-main-release-gate.md) — direct push only after exact-worktree local gates, remote-head/fast-forward recheck and no force | project owner + release maintainer | accepted 2026-07-17; applies to R3.3 and every direct-main release | production cutover stays blocked until Actions for the exact SHA are green; failure uses a gated fix-forward or new `git revert`, and a required-check ruleset supersedes this ADR |
+| D2 | open | Canonical Strategy IR, dataset schema/fingerprint/split and deterministic backtest-engine versions for R9 | R9 technical owner + architecture maintainer | before the R9.1 schema/job API and first server evolutionary run | server GA/generator stays disabled; only the current browser research baseline remains available, with promotion/gallery forbidden |
+| D3 | open | Exact licensed R10A scope: venues, native symbols/markets, source terms, hot/warm retention, downsampling and deletion policy | project owner + market-data/ML maintainer | before R10A.2 online ingest and the corpus soak start | online collection stays disabled; only bounded uploads/read-only adapters for documented permitted sources remain, and R10B is blocked |
 
 ## Phase 0 — enforce Research / Paper mode
 
@@ -314,7 +334,9 @@ Evidence:
 [R3.1 identity control-plane acceptance](./evidence/R3_1_IDENTITY_CONTROL_PLANE.md)
 and [R3.2 workspace workflow](./evidence/R3_2_WORKSPACE_WORKFLOW.md).
 
-**Remaining — R3.3 onboarding:**
+**Active — R3.3 onboarding:** implementation and targeted isolated verification
+are in progress. The full build/browser/recovery gate, production cutover and
+release evidence are not yet complete.
 
 - add owner-scoped onboarding from goal selection to a first chart, backtest,
   research alert or paper robot, never requesting exchange keys;
@@ -332,9 +354,8 @@ order:
 1. **Configuration and schema 11.**
    - parse new limits, watermarks and TTL values strictly before database,
      filesystem or listener side effects;
-   - add an owner-scoped onboarding row with a finite goal/step/status,
-     optimistic revision, timestamps and an optional created-workspace
-     reference;
+   - add an owner-scoped onboarding row with one finite goal, milestone
+     timestamps, derived status and an optimistic revision;
    - add a bounded component-heartbeat table containing only the required
      research worker generation, status, schema/release version and last
      heartbeat;
@@ -342,13 +363,14 @@ order:
      a misleading first-run flow.
 2. **Owner-scoped onboarding API.**
    - `GET /api/onboarding` reads only the authenticated principal;
-   - `PUT /api/onboarding` accepts finite goal/step/status values and
-     `expectedRevision`;
-   - stale writes receive stable `409 onboarding_revision_conflict`;
-   - responses use `Cache-Control: private, no-store`, a strict body limit and
+   - `PUT /api/onboarding/goal` selects a finite goal, while
+     `POST /api/onboarding/milestones`, `/dismiss` and `/restart` advance the
+     same revisioned owner state;
+   - stale writes receive stable `409 onboarding_conflict`;
+   - responses use `Cache-Control: no-store`, a strict body limit and
      no credential, account or private-exchange fields.
 3. **First useful journey.**
-   - choose Monitoring, Research, Backtest or Paper robot;
+   - choose Monitoring, Price alert, Backtest or Paper robot;
    - create the existing server-synchronized workspace template;
    - expose one next action in every empty state;
    - support RU/EN/KK, keyboard use, 200% text and a mobile bottom sheet;
@@ -368,11 +390,19 @@ order:
    - bound `navigator.serviceWorker.ready` with a timeout and hide PWA-specific
      recovery controls on public HTTP.
 5. **First global admission controller.**
-   - initial evidence-driven defaults are 128 ordinary active API requests, a
-     queue of 256, a two-second wait and 16 reserved control slots;
+   - initial evidence-driven defaults are 128 total active API requests, of
+     which 16 are reserved for control traffic; ordinary work may use 112
+     active slots plus a queue of 256 and a two-second wait;
    - admission runs before large body parsers, including research job payloads;
-   - health/readiness, login/session/password, job cancellation and pause/stop
-     controls for existing paper work remain outside the heavy queue;
+   - cheap health remains outside admission; dependency-heavy readiness crosses
+     the bounded ordinary lane and reports admission saturation as not-ready,
+     while login/session/password, job cancellation and pause/stop controls for
+     existing paper work retain reserved capacity outside the heavy queue;
+   - readiness then crosses a separate bounded per-IP bucket; accepted overlap
+     shares one process-wide dependency scan and its completed result for a
+     short typed TTL, so many sources cannot multiply PostgreSQL/statfs work;
+   - migration and heartbeat probes are sequential, the supported API pool
+     minimum is two, and a full IP store reports its real prune horizon;
    - overflow returns stable `503 global_admission_exhausted` with
      `Retry-After`, and capacity is released on finish, close, abort and
      exception;
@@ -383,9 +413,13 @@ order:
    - make `/api/ready` versioned and cover migration checksum,
      PostgreSQL/pool, the singleton paper executor, worker heartbeat
      freshness, disk soft/hard watermarks and admission saturation;
+   - expose readiness-limiter bounds/counters only in admin metrics; never in
+     the public readiness response;
    - return `503 unready` for hard failures, `200 degraded` for soft
      watermark/saturation and `200 ready` otherwise;
-   - expose no database name/path, PID, owner identifier or secret publicly;
+   - expose only categorical component states publicly—no database name/path,
+     PID, owner identifier, migration/checksum, latency, heartbeat age, disk
+     capacity, admission counts or secret;
    - add admin-only fixed latency/status buckets, pool/admission metrics,
      queue/worker freshness, executor state, disk and the last verified
      recovery generation.
@@ -405,8 +439,10 @@ order:
    - two-owner isolation, stale revision and four fresh-account journeys;
    - a real insecure-origin browser test proves PWA controls are absent while
      ordinary export still works;
-   - readiness failure matrix, admission saturation/abort tests and worker
-     heartbeat recovery;
+   - readiness failure matrix, public DTO redaction, no-store admission
+     rejection, sequential two-connection pool reserve,
+     single-flight/TTL expiry/error-retry and bounded per-IP store/prune-horizon
+     tests, admission saturation/abort tests and worker heartbeat recovery;
    - corruption tests for each backup half and an isolated replacement restore
      drill;
    - record schema checksum, backup hashes, failure matrix and explicit
@@ -472,6 +508,9 @@ contract below.
 
 **Remaining:**
 
+- implement the complete owner-scoped paper-portfolio lifecycle: create, select
+  a default, rename and archive; reset requires explicit confirmation, starts a
+  new versioned ledger epoch and never erases the prior journal or evidence;
 - publish a versioned `paper-portfolio-v1` snapshot owned by the singleton
   trading executor and derived only from durable paper intents, orders, fills,
   fees, simulated funding and valuation marks;
@@ -521,6 +560,15 @@ alerts before robot strategy expansion.
 - open a result with the same symbol, timeframe and indicator context;
 - defer funding, OI and ML filters until their data contracts are delivered.
 
+**Remaining — research chart tools:**
+
+- add text notes with data-space anchors and owner-scoped workspace persistence;
+- add parallel channels as one movable, measurable drawing object;
+- use one canonical horizontal/trend/channel geometry contract for canvas,
+  workspace import/export and server alert evaluation;
+- expose the complete set through the common mobile drawing sheet rather than a
+  reduced mobile-only catalog.
+
 **Remaining — alerts and delivery:**
 
 - make PostgreSQL authoritative for multi-user alert policies, transitions,
@@ -530,30 +578,58 @@ alerts before robot strategy expansion.
   events with provenance and closed-candle defaults;
 - run evaluation and delivery outside the API request path with owner fairness,
   bounded leases, retry/backoff, dead-letter state and quotas;
-- use a dedicated notification worker that never opens trading SQLite and never
-  receives exchange credentials. Its provider credential comes from operator
-  configuration, while owner/chat bindings stay in PostgreSQL;
+- use a dedicated project-owned notification service that never opens trading
+  SQLite and never receives exchange credentials. Its delivery lane reads only
+  the PostgreSQL outbox and minimal owner/chat scope; its ingress lane writes
+  only normalized Telegram updates and durable command records to PostgreSQL.
+  The provider credential comes from a protected operator environment file;
+- implement HTTPS-independent inbound Telegram handling with outbound
+  `getUpdates` long polling. Webhooks, public callbacks and a new listener are
+  forbidden, so SaltanatbotV2 needs neither a domain nor HTTPS for this path;
+- allow exactly one active consumer for each bot-identity revision. A
+  PostgreSQL lease plus monotonic fencing token prevents a stale worker from
+  advancing the cursor or issuing commands after lease loss;
+- persist a unique `(botRevision, update_id)`, durable cursor and command
+  idempotency key before any mutating command, and advance the cursor only after
+  a durable outcome. A pre-commit crash safely replays the update; a post-commit
+  refetch is a no-op and cannot repeat a paper mutation;
+- at final consume, revalidate the active binding revision, owner status and
+  authorization epoch, portfolio/bot ownership and confirmation. Unbound,
+  revoked and cross-owner updates fail closed without exposing tenant data and
+  emit a structured audit event/counter;
+- enforce global, per-chat and per-owner ingress rates, bounded update/command
+  sizes, a command allowlist, failed binding/confirmation-attempt limits and
+  retry/backoff for Telegram timeout/`429`; administrator role does not bypass
+  these controls;
 - persist the outbox row before sending. A provider may accept a Telegram
   message before the worker records acknowledgement, so delivery is
   **at-least-once**, not exactly-once; every delivery carries a stable
   deduplication ID and duplicate possibility is documented;
-- bind/revoke Telegram through owner-scoped one-use codes and limit commands to
-  paper balance, reports, alerts and confirmation-bound pause/resume/stop;
-  expose paper-only `/balance`, `/daily`, `/profit`, `/performance`, `/trades`
-  and `/alerts`;
+- bind/revoke Telegram through owner-scoped, cryptographically random,
+  high-entropy codes stored only as hashes, with a short TTL, one consume and a
+  bounded attempt count; never place them in URLs, logs or metrics;
+- limit commands to paper balance, reports, alerts and pause/resume/stop. Each
+  state-changing confirmation is a separate high-entropy one-use token bound to
+  owner, chat, action, portfolio/bot revision and authorization epoch, with a
+  short TTL and final-consume validation; expose paper-only `/balance`,
+  `/daily`, `/profit`, `/performance`, `/trades` and `/alerts`;
 - keep Web Push disabled because HTTPS is outside this roadmap.
 
 **Dependencies:** R1 queue/ADR foundation, R3 ownership, R4 paper metrics and the
 canonical candle/indicator engine.
 
 **Evidence:** chart-versus-screener golden fixtures; browser-closed alert test;
-worker crash before/after provider acceptance; Telegram 429/timeout/retry tests;
-duplicate-ID evidence; owner quota and isolation tests; migration reconciliation.
+worker crash before/after provider acceptance; Telegram timeout/429/retry and
+long-poll lease-takeover tests; duplicate, replayed and out-of-order updates;
+crashes before/after cursor persistence; expired/brute-forced/replayed codes;
+revoke races and cross-owner commands; duplicate-ID evidence; owner quota and
+isolation tests; migration reconciliation.
 
 **Exit criteria:** a saved screen can produce an owner-scoped alert with the
 browser closed, restarts lose no durable transition, duplicates are bounded and
-identifiable, and notification failure cannot stall login, charts or paper
-execution.
+identifiable, each Telegram `update_id` creates at most one durable paper
+mutation across restart or consumer takeover, and notification failure cannot
+stall login, charts or paper execution.
 
 ## R6 — DCA paper robot
 
@@ -641,8 +717,9 @@ implementations.
 **Remaining:**
 
 - evolve only versioned Strategy IR, never arbitrary code;
-- gate the first server evolutionary run on a canonical IR, versioned dataset
-  contract and reproducible backtest engine;
+- close decision D2 before the R9.1 schema/job API or first server evolutionary
+  run by fixing the canonical IR, versioned dataset contract and reproducible
+  backtest-engine versions;
 - add bounded parameter/operator/indicator/timeframe/risk mutation, compatible
   subtree crossover and deterministic repair/rejection;
 - persist seed, dataset/engine fingerprints and full candidate lineage;
@@ -664,6 +741,14 @@ adversarial tests, quota/cancellation/restart tests and independent OOS reports.
 **Exit criteria:** the same seed and dataset reproduce the same lineage and no
 candidate can be promoted without OOS and overfit evidence.
 
+**R9.3 — safe strategy gallery:** publish only an explicit immutable versioned
+artifact with provenance, private/unlisted/public visibility,
+moderation/revocation and a safe import that creates a recipient-owned copy.
+Cards expose dataset/engine fingerprints, out-of-sample metrics, drawdown and
+limitations without leaking workspace or owner-private data. Import never
+starts a robot and always requires validation, backtest and explicit paper
+activation.
+
 ## R10A — public derivatives/MTF, L2 corpus, storage and quality gates
 
 **Status:** planned. The current administrator-only ML surface accepts bounded
@@ -679,6 +764,8 @@ uploaded evidence.
 - define a licensed venue/symbol schema for snapshots, deltas and trades,
   including native sequence/checksum, exchange/receive clocks, reconnect
   generation and explicit gap records;
+- close decision D3 before online ingest by fixing the exact venues/native
+  symbols, source permissions, retention/downsampling and deletion policy;
 - normalize public funding, open interest and liquidation feeds with exact
   contract/base/quote units, provenance, freshness and reconnect gaps; derive
   multi-timeframe inputs only from completed higher-timeframe candles without
@@ -755,9 +842,10 @@ market subscriptions, slow-client disconnects, owner-scoped job quotas,
 retention and a separate bounded research worker are implemented. ADR 0001 keeps
 one authoritative trading executor.
 
-**Remaining:** implement the missing global admission caps, metrics and
-dashboards; run the quantified workload, failure drills, backup/recovery targets
-and second-API fencing prerequisites in
+**Remaining:** tune the implemented process-wide API admission slice from load
+evidence; add the missing WebSocket, robot, job, alert, screener and L2 global
+caps plus their metrics and dashboards; run the quantified workload, failure
+drills, backup/recovery targets and second-API fencing prerequisites in
 [Capacity plan for the first 100 users](CAPACITY_100_USERS.md).
 
 **Dependencies:** all workloads selected for the capacity claim, stable schemas,
@@ -827,6 +915,33 @@ and stabilization.
 | R10B | ML baseline/model/UI | accepted R10A corpus | 5-8 |
 | R11 | 100-user capacity and operational proof | accepted workload contracts | 5-9 |
 | R12 | Documentation, fresh clone, recovery and release consolidation | R2-R11 | 2-4 |
+
+### Immediate execution queue
+
+1. Close the remaining R2 manual evidence with a real Android Opera smoke and
+   VoiceOver/NVDA/TalkBack record. This is a verification item, not permission
+   to mix later release code into the current increment.
+2. Finish the active R3.3 + O1 implementation in isolation: merge the recovery
+   hardening, run the complete PostgreSQL integration matrix, build outside the
+   production checkout, and pass Chromium, Firefox, visual, PWA, bundle,
+   architecture and documentation gates. Reconcile the generated API index and
+   all schema/configuration/security docs with the protected onboarding and
+   operations routes; add the promised documentation links and next actions to
+   the accepted empty-state journeys.
+3. Before any production mutation, record the exact project/service/container/
+   port/database/data-directory identity, create a paired schema-10
+   PostgreSQL/SQLite generation, verify it and complete a replacement-only
+   restore drill using proven matching `pg_dump`/`pg_restore` tooling. Persist
+   and expose the last verified generation only after successful verification,
+   never as an unverified placeholder. Any identity mismatch or
+   foreign-resource collision stops the release.
+4. Commit the accepted increment to `main`, verify GitHub Actions, package one
+   protected exact-commit release, migrate only the project database to schema
+   11, restart only the project API/worker, switch only the protected frontend
+   slot and run owner/onboarding/readiness/backup smoke checks on port 4180.
+5. Start R4 only after R3.3 evidence and production smoke are accepted. The
+   “Running” UI must consume the canonical paper portfolio/ledger contract
+   rather than introduce another authoritative browser or database state.
 
 Acceptance, publication to `main` and production cutover of the remaining work
 are strictly sequential: R3.3 with its O1 slice → R4 → R5 → R6 → R7 →

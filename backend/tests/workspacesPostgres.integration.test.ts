@@ -222,8 +222,14 @@ describePostgres("workspaces against isolated PostgreSQL", () => {
 
       await expect(migrateDatabase(legacyPool)).resolves.toMatchObject({
         fromVersion: 9,
-        toVersion: 10,
-        applied: [{ version: 10, name: "versioned_workspace_workflow" }]
+        toVersion: 11,
+        applied: [
+          { version: 10, name: "versioned_workspace_workflow" },
+          {
+            version: 11,
+            name: "owner_onboarding_and_runtime_heartbeats"
+          }
+        ]
       });
       const backfilled = await legacyPool.query<{
         payload_bytes: string;

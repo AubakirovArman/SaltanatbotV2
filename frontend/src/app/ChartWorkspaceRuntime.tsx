@@ -49,6 +49,7 @@ interface ChartWorkspaceRuntimeProps {
   storageOwnerId?: string;
   primaryCandlesRef: MutableRefObject<Candle[]>;
   onConnectionChange: (connection: ConnectionState) => void;
+  onPrimaryCandlesAvailabilityChange: (available: boolean) => void;
   linkedCrosshair?: LinkedCrosshair;
   onLinkedCrosshairChange: Dispatch<SetStateAction<LinkedCrosshair | undefined>>;
   linkedTimeRange?: LinkedTimeRange;
@@ -90,6 +91,7 @@ export function ChartWorkspaceRuntime({
   storageOwnerId,
   primaryCandlesRef,
   onConnectionChange,
+  onPrimaryCandlesAvailabilityChange,
   linkedCrosshair,
   onLinkedCrosshairChange,
   linkedTimeRange,
@@ -99,15 +101,7 @@ export function ChartWorkspaceRuntime({
   nextChartShortcut
 }: ChartWorkspaceRuntimeProps) {
   recordBrowserRender("ChartWorkspaceRuntime");
-  const {
-    cryptoExchange,
-    leftOpen,
-    rightOpen,
-    leftSize,
-    rightSize,
-    panelsSwapped,
-    compareOverlays
-  } = shell;
+  const { cryptoExchange, leftOpen, rightOpen, leftSize, rightSize, panelsSwapped, compareOverlays } = shell;
   const [paneStreams, setPaneStreams] = useState<Record<string, PaneMarketStream>>({});
   const [primaryOperational, setPrimaryOperational] = useState(true);
   const primaryChart = shell.charts[0];
@@ -129,11 +123,7 @@ export function ChartWorkspaceRuntime({
   const secondaryStream = paneStreams[activeChart?.id ?? ""];
   const activeStream = activeIsPrimary
     ? stream
-    : secondaryStream?.symbol === activeChart?.symbol
-        && secondaryStream.timeframe === activeChart?.timeframe
-        && secondaryStream.exchange === activeExchange
-        && secondaryStream.marketType === activeMarketType
-        && secondaryStream.priceType === activePriceType
+    : secondaryStream?.symbol === activeChart?.symbol && secondaryStream.timeframe === activeChart?.timeframe && secondaryStream.exchange === activeExchange && secondaryStream.marketType === activeMarketType && secondaryStream.priceType === activePriceType
       ? secondaryStream
       : undefined;
   const activeCandles = activeStream?.candles ?? [];
@@ -141,6 +131,10 @@ export function ChartWorkspaceRuntime({
   useEffect(() => {
     onConnectionChange(activeStream?.connection ?? "connecting");
   }, [activeStream?.connection, onConnectionChange]);
+
+  useEffect(() => {
+    onPrimaryCandlesAvailabilityChange(stream.candles.length > 0);
+  }, [onPrimaryCandlesAvailabilityChange, stream.candles.length]);
 
   const updatePaneStream = useCallback((id: string, next?: PaneMarketStream) => {
     setPaneStreams((current) => {
@@ -158,10 +152,7 @@ export function ChartWorkspaceRuntime({
     return asset === "all" ? allInstruments : allInstruments.filter((item) => item.assetClass === asset);
   }, [allInstruments, asset]);
   const watchlistVisible = isMobile ? mobilePanel === "markets" : leftOpen;
-  const compareCandidates = useMemo(
-    () => (catalog?.instruments ?? []).filter((item) => item.symbol !== symbol).map((item) => ({ symbol: item.symbol, displayName: item.displayName })),
-    [catalog, symbol]
-  );
+  const compareCandidates = useMemo(() => (catalog?.instruments ?? []).filter((item) => item.symbol !== symbol).map((item) => ({ symbol: item.symbol, displayName: item.displayName })), [catalog, symbol]);
   const livePositions = useLivePositions(primaryInstrument.symbol, { enabled: primaryOperational });
 
   const setActiveSymbol = useCallback((nextSymbol: string) => shell.updateActiveChart({ symbol: nextSymbol }), [shell.updateActiveChart]);
@@ -221,23 +212,10 @@ export function ChartWorkspaceRuntime({
 
       {isMobile && (
         <>
-          <MobilePanelDialog
-            id="markets-panel"
-            open={mobilePanel === "markets"}
-            label={shellText(locale, "markets")}
-            closeLabel={localized(locale, { en: "Close markets", ru: "Закрыть рынки", kk: "Нарықтарды жабу" })}
-            initialFocus=".market-search input"
-            onClose={() => setMobilePanel(undefined)}
-          >
+          <MobilePanelDialog id="markets-panel" open={mobilePanel === "markets"} label={shellText(locale, "markets")} closeLabel={localized(locale, { en: "Close markets", ru: "Закрыть рынки", kk: "Нарықтарды жабу" })} initialFocus=".market-search input" onClose={() => setMobilePanel(undefined)}>
             {watchlistPanel}
           </MobilePanelDialog>
-          <MobilePanelDialog
-            id="instrument-panel"
-            open={mobilePanel === "instrument"}
-            label={shellText(locale, "currentInstrument")}
-            closeLabel={localized(locale, { en: "Close instrument details", ru: "Закрыть данные инструмента", kk: "Құрал деректерін жабу" })}
-            onClose={() => setMobilePanel(undefined)}
-          >
+          <MobilePanelDialog id="instrument-panel" open={mobilePanel === "instrument"} label={shellText(locale, "currentInstrument")} closeLabel={localized(locale, { en: "Close instrument details", ru: "Закрыть данные инструмента", kk: "Құрал деректерін жабу" })} onClose={() => setMobilePanel(undefined)}>
             {statsPanel}
           </MobilePanelDialog>
         </>

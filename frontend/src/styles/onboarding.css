@@ -1,0 +1,206 @@
+.onboarding-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: color-mix(in srgb, #02070d 78%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.onboarding-dialog {
+  width: min(820px, 100%);
+  max-height: min(760px, calc(100dvh - 32px));
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: var(--shadow-modal);
+  color: var(--text);
+}
+
+.onboarding-dialog > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 24px 16px;
+}
+
+.onboarding-dialog h2 {
+  margin: 5px 0 8px;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  line-height: 1.15;
+}
+
+.onboarding-dialog p {
+  max-width: 65ch;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.onboarding-kicker {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.onboarding-close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-raised);
+  color: var(--muted);
+}
+
+.onboarding-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 24px 16px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 10%, var(--panel));
+  color: var(--text);
+}
+
+.onboarding-error button {
+  min-height: 44px;
+  border: 1px solid currentColor;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+}
+
+.onboarding-goals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 24px 24px;
+}
+
+.onboarding-goal {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 150px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel-raised);
+  color: var(--text);
+  text-align: left;
+}
+
+.onboarding-goal:not(:disabled):not([aria-disabled="true"]):hover,
+.onboarding-goal:not(:disabled):not([aria-disabled="true"]):focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel-raised));
+}
+
+.onboarding-goal:disabled,
+.onboarding-goal[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.onboarding-goal-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 13%, var(--panel));
+  color: var(--accent);
+}
+
+.onboarding-goal strong {
+  display: block;
+  margin: 2px 0 7px;
+  font-size: 1rem;
+}
+
+.onboarding-goal > span:nth-child(2) > span {
+  display: block;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.onboarding-goal-action {
+  grid-column: 2;
+  align-self: end;
+  margin-top: 14px;
+  color: var(--accent);
+}
+
+.onboarding-dialog > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.onboarding-later {
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--accent-contrast, #061018);
+  font-weight: 750;
+}
+
+.onboarding-docs {
+  color: var(--accent);
+}
+
+@media (max-width: 600px) {
+  .onboarding-backdrop {
+    align-items: end;
+    padding: max(8px, env(safe-area-inset-top)) 0 0;
+  }
+
+  .onboarding-dialog {
+    width: 100%;
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top)));
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .onboarding-dialog > header {
+    padding: 20px 16px 14px;
+  }
+
+  .onboarding-error {
+    margin-inline: 16px;
+  }
+
+  .onboarding-goals {
+    grid-template-columns: 1fr;
+    padding: 0 16px 18px;
+  }
+
+  .onboarding-goal {
+    min-height: 124px;
+    padding: 15px;
+  }
+
+  .onboarding-dialog > footer {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 14px 16px;
+  }
+}

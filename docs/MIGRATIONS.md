@@ -4,7 +4,7 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
-## Unreleased / PostgreSQL schema 10 and trading SQLite schema 8
+## Unreleased / PostgreSQL schema 11 and trading SQLite schema 8
 
 - PostgreSQL schema v5 adds a monotonic `users.authorization_revision`. Every status, role,
   temporary-password or password mutation advances it; login timestamps do not. It is a durable
@@ -39,6 +39,15 @@ migration.
   transactional, but the chain remains forward-only: rollback means restoring the verified
   schema-v9 dump into a new replacement database, never dropping v10 objects or migration history
   in place. See [Workspace schema v10 upgrade and rollback](BACKUP_RESTORE.md#workspace-schema-v10-upgrade-and-rollback).
+- PostgreSQL schema v11 adds `user_onboarding` and `runtime_component_heartbeats`. Onboarding is
+  owner-keyed with optimistic revisions, one finite goal, first-use milestone timestamps and
+  mutually exclusive completed/dismissed terminal state. Existing users are inserted as dismissed
+  in the same transaction, while users created after the migration initially receive a virtual
+  revision-0 `not_started` state until their first mutation. The heartbeat table currently accepts
+  only the `research-worker` component and binds its generation, lifecycle state, release commit
+  and database schema version to one current row. An onboarding row cascades when its owner is
+  deleted; heartbeat startup replaces only that component's singleton row. Neither table stores
+  credentials, sessions, strategies or exchange payloads.
 - Trading SQLite schema v8 adds monotonic account and credential revisions plus a per-owner
   arm/disarm epoch. Migration always starts every owner disarmed and removes legacy boolean arm
   settings; it never deletes accounts, credentials, bots or journals.
@@ -77,6 +86,15 @@ migration.
   during one-time owner migration; they are not accepted as portable imports. Automatic chart
   sessions remain separately versioned. Unknown time zones fail closed to UTC, and normalization
   never rewrites candle timestamps, session membership or strategy artifacts.
+
+The project recovery format inventories the complete contiguous PostgreSQL migration chain,
+including schema v11 and the `user_onboarding` row count, together with checksummed SQLite runtime
+files and owner/count evidence. Verification is read-only. Restore always creates a separately
+named PostgreSQL replacement database and a separate absent/empty runtime directory; it does not
+change a service, Compose configuration, `PGDATABASE` or the active data path. The drill performs
+the same restore and removes only the marker/OID-bound temporary database and the verified
+tool-owned directory. This is replacement evidence, not an in-place down-migration or automatic
+cutover.
 
 For server data, follow [Backup and restore](BACKUP_RESTORE.md) before deployment. A breaking future
 IR, API, storage or event-trace change must add a dated section here and executable backward-compatibility

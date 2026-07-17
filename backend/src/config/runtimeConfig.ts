@@ -32,6 +32,29 @@ export interface RuntimeConfig {
   readonly trading: Readonly<{
     enableLiveSpot: boolean;
   }>;
+  readonly operations: Readonly<{
+    recoveryStatusFile?: string;
+    admission: Readonly<{
+      maxActive: number;
+      reservedControlSlots: number;
+      maxQueued: number;
+      queueTimeoutMs: number;
+    }>;
+    readiness: Readonly<{
+      researchWorkerHeartbeatStaleMs: number;
+      resultTtlMs: number;
+      rateLimit: Readonly<{
+        refillPerSecond: number;
+        burst: number;
+        maxBuckets: number;
+      }>;
+      diskPath: string;
+      diskSoftFreeBytes: number;
+      diskHardFreeBytes: number;
+      diskSoftFreePercent: number;
+      diskHardFreePercent: number;
+    }>;
+  }>;
 }
 
 export class RuntimeConfigError extends Error {
@@ -43,6 +66,7 @@ export class RuntimeConfigError extends Error {
 
 const defaultAllowedOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"] as const;
 const defaultFrontendDistDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../frontend/dist");
+const defaultOperationsDiskPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../data");
 const namedProxyRanges = new Set(["loopback", "linklocal", "uniquelocal"]);
 let configuredRuntimeConfig: RuntimeConfig | undefined;
 
@@ -82,6 +106,31 @@ function parseRuntimeConfig(env: NodeJS.ProcessEnv, runtimeProfile: RuntimeProfi
   const cookieSecure = parseOptionalBoolean("COOKIE_SECURE", env.COOKIE_SECURE) ?? false;
   const allowInsecureTradingMutations = parseOptionalBoolean("ALLOW_INSECURE_TRADING_MUTATIONS", env.ALLOW_INSECURE_TRADING_MUTATIONS) ?? false;
   const enableLiveSpot = parseOptionalBoolean("ENABLE_LIVE_SPOT", env.ENABLE_LIVE_SPOT) ?? false;
+  const admissionMaxActive = parseBoundedInteger("GLOBAL_ADMISSION_MAX_ACTIVE", env.GLOBAL_ADMISSION_MAX_ACTIVE, 128, 16, 4_096);
+  const admissionReservedControl = parseBoundedInteger("GLOBAL_ADMISSION_RESERVED_CONTROL", env.GLOBAL_ADMISSION_RESERVED_CONTROL, 16, 1, 1_024);
+  const admissionMaxQueued = parseBoundedInteger("GLOBAL_ADMISSION_MAX_QUEUED", env.GLOBAL_ADMISSION_MAX_QUEUED, 256, 1, 16_384);
+  const admissionQueueTimeoutMs = parseBoundedInteger("GLOBAL_ADMISSION_QUEUE_TIMEOUT_MS", env.GLOBAL_ADMISSION_QUEUE_TIMEOUT_MS, 2_000, 100, 30_000);
+  const researchWorkerHeartbeatStaleMs = parseBoundedInteger("RESEARCH_WORKER_HEARTBEAT_STALE_MS", env.RESEARCH_WORKER_HEARTBEAT_STALE_MS, 90_000, 10_000, 15 * 60_000);
+  const readinessResultTtlMs = parseBoundedInteger("READINESS_RESULT_TTL_MS", env.READINESS_RESULT_TTL_MS, 1_000, 100, 10_000);
+  const readinessRateRefillPerSecond = parseBoundedInteger("READINESS_RATE_REFILL_PER_SECOND", env.READINESS_RATE_REFILL_PER_SECOND, 2, 1, 1_000);
+  const readinessRateBurst = parseBoundedInteger("READINESS_RATE_BURST", env.READINESS_RATE_BURST, 10, 1, 10_000);
+  const readinessRateMaxBuckets = parseBoundedInteger("READINESS_RATE_MAX_BUCKETS", env.READINESS_RATE_MAX_BUCKETS, 4_096, 256, 100_000);
+  const recoveryStatusFile = parseOptionalNormalizedAbsolutePath("OPERATIONS_RECOVERY_STATUS_FILE", env.OPERATIONS_RECOVERY_STATUS_FILE);
+  const operationsDiskPath = parseNormalizedAbsolutePath("OPERATIONS_DISK_PATH", env.OPERATIONS_DISK_PATH, defaultOperationsDiskPath);
+  const diskSoftFreeBytes = parseBoundedInteger("OPERATIONS_DISK_SOFT_FREE_BYTES", env.OPERATIONS_DISK_SOFT_FREE_BYTES, 5 * 1_024 ** 3, 128 * 1_024 ** 2, Number.MAX_SAFE_INTEGER);
+  const diskHardFreeBytes = parseBoundedInteger("OPERATIONS_DISK_HARD_FREE_BYTES", env.OPERATIONS_DISK_HARD_FREE_BYTES, 2 * 1_024 ** 3, 64 * 1_024 ** 2, Number.MAX_SAFE_INTEGER);
+  const diskSoftFreePercent = parseBoundedInteger("OPERATIONS_DISK_SOFT_FREE_PERCENT", env.OPERATIONS_DISK_SOFT_FREE_PERCENT, 5, 1, 99);
+  const diskHardFreePercent = parseBoundedInteger("OPERATIONS_DISK_HARD_FREE_PERCENT", env.OPERATIONS_DISK_HARD_FREE_PERCENT, 2, 1, 98);
+
+  if (admissionReservedControl >= admissionMaxActive) {
+    throw new RuntimeConfigError("GLOBAL_ADMISSION_RESERVED_CONTROL must be lower than GLOBAL_ADMISSION_MAX_ACTIVE.");
+  }
+  if (diskHardFreeBytes >= diskSoftFreeBytes) {
+    throw new RuntimeConfigError("OPERATIONS_DISK_HARD_FREE_BYTES must be lower than OPERATIONS_DISK_SOFT_FREE_BYTES.");
+  }
+  if (diskHardFreePercent >= diskSoftFreePercent) {
+    throw new RuntimeConfigError("OPERATIONS_DISK_HARD_FREE_PERCENT must be lower than OPERATIONS_DISK_SOFT_FREE_PERCENT.");
+  }
 
   validateRuntimeBoundary({
     runtimeProfile,
@@ -102,16 +151,48 @@ function parseRuntimeConfig(env: NodeJS.ProcessEnv, runtimeProfile: RuntimeProfi
     server: { host, port, publicOrigin, allowedOrigins, trustProxy },
     auth: { mode: authMode, cookieSecure },
     security: { allowInsecureTradingMutations },
-    trading: { enableLiveSpot }
+    trading: { enableLiveSpot },
+    operations: {
+      recoveryStatusFile,
+      admission: {
+        maxActive: admissionMaxActive,
+        reservedControlSlots: admissionReservedControl,
+        maxQueued: admissionMaxQueued,
+        queueTimeoutMs: admissionQueueTimeoutMs
+      },
+      readiness: {
+        researchWorkerHeartbeatStaleMs,
+        resultTtlMs: readinessResultTtlMs,
+        rateLimit: {
+          refillPerSecond: readinessRateRefillPerSecond,
+          burst: readinessRateBurst,
+          maxBuckets: readinessRateMaxBuckets
+        },
+        diskPath: operationsDiskPath,
+        diskSoftFreeBytes,
+        diskHardFreeBytes,
+        diskSoftFreePercent,
+        diskHardFreePercent
+      }
+    }
   });
 }
 
 function parseFrontendDistDir(value: string | undefined): string {
-  if (value === undefined || value === "") return defaultFrontendDistDir;
+  return parseNormalizedAbsolutePath("FRONTEND_DIST_DIR", value, defaultFrontendDistDir);
+}
+
+function parseNormalizedAbsolutePath(name: string, value: string | undefined, fallback: string): string {
+  if (value === undefined || value === "") return fallback;
   if (value !== value.trim() || value.length > 4_096 || /[\0\r\n]/.test(value) || !path.isAbsolute(value) || path.normalize(value) !== value) {
-    throw new RuntimeConfigError("Invalid FRONTEND_DIST_DIR. Expected a normalized absolute filesystem path.");
+    throw new RuntimeConfigError(`Invalid ${name}. Expected a normalized absolute filesystem path.`);
   }
   return value;
+}
+
+function parseOptionalNormalizedAbsolutePath(name: string, value: string | undefined): string | undefined {
+  if (value === undefined || value === "") return undefined;
+  return parseNormalizedAbsolutePath(name, value, "");
 }
 
 /** Pin configuration once, before startup opens databases/files or listeners. */
@@ -190,6 +271,19 @@ function parseOptionalBoolean(name: string, value: string | undefined): boolean 
   if (normalized === "1" || normalized === "true") return true;
   if (normalized === "0" || normalized === "false") return false;
   throw new RuntimeConfigError(`Invalid ${name}=${value}. Expected 1, 0, true or false.`);
+}
+
+function parseBoundedInteger(name: string, value: string | undefined, fallback: number, minimum: number, maximum: number): number {
+  const raw = value?.trim();
+  if (!raw) return fallback;
+  if (!/^\d+$/.test(raw)) {
+    throw new RuntimeConfigError(`Invalid ${name}. Expected an integer from ${minimum} to ${maximum}.`);
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new RuntimeConfigError(`Invalid ${name}. Expected an integer from ${minimum} to ${maximum}.`);
+  }
+  return parsed;
 }
 
 function parseOptionalOrigin(name: string, value: string | undefined): string | undefined {
@@ -326,13 +420,21 @@ function privateLiveTrustProxyIsNarrow(setting: TrustProxySetting): boolean {
 function freezeRuntimeConfig(config: RuntimeConfig): RuntimeConfig {
   const allowedOrigins = Object.freeze([...config.server.allowedOrigins]);
   const trustProxy = Array.isArray(config.server.trustProxy) ? Object.freeze([...config.server.trustProxy]) : config.server.trustProxy;
+  const admission = Object.freeze({ ...config.operations.admission });
+  const rateLimit = Object.freeze({ ...config.operations.readiness.rateLimit });
+  const readiness = Object.freeze({ ...config.operations.readiness, rateLimit });
   return Object.freeze({
     runtimeProfile: config.runtimeProfile,
     frontend: Object.freeze({ ...config.frontend }),
     server: Object.freeze({ ...config.server, allowedOrigins, trustProxy }),
     auth: Object.freeze({ ...config.auth }),
     security: Object.freeze({ ...config.security }),
-    trading: Object.freeze({ ...config.trading })
+    trading: Object.freeze({ ...config.trading }),
+    operations: Object.freeze({
+      recoveryStatusFile: config.operations.recoveryStatusFile,
+      admission,
+      readiness
+    })
   });
 }
 

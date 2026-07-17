@@ -4,8 +4,9 @@ Audience: self-hosted operators and maintainers
 
 Last measured: 2026-07-16
 
-Status: baseline measured; the quantified 100-user proof and several global
-admission caps remain planned work.
+Status: baseline measured; the first process-wide API admission/readiness slice
+is implemented, while the quantified 100-user proof and the remaining
+cross-workload caps are still planned.
 
 This plan covers the `public-http-paper` Research / Paper release. SSL/TLS,
 HTTPS termination and live exchange execution are explicitly outside its active
@@ -51,8 +52,9 @@ baseline.
 **Baseline:** the limits in the next section are implemented; the host snapshot
 is observation only and is not capacity evidence.
 
-**Remaining:** implement the global admission table, run the exact workload,
-meet the recovery targets and pass every failure drill.
+**Remaining:** measure and tune the initial API governor, implement the
+WebSocket/robot/alert/screener caps below, run the exact workload, meet the
+recovery targets and pass every failure drill.
 
 **Dependencies:** accepted ADR 0001, stable R2-R10 workload contracts, paired
 PostgreSQL/SQLite backup generations and one fenced trading executor.
@@ -92,6 +94,21 @@ comfort or an SLA.
   independent failed-login buckets by client IP and normalized login.
   Registration counts successful attempts too. Both stores have a hard
   4,096-entry default.
+- One process-wide API admission controller permits at most 128 active requests
+  in total. Ordinary work may use 112 slots; 16 remain available for
+  authentication, research-job cancellation and paper stop/kill controls.
+  Up to 256 ordinary requests may wait for two seconds before a stable
+  retryable HTTP 503. Admission runs before large request-body parsing.
+- `/api/ready` verifies the migration checksum, PostgreSQL, the paper executor,
+  research-worker heartbeat, disk watermarks and admission saturation. The
+  public route has a separate per-IP 2 requests/second token bucket with burst
+  10 and at most 4,096 keys. All accepted overlap shares one dependency scan;
+  a completed result is reused for one second, bounding PostgreSQL/heartbeat/
+  filesystem probe rate even across many source IPs. Its two PostgreSQL checks
+  are sequential and the supported pool minimum is two, preserving one
+  connection beside a readiness scan. The public body is categorical; bounded
+  API/pool/admission/worker/readiness-limiter measurements are administrator
+  only.
 - Argon2id is globally limited to two active operations plus 32 queued requests
   by default; overflow fails with a generic retryable response. Each active
   default hash uses about 64 MiB plus library overhead.
@@ -119,18 +136,20 @@ comfort or an SLA.
   the research service at 2 CPU/2 GiB. These are conservative defaults, not a
   measured final allocation.
 
-## Remaining global admission caps
+## Global admission caps and remaining work
 
 Per-owner limits alone are insufficient: 100 owners can each remain below their
-quota while exhausting one process. R11 must implement and expose metrics for
-the following initial global caps before the project claims a comfortable
-100-active-user envelope. They are starting limits for the acceptance test and
-may be lowered or raised only from measured evidence.
+quota while exhausting one process. The first API cap is now implemented; the
+remaining rows must be delivered by their owning releases and integrated in
+R11 before the project claims a comfortable 100-active-user envelope. These
+are starting limits for the acceptance test and may be changed only from
+measured evidence.
 
 | Resource | Initial global cap | Per-owner cap | Overload behavior | Current status |
 | --- | ---: | ---: | --- | --- |
-| API work admitted concurrently | 128 requests | 8 | bounded wait up to 2 seconds, then `429/503` | planned global governor |
-| API wait queue | 256 requests | included above | reject newest non-critical work; health/readiness remain cheap | planned |
+| API work admitted concurrently | 128 total, including 16 reserved control slots | 8 target | ordinary work waits up to 2 seconds, then HTTP 503; controls never wait behind the ordinary queue | implemented; load tuning pending |
+| API wait queue | 256 ordinary requests | included above | reject overflow with `global_admission_exhausted`; only cheap health bypasses, readiness is bounded | implemented |
+| Readiness dependency scan | 1 in flight; completed result retained 1 second; 1 PG query at a time | 2 requests/second/IP, burst 10 | excess source receives `429 readiness_rate_limited`; a full 4,096-key store returns the remaining prune horizon; all admitted callers share one scan | implemented |
 | Browser market WebSockets | 300 connections | 4 | close/reject with retryable `1013/429`; never grow buffers | global admission planned; slow-client bound exists |
 | PostgreSQL application connections | 20 total: API 12 + research 4 + notification 4 | n/a | fail readiness before exhausting operator reserve | API/research 16 exist; notification 4 planned |
 | PostgreSQL `max_connections` deployment floor | 40 | n/a | retain at least 20 connections for migration, backup and operator recovery | deployment validation planned |
@@ -229,7 +248,7 @@ machine-readable result. Passing unit tests alone is insufficient.
 | Kill a research worker during a job | lease expires/requeues once; no duplicate published result; API latency remains within objective |
 | OOM/timeout one worker thread | only that job fails/retries within policy; worker supervisor and API remain healthy |
 | Stop PostgreSQL | readiness becomes false; authenticated mutations fail closed; no SQLite or owner-state corruption |
-| Hold/exhaust PostgreSQL pool | admission rejects bounded work; health/operator reserve remains available |
+| Hold/exhaust PostgreSQL pool | admission rejects bounded work; cheap health and the operator control reserve remain available; readiness coalesces to one scan/short cached result, frequent sources receive 429, and saturation may return admission 503 instead of adding unbounded probes |
 | Kill/restart the API with paper robots active | one singleton executor recovers idempotently; no duplicate fill, order, reservation or event |
 | Remove/wrong-mode the SQLite master key in an isolated copy | startup fails before mutation and does not create a replacement key |
 | Inject SQLite lock/corruption in an isolated copy | executor fails closed; verified restore meets the stated RTO |

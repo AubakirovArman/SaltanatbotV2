@@ -200,7 +200,7 @@ published by the `Deploy documentation site` workflow and is also set as the rep
 | [**Self-hosting with accounts**](docs/SELF_HOSTING.md) | Clone, PostgreSQL secret, first admin, pending-user approval, updates and storage boundaries |
 | [**Capacity for 100 users**](docs/CAPACITY_100_USERS.md) | Measured host headroom, queue/worker limits, monitoring and safe scaling order |
 | [**Pre-HTTPS development roadmap**](docs/PRE_HTTPS_ROADMAP.md) | The active R2-R12 Research/Paper plan, delivered baselines, remaining work, dependencies and release gates |
-| [**Backup & restore**](docs/BACKUP_RESTORE.md) | Verified online SQLite snapshots, checksums, atomic restore and recovery drills |
+| [**Backup & restore**](docs/BACKUP_RESTORE.md) | Paired PostgreSQL/SQLite generations, checksums, replacement-only restore and isolated recovery drills |
 | [**Release policy & verification**](docs/RELEASING.md) | Nightly/alpha/beta/stable channels, SBOM, SHA-256 and Sigstore attestation verification |
 | [**Roadmap**](docs/ROADMAP.md) | What has shipped and what's next |
 | [**Master improvement plan**](docs/MASTER_IMPROVEMENT_PLAN.md) | Product gaps, priorities, release gates and delivery milestones |

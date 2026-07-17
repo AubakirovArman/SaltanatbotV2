@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { inspectEncryptedTradingRows, restoreRuntimeBackup } from "../../scripts/runtime-data.mjs";
+import { createRuntimeBackup, inspectEncryptedTradingRows, restoreRuntimeBackup, verifyRuntimeBackup } from "../../scripts/runtime-data.mjs";
 import { sealCredentialPayload } from "../src/trading/credentialCrypto.js";
 
 const root = path.resolve(import.meta.dirname, "../..");
@@ -101,7 +101,6 @@ describe("runtime data backup and restore", () => {
     const backupDir = path.resolve(workspace, "backup");
     seedRuntimeData(sourceDir, "from-backup");
     seedRuntimeData(targetDir, "must-not-survive");
-    writeFileSync(path.resolve(targetDir, "ordinary-restore-sentinel.txt"), "ordinary swap removes this");
     run("backup", "--data-dir", sourceDir, "--output", backupDir);
 
     const refused = spawnSync(process.execPath, [script, "restore", backupDir, "--data-dir", targetDir], {
@@ -121,7 +120,416 @@ describe("runtime data backup and restore", () => {
     expect(restoredPaperMultiLeg.prepare("SELECT status FROM runs WHERE runId = ?").get("paper-backup-fixture")).toMatchObject({ status: "completed" });
     restoredPaperMultiLeg.close();
     expect(readFileSync(path.resolve(targetDir, ".secret"), "utf8")).toBe(TEST_SECRET);
-    expect(existsSync(path.resolve(targetDir, "ordinary-restore-sentinel.txt"))).toBe(false);
+  });
+
+  it("writes a normalized restoredFrom override into the staged restore manifest", () => {
+    const workspace = temporaryDirectory();
+    const sourceDir = path.resolve(workspace, "source");
+    const targetDir = path.resolve(workspace, "target");
+    const backupDir = path.resolve(workspace, "backup");
+    const restoredFrom = path.resolve(workspace, "generation", "..", "verified-generation", "runtime");
+    let stagedRestoredFrom = "";
+    seedRuntimeData(sourceDir, "from-backup");
+    run("backup", "--data-dir", sourceDir, "--output", backupDir);
+
+    restoreRuntimeBackup({
+      backupDirectory: backupDir,
+      dataDirectory: targetDir,
+      restoredFrom,
+      afterRestoreStaged({ stagingDir }: { stagingDir: string }) {
+        stagedRestoredFrom = JSON.parse(readFileSync(path.resolve(stagingDir, ".restore-manifest.json"), "utf8")).restoredFrom;
+      }
+    });
+
+    expect(stagedRestoredFrom).toBe(path.resolve(restoredFrom));
+    expect(JSON.parse(readFileSync(path.resolve(targetDir, ".restore-manifest.json"), "utf8")).restoredFrom).toBe(path.resolve(restoredFrom));
+  });
+
+  it("refuses force replacement of a target with unmanaged entries and preserves them", () => {
+    const workspace = temporaryDirectory();
+    const sourceDir = path.resolve(workspace, "source");
+    const targetDir = path.resolve(workspace, "target");
+    const backupDir = path.resolve(workspace, "backup");
+    const foreignFile = path.resolve(targetDir, "operator-notes.txt");
+    seedRuntimeData(sourceDir, "from-backup");
+    seedRuntimeData(targetDir, "must-survive");
+    writeFileSync(foreignFile, "do not delete");
+    run("backup", "--data-dir", sourceDir, "--output", backupDir);
+
+    expect(() =>
+      restoreRuntimeBackup({
+        backupDirectory: backupDir,
+        dataDirectory: targetDir,
+        force: true
+      })
+    ).toThrow(/unexpected entry.*operator-notes\.txt/i);
+
+    expect(readFileSync(foreignFile, "utf8")).toBe("do not delete");
+    expect(runtimeMarker(targetDir)).toMatchObject({ value: "must-survive" });
+  });
+
+  it("preserves a foreign file injected into backup staging instead of recursively deleting it", async () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    const backupDir = path.resolve(workspace, "backup");
+    let foreignFile = "";
+    seedRuntimeData(dataDir);
+
+    await expect(
+      createRuntimeBackup({
+        dataDirectory: dataDir,
+        outputDirectory: backupDir,
+        afterBackupStaged({ stagingDir }: { stagingDir: string }) {
+          foreignFile = path.resolve(stagingDir, "foreign-staging.txt");
+          writeFileSync(foreignFile, "preserve me");
+          throw new Error("injected backup failure");
+        }
+      })
+    ).rejects.toThrow(/cleanup was refused/i);
+
+    expect(readFileSync(foreignFile, "utf8")).toBe("preserve me");
+    expect(existsSync(backupDir)).toBe(false);
+  });
+
+  it("preserves an allowed-name replacement raced over a staged backup entry", async () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    const backupDir = path.resolve(workspace, "backup");
+    const displacedSecret = path.resolve(workspace, "tool-created-staged-secret");
+    let stagingDir = "";
+    let foreignIdentity: { dev: bigint | number; ino: bigint | number } | undefined;
+    seedRuntimeData(dataDir);
+
+    await expect(
+      createRuntimeBackup({
+        dataDirectory: dataDir,
+        outputDirectory: backupDir,
+        afterBackupStaged({ stagingDir: candidate }: { stagingDir: string }) {
+          stagingDir = candidate;
+          const stagedSecret = path.resolve(stagingDir, ".secret");
+          renameSync(stagedSecret, displacedSecret);
+          writeFileSync(stagedSecret, TEST_SECRET, { mode: 0o600 });
+          const replacement = lstatSync(stagedSecret);
+          foreignIdentity = { dev: replacement.dev, ino: replacement.ino };
+          throw new Error("injected allowed-name replacement");
+        }
+      })
+    ).rejects.toThrow(/cleanup was refused/i);
+
+    const retained = lstatSync(path.resolve(stagingDir, ".secret"));
+    expect({ dev: retained.dev, ino: retained.ino }).toEqual(foreignIdentity);
+    expect(readFileSync(path.resolve(stagingDir, ".secret"), "utf8")).toBe(TEST_SECRET);
+    expect(readFileSync(displacedSecret, "utf8")).toBe(TEST_SECRET);
+    expect(existsSync(backupDir)).toBe(false);
+  });
+
+  it("does not replace a foreign backup output raced before its exclusive claim", async () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    const backupDir = path.resolve(workspace, "backup");
+    seedRuntimeData(dataDir);
+    let foreignIdentity: { dev: bigint | number; ino: bigint | number } | undefined;
+
+    await expect(
+      createRuntimeBackup({
+        dataDirectory: dataDir,
+        outputDirectory: backupDir,
+        beforeBackupPublish({ outputDir }: { outputDir: string }) {
+          mkdirSync(outputDir, { mode: 0o700 });
+          const entry = lstatSync(outputDir);
+          foreignIdentity = { dev: entry.dev, ino: entry.ino };
+        }
+      })
+    ).rejects.toThrow(/exclusive claim/i);
+
+    const retained = lstatSync(backupDir);
+    expect({ dev: retained.dev, ino: retained.ino }).toEqual(foreignIdentity);
+    expect(readdirSync(backupDir)).toEqual([]);
+  });
+
+  it("rejects an oversized runtime manifest before parsing it", async () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    const backupDir = path.resolve(workspace, "backup");
+    seedRuntimeData(dataDir);
+    await createRuntimeBackup({ dataDirectory: dataDir, outputDirectory: backupDir });
+    writeFileSync(path.resolve(backupDir, "backup-manifest.json"), Buffer.alloc(1024 * 1024 + 1, 0x20), { mode: 0o600 });
+
+    expect(() => verifyRuntimeBackup(backupDir)).toThrow(/manifest is too large/i);
+  });
+
+  it("preserves a foreign file injected into restore staging instead of recursively deleting it", () => {
+    const workspace = temporaryDirectory();
+    const sourceDir = path.resolve(workspace, "source");
+    const targetDir = path.resolve(workspace, "target");
+    const backupDir = path.resolve(workspace, "backup");
+    let foreignFile = "";
+    seedRuntimeData(sourceDir);
+    run("backup", "--data-dir", sourceDir, "--output", backupDir);
+
+    expect(() =>
+      restoreRuntimeBackup({
+        backupDirectory: backupDir,
+        dataDirectory: targetDir,
+        afterRestoreStaged({ stagingDir }: { stagingDir: string }) {
+          foreignFile = path.resolve(stagingDir, "foreign-staging.txt");
+          writeFileSync(foreignFile, "preserve me");
+          throw new Error("injected restore failure");
+        }
+      })
+    ).toThrow(/rollback or cleanup is incomplete/i);
+
+    expect(readFileSync(foreignFile, "utf8")).toBe("preserve me");
+    expect(existsSync(targetDir)).toBe(true);
+  });
+
+  it.each([
+    { label: "claimed ordinary restore", inPlace: false },
+    { label: "direct in-place restore", inPlace: true }
+  ])("preserves an allowed-name replacement in restore staging ($label)", ({ inPlace }) => {
+    const workspace = temporaryDirectory();
+    const sourceDir = path.resolve(workspace, "source");
+    const targetDir = path.resolve(workspace, "target");
+    const backupDir = path.resolve(workspace, "backup");
+    const displacedSecret = path.resolve(workspace, `tool-created-restore-secret-${inPlace}`);
+    let stagingDir = "";
+    let foreignIdentity: { dev: bigint | number; ino: bigint | number } | undefined;
+    seedRuntimeData(sourceDir);
+    run("backup", "--data-dir", sourceDir, "--output", backupDir);
+
+    expect(() =>
+      restoreRuntimeBackup({
+        backupDirectory: backupDir,
+        dataDirectory: targetDir,
+        inPlace,
+        afterRestoreStaged({ stagingDir: candidate }: { stagingDir: string }) {
+          stagingDir = candidate;
+          const stagedSecret = path.resolve(stagingDir, ".secret");
+          renameSync(stagedSecret, displacedSecret);
+          writeFileSync(stagedSecret, TEST_SECRET, { mode: 0o600 });
+          const replacement = lstatSync(stagedSecret);
+          foreignIdentity = { dev: replacement.dev, ino: replacement.ino };
+          throw new Error("injected allowed-name restore replacement");
+        }
+      })
+    ).toThrow(/rollback or cleanup is incomplete/i);
+
+    const retained = lstatSync(path.resolve(stagingDir, ".secret"));
+    expect({ dev: retained.dev, ino: retained.ino }).toEqual(foreignIdentity);
+    expect(readFileSync(path.resolve(stagingDir, ".secret"), "utf8")).toBe(TEST_SECRET);
+    expect(readFileSync(displacedSecret, "utf8")).toBe(TEST_SECRET);
+  });
+
+  it("does not replace a foreign empty directory raced over its exclusive target claim", () => {
+    const workspace = temporaryDirectory();
+    const sourceDir = path.resolve(workspace, "source");
+    const targetDir = path.resolve(workspace, "target");
+    const backupDir = path.resolve(workspace, "backup");
+    const displacedClaim = path.resolve(workspace, "displaced-runtime-claim");
+    seedRuntimeData(sourceDir, "from-backup");
+    run("backup", "--data-dir", sourceDir, "--output", backupDir);
+    let foreignIdentity: { dev: bigint | number; ino: bigint | number } | undefined;
+
+    expect(() =>
+      restoreRuntimeBackup({
+        backupDirectory: backupDir,
+        dataDirectory: targetDir,
+        afterRestoreStaged({ dataDir }: { dataDir: string }) {
+          renameSync(dataDir, displacedClaim);
+          mkdirSync(dataDir, { mode: 0o700 });
+          const entry = lstatSync(dataDir);
+          foreignIdentity = { dev: entry.dev, ino: entry.ino };
+        }
+      })
+    ).toThrow(/exclusive target cleanup was incomplete|claim marker/i);
+
+    const retained = lstatSync(targetDir);
+    expect({ dev: retained.dev, ino: retained.ino }).toEqual(foreignIdentity);
+    expect(readdirSync(targetDir)).toEqual([]);
+    expect(existsSync(displacedClaim)).toBe(true);
+  });
+
+  it("does not move files from a replacement target after its claim identity is lost", () => {
+    const workspace = temporaryDirectory();
+    const sourceDir = path.resolve(workspace, "source");
+    const targetDir = path.resolve(workspace, "target");
+    const displacedTarget = path.resolve(workspace, "displaced-owned-target");
+    const backupDir = path.resolve(workspace, "backup");
+    seedRuntimeData(sourceDir, "from-backup");
+    run("backup", "--data-dir", sourceDir, "--output", backupDir);
+    let swapped = false;
+
+    expect(() =>
+      restoreRuntimeBackup({
+        backupDirectory: backupDir,
+        dataDirectory: targetDir,
+        renameFile(source: string, destination: string) {
+          renameSync(source, destination);
+          if (!swapped && path.dirname(destination) === targetDir && path.basename(path.dirname(source)).startsWith(".restore-stage-")) {
+            swapped = true;
+            renameSync(targetDir, displacedTarget);
+            mkdirSync(targetDir, { mode: 0o700 });
+            writeFileSync(path.resolve(targetDir, "trading.db"), "FOREIGN-MUST-NOT-MOVE", { mode: 0o600 });
+          }
+        }
+      })
+    ).toThrow(/exclusive target cleanup was incomplete|claim|identity/i);
+
+    expect(swapped).toBe(true);
+    expect(readFileSync(path.resolve(targetDir, "trading.db"), "utf8")).toBe("FOREIGN-MUST-NOT-MOVE");
+    expect(existsSync(displacedTarget)).toBe(true);
+  });
+
+  it("preserves an allowed-name replacement raced over a rollback destination", () => {
+    const workspace = temporaryDirectory();
+    const sourceDir = path.resolve(workspace, "source");
+    const targetDir = path.resolve(workspace, "target");
+    const backupDir = path.resolve(workspace, "backup");
+    const displacedSecret = path.resolve(workspace, "tool-created-rollback-secret");
+    let racedDestination = "";
+    let foreignIdentity: { dev: bigint | number; ino: bigint | number } | undefined;
+    seedRuntimeData(sourceDir, "from-backup");
+    run("backup", "--data-dir", sourceDir, "--output", backupDir);
+
+    expect(() =>
+      restoreRuntimeBackup({
+        backupDirectory: backupDir,
+        dataDirectory: targetDir,
+        renameFile(source: string, destination: string) {
+          const sourceParent = path.basename(path.dirname(source));
+          const destinationParent = path.basename(path.dirname(destination));
+          if (sourceParent.startsWith(".restore-stage-") && path.dirname(destination) === targetDir && path.basename(source) === "arbitrage-paper-multi-leg.sqlite") {
+            throw new Error("injected publish failure");
+          }
+          renameSync(source, destination);
+          if (path.dirname(source) === targetDir && destinationParent.startsWith(".restore-stage-") && path.basename(source) === ".secret") {
+            racedDestination = destination;
+            renameSync(destination, displacedSecret);
+            writeFileSync(destination, TEST_SECRET, { mode: 0o600 });
+            const replacement = lstatSync(destination);
+            foreignIdentity = { dev: replacement.dev, ino: replacement.ino };
+          }
+        }
+      })
+    ).toThrow(/rollback or cleanup is incomplete/i);
+
+    const retained = lstatSync(racedDestination);
+    expect({ dev: retained.dev, ino: retained.ino }).toEqual(foreignIdentity);
+    expect(readFileSync(racedDestination, "utf8")).toBe(TEST_SECRET);
+    expect(readFileSync(displacedSecret, "utf8")).toBe(TEST_SECRET);
+  });
+
+  it("preserves an ambiguous allowed-name destination raced into the rollback directory", () => {
+    const workspace = temporaryDirectory();
+    const sourceDir = path.resolve(workspace, "source");
+    const targetDir = path.resolve(workspace, "target");
+    const backupDir = path.resolve(workspace, "backup");
+    const displacedSecret = path.resolve(workspace, "expected-previous-secret");
+    let rollbackDir = "";
+    let foreignIdentity: { dev: bigint | number; ino: bigint | number } | undefined;
+    seedRuntimeData(sourceDir, "from-backup");
+    seedRuntimeData(targetDir, "previous-target");
+    writeFileSync(path.resolve(targetDir, ".secret"), STALE_SECRET, { mode: 0o600 });
+    run("backup", "--data-dir", sourceDir, "--output", backupDir);
+
+    expect(() =>
+      restoreRuntimeBackup({
+        backupDirectory: backupDir,
+        dataDirectory: targetDir,
+        force: true,
+        renameFile(source: string, destination: string) {
+          renameSync(source, destination);
+          if (source === path.resolve(targetDir, ".secret") && path.basename(path.dirname(destination)).startsWith(".restore-rollback-")) {
+            rollbackDir = path.dirname(destination);
+            renameSync(destination, displacedSecret);
+            writeFileSync(destination, STALE_SECRET, { mode: 0o600 });
+            const replacement = lstatSync(destination);
+            foreignIdentity = { dev: replacement.dev, ino: replacement.ino };
+          }
+        }
+      })
+    ).toThrow(/rollback or cleanup is incomplete/i);
+
+    const retained = lstatSync(path.resolve(rollbackDir, ".secret"));
+    expect({ dev: retained.dev, ino: retained.ino }).toEqual(foreignIdentity);
+    expect(readFileSync(path.resolve(rollbackDir, ".secret"), "utf8")).toBe(STALE_SECRET);
+    expect(readFileSync(displacedSecret, "utf8")).toBe(STALE_SECRET);
+  });
+
+  it("preserves an allowed-name rollback replacement during successful publish cleanup", () => {
+    const workspace = temporaryDirectory();
+    const sourceDir = path.resolve(workspace, "source");
+    const targetDir = path.resolve(workspace, "target");
+    const backupDir = path.resolve(workspace, "backup");
+    const displacedSecret = path.resolve(workspace, "published-previous-secret");
+    let rollbackDir = "";
+    let foreignIdentity: { dev: bigint | number; ino: bigint | number } | undefined;
+    seedRuntimeData(sourceDir, "from-backup");
+    seedRuntimeData(targetDir, "previous-target");
+    writeFileSync(path.resolve(targetDir, ".secret"), STALE_SECRET, { mode: 0o600 });
+    run("backup", "--data-dir", sourceDir, "--output", backupDir);
+
+    expect(() =>
+      restoreRuntimeBackup({
+        backupDirectory: backupDir,
+        dataDirectory: targetDir,
+        force: true,
+        renameFile(source: string, destination: string) {
+          renameSync(source, destination);
+          if (path.basename(path.dirname(destination)).startsWith(".restore-rollback-")) {
+            rollbackDir = path.dirname(destination);
+          }
+          if (path.basename(path.dirname(source)).startsWith(".restore-stage-") && path.basename(source) === ".restore-manifest.json") {
+            const rollbackSecret = path.resolve(rollbackDir, ".secret");
+            renameSync(rollbackSecret, displacedSecret);
+            writeFileSync(rollbackSecret, STALE_SECRET, { mode: 0o600 });
+            const replacement = lstatSync(rollbackSecret);
+            foreignIdentity = { dev: replacement.dev, ino: replacement.ino };
+          }
+        }
+      })
+    ).toThrow(/published, but cleanup was refused/i);
+
+    const retained = lstatSync(path.resolve(rollbackDir, ".secret"));
+    expect({ dev: retained.dev, ino: retained.ino }).toEqual(foreignIdentity);
+    expect(readFileSync(path.resolve(rollbackDir, ".secret"), "utf8")).toBe(STALE_SECRET);
+    expect(readFileSync(displacedSecret, "utf8")).toBe(STALE_SECRET);
+    expect(runtimeMarker(targetDir)).toMatchObject({ value: "from-backup" });
+  });
+
+  it("preserves a foreign file raced into rollback after the restored files are published", () => {
+    const workspace = temporaryDirectory();
+    const sourceDir = path.resolve(workspace, "source");
+    const targetDir = path.resolve(workspace, "target");
+    const backupDir = path.resolve(workspace, "backup");
+    seedRuntimeData(sourceDir, "from-backup");
+    seedRuntimeData(targetDir, "previous-target");
+    run("backup", "--data-dir", sourceDir, "--output", backupDir);
+    let rollbackDir = "";
+    let injected = false;
+
+    expect(() =>
+      restoreRuntimeBackup({
+        backupDirectory: backupDir,
+        dataDirectory: targetDir,
+        force: true,
+        renameFile(source: string, destination: string) {
+          renameSync(source, destination);
+          if (path.basename(path.dirname(destination)).includes(".restore-rollback-")) {
+            rollbackDir = path.dirname(destination);
+          }
+          if (!injected && destination === path.resolve(targetDir, "trading.db") && path.basename(path.dirname(source)).includes(".restore-stage-")) {
+            injected = true;
+            writeFileSync(path.resolve(rollbackDir, "raced-operator-file.txt"), "preserve raced previous data");
+          }
+        }
+      })
+    ).toThrow(/published, but cleanup was refused/i);
+
+    expect(injected).toBe(true);
+    expect(runtimeMarker(targetDir)).toMatchObject({ value: "from-backup" });
+    expect(readFileSync(path.resolve(rollbackDir, "raced-operator-file.txt"), "utf8")).toBe("preserve raced previous data");
+    expect(runtimeMarker(rollbackDir)).toMatchObject({ value: "previous-target" });
   });
 
   it("restores a stopped named volume in place while preserving unrelated files", () => {
@@ -203,11 +611,44 @@ describe("runtime data backup and restore", () => {
     const fileResult = spawnSync(process.execPath, [script, "restore", backupDir, "--data-dir", fileTarget, "--in-place", "--force"], { cwd: root, encoding: "utf8" });
 
     expect(symlinkResult.status).toBe(1);
-    expect(symlinkResult.stderr).toContain("must not be a symbolic link");
+    expect(symlinkResult.stderr).toContain("must not contain symbolic links");
     expect(lstatSync(symlinkTarget).isSymbolicLink()).toBe(true);
     expect(fileResult.status).toBe(1);
-    expect(fileResult.stderr).toContain("must be a directory");
+    expect(fileResult.stderr).toContain("non-directory components");
     expect(readFileSync(fileTarget, "utf8")).toBe("not a directory");
+  });
+
+  it("rejects intermediate symlink components for backup, verify and restore", async () => {
+    const workspace = temporaryDirectory();
+    const dataDir = path.resolve(workspace, "data");
+    const safeBackup = path.resolve(workspace, "safe-backup");
+    seedRuntimeData(dataDir);
+    await createRuntimeBackup({
+      dataDirectory: dataDir,
+      outputDirectory: safeBackup
+    });
+
+    const realParent = path.resolve(workspace, "real-parent");
+    const linkedParent = path.resolve(workspace, "linked-parent");
+    const backupRootLink = path.resolve(workspace, "backup-root-link");
+    mkdirSync(realParent, { mode: 0o700 });
+    symlinkSync(realParent, linkedParent, "dir");
+    symlinkSync(workspace, backupRootLink, "dir");
+
+    await expect(
+      createRuntimeBackup({
+        dataDirectory: dataDir,
+        outputDirectory: path.resolve(linkedParent, "backup")
+      })
+    ).rejects.toThrow(/symbolic links/i);
+    expect(() => verifyRuntimeBackup(path.resolve(backupRootLink, path.basename(safeBackup)))).toThrow(/symbolic links/i);
+    expect(() =>
+      restoreRuntimeBackup({
+        backupDirectory: safeBackup,
+        dataDirectory: path.resolve(linkedParent, "target")
+      })
+    ).toThrow(/symbolic links/i);
+    expect(existsSync(path.resolve(realParent, "target"))).toBe(false);
   });
 
   it("rolls every managed file back when an in-place publish rename fails", () => {

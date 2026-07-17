@@ -33,6 +33,13 @@ Variables outside that first slice are still owned by their feature modules and 
 | `AUTH_PASSWORD_HASH_QUEUE` | `32` | Maximum requests waiting for Argon2id; overflow receives a generic retryable `503` instead of an unbounded queue. |
 | `API_RATE_REFILL_PER_SECOND` / `API_RATE_BURST` | `20` / `240` | General shared API token-bucket refill and burst. Mutations cost four tokens. |
 | `API_RATE_MAX_BUCKETS` | `4096` | Hard cap for general per-account/per-IP API buckets. |
+| `READINESS_RATE_REFILL_PER_SECOND` / `READINESS_RATE_BURST` | `2` / `10` | Dedicated per-IP allowance for public `GET /api/ready`, separate from authentication/control buckets. Accepted ranges are 1–1000 and 1–10000. Excess receives `429 readiness_rate_limited` with `Retry-After`. |
+| `READINESS_RATE_MAX_BUCKETS` | `4096` | Hard cap for process-local readiness IP buckets, accepted range 256–100000. An unseen source fails closed while the store is full and no idle entry can be pruned; `Retry-After` reports the remaining prune horizon. |
+| `READINESS_RESULT_TTL_MS` | `1000` | Short process-wide cache for a completed readiness result, accepted range 100–10000 ms. Concurrent callers share the same in-flight PostgreSQL/heartbeat/filesystem probe; unexpected probe rejection is not cached. |
+| `GLOBAL_ADMISSION_MAX_ACTIVE` | `128` | Process-wide active API-request ceiling, including the reserved control tail. |
+| `GLOBAL_ADMISSION_RESERVED_CONTROL` | `16` | Slots retained for authentication, job cancellation and paper stop/kill controls. Must be lower than the total active limit. |
+| `GLOBAL_ADMISSION_MAX_QUEUED` | `256` | Maximum ordinary API requests waiting before bounded work begins; overflow receives retryable HTTP 503. |
+| `GLOBAL_ADMISSION_QUEUE_TIMEOUT_MS` | `2000` | Maximum ordinary admission wait before `global_admission_exhausted`; accepted range 100–30000 ms. |
 | `TRADING_LEGACY_OWNER_USER_ID` | *(automatic)* | Admin UUID that receives pre-v6 SQLite trading rows. Required before the first v6 start when PostgreSQL contains multiple admins. |
 | `TRADING_MAX_ACCOUNTS_PER_USER` | `8` | Hard per-owner cap for saved exchange accounts; excess existing rows are preserved. |
 | `TRADING_MAX_BOTS_PER_USER` | `24` | Hard per-owner cap for saved robot configurations; excess existing rows are preserved. |
@@ -49,13 +56,19 @@ Variables outside that first slice are still owned by their feature modules and 
 | `PGHOST` / `PGPORT` | `127.0.0.1` / `55434` | Isolated project PostgreSQL address. Compose uses `postgres:5432` internally. |
 | `PGDATABASE` / `PGUSER` | `saltanatbotv2` | Dedicated database and role. |
 | `PGPASSWORD_FILE` | *(unset)* | Preferred absolute regular file containing the database password for SaltanatbotV2. It is not libpq's `PGPASSFILE`; `pg_dump`, `pg_restore` and `psql` do not read this application-only format. |
-| `PGPOOL_MAX` | `12` | Maximum API PostgreSQL connections. |
+| `PGPOOL_MAX` | `12` | Maximum PostgreSQL connections per API/worker process; accepted range 2–100. Readiness uses at most one at a time so the minimum retains one connection beside the probe. |
 | `RESEARCH_WORKER_CONCURRENCY` | `2` | Concurrent bounded research jobs in the separate worker process; accepted range 1–4. |
 | `RESEARCH_JOB_TIMEOUT_MS` | `120000` | Per-job wall-time limit; accepted range 5 seconds–15 minutes. |
 | `RESEARCH_JOB_MEMORY_MB` | `512` | V8 old-generation limit for each research worker thread; accepted range 128–2048 MiB. |
 | `RESEARCH_WORKER_METRICS_INTERVAL_MS` | `30000` | Aggregate queue-metrics log interval; accepted range 5 seconds–5 minutes. |
+| `RESEARCH_WORKER_HEARTBEAT_INTERVAL_MS` | `15000` | Component-heartbeat interval written by the research worker; accepted range 5–60 seconds. |
+| `RESEARCH_WORKER_HEARTBEAT_STALE_MS` | `90000` | API readiness fails when the required worker heartbeat is older than this; accepted range 10 seconds–15 minutes. |
 | `RESEARCH_JOB_RETENTION_INTERVAL_MS` | `60000` | Bounded terminal-artifact retention interval; accepted range 1–60 minutes. |
 | `RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS` | `20000` | Maximum graceful worker shutdown; keep below the supervisor stop grace period. |
+| `OPERATIONS_DISK_PATH` | `backend/data` | Normalized absolute path checked by readiness for project runtime storage. Direct-host and container supervisors should set the actual persistent data path explicitly. |
+| `OPERATIONS_RECOVERY_STATUS_FILE` | *(unset)* | Optional normalized absolute path to the owner-only receipt journal written by a successful `recovery:verify -- --status-file`. Keep it in separate persistent operations storage, never `backend/data`. Missing, malformed, oversized, unexpectedly linked or permission-unsafe files produce `lastVerifiedGeneration: null` and never affect readiness. |
+| `OPERATIONS_DISK_SOFT_FREE_BYTES` / `OPERATIONS_DISK_HARD_FREE_BYTES` | `5368709120` / `2147483648` | Degraded and unready free-byte watermarks. The hard value must be lower than the soft value. |
+| `OPERATIONS_DISK_SOFT_FREE_PERCENT` / `OPERATIONS_DISK_HARD_FREE_PERCENT` | `5` / `2` | Degraded and unready free-space percentage watermarks. The hard value must be lower than the soft value. |
 | `RUNTIME_PROFILE` | `public-http-paper` | The only accepted value in this pre-HTTPS release. It permits public data, research, backtests and paper robots but forbids live configs, credential writes/decryption for use, signed REST and private WebSockets. `private-live` is rejected before database, filesystem or listener side effects, even when all future HTTPS prerequisites are supplied. |
 | `DEMO_MODE`       | *(off)*       | Deprecated compatibility alias: `1`/`true` selects `public-http-paper`. Unknown values and conflicts stop startup. |
 | `ENABLE_LIVE_SPOT` | *(off)* | Reserved for future design validation. `1`/`true` conflicts with the only runnable profile and stops this release at startup. |
@@ -110,14 +123,15 @@ network/VPN or a strict source-IP allowlist. HTTPS remains a separate future rel
 > notification tokens remain encrypted in SQLite, are never placed in PostgreSQL and are never
 > returned to the browser.
 
-The authentication limits are intentionally process-local because the supported deployment runs
+The authentication and readiness limits are intentionally process-local because the supported deployment runs
 one API/trading process. Login allowances are synchronously reserved in both the IP and normalized-
 identity buckets before the first asynchronous password operation, so parallel bursts cannot pass
 on stale failure counts. Capacity and internal failures roll back only their own reservation; a
 successful login clears its identity bucket but preserves earlier attack history for its source IP.
-All authentication buckets share one bounded store inside that process, and password hashing has a
-separate global concurrency/queue gate. Do not add a second API replica and assume these limits are
-global; a future horizontally scaled API needs a shared external limiter in addition to the trading-
+All authentication buckets share one bounded store inside that process, while readiness uses a separate
+bounded per-IP store plus one process-wide in-flight/short-TTL dependency result. Password hashing has a
+separate global concurrency/queue gate. Do not add a second API replica and assume these limits or the
+readiness cache are global; a future horizontally scaled API needs a shared external limiter in addition to the trading-
 executor lease/fencing work. Behind a reverse proxy, configure `TRUST_PROXY` narrowly so `request.ip`
 is the real client address rather than the proxy address.
 

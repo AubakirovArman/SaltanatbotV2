@@ -44,8 +44,12 @@ import { createTradingResumeAuthorization } from "./identity/tradingResumePolicy
 import { registerIdentityServerRoutes } from "./identity/serverRoutes.js";
 import { apiErrorHandler } from "./http/apiErrorHandler.js";
 import { installGracefulShutdown } from "./http/gracefulShutdown.js";
+import { GlobalAdmissionController } from "./http/globalAdmission.js";
+import { ReadinessRateLimiter } from "./http/readinessRateLimit.js";
 import { SingleFlightGate } from "./http/singleFlightGate.js";
 import { websocketOriginAllowed } from "./http/websocketOrigin.js";
+import { ApiMetrics } from "./operations/apiMetrics.js";
+import { OperationalStatusService } from "./operations/statusService.js";
 import { isPaperOnlyRuntime, runtimePolicyFromConfig } from "./runtimeProfile.js";
 const runtimeConfig = initializeRuntimeConfig(process.env);
 const frontendDistribution = validateFrontendDistribution(runtimeConfig.frontend.distDir);
@@ -70,8 +74,20 @@ const venueClockCalibration = new VenueClockCalibrationService();
 const arbitrageAlerts = new ArbitrageAlertService({ clockCalibration: venueClockCalibration });
 const researchAlerts = new ResearchAlertService();
 const trading = createTradingApi(provider, arbitrageAlerts, { researchAlerts, legacyOwnerUserId: legacyTradingOwnerUserId, telegramControlEnabled: identityRuntime.mode === "legacy", runtimePolicy });
-identityRuntime.service?.setTradingAccessChangeHandler((ownerUserId, action) => action === "restore" ? trading.restoreOwnerAccess(ownerUserId) : trading.revokeOwnerAccess(ownerUserId));
-identityRuntime.service?.setSessionRevocationHandler(({ userId, sessionIdHash, reason }) => sessionIdHash ? trading.disconnectSession(sessionIdHash, `Session ${reason.replaceAll("_", " ")}`) : trading.disconnectOwner(userId, `Session ${reason.replaceAll("_", " ")}`));
+let tradingExecutorReady = true;
+const globalAdmission = new GlobalAdmissionController(runtimeConfig.operations.admission);
+const readinessRateLimiter = new ReadinessRateLimiter(runtimeConfig.operations.readiness.rateLimit);
+const apiMetrics = new ApiMetrics();
+const operationalStatus = new OperationalStatusService({
+  runtimeConfig,
+  pool: identityRuntime.pool,
+  admission: globalAdmission,
+  apiMetrics,
+  readinessRateLimit: readinessRateLimiter,
+  executorReady: () => tradingExecutorReady
+});
+identityRuntime.service?.setTradingAccessChangeHandler((ownerUserId, action) => (action === "restore" ? trading.restoreOwnerAccess(ownerUserId) : trading.revokeOwnerAccess(ownerUserId)));
+identityRuntime.service?.setSessionRevocationHandler(({ userId, sessionIdHash, reason }) => (sessionIdHash ? trading.disconnectSession(sessionIdHash, `Session ${reason.replaceAll("_", " ")}`) : trading.disconnectOwner(userId, `Session ${reason.replaceAll("_", " ")}`)));
 const arbitrageScanner = new ArbitrageScannerService({ clockCalibration: venueClockCalibration });
 const arbitrageStream = new ArbitrageStreamHub(arbitrageWss, arbitrageScanner, 30_000, venueClockCalibration);
 const opportunityLifecycle = new OpportunityLifecycleCoordinator();
@@ -125,7 +141,10 @@ const sparklineQuery = z.object({
   exchange: exchangeParam,
   marketType: marketTypeParam,
   priceType: priceTypeParam,
-  strict: z.enum(["0", "1"]).default("0").transform((value) => value === "1")
+  strict: z
+    .enum(["0", "1"])
+    .default("0")
+    .transform((value) => value === "1")
 });
 const orderBookQuery = z.object({
   symbol: z.string().min(1),
@@ -135,8 +154,13 @@ const orderBookQuery = z.object({
 app.use(cors(corsOptions));
 app.disable("x-powered-by");
 app.use(securityHeaders);
+app.use("/api", apiMetrics.middleware());
+app.use("/api", globalAdmission.middleware());
 
-registerIdentityServerRoutes(app, identityRuntime);
+registerIdentityServerRoutes(app, identityRuntime, {
+  operations: operationalStatus,
+  readinessRateLimit: readinessRateLimiter.middleware()
+});
 app.use("/api", express.json({ limit: "1mb" }));
 app.use("/api/trade", trading.router);
 app.use("/api/orderbook-ml/research", createOrderBookMlResearchRouter());
@@ -196,7 +220,8 @@ app.get("/api/candles", async (request, response) => {
           marketType: parsed.data.marketType,
           priceType: parsed.data.priceType
         }
-      ));
+      )
+    );
   } catch (error) {
     response.status(503).json({
       error: error instanceof Error ? error.message : "Market data unavailable",
@@ -231,8 +256,7 @@ app.get("/api/sparklines", async (request, response) => {
       const instrument = findInstrument(symbol);
       if (!instrument) return [symbol, null] as const;
       try {
-        const candles = await marketDataGate.run(JSON.stringify(["spark", instrument.symbol, parsed.data]), () =>
-          provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data));
+        const candles = await marketDataGate.run(JSON.stringify(["spark", instrument.symbol, parsed.data]), () => provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data));
         const closes = candles.map((candle) => candle.close);
         const first = closes[0];
         const last = closes.at(-1);
@@ -275,25 +299,23 @@ server.on("upgrade", (request, socket, head) => {
       });
     return;
   }
-  const target = url.pathname === "/stream" ? wss
-    : url.pathname === "/quotes" ? quoteWss
-      : url.pathname === "/orderbook" ? orderBookWss
-        : url.pathname === "/trade-flow" ? tradeFlowWss
-          : url.pathname === "/arbitrage-stream" ? arbitrageWss : undefined;
+  const target = url.pathname === "/stream" ? wss : url.pathname === "/quotes" ? quoteWss : url.pathname === "/orderbook" ? orderBookWss : url.pathname === "/trade-flow" ? tradeFlowWss : url.pathname === "/arbitrage-stream" ? arbitrageWss : undefined;
   if (!target) {
     socket.destroy();
     return;
   }
   socket.pause();
-  void verifyAppWsSession(request.headers.cookie).then((allowed) => {
-    if (!allowed) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-      socket.destroy();
-      return;
-    }
-    target.handleUpgrade(request, socket, head, (client) => target.emit("connection", client, request));
-    socket.resume();
-  }).catch(() => socket.destroy());
+  void verifyAppWsSession(request.headers.cookie)
+    .then((allowed) => {
+      if (!allowed) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      target.handleUpgrade(request, socket, head, (client) => target.emit("connection", client, request));
+      socket.resume();
+    })
+    .catch(() => socket.destroy());
 });
 
 tradeFlowWss.on("connection", (socket, request) => {
@@ -385,8 +407,7 @@ quoteWss.on("connection", async (socket, request) => {
   await Promise.all(
     instruments.map(async (instrument) => {
       try {
-        const candles = await marketDataGate.run(JSON.stringify(["quote", instrument.symbol, parsed.data]), () =>
-          provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data));
+        const candles = await marketDataGate.run(JSON.stringify(["quote", instrument.symbol, parsed.data]), () => provider.getCandles(instrument, parsed.data.timeframe, { limit: parsed.data.points }, parsed.data));
         histories.set(instrument.symbol, candles);
         series[instrument.symbol] = sparklineSeries(candles);
       } catch {
@@ -459,7 +480,8 @@ wss.on("connection", async (socket, request) => {
           marketType: parsed.data.marketType,
           priceType: parsed.data.priceType
         }
-      ));
+      )
+    );
     send({
       type: "snapshot",
       symbol: instrument.symbol,
@@ -534,10 +556,7 @@ server.listen(port, host, () => {
   }
   const loopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
   if (!loopback) {
-    console.log(
-      `⚠️  Bound to ${host} (reachable off-machine). During the current HTTP Research / Paper phase,\n` +
-        "   allow only a trusted private network/VPN or strict source IPs. HTTPS is deferred. See docs/CONFIGURATION.md."
-    );
+    console.log(`⚠️  Bound to ${host} (reachable off-machine). During the current HTTP Research / Paper phase,\n` + "   allow only a trusted private network/VPN or strict source IPs. HTTPS is deferred. See docs/CONFIGURATION.md.");
   }
   // Bring back bots that were running before the last shutdown/crash.
   void trading.engine.resume(createTradingResumeAuthorization(identityRuntime, runtimePolicy));
@@ -553,6 +572,7 @@ server.listen(port, host, () => {
 
 installGracefulShutdown(server, {
   quiesce() {
+    tradingExecutorReady = false;
     // Preserve desired status so running bots resume on the next start.
     trading.telegramControl.stop();
     researchAlerts.close();
@@ -570,7 +590,6 @@ installGracefulShutdown(server, {
     await identityRuntime.close();
   }
 });
-
 function continuousRouteConfigurationFromEnvironment() {
   try {
     return { configuration: loadContinuousRouteConfiguration({ json: process.env.ARBITRAGE_CONTINUOUS_ROUTES_JSON, file: process.env.ARBITRAGE_CONTINUOUS_ROUTES_FILE }) };

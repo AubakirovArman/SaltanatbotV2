@@ -1,6 +1,7 @@
 # Documentation status
 
 Last full repository documentation audit: **2026-07-15**
+Last focused R3.3 API/schema/operations reconciliation: **2026-07-16**
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -12,18 +13,18 @@ their source contracts, and user-facing claims were compared with the current im
 | Document | Audience | Status | Last verified |
 | --- | --- | --- | --- |
 | [README](../README.md) | users/contributors | current | 2026-07-14 |
-| [Architecture](ARCHITECTURE.md) | contributors | current | 2026-07-14 |
+| [Architecture](ARCHITECTURE.md) | contributors | current through schema v11, onboarding, bounded/single-flight readiness, operational admission and isolated project recovery | 2026-07-16 |
 | [Modular architecture](MODULAR_ARCHITECTURE.md) | contributors | current | 2026-07-11 |
-| [API reference](API.md) | integrators | current, hand-maintained | 2026-07-14 |
-| [Generated endpoint index](API_ENDPOINTS.generated.md) | integrators | generated/current | 2026-07-14 |
-| [Machine-readable capability truths](CAPABILITY_TRUTHS.json) | maintainers/release reviewers | source-backed semantic guard for scanner modes, public/continuous venues and generated endpoint totals | 2026-07-14 |
+| [API reference](API.md) | integrators | current, hand-maintained; includes owner-scoped onboarding and bounded operational probes/metrics | 2026-07-16 |
+| [Generated endpoint index](API_ENDPOINTS.generated.md) | integrators | generated/current; 142 HTTP routes with explicit onboarding and administrator operations access | 2026-07-16 |
+| [Machine-readable capability truths](CAPABILITY_TRUTHS.json) | maintainers/release reviewers | source-backed semantic guard for scanner modes, public/continuous venues and generated endpoint totals | 2026-07-16 |
 | [Public arbitrage SDK](../packages/arbitrage-sdk/README.md) | integrators/SDK users | current; public/read-only | 2026-07-14 |
 | [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current | 2026-07-11 |
 | [Declarative plugin contract](PLUGINS.md) | users/plugin authors | current foundation | 2026-07-12 |
 | [Trading guide](TRADING.md) | users/operators | current; Binance spot disabled, Bybit spot experimental | 2026-07-14 |
-| [Configuration](CONFIGURATION.md) | operators | current | 2026-07-14 |
-| [Self-hosting with account authentication](SELF_HOSTING.md) | operators/forks | current; Docker and direct-host paths | 2026-07-15 |
-| [Capacity plan for 100 users](CAPACITY_100_USERS.md) | operators/maintainers | current measured baseline and safe scaling boundary | 2026-07-15 |
+| [Configuration](CONFIGURATION.md) | operators | current through typed readiness TTL/rate limits | 2026-07-16 |
+| [Self-hosting with account authentication](SELF_HOSTING.md) | operators/forks | current; Docker/direct-host paths and readiness probe policy | 2026-07-16 |
+| [Capacity plan for 100 users](CAPACITY_100_USERS.md) | operators/maintainers | current measured baseline, readiness bounds and safe scaling boundary | 2026-07-16 |
 | [Backup and restore](BACKUP_RESTORE.md) | operators | current; tested | 2026-07-11 |
 | [Pine coverage](PINE_COVERAGE.md) | users/contributors | current | 2026-07-11 |
 | [Exchange capabilities](EXCHANGE_CAPABILITIES.md) | operators/users | current; live remains experimental | 2026-07-14 |
@@ -32,7 +33,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Event traces](EVENT_TRACES.md) | contributors/auditors | current | 2026-07-11 |
 | [Testing strategy](TESTING_STRATEGY.md) | contributors | current | 2026-07-11 |
 | [Release verification](RELEASING.md) | maintainers/users | current | 2026-07-11 |
-| [Threat model](THREAT_MODEL.md) | operators/contributors | current alpha baseline | 2026-07-14 |
+| [Threat model](THREAT_MODEL.md) | operators/contributors | current alpha baseline through onboarding ownership, bounded readiness, global admission and isolated recovery | 2026-07-16 |
 | [Roadmap](ROADMAP.md) | community | current | 2026-07-12 |
 | [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger | 2026-07-14 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
@@ -40,7 +41,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Accessibility baseline](ACCESSIBILITY.md) | users/contributors | current alpha baseline | 2026-07-12 |
 | [Contributor map](CONTRIBUTOR_MAP.md) | contributors | current | 2026-07-11 |
 | [Asset provenance policy](ASSET_POLICY.md) | contributors | current | 2026-07-11 |
-| [Migration notes](MIGRATIONS.md) | operators/contributors | current | 2026-07-14 |
+| [Migration notes](MIGRATIONS.md) | operators/contributors | current through PostgreSQL schema v11 and recovery inventory boundary | 2026-07-16 |
 | [Application startup recovery](STARTUP_RECOVERY.md) | users/operators | current; production-build browser-tested | 2026-07-13 |
 | [Distribution incident response](INCIDENT_RESPONSE.md) | operators/maintainers | current; drill-tested | 2026-07-13 |
 | [Offline local research](OFFLINE_RESEARCH.md) | users/operators | current; production-build browser-tested | 2026-07-13 |
@@ -125,5 +126,5 @@ must update the corresponding document and this register in the same pull reques
 definitions, public adapter registry and continuous protocol allowlist, probes every continuous
 factory branch without opening a socket, and compares them with `CAPABILITY_TRUTHS.json`. It also
 locks the two canonical venue rows and the canonical scanner-mode sentence to that contract. Full route
-presence remains owned by the generated endpoint check; the semantic stage verifies its published
-totals rather than implementing a second route parser.
+presence and access metadata remain owned by the generated endpoint check; the semantic stage
+verifies its published totals rather than implementing a second route parser.

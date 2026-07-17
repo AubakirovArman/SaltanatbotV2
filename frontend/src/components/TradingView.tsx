@@ -8,24 +8,7 @@ import { automationText } from "../i18n/automation";
 import { tradingTerm, tradingText } from "../i18n/trading";
 import type { StrategyArtifact } from "../strategy/library";
 import type { CatalogResponse } from "../types";
-import {
-  checkAuth,
-  createTradeSocket,
-  getFills,
-  getLive,
-  getLogs,
-  getOrders,
-  getOrderJournal,
-  listBots,
-  type AuthState,
-  type Fill,
-  type LiveState,
-  type LogRow,
-  type OrderJournal,
-  type PendingOrder,
-  type TradeEvent,
-  type TradingBot
-} from "../trading/tradeClient";
+import { checkAuth, createTradeSocket, getFills, getLive, getLogs, getOrders, getOrderJournal, listBots, type AuthState, type Fill, type LiveState, type LogRow, type OrderJournal, type PendingOrder, type TradeEvent, type TradingBot } from "../trading/tradeClient";
 import { BotDetail } from "../trading/components/BotDetail";
 import { CreateBotForm } from "../trading/components/CreateBotForm";
 import { TradeTokenGate } from "../trading/components/TradeAccess";
@@ -47,16 +30,18 @@ interface TradingViewProps {
   catalog?: CatalogResponse;
   locale: Locale;
   portfolioRequest?: number;
+  newBotRequest?: number;
+  onPaperBotCreated?: () => void;
 }
 
 type CenterView = { kind: "portfolio" } | { kind: "bot"; id: string } | { kind: "new" } | { kind: "settings" } | { kind: "paper-multi-leg" } | { kind: "opportunity" };
 type SocketHealth = "connecting" | "connected" | "degraded";
 
-export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 }: TradingViewProps) {
+export function TradingView({ strategies, catalog, locale, portfolioRequest = 0, newBotRequest = 0, onPaperBotCreated }: TradingViewProps) {
   const accountAuth = useAuth();
-  const localStorageOwner = accountAuth.authRequired ? accountAuth.user?.id ?? "" : undefined;
+  const localStorageOwner = accountAuth.authRequired ? (accountAuth.user?.id ?? "") : undefined;
   const [bots, setBots] = useState<TradingBot[]>([]);
-  const [view, setView] = useState<CenterView>({ kind: "portfolio" });
+  const [view, setView] = useState<CenterView>(() => (newBotRequest > 0 ? { kind: "new" } : { kind: "portfolio" }));
   const [live, setLive] = useState<Record<string, LiveState>>({});
   const [orders, setOrders] = useState<Record<string, PendingOrder[]>>({});
   const [orderJournal, setOrderJournal] = useState<Record<string, OrderJournal[]>>({});
@@ -73,6 +58,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
   const opportunity: MarketOpportunityEnvelope | undefined = opportunityHandoff?.opportunity;
   const liveRef = useRef(live);
   const previousPortfolioRequest = useRef(portfolioRequest);
+  const previousNewBotRequest = useRef(newBotRequest);
   liveRef.current = live;
 
   useEffect(() => {
@@ -117,6 +103,12 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
   const canReadTradingAccounts = canUseLiveTrading;
   const presentedBots = useMemo(() => bots.map((bot) => presentBotForRuntime(bot, paperOnly)), [bots, paperOnly]);
 
+  useEffect(() => {
+    if (newBotRequest === previousNewBotRequest.current) return;
+    previousNewBotRequest.current = newBotRequest;
+    if (canUsePaperTrading) setView({ kind: "new" });
+  }, [canUsePaperTrading, newBotRequest]);
+
   const acceptOpportunityHandoff = useCallback(() => {
     const record = consumeMarketOpportunityHandoff();
     if (!record) return;
@@ -148,10 +140,13 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
       if (closed || reconnectTimer !== undefined) return;
       setSocketHealth("degraded");
       setSocketError(tradingHealthText(locale, "socketClosed"));
-      reconnectTimer = window.setTimeout(() => {
-        reconnectTimer = undefined;
-        void connect();
-      }, Math.min(10_000, 750 * 2 ** Math.min(attempts, 4)));
+      reconnectTimer = window.setTimeout(
+        () => {
+          reconnectTimer = undefined;
+          void connect();
+        },
+        Math.min(10_000, 750 * 2 ** Math.min(attempts, 4))
+      );
     };
     const connect = async () => {
       setSocketHealth("connecting");
@@ -239,7 +234,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
         setLastRefreshAt(Date.now());
         setDataError(undefined);
       } else {
-        setDataError(failures.map((failure) => failure.reason instanceof Error ? failure.reason.message : String(failure.reason)).join(" · "));
+        setDataError(failures.map((failure) => (failure.reason instanceof Error ? failure.reason.message : String(failure.reason))).join(" · "));
       }
       timer = window.setTimeout(() => void poll(), 2_000);
     };
@@ -250,29 +245,30 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
     };
   }, [selectedId, selectedBot?.status]);
 
-  const loadBotData = useCallback(async (bot: TradingBot) => {
-    const historyPromise = Promise.allSettled([getFills(bot.id), getLogs(bot.id), getOrderJournal(bot.id)] as const);
-    const runtimePromise = shouldLoadBotRuntime(bot, paperOnly)
-      ? Promise.allSettled([getLive(bot.id), getOrders(bot.id)] as const)
-      : Promise.resolve(undefined);
-    const [historyResults, runtimeResults] = await Promise.all([historyPromise, runtimePromise]);
-    const [fillsResult, logsResult, journalResult] = historyResults;
-    if (fillsResult.status === "fulfilled") setFills((current) => ({ ...current, [bot.id]: fillsResult.value }));
-    if (logsResult.status === "fulfilled") setLogs((current) => ({ ...current, [bot.id]: logsResult.value }));
-    if (journalResult.status === "fulfilled") setOrderJournal((current) => ({ ...current, [bot.id]: journalResult.value }));
-    if (runtimeResults) {
-      const [liveResult, ordersResult] = runtimeResults;
-      if (liveResult.status === "fulfilled") setLive((current) => ({ ...current, [bot.id]: liveResult.value }));
-      if (ordersResult.status === "fulfilled") setOrders((current) => ({ ...current, [bot.id]: ordersResult.value }));
-    }
-    const failures = [...historyResults, ...(runtimeResults ?? [])].filter((result): result is PromiseRejectedResult => result.status === "rejected");
-    if (failures.length === 0) {
-      setLastRefreshAt(Date.now());
-      setDataError(undefined);
-    } else {
-      setDataError(failures.map((failure) => failure.reason instanceof Error ? failure.reason.message : String(failure.reason)).join(" · "));
-    }
-  }, [paperOnly]);
+  const loadBotData = useCallback(
+    async (bot: TradingBot) => {
+      const historyPromise = Promise.allSettled([getFills(bot.id), getLogs(bot.id), getOrderJournal(bot.id)] as const);
+      const runtimePromise = shouldLoadBotRuntime(bot, paperOnly) ? Promise.allSettled([getLive(bot.id), getOrders(bot.id)] as const) : Promise.resolve(undefined);
+      const [historyResults, runtimeResults] = await Promise.all([historyPromise, runtimePromise]);
+      const [fillsResult, logsResult, journalResult] = historyResults;
+      if (fillsResult.status === "fulfilled") setFills((current) => ({ ...current, [bot.id]: fillsResult.value }));
+      if (logsResult.status === "fulfilled") setLogs((current) => ({ ...current, [bot.id]: logsResult.value }));
+      if (journalResult.status === "fulfilled") setOrderJournal((current) => ({ ...current, [bot.id]: journalResult.value }));
+      if (runtimeResults) {
+        const [liveResult, ordersResult] = runtimeResults;
+        if (liveResult.status === "fulfilled") setLive((current) => ({ ...current, [bot.id]: liveResult.value }));
+        if (ordersResult.status === "fulfilled") setOrders((current) => ({ ...current, [bot.id]: ordersResult.value }));
+      }
+      const failures = [...historyResults, ...(runtimeResults ?? [])].filter((result): result is PromiseRejectedResult => result.status === "rejected");
+      if (failures.length === 0) {
+        setLastRefreshAt(Date.now());
+        setDataError(undefined);
+      } else {
+        setDataError(failures.map((failure) => (failure.reason instanceof Error ? failure.reason.message : String(failure.reason))).join(" · "));
+      }
+    },
+    [paperOnly]
+  );
 
   const openBot = (id: string) => {
     setView({ kind: "bot", id });
@@ -339,7 +335,9 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
                 <LayoutDashboard size={17} aria-hidden="true" />
                 <span className="trade-bot-id">
                   <strong>{automationText(locale, "overview")}</strong>
-                  <small>{automationText(locale, "running")}: {presentedBots.filter((bot) => bot.status === "running").length}</small>
+                  <small>
+                    {automationText(locale, "running")}: {presentedBots.filter((bot) => bot.status === "running").length}
+                  </small>
                 </span>
                 <span aria-hidden="true">›</span>
               </button>
@@ -368,7 +366,11 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
                 </button>
               </li>
             )}
-            {presentedBots.length === 0 && <li><p className="empty-note">{tradingText(locale, "noBots")}</p></li>}
+            {presentedBots.length === 0 && (
+              <li>
+                <p className="empty-note">{tradingText(locale, "noBots")}</p>
+              </li>
+            )}
             {presentedBots.map((bot) => {
               const pos = live[bot.id]?.position;
               return (
@@ -407,20 +409,18 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
       <div className="trade-content">
         <div className={`trade-data-health ${stale || healthError ? "degraded" : socketHealth}`} role={stale || healthError ? "alert" : "status"}>
           <strong>{stale ? tradingHealthText(locale, "stale") : healthError ? tradingHealthText(locale, "degraded") : tradingHealthText(locale, socketHealth === "connected" ? "live" : socketHealth === "connecting" ? "connecting" : "degraded")}</strong>
-          {healthError && <span>{tradingHealthText(locale, "loadFailed")}: {healthError}</span>}
-          {lastRefreshAt && <small>{tradingHealthText(locale, "lastUpdate")}: {new Date(lastRefreshAt).toLocaleTimeString(localeTag(locale))}</small>}
+          {healthError && (
+            <span>
+              {tradingHealthText(locale, "loadFailed")}: {healthError}
+            </span>
+          )}
+          {lastRefreshAt && (
+            <small>
+              {tradingHealthText(locale, "lastUpdate")}: {new Date(lastRefreshAt).toLocaleTimeString(localeTag(locale))}
+            </small>
+          )}
         </div>
-        {view.kind === "portfolio" && (
-          <PortfolioCenter
-            bots={presentedBots}
-            locale={locale}
-            canReadAccounts={canReadTradingAccounts}
-            canCreate={canUsePaperTrading}
-            onNew={() => setView({ kind: "new" })}
-            onOpenBot={openBot}
-            onOpenSettings={() => setView({ kind: "settings" })}
-          />
-        )}
+        {view.kind === "portfolio" && <PortfolioCenter bots={presentedBots} locale={locale} canReadAccounts={canReadTradingAccounts} canCreate={canUsePaperTrading} onNew={() => setView({ kind: "new" })} onOpenBot={openBot} onOpenSettings={() => setView({ kind: "settings" })} />}
         {view.kind === "new" && canUsePaperTrading && (
           <CreateBotForm
             strategies={strategies}
@@ -431,12 +431,19 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
             onCreated={(bot) => {
               refreshBots();
               openBot(bot.id);
+              if (bot.exchange === "paper") onPaperBotCreated?.();
             }}
           />
         )}
         {view.kind === "settings" && canUsePaperTrading && <TradingSettings locale={locale} />}
         {view.kind === "paper-multi-leg" && canUsePaperMultiLeg && (
-          <Suspense fallback={<p className="empty-note" role="status">{paperMultiLegText(locale, "refreshing")}</p>}>
+          <Suspense
+            fallback={
+              <p className="empty-note" role="status">
+                {paperMultiLegText(locale, "refreshing")}
+              </p>
+            }
+          >
             <PaperMultiLegPanel locale={locale} />
           </Suspense>
         )}
@@ -479,7 +486,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0 
 }
 
 export function parseTradeEvent(value: unknown): TradeEvent {
-  const parsed = typeof value === "string" ? JSON.parse(value) as unknown : value;
+  const parsed = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
   if (!parsed || typeof parsed !== "object") throw new Error("event must be an object");
   const event = parsed as Partial<TradeEvent>;
   if ((event.type !== "bot" && event.type !== "fill" && event.type !== "log" && event.type !== "signal") || typeof event.botId !== "string" || !event.botId) throw new Error("event type or botId is invalid");
@@ -488,9 +495,7 @@ export function parseTradeEvent(value: unknown): TradeEvent {
 
 /** Present persisted live bots as inert while the server is paper-only. */
 export function presentBotForRuntime(bot: TradingBot, paperOnly: boolean): TradingBot {
-  return paperOnly && bot.exchange !== "paper" && bot.status !== "stopped"
-    ? { ...bot, status: "stopped" }
-    : bot;
+  return paperOnly && bot.exchange !== "paper" && bot.status !== "stopped" ? { ...bot, status: "stopped" } : bot;
 }
 
 /** Private live/account snapshots must never be requested in paper-only mode. */

@@ -35,6 +35,10 @@ import { PriceAlertFeed } from "./market/PriceAlertFeed";
 import { recordBrowserRender } from "./performance/browserProbe";
 import type { WorkspaceStrategySelection } from "./workspace/workspaces";
 import { artifactHash } from "./strategy/artifactLibraryModel";
+import { useOnboarding } from "./onboarding/useOnboarding";
+import { OnboardingDialog } from "./onboarding/OnboardingDialog";
+import { useOnboardingFlow } from "./onboarding/useOnboardingFlow";
+import { usePwaLifecycle } from "./pwa/usePwaLifecycle";
 
 const StrategyLab = lazy(loadStrategyLab);
 const TradingView = lazy(loadTradingView);
@@ -61,6 +65,8 @@ const fallbackInstrument: Instrument = {
 export default function App() {
   recordBrowserRender("App");
   const accountAuth = useAuth();
+  const onboarding = useOnboarding(accountAuth.user?.id, accountAuth.authRequired && !!accountAuth.user);
+  const pwa = usePwaLifecycle();
   const localStorageOwner = accountAuth.authRequired ? (accountAuth.user?.id ?? "") : undefined;
   const [initialWorkspaceState] = useState(() => loadInitialWorkspaceState(localStorageOwner));
   const [initialChartSession] = useState(() => loadLastChartSession({ symbol: "BTCUSDT", timeframe: "1m", chartType: "candles" }, localStorageOwner));
@@ -73,6 +79,7 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>(launchView);
   const openStrategyWorkspace = useCallback(() => setMode("strategy"), []);
   const [robotsCenterRequest, setRobotsCenterRequest] = useState(0);
+  const [newPaperBotRequest, setNewPaperBotRequest] = useState(0);
   const [offlineResearchOpen, setOfflineResearchOpen] = useState(false);
   const [launchedFiles, setLaunchedFiles] = useState<QueuedPwaLaunch[]>([]);
   const shareTargetLoadStarted = useRef(false);
@@ -80,6 +87,7 @@ export default function App() {
   const [linkedCrosshair, setLinkedCrosshair] = useState<LinkedCrosshair>();
   const [linkedTimeRange, setLinkedTimeRange] = useState<LinkedTimeRange>();
   const [chartConnection, setChartConnection] = useState<ConnectionState>("connecting");
+  const [hasPrimaryCandles, setHasPrimaryCandles] = useState(false);
   const primaryCandlesRef = useRef<Candle[]>([]);
   const [mobilePanel, setMobilePanel] = useState<"markets" | "instrument">();
   const artifactLibrary = useArtifactLibrary({
@@ -130,6 +138,11 @@ export default function App() {
   });
   const { cryptoExchange, theme, locale, leftOpen, rightOpen, leftSize, rightSize, workspaces, activeWorkspaceId } = shell;
   const isMobile = useMediaQuery(MOBILE_SHELL_MEDIA_QUERY);
+  useEffect(() => {
+    if (!pwa.capabilities.offlineResearchSupported) {
+      setOfflineResearchOpen(false);
+    }
+  }, [pwa.capabilities.offlineResearchSupported]);
   useEffect(() => {
     const workspace = mode === "chart" ? automationText(locale, "monitoring") : mode === "screener" ? automationText(locale, "screener") : `${automationText(locale, "automation")} · ${automationText(locale, mode === "strategy" ? "strategies" : "robots")}`;
     document.title = `${workspace} · SaltanatbotV2`;
@@ -238,6 +251,20 @@ export default function App() {
     };
   }, [activeChart?.exchange, activeChart?.marketType, activeChart?.priceType, cryptoExchange]);
   const priceAlerts = usePriceAlerts(decimalsFor, legacyAlertRoute);
+  const onboardingFlow = useOnboardingFlow({
+    onboarding,
+    mode,
+    chartConnection,
+    hasPrimaryCandles,
+    alerts: priceAlerts.alerts,
+    isMobile,
+    rightOpen: shell.rightOpen,
+    setMode,
+    setMobilePanel,
+    setNewPaperBotRequest,
+    createWorkspaceTemplate: shell.createWorkspaceTemplate,
+    toggleRight: shell.toggleRight
+  });
   const appCommands = useAppCommands({
     locale,
     catalog,
@@ -310,7 +337,8 @@ export default function App() {
         onStrategyWarmup={warmStrategyLab}
         onOpenPalette={appCommands.openPalette}
         onOpenShortcutSettings={appCommands.openShortcutSettings}
-        onOpenOfflineResearch={() => setOfflineResearchOpen(true)}
+        onOpenOfflineResearch={pwa.capabilities.offlineResearchSupported ? () => setOfflineResearchOpen(true) : undefined}
+        onOpenGettingStarted={accountAuth.authRequired && accountAuth.user ? () => void onboardingFlow.reopen() : undefined}
         onToggleTheme={shell.toggleTheme}
         onToggleLocale={shell.toggleLocale}
         onToggleLeft={isMobile ? () => setMobilePanel((current) => (current === "markets" ? undefined : "markets")) : shell.toggleLeft}
@@ -350,6 +378,7 @@ export default function App() {
             storageOwnerId={localStorageOwner}
             primaryCandlesRef={primaryCandlesRef}
             onConnectionChange={setChartConnection}
+            onPrimaryCandlesAvailabilityChange={setHasPrimaryCandles}
             linkedCrosshair={linkedCrosshair}
             onLinkedCrosshairChange={setLinkedCrosshair}
             linkedTimeRange={linkedTimeRange}
@@ -372,7 +401,7 @@ export default function App() {
             )}
             {mode === "trade" && (
               <Suspense fallback={<WorkspaceLoading locale={locale} mode="trade" />}>
-                <TradingView strategies={strategyLibrary} catalog={catalog} locale={locale} portfolioRequest={robotsCenterRequest} />
+                <TradingView strategies={strategyLibrary} catalog={catalog} locale={locale} portfolioRequest={robotsCenterRequest} newBotRequest={newPaperBotRequest} onPaperBotCreated={onboardingFlow.onPaperBotCreated} />
               </Suspense>
             )}
             {mode === "screener" && (
@@ -412,6 +441,7 @@ export default function App() {
                   locale={locale}
                   storageOwnerId={localStorageOwner}
                   onApplyResult={artifactOverlay.applyBacktestResult}
+                  onBacktestCompleted={onboardingFlow.onBacktestCompleted}
                   onShowOnChart={artifactOverlay.showOnChart}
                   onOpenTrading={() => setMode("trade")}
                 />
@@ -424,7 +454,17 @@ export default function App() {
       <PriceAlertFeed alerts={priceAlerts.alerts} evaluatePrices={priceAlerts.evaluatePrices} />
       <CommandPalette locale={locale} open={appCommands.paletteOpen} onClose={appCommands.closePalette} commands={appCommands.commands} />
       <ShortcutSettingsDialog locale={locale} open={appCommands.shortcutSettingsOpen} shortcuts={appCommands.shortcuts} onChange={appCommands.setShortcuts} onClose={appCommands.closeShortcutSettings} />
-      <OfflineResearchDialog locale={locale} open={offlineResearchOpen} onClose={() => setOfflineResearchOpen(false)} />
+      {pwa.capabilities.offlineResearchSupported && <OfflineResearchDialog locale={locale} open={offlineResearchOpen} pwa={pwa} onClose={() => setOfflineResearchOpen(false)} />}
+      <OnboardingDialog
+        locale={locale}
+        open={onboarding.phase === "ready" && onboarding.state?.status === "not_started"}
+        busy={onboarding.busy}
+        error={onboarding.error}
+        canCreatePaperRobot={shell.canCreatePaperWorkspace}
+        onSelect={(goal) => void onboardingFlow.selectGoal(goal)}
+        onDismiss={() => void onboarding.dismiss()}
+        onRetry={onboarding.retry}
+      />
       {launchedFiles[0] && !launchedFiles[0].approved && <PwaFileLaunchDialog locale={locale} batch={launchedFiles[0].batch} onClose={consumeLaunchedFiles} onReview={approveLaunchedFiles} />}
       <AlertToasts locale={locale} toasts={priceAlerts.toasts} decimalsFor={decimalsFor} onDismiss={priceAlerts.dismissToast} />
     </div>

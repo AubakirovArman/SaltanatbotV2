@@ -47,10 +47,14 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/backend/package.json ./backend/package.json
 COPY --from=build /app/backend/dist ./backend/dist
 COPY --from=build /app/frontend/dist ./frontend/dist
-# Keep the verified SQLite backup/restore utility in the runtime image. Compose
-# stores backend/data in a named volume, so operators must be able to run this
-# script against that mounted volume from the service container.
+# Keep the verified SQLite and paired PostgreSQL/SQLite recovery utilities in
+# the runtime image. Matching-major pg_dump/pg_restore binaries remain an
+# explicit operator dependency and may be supplied through reviewed wrappers.
 COPY --from=build /app/scripts/runtime-data.mjs ./scripts/runtime-data.mjs
+COPY --from=build /app/scripts/project-recovery.mjs ./scripts/project-recovery.mjs
+COPY --from=build /app/scripts/lib/project-recovery.mjs ./scripts/lib/project-recovery.mjs
+COPY --from=build /app/scripts/lib/project-recovery-postgres.mjs ./scripts/lib/project-recovery-postgres.mjs
+COPY --from=build /app/scripts/lib/project-recovery-status.mjs ./scripts/lib/project-recovery-status.mjs
 # npm workspaces are relative symlinks under node_modules; copy their runtime
 # package roots so those links remain valid in the slim image.
 COPY --from=build /app/packages ./packages

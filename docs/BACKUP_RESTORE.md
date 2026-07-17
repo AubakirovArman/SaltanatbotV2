@@ -13,7 +13,237 @@ bounded multi-leg paper journal (`arbitrage-paper-multi-leg.sqlite`) are include
 > but `.secret` is the root needed to decrypt them. Protect the backup as if it contained plaintext
 > credentials. Never commit it, upload it to an untrusted cloud, or send it to a bug report.
 
-## Create an online backup
+## Preferred paired project recovery
+
+Use the project recovery commands for a complete PostgreSQL + SQLite generation. They are the O1
+recovery boundary; the lower-level `data:*` commands later in this document remain useful for
+diagnostics and old named-volume procedures, but they do not create a paired recovery point.
+This implementation accepts only the current `public-http-paper` release profile.
+
+The backup command holds one read-only exported PostgreSQL snapshot through both `pg_dump` and the
+online SQLite backup. The schema/count inventory and dump therefore share one PostgreSQL snapshot,
+and every SQLite `ownerUserId` must exist in that same snapshot before publication. The complete
+capture window must be no more than five minutes.
+
+```bash
+sudo install -d -o saltanatbotv2 -g saltanatbotv2 -m 0700 \
+  /opt/saltanatbotv2-backups \
+  /opt/saltanatbotv2/operations
+sudo -u saltanatbotv2 -H -s
+cd /opt/saltanatbotv2
+umask 077
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+npm run recovery:backup -- \
+  --output "/opt/saltanatbotv2-backups/$STAMP" \
+  --data-dir "/opt/saltanatbotv2/backend/data"
+
+RECOVERY_STATUS_FILE="/opt/saltanatbotv2/operations/recovery-status.json"
+npm run recovery:verify -- "/opt/saltanatbotv2-backups/$STAMP" \
+  --status-file "$RECOVERY_STATUS_FILE"
+exit
+```
+
+Provision the two parent directories as root, but run both recovery commands from the shown
+unprivileged `saltanatbotv2` shell. The output parent must already exist, be owned by that recovery
+operator, have no group/world write bits and contain no symbolic-link path components. The
+generation name itself must not exist.
+
+The generation contains exactly:
+
+- `postgres.dump`;
+- `runtime/`, using the existing verified SQLite backup format;
+- `recovery-manifest.json`, with SHA-256 checksums, capture timestamps, PostgreSQL migrations and
+  aggregate PostgreSQL/SQLite counts.
+
+The generation directory is owner-only. Verification rejects extra files, symbolic links, changed
+sizes/checksums, a corrupt PostgreSQL archive, an invalid SQLite backup, mismatched owner inventory
+or a capture span above five minutes.
+
+`--status-file` is optional and must be a normalized absolute path in an operator-owned,
+non-group/world-writable directory. Only after the complete verification succeeds, the CLI
+appends a newline-committed record to a bounded `0600` JSON receipt journal containing the receipt version, generation ID,
+verification timestamp, release commit, schema version, capture span and the generation directory
+basename. It contains no full path, database name or owner. A failed verification never creates or
+replaces the receipt. Configure the API with the same path through
+`OPERATIONS_RECOVERY_STATUS_FILE` and run verification as the same unprivileged operating-system
+account as the API so the owner and trusted-parent checks agree. The example systemd unit reads this
+exact `/opt/saltanatbotv2/operations/recovery-status.json` path and refuses to start unless the
+operations directory is a real directory owned by the service user and group. The journal itself is
+created exclusively as an owner-only file, kept open through a pinned descriptor, and accepted only
+after its exact identity and bytes are durable. It must have exactly one hard link (`nlink=1`); any
+hard-linked alias fails closed. An interrupted append is not repaired concurrently: the last
+newline-committed receipt remains readable. After stopping every recovery writer, the operator may
+inspect and truncate only the proven incomplete tail before the next publication; the permanent
+lock file stays untouched. Invalid or missing evidence remains `null` in admin metrics and does not
+affect `/api/ready`.
+
+Writers serialize the complete inspect/append/file-fsync/directory-fsync/final-validation boundary
+through a permanent empty `.recovery-status.lock`. That file must remain owned by
+`saltanatbotv2`, mode `0600`, a regular non-symlink with `nlink=1`, in the same operations directory.
+The writer opens and pins it with `O_NOFOLLOW`, validates root-owned non-writable
+`/usr/bin/flock`, and retains an exclusive kernel lock until publication finishes. Install the
+`util-linux` package if `/usr/bin/flock` is absent. Never unlink, rename, copy or hard-link the lock
+file during repair or rotation. A crash releases the kernel lock automatically; the permanent inode
+must remain in place, so there is no stale lock file to remove.
+
+An interruption between the exclusive creation of the first journal and its durable complete
+newline may instead leave an empty or partial single-link file. That is not an append tail: both the
+writer and API reject it, and truncating it to zero does not repair it. Stop all recovery writers,
+inspect the configured path, and require a regular non-symlink file owned by `saltanatbotv2`, mode
+`0600`, with `nlink=1` under the exact trusted operations directory. Rename that exact file into an
+owner-only quarantine directory on the same filesystem; do not blindly unlink, overwrite or copy
+it, and leave `.recovery-status.lock` untouched. With the configured path absent, rerun the full
+`recovery:verify -- --status-file` command and
+confirm the new receipt and admin metric. If any identity or permission check is uncertain, leave
+the file untouched and investigate.
+
+A completely valid journal can also reach its 1 MiB bound. In that case the locked writer rejects
+the next record before writing, while the API continues to expose the latest valid receipt. For a
+planned rotation, stop every recovery writer and leave `.recovery-status.lock` untouched. Verify the
+configured journal is the exact owner-only, mode-`0600`, `nlink=1` regular file under the trusted
+operations directory, then rename that journal—not the lock—into an owner-only quarantine/archive
+directory on the same filesystem. With `recovery-status.json` absent, rerun full verification to
+create a fresh journal, confirm the admin metric and retain the archived journal according to the
+site's backup policy. Never truncate or unlink a full valid journal in place.
+
+> **Upgrade note for the former anchor prototype.** A journal with `nlink=2` and a matching
+> `.recovery-status-anchor-*` name is no longer accepted. Stop all recovery writers, verify with
+> `stat` that the configured receipt and exactly one anchor are owner-only names for the same inode,
+> then rename both names (without copying or unlinking either one) into a separate owner-only
+> quarantine directory on the same filesystem. If that identity cannot be proved, leave the files
+> untouched and investigate. With the configured path absent, rerun the full
+> `recovery:verify -- --status-file` command as `saltanatbotv2`; it creates a fresh single-link
+> receipt. Confirm `nlink=1`, owner/group, mode `0600`, and the admin recovery metric before removing
+> the quarantined prototype under the site's backup-retention policy.
+
+The source connection is resolved from `RECOVERY_SOURCE_DATABASE_URL`, then `DATABASE_URL`, then
+ordinary `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER` and password settings. The recovery wrapper can
+read the application's owner-only `PGPASSWORD_FILE`; the raw `pg_dump`/`pg_restore` tools cannot.
+The password path must be absolute and must not contain a symbolic link in any directory component.
+Recovery accepts one exact numeric loopback endpoint shared by source and operator with
+`sslmode=disable`; proxies, DNS names, remote endpoints and transport-negotiating SSL modes are
+rejected. Matching-major raw `pg_dump` and `pg_restore` binaries must resolve to root-owned,
+non-writable executables. The only accepted wrapper paths are this repository's bundled adapters,
+supplied through `RECOVERY_PG_DUMP_BIN` and `RECOVERY_PG_RESTORE_BIN`.
+Child connections receive `PGCONNECT_TIMEOUT=10`. Process deadlines default to five minutes for
+`pg_dump`, ten minutes for restore and one minute for archive listing; installations may set
+`RECOVERY_PG_DUMP_TIMEOUT_MS`, `RECOVERY_PG_RESTORE_TIMEOUT_MS` and
+`RECOVERY_PG_RESTORE_LIST_TIMEOUT_MS` within the validated 50–3,600,000 ms range.
+
+### Matching PostgreSQL tools from this project's Compose image
+
+When the application uses the direct-host layout above but PostgreSQL runs through this project's
+Compose service, the repository includes host-only adapters that use `pg_dump`/`pg_restore` from the
+exact immutable image digest of that running service. This example still reads direct-host runtime
+data from `/opt/saltanatbotv2/backend/data`; a fully containerized deployment stores runtime data in
+the `saltanat-data` named volume and must first use the named-volume procedure later in this guide.
+Use the adapters only from the real project root and always pass absolute paths:
+
+```bash
+cd /opt/saltanatbotv2
+STAMP="<existing-generation-stamp>"
+export RECOVERY_PG_DUMP_BIN="$PWD/scripts/recovery-pg-dump.mjs"
+export RECOVERY_PG_RESTORE_BIN="$PWD/scripts/recovery-pg-restore.mjs"
+npm run recovery:backup -- \
+  --output "/opt/saltanatbotv2-backups/$STAMP" \
+  --data-dir "/opt/saltanatbotv2/backend/data"
+```
+
+The adapters fail closed unless all of the following still match:
+
+- root-owned local `/usr/bin/docker` and the local `/var/run/docker.sock`;
+- this owner-controlled, non-group/world-writable checkout, its exact `docker-compose.yml`, default directory-derived Compose
+  project name and the single healthy `<project>-postgres-1` service container;
+- image `postgres:17.10-bookworm`, matching version-17 tools, exact image digest, project named
+  volume and one `127.0.0.1:<published-port> -> 5432/tcp` binding;
+- the effective `PGHOST`, `PGPORT`, database and application role used by recovery;
+- the exact owner-only Compose password-secret bind source discovered from the running project
+  container, whether it is inside or outside the checkout, without symlink components.
+
+The adapter never executes a database tool directly in the long-running PostgreSQL container.
+Instead it creates a unique, labeled, auto-removed helper from the same image digest, joins only the
+exact database container's network namespace, uses a read-only root, drops all capabilities, enables
+`no-new-privileges`, applies CPU/memory/PID limits and an internal hard deadline, and accepts only
+the argument shapes emitted by this recovery CLI. Dump bytes stream to an exclusive owner-only host
+file; restore bytes stream from a verified owner-only host file. The password is compared with the
+Compose secret but never appears in Docker arguments, labels or inspectable helper environment.
+
+Recovery core gives each helper a UUID and, after a timeout or signal, invokes identity-bound
+cleanup. Cleanup refuses a same-name container with different labels, image/network identity or
+secret mount, force-removes only the exact helper, then polls for stable absence longer than the
+helper-create window. If cleanup cannot be proven, replacement PostgreSQL resources are retained
+instead of racing a drop against a surviving restore. Do not invoke the adapters directly, override
+the Compose project name, or repurpose their internal `--cleanup-run` protocol.
+
+This adapter deliberately supports the Compose `POSTGRES_USER` and its reviewed Compose secret.
+Install matching host binaries or add a separately reviewed secret boundary before using a distinct
+recovery-operator role. It never accepts another Compose project, container, database family,
+remote Docker daemon or non-loopback PostgreSQL port.
+
+Restore needs an operator connection that may create a database and set the restored objects to the
+application role. Configure `RECOVERY_OPERATOR_DATABASE_URL` pointing at a maintenance database
+(normally `postgres`) or use `RECOVERY_OPERATOR_PGHOST`, `RECOVERY_OPERATOR_PGPORT`,
+`RECOVERY_OPERATOR_PGUSER` and `RECOVERY_OPERATOR_PGPASSWORD[_FILE]`. Source and operator must still
+select the same numeric loopback host/port and explicitly use
+`RECOVERY_OPERATOR_PGSSLMODE=disable`.
+
+Before creating a database, restore copies the manifest-bound dump and runtime files through
+`O_NOFOLLOW` descriptors into a new owner-only staging generation, verifies that pinned copy, and
+uses only the pinned paths. Use a dedicated recovery operator and do not run concurrent privileged
+database create/drop/rename operations during recovery. Recovery create/drop operations serialize
+cooperating runs with a maintenance-database advisory lock. Marker and database OID are checked
+together with the restored inventory in one read-only transaction; PostgreSQL still cannot make
+`DROP DATABASE` conditional on an OID, so a hostile or concurrent superuser remains outside the
+tool's safety boundary.
+
+```bash
+sudo install -d -o saltanatbotv2 -g saltanatbotv2 -m 0700 /opt/saltanatbotv2-replacements
+sudo -u saltanatbotv2 -H -s
+cd /opt/saltanatbotv2
+STAMP="<verified-generation-stamp>"
+DBSTAMP="$(date -u +%Y%m%d_%H%M%S)"
+npm run recovery:restore -- "/opt/saltanatbotv2-backups/$STAMP" \
+  --target-database "saltanatbotv2_restore_$DBSTAMP" \
+  --data-dir "/opt/saltanatbotv2-replacements/data-$STAMP" \
+  --current-data-dir "/opt/saltanatbotv2/backend/data" \
+  --target-owner "saltanatbotv2"
+exit
+```
+
+The restore command is deliberately stricter than the low-level SQLite restore:
+
+- the PostgreSQL target must not exist and must start with `<source_database>_restore_`;
+- the data target parent must already exist, be operator-owned, not group/world writable and
+  contain no symbolic-link path components;
+- the data target must be absent or an empty owner-only directory owned by the recovery operator;
+- the destination is claimed early with an owner-only nonce marker and remains at the same path
+  during file publication; a concurrently substituted empty directory is preserved and refused;
+- the current database/data directory, non-empty targets and symbolic links are refused;
+- the newly created database receives an exact project-recovery ownership marker;
+- PostgreSQL migrations/counts and SQLite counts/owner checksum must match the retained manifest;
+- a failed restore removes only the exact marked replacement database and restores the data target
+  to its original absent/empty state. If SQLite cleanup cannot be proven safe, its paired
+  PostgreSQL replacement and pinned recovery input are retained instead of deleting only one half.
+
+Successful restore only leaves verified replacement resources. It never changes systemd, Compose,
+`PGDATABASE`, `FRONTEND_DIST_DIR` or the active runtime data path. Perform any later stopped-service
+cutover as a separate reviewed operator action and retain the original database for rollback.
+
+Use the drill command for a full disposable restore. It generates a `_drill_` database and temporary
+data directory, verifies both, and drops/removes only resources carrying its exact marker:
+
+```bash
+sudo install -d -o saltanatbotv2 -g saltanatbotv2 -m 0700 /opt/saltanatbotv2-recovery-drills
+sudo -u saltanatbotv2 -H -s
+cd /opt/saltanatbotv2
+STAMP="<verified-generation-stamp>"
+npm run recovery:drill -- "/opt/saltanatbotv2-backups/$STAMP" \
+  --temporary-root "/opt/saltanatbotv2-recovery-drills" \
+  --current-data-dir "/opt/saltanatbotv2/backend/data"
+exit
+```
+
+## Low-level SQLite online backup
 
 The application may remain running while creating a backup. SQLite databases are copied through the
 online backup API rather than with a raw filesystem copy, then checked with `PRAGMA quick_check`.
@@ -22,7 +252,9 @@ online backup API rather than with a raw filesystem copy, then checked with `PRA
 npm run data:backup -- --output ../saltanat-backups/2026-07-11
 ```
 
-The output directory must not already exist and must be outside `backend/data/`. It contains:
+The output directory must not already exist and must be outside `backend/data/`. Its parent must
+already exist, be operator-owned, non-group/world-writable and contain no symlink component. It
+contains:
 
 - `trading.db` (required);
 - `candles.db` (when present);
@@ -102,7 +334,7 @@ against live SQLite files; the online backup API is what makes the runtime archi
 inside that volume, publishes only the allowlisted runtime files, preserves unrelated files, and
 rolls the previous generation back if publication or post-restore verification fails.
 
-## Back up PostgreSQL
+## Low-level PostgreSQL dump
 
 Create a custom-format dump near the SQLite backup. For Compose:
 
@@ -188,7 +420,10 @@ npm run data:verify -- ../saltanat-backups/2026-07-11
 Run verification immediately after copying a backup to another disk and before deleting an older
 known-good snapshot.
 
-## Restore
+## Low-level/manual restore
+
+The paired `recovery:restore` workflow above is preferred. The commands below document the
+individual building blocks and compatibility path for old generations.
 
 1. Stop the API and research worker. Restore must never run against an active server.
 2. Verify both the PostgreSQL dump and SQLite backup.
@@ -221,9 +456,12 @@ the current `saltanatbotv2` database. Verify the replacement first, then change 
 until the recovery has passed its acceptance window.
 
 Restore validates the complete backup before touching the target, builds a verified staging
-directory, atomically swaps it into place and rolls back the previous directory if the swap fails.
-Without `--force`, a non-empty runtime directory is never overwritten. A `.restore-manifest.json`
-record remains in the restored directory for local provenance.
+directory, publishes only verified files and rolls back the previous files if publication fails.
+Without `--force`, a non-empty runtime directory is never overwritten. Even with `--force`, direct
+restore replaces only the known flat runtime-file allowlist and refuses an unmanaged entry instead
+of recursively deleting it. A `.restore-manifest.json` record remains in the restored directory for
+local provenance. The target parent must already exist, be operator-owned,
+non-group/world-writable and contain no symlink component.
 
 To rehearse recovery without touching real state:
 

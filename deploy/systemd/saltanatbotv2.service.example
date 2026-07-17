@@ -21,8 +21,23 @@ Environment=PGUSER=saltanatbotv2
 Environment=PGPASSWORD_FILE=/etc/saltanatbotv2/postgres_password
 Environment=PGAPPNAME=saltanatbotv2-api
 Environment=PGPOOL_MAX=12
+Environment=GLOBAL_ADMISSION_MAX_ACTIVE=128
+Environment=GLOBAL_ADMISSION_RESERVED_CONTROL=16
+Environment=GLOBAL_ADMISSION_MAX_QUEUED=256
+Environment=GLOBAL_ADMISSION_QUEUE_TIMEOUT_MS=2000
+Environment=RESEARCH_WORKER_HEARTBEAT_STALE_MS=90000
+Environment=OPERATIONS_DISK_PATH=/opt/saltanatbotv2/backend/data
+Environment=OPERATIONS_RECOVERY_STATUS_FILE=/opt/saltanatbotv2/operations/recovery-status.json
+Environment=OPERATIONS_DISK_SOFT_FREE_BYTES=5368709120
+Environment=OPERATIONS_DISK_HARD_FREE_BYTES=2147483648
+Environment=OPERATIONS_DISK_SOFT_FREE_PERCENT=5
+Environment=OPERATIONS_DISK_HARD_FREE_PERCENT=2
 ExecStartPre=/usr/bin/test -r /etc/saltanatbotv2/postgres_password
 ExecStartPre=/usr/bin/test -d /opt/saltanatbotv2/backend/data
+ExecStartPre=/usr/bin/test -d /opt/saltanatbotv2/operations
+ExecStartPre=/usr/bin/test -O /opt/saltanatbotv2/operations
+ExecStartPre=/usr/bin/test -G /opt/saltanatbotv2/operations
+ExecStartPre=/usr/bin/test ! -L /opt/saltanatbotv2/operations
 ExecStart=/usr/bin/node /opt/saltanatbotv2/backend/dist/server.js
 Restart=on-failure
 RestartSec=5s

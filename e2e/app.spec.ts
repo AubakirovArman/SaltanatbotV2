@@ -1493,6 +1493,8 @@ test("keeps the chart context menu keyboard-operable", async ({ page }) => {
 });
 
 test("creates, exposes and persists an anchored VWAP drawing", async ({ page }) => {
+  await installMarketSocketMock(page, "stable", mockChartCandles());
+  await page.reload();
   await selectChartSymbol(page, "EURUSD");
   await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
   const tool = page.getByRole("button", { name: "Anchored VWAP", exact: true });

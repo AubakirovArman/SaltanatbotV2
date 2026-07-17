@@ -43,7 +43,9 @@ The default endpoints are:
 
 - web application: `http://127.0.0.1:4180` when the app port is bound locally;
 - project PostgreSQL: `127.0.0.1:55434` on the host and `postgres:5432` inside Compose;
-- health: `/api/health` (process) and `/api/ready` (process plus database).
+- health: `/api/health` is cheap process liveness; `/api/ready` verifies the
+  schema checksum, PostgreSQL, paper executor, research-worker heartbeat,
+  runtime-data disk watermarks and global admission pressure.
 
 The plain-HTTP address above is for loopback/local use only. Never submit an account password over
 public `http://IP:4180`: HTTP does not encrypt it in transit. HTTPS deployment is explicitly
@@ -112,12 +114,14 @@ the command revokes every session, marks the account for mandatory password chan
 generated password once. It prints no password on failure. If the output is lost, run the guarded
 procedure again rather than placing a password in shell history.
 
-Authentication abuse protection is enabled without extra services: failed login attempts are
+Authentication and public-readiness abuse protection are enabled without extra services: failed login attempts are
 limited independently by client IP and normalized login, every registration attempt consumes the
 per-IP allowance even when it succeeds, and Argon2id has a bounded global worker/queue gate. The
-shared in-process limiter stores are capped at 4,096 keys by default, which leaves ample headroom for
+in-process limiter stores are capped at 4,096 keys by default, which leaves ample headroom for
 the first 100 users while preventing attacker-controlled map growth. See
-[Configuration](./CONFIGURATION.md) for tuning variables. If a trusted private-network proxy is
+[Configuration](./CONFIGURATION.md) for tuning variables. Readiness has its own IP store and
+allowance; accepted overlap shares one dependency evaluation and its result for a one-second TTL.
+If a trusted private-network proxy is
 already present, set `TRUST_PROXY` only to that exact proxy; otherwise all clients can appear as one
 IP and share its allowance. This does not add transport encryption or enable private/live trading.
 
@@ -206,7 +210,8 @@ npm ci
 npm run check
 npm run build
 sudo install -d -o saltanatbotv2 -g saltanatbotv2 -m 0700 \
-  /opt/saltanatbotv2/backend/data
+  /opt/saltanatbotv2/backend/data \
+  /opt/saltanatbotv2/operations
 ```
 
 For a direct-host production cutover, do not keep serving the mutable checkout output. Package the
@@ -268,6 +273,31 @@ curl --fail --silent http://127.0.0.1:4180/api/health
 curl --fail --silent http://127.0.0.1:4180/api/ready
 ```
 
+Once admitted and inside its dedicated IP allowance, `/api/ready` returns HTTP 503 for a hard dependency failure, HTTP 200 with
+`status: "degraded"` for a soft disk/admission watermark, and HTTP 200 with
+`status: "ready"` otherwise. If the bounded ordinary admission lane is exhausted, the probe instead
+receives `503 global_admission_exhausted`. A source above the default 2 requests/second with burst
+10 instead receives `429 readiness_rate_limited` and `Retry-After`. Accepted concurrent callers
+share one dependency evaluation, and the completed result is reused for one second; do not poll
+more frequently merely to bypass that bound. Together these controls prevent readiness polling from
+consuming the control reserve or creating unbounded PostgreSQL/filesystem work. When the IP store is
+full, `Retry-After` reports the remaining idle-key prune horizon. The two PostgreSQL checks run
+sequentially, and `PGPOOL_MAX` must be at least 2. Public readiness exposes only categorical
+component states—no exact database latency, migration/checksum, worker age/state, disk capacity or
+admission load. An authenticated administrator can inspect the
+bounded latency/status buckets, pool/admission/readiness-limiter counters and worker freshness at
+`/api/admin/operations/metrics`; ordinary users cannot access that endpoint. If
+`OPERATIONS_RECOVERY_STATUS_FILE` names a valid receipt published by successful
+`recovery:verify -- --status-file`, the same admin-only response also shows its
+bounded generation evidence. Missing or invalid evidence reports `null` and
+never makes readiness fail.
+
+Keep that receipt under the separate owner-only `operations/` directory, never
+inside `backend/data/`: runtime restore intentionally manages the latter and
+must not preserve stale recovery evidence. Compose leaves the setting empty by
+default; operators who enable it must add a separate persistent read-only mount
+for the API and run verification as the same numeric OS user.
+
 Create the first administrator once, under the same service account and database settings. The
 generated application password is printed once and must be changed at first login:
 
@@ -325,9 +355,11 @@ Stop those terminals before enabling the systemd units.
 
 The worker opens no HTTP port and must use the same isolated PostgreSQL database as the API.
 `RESEARCH_WORKER_CONCURRENCY`, `RESEARCH_JOB_TIMEOUT_MS` and `RESEARCH_JOB_MEMORY_MB` bound each
-process. `RESEARCH_JOB_RETENTION_INTERVAL_MS` controls the bounded retention pass (60 seconds by
-default, accepted range 60 seconds to one hour). `RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS` must remain
-below the supervisor stop timeout so a stuck database call cannot prevent lease recovery.
+process. `RESEARCH_WORKER_HEARTBEAT_INTERVAL_MS` defaults to 15 seconds; the API treats a heartbeat
+older than `RESEARCH_WORKER_HEARTBEAT_STALE_MS` (90 seconds by default) as unready.
+`RESEARCH_JOB_RETENTION_INTERVAL_MS` controls the bounded retention pass (60 seconds by default,
+accepted range 60 seconds to one hour). `RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS` must remain below the
+supervisor stop timeout so a stuck database call cannot prevent lease recovery.
 Authenticated users can inspect only their own bounded queue metrics at `/api/jobs/metrics`; worker
 logs contain aggregate counts and durations, never job payloads, account credentials or owner
 identifiers.
@@ -348,14 +380,15 @@ checksum-verified, run in one transaction and take a PostgreSQL advisory lock, s
 processes cannot apply a migration concurrently. `PGPASSWORD_FILE` is an application setting, not a
 libpq setting: PostgreSQL command-line tools use an owner-only `PGPASSFILE`, `PGPASSWORD`, or their
 interactive password prompt. Never assume `pg_dump` or `pg_restore` reads the application's raw
-password file.
+password file. The repository's `recovery:*` wrapper validates and reads that owner-only file itself
+before launching the PostgreSQL tool without printing the password.
 
 ## What persists where
 
 | Storage | Data | Backup tool |
 | --- | --- | --- |
-| PostgreSQL | users, hashed passwords, authorization revisions, sessions, WS tickets, auth audit, workspaces/revisions, research jobs | `pg_dump` / `pg_restore` |
-| `backend/data/trading.db` | owner-scoped trading accounts, bots, orders, fills, logs, audit rows and encrypted account credentials/notifications | `npm run data:backup`; for Compose use the [named-volume procedure](./BACKUP_RESTORE.md#docker-compose-named-volume) |
+| PostgreSQL | users, hashed passwords, authorization revisions, sessions, WS tickets, auth audit, workspaces/revisions, research jobs | paired `npm run recovery:backup` / `recovery:restore`; raw `pg_dump` / `pg_restore` remain low-level tools |
+| `backend/data/trading.db` | owner-scoped trading accounts, bots, orders, fills, logs, audit rows and encrypted account credentials/notifications | same paired recovery generation; `npm run data:backup` remains the low-level SQLite-only tool |
 | `backend/data/.secret` | AES root secret for encrypted SQLite settings | same verified runtime backup |
 | `backend/data/candles.db` | optional candle cache | same verified runtime backup |
 | paper-journal SQLite files | paper multi-leg history | same backup at the default path; separately back up a custom path |

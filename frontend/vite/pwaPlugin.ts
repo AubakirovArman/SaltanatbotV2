@@ -114,7 +114,7 @@ const PRECACHE_PATHS = new Set(PRECACHE);
 const RESEARCH_FILES = ${JSON.stringify(researchFiles)};
 const RESEARCH_PATHS = new Set(RESEARCH_FILES);
 const RESEARCH_BYTES = ${researchBytes};
-const NETWORK_ONLY_PREFIXES = ["/api/", "/stream", "/quotes", "/orderbook", "/trade-flow", "/trade-stream"];
+const NETWORK_ONLY_PREFIXES = ["/api/", "/stream", "/quotes", "/orderbook", "/trade-flow", "/arbitrage-stream", "/trade-stream"];
 const SHARE_TARGET = ${JSON.stringify(PWA_SHARE_TARGET)};
 const SHARE_TOKEN_PATTERN = new RegExp(${JSON.stringify(PWA_SHARE_TOKEN_PATTERN.source)});
 

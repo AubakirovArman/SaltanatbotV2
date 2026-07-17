@@ -42,6 +42,7 @@ interface StrategyLabProps {
   locale: Locale;
   storageOwnerId?: string;
   onApplyResult?: (result: BacktestResult, symbol: string, timeframe: Timeframe, visuals: { plots: PlotSeries[]; shapes: ShapeOverlays } | undefined, exchange: DataExchange) => void;
+  onBacktestCompleted?: () => void;
   onShowOnChart?: (symbol: string, timeframe: Timeframe) => void;
   onOpenTrading?: () => void;
 }
@@ -71,6 +72,7 @@ export function StrategyLab({
   locale,
   storageOwnerId,
   onApplyResult,
+  onBacktestCompleted,
   onShowOnChart,
   onOpenTrading
 }: StrategyLabProps) {
@@ -84,7 +86,8 @@ export function StrategyLab({
     initialSymbol,
     initialTimeframe,
     exchange,
-    onApplyResult
+    onApplyResult,
+    onBacktestCompleted
   });
   const [shareState, setShareState] = useState<"idle" | "copied">("idle");
   const [mobilePane, setMobilePane] = useState<MobileStrategyPane>("editor");

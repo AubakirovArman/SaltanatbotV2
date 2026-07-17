@@ -17,11 +17,17 @@ const publicVenueRoutesPath = path.join(root, "backend/src/venues/publicRoutes.t
 const orderBookMlResearchRoutesPath = path.join(root, "backend/src/orderbook/ml/researchRoutes.ts");
 const identityServerRoutesPath = path.join(root, "backend/src/identity/serverRoutes.ts");
 const identityRoutesPath = path.join(root, "backend/src/identity/routes.ts");
+const onboardingRoutesPath = path.join(root, "backend/src/onboarding/routes.ts");
 const workspaceRoutesPath = path.join(root, "backend/src/workspaces/routes.ts");
 const computeJobRoutesPath = path.join(root, "backend/src/jobs/routes.ts");
 const blocksPath = path.join(root, "frontend/src/strategy/blockCatalog.ts");
 const apiDocPath = path.join(root, "docs/API_ENDPOINTS.generated.md");
 const blocksDocPath = path.join(root, "docs/BLOCK_CATALOG.generated.md");
+const identityServerPublicRoutes = new Set([
+  "GET /api/auth/config",
+  "GET /api/health",
+  "GET /api/ready"
+]);
 
 const serverSource = readFileSync(serverPath, "utf8");
 const tradingSource = readFileSync(tradingPath, "utf8");
@@ -36,13 +42,24 @@ const publicVenueRoutesSource = readFileSync(publicVenueRoutesPath, "utf8");
 const orderBookMlResearchRoutesSource = readFileSync(orderBookMlResearchRoutesPath, "utf8");
 const identityServerRoutesSource = readFileSync(identityServerRoutesPath, "utf8");
 const identityRoutesSource = readFileSync(identityRoutesPath, "utf8");
+const onboardingRoutesSource = readFileSync(onboardingRoutesPath, "utf8");
 const workspaceRoutesSource = readFileSync(workspaceRoutesPath, "utf8");
 const computeJobRoutesSource = readFileSync(computeJobRoutesPath, "utf8");
 const blocksSource = readFileSync(blocksPath, "utf8");
 
 const endpoints = uniqueEndpoints([
   ...extractRoutes(serverSource, "app", "", Number.POSITIVE_INFINITY, "Authenticated account"),
-  ...extractRoutes(identityServerRoutesSource, "app", "", Number.POSITIVE_INFINITY, "Public", "backend/src/identity/serverRoutes.ts"),
+  ...extractRoutes(
+    identityServerRoutesSource,
+    "app",
+    "",
+    Number.POSITIVE_INFINITY,
+    "Public",
+    "backend/src/identity/serverRoutes.ts"
+  ).map((endpoint) => ({
+    ...endpoint,
+    access: identityServerAccess(endpoint)
+  })),
   ...extractRoutes(identityRoutesSource, "auth", "/api/auth", 0, "Public", "backend/src/identity/routes.ts").map((endpoint) => ({
     ...endpoint,
     access: new Set(["/api/auth/config", "/api/auth/register", "/api/auth/login"]).has(endpoint.path)
@@ -50,6 +67,7 @@ const endpoints = uniqueEndpoints([
       : "Authenticated account"
   })),
   ...extractRoutes(identityRoutesSource, "admin", "/api/admin", 0, "Public", "backend/src/identity/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · admin" })),
+  ...extractRoutes(onboardingRoutesSource, "router", "/api/onboarding", 0, "Public", "backend/src/onboarding/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped" })),
   ...extractRoutes(workspaceRoutesSource, "router", "/api/workspaces", 0, "Public", "backend/src/workspaces/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped" })),
   ...extractRoutes(computeJobRoutesSource, "router", "/api/jobs", 0, "Public", "backend/src/jobs/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped" })),
   ...extractRoutes(tradingSource, "router", "/api/trade", tradingSource.indexOf("router.use(requireAuth)"), "Public"),
@@ -87,7 +105,7 @@ const apiDoc = `# Generated API endpoint index
 
 > Generated from the backend server and modular route registrars. Do not edit by hand. See [API.md](./API.md) for schemas, examples and authentication flow.
 
-This index is a route-presence contract. A change to an Express route makes \`npm run docs:check\` fail until the generated reference is refreshed.
+This index is a route-presence and access-classification contract. A change to an Express route or its canonical registrar metadata makes \`npm run docs:check\` fail until the generated reference is refreshed.
 
 ## HTTP endpoints
 
@@ -166,6 +184,13 @@ function extractRoutes(source, receiver, prefix, publicBoundary, publicAccess, s
 function joinRoute(prefix, route) {
   if (!prefix) return route;
   return route === "/" ? prefix : `${prefix}${route}`;
+}
+
+function identityServerAccess(endpoint) {
+  const key = `${endpoint.method} ${endpoint.path}`;
+  if (identityServerPublicRoutes.has(key)) return "Public";
+  if (endpoint.path.startsWith("/api/admin/")) return "Authenticated · admin";
+  throw new Error(`Identity server route has no canonical access metadata: ${key}`);
 }
 
 function uniqueEndpoints(values) {

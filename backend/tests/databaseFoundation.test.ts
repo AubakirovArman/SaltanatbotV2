@@ -55,6 +55,15 @@ describe("PostgreSQL configuration", () => {
     ).toThrow(/only one/i);
   });
 
+  it("keeps at least one PostgreSQL connection beside a bounded readiness probe", () => {
+    expect(() =>
+      loadDatabaseConfig({
+        env: { PGPOOL_MAX: "1" }
+      })
+    ).toThrow(/PGPOOL_MAX must be between 2 and 100/);
+    expect(loadDatabaseConfig({ env: { PGPOOL_MAX: "2" } }).description.poolMax).toBe(2);
+  });
+
   it("detects whether an explicit database was configured", () => {
     expect(isDatabaseConfigured({})).toBe(false);
     expect(isDatabaseConfigured({ PGDATABASE: "saltanatbotv2" })).toBe(true);
@@ -89,17 +98,17 @@ function createPoolDouble(
 
 describe("PostgreSQL schema migrations", () => {
   it("uses contiguous checksummed versions and no extensions", () => {
-    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(10);
+    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(11);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
     ]);
-    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(10);
+    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(11);
     expect(DATABASE_MIGRATIONS.every((migration) => /^[0-9a-f]{64}$/.test(migration.checksum))).toBe(true);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.sql).join("\n")).not.toMatch(/CREATE\s+EXTENSION/i);
   });
 
-  it("keeps the published v1-v9 checksums stable and adds workspace workflow only in v10", () => {
-    expect(DATABASE_MIGRATIONS.slice(0, 9).map((migration) => migration.checksum)).toEqual([
+  it("keeps the published v1-v10 checksums stable and adds onboarding only in v11", () => {
+    expect(DATABASE_MIGRATIONS.slice(0, 10).map((migration) => migration.checksum)).toEqual([
       "9b538a4d07aad7251604f6f3b9a32e069cf9419efa993725762f00e4191cfd94",
       "4a164f3c2a96af3e7941cca8fd06e96147da4af10b2c9b1411713be32816192a",
       "6f37bfa7d8330ff1474525f95c81e85b21212986c53a8cd81b26568ce3f7ab05",
@@ -108,7 +117,8 @@ describe("PostgreSQL schema migrations", () => {
       "f341253187e03b73f60981f35d11ce558c43d6301ed6ef7da9ddb68be467b34b",
       "19144479136344c3f09e4fd78ac6f57b1cb9813e4148af756457ad7842c0503e",
       "3d62620312b302e48475629898a318bfb7fd31fea79f9b0cc47ecb19a9a13d22",
-      "f4976a3bf7016daa0ee6238f41aa92264437422715754fb459ea45eb5a53eb08"
+      "f4976a3bf7016daa0ee6238f41aa92264437422715754fb459ea45eb5a53eb08",
+      "d6a3496e6ee1e9f1769abb3483de5b876411e0e786e07ff5b280d8a3f42d2622"
     ]);
     expect(DATABASE_MIGRATIONS[3].sql).toContain("ADD COLUMN client_id VARCHAR(160)");
     expect(DATABASE_MIGRATIONS[3].sql).toContain("ON workspaces (owner_user_id, client_id)");
@@ -138,6 +148,19 @@ describe("PostgreSQL schema migrations", () => {
     expect(DATABASE_MIGRATIONS[9].sql).toContain("ADD COLUMN payload_bytes BIGINT");
     expect(DATABASE_MIGRATIONS[9].sql).toContain("maintain_workspace_payload_bytes");
     expect(DATABASE_MIGRATIONS[9].sql).toContain("workspaces_owner_archive_updated_index");
+    expect(DATABASE_MIGRATIONS[10].sql).toContain("CREATE TABLE user_onboarding");
+    expect(DATABASE_MIGRATIONS[10].sql).toContain("INSERT INTO user_onboarding");
+    expect(DATABASE_MIGRATIONS[10].sql).toContain("CREATE TABLE runtime_component_heartbeats");
+    expect(DATABASE_MIGRATIONS[10].sql).toContain("'research-worker'");
+    expect(DATABASE_MIGRATIONS[10].sql).toContain(
+      "created_at TIMESTAMPTZ NOT NULL DEFAULT statement_timestamp()"
+    );
+    expect(DATABASE_MIGRATIONS[10].sql).not.toContain(
+      "DEFAULT clock_timestamp()"
+    );
+    expect(DATABASE_MIGRATIONS[10].sql).not.toMatch(
+      /\b(api_key|credential|password_hash|private_key|live_order)\b/i
+    );
   });
 
   it("derives legacy public session IDs opaquely from the full secret hash", () => {
@@ -157,8 +180,8 @@ describe("PostgreSQL schema migrations", () => {
     const database = createPoolDouble();
     const result = await migrateDatabase(database.pool);
 
-    expect(result).toMatchObject({ fromVersion: 0, toVersion: 10 });
-    expect(result.applied).toHaveLength(10);
+    expect(result).toMatchObject({ fromVersion: 0, toVersion: 11 });
+    expect(result.applied).toHaveLength(11);
     expect(database.queries.some((query) => query.text.includes("pg_advisory_xact_lock"))).toBe(true);
     expect(database.queries.at(0)?.text).toBe("BEGIN");
     expect(database.queries.at(-1)?.text).toBe("COMMIT");

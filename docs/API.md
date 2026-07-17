@@ -1,6 +1,6 @@
 # HTTP & WebSocket API reference
 
-SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote/order-book/trade-flow/arbitrage streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and request bodies are parsed as JSON with a 1 MB limit. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and six WebSocket endpoints are exposed at `/stream`, `/quotes`, `/orderbook`, `/trade-flow`, `/arbitrage-stream` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
+SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote/order-book/trade-flow/arbitrage streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and the generic application body limit is 1 MB; identity, onboarding and job routes apply their own bounded envelopes. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and six WebSocket endpoints are exposed at `/stream`, `/quotes`, `/orderbook`, `/trade-flow`, `/arbitrage-stream` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
 
 Market catalog, candle, sparkline and WebSocket payloads have canonical TypeScript contracts
 plus fail-closed runtime parsers in `packages/contracts`. The frontend validates untrusted JSON at
@@ -47,6 +47,7 @@ Identity endpoints:
 | `POST /api/admin/users/:id/activate` | Admin + CSRF | Activates pending/disabled user |
 | `POST /api/admin/users/:id/disable` | Admin + CSRF | Disables user and revokes sessions |
 | `PATCH /api/admin/users/:id/permissions` | Admin + CSRF | Changes application/trading roles |
+| `GET /api/admin/operations/metrics` | Admin | No-store process, PostgreSQL, admission and worker-health snapshot |
 
 `appRole` is `user` or `admin`. `tradingRole` is `none`, `read-only`, `paper-trade` or
 `live-trade`. New registrations always receive `user + none`; an administrator explicitly grants
@@ -122,6 +123,73 @@ list responses expose `artifactsExpired: true`; `GET /api/jobs/:id` and an exact
 `clientRequestId` retry return `410 job_artifacts_expired`. Reusing the same request ID with
 different content remains `409 job_idempotency_conflict`, while a new request ID may rerun the same
 content.
+
+### Onboarding
+
+The schema-v11 onboarding API is authenticated and owner-scoped. Every request must carry
+`X-SBV2-Expected-User: <current session user ID>` so a tab whose shared session cookie changed
+cannot read or mutate the previous account's progress. Unsafe calls also require the normal CSRF
+header. The server revalidates the durable authorization revision inside the mutation transaction.
+
+| Method/path | Body | Result |
+| --- | --- | --- |
+| `GET /api/onboarding` | none | Current owner's state; a new account without a row receives virtual `not_started`, revision `0` |
+| `PUT /api/onboarding/goal` | `{revision,goal}` | Selects `monitoring`, `price-alert`, `backtest` or `paper-robot` |
+| `POST /api/onboarding/milestones` | `{revision,milestone}` | Records the matching first chart, alert, backtest or paper-bot milestone |
+| `POST /api/onboarding/dismiss` | `{revision}` | Dismisses the current guide |
+| `POST /api/onboarding/restart` | `{revision}` | Clears the goal and milestones for a fresh run |
+
+All responses are `Cache-Control: no-store`. Mutations use optimistic revisions and return
+`409 onboarding_conflict` with the current state after a stale write. If the account's durable
+authorization changes between request authentication and the locked mutation,
+`409 onboarding_authorization_changed` is returned; a missing or stale expected-owner header
+returns `409 onboarding_owner_mismatch`. Onboarding bodies are capped at 16 KiB. Existing accounts
+are seeded as dismissed by migration v11, so deploying onboarding does not interrupt established
+users.
+
+### Readiness, metrics and global admission
+
+`GET /api/health` is a public liveness probe. `GET /api/ready` is a public, no-store readiness
+probe. Requests first cross ordinary global admission and then a dedicated bounded per-IP token
+bucket (2 requests/second, burst 10 and 4,096 keys by default). The bucket rejects excess with
+`429 readiness_rate_limited` and `Retry-After` without starting the handler. Accepted concurrent
+callers share one process-wide PostgreSQL/heartbeat/filesystem evaluation; its completed result is
+reused for the configured one-second TTL, so multi-source sequential polling within that API process
+cannot multiply probes without bound. Unexpected evaluation rejection is not cached and the next request retries. This is
+a short operational cache, not a long-lived availability assertion.
+
+Once admitted and rate-limited, readiness returns `200` for `ready` or `degraded` and `503` for
+`unready`; admission saturation may instead reject it with the stable
+`503 global_admission_exhausted` envelope described below. Every readiness response, including
+admission `503` and limiter `429`, is `Cache-Control: no-store`. The public body reports only
+categorical status for migrations, PostgreSQL, the paper executor, research worker, filesystem and
+admission. Exact migration versions/checksums, probe latency, heartbeat age/state, free bytes/
+percentage and admission counts/saturation are administrator-only. The public body contains no
+account payload, session, credential, strategy or order data.
+
+`GET /api/admin/operations/metrics` is protected by the administrator router and returns
+`Cache-Control: no-store`. It adds process-local API counters/latency buckets, PostgreSQL pool
+counts, the complete admission snapshot, `readinessRateLimit` configuration/counters
+(`refillPerSecond`, `burst`, `maxBuckets`, `buckets`, `allowed`, `rejected`) and the latest
+research-worker heartbeat. The public readiness body does not expose limiter counters. When
+`OPERATIONS_RECOVERY_STATUS_FILE` points to a valid owner-only receipt journal created by a successful
+`recovery:verify`, `recovery.lastVerifiedGeneration` contains only the receipt version, generation
+ID, verification time, release commit, schema version, capture span and source-generation basename.
+It is `null` when the setting or valid receipt is absent and never changes readiness.
+
+All `/api` requests first cross one process-wide admission controller. Only the cheap
+`/api/health` liveness probe bypasses it. `/api/ready` performs PostgreSQL, heartbeat and filesystem
+work, so it uses the bounded ordinary lane; under saturation its admission `503` is itself a valid
+not-ready signal. Authentication, job cancellation, paper-bot stop and the kill command use the
+reserved control lane. Ordinary work can use at most `maxActive - reservedControlSlots`, waits in
+one bounded FIFO queue and fails with `503 global_admission_exhausted` plus `Retry-After` when the
+queue is full or its timeout expires. Control requests do not wait behind ordinary work and fail
+immediately if the total active limit is already exhausted. The readiness limiter has its own
+bounded IP store, so probe traffic cannot consume authentication/control token buckets. When that
+store is full, `Retry-After` covers the remaining idle-entry prune horizon rather than inviting an
+impossible early retry. Readiness performs its two PostgreSQL checks sequentially; supported pools
+have at least two connections, leaving one available for authentication/control during the bounded
+probe.
 
 ## Shared types
 

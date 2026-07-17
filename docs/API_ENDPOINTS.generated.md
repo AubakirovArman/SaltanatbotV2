@@ -2,13 +2,14 @@
 
 > Generated from the backend server and modular route registrars. Do not edit by hand. See [API.md](./API.md) for schemas, examples and authentication flow.
 
-This index is a route-presence contract. A change to an Express route makes `npm run docs:check` fail until the generated reference is refreshed.
+This index is a route-presence and access-classification contract. A change to an Express route or its canonical registrar metadata makes `npm run docs:check` fail until the generated reference is refreshed.
 
 ## HTTP endpoints
 
 | Method | Path | Access | Source |
 | --- | --- | --- | --- |
 | `GET` | `/api/admin/audit` | Authenticated · admin | `backend/src/identity/routes.ts` |
+| `GET` | `/api/admin/operations/metrics` | Authenticated · admin | `backend/src/identity/serverRoutes.ts` |
 | `GET` | `/api/admin/users` | Authenticated · admin | `backend/src/identity/routes.ts` |
 | `POST` | `/api/admin/users/:id/activate` | Authenticated · admin | `backend/src/identity/routes.ts` |
 | `POST` | `/api/admin/users/:id/disable` | Authenticated · admin | `backend/src/identity/routes.ts` |
@@ -61,6 +62,11 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `GET` | `/api/market-data/health/upstreams` | Authenticated account · public-market read-only | `backend/src/venues/publicRoutes.ts` |
 | `POST` | `/api/network-identity/preflight` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/network-identity/registry` | Authenticated account | `backend/src/server.ts` |
+| `GET` | `/api/onboarding` | Authenticated · owner-scoped | `backend/src/onboarding/routes.ts` |
+| `POST` | `/api/onboarding/dismiss` | Authenticated · owner-scoped | `backend/src/onboarding/routes.ts` |
+| `PUT` | `/api/onboarding/goal` | Authenticated · owner-scoped | `backend/src/onboarding/routes.ts` |
+| `POST` | `/api/onboarding/milestones` | Authenticated · owner-scoped | `backend/src/onboarding/routes.ts` |
+| `POST` | `/api/onboarding/restart` | Authenticated · owner-scoped | `backend/src/onboarding/routes.ts` |
 | `GET` | `/api/orderbook-ml/research/health` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
 | `GET` | `/api/orderbook-ml/research/sessions` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
 | `POST` | `/api/orderbook-ml/research/sessions` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
@@ -156,4 +162,4 @@ This index is a route-presence contract. A change to an Express route makes `npm
 | `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **136 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **142 HTTP endpoints** and **6 WebSocket endpoints**.

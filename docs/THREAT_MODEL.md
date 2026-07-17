@@ -1,7 +1,7 @@
 # Threat model
 
 Status: alpha baseline
-Last reviewed: 2026-07-14
+Last reviewed: 2026-07-16
 
 SaltanatbotV2 is a self-hosted research and trading application. It stores sensitive exchange
 credentials and can submit real orders when an operator deliberately enables experimental live
@@ -25,6 +25,8 @@ It is not a claim that the application is production- or mainnet-ready.
 | `backend/data/.secret` | Root needed to decrypt stored credentials | Owner-only mode; gitignored; backup treated as secret |
 | Access/scoped tokens | Authorize local sessions and roles | HttpOnly session exchange; scoped roles; redacted logs |
 | Trading database | Bots, settings, fills, orders and audit evidence | Local SQLite; durable lifecycle; checksummed backup |
+| Recovery generation | Combined PostgreSQL identity/workflow state and SQLite execution history | Private directories/files, SHA-256 manifests, strict inventory and isolated replacement restore |
+| Operational status | Can reveal capacity or deployment health | Public readiness is coarse/no-store; detailed counters require an administrator session |
 | Strategy/Pine artifacts | User intellectual property and execution rules | Local browser/storage; schema validation; no `eval` |
 | Order/position state | Determines real financial exposure | Client IDs, journal, polling/private streams, reconciliation |
 | Market/backtest data | Determines signals and performance claims | Provider/provenance labels; fallback and gaps explicit |
@@ -75,6 +77,21 @@ Mitigations:
 - non-paper bots require positive position, order, daily-loss and open-order caps, revalidated at start/resume and immediately before live order execution;
 - emergency stop disables live execution, but operators must still inspect exchange state.
 
+### Cross-account onboarding state
+
+A browser tab can outlive logout/login in another tab. If onboarding state were keyed only by the
+current cookie at response time, a stale tab could display or mutate the next account's first-use
+progress.
+
+Mitigations:
+
+- every onboarding request carries the user ID captured when the client began the operation;
+- the server compares it with the authenticated principal before reading a row;
+- mutations revalidate the durable authorization revision while holding the owner row lock;
+- optimistic revisions reject stale writes with the current owner state;
+- onboarding stores only a finite goal and milestone timestamps, never credentials, strategies,
+  exchange accounts or trading payloads.
+
 ### Duplicate or uncertain orders
 
 Threats include timeout after exchange acceptance, process death, duplicate events, reconnect gaps and
@@ -103,6 +120,31 @@ Mitigations:
 - signed calls share an exchange-wide `429`/`418` circuit with bounded `Retry-After`;
 - Binance `-1021` and Bybit `10002` stop the operation with explicit clock-sync remediation;
 - mutating calls are never automatically retried by the request guard.
+
+### API resource exhaustion and loss of control capacity
+
+Threats include expensive requests filling the Node process, unbounded waiters consuming memory and
+ordinary research work preventing login, cancellation or emergency stop.
+
+Mitigations:
+
+- one process-wide admission controller caps active requests and the ordinary FIFO queue;
+- a reserved tail is available only to authentication and stop/cancel/kill control routes;
+- only cheap `/api/health` bypasses admission; dependency-heavy `/api/ready` uses the bounded
+  ordinary lane and a separate bounded per-IP token bucket, so probe traffic cannot consume
+  authentication/control allowances or grow an attacker-controlled map without limit;
+- accepted readiness overlap is single-flighted and the completed result is retained for a short
+  typed TTL, imposing one PostgreSQL/heartbeat/filesystem scan per TTL per API process even when
+  requests originate from many IPs; unexpected evaluation rejection is retried and not cached;
+- migration and heartbeat probes run sequentially, and the supported PostgreSQL pool minimum of two
+  retains one connection beside the readiness scan;
+- full queues and expired waits fail with a stable retryable `503` and `Retry-After`; all readiness
+  outcomes are `no-store`, and a full IP-key store reports the actual remaining prune horizon;
+- readiness degrades on queueing/high saturation and becomes unready only at the configured hard
+  admission boundary;
+- public readiness exposes categorical component states only; detailed API, pool, worker, disk,
+  migration, admission and readiness-limiter measurements require an administrator session and are
+  returned with `Cache-Control: no-store`.
 
 ### Misleading or stale arbitrage opportunities
 
@@ -192,6 +234,15 @@ future schemas.
 Mitigations:
 
 - SQLite online backup plus `quick_check`, SHA-256 manifest and symlink/extra-file rejection;
+- a project recovery generation pairs a PostgreSQL custom dump from one exported read-only snapshot
+  with a verified SQLite runtime backup and records a bounded cross-store capture window;
+- its manifest binds every migration checksum, PostgreSQL/onboarding row counts, SQLite file
+  digests/user versions and an owner-set checksum; verification is read-only;
+- restore/drill target only a separately named database and a separate absent/empty data directory;
+  they never switch a service, Compose file, `PGDATABASE` or active runtime path;
+- database cleanup requires the exact tool marker and database OID, while filesystem cleanup
+  requires the original tool-owned inode/device identity; symbolic-link/canonical-path and pinned
+  input checks prevent redirecting restore or cleanup into another project;
 - verified staging and rollback-safe atomic restore;
 - release archives bind every extracted file to an internal/external SHA-256 manifest; the release
   workflow deliberately corrupts an isolated candidate, requires integrity detection and records a
@@ -207,6 +258,8 @@ commands are silently replayed after connectivity returns.
 Mitigations:
 
 - the service worker caches only the static same-origin application shell and reviewed assets;
+- service-worker registration and install UI require a secure context or localhost; public-IP HTTP
+  remains an ordinary network-backed page without a worker or install surface;
 - API, authentication, quote, order-book, trade-flow and private trading endpoints are network-only;
 - non-GET requests remain network-only except the exact file-only Share Target hand-off, which is
   stored temporarily and never cached, forwarded, replayed or interpreted as a trading request;
@@ -274,7 +327,9 @@ Mitigations:
 - secret scan and dependency audit;
 - fake-exchange failure injection and order lifecycle/reconciliation suites;
 - Pine fuzz/determinism and evaluator execution budgets;
-- backup tamper/restore and schema migration tests;
+- onboarding owner/revision/authorization tests;
+- global admission, readiness, worker-heartbeat and administrator-metrics tests;
+- backup tamper/restore, isolated project-recovery drill and schema migration tests;
 - protected, manually armed testnet smoke for read-only contracts when credentials are available.
 
 Report a vulnerability privately according to [SECURITY.md](../SECURITY.md). Do not include real

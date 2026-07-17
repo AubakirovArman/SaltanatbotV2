@@ -8,14 +8,19 @@
   const locale = ["en", "ru", "kk"].includes(saved) ? saved : navigator.language.toLowerCase().startsWith("kk") ? "kk" : navigator.language.toLowerCase().startsWith("ru") ? "ru" : "en";
   const copy = copies[locale];
   const byId = (id) => document.getElementById(id);
+  const hostname = location.hostname.toLowerCase();
+  const localOrigin = hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+  const canManageShell = (globalThis.isSecureContext === true || localOrigin) && ("serviceWorker" in navigator || "caches" in window);
   document.documentElement.lang = locale;
   byId("startup-title").textContent = copy.title;
   byId("startup-help").textContent = copy.help;
   byId("startup-reload").textContent = copy.reload;
   byId("startup-refresh").textContent = copy.refresh;
   byId("startup-footnote").textContent = copy.footnote;
+  byId("startup-refresh").hidden = !canManageShell;
+  byId("startup-footnote").hidden = !canManageShell;
   byId("startup-reload").addEventListener("click", () => location.reload());
-  byId("startup-refresh").addEventListener("click", async () => {
+  if (canManageShell) byId("startup-refresh").addEventListener("click", async () => {
     try {
       if ("serviceWorker" in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();

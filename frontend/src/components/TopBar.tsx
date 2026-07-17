@@ -4,6 +4,7 @@ import { AccountLauncher } from "../auth/AccountDialog";
 import { AuthContext } from "../auth/AuthRoot";
 import { nextLocale, translate, type Locale } from "../i18n";
 import { automationText } from "../i18n/automation";
+import { onboardingText } from "../i18n/onboarding";
 import { shellText } from "../i18n/shell";
 import type { CatalogResponse, ChartType, Instrument, Timeframe } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
@@ -60,7 +61,8 @@ interface TopBarProps {
   onStrategyWarmup: () => void;
   onOpenPalette: () => void;
   onOpenShortcutSettings: () => void;
-  onOpenOfflineResearch: () => void;
+  onOpenOfflineResearch?: () => void;
+  onOpenGettingStarted?: () => void;
   onToggleTheme: () => void;
   onToggleLocale: () => void;
   onToggleLeft: () => void;
@@ -117,6 +119,7 @@ export function TopBar({
   onOpenPalette,
   onOpenShortcutSettings,
   onOpenOfflineResearch,
+  onOpenGettingStarted,
   onToggleTheme,
   onToggleLocale,
   onToggleLeft,
@@ -320,18 +323,34 @@ export function TopBar({
             >
               <Keyboard size={14} strokeWidth={1.75} aria-hidden="true" />
             </button>
-            <button
-              type="button"
-              className="icon-button"
-              onClick={() => {
-                onOpenOfflineResearch();
-                setMobileUtilitiesOpen(false);
-              }}
-              title={shellText(locale, "offlineResearch")}
-              aria-label={shellText(locale, "offlineResearch")}
-            >
-              <HardDriveDownload size={14} strokeWidth={1.75} aria-hidden="true" />
-            </button>
+            {onOpenGettingStarted && (
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => {
+                  onOpenGettingStarted();
+                  setMobileUtilitiesOpen(false);
+                }}
+                title={onboardingText(locale, "restart")}
+                aria-label={onboardingText(locale, "restart")}
+              >
+                <Workflow size={14} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            )}
+            {onOpenOfflineResearch && (
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => {
+                  onOpenOfflineResearch();
+                  setMobileUtilitiesOpen(false);
+                }}
+                title={shellText(locale, "offlineResearch")}
+                aria-label={shellText(locale, "offlineResearch")}
+              >
+                <HardDriveDownload size={14} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            )}
             <button
               type="button"
               className="icon-button"
