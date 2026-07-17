@@ -8,8 +8,10 @@ import { createDatabasePool, loadDatabaseConfig, migrateDatabase, verifyDatabase
 import { ComputeJobArtifactRetention } from "../jobs/artifactRetention.js";
 import { claimJobForExecution, ComputeJobRepository, type ClaimedJob } from "../jobs/repository.js";
 import { RuntimeComponentHeartbeatRepository } from "../operations/componentHeartbeat.js";
+import { ScreenerRepository } from "../screener/repository.js";
 import { LeaseGenerationRegistry } from "./leaseGenerationRegistry.js";
 import { closeResearchWorkerDatabase, drainResearchWorkerExecutions } from "./researchWorkerShutdown.js";
+import { runScreenerTask, SCREENER_JOB_TIMEOUT_MS, ScreenerTaskError } from "./screenerTask.js";
 
 loadRuntimeConfig(process.env);
 const concurrency = boundedEnv("RESEARCH_WORKER_CONCURRENCY", 2, 1, 4);
@@ -27,6 +29,7 @@ const pool = createDatabasePool(loadDatabaseConfig());
 await verifyDatabaseConnection(pool);
 const migration = await migrateDatabase(pool);
 const repository = new ComputeJobRepository(pool);
+const screenerPresets = new ScreenerRepository(pool);
 const artifactRetention = new ComputeJobArtifactRetention(pool);
 const alertOperability = new AlertOperabilityRepository(pool);
 const alertRetention = new AlertControlPlaneRetention(pool);
@@ -66,7 +69,7 @@ await componentHeartbeat.start({
   releaseCommit,
   databaseSchemaVersion: migration.toVersion
 });
-const active = new LeaseGenerationRegistry<{ worker: Worker; shutdown: () => Promise<void> }>();
+const active = new LeaseGenerationRegistry<{ worker?: Worker; shutdown: () => Promise<void> }>();
 const setups = new Set<Promise<void>>();
 let stopping = false;
 let pollPromise: Promise<void> | undefined;
@@ -278,6 +281,12 @@ function triggerRetention(): Promise<void> {
 }
 
 async function execute(job: ClaimedJob): Promise<void> {
+  if (job.jobType === "screener") {
+    // Screener runs need network access, so they execute in-process on this
+    // thread behind the same lease/heartbeat/timeout fences as backtests.
+    executeScreener(job);
+    return;
+  }
   if (job.jobType !== "backtest") {
     await finalizeFailedClaim(job, "unsupported_job_type", `Unsupported job type: ${job.jobType}`);
     return;
@@ -346,6 +355,63 @@ async function execute(job: ClaimedJob): Promise<void> {
   } catch (error) {
     await finish(() => repository.retryOrFail(job.id, job.leaseToken, "worker_message_failed", safeErrorMessage(error, "Unable to send the research task.")));
   }
+}
+
+function executeScreener(job: ClaimedJob): void {
+  let settled = false;
+  let heartbeatRunning = false;
+  let finishPromise: Promise<void> | undefined;
+  const abort = new AbortController();
+  const finish = (operation: () => Promise<unknown>): Promise<void> => {
+    if (finishPromise) return finishPromise;
+    settled = true;
+    clearTimeout(timeout);
+    clearInterval(heartbeat);
+    abort.abort();
+    finishPromise = (async () => {
+      try {
+        await operation();
+      } catch (error) {
+        console.error(`Research job ${job.id} finalization failed: ${safeErrorMessage(error, "database error")}`);
+      } finally {
+        active.delete(job.id, job.leaseToken);
+        void triggerPoll();
+      }
+    })();
+    return finishPromise;
+  };
+  const timeout = setTimeout(() => void finish(() => repository.fail(job.id, job.leaseToken, "job_timeout", "Research job exceeded its wall-time limit.")), SCREENER_JOB_TIMEOUT_MS);
+  const heartbeat = setInterval(() => {
+    if (heartbeatRunning || settled) return;
+    heartbeatRunning = true;
+    void repository
+      .cancellationRequested(job.id, job.leaseToken)
+      .then((cancelled) => {
+        if (cancelled) return finish(() => repository.fail(job.id, job.leaseToken, "cancelled", "Cancelled by user."));
+        return repository.heartbeat(job.id, job.leaseToken, leaseMs, 0.5).then((healthy) => {
+          if (!healthy) return finish(() => repository.fail(job.id, job.leaseToken, "cancelled", "Cancelled by user."));
+        });
+      })
+      .catch((error) => console.error(`Research heartbeat failed: ${safeErrorMessage(error, "database error")}`))
+      .finally(() => {
+        heartbeatRunning = false;
+      });
+  }, 5_000);
+  active.add(job.id, job.leaseToken, {
+    shutdown: () => finish(() => repository.requeueForShutdown(job.id, job.leaseToken))
+  });
+  void runScreenerTask({ ownerUserId: job.ownerUserId, payload: job.payload, signal: abort.signal }, { presets: screenerPresets })
+    .then((result) => finish(() => repository.complete(job.id, job.leaseToken, result)))
+    .catch((error) =>
+      finish(() =>
+        repository.fail(
+          job.id,
+          job.leaseToken,
+          error instanceof ScreenerTaskError ? error.code : "screener_failed",
+          safeErrorMessage(error, "Screener run failed.")
+        )
+      )
+    );
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

@@ -8,11 +8,13 @@ USDT markets on Binance and Bybit and builds four cash-and-carry discovery route
 3. Bybit spot → Binance USD-M perpetual;
 4. Bybit spot → Bybit linear perpetual.
 
-The mode selector exposes 7 source-backed modes: **Spot ↔ perpetual** (`basis`), **Triangular**
+The mode selector exposes 8 source-backed modes: **Spot ↔ perpetual** (`basis`), **Triangular**
 (`triangular`), **Bybit native spreads** (`native`), **Options parity** (`options`), **Funding stress**
-(`funding`), **Live routes** (`continuous`) and **Order-book ML** (`ml`). The exact list is
-mechanically checked against the UI by the
-[machine-readable capability truth register](CAPABILITY_TRUTHS.json).
+(`funding`), **Live routes** (`continuous`), **Order-book ML** (`ml`) and **Technical screener**
+(`technical`). The exact list is mechanically checked against the UI by the
+[machine-readable capability truth register](CAPABILITY_TRUTHS.json). The technical mode is not an
+arbitrage engine: it is the separate on-demand indicator screener documented in
+[On-demand technical screener](SCREENER.md).
 
 The same workspace also provides directional single-venue triangular-cycle simulation from
 venue-wide REST top-book snapshots and Bybit venue-native spread books. Its live-routes mode

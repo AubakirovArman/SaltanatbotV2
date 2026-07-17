@@ -123,6 +123,9 @@ test("persists bounded scanner presets, columns, heatmap and route comparison ac
   // hand-off settles; DOM readiness is the state this persistence assertion needs.
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByRole("navigation", { name: "Primary workspaces" }).getByRole("button", { name: "Screener", exact: true }).click();
+  // The screener restores the last active sub-mode (Live routes here); the
+  // basis workbench state below must still survive switching back to it.
+  await page.getByRole("group", { name: "Arbitrage scanner mode" }).getByRole("button", { name: "Spot ↔ perpetual" }).click();
   const restored = page.getByRole("region", { name: "Scanner workspace" });
   await expect(restored.getByLabel("Saved presets")).toContainText("Low-cap ETH");
   await expect(restored.getByRole("button", { name: "Route compare" })).toHaveAttribute("aria-pressed", "true");

@@ -28,6 +28,10 @@
     {
       "id": "ml",
       "name": "Order-book ML"
+    },
+    {
+      "id": "technical",
+      "name": "Technical screener"
     }
   ],
   "registeredPublicVenues": [
@@ -64,7 +68,7 @@
     "mexc": "MEXC"
   },
   "generatedEndpoints": {
-    "http": 159,
+    "http": 163,
     "websocket": 6
   }
 }

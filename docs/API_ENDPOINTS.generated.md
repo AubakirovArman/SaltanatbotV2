@@ -87,6 +87,10 @@ This index is a route-presence and access-classification contract. A change to a
 | `POST` | `/api/orderbook-ml/research/sessions/:sessionId/snapshots` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
 | `GET` | `/api/orderbook-ml/research/status` | Authenticated · admin · research-only | `backend/src/orderbook/ml/researchRoutes.ts` |
 | `GET` | `/api/ready` | Public | `backend/src/identity/serverRoutes.ts` |
+| `GET` | `/api/screener/presets` | Authenticated · owner-scoped · research-only | `backend/src/screener/routes.ts` |
+| `POST` | `/api/screener/presets` | Authenticated · owner-scoped · research-only | `backend/src/screener/routes.ts` |
+| `PUT` | `/api/screener/presets/:id` | Authenticated · owner-scoped · research-only | `backend/src/screener/routes.ts` |
+| `POST` | `/api/screener/presets/:id/archive` | Authenticated · owner-scoped · research-only | `backend/src/screener/routes.ts` |
 | `GET` | `/api/sparklines` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/trade/account-telemetry` | Authenticated · live-trade · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
 | `GET` | `/api/trade/accounts` | Authenticated · read-only+ · owner-scoped | `backend/src/trading/tradingAccountRoutes.ts` |
@@ -179,4 +183,4 @@ This index is a route-presence and access-classification contract. A change to a
 | `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **159 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **163 HTTP endpoints** and **6 WebSocket endpoints**.

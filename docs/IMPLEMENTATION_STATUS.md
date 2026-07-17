@@ -63,6 +63,32 @@ Gate, rehearsal and cutover evidence, including exact-SHA GitHub Actions run
 behavior and current limits are documented in
 [Owner-scoped server alerts](./ALERTS.md).
 
+## R5.2.1 technical screener — in progress
+
+R5.2.1 is being implemented in the working tree on top of accepted R5.1. It is
+**not accepted, not released and not deployed**; no gate, CI, recovery-drill or
+cutover evidence exists yet, and the additive PostgreSQL schema-14
+`screener_presets` migration has not run in production. The increment under
+implementation covers:
+
+- [ ] Strict `screener-definition/run-request/run-result/preset` v1 contracts
+  shared by the browser and backend.
+- [ ] Owner-scoped PostgreSQL preset persistence (schema 14) with client-ID
+  idempotency, revision fences, archive and 40-per-owner/400-global beta
+  quotas.
+- [ ] On-demand runs through the existing compute-job queue (`kind: screener`)
+  with a pure closed-candle indicator engine, fail-closed unavailability and
+  deterministic bounded results.
+- [ ] EN/RU/KK technical scanner mode with presets, honest run states and
+  click-to-chart carrying symbol, timeframe and indicator context.
+- [ ] Unit/route/integration/worker/browser/E2E test gates and documentation.
+
+Scheduled screens, screen-to-alert promotion (reserved rule kind `screener`)
+and a Bybit-primary universe are explicitly out of this increment. Intended
+behavior is documented in [On-demand technical screener](./SCREENER.md);
+acceptance evidence will be recorded here by the release orchestrator only
+after the full gate passes.
+
 ## Delivered slices (not full roadmap completion)
 
 ### Product workspaces, strategy research and market evidence — 2026-07-15

@@ -21,18 +21,20 @@ import { NativeSpreadScreener } from "./NativeSpreadScreener";
 import { evaluateBrowserAlertSnapshot, loadBrowserAlertConfig, storeBrowserAlertConfig } from "./browserAlerts";
 import { LifecycleStatus } from "./LifecycleStatus";
 import { ScannerWorkbench, type ScannerColumn, type ScannerVisualRow } from "./ScannerWorkbench";
-import type { ScannerFilterValue } from "./scannerPrefs";
+import { loadScannerNavMode, storeScannerNavMode, type ScannerFilterValue } from "./scannerPrefs";
 import { scannerUxText } from "./scannerUxText";
 import { ContinuousRoutesPanel } from "./ContinuousRoutesPanel";
 import { optionsParityText } from "./optionsParityText";
-import { ScannerModeNav, type ScannerMode } from "./ScannerModeNav";
+import { SCANNER_MODE_IDS, ScannerModeNav, type ScannerMode } from "./ScannerModeNav";
 import { fundingCurveText } from "./fundingCurveText";
 import { orderBookMlModeText } from "./orderBookMlModeText";
+import { screenerText } from "../i18n/screener";
 import "../styles/arbitrage.css";
 
 const OptionsParityWorkbench = lazy(() => import("./OptionsParityWorkbench").then((module) => ({ default: module.OptionsParityWorkbench })));
 const FundingCurveWorkbench = lazy(() => import("./FundingCurveWorkbench").then((module) => ({ default: module.FundingCurveWorkbench })));
 const OrderBookMlResearchPanel = lazy(() => import("./OrderBookMlResearchPanel").then((module) => ({ default: module.OrderBookMlResearchPanel })));
+const TechnicalScreener = lazy(() => import("../screener/TechnicalScreener").then((module) => ({ default: module.TechnicalScreener })));
 
 interface Props {
   locale: Locale;
@@ -75,7 +77,10 @@ export function ArbitrageScreener(props: Props) {
   const accountAuth = useAuth();
   const storageOwner = accountAuth.authRequired ? (accountAuth.user?.id ?? "") : undefined;
   const storageScopeKey = storageOwner === undefined ? "legacy" : storageOwner || "unavailable";
-  const [mode, setMode] = useState<ScannerMode>("basis");
+  const [mode, setMode] = useState<ScannerMode>(() => loadScannerNavMode(SCANNER_MODE_IDS, "basis", undefined, storageOwner));
+  useEffect(() => {
+    storeScannerNavMode(mode, undefined, storageOwner);
+  }, [mode, storageOwner]);
 
   return (
     <div className="arb-workspace">
@@ -108,6 +113,16 @@ export function ArbitrageScreener(props: Props) {
         </Suspense>
       ) : mode === "continuous" ? (
         <ContinuousRoutesPanel locale={props.locale} />
+      ) : mode === "technical" ? (
+        <Suspense
+          fallback={
+            <p className="arb-server-hint" role="status">
+              {screenerText(props.locale, "loading")}
+            </p>
+          }
+        >
+          <TechnicalScreener key={`technical:${storageScopeKey}`} locale={props.locale} onOpenChart={props.onOpenChart} />
+        </Suspense>
       ) : (
         <Suspense
           fallback={

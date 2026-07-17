@@ -13,6 +13,7 @@ import { usePriceAlerts } from "./hooks/usePriceAlerts";
 import { loadStrategyLab, warmStrategyLab } from "./strategy/loadStrategyLab";
 import { loadTradingView } from "./trading/loadTradingView";
 import { loadArbitrageScreener } from "./arbitrage/loadArbitrageScreener";
+import { mergeChartTargetIndicators } from "./arbitrage/chartTarget";
 import { MARKET_OPPORTUNITY_HANDOFF_EVENT } from "./arbitrage/marketOpportunityHandoffEvent";
 import { loadInitialWorkspaceState } from "./strategy/storage";
 import { useArtifactLibrary } from "./strategy/useArtifactLibrary";
@@ -409,8 +410,18 @@ export default function App() {
                 <ArbitrageScreener
                   locale={locale}
                   onOpenChart={(target) => {
-                    shell.updateActiveChart({ symbol: target.symbol, exchange: target.exchange, marketType: target.marketType, priceType: target.priceType });
+                    shell.updateActiveChart({
+                      symbol: target.symbol,
+                      exchange: target.exchange,
+                      marketType: target.marketType,
+                      priceType: target.priceType,
+                      ...(target.timeframe !== undefined ? { timeframe: target.timeframe } : {})
+                    });
                     shell.setCryptoExchange(target.exchange);
+                    const contextIndicators = target.indicators;
+                    if (contextIndicators && contextIndicators.length > 0) {
+                      setIndicators((current) => mergeChartTargetIndicators(current, contextIndicators));
+                    }
                     setMode("chart");
                   }}
                 />

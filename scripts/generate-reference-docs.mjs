@@ -22,6 +22,7 @@ const onboardingRoutesPath = path.join(root, "backend/src/onboarding/routes.ts")
 const workspaceRoutesPath = path.join(root, "backend/src/workspaces/routes.ts");
 const computeJobRoutesPath = path.join(root, "backend/src/jobs/routes.ts");
 const alertRoutesPath = path.join(root, "backend/src/alerts/routes.ts");
+const screenerRoutesPath = path.join(root, "backend/src/screener/routes.ts");
 const blocksPath = path.join(root, "frontend/src/strategy/blockCatalog.ts");
 const apiDocPath = path.join(root, "docs/API_ENDPOINTS.generated.md");
 const blocksDocPath = path.join(root, "docs/BLOCK_CATALOG.generated.md");
@@ -49,6 +50,7 @@ const onboardingRoutesSource = readFileSync(onboardingRoutesPath, "utf8");
 const workspaceRoutesSource = readFileSync(workspaceRoutesPath, "utf8");
 const computeJobRoutesSource = readFileSync(computeJobRoutesPath, "utf8");
 const alertRoutesSource = readFileSync(alertRoutesPath, "utf8");
+const screenerRoutesSource = readFileSync(screenerRoutesPath, "utf8");
 const blocksSource = readFileSync(blocksPath, "utf8");
 
 const endpoints = uniqueEndpoints([
@@ -75,6 +77,7 @@ const endpoints = uniqueEndpoints([
   ...extractRoutes(workspaceRoutesSource, "router", "/api/workspaces", 0, "Public", "backend/src/workspaces/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped" })),
   ...extractRoutes(computeJobRoutesSource, "router", "/api/jobs", 0, "Public", "backend/src/jobs/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped" })),
   ...extractRoutes(alertRoutesSource, "router", "/api/alerts", 0, "Public", "backend/src/alerts/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped · research-only" })),
+  ...extractRoutes(screenerRoutesSource, "router", "/api/screener", 0, "Public", "backend/src/screener/routes.ts").map((endpoint) => ({ ...endpoint, access: "Authenticated · owner-scoped · research-only" })),
   ...extractRoutes(tradingSource, "router", "/api/trade", tradingSource.indexOf("router.use(requireAuth)"), "Public"),
   ...extractRoutes(botLifecycleMutationRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/botLifecycleMutationRoutes.ts").map((endpoint) => ({
     ...endpoint,

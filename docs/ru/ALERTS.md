@@ -264,5 +264,7 @@ Release gate включает:
 - desktop/mobile accessibility и visual regression;
 - exact-commit GitHub CI и backup/restore/rollback evidence.
 
-R5.2 добавит producer технического скринера. R5.3 добавит отдельный notification
-worker и Telegram binding/revoke/delivery.
+R5.2.1 добавляет отдельный [технический скринер по запросу](./SCREENER.md); он
+выполняет сканы, а не алерты, и зарезервированный rule kind `screener` остаётся
+заготовкой до появления превращения скана в алерт. R5.3 добавит отдельный
+notification worker и Telegram binding/revoke/delivery.

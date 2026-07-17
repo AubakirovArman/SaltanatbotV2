@@ -274,5 +274,7 @@ The release gate includes:
 - desktop/mobile accessibility and visual regression;
 - exact-commit GitHub CI and backup/restore/rollback evidence.
 
-R5.2 will add the technical screener producer. R5.3 will add the separate
+R5.2.1 adds the separate [on-demand technical screener](./SCREENER.md); it
+runs screens, not alerts, and the reserved rule kind `screener` remains a
+placeholder until screen-to-alert promotion ships. R5.3 will add the separate
 notification worker and Telegram binding/revoke/delivery flow.

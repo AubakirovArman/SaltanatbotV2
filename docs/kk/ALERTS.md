@@ -281,5 +281,7 @@ Release gate құрамына мыналар кіреді:
 - desktop/mobile accessibility және visual regression;
 - exact-commit GitHub CI және backup/restore/rollback evidence.
 
-R5.2 technical screener producer қосады. R5.3 бөлек notification worker және
+R5.2.1 бөлек [сұраныс бойынша техникалық скринерді](./SCREENER.md) қосады; ол
+алерт емес, скан орындайды, ал резервтелген rule kind `screener` сканды алертке
+айналдыру шыққанша орын болып қалады. R5.3 бөлек notification worker және
 Telegram binding/revoke/delivery flow қосады.

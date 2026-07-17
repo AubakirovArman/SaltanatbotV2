@@ -4,6 +4,7 @@ import { requireAppAuth } from "../auth.js";
 import { createWorkspaceRouter } from "../workspaces/routes.js";
 import { createComputeJobsRouter } from "../jobs/routes.js";
 import { createOnboardingRouter } from "../onboarding/routes.js";
+import { createScreenerRouter } from "../screener/routes.js";
 import { apiRateLimit } from "../http/apiRateLimit.js";
 import { createReadinessRateLimit } from "../http/readinessRateLimit.js";
 import {
@@ -70,10 +71,15 @@ export function registerIdentityServerRoutes(app: Express, runtime: IdentityRunt
     response.setHeader("Cache-Control", "no-store");
     next();
   });
+  app.use("/api/screener", (_request, response, next) => {
+    response.setHeader("Cache-Control", "no-store");
+    next();
+  });
   app.use("/api", requireAppAuth);
   app.use("/api", apiRateLimit);
   if (runtime.pool) {
     app.use("/api/alerts", createAlertRouter(runtime.pool));
+    app.use("/api/screener", createScreenerRouter(runtime.pool));
     app.use("/api/onboarding", createOnboardingRouter(runtime.pool));
     app.use("/api/workspaces", createWorkspaceRouter(runtime.pool));
     app.use("/api/jobs", express.json({ limit: "3mb" }), createComputeJobsRouter(runtime.pool));

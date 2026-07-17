@@ -2,7 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
+import { SCREENER_UNIVERSE_LIMIT_MAXIMUM_V1 } from "@saltanatbotv2/contracts";
 import type { IdentityPrincipal } from "../identity/types.js";
+import { parseScreenerRunJobRequest, type ScreenerRunJobRequest } from "../screener/apiSchema.js";
 import { parseStrategyIR } from "../trading/strategy/irSchema.js";
 import {
   ComputeJobRepository,
@@ -58,6 +60,7 @@ const backtestSchema = z.object({
 
 const idSchema = z.string().uuid();
 const BACKTEST_JOB_DEDUPE_VERSION = "backtest-job:v1\0";
+const SCREENER_JOB_DEDUPE_VERSION = "screener-job:v1\0";
 
 export function createComputeJobsRouter(pool: Pool): Router {
   const repository = new ComputeJobRepository(pool);
@@ -75,7 +78,27 @@ export function createComputeJobsRouter(pool: Pool): Router {
     next();
   });
 
+  // The POST body is a discriminated union on `kind`: "screener" runs enqueue a
+  // bounded research job here, every other shape stays on the backtest schema.
   router.post("/", asyncRoute(async (request, response) => {
+    if (isScreenerJobBody(request.body)) {
+      const input = parseScreenerJobBody(request.body);
+      const payload = { kind: "screener", request: input.request } as Record<string, unknown>;
+      const dedupeKey = createHash("sha256")
+        .update(SCREENER_JOB_DEDUPE_VERSION, "utf8")
+        .update(JSON.stringify(payload), "utf8")
+        .digest("hex");
+      const job = await repository.enqueue({
+        ownerUserId: owner(response),
+        jobType: "screener",
+        payload,
+        estimatedCost: input.request.definition?.universeLimit ?? SCREENER_UNIVERSE_LIMIT_MAXIMUM_V1,
+        clientRequestId: input.clientRequestId,
+        dedupeKey
+      });
+      respondToEnqueue(response, job);
+      return;
+    }
     const input = backtestSchema.parse(request.body);
     const parsedIr = parseStrategyIR(input.strategy);
     if (!parsedIr.ok) {
@@ -96,24 +119,7 @@ export function createComputeJobsRouter(pool: Pool): Router {
       clientRequestId,
       dedupeKey
     });
-    response.setHeader("X-Job-ID", job.id);
-    if (job.artifactsPrunedAt) {
-      console.info(JSON.stringify({
-        event: "research_job_artifacts_expired_retry",
-        requestId: computeRequestId(response),
-        jobId: job.id,
-        status: job.status
-      }));
-      response.status(410).json(expiredJobResponse(job));
-      return;
-    }
-    console.info(JSON.stringify({
-      event: "research_job_accepted",
-      requestId: computeRequestId(response),
-      jobId: job.id,
-      status: job.status
-    }));
-    response.status(job.status === "queued" || job.status === "running" ? 202 : 200).json({ job });
+    respondToEnqueue(response, job);
   }));
 
   router.get("/", asyncRoute(async (request, response) => {
@@ -147,6 +153,10 @@ export function createComputeJobsRouter(pool: Pool): Router {
       response.status(409).json({ error: error.message, code: "job_idempotency_conflict" });
       return;
     }
+    if (error instanceof ScreenerJobRequestError) {
+      response.status(400).json({ error: "Invalid screener job.", code: "invalid_request" });
+      return;
+    }
     if (error instanceof z.ZodError) {
       response.status(400).json({ error: "Invalid research job.", code: "invalid_request", details: error.flatten() });
       return;
@@ -155,6 +165,41 @@ export function createComputeJobsRouter(pool: Pool): Router {
   });
   return router;
 }
+
+function isScreenerJobBody(body: unknown): boolean {
+  return typeof body === "object" && body !== null && !Array.isArray(body) && (body as { kind?: unknown }).kind === "screener";
+}
+
+function parseScreenerJobBody(body: unknown): ScreenerRunJobRequest {
+  try {
+    return parseScreenerRunJobRequest(body);
+  } catch (error) {
+    throw new ScreenerJobRequestError("Invalid screener job.", { cause: error });
+  }
+}
+
+function respondToEnqueue(response: Response, job: ComputeJob): void {
+  response.setHeader("X-Job-ID", job.id);
+  if (job.artifactsPrunedAt) {
+    console.info(JSON.stringify({
+      event: "research_job_artifacts_expired_retry",
+      requestId: computeRequestId(response),
+      jobId: job.id,
+      status: job.status
+    }));
+    response.status(410).json(expiredJobResponse(job));
+    return;
+  }
+  console.info(JSON.stringify({
+    event: "research_job_accepted",
+    requestId: computeRequestId(response),
+    jobId: job.id,
+    status: job.status
+  }));
+  response.status(job.status === "queued" || job.status === "running" ? 202 : 200).json({ job });
+}
+
+class ScreenerJobRequestError extends Error {}
 
 function asyncRoute(handler: (request: Request, response: Response) => Promise<unknown>) {
   return (request: Request, response: Response, next: NextFunction) => void handler(request, response).catch(next);

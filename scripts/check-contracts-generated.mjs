@@ -18,7 +18,9 @@ try {
     "alerts.js",
     "alerts.d.ts",
     "alertRecords.js",
-    "alertRecords.d.ts"
+    "alertRecords.d.ts",
+    "screener.js",
+    "screener.d.ts"
   ].filter(
     (file) => readFileSync(join(packageDir, file), "utf8") !== readFileSync(join(outputDir, file), "utf8"),
   );

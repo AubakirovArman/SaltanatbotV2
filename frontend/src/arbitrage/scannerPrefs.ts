@@ -2,8 +2,9 @@ import { readTenantLocalItem, removeTenantLocalItem, writeTenantLocalItem } from
 
 export const SCANNER_WORKSPACE_STORAGE_KEY = "sbv2:arbitrage-workspace:v2";
 export const LEGACY_SCANNER_WORKSPACE_STORAGE_KEY = "sbv2:arbitrage-workspace:v1";
+export const SCANNER_MODE_STORAGE_KEY = "sbv2:scanner-mode:v1";
 
-export type ScannerMode = "basis" | "triangular" | "native";
+export type ScannerMode = "basis" | "triangular" | "native" | "technical";
 export type ScannerVisualization = "table" | "heatmap" | "compare";
 export type ScannerFilterValue = string | number | boolean;
 
@@ -46,7 +47,8 @@ const MAX_NAME_LENGTH = 40;
 const MAX_FILTER_STRING_LENGTH = 80;
 const MAX_ID_LENGTH = 120;
 const MAX_ABSOLUTE_NUMBER = 1_000_000_000_000;
-const VALID_MODES: ScannerMode[] = ["basis", "triangular", "native"];
+const MAX_MODE_LENGTH = 40;
+const VALID_MODES: ScannerMode[] = ["basis", "triangular", "native", "technical"];
 const VALID_VISUALIZATIONS: ScannerVisualization[] = ["table", "heatmap", "compare"];
 
 export function loadScannerWorkspace(mode: ScannerMode, allowedColumns: readonly string[], defaultColumns: readonly string[], requiredColumns: readonly string[] = [], storage = browserStorage(), ownerId?: string): ScannerWorkspacePreferences {
@@ -76,6 +78,22 @@ export function storeScannerWorkspace(mode: ScannerMode, preferences: ScannerWor
     writeEnvelope(storage, { version: 2, modes: { [mode]: sanitized } }, ownerId);
   }
   return sanitized;
+}
+
+/** Restores the last used scanner sub-mode; unknown or oversized values fall back. */
+export function loadScannerNavMode<M extends string>(validModes: readonly M[], fallback: M, storage = browserStorage(), ownerId?: string): M {
+  if (!storage) return fallback;
+  const raw = readRaw(storage, SCANNER_MODE_STORAGE_KEY, ownerId);
+  return raw !== undefined && raw.length <= MAX_MODE_LENGTH && (validModes as readonly string[]).includes(raw) ? (raw as M) : fallback;
+}
+
+export function storeScannerNavMode(mode: string, storage = browserStorage(), ownerId?: string): void {
+  if (!storage || mode.length > MAX_MODE_LENGTH) return;
+  try {
+    writeTenantLocalItem(storage, SCANNER_MODE_STORAGE_KEY, mode, ownerId);
+  } catch {
+    // Storage can be unavailable or full. The scanner keeps its in-memory mode.
+  }
 }
 
 export function saveScannerPreset(preferences: ScannerWorkspacePreferences, name: string, filters: Record<string, ScannerFilterValue>, now = Date.now()): ScannerWorkspacePreferences {

@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { useId, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { Locale } from "../i18n";
+import { screenerText } from "../i18n/screener";
 import { continuousRoutesText } from "./continuousRoutesText";
 import { forkGuideText } from "./forkGuideText";
 import { fundingCurveText } from "./fundingCurveText";
@@ -21,10 +22,13 @@ const scannerModeDefinitions = [
   { id: "options", label: (locale: Locale) => optionsParityText(locale, "mode") },
   { id: "funding", label: (locale: Locale) => fundingCurveText(locale, "mode") },
   { id: "continuous", label: (locale: Locale) => continuousRoutesText(locale, "mode") },
-  { id: "ml", label: orderBookMlModeText }
+  { id: "ml", label: orderBookMlModeText },
+  { id: "technical", label: (locale: Locale) => screenerText(locale, "mode") }
 ] as const satisfies readonly ScannerModeDefinition[];
 
 export type ScannerMode = (typeof scannerModeDefinitions)[number]["id"];
+
+export const SCANNER_MODE_IDS: readonly ScannerMode[] = scannerModeDefinitions.map((definition) => definition.id);
 
 /** Source-backed English mode labels consumed by the deterministic documentation semantic guard. */
 export function scannerModeDocumentationTruths(): ReadonlyArray<{ id: ScannerMode; name: string }> {
