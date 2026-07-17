@@ -12,6 +12,19 @@ const DEFAULT_MAINTENANCE_DATABASE = "postgres";
 const MAX_PASSWORD_BYTES = 8 * 1024;
 const ONBOARDING_SCHEMA_VERSION = 11;
 const EXECUTOR_COMMANDS_SCHEMA_VERSION = 12;
+const ALERT_CONTROL_PLANE_SCHEMA_VERSION = 13;
+const ALERT_CONTROL_PLANE_TABLES = [
+  ["alertRules", "alert_rules", "alert rules"],
+  ["alertRuleRevisions", "alert_rule_revisions", "alert rule revisions"],
+  ["alertRuleStates", "alert_rule_states", "alert rule states"],
+  ["alertEvaluationReceipts", "alert_evaluation_receipts", "alert evaluation receipts"],
+  ["alertEventSequences", "alert_event_sequences", "alert event sequences"],
+  ["alertRuleEvents", "alert_rule_events", "alert rule events"],
+  ["notificationBindings", "notification_bindings", "notification bindings"],
+  ["notificationOutbox", "notification_outbox", "notification outbox rows"],
+  ["notificationDeliveries", "notification_deliveries", "notification deliveries"],
+  ["alertRuleImportReceipts", "alert_rule_import_receipts", "alert rule import receipts"]
+];
 
 export function resolveRecoveryConnections(env = process.env) {
   const source = connectionFromEnvironment(env, {
@@ -223,7 +236,17 @@ async function collectPostgresInventory(client) {
       (SELECT count(*)::text FROM public.workspace_revisions) AS workspace_revisions,
       (SELECT count(*)::text FROM public.compute_jobs) AS compute_jobs,
       to_regclass('public.user_onboarding') IS NOT NULL AS has_user_onboarding,
-      to_regclass('public.executor_commands') IS NOT NULL AS has_executor_commands
+      to_regclass('public.executor_commands') IS NOT NULL AS has_executor_commands,
+      to_regclass('public.alert_rules') IS NOT NULL AS has_alert_rules,
+      to_regclass('public.alert_rule_revisions') IS NOT NULL AS has_alert_rule_revisions,
+      to_regclass('public.alert_rule_states') IS NOT NULL AS has_alert_rule_states,
+      to_regclass('public.alert_evaluation_receipts') IS NOT NULL AS has_alert_evaluation_receipts,
+      to_regclass('public.alert_event_sequences') IS NOT NULL AS has_alert_event_sequences,
+      to_regclass('public.alert_rule_events') IS NOT NULL AS has_alert_rule_events,
+      to_regclass('public.notification_bindings') IS NOT NULL AS has_notification_bindings,
+      to_regclass('public.notification_outbox') IS NOT NULL AS has_notification_outbox,
+      to_regclass('public.notification_deliveries') IS NOT NULL AS has_notification_deliveries,
+      to_regclass('public.alert_rule_import_receipts') IS NOT NULL AS has_alert_rule_import_receipts
   `);
   const userResult = await client.query("SELECT id::text AS id FROM public.users ORDER BY id ASC");
   const identity = identityResult.rows[0];
@@ -254,6 +277,22 @@ async function collectPostgresInventory(client) {
   if (schemaVersion >= EXECUTOR_COMMANDS_SCHEMA_VERSION !== hasExecutorCommandsTable) {
     throw new Error(`PostgreSQL schema ${schemaVersion} and executor_commands table presence are inconsistent`);
   }
+  const alertControlPlanePresence = ALERT_CONTROL_PLANE_TABLES.map(([key, table]) => {
+    const flag = counts[`has_${table}`];
+    if (typeof flag !== "boolean") {
+      throw new Error(`PostgreSQL ${table} table inventory returned an invalid presence flag`);
+    }
+    return [key, table, flag];
+  });
+  const expectedAlertControlPlanePresence = schemaVersion >= ALERT_CONTROL_PLANE_SCHEMA_VERSION;
+  const inconsistentAlertTable = alertControlPlanePresence.find(
+    ([, , present]) => present !== expectedAlertControlPlanePresence
+  )?.[1];
+  if (inconsistentAlertTable) {
+    throw new Error(
+      `PostgreSQL schema ${schemaVersion} and ${inconsistentAlertTable} table presence are inconsistent`
+    );
+  }
   let userOnboarding = 0;
   if (hasOnboardingTable) {
     const onboardingResult = await client.query("SELECT count(*)::text AS user_onboarding FROM public.user_onboarding");
@@ -272,6 +311,32 @@ async function collectPostgresInventory(client) {
     }
     executorCommands = countValue(executorCounts.executor_commands, "executor commands");
   }
+  let alertControlPlaneCounts;
+  if (schemaVersion >= ALERT_CONTROL_PLANE_SCHEMA_VERSION) {
+    const alertResult = await client.query(`
+      SELECT
+        (SELECT count(*)::text FROM public.alert_rules) AS alert_rules,
+        (SELECT count(*)::text FROM public.alert_rule_revisions) AS alert_rule_revisions,
+        (SELECT count(*)::text FROM public.alert_rule_states) AS alert_rule_states,
+        (SELECT count(*)::text FROM public.alert_evaluation_receipts) AS alert_evaluation_receipts,
+        (SELECT count(*)::text FROM public.alert_event_sequences) AS alert_event_sequences,
+        (SELECT count(*)::text FROM public.alert_rule_events) AS alert_rule_events,
+        (SELECT count(*)::text FROM public.notification_bindings) AS notification_bindings,
+        (SELECT count(*)::text FROM public.notification_outbox) AS notification_outbox,
+        (SELECT count(*)::text FROM public.notification_deliveries) AS notification_deliveries,
+        (SELECT count(*)::text FROM public.alert_rule_import_receipts) AS alert_rule_import_receipts
+    `);
+    const alertCounts = alertResult.rows[0];
+    if (!alertCounts) {
+      throw new Error("PostgreSQL alert control-plane recovery inventory returned no rows");
+    }
+    alertControlPlaneCounts = Object.fromEntries(
+      ALERT_CONTROL_PLANE_TABLES.map(([key, table, label]) => [
+        key,
+        countValue(alertCounts[table], label)
+      ])
+    );
+  }
   const userIds = userResult.rows.map((row) => boundedText(row.id, "PostgreSQL user ID", 255));
   if (userIds.length !== countValue(counts.users, "users")) {
     throw new Error("PostgreSQL user snapshot inventory count mismatch");
@@ -286,7 +351,8 @@ async function collectPostgresInventory(client) {
       workspaceRevisions: countValue(counts.workspace_revisions, "workspace revisions"),
       computeJobs: countValue(counts.compute_jobs, "compute jobs"),
       userOnboarding,
-      ...(hasExecutorCommandsTable ? { executorCommands } : {})
+      ...(hasExecutorCommandsTable ? { executorCommands } : {}),
+      ...(alertControlPlaneCounts ?? {})
     },
     userIds
   };

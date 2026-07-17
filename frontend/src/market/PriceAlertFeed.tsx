@@ -1,16 +1,17 @@
 import { useEffect, useMemo } from "react";
 import { useSparklines } from "../hooks/useSparklines";
-import type { ChartDataRoute } from "../types";
+import type { ChartDataRoute, Timeframe } from "../types";
 import { priceAlertRouteKey, type PriceAlert } from "./alerts";
 
 interface PriceAlertFeedProps {
   alerts: PriceAlert[];
-  evaluatePrices: (route: ChartDataRoute, prices: Record<string, number>) => void;
+  evaluatePrices: (route: ChartDataRoute, timeframe: Timeframe, prices: Record<string, number>) => void;
 }
 
 export interface PriceAlertSubscriptionBatch {
   key: string;
   route: ChartDataRoute;
+  timeframe: Timeframe;
   symbols: string[];
 }
 
@@ -24,8 +25,8 @@ export function PriceAlertFeed({ alerts, evaluatePrices }: PriceAlertFeedProps) 
 }
 
 function PriceAlertFeedBatch({ batch, evaluatePrices }: { batch: PriceAlertSubscriptionBatch; evaluatePrices: PriceAlertFeedProps["evaluatePrices"] }) {
-  const { route, symbols } = batch;
-  const sparklines = useSparklines(symbols, "1m", route.exchange, {
+  const { route, symbols, timeframe } = batch;
+  const sparklines = useSparklines(symbols, timeframe, route.exchange, {
     enabled: symbols.length > 0,
     marketType: route.marketType,
     priceType: route.priceType,
@@ -41,20 +42,20 @@ function PriceAlertFeedBatch({ batch, evaluatePrices }: { batch: PriceAlertSubsc
   }, [sparklines]);
 
   useEffect(() => {
-    if (Object.keys(prices).length > 0) evaluatePrices(route, prices);
-  }, [evaluatePrices, prices, route]);
+    if (Object.keys(prices).length > 0) evaluatePrices(route, timeframe, prices);
+  }, [evaluatePrices, prices, route, timeframe]);
 
   return null;
 }
 
 export function groupPriceAlertSubscriptions(alerts: PriceAlert[], batchSize = 40): PriceAlertSubscriptionBatch[] {
   const limit = Math.max(1, Math.min(40, Math.floor(batchSize)));
-  const groups = new Map<string, { route: ChartDataRoute; symbols: Set<string> }>();
+  const groups = new Map<string, { route: ChartDataRoute; timeframe: Timeframe; symbols: Set<string> }>();
   for (const alert of alerts) {
-    if (alert.triggered) continue;
+    if (alert.deleted || alert.deletionPending || alert.triggered || alert.suspended || alert.source === "server" || !alert.timeframe) continue;
     const route: ChartDataRoute = { exchange: alert.exchange, marketType: alert.marketType, priceType: alert.priceType };
-    const routeKey = priceAlertRouteKey(route);
-    const group = groups.get(routeKey) ?? { route, symbols: new Set<string>() };
+    const routeKey = `${priceAlertRouteKey(route)}:${alert.timeframe}`;
+    const group = groups.get(routeKey) ?? { route, timeframe: alert.timeframe, symbols: new Set<string>() };
     group.symbols.add(alert.symbol);
     groups.set(routeKey, group);
   }
@@ -63,7 +64,7 @@ export function groupPriceAlertSubscriptions(alerts: PriceAlert[], batchSize = 4
   for (const [routeKey, group] of [...groups].sort(([left], [right]) => left.localeCompare(right))) {
     const symbols = [...group.symbols].sort();
     for (let offset = 0; offset < symbols.length; offset += limit) {
-      batches.push({ key: `${routeKey}:${offset / limit}`, route: group.route, symbols: symbols.slice(offset, offset + limit) });
+      batches.push({ key: `${routeKey}:${offset / limit}`, route: group.route, timeframe: group.timeframe, symbols: symbols.slice(offset, offset + limit) });
     }
   }
   return batches;

@@ -11,6 +11,11 @@ SaltanatbotV2 publishes the same built application shape through four maturity c
 
 Only a pushed, supported Git tag creates a GitHub Release. Manual runs build attestable artifacts without inventing or moving a Git tag.
 
+Accepted production remains the immutable R4 PostgreSQL-schema-12 baseline. R5.1/schema 13 is an
+implementation candidate and must not be described as deployed, stable or production-accepted
+until the additional gate below passes for one exact commit. See
+[Owner-scoped server alerts](./ALERTS.md).
+
 ## Produced assets
 
 Each run produces:
@@ -59,6 +64,30 @@ Verification must confirm the expected repository, workflow identity and digest.
 5. Require the distribution rollback drill to pass and retain its attested JSON evidence.
 6. Verify checksums and attestations from a clean machine before announcing the release.
 7. Enable GitHub immutable releases where the repository plan supports them.
+
+### Additional R5.1/schema 13 release gate
+
+The candidate migration checksum must be exactly
+`1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
+In addition to the ordinary release sequence:
+
+1. require alert contract/auth/owner/CSRF, exact-candle/state-fence, decimal comparison, cursor,
+   retention, mobile/desktop and unprivileged real-PostgreSQL suites to pass;
+2. create and verify a paired pre-upgrade schema-12 recovery generation and complete an isolated
+   marked restore/drill without changing the active service or database;
+3. keep the research worker stopped, start the candidate API first, verify schema 13 and the exact
+   checksum, then restart the API and require a migration no-op;
+4. start the matching worker second and verify its heartbeat, fixed admission/retention metrics,
+   public-REST/no-secret boundary and one owner-scoped in-app delivery;
+5. create and verify a post-upgrade paired generation and restore it into new isolated resources;
+6. record replacement-only rollback evidence to a new database/runtime pair. Never prove rollback
+   by deleting schema-13 data, downgrading the migration ledger or running R4 on schema 13.
+
+The announcement must state that R5.1 remains notification-only, uses fixed conservative beta
+limits and is not R11 evidence for 100 simultaneous users. It must also state that this pre-HTTPS
+build is unsafe for public-Internet passwords/session cookies: release packaging or schema 13 does
+not provide TLS. Cross-check [Migration notes](./MIGRATIONS.md),
+[Backup and restore](./BACKUP_RESTORE.md) and [Threat model](./THREAT_MODEL.md).
 
 If a published artifact is wrong, issue a new version. Do not replace assets under the same version.
 Follow the complete [distribution incident-response and rollback runbook](INCIDENT_RESPONSE.md).

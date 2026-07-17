@@ -12,7 +12,14 @@ const tsc = join(root, "node_modules", ".bin", "tsc");
 
 try {
   execFileSync(tsc, [join(packageDir, "index.ts"), "--target", "ES2022", "--module", "NodeNext", "--moduleResolution", "NodeNext", "--skipLibCheck", "--declaration", "--outDir", outputDir]);
-  const stale = ["index.js", "index.d.ts"].filter(
+  const stale = [
+    "index.js",
+    "index.d.ts",
+    "alerts.js",
+    "alerts.d.ts",
+    "alertRecords.js",
+    "alertRecords.d.ts"
+  ].filter(
     (file) => readFileSync(join(packageDir, file), "utf8") !== readFileSync(join(outputDir, file), "utf8"),
   );
   if (stale.length > 0) {

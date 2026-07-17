@@ -20,6 +20,10 @@ const args = [
   "--env", "PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
   "--volume", `${workdir}:/work`,
   "--volume", `${dependencies}:/work/node_modules`,
+  // Keep a protected production generation read-only on the host. The test
+  // build gets a private writable output tree for the lifetime of the
+  // container instead of mutating backend/dist in the checkout.
+  "--tmpfs", "/work/backend/dist:rw,exec,nosuid,nodev,mode=1777,size=512m",
   // Hide a production checkout's SQLite/key directory from the test backend.
   "--volume", `${runtimeData}:/work/backend/data`,
   "--workdir", "/work",

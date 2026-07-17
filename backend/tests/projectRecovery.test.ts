@@ -22,8 +22,33 @@ interface PostgresInventory {
     computeJobs: number;
     userOnboarding: number;
     executorCommands?: number;
+    alertRules?: number;
+    alertRuleRevisions?: number;
+    alertRuleStates?: number;
+    alertEvaluationReceipts?: number;
+    alertEventSequences?: number;
+    alertRuleEvents?: number;
+    notificationBindings?: number;
+    notificationOutbox?: number;
+    notificationDeliveries?: number;
+    alertRuleImportReceipts?: number;
   };
   userIds?: string[];
+}
+
+function alertControlPlaneCounts() {
+  return {
+    alertRules: 7,
+    alertRuleRevisions: 9,
+    alertRuleStates: 11,
+    alertEvaluationReceipts: 13,
+    alertEventSequences: 2,
+    alertRuleEvents: 15,
+    notificationBindings: 2,
+    notificationOutbox: 4,
+    notificationDeliveries: 6,
+    alertRuleImportReceipts: 1
+  };
 }
 
 interface FakeDatabase {
@@ -407,7 +432,7 @@ describe("paired project recovery", () => {
     ]);
   });
 
-  it("keeps schema 11 manifests compatible and requires schema 12 executor command counts", async () => {
+  it("keeps pre-v13 manifests compatible and requires every schema 13 control-plane count", async () => {
     const workspace = temporaryDirectory();
     const legacyRuntime = fakeRecoveryRuntime();
     legacyRuntime.inventory.migrations = migrationsThrough(11);
@@ -441,6 +466,33 @@ describe("paired project recovery", () => {
       runTool: currentRuntime.runTool,
       pgRestore: "pg_restore"
     })).toThrow(/executor commands.*count is invalid/i);
+
+    const alertRuntime = fakeRecoveryRuntime();
+    alertRuntime.inventory.migrations = migrationsThrough(13);
+    alertRuntime.inventory.counts.executorCommands = 6;
+    Object.assign(alertRuntime.inventory.counts, alertControlPlaneCounts());
+    const alerts = await createGeneration(path.resolve(workspace, "schema-13"), alertRuntime);
+    expect(readManifest(alerts.generationDirectory).postgres.counts).toMatchObject(
+      alertControlPlaneCounts()
+    );
+    const alertRestored = await restoreProjectRecovery({
+      generationDirectory: alerts.generationDirectory,
+      targetDatabase: `saltanatbotv2_test_restore_${randomUUID().replaceAll("-", "").slice(0, 8)}`,
+      targetDataDirectory: path.resolve(workspace, "schema-13-restored-data"),
+      currentDataDirectory: alerts.dataDirectory,
+      postgres: alertRuntime.postgres,
+      runTool: alertRuntime.runTool,
+      pgRestore: "pg_restore"
+    });
+    expect(alertRestored.postgres.counts).toMatchObject(alertControlPlaneCounts());
+
+    const incompleteAlertManifest = readManifest(alerts.generationDirectory);
+    incompleteAlertManifest.postgres.counts.notificationDeliveries = undefined;
+    writeManifest(alerts.generationDirectory, incompleteAlertManifest);
+    expect(() => verifyProjectRecovery(alerts.generationDirectory, {
+      runTool: alertRuntime.runTool,
+      pgRestore: "pg_restore"
+    })).toThrow(/notification deliveries.*count is invalid/i);
   });
 
   it("kills a recovery process group while its direct leader remains alive", async () => {
@@ -1140,6 +1192,33 @@ describe("paired project recovery", () => {
       })
     ).rejects.toThrow(/PostgreSQL counts mismatch/i);
     expect(mismatchRuntime.databases.has(secondDatabase)).toBe(false);
+
+    const mismatchedAlertInventory = sourceInventory();
+    mismatchedAlertInventory.migrations = migrationsThrough(13);
+    mismatchedAlertInventory.counts.executorCommands = 6;
+    Object.assign(mismatchedAlertInventory.counts, alertControlPlaneCounts());
+    mismatchedAlertInventory.counts.notificationOutbox =
+      alertControlPlaneCounts().notificationOutbox + 1;
+    const alertMismatchRuntime = fakeRecoveryRuntime({
+      restoredInventory: mismatchedAlertInventory
+    });
+    alertMismatchRuntime.inventory.migrations = migrationsThrough(13);
+    alertMismatchRuntime.inventory.counts.executorCommands = 6;
+    Object.assign(alertMismatchRuntime.inventory.counts, alertControlPlaneCounts());
+    const third = await createGeneration(path.resolve(workspace, "third"), alertMismatchRuntime);
+    const thirdDatabase = `saltanatbotv2_test_restore_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
+    await expect(
+      restoreProjectRecovery({
+        generationDirectory: third.generationDirectory,
+        targetDatabase: thirdDatabase,
+        targetDataDirectory: path.resolve(workspace, "third-replacement"),
+        currentDataDirectory: third.dataDirectory,
+        postgres: alertMismatchRuntime.postgres,
+        runTool: alertMismatchRuntime.runTool,
+        pgRestore: "pg_restore"
+      })
+    ).rejects.toThrow(/PostgreSQL counts mismatch/i);
+    expect(alertMismatchRuntime.databases.has(thirdDatabase)).toBe(false);
   });
 
   it("releases an existing empty target claim when PostgreSQL restore fails before SQLite publication", async () => {

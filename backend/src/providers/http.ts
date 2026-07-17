@@ -20,7 +20,21 @@ export interface FetchWithRetryOptions extends RequestInit {
   maxDelayMs?: number;
 }
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number, signal?: AbortSignal | null) => {
+  if (signal?.aborted) return Promise.reject(abortFailure(signal));
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(abortFailure(signal!));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+};
 
 /**
  * `fetch` with retry on 429/418. Non-throttle responses (including other HTTP
@@ -36,6 +50,7 @@ export async function fetchWithRetry(
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    if (init.signal?.aborted) throw abortFailure(init.signal);
     try {
       const response = await fetch(url, init);
       if (!RETRY_STATUS.has(response.status) || attempt === maxRetries) {
@@ -44,17 +59,25 @@ export async function fetchWithRetry(
       // Drain only a small bounded body so a throttled upstream cannot force an
       // unbounded allocation before the retry delay.
       await readBoundedText(response, MAX_RETRY_ERROR_BODY_BYTES, () => new Error("rate-limit response is too large")).catch(() => undefined);
-      await sleep(backoffDelay(attempt, maxDelayMs, response.headers.get("retry-after")));
+      await sleep(backoffDelay(attempt, maxDelayMs, response.headers.get("retry-after")), init.signal);
     } catch (error) {
       // Network-level failure (DNS, reset, abort). Retry unless we are out of budget.
       lastError = error;
+      if (init.signal?.aborted) throw error;
       if (attempt === maxRetries) throw error;
-      await sleep(backoffDelay(attempt, maxDelayMs, null));
+      await sleep(backoffDelay(attempt, maxDelayMs, null), init.signal);
     }
   }
 
   // Unreachable in practice (the loop returns or throws), but satisfies the type.
   throw lastError ?? new Error("fetchWithRetry: exhausted retries");
+}
+
+function abortFailure(signal: AbortSignal): unknown {
+  if (signal.reason !== undefined) return signal.reason;
+  const error = new Error("The public request was aborted.");
+  error.name = "AbortError";
+  return error;
 }
 
 /** Honour `Retry-After` (seconds) when present, else exponential backoff + jitter. */

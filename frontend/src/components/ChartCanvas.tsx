@@ -116,8 +116,8 @@ export const ChartCanvas = memo(function ChartCanvas({
   const [quickMeasure, setQuickMeasure] = useState<DraftDrawing>();
   const [quickMeasureActive, setQuickMeasureActive] = useState(false);
   const chartAlerts = useMemo(
-    () => (alerts ?? []).filter((alert) => alert.symbol === instrument.symbol && samePriceAlertRoute(alert, { exchange: dataExchange, marketType: dataMarketType, priceType: dataPriceType })).map((alert) => ({ price: alert.price, direction: alert.direction, triggered: alert.triggered })),
-    [alerts, dataExchange, dataMarketType, dataPriceType, instrument.symbol]
+    () => (alerts ?? []).filter((alert) => alert.symbol === instrument.symbol && alert.timeframe === timeframe && samePriceAlertRoute(alert, { exchange: dataExchange, marketType: dataMarketType, priceType: dataPriceType })).map((alert) => ({ price: alert.price, direction: alert.direction, triggered: alert.triggered })),
+    [alerts, dataExchange, dataMarketType, dataPriceType, instrument.symbol, timeframe]
   );
   const [hoverAnchor, setHoverAnchor] = useState<Anchor>();
   const [selectedId, setSelectedId] = useState<string>();

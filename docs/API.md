@@ -153,6 +153,94 @@ returns `409 onboarding_owner_mismatch`. Onboarding bodies are capped at 16 KiB.
 are seeded as dismissed by migration v11, so deploying onboarding does not interrupt established
 users.
 
+### Owner-scoped server alerts (R5.1 / schema 13)
+
+The `/api/alerts` router is authenticated, owner-scoped, rate-limited and
+research-only. Every request must send `X-SBV2-Expected-User` with the current
+session user ID. `POST`, `PUT`, `DELETE` and action endpoints also require the
+normal CSRF header. Responses use `Cache-Control: no-store`.
+
+R5.1 accepts only `price-threshold` definitions with Binance/Bybit public last
+price, a non-calendar timeframe from `1m` through `1w`, inclusive crossing and
+`once-until-rearmed`. It accepts only `deliveryChannels: ["in-app"]`. Telegram,
+order placement, borrowing, margin mutation, private streams and signed exchange
+requests are unavailable.
+
+| Method/path | Input | Result |
+| --- | --- | --- |
+| `GET /api/alerts?limit=200` | optional bounded limit | `alert-rule-list-v1`; all manageable non-archived rules precede archived history |
+| `POST /api/alerts` | `{clientId,definition}` | Idempotently creates a rule; `201` |
+| `GET /api/alerts/:id` | none | One public owner projection |
+| `PUT /api/alerts/:id` | `{expectedRevision,definition}` | Immutable new revision |
+| `POST /api/alerts/:id/archive` | `{expectedRevision}` | Archives the rule |
+| `DELETE /api/alerts/:id` | `{expectedRevision}` | Archive-compatible alias |
+| `POST /api/alerts/:id/rearm` | `{expectedRevision}` | Creates a freshly armed revision |
+| `GET /api/alerts/events?limit=200&cursor=…` | optional owner-bound cursor and rule filter | `alert-event-page-v1` forward stream |
+| `GET /api/alerts/outbox?limit=200` | optional bounded limit | Public in-app delivery evidence |
+
+Create example:
+
+```json
+{
+  "clientId": "browser-alert:8f2c17e5ad9b3c01",
+  "definition": {
+    "schemaVersion": "alert-rule-v1",
+    "kind": "price-threshold",
+    "name": "BTCUSDT above 65000",
+    "enabled": true,
+    "cooldownSeconds": 0,
+    "deliveryChannels": ["in-app"],
+    "exchange": "binance",
+    "marketType": "spot",
+    "priceType": "last",
+    "symbol": "BTCUSDT",
+    "timeframe": "1m",
+    "direction": "above",
+    "threshold": "65000",
+    "crossing": "inclusive",
+    "repeat": "once-until-rearmed",
+    "researchOnly": true,
+    "executionPermission": false
+  }
+}
+```
+
+The public rule record exposes `id`, `clientId`, revision, definition,
+lifecycle, timestamps and bounded error state. It never exposes owner IDs,
+authorization revisions, leases, credentials or destinations.
+
+An event page always contains:
+
+```ts
+interface AlertEventPageV1 {
+  schemaVersion: "alert-event-page-v1";
+  events: AlertEventV1[];       // at most 200
+  nextCursor: string;           // opaque and owner-bound
+  hasMore: boolean;
+  generatedAt: string;          // canonical UTC
+  researchOnly: true;
+  executionPermission: false;
+}
+```
+
+When `hasMore` is true, clients must request the next page and durably process
+every returned event before checkpointing the final cursor. The per-owner event
+sequence is transactional, so a same-owner late commit cannot appear behind an
+already visible watermark. A cursor from another owner returns
+`400 invalid_alert_event_cursor`; a cursor ahead of a restored database returns
+`409 alert_event_cursor_ahead`.
+
+Stable mutation errors include `alert_owner_mismatch`,
+`alert_authorization_changed`, `alert_not_found`,
+`alert_revision_conflict`, `alert_idempotency_conflict`,
+`alert_quota_exceeded`, `alert_capacity_exceeded`,
+`unsupported_alert_kind` and `unsupported_alert_delivery_channel`. Request
+bodies are capped at 65,536 bytes.
+
+The server uses exact public closed candles and advances one durable state/bar
+revision per completion. See [ALERTS.md](./ALERTS.md) for baseline/crossing
+semantics, capacity, retention and schema-13 recovery.
+
 ### Readiness, metrics and global admission
 
 `GET /api/health` is a public liveness probe. `GET /api/ready` is a public, no-store readiness

@@ -55,6 +55,18 @@ const SQLITE_PAPER_PORTFOLIO_TABLES = [
 ];
 const SQLITE_PAPER_PORTFOLIO_COUNT_KEYS = SQLITE_PAPER_PORTFOLIO_TABLES.map(([key]) => key);
 const SQLITE_AUXILIARY_COUNT_KEYS = ["candles", "multiLegRuns"];
+const POSTGRES_ALERT_CONTROL_PLANE_COUNT_KEYS = [
+  ["alertRules", "alert rules"],
+  ["alertRuleRevisions", "alert rule revisions"],
+  ["alertRuleStates", "alert rule states"],
+  ["alertEvaluationReceipts", "alert evaluation receipts"],
+  ["alertEventSequences", "alert event sequences"],
+  ["alertRuleEvents", "alert rule events"],
+  ["notificationBindings", "notification bindings"],
+  ["notificationOutbox", "notification outbox rows"],
+  ["notificationDeliveries", "notification deliveries"],
+  ["alertRuleImportReceipts", "alert rule import receipts"]
+];
 
 export async function createProjectRecoveryBackup(options) {
   const outputDirectory = requiredPath(options?.outputDirectory, "backup output directory");
@@ -897,6 +909,15 @@ function validatePostgresInventory(value) {
   });
   const counts = value.counts;
   if (!counts || typeof counts !== "object") throw new Error("PostgreSQL recovery counts are missing");
+  const schemaVersion = migrations.at(-1)?.version ?? 0;
+  const alertControlPlaneCounts = schemaVersion >= 13
+    ? Object.fromEntries(
+        POSTGRES_ALERT_CONTROL_PLANE_COUNT_KEYS.map(([key, label]) => [
+          key,
+          safeCount(counts[key], `PostgreSQL ${label}`)
+        ])
+      )
+    : {};
   return {
     database,
     owner,
@@ -907,9 +928,10 @@ function validatePostgresInventory(value) {
       workspaceRevisions: safeCount(counts.workspaceRevisions, "PostgreSQL workspace revisions"),
       computeJobs: safeCount(counts.computeJobs, "PostgreSQL compute jobs"),
       userOnboarding: safeCount(counts.userOnboarding, "PostgreSQL onboarding rows"),
-      ...(migrations.at(-1)?.version >= 12 || counts.executorCommands !== undefined
+      ...(schemaVersion >= 12 || counts.executorCommands !== undefined
         ? { executorCommands: safeCount(counts.executorCommands, "PostgreSQL executor commands") }
-        : {})
+        : {}),
+      ...alertControlPlaneCounts
     }
   };
 }

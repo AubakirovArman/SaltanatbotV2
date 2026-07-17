@@ -6,6 +6,36 @@ delivery/retry evidence for `paper-trade`, `live-trade` and `admin` sessions. En
 candidate/economics producers are not yet connected, so the mount and UI alone cannot create a
 notification.
 
+Production remains the accepted R4 release on PostgreSQL schema 12. Neither
+this disconnected producer workflow nor the schema-13 R5.1 implementation
+candidate is claimed as accepted or deployed.
+
+## Distinction from generic R5.1 price alerts
+
+This document describes the older account-aware arbitrage policy/economics
+workflow. It is not the generic owner-scoped R5.1 alert control plane and its
+policy state must not be merged into a generic price rule merely because both
+systems use notification/outbox terminology.
+
+The R5.1 implementation candidate supports only `price-threshold` over public
+Binance/Bybit last-price closed candles with in-app delivery. It never reads
+account evidence or exchange credentials and cannot trade. Its beta bounds are
+100 active and 200 non-archived rules per owner, 400 total retained
+rule/history rows per owner and 480 globally active rules. Scheduler admission
+is four concurrent public reads, 16 unique reads per sweep and eight per
+provider. Evaluation receipts retain for 2 days and event/outbox/archive
+history for 30 days.
+
+R5.1 uses an owner-bound forward event cursor and intentional at-least-once
+publish-before-checkpoint behavior. Its remaining release gate includes
+browser-closed restart/dedup, same-owner multi-tab convergence, local-storage
+failure and desktop/mobile accessibility/visual evidence. R5.2 technical
+screener integration, R5.3 notification worker/Telegram delivery and R11
+integrated 100-user proof remain pending and unproven.
+
+See [Owner-scoped server alerts](./ALERTS.md),
+[Russian](./ru/ALERTS.md) and [Kazakh](./kk/ALERTS.md).
+
 ## Safety contract
 
 The generic alert evaluator is notification-only. Every evaluation, intent and protected HTTP
@@ -62,3 +92,5 @@ compatible with the current basis alert operator workflow but uses its own state
   required for account-aware data.
 
 No funded mainnet/testnet soak or live-order readiness is claimed.
+The missing producer integrations above remain separate from R5.2/R5.3 and
+cannot inherit acceptance from the generic R5.1 candidate.

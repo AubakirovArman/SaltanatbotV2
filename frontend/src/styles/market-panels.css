@@ -396,6 +396,107 @@ small {
   gap: 6px;
 }
 
+.alert-sync-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-block-size: 24px;
+  padding: 3px 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.alert-sync-summary.synced {
+  border-color: color-mix(in srgb, var(--up) 34%, var(--line-soft));
+  color: var(--up);
+}
+
+.alert-sync-summary.error,
+.alert-operation-error {
+  color: var(--down);
+}
+
+.alert-sync-summary button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+}
+
+.alert-review-note,
+.alert-operation-error {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.alert-review-note {
+  color: var(--muted);
+}
+
+.alert-activity {
+  border-block-start: 1px solid var(--line-soft);
+  padding-block-start: 5px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.alert-activity summary {
+  min-block-size: 24px;
+  cursor: pointer;
+  color: var(--dim);
+}
+
+.alert-activity p {
+  margin: 3px 0;
+}
+
+.alert-activity ul {
+  display: grid;
+  gap: 3px;
+  margin: 3px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alert-activity li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: baseline;
+}
+
+.alert-activity li > span {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alert-activity small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.alert-activity .delivery-delivered {
+  color: var(--up);
+}
+
+.alert-activity .delivery-dead-letter,
+.alert-activity .delivery-cancelled {
+  color: var(--down);
+}
+
 .alert-add {
   display: flex;
   align-items: center;
@@ -448,10 +549,11 @@ small {
 }
 
 .alert-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(54px, 1fr) auto minmax(0, auto) auto auto auto;
   align-items: center;
-  gap: 8px;
-  min-block-size: 26px;
+  gap: 5px;
+  min-block-size: 30px;
   padding: 2px 4px;
   border-radius: var(--radius-sm);
 }
@@ -477,9 +579,43 @@ small {
 }
 
 .alert-price {
-  flex: 1;
+  min-inline-size: 0;
   font-size: var(--fs-md);
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alert-timeframe {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.alert-source-badge {
+  min-inline-size: 0;
+  max-inline-size: 92px;
+  padding: 2px 5px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alert-source-badge.synced,
+.alert-source-badge.server {
+  border-color: color-mix(in srgb, var(--up) 30%, var(--line-soft));
+  color: var(--up);
+}
+
+.alert-source-badge.needs-review,
+.alert-source-badge.sync-error,
+.alert-source-badge.deleting {
+  border-color: color-mix(in srgb, var(--down) 34%, var(--line-soft));
+  color: var(--down);
 }
 
 .alert-state {
@@ -493,13 +629,57 @@ small {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  inline-size: 20px;
-  block-size: 20px;
+  inline-size: 28px;
+  block-size: 28px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--dim);
   cursor: pointer;
+}
+
+.alert-item button:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
+@media (max-width: 520px) {
+  .alert-add {
+    block-size: auto;
+    min-block-size: 44px;
+  }
+
+  .alert-add input {
+    min-block-size: 44px;
+  }
+
+  .alert-item {
+    grid-template-columns: auto minmax(52px, 1fr) auto minmax(0, auto) auto auto auto;
+  }
+
+  .alert-source-badge {
+    max-inline-size: 76px;
+  }
+
+  .alert-state {
+    display: none;
+  }
+
+  .alert-sync-summary button,
+  .alert-add button,
+  .alert-item button,
+  .alert-toast > button {
+    min-inline-size: 44px;
+    inline-size: 44px;
+    min-block-size: 44px;
+    block-size: 44px;
+  }
+
+  .alert-activity summary {
+    display: flex;
+    align-items: center;
+    min-block-size: 44px;
+  }
 }
 
 .alert-item button:hover {
@@ -529,6 +709,11 @@ small {
   background: var(--panel);
   box-shadow: var(--shadow-pop);
   color: var(--text);
+}
+
+.alert-toast.server {
+  border-inline-start-color: var(--up);
+  background: color-mix(in srgb, var(--up) 6%, var(--panel));
 }
 
 .alert-toast.above {

@@ -1,11 +1,12 @@
-import { Bell, RotateCcw, X } from "lucide-react";
+import { Bell, RefreshCw, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import { samePriceAlertRoute, type PriceAlert } from "../market/alerts";
-import type { NewAlertInput } from "../hooks/usePriceAlerts";
-import type { Candle, DataExchange, DataMarketType, Instrument, PriceType } from "../types";
+import type { NewAlertInput, PriceAlertSyncState } from "../hooks/usePriceAlerts";
+import type { Candle, DataExchange, DataMarketType, Instrument, PriceType, Timeframe } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
 import { localeTag, type Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
+import { parseAlertThresholdInput } from "../alerts/localSnapshot";
 
 interface StatsPanelProps {
   locale: Locale;
@@ -21,10 +22,12 @@ interface StatsPanelProps {
   exchange: DataExchange;
   marketType?: DataMarketType;
   priceType?: PriceType;
+  timeframe: Timeframe;
   alerts: PriceAlert[];
-  onAddAlert: (input: NewAlertInput) => void;
-  onRemoveAlert: (id: string) => void;
-  onResetAlert: (id: string) => void;
+  alertSync: PriceAlertSyncState;
+  onAddAlert: (input: NewAlertInput) => void | Promise<void>;
+  onRemoveAlert: (id: string) => void | Promise<void>;
+  onResetAlert: (id: string) => void | Promise<void>;
 }
 
 export function StatsPanel({
@@ -41,7 +44,9 @@ export function StatsPanel({
   exchange,
   marketType = "spot",
   priceType = "last",
+  timeframe,
   alerts,
+  alertSync,
   onAddAlert,
   onRemoveAlert,
   onResetAlert
@@ -95,7 +100,9 @@ export function StatsPanel({
         exchange={exchange}
         marketType={marketType}
         priceType={priceType}
-        alerts={alerts.filter((alert) => alert.symbol === instrument.symbol && samePriceAlertRoute(alert, { exchange, marketType, priceType }))}
+        timeframe={timeframe}
+        alerts={alerts.filter((alert) => alert.symbol === instrument.symbol && (alert.timeframe === timeframe || alert.timeframe === undefined) && samePriceAlertRoute(alert, { exchange, marketType, priceType }))}
+        sync={alertSync}
         onAddAlert={onAddAlert}
         onRemoveAlert={onRemoveAlert}
         onResetAlert={onResetAlert}
@@ -127,7 +134,9 @@ function AlertsSection({
   exchange,
   marketType,
   priceType,
+  timeframe,
   alerts,
+  sync,
   onAddAlert,
   onRemoveAlert,
   onResetAlert
@@ -138,22 +147,51 @@ function AlertsSection({
   exchange: DataExchange;
   marketType: DataMarketType;
   priceType: PriceType;
+  timeframe: Timeframe;
   alerts: PriceAlert[];
-  onAddAlert: (input: NewAlertInput) => void;
-  onRemoveAlert: (id: string) => void;
-  onResetAlert: (id: string) => void;
+  sync: PriceAlertSyncState;
+  onAddAlert: (input: NewAlertInput) => void | Promise<void>;
+  onRemoveAlert: (id: string) => void | Promise<void>;
+  onResetAlert: (id: string) => void | Promise<void>;
 }) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const [draft, setDraft] = useState("");
+  const [pending, setPending] = useState<string>();
+  const [operationError, setOperationError] = useState<string>();
 
-  const submit = () => {
-    const value = Number(draft);
-    if (!Number.isFinite(value) || value <= 0) return;
-    // Direction is inferred from where the target sits relative to the last price.
-    const direction = price !== undefined && value < price ? "below" : "above";
-    onAddAlert({ symbol: instrument.symbol, price: value, direction, exchange, marketType, priceType });
-    setDraft("");
+  const submit = async () => {
+    setPending("create");
+    setOperationError(undefined);
+    try {
+      const value = parseAlertThresholdInput(draft, instrument.decimals);
+      // Direction is inferred from where the target sits relative to the last price.
+      const direction = price !== undefined && value < price ? "below" : "above";
+      await onAddAlert({ symbol: instrument.symbol, price: value, direction, exchange, marketType, priceType, timeframe });
+      setDraft("");
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message.slice(0, 256) : t("alertOperationFailed"));
+    } finally {
+      setPending(undefined);
+    }
   };
+
+  const runAction = async (key: string, action: () => void | Promise<void>) => {
+    setPending(key);
+    setOperationError(undefined);
+    try {
+      await action();
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message.slice(0, 256) : t("alertOperationFailed"));
+    } finally {
+      setPending(undefined);
+    }
+  };
+
+  const serverRouteSupported = priceType === "last" && timeframe !== "1M";
+  const creationReady = sync.status === "legacy" || (sync.status === "synced" && serverRouteSupported);
+  const visibleRuleIds = new Set(alerts.map(({ serverRuleId }) => serverRuleId).filter((id): id is string => Boolean(id)));
+  const recentEvents = sync.events.filter((event) => visibleRuleIds.has(event.ruleId)).slice(0, 5);
+  const outboxByEvent = new Map(sync.outbox.map((item) => [item.envelope.alertEventId, item]));
 
   return (
     <section className="alerts-section" aria-label={t("priceAlerts")}>
@@ -161,11 +199,21 @@ function AlertsSection({
         <strong>{t("alerts")}</strong>
         <span>{alerts.length ? `${alerts.length} ${t("on")} ${instrument.symbol}` : instrument.symbol}</span>
       </div>
+      <div className={`alert-sync-summary ${sync.status}`} role="status" aria-live="polite">
+        <span>{t(sync.status === "legacy" ? "alertBrowserOnly" : sync.status === "loading" ? "alertSyncLoading" : sync.status === "error" ? "alertSyncError" : "alertServerSynced")}</span>
+        {sync.status === "error" && (
+          <button type="button" onClick={sync.refresh} aria-label={t("retryAlertSync")} title={t("retryAlertSync")}>
+            <RefreshCw size={12} aria-hidden="true" />
+          </button>
+        )}
+      </div>
+      {sync.status !== "legacy" && !serverRouteSupported && <p className="alert-review-note">{t("alertServerRouteUnavailable")}</p>}
+      {sync.status !== "legacy" && serverRouteSupported && <p className="alert-review-note">{t("alertClosedCandleSemantics")}</p>}
       <form
         className="alert-add"
         onSubmit={(event) => {
           event.preventDefault();
-          submit();
+          void submit();
         }}
       >
         <Bell size={13} strokeWidth={1.75} aria-hidden="true" />
@@ -180,10 +228,33 @@ function AlertsSection({
           aria-label={`${t("alertPrice")} ${instrument.symbol}`}
           onChange={(event) => setDraft(event.target.value)}
         />
-        <button type="submit" disabled={!draft.trim()}>
-          {t("add")}
+        <button type="submit" disabled={!draft.trim() || !creationReady || pending !== undefined}>
+          {pending === "create" ? t("alertSaving") : t("add")}
         </button>
       </form>
+      {(operationError || sync.error) && <p className="alert-operation-error" role="alert">{operationError ?? sync.error}</p>}
+      {sync.status !== "legacy" && (
+        <details className="alert-activity">
+          <summary>{t("alertRecentActivity")}{recentEvents.length ? ` · ${recentEvents.length}` : ""}</summary>
+          {recentEvents.length === 0 ? (
+            <p>{t("alertNoRecentActivity")}</p>
+          ) : (
+            <ul>
+              {recentEvents.map((event) => {
+                const delivery = outboxByEvent.get(event.id);
+                const eventAlert = alerts.find((alert) => alert.serverRuleId === event.ruleId);
+                return (
+                  <li key={event.id}>
+                    <span title={event.summary}>{eventAlert ? `${eventAlert.symbol} · ` : ""}{t(alertEventMessageKey(event.eventType))}</span>
+                    <time dateTime={event.occurredAt}>{new Intl.DateTimeFormat(localeTag(locale), { hour: "2-digit", minute: "2-digit" }).format(new Date(event.occurredAt))}</time>
+                    {delivery && <small className={`delivery-${delivery.status}`}>{t(delivery.status === "delivered" ? "alertDeliveryDelivered" : delivery.status === "dead-letter" || delivery.status === "cancelled" ? "alertDeliveryFailed" : "alertDeliveryPending")}</small>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </details>
+      )}
       {alerts.length > 0 && (
         <ul className="alert-list">
           {alerts
@@ -193,13 +264,17 @@ function AlertsSection({
               <li key={alert.id} className={`alert-item ${alert.triggered ? "triggered" : ""}`}>
                 <span className={`alert-dir ${alert.direction}`}>{alert.direction === "above" ? "▲" : "▼"}</span>
                 <span className="alert-price num">{alert.price.toFixed(instrument.decimals)}</span>
-                <span className="alert-state">{t(alert.triggered ? "hit" : "armed")}</span>
+                <span className="alert-timeframe num">{alert.timeframe ?? "?"}</span>
+                <span className={`alert-source-badge ${alert.syncState ?? alert.source ?? "browser"}`}>
+                  {t(alert.syncState === "deleting" ? "alertDeleting" : alert.syncState === "needs-review" ? "alertNeedsReview" : alert.syncState === "syncing" && !alert.serverRuleId ? "alertQueued" : alert.syncState === "syncing" ? "alertSyncing" : alert.syncState === "sync-error" ? "alertSyncError" : alert.source === "server" || alert.syncState === "synced" ? "alertServer" : "alertBrowserOnly")}
+                </span>
+                <span className="alert-state">{t(alert.triggered ? "hit" : alert.deletionPending || alert.timeframe === undefined ? "alertInactive" : alert.serverLifecycle === "disabled" ? "alertDisabled" : alert.serverLifecycle === "stale" ? "alertStale" : alert.serverLifecycle === "error" ? "alertError" : "armed")}</span>
                 {alert.triggered && (
-                  <button type="button" aria-label={t("rearmAlert")} title={t("rearm")} onClick={() => onResetAlert(alert.id)}>
+                  <button type="button" disabled={pending !== undefined} aria-label={t("rearmAlert")} title={t("rearm")} onClick={() => void runAction(`reset:${alert.id}`, () => onResetAlert(alert.id))}>
                     <RotateCcw size={12} aria-hidden="true" />
                   </button>
                 )}
-                <button type="button" aria-label={t("removeAlert")} title={t("remove")} onClick={() => onRemoveAlert(alert.id)}>
+                <button type="button" disabled={pending !== undefined} aria-label={t("removeAlert")} title={t("remove")} onClick={() => void runAction(`remove:${alert.id}`, () => onRemoveAlert(alert.id))}>
                   <X size={12} aria-hidden="true" />
                 </button>
               </li>
@@ -236,6 +311,20 @@ function compact(value: number | undefined, locale: Locale) {
   return value === undefined
     ? "…"
     : Intl.NumberFormat(localeTag(locale), { notation: "compact", maximumFractionDigits: 2 }).format(value);
+}
+
+function alertEventMessageKey(eventType: "armed" | "rearmed" | "eligible" | "ineligible" | "triggered" | "suppressed" | "stale" | "disabled" | "error") {
+  switch (eventType) {
+    case "armed": return "alertEventArmed" as const;
+    case "rearmed": return "alertEventRearmed" as const;
+    case "eligible": return "alertEventEligible" as const;
+    case "ineligible": return "alertEventIneligible" as const;
+    case "triggered": return "alertEventTriggered" as const;
+    case "suppressed": return "alertEventSuppressed" as const;
+    case "stale": return "alertEventStale" as const;
+    case "disabled": return "alertEventDisabled" as const;
+    case "error": return "alertEventError" as const;
+  }
 }
 
 export function sessionRange(candles: Candle[]) {

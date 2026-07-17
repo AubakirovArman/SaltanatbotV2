@@ -194,6 +194,7 @@ published by the `Deploy documentation site` workflow and is also set as the rep
 | [**Generated Pine compatibility**](docs/PINE_COMPATIBILITY.generated.md) | Corpus-backed exact, display-only, approximation and rejected feature matrix |
 | [**Arbitrage screener and research reference**](docs/ARBITRAGE_SCREENER.md) | Read-only triangular L2 verification, funding scenarios, fork guide and fail-closed continuous entry basis plus canonical [vocabulary](docs/ARBITRAGE_TAXONOMY.md), [math](docs/ARBITRAGE_MATH_AND_ASSUMPTIONS.md), [data quality](docs/MARKET_DATA_QUALITY.md), [venue status](docs/VENUE_CAPABILITIES.md) and [test gates](docs/ARBITRAGE_TEST_MATRIX.md) |
 | [**Research alerts**](docs/RESEARCH_ALERTS.md) | Protected notification-only policy/outbox UI and runtime, including the still-unconnected engine-producer boundary |
+| [**Owner-scoped server alerts**](docs/ALERTS.md) | R5.1 price-alert contracts, closed-candle evaluator, durable cursor/outbox, quotas, retention and schema-13 recovery boundary |
 | [**Network identity**](docs/NETWORK_IDENTITY.md) | Synthetic-only reviewed identity/transfer-proof contract; no real network mapping or transfer execution claim |
 | [**Trading & command language**](docs/TRADING.md) | The Trade tab, all 14 Antares-style actions, paper mode, dormant legacy exchange contracts and notifications |
 | [**Configuration & deployment**](docs/CONFIGURATION.md) | Env vars, runtime data, exchange keys, encryption, production & hardening checklist |

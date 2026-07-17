@@ -6,6 +6,35 @@
 producers кандидатов и экономики пока не подключены, поэтому mount и UI сами по себе не могут
 создать уведомление.
 
+Production остаётся принятым R4 на PostgreSQL schema 12. Ни этот контур без
+producer-ов, ни schema-13 implementation candidate R5.1 не считаются принятыми
+или развёрнутыми.
+
+## Отличие от generic price alerts R5.1
+
+Этот документ описывает старый account-aware workflow политик и экономики
+арбитража. Это не generic owner-scoped control plane R5.1; их policy state нельзя
+объединять с обычным price rule только потому, что оба контура используют
+notification/outbox.
+
+Implementation candidate R5.1 поддерживает только `price-threshold` по публичным
+закрытым last-price свечам Binance/Bybit и in-app delivery. Он не читает account
+evidence или exchange credentials и не может торговать. Beta limits: 100 active
+и 200 non-archived rules на owner, 400 total rule/history rows на owner и 480
+globally active rules. Scheduler допускает четыре concurrent public reads, 16
+unique reads за sweep и восемь на provider. Evaluation receipts хранятся 2 дня,
+event/outbox/archive history — 30 дней.
+
+R5.1 использует owner-bound forward event cursor и намеренную at-least-once
+семантику publish-before-checkpoint. До релиза остаются browser-closed
+restart/dedup, same-owner multi-tab convergence, local-storage failure и
+desktop/mobile accessibility/visual gates. R5.2 technical screener, R5.3
+notification worker/Telegram и integrated 100-user proof R11 остаются pending и
+не доказаны.
+
+См. [owner-scoped server alerts](../ALERTS.md),
+[русскую версию](ALERTS.md) и [казахскую версию](../kk/ALERTS.md).
+
 ## Что проверяется
 
 Контур предназначен только для уведомлений. В каждом результате и outbox intent зафиксированы
@@ -49,3 +78,5 @@ Dedup-ключ не включает название family и display symbol. 
   evidence не нужен.
 
 Готовность к live orders и funded testnet/mainnet soak не заявляется.
+Отсутствующие producer integrations остаются отдельной работой и не наследуют
+статус generic implementation candidate R5.1.

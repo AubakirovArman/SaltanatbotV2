@@ -5,6 +5,11 @@ Last reviewed for accepted deployment: 2026-07-17
 R4 accepted/deployed boundary: final SHA `bb455facdfe5a1b3cabe15490c86c299ea684ee7`,
 CI `29560112312` (`6/6`), slot `r4c-schema12-bb455fa`
 
+R5.1/schema 13 is an implementation candidate, not part of the deployed R4 evidence. Production
+remains on schema 12. Candidate alert controls below describe required boundaries for a future
+release and must not be read as production acceptance. See
+[Owner-scoped server alerts](./ALERTS.md).
+
 SaltanatbotV2 is a self-hosted research and paper-trading application. The repository retains
 encrypted legacy credential rows and dormant exchange-adapter code, but the current
 `public-http-paper` runtime rejects credential writes/decryption for use, signed requests, private
@@ -26,6 +31,8 @@ execution, real borrowing or real margin/account telemetry.
 - Fail closed when market data, protection, exchange state or authorization cannot be proven.
 - Preserve local trading state through verified backups and forward migrations.
 - Avoid executing arbitrary user code while importing Pine or running visual strategies.
+- Prevent one owner, stale worker or forged market observation from creating another owner's alert
+  event or notification.
 
 ## Assets
 
@@ -42,6 +49,7 @@ execution, real borrowing or real margin/account telemetry.
 | Order/position state | Determines real financial exposure | Client IDs, journal, polling/private streams, reconciliation |
 | Market/backtest data | Determines signals and performance claims | Provider/provenance labels; fallback and gaps explicit |
 | Arbitrage quotes/history | Can create misleading urgency or expected-profit claims | Public-only adapters, source health, bounded stale state, depth checks and explicit research labels |
+| R5.1 alert state/receipts/events | A forged crossing, stale lease or cross-owner cursor could create or hide a notification | Composite owner keys, authorization/lease/state-revision fences, immutable receipts/events and per-owner transactional sequence |
 
 ## Trust boundaries
 
@@ -53,6 +61,10 @@ Backend on trusted host
 Operator-controlled runtime data and backups
   | public HTTPS/WebSocket market-data reads
 Binance or Bybit public APIs
+
+R5.1 candidate notification path:
+Research worker | credential-free public REST closed candles | Binance or Bybit
+Research worker | owner/auth/lease/state fences | PostgreSQL schema 13
 
 Dormant future boundary (not connected in `public-http-paper`):
 Backend | signed HTTPS / authenticated private WebSocket | private exchange APIs
@@ -161,6 +173,39 @@ Mitigations:
   migration, admission and readiness-limiter measurements require an administrator session and are
   returned with `Cache-Control: no-store`.
 
+### Cross-owner, stale or forged alert delivery
+
+R5.1 threats include a client selecting another owner, an administrator bypassing tenant scope, a
+worker completing after authorization/lease/state changes, a forged first-bar trigger, a skipped
+candle cursor, decimal threshold rounding, an event committing behind an acknowledged cursor and
+unbounded alert traffic exhausting the public providers or PostgreSQL history.
+
+Candidate mitigations:
+
+- every route derives the owner from the active database session, checks the expected browser user,
+  requires CSRF for mutation and provides no administrator cross-owner alert path;
+- immutable rule revisions and composite owner foreign keys fence every state, receipt, event,
+  outbox and delivery edge;
+- completion locks and rechecks active owner status, authorization revision, rule revision, lease
+  owner/token/generation/expiry and the exact state revision in one transaction;
+- the exact closed candle containing database `armedAt` establishes the baseline and cannot fire;
+  subsequent completions advance one exact cursor bar and require a durable `false -> true`
+  transition. Malformed, forming, future, missing, discontinuous or stale evidence fails closed;
+- threshold strings are compared as bounded exact decimals against the observed price representation
+  instead of being rounded onto a JavaScript double;
+- evaluation reads direct credential-free Binance/Bybit public REST only. It rejects the general
+  cache/router, synthetic fallback, private data and every order/borrow/margin action;
+- state, revision-scoped receipt, event, outbox and in-app delivery commit atomically. Same-owner
+  event inserts serialize a per-owner sequence counter; different owners share no global counter;
+- fixed beta quotas cap active/non-archived/total rules at 100/200/400 per owner and globally active
+  rules at 480. Public reads are bounded to four concurrent scopes, 16 unique reads and eight per
+  provider per sweep; retention bounds receipts to two days and other alert history to 30 days.
+
+Residual risks: in-app publication is intentionally at-least-once, so a crash before the browser
+persists its cursor can repeat a toast. Public venue data can be wrong or unavailable, and the beta
+limits are not R11 capacity evidence for 100 simultaneous users. R5.1 provides notification
+evidence, not financial advice, guaranteed observation or execution.
+
 ### Misleading or stale arbitrage opportunities
 
 Threats include combining asynchronous venue quotes, treating an open socket as healthy, ticker
@@ -257,6 +302,11 @@ Mitigations:
   `paper_portfolio_*` table, and restore compares their bounded counts with the manifest;
 - R4 acceptance required the exact release to pass the isolated paired restore/rollback drill
   using that inventory; the final release receipt is recorded at the top of this document;
+- the R5.1 candidate extends recovery inventory with all ten schema-13 alert tables and checksum
+  `1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`;
+  release still requires a fresh pre-upgrade backup, isolated restore, API-first migration/no-op,
+  worker-second activation and post-upgrade isolated restore. Rollback restores the schema-12 pair
+  into new resources; deletion or in-place downgrade is forbidden;
 - restore/drill target only a separately named database and a separate absent/empty data directory;
   they never switch a service, Compose file, `PGDATABASE` or active runtime path;
 - database cleanup requires the exact tool marker and database OID, while filesystem cleanup
@@ -324,6 +374,9 @@ Mitigations:
 ## Explicit non-goals and residual risks
 
 - The application does not provide custody, guaranteed execution, financial advice or profit claims.
+- The current HTTP deployment provides no confidentiality for passwords, cookies or application
+  traffic. Account access over the public Internet remains unsupported until a separate HTTPS
+  release; use loopback, a trusted VPN/private network or an SSH tunnel.
 - Pine compatibility is not complete and imported results require manual comparison.
 - Candle backtests cannot reproduce intra-bar order-book sequencing or guarantee live fills.
 - Arbitrage entry basis is projected, not guaranteed; cross-venue quotes are not atomic. Current
@@ -379,6 +432,8 @@ Mitigations:
 - onboarding owner/revision/authorization tests;
 - global admission, readiness, worker-heartbeat and administrator-metrics tests;
 - backup tamper/restore, isolated project-recovery drill and schema migration tests;
+- R5.1 alert owner/auth/lease/state fences, forged evidence, exact decimal, forward cursor,
+  retention/capacity and unprivileged PostgreSQL tests;
 - protected, manually armed testnet smoke for read-only contracts when credentials are available.
 
 Report a vulnerability privately according to [SECURITY.md](../SECURITY.md). Do not include real

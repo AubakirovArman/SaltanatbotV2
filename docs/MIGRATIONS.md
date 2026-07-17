@@ -4,6 +4,72 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## R5.1 implementation candidate: PostgreSQL schema 13
+
+R5.1 is implemented and tested in the source tree but is **not deployed** on the accepted
+production installation. Production remains on PostgreSQL schema 12 and trading SQLite schema 9.
+Nothing in this section replaces, edits or extends the immutable R4 acceptance evidence below.
+
+Schema 13 is one atomic, advisory-lock-protected PostgreSQL migration named
+`durable_owner_alerts_and_notification_outbox`. Its exact checksum is
+`1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
+It adds:
+
+- `alert_rules` and immutable `alert_rule_revisions`;
+- exact `alert_rule_states` plus revision-scoped immutable
+  `alert_evaluation_receipts` containing before/after state fences and outcome hashes;
+- transactional `alert_event_sequences` and immutable `alert_rule_events`, giving each owner a
+  commit-serialized forward event stream without a global identity counter;
+- `notification_bindings`, immutable `notification_outbox` and fenced
+  `notification_deliveries` (R5.1 activates in-app delivery only);
+- `alert_rule_import_receipts` for idempotent browser-rule adoption;
+- composite owner foreign keys, quota/admission indexes, immutable-update triggers and bounded
+  retention indexes.
+
+The first price evaluation consumes the exact closed candle containing the durable database arming
+time and establishes a baseline; it cannot trigger. Later completions consume exactly one cursor
+bar and one state revision, and only an exact durable `false -> true` crossing can create an event.
+Threshold declarations use exact decimal comparison instead of rounding the threshold into a
+JavaScript number. State, receipt, event, outbox and in-app delivery commit atomically behind owner,
+authorization, lease and state-revision fences. The evaluator reads only credential-free public
+Binance/Bybit REST candles. It has no private provider, cache/synthetic fallback, order, borrow,
+margin or secret path. See [Owner-scoped server alerts](./ALERTS.md).
+
+The beta limits are fixed in code: 100 active and 200 non-archived rules per owner, 400 total
+rule/history rows per owner, 480 globally active rules, at most 500 claims, four concurrent public
+scopes, 16 unique reads and eight reads per provider per sweep, and one candle per read. Receipts
+retain two days; events, outbox, terminal deliveries, old state/revisions and archived rules use the
+documented 30-day boundary. These are conservative admission controls, not R11 evidence for 100
+simultaneous users.
+
+### Schema 12 to 13 upgrade gate
+
+1. Build and verify the exact candidate while the accepted R4 services keep running.
+2. Stop this project's research worker and API. Create and verify a paired schema-12 project
+   recovery generation.
+3. Restore that generation into a separately named, marker/OID-bound PostgreSQL database and a
+   separate absent/empty runtime directory. Complete the isolated restore/drill without changing
+   `PGDATABASE`, Compose, systemd or the active runtime path.
+4. Keep the worker stopped. Start only the exact candidate API and let it migrate schema 12 to 13.
+   Verify the migration name/checksum, login, owner isolation, alert API, readiness and absence of
+   secret-bearing alert columns.
+5. Stop and restart the candidate API. The second start must report a migration no-op and the same
+   schema/checksum.
+6. Start the matching research worker only after API verification. Check its heartbeat, bounded
+   public-read/claim metrics and one owner-scoped in-app alert.
+7. Create and verify a post-upgrade paired generation, restore it into new isolated resources and
+   repeat the drill before accepting or announcing R5.1.
+
+There is no in-place downgrade. Do not delete schema-13 data, drop its tables/triggers/indexes,
+rewrite immutable receipt/event rows or decrement `schema_migrations`. Rollback means stopping both
+project processes, re-verifying the pre-upgrade paired generation, restoring both halves into **new**
+replacement resources, and pointing only the stopped project services at those verified resources
+plus the protected R4 release. Preserve the failed schema-13 database as incident evidence.
+
+Schema 13 does not provide HTTPS. Until a separate TLS release is implemented and reviewed, account
+passwords and session cookies must remain on loopback, a trusted VPN/private network or an SSH
+tunnel. Do not expose the login service over public HTTP and do not add exchange keys for alerts.
+
 ## Accepted R4 release / PostgreSQL schema 12 and trading SQLite schema 9
 
 R4 was accepted and deployed on 2026-07-17 from commit

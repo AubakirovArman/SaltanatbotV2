@@ -1,4 +1,11 @@
 import type { Page, Route } from "@playwright/test";
+import {
+  ALERT_EVENT_PAGE_SCHEMA_V1,
+  ALERT_RULE_LIST_SCHEMA_V1,
+  ALERT_RULE_RECORD_SCHEMA_V1,
+  parseAlertRuleDocumentV1,
+  type AlertRuleRecordV1
+} from "@saltanatbotv2/contracts";
 import type {
   PaperPortfolioDetail,
   PaperPortfolioListResponse,
@@ -51,6 +58,15 @@ export interface R33PaperBindingRequest {
   body?: Record<string, unknown>;
 }
 
+export interface R33AlertRequest {
+  method: string;
+  path: string;
+  ownerHeader: string | null;
+  csrfHeader: string | null;
+  query: string;
+  body?: Record<string, unknown>;
+}
+
 interface WorkspaceDocument {
   id: string;
   clientId: string;
@@ -64,6 +80,8 @@ interface WorkspaceDocument {
 export interface R33RouteFixture {
   readonly onboardingRequests: OnboardingRequest[];
   readonly ownerViolations: string[];
+  readonly alertRequests: R33AlertRequest[];
+  readonly alertRules: AlertRuleRecordV1[];
   readonly paperBindingRequests: R33PaperBindingRequest[];
   readonly paperBindingViolations: string[];
   readonly workspaceDocuments: WorkspaceDocument[];
@@ -88,6 +106,8 @@ const MILESTONE_FIELD: Record<R33Milestone, keyof R33OnboardingState["milestones
 export async function installR33RouteFixture(page: Page): Promise<R33RouteFixture> {
   const ownerViolations: string[] = [];
   const onboardingRequests: OnboardingRequest[] = [];
+  const alertRequests: R33AlertRequest[] = [];
+  const alertRules: AlertRuleRecordV1[] = [];
   const paperBindingRequests: R33PaperBindingRequest[] = [];
   const paperBindingViolations: string[] = [];
   const workspaceDocuments: WorkspaceDocument[] = [];
@@ -122,6 +142,126 @@ export async function installR33RouteFixture(page: Page): Promise<R33RouteFixtur
       tradingAvailable: true
     })
   );
+
+  await page.route("**/api/alerts**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const { pathname, search } = url;
+    const ownerHeader = request.headers()["x-sbv2-expected-user"] ?? null;
+    const csrfHeader = request.headers()["x-csrf-token"] ?? null;
+    const body = request.postData() ? safeBody(request.postData()!) : undefined;
+    alertRequests.push({
+      method: request.method(),
+      path: pathname,
+      ownerHeader,
+      csrfHeader,
+      query: search,
+      ...(body ? { body: clone(body) } : {})
+    });
+
+    if (ownerHeader !== R33_OWNER_ID) {
+      ownerViolations.push(`${request.method()} ${pathname}: alert owner header ${ownerHeader ?? "<missing>"}`);
+      return json(route, { code: "owner_context_changed", error: "Owner context changed." }, 409);
+    }
+
+    if (request.method() === "GET" && pathname === "/api/alerts") {
+      if (url.searchParams.size !== 0) return unexpectedAlertRequest(route, request.method(), `${pathname}${search}`);
+      return json(route, {
+        schemaVersion: ALERT_RULE_LIST_SCHEMA_V1,
+        rules: clone(alertRules),
+        generatedAt: timestamp(),
+        researchOnly: true,
+        executionPermission: false
+      });
+    }
+
+    if (request.method() === "GET" && pathname === "/api/alerts/events") {
+      const allowed = new Set(["cursor", "limit", "ruleId", "since"]);
+      if (
+        [...url.searchParams.keys()].some((key) => !allowed.has(key))
+        || url.searchParams.get("limit") !== "200"
+        || (url.searchParams.has("cursor") && url.searchParams.get("cursor") !== "r33-events-0")
+      ) {
+        return unexpectedAlertRequest(route, request.method(), `${pathname}${search}`);
+      }
+      return json(route, {
+        schemaVersion: ALERT_EVENT_PAGE_SCHEMA_V1,
+        events: [],
+        nextCursor: "r33-events-0",
+        hasMore: false,
+        generatedAt: timestamp(),
+        researchOnly: true,
+        executionPermission: false
+      });
+    }
+
+    if (request.method() === "GET" && pathname === "/api/alerts/outbox") {
+      if (url.searchParams.size !== 1 || url.searchParams.get("limit") !== "100") {
+        return unexpectedAlertRequest(route, request.method(), `${pathname}${search}`);
+      }
+      return json(route, { items: [], researchOnly: true, executionPermission: false });
+    }
+
+    if (csrfHeader !== "csrf-r33") {
+      ownerViolations.push(`${request.method()} ${pathname}: missing or invalid alert CSRF token`);
+      return json(route, { code: "csrf_invalid", error: "CSRF token is invalid." }, 403);
+    }
+
+    if (request.method() === "POST" && pathname === "/api/alerts") {
+      const clientId = string(body?.clientId);
+      const definition = parseAlertDefinition(body?.definition);
+      if (!body || Object.keys(body).sort().join(",") !== "clientId,definition" || !clientId || !definition || definition.kind !== "price-threshold" || definition.enabled) {
+        return json(route, { code: "invalid_alert_rule", error: "The R3.3 fixture requires the disabled durable alert draft." }, 400);
+      }
+      const existing = alertRules.find((rule) => rule.clientId === clientId);
+      if (existing) return json(route, { rule: clone(existing) });
+      const now = timestamp();
+      const rule: AlertRuleRecordV1 = {
+        schemaVersion: ALERT_RULE_RECORD_SCHEMA_V1,
+        id: "30000000-0000-4000-8000-000000000033",
+        clientId,
+        revision: 1,
+        definition,
+        lifecycleState: "disabled",
+        createdAt: now,
+        updatedAt: now,
+        researchOnly: true,
+        executionPermission: false
+      };
+      alertRules.push(rule);
+      return json(route, { rule: clone(rule) });
+    }
+
+    const updateMatch = pathname.match(/^\/api\/alerts\/([^/]+)$/u);
+    if (request.method() === "PUT" && updateMatch) {
+      const current = alertRules.find((rule) => rule.id === decodeURIComponent(updateMatch[1]!));
+      const definition = parseAlertDefinition(body?.definition);
+      const expectedDefinition = current ? { ...current.definition, enabled: true } : undefined;
+      if (
+        !body
+        || Object.keys(body).sort().join(",") !== "definition,expectedRevision"
+        || !current
+        || body.expectedRevision !== current.revision
+        || !definition
+        || definition.kind !== "price-threshold"
+        || !definition.enabled
+        || JSON.stringify(definition) !== JSON.stringify(expectedDefinition)
+      ) {
+        return json(route, { code: "alert_rule_conflict", error: "The durable alert draft changed." }, 409);
+      }
+      const updated: AlertRuleRecordV1 = {
+        ...current,
+        revision: current.revision + 1,
+        definition,
+        lifecycleState: "armed",
+        updatedAt: timestamp()
+      };
+      alertRules[alertRules.indexOf(current)] = updated;
+      return json(route, { rule: clone(updated) });
+    }
+
+    return unexpectedAlertRequest(route, request.method(), `${pathname}${search}`);
+  });
 
   await page.route("**/api/onboarding**", async (route) => {
     const request = route.request();
@@ -425,6 +565,8 @@ export async function installR33RouteFixture(page: Page): Promise<R33RouteFixtur
   return {
     onboardingRequests,
     ownerViolations,
+    alertRequests,
+    alertRules,
     paperBindingRequests,
     paperBindingViolations,
     workspaceDocuments,
@@ -619,6 +761,18 @@ function safeBody(raw: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function parseAlertDefinition(value: unknown): AlertRuleRecordV1["definition"] | undefined {
+  try {
+    return parseAlertRuleDocumentV1(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function unexpectedAlertRequest(route: Route, method: string, target: string) {
+  return json(route, { code: "unexpected_alert_request", error: `${method} ${target}` }, 500);
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {

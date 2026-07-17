@@ -39,7 +39,7 @@ export class BybitProvider implements MarketProvider {
     if (range.endTime !== undefined) url.searchParams.set("end", String(range.endTime));
     if (range.startTime !== undefined) url.searchParams.set("start", String(range.startTime));
 
-    const response = await fetchWithRetry(url);
+    const response = await fetchWithRetry(url, { signal: options.signal });
     if (!response.ok) throw new Error(`Bybit HTTP ${response.status}`);
     const body = await readBoundedText(response, MAX_CANDLE_PAYLOAD_BYTES, () => new Error("Bybit candle response is too large"));
     const payload = JSON.parse(body) as { retCode: number; retMsg: string; result?: { list?: BybitKline[] } };

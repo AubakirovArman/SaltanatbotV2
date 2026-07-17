@@ -10,6 +10,11 @@ successful), protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and tra
 and rollback proof passed. Self-hosted operators must repeat these gates for their own exact build;
 this evidence does not make a different installation recoverable.
 
+R5.1 is an implementation candidate, not a deployed recovery baseline. Accepted production still
+runs PostgreSQL schema 12. Schema-13 alert inventory and restore coverage must be proved again for
+the exact candidate before cutover; it cannot inherit the immutable R4 evidence above. See
+[Owner-scoped server alerts](./ALERTS.md).
+
 SaltanatbotV2 uses two independent persistence layers. PostgreSQL stores users, hashed passwords,
 sessions, workspaces and research jobs. Trading state and encrypted credentials remain under
 `backend/data/`. A complete recovery point needs a PostgreSQL dump plus an SQLite runtime backup;
@@ -61,6 +66,12 @@ The generation contains exactly:
 - `runtime/`, using the existing verified SQLite backup format;
 - `recovery-manifest.json`, with SHA-256 checksums, capture timestamps, PostgreSQL migrations and
   aggregate PostgreSQL/SQLite counts.
+
+For a schema-13 generation, the PostgreSQL inventory also includes counts for all ten alert tables:
+rules, revisions, state, evaluation receipts, per-owner event counters, events, bindings, outbox,
+deliveries and import receipts. Verification must reject a missing/present table set inconsistent
+with the recorded schema version. Capturing those counts makes restore drift detectable; it does
+not by itself accept R5.1 for production.
 
 The generation directory is owner-only. Verification rejects extra files, symbolic links, changed
 sizes/checksums, a corrupt PostgreSQL archive, an invalid SQLite backup, mismatched owner inventory
@@ -447,6 +458,40 @@ If PostgreSQL reaches schema 12 but SQLite migration 9 fails, keep the applicati
 the logs and both original stores, perform only read-only diagnosis, and restore the complete
 pre-upgrade pair when rollback is chosen. The detailed lifecycle and operator checklist are in
 [Canonical paper portfolios](PAPER_PORTFOLIOS.md#upgrade-to-postgresql-12-and-sqlite-9).
+
+### R5.1 PostgreSQL schema 13 candidate backup, cutover and rollback
+
+Production remains schema 12; this is the required procedure for a future exact R5.1 candidate.
+The candidate schema-13 checksum is
+`1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
+
+Before cutover, stop this project's API and research worker and run the paired
+`recovery:backup`/`recovery:verify` workflow at the top of this guide. Retain that schema-12
+generation outside the mutable checkout. Restore it with `recovery:restore` or `recovery:drill`
+into a new marker/OID-bound database name and a separate absent/empty runtime directory. Verify the
+complete schema-12 migration chain, SQLite generation, row counts and owner-set digest. A restore
+that targets the active database/data directory, uses `--clean`, reuses an unrelated database or
+changes live service configuration is invalid.
+
+For cutover, keep the worker stopped and start only the API from one protected candidate generation,
+with `FRONTEND_DIST_DIR` from that same generation. The API applies schema 13 atomically under the
+migration advisory lock. Verify the exact checksum, login/owner isolation, alert routes, readiness
+and admin migration evidence; then stop and restart the API and require a migration no-op. Start the
+matching research worker only after that proof. Verify its heartbeat and bounded public-REST alert
+lane, create no exchange credential, and take a post-upgrade paired generation. Restore the
+post-upgrade generation into another isolated replacement and verify all ten alert-table counts
+before accepting R5.1.
+
+Rollback is replacement-only. Stop both processes, re-verify the retained pre-upgrade generation,
+restore PostgreSQL and runtime data into **new** replacement resources, and point only this project's
+stopped services at those resources plus the protected R4 release. Keep the failed schema-13
+database intact for diagnosis. Never drop alert tables/triggers/indexes, delete immutable
+receipt/event history, splice pre/post-upgrade halves or decrement the migration version.
+
+Backup and migration do not add transport encryption. During this pre-HTTPS phase, run the service
+only on loopback, a trusted private network/VPN or an SSH tunnel; never transmit an account password
+or session cookie over public HTTP. Alert evaluation uses public market REST and needs no exchange
+key. See [Migration notes](./MIGRATIONS.md#r51-implementation-candidate-postgresql-schema-13).
 
 For a non-default Docker volume mount or a recovery drill, specify the source explicitly:
 

@@ -42,6 +42,35 @@ release.
   research, while KuCoin and MEXC use bounded connected public protocol paths; none adds private
   execution or mainnet readiness.
 
+## Current R5.1 implementation candidate
+
+Production is still the accepted R4 release on PostgreSQL schema 12. R5.1 is a
+reviewable implementation candidate only: it has not been accepted, deployed or
+proven as a 100-user service, and schema 13 is not the production schema.
+
+The candidate adds generic owner-scoped `price-threshold` alerts over public
+Binance/Bybit last-price closed candles with durable in-app history. It is
+notification-only and cannot trade, borrow, change margin, read exchange
+credentials or grant trading authority. Its conservative beta bounds are 100
+active and 200 non-archived rules per owner, 400 total retained rule/history
+rows per owner and 480 globally active rules. The scheduler performs at most
+four public reads concurrently, 16 unique reads per sweep and eight per
+provider; evaluation receipts retain for 2 days and event/outbox/archive history
+for 30 days.
+
+Acceptance still requires the checksum-locked upgrade/recovery gate,
+owner-forward cursor and intentional at-least-once UI behavior, same-owner
+multi-tab convergence, browser-storage failure handling and desktop/mobile
+accessibility/visual evidence. This generic price-alert control plane is not the
+older account-aware arbitrage research-alert policy/outbox: its engine-owned
+candidate/economics producers remain disconnected. R5.2 technical screener,
+R5.3 notification worker/Telegram delivery and R11 integrated 100-user capacity
+proof remain pending and unproven.
+
+See [Owner-scoped server alerts](./ALERTS.md),
+[Russian](./ru/ALERTS.md), [Kazakh](./kk/ALERTS.md) and the detailed
+[pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
 ## Explicitly deferred external validation
 
 | Item | Why deferred | Required before claim |

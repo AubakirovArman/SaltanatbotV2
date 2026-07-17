@@ -451,7 +451,7 @@ export default function App() {
         )}
       </main>
 
-      <PriceAlertFeed alerts={priceAlerts.alerts} evaluatePrices={priceAlerts.evaluatePrices} />
+      <PriceAlertFeed alerts={priceAlerts.browserAlerts} evaluatePrices={priceAlerts.evaluatePrices} />
       <CommandPalette locale={locale} open={appCommands.paletteOpen} onClose={appCommands.closePalette} commands={appCommands.commands} />
       <ShortcutSettingsDialog locale={locale} open={appCommands.shortcutSettingsOpen} shortcuts={appCommands.shortcuts} onChange={appCommands.setShortcuts} onClose={appCommands.closeShortcutSettings} />
       {pwa.capabilities.offlineResearchSupported && <OfflineResearchDialog locale={locale} open={offlineResearchOpen} pwa={pwa} onClose={() => setOfflineResearchOpen(false)} />}

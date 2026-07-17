@@ -124,6 +124,30 @@ describe("project recovery PostgreSQL boundary", () => {
     let schemaVersion = 11;
     let onboardingTable = true;
     let executorCommandsTable = false;
+    const alertControlPlaneTables: Record<string, boolean> = {
+      alert_rules: false,
+      alert_rule_revisions: false,
+      alert_rule_states: false,
+      alert_evaluation_receipts: false,
+      alert_event_sequences: false,
+      alert_rule_events: false,
+      notification_bindings: false,
+      notification_outbox: false,
+      notification_deliveries: false,
+      alert_rule_import_receipts: false
+    };
+    const alertControlPlaneCounts: Record<string, string> = {
+      alert_rules: "7",
+      alert_rule_revisions: "9",
+      alert_rule_states: "11",
+      alert_evaluation_receipts: "13",
+      alert_event_sequences: "2",
+      alert_rule_events: "15",
+      notification_bindings: "2",
+      notification_outbox: "4",
+      notification_deliveries: "6",
+      alert_rule_import_receipts: "1"
+    };
     let persistDatabaseMarker = true;
     const queries: string[] = [];
     class FakeClient {
@@ -172,7 +196,13 @@ describe("project recovery PostgreSQL boundary", () => {
                 workspace_revisions: "4",
                 compute_jobs: "5",
                 has_user_onboarding: onboardingTable,
-                has_executor_commands: executorCommandsTable
+                has_executor_commands: executorCommandsTable,
+                ...Object.fromEntries(
+                  Object.entries(alertControlPlaneTables).map(([table, present]) => [
+                    `has_${table}`,
+                    present
+                  ])
+                )
               }
             ],
             rowCount: 1
@@ -187,6 +217,12 @@ describe("project recovery PostgreSQL boundary", () => {
         if (normalized.includes("FROM public.executor_commands")) {
           return {
             rows: [{ executor_commands: "6" }],
+            rowCount: 1
+          };
+        }
+        if (normalized.includes("FROM public.alert_rules")) {
+          return {
+            rows: [{ ...alertControlPlaneCounts }],
             rowCount: 1
           };
         }
@@ -281,6 +317,43 @@ describe("project recovery PostgreSQL boundary", () => {
     await expect(
       operations.withExportedSnapshot(async (value) => value.inventory)
     ).resolves.toMatchObject({ counts: { executorCommands: 6 } });
+
+    alertControlPlaneTables.alert_rules = true;
+    await expect(
+      operations.withExportedSnapshot(async (value) => value.inventory)
+    ).rejects.toThrow(/schema 12.*alert_rules.*inconsistent/i);
+    alertControlPlaneTables.alert_rules = false;
+
+    schemaVersion = 13;
+    await expect(
+      operations.withExportedSnapshot(async (value) => value.inventory)
+    ).rejects.toThrow(/schema 13.*alert_rules/i);
+
+    for (const table of Object.keys(alertControlPlaneTables)) {
+      alertControlPlaneTables[table] = true;
+    }
+    await expect(
+      operations.withExportedSnapshot(async (value) => value.inventory)
+    ).resolves.toMatchObject({
+      counts: {
+        alertRules: 7,
+        alertRuleRevisions: 9,
+        alertRuleStates: 11,
+        alertEvaluationReceipts: 13,
+        alertEventSequences: 2,
+        alertRuleEvents: 15,
+        notificationBindings: 2,
+        notificationOutbox: 4,
+        notificationDeliveries: 6,
+        alertRuleImportReceipts: 1
+      }
+    });
+
+    alertControlPlaneCounts.notification_outbox = "not-a-count";
+    await expect(
+      operations.withExportedSnapshot(async (value) => value.inventory)
+    ).rejects.toThrow(/notification outbox rows count is invalid/i);
+    alertControlPlaneCounts.notification_outbox = "4";
 
     await expect(
       operations.withExportedSnapshot(async () => {

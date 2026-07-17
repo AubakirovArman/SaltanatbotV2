@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
+import { createDefaultPriceAlertEvaluatorScheduler, type PriceAlertSweepResult } from "../alerts/evaluatorScheduler.js";
+import { AlertOperabilityRepository } from "../alerts/operability.js";
+import { AlertControlPlaneRetention } from "../alerts/retention.js";
 import { loadRuntimeConfig } from "../config/runtimeConfig.js";
 import { createDatabasePool, loadDatabaseConfig, migrateDatabase, verifyDatabaseConnection } from "../database/index.js";
 import { ComputeJobArtifactRetention } from "../jobs/artifactRetention.js";
@@ -25,8 +28,37 @@ await verifyDatabaseConnection(pool);
 const migration = await migrateDatabase(pool);
 const repository = new ComputeJobRepository(pool);
 const artifactRetention = new ComputeJobArtifactRetention(pool);
+const alertOperability = new AlertOperabilityRepository(pool);
+const alertRetention = new AlertControlPlaneRetention(pool);
 const componentHeartbeat = new RuntimeComponentHeartbeatRepository(pool);
+let alertLaneFailureCount = 0;
+let lastAlertLaneFailureAt: string | undefined;
+let lastAlertLaneFailurePhase: string | undefined;
+let lastAlertSweep: PriceAlertSweepResult | undefined;
+let lastAlertSweepAt: string | undefined;
+const priceAlertScheduler = createDefaultPriceAlertEvaluatorScheduler(pool, {
+  workerId,
+  onSweep: (result) => {
+    lastAlertSweep = result;
+    lastAlertSweepAt = new Date().toISOString();
+  },
+  onError: (error, context) => {
+    alertLaneFailureCount = Math.min(Number.MAX_SAFE_INTEGER, alertLaneFailureCount + 1);
+    lastAlertLaneFailureAt = new Date().toISOString();
+    lastAlertLaneFailurePhase = context.phase;
+    console.error(
+      JSON.stringify({
+        event: "price_alert_evaluator_failed",
+        workerId,
+        phase: context.phase,
+        ...(context.ruleId ? { ruleId: context.ruleId } : {}),
+        error: safeErrorMessage(error, "alert evaluator error")
+      })
+    );
+  }
+});
 await repository.recoverExpiredLeases();
+await priceAlertScheduler.start();
 await componentHeartbeat.start({
   component: "research-worker",
   generationId,
@@ -48,7 +80,10 @@ console.info(
     workerId,
     concurrency,
     timeoutMs,
-    taskMemoryMb: memoryMb
+    taskMemoryMb: memoryMb,
+    priceAlertEvaluatorLane: "ready",
+    alertDeliveryLane: "in-app-only",
+    telegramDeliveryLane: "not-available-r5.1"
   })
 );
 // This timer intentionally remains referenced: it is the daemon's idle
@@ -105,9 +140,8 @@ function launch(job: ClaimedJob): void {
 function triggerMetrics(): Promise<void> {
   if (stopping) return Promise.resolve();
   if (metricsPromise) return metricsPromise;
-  const running = repository
-    .getAggregateMetrics()
-    .then((metrics) => {
+  const running = Promise.allSettled([repository.getAggregateMetrics(), alertOperability.getMetrics()]).then(([researchMetrics, alertMetrics]) => {
+    if (researchMetrics.status === "fulfilled") {
       console.info(
         JSON.stringify({
           event: "research_queue_metrics",
@@ -115,19 +149,45 @@ function triggerMetrics(): Promise<void> {
           activeWorkers: active.size,
           workerConcurrency: concurrency,
           workerSaturation: Math.round((active.size / concurrency) * 1_000) / 1_000,
-          ...metrics
+          ...researchMetrics.value
         })
       );
-    })
-    .catch((error) => {
+    } else {
       console.error(
         JSON.stringify({
           event: "research_queue_metrics_failed",
           workerId,
-          error: safeErrorMessage(error, "database error")
+          error: safeErrorMessage(researchMetrics.reason, "database error")
         })
       );
-    });
+    }
+    if (alertMetrics.status === "fulfilled") {
+      console.info(
+        JSON.stringify({
+          event: "price_alert_lane_metrics",
+          workerId,
+          evaluator: "public-rest-price-threshold",
+          delivery: "in-app-only",
+          notificationWorkerReady: false,
+          schedulerFailuresSinceStart: alertLaneFailureCount,
+          ...(lastAlertLaneFailureAt ? { lastFailureAt: lastAlertLaneFailureAt } : {}),
+          ...(lastAlertLaneFailurePhase ? { lastFailurePhase: lastAlertLaneFailurePhase } : {}),
+          ...(lastAlertSweep ? { lastSweep: lastAlertSweep } : {}),
+          ...(lastAlertSweepAt ? { lastSweepAt: lastAlertSweepAt } : {}),
+          ...alertMetrics.value
+        })
+      );
+    } else {
+      console.error(
+        JSON.stringify({
+          event: "price_alert_lane_metrics_failed",
+          workerId,
+          schedulerFailuresSinceStart: alertLaneFailureCount,
+          error: safeErrorMessage(alertMetrics.reason, "database error")
+        })
+      );
+    }
+  });
   metricsPromise = running;
   void running.finally(() => {
     if (metricsPromise === running) metricsPromise = undefined;
@@ -170,27 +230,46 @@ function triggerComponentHeartbeat(): Promise<void> {
 function triggerRetention(): Promise<void> {
   if (stopping) return Promise.resolve();
   if (retentionPromise) return retentionPromise;
-  const running = artifactRetention
-    .enforce()
-    .then((result) => {
-      if (result.artifactsCompacted + result.tombstonesDeleted === 0) return;
-      console.info(
-        JSON.stringify({
-          event: "research_job_artifact_retention",
-          workerId,
-          ...result
-        })
-      );
-    })
-    .catch((error) => {
+  const running = Promise.allSettled([artifactRetention.enforce(), alertRetention.run()]).then(([artifactResult, alertResult]) => {
+    if (artifactResult.status === "fulfilled") {
+      const result = artifactResult.value;
+      if (result.artifactsCompacted + result.tombstonesDeleted > 0) {
+        console.info(
+          JSON.stringify({
+            event: "research_job_artifact_retention",
+            workerId,
+            ...result
+          })
+        );
+      }
+    } else {
       console.error(
         JSON.stringify({
           event: "research_job_artifact_retention_failed",
           workerId,
-          error: safeErrorMessage(error, "database error")
+          error: safeErrorMessage(artifactResult.reason, "database error")
         })
       );
-    });
+    }
+    if (alertResult.status === "fulfilled") {
+      const result = alertResult.value;
+      console.info(
+        JSON.stringify({
+          event: "price_alert_retention",
+          workerId,
+          ...result
+        })
+      );
+    } else {
+      console.error(
+        JSON.stringify({
+          event: "price_alert_retention_failed",
+          workerId,
+          error: safeErrorMessage(alertResult.reason, "database error")
+        })
+      );
+    }
+  });
   retentionPromise = running;
   void running.finally(() => {
     if (retentionPromise === running) retentionPromise = undefined;
@@ -277,6 +356,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     clearInterval(metricsTimer);
     clearInterval(componentHeartbeatTimer);
     clearInterval(retentionTimer);
+    priceAlertScheduler.quiesce();
     const forcedExit = setTimeout(() => {
       console.error(
         JSON.stringify({
@@ -289,6 +369,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     }, shutdownTimeoutMs);
     const finishClaims = Promise.resolve(pollPromise);
     const finishRetention = Promise.resolve(retentionPromise);
+    const finishPriceAlerts = priceAlertScheduler.drain();
     void drainResearchWorkerExecutions({
       currentHeartbeat: componentHeartbeatPromise,
       markDraining: () => componentHeartbeat.mark("research-worker", generationId, "draining"),
@@ -311,7 +392,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         );
       }
     })
-      .then(() => Promise.allSettled([finishClaims, finishRetention]))
+      .then(() => Promise.allSettled([finishClaims, finishRetention, finishPriceAlerts]))
       .then(() => Promise.allSettled([...setups]))
       .then(() =>
         closeResearchWorkerDatabase({

@@ -128,7 +128,11 @@ describePostgres("executor commands against isolated PostgreSQL", () => {
         [legacyOwner, "test-auth-hash-placeholder"]
       );
 
-      await expect(migrateDatabase(migrationPool)).resolves.toMatchObject({
+      await expect(
+        migrateDatabase(migrationPool, {
+          migrations: DATABASE_MIGRATIONS.slice(0, 12)
+        })
+      ).resolves.toMatchObject({
         fromVersion: 11,
         toVersion: 12,
         applied: [{ version: 12, name: "durable_executor_command_queue" }]

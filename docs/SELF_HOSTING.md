@@ -8,6 +8,12 @@ run `29560112312` with all 6 required jobs successful, protected slot
 `r4c-schema12-bb455fa`, PostgreSQL schema 12 and trading SQLite schema 9. The exact-release paired
 backup/verify/isolated-restore/drill and post-migration recovery evidence passed.
 
+R5.1 is an implementation candidate and is not deployed on the accepted production installation.
+Its repository migration advances PostgreSQL from schema 12 to 13 for owner-scoped server alerts;
+production remains schema 12 until an exact candidate completes the backup, isolated-restore and
+cutover procedure below. The accepted R4 evidence is immutable and is not evidence for R5.1. See
+[Owner-scoped server alerts](./ALERTS.md).
+
 SaltanatbotV2 remains self-hostable and does not require an OpenAI account, an OpenAI package, or
 any project-owned cloud service. PostgreSQL stores users, browser sessions, named workspaces,
 research jobs and the R4 durable executor-command queue. SQLite stores owner-partitioned trading
@@ -245,8 +251,9 @@ The production application has exactly two independently supervised Node process
 
 1. `saltanatbotv2.service` serves the built frontend, API, public WebSockets and the single
    owner-partitioned paper runtime on port `4180`;
-2. `saltanatbotv2-research-worker.service` claims bounded PostgreSQL research jobs and opens no HTTP
-   port.
+2. `saltanatbotv2-research-worker.service` claims bounded PostgreSQL research jobs and, in the R5.1
+   candidate, evaluates owner alerts from credential-free public REST candles. It opens no HTTP
+   port and receives no exchange secrets.
 
 Do not also run `npm start`, `npm run dev`, PM2, another container or a second API unit against the
 same `backend/data/trading.db`. PostgreSQL is supervised separately by the operating system and is
@@ -398,7 +405,7 @@ before launching the PostgreSQL tool without printing the password.
 
 | Storage | Data | Backup tool |
 | --- | --- | --- |
-| PostgreSQL | users, hashed passwords, authorization revisions, sessions, WS tickets, auth audit, workspaces/revisions, research jobs | paired `npm run recovery:backup` / `recovery:restore`; raw `pg_dump` / `pg_restore` remain low-level tools |
+| PostgreSQL | users, hashed passwords, authorization revisions, sessions, WS tickets, auth audit, workspaces/revisions, research jobs and, after schema 13, owner alert rules/state/receipts/events/outbox | paired `npm run recovery:backup` / `recovery:restore`; raw `pg_dump` / `pg_restore` remain low-level tools |
 | `backend/data/trading.db` | owner-scoped trading accounts, bots, orders, fills, logs, audit rows and encrypted account credentials/notifications | same paired recovery generation; `npm run data:backup` remains the low-level SQLite-only tool |
 | `backend/data/.secret` | AES root secret for encrypted SQLite settings | same verified runtime backup |
 | `backend/data/candles.db` | optional candle cache | same verified runtime backup |
@@ -531,6 +538,36 @@ server-wide live arm. Nothing is assigned to newly registered users. Before the 
 With exactly one administrator the server selects that account automatically. On a brand-new empty
 installation `TRADING_LEGACY_OWNER_USER_ID` is unnecessary.
 
+### R5.1 schema 13 candidate cutover
+
+This is a future candidate procedure, not a statement that production has already moved beyond
+schema 12. The schema-13 checksum is
+`1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
+
+1. Build and test the exact R5.1 commit without changing the running release.
+2. Stop this project's API and research worker. Create and verify one paired project-recovery
+   generation from schema 12, then restore it into a new marked PostgreSQL database and a separate
+   absent/empty runtime directory. Complete the isolated drill before cutover.
+3. Keep the worker stopped. Point only the API launcher and `FRONTEND_DIST_DIR` at the same protected
+   candidate generation, start the API and let its advisory-locked migration apply schema 13.
+4. Verify login, owner isolation, `/api/ready`, admin migration evidence and the exact checksum.
+   Stop and restart the API once; the second startup must be a migration no-op.
+5. Start the matching research worker only after the API checks pass. Verify its heartbeat, bounded
+   alert-lane metrics and one owner-scoped in-app alert without adding an exchange credential.
+6. Create and verify a post-upgrade paired generation and repeat the isolated restore check before
+   accepting the release.
+
+Do not downgrade the active database, decrement `schema_migrations`, delete schema-13 tables or
+remove immutable alert rows to recover. If rollback is selected, stop both processes, restore the
+pre-upgrade pair into **new** replacement resources, verify them, and point only the stopped project
+services at that pair plus the protected R4 release. Preserve the failed schema-13 database as
+incident evidence. Full details are in [Migration notes](./MIGRATIONS.md) and
+[Backup and restore](./BACKUP_RESTORE.md).
+
+This procedure does not add TLS. Until a separate HTTPS release is implemented and reviewed, keep
+login and alert traffic on loopback, a trusted VPN/private network or an SSH tunnel. Never expose
+account passwords or session cookies over public HTTP, and never add exchange keys for alerts.
+
 ## Updating a fork
 
 1. Create and verify one paired PostgreSQL + SQLite recovery generation. For R4, use
@@ -538,7 +575,8 @@ installation `TRADING_LEGACY_OWNER_USER_ID` is unnecessary.
 2. Pull or merge the desired commit.
 3. Run `npm ci`, tests and `npm run build` (or rebuild the Compose image).
 4. Stop only this project's API/worker for cutover, then start one API instance; migrations run
-   automatically. When first crossing trading schema v6, follow the legacy-owner procedure above.
+   automatically. When first crossing trading schema v6, follow the legacy-owner procedure above;
+   when crossing PostgreSQL schema 13, follow the API-first R5.1 procedure above.
    Never run an older binary after PostgreSQL 12 or SQLite 9 has been applied.
 5. Check `/api/ready`, pending jobs, per-user account visibility, current robots and the
    `public-http-paper` runtime state. For R4 also check the paper executor, migrated portfolio list

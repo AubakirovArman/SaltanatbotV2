@@ -3,6 +3,7 @@
 Last full repository documentation audit: **2026-07-15**
 Last focused R3.3 release/cutover reconciliation: **2026-07-17**
 Last focused R4 release/cutover reconciliation: **2026-07-17** (`bb455fa`, CI `29560112312` 6/6)
+Last focused R5.1 implementation-candidate reconciliation: **2026-07-16** (not deployed; production remains schema 12)
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -17,7 +18,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Architecture](ARCHITECTURE.md) | contributors | accepted deployment through PostgreSQL schema 12 / trading SQLite schema 9 | 2026-07-17 |
 | [Modular architecture](MODULAR_ARCHITECTURE.md) | contributors | current | 2026-07-11 |
 | [API reference](API.md) | integrators | current accepted API including the canonical R4 paper-portfolio contract | 2026-07-17 |
-| [Generated endpoint index](API_ENDPOINTS.generated.md) | integrators | generated/current; 150 HTTP routes including canonical R4 paper-portfolio ownership/access metadata | 2026-07-17 |
+| [Generated endpoint index](API_ENDPOINTS.generated.md) | integrators | generated/current; 159 HTTP routes including nine owner-scoped research-only alert routes | 2026-07-16 |
 | [Machine-readable capability truths](CAPABILITY_TRUTHS.json) | maintainers/release reviewers | source-backed semantic guard for scanner modes, public/continuous venues and generated endpoint totals | 2026-07-17 |
 | [Public arbitrage SDK](../packages/arbitrage-sdk/README.md) | integrators/SDK users | current; public/read-only | 2026-07-14 |
 | [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current | 2026-07-11 |
@@ -55,6 +56,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Protected account economics telemetry](ACCOUNT_TELEMETRY.md) | operators/contributors | current; admin-session read-only, non-executable | 2026-07-14 |
 | [Arbitrage taxonomy](ARBITRAGE_TAXONOMY.md) | product/users/contributors | canonical vocabulary; current/planned separated | 2026-07-14 |
 | [Research arbitrage alerts](RESEARCH_ALERTS.md) | operators/contributors | current protected UI/runtime; engine producers pending | 2026-07-14 |
+| [Owner-scoped server alerts](ALERTS.md) | users/operators/integrators | R5.1 implementation candidate; schema 13 rollout and exact-release acceptance still pending | 2026-07-16 |
 | [Arbitrage math and assumptions](ARBITRAGE_MATH_AND_ASSUMPTIONS.md) | users/quant contributors | canonical calculation boundary | 2026-07-14 |
 | [Arbitrage market-data quality](MARKET_DATA_QUALITY.md) | adapter authors/operators | canonical current/target quality policy | 2026-07-14 |
 | [Venue capability matrix](VENUE_CAPABILITIES.md) | users/operators/contributors | current; nine generic continuous venues separated from private/regional eligibility | 2026-07-14 |
@@ -95,6 +97,7 @@ They must be read together with `IMPLEMENTATION_STATUS.md` and must not be prese
 | Account economics telemetry | [guide](ACCOUNT_TELEMETRY.md) | [guide](ru/ACCOUNT_TELEMETRY.md) | [guide](kk/ACCOUNT_TELEMETRY.md) |
 | Arbitrage fork taxonomy | [canonical reference](ARBITRAGE_TAXONOMY.md) | [guide](ru/ARBITRAGE_TAXONOMY.md) | [guide](kk/ARBITRAGE_TAXONOMY.md) |
 | Research arbitrage alerts | [reference](RESEARCH_ALERTS.md) | [guide](ru/RESEARCH_ALERTS.md) | [guide](kk/RESEARCH_ALERTS.md) |
+| Owner-scoped server price alerts | [reference](ALERTS.md) | [guide](ru/ALERTS.md) | [guide](kk/ALERTS.md) |
 | Venue capability/expansion matrix | [reference](VENUE_CAPABILITIES.md) | [guide](ru/VENUE_CAPABILITIES.md) | [guide](kk/VENUE_CAPABILITIES.md) |
 | Network identity and transfer proof | [reference](NETWORK_IDENTITY.md) | [guide](ru/NETWORK_IDENTITY.md) | [guide](kk/NETWORK_IDENTITY.md) |
 | OKX public adapter | [reference](OKX_PUBLIC_ADAPTER.md) | [guide](ru/OKX_PUBLIC_ADAPTER.md) | [guide](kk/OKX_PUBLIC_ADAPTER.md) |

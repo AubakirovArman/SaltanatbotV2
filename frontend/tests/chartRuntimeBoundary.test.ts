@@ -37,7 +37,8 @@ describe("chart runtime ownership boundary", () => {
   });
 
   it("subscribes the background alert feed only to armed alert symbols", () => {
-    expect(alertFeed).toContain("if (alert.triggered) continue");
+    expect(alertFeed).toContain("alert.triggered || alert.suspended || alert.source === \"server\" || !alert.timeframe");
+    expect(alertFeed).toContain("useSparklines(symbols, timeframe");
     expect(alertFeed).toContain("enabled: symbols.length > 0");
   });
 

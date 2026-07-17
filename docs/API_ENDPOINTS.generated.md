@@ -18,6 +18,15 @@ This index is a route-presence and access-classification contract. A change to a
 | `GET` | `/api/admin/users/:id/sessions` | Authenticated · admin | `backend/src/identity/routes.ts` |
 | `POST` | `/api/admin/users/:id/sessions/:publicId/revoke` | Authenticated · admin | `backend/src/identity/routes.ts` |
 | `POST` | `/api/admin/users/:id/sessions/revoke-all` | Authenticated · admin | `backend/src/identity/routes.ts` |
+| `GET` | `/api/alerts` | Authenticated · owner-scoped · research-only | `backend/src/alerts/routes.ts` |
+| `POST` | `/api/alerts` | Authenticated · owner-scoped · research-only | `backend/src/alerts/routes.ts` |
+| `DELETE` | `/api/alerts/:id` | Authenticated · owner-scoped · research-only | `backend/src/alerts/routes.ts` |
+| `GET` | `/api/alerts/:id` | Authenticated · owner-scoped · research-only | `backend/src/alerts/routes.ts` |
+| `PUT` | `/api/alerts/:id` | Authenticated · owner-scoped · research-only | `backend/src/alerts/routes.ts` |
+| `POST` | `/api/alerts/:id/archive` | Authenticated · owner-scoped · research-only | `backend/src/alerts/routes.ts` |
+| `POST` | `/api/alerts/:id/rearm` | Authenticated · owner-scoped · research-only | `backend/src/alerts/routes.ts` |
+| `GET` | `/api/alerts/events` | Authenticated · owner-scoped · research-only | `backend/src/alerts/routes.ts` |
+| `GET` | `/api/alerts/outbox` | Authenticated · owner-scoped · research-only | `backend/src/alerts/routes.ts` |
 | `GET` | `/api/arbitrage` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/arbitrage/clock-health` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/arbitrage/continuous-feed-health` | Authenticated account | `backend/src/server.ts` |
@@ -170,4 +179,4 @@ This index is a route-presence and access-classification contract. A change to a
 | `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **150 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **159 HTTP endpoints** and **6 WebSocket endpoints**.

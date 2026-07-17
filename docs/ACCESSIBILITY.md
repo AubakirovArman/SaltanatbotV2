@@ -1,7 +1,10 @@
 # Accessibility release baseline
 
 Last verified: 2026-07-17
-Applies to: current alpha web terminal and the accepted/deployed R4 paper-portfolio center
+Applies to: current alpha web terminal and the accepted/deployed R4
+paper-portfolio center. R5.1 alert coverage below is an implementation-candidate
+gate, not accepted/deployed evidence; production remains R4 on PostgreSQL
+schema 12.
 
 SaltanatbotV2 treats accessibility failures as release defects. The production Playwright suite runs
 axe WCAG 2 A/AA and WCAG 2.1 A/AA rules on the Chart, Strategy and locked Trading surfaces without
@@ -33,6 +36,9 @@ excluding application regions.
 | R4 robot detail and confirmations | Named modal drawer/bottom sheet, initial close-button focus, containment, Escape/opener restoration and confirmed pause/stop/reset/archive actions | Geometry, focus-return, scroll-range and keyboard Playwright assertions |
 | R4 reflow and touch | No horizontal document overflow; menu/dialog/drawer stay inside the viewport; visible coarse-pointer buttons are at least 44 px | 390×844 and 320×700 browser assertions |
 | R4 automated WCAG scope | Initial `.paper-portfolio-center` and the same complete center with the named robot dialog open | Axe WCAG 2.0/2.1 A/AA, no excluded selectors, zero violations in the accepted run |
+| R5.1 generic price-alert semantics | Native labelled fields, explicit queued/synchronizing/armed/triggered/stale/error/archived text, owner-safe error copy and a polite in-app event announcement that never implies a trade | Candidate component/axe/browser matrix; not part of the accepted R4 receipt |
+| R5.1 mobile alert workflow | Full rule create/edit/archive/rearm/history workflow reflows at 390×844 and 320×700, keeps chart context usable, restores opener focus and retains 44 px coarse-pointer actions | Candidate mobile E2E, 200% text, document-overflow, focus and visual gates |
+| R5.1 recovery feedback | Forward-cursor retry, at-least-once duplicate possibility, local-storage failure and same-owner multi-tab synchronization are exposed as text/status rather than colour alone | Candidate cursor/storage/multi-tab component and browser tests |
 
 ## R4 production acceptance receipt
 
@@ -43,6 +49,17 @@ production visual acceptance used Chromium 149 at 1440×900, 390×844 and
 320×700, retained eight accepted PNG captures, reported zero Axe violations
 and zero touch-target/document-overflow findings, and passed opener-focus
 restoration plus robot-drawer scrolling.
+
+## R5.1 candidate boundary
+
+The R5.1 candidate covers only generic owner-scoped `price-threshold` alerts
+over public Binance/Bybit last-price closed candles with in-app delivery. Its
+accessibility gate includes the mobile, multi-tab and forward-cursor states
+listed above. It does not validate the separate account-aware arbitrage
+research-alert workflow, R5.2 technical screener, R5.3 notification
+worker/Telegram UI or the R11 100-user workload. Those remain pending and
+unproven. See [Owner-scoped server alerts](./ALERTS.md),
+[Russian](./ru/ALERTS.md) and [Kazakh](./kk/ALERTS.md).
 
 ## Known scope boundary
 

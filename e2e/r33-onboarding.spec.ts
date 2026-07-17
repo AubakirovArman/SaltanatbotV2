@@ -61,6 +61,36 @@ test("price-alert onboarding survives reload and resumes before the real alert a
   await alertPrice.fill("120");
   await alerts.getByRole("button", { name: "Add", exact: true }).click();
   await expect(alerts.locator(".alert-item")).toHaveCount(1);
+  await expect.poll(() => fixture.alertRules[0]?.lifecycleState).toBe("armed");
+  expect(fixture.alertRules[0]).toMatchObject({
+    revision: 2,
+    lifecycleState: "armed",
+    definition: {
+      kind: "price-threshold",
+      symbol: "BTCUSDT",
+      threshold: "120",
+      enabled: true,
+      deliveryChannels: ["in-app"]
+    },
+    researchOnly: true,
+    executionPermission: false
+  });
+  const alertMutations = fixture.alertRequests.filter((request) => request.method !== "GET");
+  expect(alertMutations).toHaveLength(2);
+  expect(alertMutations[0]).toMatchObject({
+    method: "POST",
+    path: "/api/alerts",
+    ownerHeader: R33_OWNER_ID,
+    csrfHeader: "csrf-r33",
+    body: { definition: { enabled: false } }
+  });
+  expect(alertMutations[1]).toMatchObject({
+    method: "PUT",
+    path: `/api/alerts/${fixture.alertRules[0]!.id}`,
+    ownerHeader: R33_OWNER_ID,
+    csrfHeader: "csrf-r33",
+    body: { expectedRevision: 1, definition: { enabled: true } }
+  });
 
   await expect.poll(() => fixture.state().status).toBe("completed");
   expectCompleted(fixture, "price-alert", "price-alert-created", "priceAlertCreatedAt");

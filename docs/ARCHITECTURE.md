@@ -9,6 +9,12 @@ jobs successful, protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and
 schema 9. The exact-release paired recovery and rollback drill evidence passed. The runtime remains
 pre-HTTPS `public-http-paper`; private/live execution is still unreachable.
 
+R5.1 is an implementation candidate, not a deployed production baseline. Its checked-in
+PostgreSQL schema 13 adds owner-scoped server alerts; production remains on schema 12 until the
+candidate passes the release, paired-recovery and cutover gates. The alert control plane is
+notification-only, reads credential-free public REST candles, and does not widen the pre-HTTPS
+execution boundary. See [Owner-scoped server alerts](./ALERTS.md).
+
 SaltanatbotV2 is an open-source crypto trading terminal built as an npm-workspaces monorepo. The Express 5 + `ws` backend proxies public market data, runs a read-only arbitrage research hub and drives a persisted trading engine; the React 18 + Vite 8 frontend renders a custom canvas chart, arbitrage screener and Blockly strategy builder; shared workspaces own canonical transport and strategy contracts. Candle data is normalized behind a `ProviderRouter`, arbitrage quotes behind venue-specific public adapters, and strategies compile to a shared intermediate representation (IR).
 
 ## Monorepo layout
@@ -69,7 +75,9 @@ Key pieces wired up in `backend/src/server.ts`:
   consumes a session-bound one-time ticket. Every unknown upgrade path is destroyed.
 - **REST endpoints** — health/catalog/instruments/venue capabilities, candles/sparklines, bounded
   read-only public venue data, basis/triangular/native-spread/pairwise arbitrage research and the
-  authenticated onboarding, workspace, research-job and trading routers.
+  authenticated onboarding, workspace, research-job, owner-alert and trading routers. R5.1 alert
+  routes derive the owner from the database session, require CSRF on mutations and return only
+  bounded owner-scoped rules, cursor pages and in-app delivery evidence.
 - **Admission and operational state** — API metrics and one process-wide admission controller run
   before route registration. Only cheap liveness bypasses admission; dependency-heavy readiness
   uses the bounded ordinary lane and then a separate bounded per-IP limiter. Accepted overlapping
@@ -101,6 +109,15 @@ PostgreSQL stores users, Argon2id password hashes, revocable sessions, one-use W
 authentication audit events, owner-scoped onboarding/workspace revisions, durable research jobs,
 the current research-worker heartbeat and the R4 fenced executor-command queue.
 Checked-in migrations run atomically under an advisory lock and refuse checksum drift.
+
+The R5.1 candidate extends that PostgreSQL boundary at schema 13 with alert rules and immutable
+revisions, exact durable evaluation state, revision-scoped receipts, per-owner event sequences,
+immutable events/outbox rows, in-app deliveries and import receipts. The research worker claims a
+rule through owner, authorization, lease and state-revision fences, reads exactly one final public
+Binance/Bybit REST candle, and commits state, receipt, event and delivery in one transaction. It
+does not read an exchange credential, traverse the general candle router, accept synthetic fallback
+or submit an order. Fixed beta admission and retention bounds are documented in
+[ALERTS.md](./ALERTS.md#quotas-and-admission); they are not a 100-user service-level guarantee.
 
 The trading executor still uses built-in **`node:sqlite`** (`DatabaseSync`) in
 `backend/src/trading/store.ts`. Accounts, credentials, bots and journals are owner-scoped; exchange
@@ -152,6 +169,12 @@ table; verification and replacement restore compare those counts with the manife
 isolated paired restore/rollback drill passed for the accepted R4 production release. A future
 self-hosted release must pass the same exact-build gate rather than inheriting this evidence.
 
+For the R5.1 candidate, the schema-13 inventory additionally counts every alert control-plane table,
+including the per-owner event counter and immutable evaluation receipts. That implementation
+coverage does not alter the accepted R4 evidence or prove deployment. Schema 12 to 13 cutover still
+requires a fresh pre-upgrade paired backup, an isolated marked restore, API-first migration and
+no-op restart, worker-second activation, then a post-upgrade paired backup and isolated restore.
+
 Restore and drill operate only on a new database name and a separate absent/empty data directory.
 Database creation is tagged with a generation/operation marker and its OID; cleanup refuses to drop
 anything whose identity no longer matches. Paths reject symbolic-link components and are pinned
@@ -166,6 +189,7 @@ backend/src/
 ├── server.ts                 # Express app, WS upgrade routing, static SPA hosting
 ├── types.ts                  # Instrument, Candle, StreamMessage, CatalogResponse
 ├── database/                 # pg configuration, pool and checksum-locked migrations
+├── alerts/                   # owner rules, public-candle evaluator, leases, cursors and retention
 ├── http/                     # global admission, API rate limits and request gates
 ├── identity/                 # registration, sessions, roles, admin approval and audit
 ├── onboarding/               # owner-scoped goals, milestones and optimistic revisions
@@ -452,8 +476,9 @@ The frontend backtest facade delegates trading bars to the reusable `strategy-co
 REST and purpose-specific WebSocket hubs connect the SPA to the backend over the same origin/port:
 
 - **REST** (`fetch`) for catalog, candle windows, sparklines, arbitrage scan/depth/history,
-  owner-scoped onboarding/workspaces/jobs and authenticated trading operations. Requests are
-  same-origin relative paths (`/api/...`).
+  owner-scoped onboarding/workspaces/jobs/alerts and authenticated trading operations. Requests
+  are same-origin relative paths (`/api/...`). R5.1 alert reads use bounded forward cursor pages;
+  alert mutations are CSRF-protected and never cross into trading execution.
 - **Account-authenticated browser WebSocket** hubs at `/stream`, `/quotes`, `/orderbook`, `/trade-flow` and `/arbitrage-stream`; their payloads come from credential-free public market feeds but the hosted application no longer exposes them anonymously.
 - **Authenticated WebSocket** at `/trade-stream`, opened only with a one-use ticket for account/order state. Every URL uses `wss` when the page is served over HTTPS.
 
@@ -513,5 +538,6 @@ The `/api/candles` response additionally returns a `hasMore` flag (true when a f
 - [Exchange adapter contract](./EXCHANGE_ADAPTER_CONTRACT.md)
 - [Arbitrage verification matrix](./ARBITRAGE_TEST_MATRIX.md)
 - [Trading engine](./TRADING.md)
+- [Owner-scoped server alerts](./ALERTS.md)
 - [Strategies & IR](./STRATEGIES.md)
 - [Configuration](./CONFIGURATION.md)

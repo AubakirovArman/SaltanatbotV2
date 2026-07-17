@@ -98,16 +98,16 @@ function createPoolDouble(
 
 describe("PostgreSQL schema migrations", () => {
   it("uses contiguous checksummed versions and no extensions", () => {
-    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(12);
+    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(13);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
     ]);
-    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(12);
+    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(13);
     expect(DATABASE_MIGRATIONS.every((migration) => /^[0-9a-f]{64}$/.test(migration.checksum))).toBe(true);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.sql).join("\n")).not.toMatch(/CREATE\s+EXTENSION/i);
   });
 
-  it("keeps the published migrations stable and adds only the executor queue in v12", () => {
+  it("keeps every published migration stable and adds only the alert control plane in v13", () => {
     expect(DATABASE_MIGRATIONS.slice(0, 10).map((migration) => migration.checksum)).toEqual([
       "9b538a4d07aad7251604f6f3b9a32e069cf9419efa993725762f00e4191cfd94",
       "4a164f3c2a96af3e7941cca8fd06e96147da4af10b2c9b1411713be32816192a",
@@ -182,6 +182,59 @@ describe("PostgreSQL schema migrations", () => {
     expect(DATABASE_MIGRATIONS[11].sql).not.toMatch(
       /\b(api_key|password_hash|private_key|exchange_secret|signed_request)\b/i
     );
+    expect(DATABASE_MIGRATIONS[12].name).toBe(
+      "durable_owner_alerts_and_notification_outbox"
+    );
+    expect(DATABASE_MIGRATIONS[12].checksum).toBe(
+      "1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02"
+    );
+    for (const table of [
+      "alert_rules",
+      "alert_rule_revisions",
+      "alert_rule_states",
+      "alert_evaluation_receipts",
+      "alert_event_sequences",
+      "alert_rule_events",
+      "notification_bindings",
+      "notification_outbox",
+      "notification_deliveries",
+      "alert_rule_import_receipts"
+    ]) {
+      expect(DATABASE_MIGRATIONS[12].sql).toContain(`CREATE TABLE ${table}`);
+    }
+    expect(DATABASE_MIGRATIONS[12].sql).toContain(
+      "alert_rules_one_leased_per_owner"
+    );
+    expect(DATABASE_MIGRATIONS[12].sql).toContain(
+      "notification_deliveries_one_sending_per_owner"
+    );
+    expect(DATABASE_MIGRATIONS[12].sql).toContain(
+      "alert_rule_events_owner_sequence_unique"
+    );
+    expect(DATABASE_MIGRATIONS[12].sql).toContain(
+      "CREATE TRIGGER alert_rule_events_assign_owner_sequence"
+    );
+    expect(DATABASE_MIGRATIONS[12].sql).toContain(
+      "run_after TIMESTAMPTZ NOT NULL DEFAULT statement_timestamp()"
+    );
+    expect(DATABASE_MIGRATIONS[12].sql).toContain(
+      "state_revision_before"
+    );
+    expect(DATABASE_MIGRATIONS[12].sql).toContain(
+      "committed_state_hash"
+    );
+    expect(DATABASE_MIGRATIONS[12].sql).toContain(
+      "CHECK (research_only)"
+    );
+    expect(DATABASE_MIGRATIONS[12].sql).toContain(
+      "CHECK (NOT execution_permission)"
+    );
+    expect(DATABASE_MIGRATIONS[12].sql).toContain(
+      "CHECK (component IN ('research-worker', 'notification-worker'))"
+    );
+    expect(DATABASE_MIGRATIONS[12].sql).not.toMatch(
+      /\b(api_key|bot_token|telegram_token|chat_id|password_hash|private_key|exchange_secret|signed_request)\b/i
+    );
   });
 
   it("derives legacy public session IDs opaquely from the full secret hash", () => {
@@ -201,8 +254,8 @@ describe("PostgreSQL schema migrations", () => {
     const database = createPoolDouble();
     const result = await migrateDatabase(database.pool);
 
-    expect(result).toMatchObject({ fromVersion: 0, toVersion: 12 });
-    expect(result.applied).toHaveLength(12);
+    expect(result).toMatchObject({ fromVersion: 0, toVersion: 13 });
+    expect(result.applied).toHaveLength(13);
     expect(database.queries.some((query) => query.text.includes("pg_advisory_xact_lock"))).toBe(true);
     expect(database.queries.at(0)?.text).toBe("BEGIN");
     expect(database.queries.at(-1)?.text).toBe("COMMIT");

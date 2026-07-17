@@ -1,4 +1,10 @@
 import type { Page, Route } from "@playwright/test";
+import {
+  ALERT_EVENT_PAGE_SCHEMA_V1,
+  ALERT_RULE_LIST_SCHEMA_V1,
+  parseAlertEventPageV1,
+  parseAlertRuleListV1
+} from "@saltanatbotv2/contracts";
 import type {
   EvidenceValue,
   PaperMoney,
@@ -109,6 +115,8 @@ export async function installR4PaperPortfolioFixture(page: Page): Promise<R4Pape
     expiresAt: "2026-07-18T20:00:00.000Z",
     tradingAvailable: true
   }));
+
+  await installAlertReadFixture(page, violations, unexpectedApiRequests);
 
   await page.route("**/api/onboarding**", (route) => {
     const request = route.request();
@@ -313,6 +321,83 @@ export async function installR4PaperPortfolioFixture(page: Page): Promise<R4Pape
       return state ? clone(detailFor(state)) : undefined;
     }
   };
+}
+
+async function installAlertReadFixture(
+  page: Page,
+  violations: string[],
+  unexpectedApiRequests: string[]
+): Promise<void> {
+  await page.route("**/api/alerts**", (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const owner = request.headers()["x-sbv2-expected-user"] ?? null;
+    const supportedPath = url.pathname === "/api/alerts"
+      || url.pathname === "/api/alerts/events"
+      || url.pathname === "/api/alerts/outbox";
+
+    if (request.method() !== "GET" || !supportedPath || !validAlertReadQuery(url)) {
+      unexpectedApiRequests.push(`${request.method()} ${url.pathname}`);
+      return json(route, {
+        code: "unexpected_alert_request",
+        error: `${request.method()} ${url.pathname}`
+      }, 501);
+    }
+    if (owner !== R4_OWNER_ID) {
+      violations.push(`${request.method()} ${url.pathname}: owner ${owner ?? "<missing>"}`);
+      return json(route, {
+        code: "owner_context_changed",
+        error: "Owner context changed."
+      }, 409);
+    }
+
+    if (url.pathname === "/api/alerts") {
+      return json(route, parseAlertRuleListV1({
+        schemaVersion: ALERT_RULE_LIST_SCHEMA_V1,
+        rules: [],
+        generatedAt: "2026-07-17T03:30:00.000Z",
+        researchOnly: true,
+        executionPermission: false
+      }));
+    }
+    if (url.pathname === "/api/alerts/events") {
+      return json(route, parseAlertEventPageV1({
+        schemaVersion: ALERT_EVENT_PAGE_SCHEMA_V1,
+        events: [],
+        nextCursor: "r4_owner_alert_cursor_v1_0",
+        hasMore: false,
+        generatedAt: "2026-07-17T03:30:00.000Z",
+        researchOnly: true,
+        executionPermission: false
+      }));
+    }
+    return json(route, {
+      items: [],
+      researchOnly: true,
+      executionPermission: false
+    });
+  });
+}
+
+function validAlertReadQuery(url: URL): boolean {
+  const allowed = url.pathname === "/api/alerts/events"
+    ? new Set(["ruleId", "cursor", "since", "limit"])
+    : url.pathname === "/api/alerts/outbox"
+      ? new Set(["limit"])
+      : new Set<string>();
+  const keys = [...url.searchParams.keys()];
+  if (keys.some((key) => !allowed.has(key)) || new Set(keys).size !== keys.length) return false;
+
+  const limit = url.searchParams.get("limit");
+  if (limit !== null && (!/^[1-9]\d{0,2}$/u.test(limit) || Number(limit) > 200)) return false;
+  const ruleId = url.searchParams.get("ruleId");
+  if (ruleId !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(ruleId)) return false;
+  const cursor = url.searchParams.get("cursor");
+  if (cursor !== null && !/^[A-Za-z0-9_-]{1,256}$/u.test(cursor)) return false;
+  const since = url.searchParams.get("since");
+  const sinceTimestamp = since === null ? undefined : Date.parse(since);
+  if (since !== null && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(since) || !Number.isFinite(sinceTimestamp) || new Date(sinceTimestamp).toISOString() !== since)) return false;
+  return true;
 }
 
 function initialPortfolios(): Map<string, PortfolioState> {

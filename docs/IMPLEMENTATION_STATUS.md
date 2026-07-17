@@ -31,9 +31,33 @@ the corresponding browser center and fenced PostgreSQL-to-SQLite executor.
 Golden-ledger, restart, two-owner/browser, isolated paired
 restore/migration/rollback and protected production-smoke gates are recorded in
 [R4 canonical paper portfolios evidence](./evidence/R4_PAPER_PORTFOLIOS.md).
-R5 is the next pending increment; its implementation is not active yet. The
-runtime remains `public-http-paper`: HTTPS, exchange credential use, private
-streams, signed requests and live orders remain outside this release.
+R5.1 is now an implementation candidate in the worktree, but it is not yet
+accepted, committed or deployed. Production therefore remains on the exact R4
+slot and schema 12 until the schema-13 backup/restore/rollback, exact-CI,
+browser-closed and visual gates pass. The runtime remains `public-http-paper`:
+HTTPS, exchange credential use, private streams, signed requests and live orders
+remain outside this release.
+
+## R5.1 implementation candidate — not yet deployed
+
+- [x] Define strict research-only price-rule, event, outbox and public projection
+  contracts shared by the browser and backend.
+- [x] Implement owner-scoped PostgreSQL rule/revision/state/receipt/event/outbox
+  persistence with authorization revision, CSRF, lease and state-revision
+  fences.
+- [x] Evaluate exact Binance/Bybit public closed candles, one durable bar at a
+  time, including historical first-bar recovery and exact decimal comparison.
+- [x] Add transactional per-owner event ordering, forward cursor pages,
+  at-least-once browser checkpoints, multi-tab fences and deletion tombstones.
+- [x] Add beta quotas, provider-fair admission, structured metrics and bounded
+  2-day/30-day retention.
+- [ ] Finish full unit/integration/build/browser/visual/soak gates and the exact
+  unprivileged PostgreSQL schema-13 recovery rehearsal.
+- [ ] Commit/push the exact candidate, pass all six GitHub CI jobs, create a
+  protected release slot and cut over schema 13 without changing port 4180.
+
+Canonical behavior and current limits are documented in
+[Owner-scoped server alerts](./ALERTS.md).
 
 ## Delivered slices (not full roadmap completion)
 

@@ -196,7 +196,9 @@ export function ChartWorkspaceRuntime({
       exchange={activeExchange}
       marketType={activeMarketType}
       priceType={activePriceType}
+      timeframe={activeChart?.timeframe ?? timeframe}
       alerts={priceAlerts.alerts}
+      alertSync={priceAlerts.sync}
       onAddAlert={priceAlerts.addAlert}
       onRemoveAlert={priceAlerts.removeAlert}
       onResetAlert={priceAlerts.resetAlert}
@@ -280,16 +282,17 @@ export function ChartWorkspaceRuntime({
               shapes={artifactOverlay.activeOverlay?.shapes}
               tables={artifactOverlay.activeOverlay?.tables}
               alerts={priceAlerts.alerts}
-              onAddAlert={(price) =>
-                priceAlerts.addAlert({
+              onAddAlert={priceAlerts.sync.status === "legacy" || (primaryPriceType === "last" && (primaryChart?.timeframe ?? timeframe) !== "1M") ? (price) => {
+                void priceAlerts.addAlert({
                   symbol: primaryInstrument.symbol,
                   price,
                   direction: price >= (stream.candles.at(-1)?.close ?? price) ? "above" : "below",
                   exchange: primaryExchange,
                   marketType: primaryMarketType,
-                  priceType: primaryPriceType
-                })
-              }
+                  priceType: primaryPriceType,
+                  timeframe: primaryChart?.timeframe ?? timeframe
+                });
+              } : undefined}
               livePositions={livePositions}
               strategyName={artifactOverlay.activeOverlay?.name}
               strategySummary={artifactOverlay.activeOverlay?.summary}

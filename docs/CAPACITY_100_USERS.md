@@ -5,10 +5,14 @@ Audience: self-hosted operators and maintainers
 Last measured: 2026-07-16
 
 Status: baseline measured; the first process-wide API admission/readiness slice
-is implemented and the accepted/deployed R4 release adds a bounded per-owner fenced paper-command
-queue. R4 final SHA `bb455facdfe5a1b3cabe15490c86c299ea684ee7` passed CI run `29560112312`
-(`6/6`) and was deployed in slot `r4c-schema12-bb455fa`. The quantified 100-user proof, global
-executor cap and remaining cross-workload caps are still planned for R11.
+is implemented and the accepted/deployed R4 release adds a bounded per-owner
+fenced paper-command queue. R4 final SHA
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7` passed CI run `29560112312`
+(`6/6`) and was deployed in slot `r4c-schema12-bb455fa`. An R5.1 server-alert
+implementation candidate now exists, but it is neither accepted nor deployed;
+production remains R4 on PostgreSQL schema 12. The quantified 100-user proof,
+global executor cap and remaining cross-workload caps are still planned for
+R11.
 
 This plan covers the `public-http-paper` Research / Paper release. SSL/TLS,
 HTTPS termination and live exchange execution are explicitly outside its active
@@ -18,7 +22,9 @@ network/VPN/IP allowlist and use passwords that are not reused elsewhere.
 The practical target is a bounded modular monolith, not a ChatGPT-scale
 microservice fleet. One API process serves the SPA, authenticated REST and
 shared public market WebSockets. PostgreSQL owns identity, workspaces, durable
-authorization, research jobs and future multi-user alert/outbox records. One
+authorization and research jobs. The R5.1 implementation candidate adds
+multi-user alert/outbox records through PostgreSQL schema 13, but that schema is
+not the production state. One
 singleton trading executor owns the protected SQLite trading/paper state under
 [ADR 0001](adr/0001-execution-authority-and-system-of-record.md). CPU-heavy
 research executes in a separate bounded worker.
@@ -40,7 +46,8 @@ research worker supervisor (implemented)
         |
 bounded backtest worker threads
 
-PostgreSQL alert/outbox -> dedicated notification worker (planned in R5)
+PostgreSQL schema-13 alert/outbox -> existing research worker evaluator (R5.1 candidate)
+                              \-> dedicated notification worker (R5.3 pending)
 ```
 
 The diagram intentionally has no active TLS reverse-proxy layer. A later HTTPS
@@ -51,12 +58,15 @@ release may add one, but it is not a dependency or deliverable here.
 **Status:** planned validation on top of a measured and bounded single-process
 baseline.
 
-**Baseline:** the limits in the next section are implemented; the host snapshot
-is observation only and is not capacity evidence.
+**Baseline:** only limits explicitly marked implemented are part of the accepted
+baseline. Limits marked R5.1 candidate have implementation and test coverage but
+are not deployed evidence. The host snapshot is observation only and is not
+capacity evidence.
 
-**Remaining:** measure and tune the initial API governor, implement the
-WebSocket/robot/alert/screener caps below, run the exact workload, meet the
-recovery targets and pass every failure drill.
+**Remaining:** measure and tune the initial API governor, implement the missing
+WebSocket/robot/screener caps below, validate the R5.1 candidate alert caps under
+the integrated workload, meet the recovery targets and pass every failure
+drill.
 
 **Dependencies:** accepted ADR 0001, stable R2-R10 workload contracts, paired
 PostgreSQL/SQLite backup generations and one fenced trading executor.
@@ -138,6 +148,22 @@ that limitation.
 - Compose currently caps the API at 4 CPU/4 GiB, PostgreSQL at 2 CPU/2 GiB and
   the research service at 2 CPU/2 GiB. These are conservative defaults, not a
   measured final allocation.
+- The R5.1 implementation candidate bounds generic owner price alerts at 100
+  active and 200 non-archived rules per owner, 400 total retained rule/history
+  rows per owner and 480 globally active rules. Its scheduler claims at most
+  500 rules per sweep (default 100), performs at most four public reads
+  concurrently, admits at most 16 unique reads per sweep and at most eight per
+  provider. Evaluation receipts retain for 2 days; events, in-app outbox,
+  terminal delivery evidence, old states/revisions and archived rules retain
+  for 30 days under bounded compaction. These are beta safety ceilings, not
+  proof of comfortable 100-user operation. See [owner-scoped server
+  alerts](./ALERTS.md).
+- The same candidate has owner-bound forward event pages, intentional
+  at-least-once publish-before-checkpoint semantics, same-owner multi-tab
+  convergence and mobile/desktop release gates. It is distinct from the older
+  account-aware arbitrage research-alert policy/outbox, whose engine-owned
+  candidate/economics producers remain disconnected. R5.2, R5.3 and the
+  integrated R11 workload remain pending and unproven.
 
 ## Global admission caps and remaining work
 
@@ -154,23 +180,25 @@ measured evidence.
 | API wait queue | 256 ordinary requests | included above | reject overflow with `global_admission_exhausted`; only cheap health bypasses, readiness is bounded | implemented |
 | Readiness dependency scan | 1 in flight; completed result retained 1 second; 1 PG query at a time | 2 requests/second/IP, burst 10 | excess source receives `429 readiness_rate_limited`; a full 4,096-key store returns the remaining prune horizon; all admitted callers share one scan | implemented |
 | Browser market WebSockets | 300 connections | 4 | close/reject with retryable `1013/429`; never grow buffers | global admission planned; slow-client bound exists |
-| PostgreSQL application connections | 20 total: API 12 + research 4 + notification 4 | n/a | fail readiness before exhausting operator reserve | API/research 16 exist; notification 4 planned |
+| PostgreSQL application connections | 20 total: API 12 + research 4 + notification 4 | n/a | fail readiness before exhausting operator reserve | API/research 16 exist; R5.1 reuses research, notification 4 remains R5.3-planned |
 | PostgreSQL `max_connections` deployment floor | 40 | n/a | retain at least 20 connections for migration, backup and operator recovery | deployment validation planned |
 | Active paper executor commands | global cap/load proof pending | 256 | reject new owner command before unbounded queue growth; terminal rows are bounded separately | accepted/deployed per-owner schema-12 bound implemented; global R11 evidence pending |
 | Running paper robots | 100 | 4 | reject new start; existing robots remain controllable | per-owner cap exists; global cap planned |
 | Outstanding research jobs | 200 | 5, with 1 running | reject submission with retry hint; never enqueue without bound | per-owner cap exists; global cap planned |
 | Research execution | 2 active tasks initially | 1 | fair queueing; tune only after profiling | implemented |
-| Technical screener runs | 4 active; 250 symbols per preset | 1 active | queue fairly or reject; minimum scheduled interval 60 seconds | R5 planned |
-| Enabled alert rules | 5,000 | 100 | reject new rule; existing rules continue | R5 planned |
-| Alert evaluation batch | 500 rules/tick | bounded by owner fairness | carry remaining work to next lease; expose age | R5 planned |
-| Telegram deliveries | lower of provider budget or 20 sends/second | 2 sends/second | token-bucket delay, retry/backoff and dead-letter state | R5 planned |
+| Technical screener runs | 4 active; 250 symbols per preset | 1 active | queue fairly or reject; minimum scheduled interval 60 seconds | R5.2 pending |
+| Active generic price-alert rules | 480 | 100 active; 200 non-archived and 400 total history rows | reject activation/create before exceeding the cap; archive always remains available | R5.1 implementation candidate; production schema 12 has none of these rows |
+| Alert evaluation sweep | 500 claims; 16 unique public reads, eight/provider, four concurrent | owner-fair claims | coalesce equal scope/cursor reads; capacity-defer saturated-provider work without starving the other provider | R5.1 implementation candidate; R11 load proof pending |
+| Telegram deliveries | lower of provider budget or 20 sends/second | 2 sends/second | token-bucket delay, retry/backoff and dead-letter state | R5.3 pending; unavailable in R5.1 |
 | Workspaces | 75 total, 25 active and 64 MiB retained payload per owner | same | reject create/import; preserve existing revisions | per-owner quotas plus 4 MiB metadata-first keyset responses implemented; global admission/load proof remains R11 |
 | L2 capture scopes | 24 selected scopes | operator-governed owner access | stop new capture when disk free space falls below 30% | R10A planned |
 
-All caps must be configuration-validated, visible in metrics and applied before
-allocating large request bodies, worker threads, WebSocket buffers or result
-artifacts. Admin role must not bypass a resource cap; an operator maintenance
-override must be explicit, audited and short-lived.
+Configurable caps must be configuration-validated, visible in metrics and
+applied before allocating large request bodies, worker threads, WebSocket
+buffers or result artifacts. The R5.1 beta alert ceilings are deliberately
+fixed and cannot be raised by configuration before R11 evidence. Admin role
+must not bypass a resource cap; an operator maintenance override must be
+explicit, audited and short-lived.
 
 ## Quantified 100-user workload
 
@@ -186,8 +214,8 @@ arrival schedule must be reusable across releases.
 | 10 automation users | inspect Strategy Studio and submit a combined burst of 40 backtest/optimizer jobs in 60 seconds; only admitted worker slots execute |
 | 5 admin/onboarding users | user list/filter, pending activation, role change, workspace creation/import and password/login flows |
 | Paper execution background | 60 running paper robots across 30 owners, with the test allowed to rise to but never exceed the 100-robot global cap |
-| Alerts | 2,000 enabled rules in the normal mix, exercised again at the 5,000-rule cap |
-| Notifications | 10 deliveries/second sustained for one minute and a 100-row burst, including Telegram timeout/429 injection |
+| Alerts | Begin within the R5.1 beta ceiling of 480 globally active rules and at most 100 active/200 non-archived/400 total rows per owner; any higher R11 mix requires measured retuning before, not during, acceptance |
+| Notifications | Exercise R5.1 owner-forward in-app pages and duplicate-safe replay; add the proposed 10 deliveries/second plus Telegram timeout/429 injection only after R5.3 exists |
 | Public L2/ML scope | up to 24 capture scopes plus bounded inference replay after R10A/R10B; no unbounded venue-wide subscriptions |
 | Login churn | 20 normal login attempts/minute plus a separately labelled failed-login burst that must trigger rate limits |
 
@@ -237,10 +265,14 @@ not claims about the current manual backup schedule.
 | Rebuildable candle/public market cache | no durability promise | 30 minutes to repopulate accepted hot scopes | discard/rebuild without blocking tenant state |
 | Release binary/configuration | release artifact is immutable | 30 minutes | verified archive, configuration backup and atomic rollback drill |
 
-Restoring an at-least-once notification outbox may redeliver a provider-accepted
-message whose acknowledgement was not retained. The stable delivery
-deduplication ID must survive backup/restore; the documentation must describe
-possible duplicates rather than promise exactly-once delivery.
+The R5.1 candidate publishes owner-bound forward event pages before persisting
+the browser cursor checkpoint. Restore or browser-storage failure may therefore
+repeat an in-app toast, but cannot acknowledge an unseen event; this is
+intentional at-least-once behavior. A future R5.3 provider outbox may also
+redeliver a provider-accepted message whose acknowledgement was not retained.
+Stable event/delivery deduplication identity must survive backup/restore; the
+documentation must describe possible duplicates rather than promise
+exactly-once delivery.
 
 ## Mandatory failure drills
 
@@ -258,7 +290,8 @@ machine-readable result. Passing unit tests alone is insufficient.
 | Inject SQLite lock/corruption in an isolated copy | executor fails closed; verified restore meets the stated RTO |
 | Fill the data filesystem through the soft watermark | L2 capture and new heavy artifacts stop first; login/chart/journal writes retain reserved space |
 | Break or gap an upstream market WebSocket | evidence becomes stale/unavailable; screener, alert and ML paths do not treat the gap as normal data |
-| Telegram timeout, `429`, and accepted-before-ack crash | bounded retry/backoff; stable dedupe ID; at-least-once duplicate is visible and no event is silently lost |
+| R5.1 event-page publish before cursor persistence, local-storage failure and restored cursor ahead of the database | forward cursor remains owner-bound; an unseen event is never acknowledged; duplicate in-app presentation is bounded and identifiable |
+| Telegram timeout, `429`, and accepted-before-ack crash | R5.3-only pending drill: bounded retry/backoff; stable dedupe ID; at-least-once duplicate is visible and no event is silently lost |
 | Exceed API/WS/job/robot/alert global caps | fair `429/503/1013` backpressure; memory and queue length remain bounded |
 | Restore paired PostgreSQL/SQLite generation | owner counts, workspaces, jobs, paper totals and command reconciliation match the retained manifest |
 

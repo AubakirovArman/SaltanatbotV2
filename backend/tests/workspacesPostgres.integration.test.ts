@@ -222,7 +222,7 @@ describePostgres("workspaces against isolated PostgreSQL", () => {
 
       await expect(migrateDatabase(legacyPool)).resolves.toMatchObject({
         fromVersion: 9,
-        toVersion: 12,
+        toVersion: 13,
         applied: [
           { version: 10, name: "versioned_workspace_workflow" },
           {
@@ -232,6 +232,10 @@ describePostgres("workspaces against isolated PostgreSQL", () => {
           {
             version: 12,
             name: "durable_executor_command_queue"
+          },
+          {
+            version: 13,
+            name: "durable_owner_alerts_and_notification_outbox"
           }
         ]
       });

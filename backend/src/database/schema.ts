@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { ALERT_CONTROL_PLANE_MIGRATION_SQL } from "./alertControlPlaneMigration.js";
 import { EXECUTOR_COMMANDS_MIGRATION_SQL } from "./executorCommandsMigration.js";
 import { IDENTITY_CONTROL_PLANE_MIGRATION_SQL } from "./identityControlPlaneMigration.js";
 import { ONBOARDING_AND_RUNTIME_HEARTBEATS_MIGRATION_SQL } from "./onboardingMigration.js";
@@ -566,6 +567,11 @@ const migrationDefinitions = [
     version: 12,
     name: "durable_executor_command_queue",
     sql: EXECUTOR_COMMANDS_MIGRATION_SQL
+  },
+  {
+    version: 13,
+    name: "durable_owner_alerts_and_notification_outbox",
+    sql: ALERT_CONTROL_PLANE_MIGRATION_SQL
   }
 ] as const;
 

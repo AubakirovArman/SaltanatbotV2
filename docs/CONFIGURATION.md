@@ -6,6 +6,11 @@ jobs successful, protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and
 schema 9. Exact-release recovery evidence passed. The supported runtime profile remains
 `public-http-paper`; HTTPS and private/live execution are outside this release.
 
+R5.1 is currently an implementation candidate only. Its source tree expects PostgreSQL schema 13
+for owner-scoped alerts, but the production installation described by the accepted evidence above
+still runs schema 12 and has not deployed R5.1. Do not treat candidate tests or documentation as a
+production cutover record. See [Owner-scoped server alerts](./ALERTS.md).
+
 SaltanatbotV2 is configured mostly at runtime through the app itself. PostgreSQL stores accounts,
 revocable sessions, workspaces, research jobs and the R4 durable executor-command queue. SQLite
 stores owner-scoped trading accounts, canonical paper portfolios, robots and journals plus
@@ -85,6 +90,20 @@ Variables outside that first slice are still owned by their feature modules and 
 | `PAPER_MULTI_LEG_DB_PATH` | `backend/data/arbitrage-paper-multi-leg.sqlite` | Optional path for the bounded append-only multi-leg paper journal. Compose operators should leave the default inside `/app/backend/data`; any custom container path needs its own persistent mount and backup policy or it is lost when the container is recreated. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_FILE` | *(unset)* | Preferred absolute path to one bounded, regular, non-symlinked UTF-8 public-feed allowlist. Mutually exclusive with the inline JSON variable. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_JSON` | *(unset)* | Optional bounded public-feed allowlist for continuous multi-venue research discovery; exact reviewed identity and fee metadata only, never credentials. |
+
+R5.1 alert capacity is deliberately **not** environment-configurable. The candidate fixes the beta
+boundary at 100 active and 200 non-archived rules per owner, 400 total rule/history rows per owner,
+480 globally active rules, 100 claims per sweep by default (500 hard maximum), four concurrent
+public scopes, 16 unique public reads per sweep, eight per provider and one candle per read. Equal
+scope/cursor reads are coalesced. Receipts retain two days; events, outbox, terminal deliveries, old
+states and old revisions retain 30 days; archived rules retain 30 days after dependencies leave.
+One compaction pass defaults to 1,000 rows, is capped at 6,000 rows and two seconds, and uses a
+non-blocking advisory lock. These values require an R11 workload review before being raised and do
+not promise comfortable service for 100 simultaneous users.
+
+The alert evaluator has no credential, token or private-provider setting. It selects Binance or
+Bybit public REST directly, requires final candles, and rejects cache, synthetic fallback and
+private exchange evidence. No configuration value can turn an alert into a trade.
 
 To run on a different application port after configuring PostgreSQL (paper/research only, safe default):
 
@@ -319,6 +338,17 @@ revision evidence, durable mutation receipts and valuation/projection evidence. 
 event ledgers remain authoritative; snapshot-only legacy state is imported with explicit
 `legacy-incomplete` evidence. See [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
+### R5.1 PostgreSQL schema 13 candidate
+
+The candidate adds ten owner-scoped alert tables, immutable revisions/receipts/events/outbox rows,
+a transactional per-owner event counter and bounded retention indexes. Its exact migration checksum
+is `1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
+Startup accepts the complete checksum-locked migration chain or fails closed; there is no supported
+flag to skip schema 13, downgrade to 12 in place or delete alert history as a rollback shortcut.
+Production remains schema 12 until the procedure in
+[Migration notes](./MIGRATIONS.md#r51-implementation-candidate-postgresql-schema-13) is executed
+and accepted for an exact release.
+
 ## Dormant private-live credential contract
 
 > **Not an operator procedure for this release.** `public-http-paper` rejects exchange-account and
@@ -459,6 +489,13 @@ instead of decrypting under the wrong tenant.
 - No key fingerprint/schema metadata is written during this phase. That migration is deliberately deferred: any future metadata row must be created only after the existing ciphertext has authenticated under the supplied key, never as a write-before-proof shortcut.
 
 ## Production deployment
+
+The instructions below describe the accepted schema-12 production shape. For a future R5.1
+cutover, keep both application processes stopped, verify the pre-upgrade paired generation and its
+isolated restore, then start only the exact candidate API. Let it migrate 12 to 13, verify the
+checksum and a no-op API restart, and only then start the matching research worker. Never start the
+worker first against a schema being upgraded. HTTP remains transport-insecure throughout this
+candidate; a database migration does not provide TLS.
 
 In production the frontend is compiled to static assets and served by the backend itself — there is no separate web server for the SPA. The backend resolves the path once from the frozen runtime configuration and validates the release before it opens databases or a network listener:
 
@@ -622,5 +659,6 @@ server, complete this checklist.
 - [Architecture](./ARCHITECTURE.md)
 - [HTTP & WebSocket API](./API.md)
 - [Trading engine](./TRADING.md)
+- [Owner-scoped server alerts](./ALERTS.md)
 - [Canonical paper portfolios](./PAPER_PORTFOLIOS.md)
 - [Strategies](./STRATEGIES.md)

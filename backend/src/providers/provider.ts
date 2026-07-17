@@ -20,6 +20,8 @@ export interface MarketCandleEvent {
 export interface MarketRouteOptions {
   marketType?: DataMarketType;
   priceType?: PriceType;
+  /** Optional deadline/cancellation signal for public REST reads. */
+  signal?: AbortSignal;
 }
 
 export interface MarketSubscription {

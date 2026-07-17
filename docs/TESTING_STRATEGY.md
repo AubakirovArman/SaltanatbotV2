@@ -87,6 +87,53 @@ evidence only: it is not a manual Opera/real-Android-device or
 VoiceOver/NVDA/TalkBack result, and it does not validate HTTPS, private/live
 exchange access, real borrowing or real margin telemetry.
 
+### R5.1 implementation-candidate alert matrix
+
+R5.1 is an implementation candidate, not an accepted or deployed release.
+Production remains the accepted R4 slot on PostgreSQL schema 12. The candidate
+introduces schema 13 and must retain this matrix, exact-SHA CI and an isolated
+upgrade/restore drill before its status can change. The canonical contract and
+safety boundary are documented in [Owner-scoped server
+alerts](./ALERTS.md), with [Russian](./ru/ALERTS.md) and
+[Kazakh](./kk/ALERTS.md) translations.
+
+The mandatory R5.1 matrix covers:
+
+- checksum-locked 12→13 migration and no-op restart under an unprivileged
+  PostgreSQL role, immutable revision/receipt/event/outbox rows, composite
+  owner foreign keys and child-first retention;
+- database-session ownership, `X-SBV2-Expected-User`, CSRF, authorization and
+  rule-revision fences, administrator non-bypass, malformed body rejection and
+  unsupported-channel fail-closed behavior;
+- beta quotas of 100 active and 200 non-archived rules per owner, 400 total
+  retained rule/history rows per owner and 480 globally active rules, including
+  concurrent 479→480 admission and archive-always-wins deletion behavior;
+- exact public closed-candle evaluation, false-to-true crossing, decimal
+  threshold precision, one-bar durable cursor advancement, long-outage catch-up
+  and malformed/stale/forming/future evidence rejection;
+- a default 100/hard 500-claim sweep, four concurrent public reads, 16 unique
+  reads per sweep and eight per provider, with equal scope/cursor coalescing,
+  provider fairness, bounded capacity deferral and no leaked lease;
+- owner-bound `alert-event-page-v1` forward cursors with at most 200 events per
+  page, complete `hasMore` draining, cursor-ahead recovery and at-least-once
+  publish-before-checkpoint behavior;
+- same-owner multi-tab Lamport/BroadcastChannel convergence, browser-storage
+  failure, create/delete races, stale local-copy fencing and browser-closed
+  restart/dedup behavior;
+- desktop and mobile rule creation, lifecycle/history/toast semantics,
+  keyboard/focus behavior, 200% text, 390×844 and 320×700 reflow, 44 px coarse
+  pointer targets, axe and visual regression;
+- 2-day evaluation-receipt retention and 30-day event/outbox/terminal-delivery/
+  old-state/old-revision/archive retention with bounded batches, time budget,
+  lock contention and dependency-order tests.
+
+This matrix concerns generic owner price alerts (`price-threshold`, public
+Binance/Bybit last-price candles and in-app delivery). It is not acceptance of
+the older account-aware arbitrage research-alert policy/outbox, whose
+engine-owned candidate/economics producers remain disconnected. R5.2 technical
+screener production, R5.3 notification worker/Telegram delivery and the R11
+integrated 100-user workload all remain pending and unproven.
+
 ## Pine compiler matrix
 
 For each supported construct, test:
