@@ -146,7 +146,9 @@ describePostgres("owner alert control plane against isolated PostgreSQL", () => 
         [owner, PASSWORD_HASH],
       );
 
-      await expect(migrateDatabase(migrationPool)).resolves.toMatchObject({
+      await expect(
+        migrateDatabase(migrationPool, { migrations: DATABASE_MIGRATIONS.slice(0, 13) }),
+      ).resolves.toMatchObject({
         fromVersion: 12,
         toVersion: 13,
         applied: [
