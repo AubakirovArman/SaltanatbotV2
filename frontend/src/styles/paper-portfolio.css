@@ -394,7 +394,7 @@
 .paper-detail-drawer > header > div { min-inline-size: 0; }
 .paper-detail-drawer > header h3,
 .paper-detail-drawer > header p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.paper-detail-scroll { display: grid; align-content: start; gap: 10px; min-block-size: 0; overflow-y: auto; padding: 13px 14px max(14px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+.paper-detail-scroll { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 10px; min-block-size: 0; overflow-y: auto; padding: 13px 14px max(14px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
 .paper-detail-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .paper-last-error { align-items: flex-start; margin: 0; }
 .paper-last-error svg { flex: 0 0 auto; inline-size: 17px; }

@@ -167,6 +167,7 @@ test.describe("R4 canonical paper portfolio center", () => {
     await expect(curve).toBeVisible();
     await captureAudit(page, "06a-mobile-equity-curve.png");
     const scroll = drawer.locator(".paper-detail-scroll");
+    await assertNoElementHorizontalOverflow(scroll);
     await openDisclosure(drawer, "Performance and risk");
     await openDisclosure(drawer, "Recent fills");
     await openDisclosure(drawer, "Recent ledger events");
@@ -218,6 +219,7 @@ test.describe("R4 canonical paper portfolio center", () => {
     await robotTrigger.click();
     const drawer = page.getByRole("dialog", { name: "Momentum Guardian" });
     await assertContainedInViewport(drawer, 320, 700);
+    await assertNoElementHorizontalOverflow(drawer.locator(".paper-detail-scroll"));
     const lastActions = drawer.locator(".paper-robot-actions").last();
     await lastActions.scrollIntoViewIfNeeded();
     await expect(lastActions.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
@@ -308,6 +310,14 @@ async function assertMinimumTouchTargets(locator: Locator, minimum: number): Pro
     expect(box.width).toBeGreaterThanOrEqual(minimum);
     expect(box.height).toBeGreaterThanOrEqual(minimum);
   }
+}
+
+async function assertNoElementHorizontalOverflow(locator: Locator): Promise<void> {
+  const geometry = await locator.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth
+  }));
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
 }
 
 async function assertTimeframeControlContainsTrigger(page: Page): Promise<void> {
