@@ -7,6 +7,9 @@
 кітаптар, сканерге қатысу, жеке шот/ордер операциялары және оператордың құқықтық қолжетімділігі.
 Бір деңгейдің дайындығы келесісін қоспайды. Мұнда mainnet дайындығы туралы мәлімдеме жоқ;
 алынып тасталған 7–14 күндік ақылы Binance/Bybit soak өткізілген жоқ.
+Қазіргі `public-http-paper` ішінде барлық private/live жолдары белсенді емес:
+credential use, signed requests, private streams және live orders қабылданбайды,
+ал `private-live` немесе `ENABLE_LIVE_SPOT=true` startup-ты тоқтатады.
 
 ## Күй атаулары
 
@@ -15,7 +18,7 @@
 | Ашық түрде іске асқан | Тіркелгі деректерінсіз жол тіркелген, ресурстары шектелген және репозиторий тесттерімен жабылған |
 | Continuous route-ready | Таңдалған құралдың WebSocket кітабы sequence/checksum, connection generation және freshness тексерулерінен кейін ғана зерттеу discovery-іне кіре алады |
 | Continuous research-only | Ағын немесе reducer бар, бірақ route-ready үшін тұтастық/канондық дәлел жеткіліксіз |
-| Жеке, эксперименттік | Аутентификацияланған код бар, бірақ әдепкіде қарусыз және mainnet-ке дайын емес |
+| Белсенді емес private анықтамасы | Аутентификацияланған код future review үшін болуы мүмкін, бірақ қазіргі runtime оны іске қоса алмайды |
 | Жоспарланған үміткер | Адаптер іске асырылмаған; бұл зерттеу басымдығы, уәде емес |
 | Алынып тасталған | Көрсетілген deployment немесе құқықтық ауқым үшін әдейі ұсынылмайды |
 
@@ -32,7 +35,7 @@
 | Ортақ public REST фасады | OKX, Gate.io, Hyperliquid, Deribit, Kraken, Coinbase, dYdX, KuCoin және MEXC — `/api/market-data/:venue/*` арқылы |
 | Құралдар тізілімі | Binance/Bybit/OKX төл көздері және барлық тіркелген public adapters; әдепкіде тек fresh rows беріледі |
 | Ортақ continuous модулі | Тоғыз биржа: OKX, Gate.io, Hyperliquid, Deribit, Kraken, Coinbase, dYdX, KuCoin және MEXC; allowlist операторға тиесілі, браузер тек оқиды |
-| Жеке сауда | Paper және эксперименттік Binance/Bybit жолдары; барлық ортақ public adapters private execution=false деп жариялайды |
+| Жеке сауда | Тек Paper қолжетімді; Binance/Bybit private коды белсенді емес, барлық ортақ public adapters private execution=false деп жариялайды |
 
 `GET /api/instruments` толық тізілімнен нормаланған metadata береді. `GET /api/venues` capability
 manifest береді. Екі жауапта да freshness және provenance бар. Public facade тіркелгі деректерін
@@ -43,8 +46,8 @@ manifest береді. Екі жауапта да freshness және provenance 
 
 | Биржа | Іске асқан public/read-only ауқымы | Continuous тұтастық күйі | Сканердегі қазіргі қолданыс | Жеке контур шекарасы |
 | --- | --- | --- | --- | --- |
-| Binance | Төл registry, chart candles, Spot және derivative top-book/depth/funding | Сканерге арналған ағындар бар, бірақ Binance ортақ continuous-public-feed модуліне кірмейді | Қазіргі Binance↔Bybit және same-venue basis, таңдалған top-book triangular research | USDⓈ-M execution эксперименттік. Live Spot authenticated Spot execution accounting пайда болғанша өшірулі. Inverse execution қолдау таппайды |
-| Bybit | Төл registry, candles, Spot/linear/inverse public data және native spread book | Арнайы snapshot/delta books бар, бірақ Bybit ортақ continuous-public-feed модуліне кірмейді | Қазіргі basis, triangular және native-spread research | Spot және USDT-linear эксперименттік. UTA collateral/borrow нақты opt-in талап етеді. Mainnet-readiness мәлімдемесі жоқ |
+| Binance | Төл registry, chart candles, Spot және derivative top-book/depth/funding | Сканерге арналған ағындар бар, бірақ Binance ортақ continuous-public-feed модуліне кірмейді | Қазіргі Binance↔Bybit және same-venue basis, таңдалған top-book triangular research | USDⓈ-M execution тек белсенді емес retained кодта бар. Live Spot өшірулі. Inverse execution қолдау таппайды |
+| Bybit | Төл registry, candles, Spot/linear/inverse public data және native spread book | Арнайы snapshot/delta books бар, бірақ Bybit ортақ continuous-public-feed модуліне кірмейді | Қазіргі basis, triangular және native-spread research | Spot, USDT-linear және UTA private paths — белсенді емес future анықтамасы; қазіргі runtime оларды қабылдамайды |
 | OKX | Spot, swap және dated futures үшін тіркелген REST metadata, BBO, bounded depth және variable funding | `books` ағыны `prevSeqId/seqId` арқылы қалпына келеді; тек дұрыс fresh generation route-ready бола алады. Ескірген checksum `0` дәлел емес | Operator allowlist арқылы ортақ continuous research; chart selector-да жоқ | Account/private/order беті жоқ |
 | Gate.io | Spot және USDT perpetual үшін REST metadata, BBO, depth және funding тіркелген | Spot/perpetual OBU full + `U/u` қолданады; legacy incremental mode governed REST-ID bridge талап етеді. Дұрыс fresh book route-ready бола алады | Operator allowlist арқылы ортақ continuous research; chart-та жоқ | Account/private/order беті жоқ |
 | Hyperliquid | First-DEX Spot/perpetual үшін public HyperCore `/info`, selected L2 және funding тіркелген | Әр `l2Book` protocol sequence/checksum жоқ atomic block snapshot. Тек continuous research, route-ready books ішіне кірмейді | Ортақ continuous-та тек research signal | Wallet, address, signing, `/exchange`, HyperEVM және order коды жоқ |
@@ -74,11 +77,11 @@ evidence; soak немесе execution readiness емес.
 | --- | --- | --- |
 | Paper Spot/Futures және multi-leg journal | Тест үшін қолдау бар | Simulated fills/recovery биржадағы execution-ды дәлелдемейді |
 | Binance Spot | Өшірулі | Authenticated Spot execution stream/accounting әлі жоқ |
-| Binance USDⓈ-M | Эксперименттік | Signed REST, private order updates және reconciliation бар; әдепкіде өшірулі |
+| Binance USDⓈ-M | Белсенді емес анықтама | Signed REST, private order updates және reconciliation retained кодта бар; қазіргі runtime іске қоспайды |
 | Binance inverse | Қолдау жоқ | Order path жоқ |
-| Bybit Spot | Эксперименттік | `ENABLE_LIVE_SPOT`, attributed inventory және private v5 accounting қажет |
-| Bybit USDT linear | Эксперименттік | Signed v5 lifecycle/reconciliation бар; әдепкіде өшірулі |
-| Bybit UTA cross collateral/manual debt | Нақты opt-in | Borrow, repay және collateral mutations — қорғалған operator actions, scanner automation емес |
+| Bybit Spot | Белсенді емес анықтама | Retained код `ENABLE_LIVE_SPOT` талап етеді, бірақ қазіргі runtime бұл flag-ты қабылдамайды |
+| Bybit USDT linear | Белсенді емес анықтама | Signed v5 lifecycle/reconciliation retained кодта бар; қазіргі runtime іске қоспайды |
+| Bybit UTA cross collateral/manual debt | Белсенді емес анықтама | Қазіргі runtime borrow, repay және collateral mutations жолдарын қабылдамайды |
 | Барлық тоғыз ортақ public adapter | Дизайн бойынша қолдау жоқ | Manifest private execution, borrow және transfers мәндерін false ұстайды |
 
 Толық мәлімет [execution capability matrix](EXCHANGE_CAPABILITIES.md) ішінде. Public scanner

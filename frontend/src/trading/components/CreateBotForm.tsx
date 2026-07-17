@@ -1,13 +1,17 @@
 import { AlertTriangle, Bot } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Locale } from "../../i18n";
+import { paperPortfolioText } from "../../i18n/paperPortfolio";
 import { tradingText } from "../../i18n/trading";
 import { compileXmlToIr } from "../../strategy/compileArtifact";
 import type { StrategyArtifact } from "../../strategy/library";
 import type { CatalogResponse } from "../../types";
 import { listTradingAccounts, type TradingAccountView } from "../accountClient";
-import { saveBot, type ExchangeId, type TradingBot } from "../tradeClient";
+import { createPaperIdempotencyKey, getPaperPortfolio, listPaperPortfolios } from "../paperPortfolioClient";
+import { comparePaperMoney, toCanonicalPositivePaperMoney } from "../paperPortfolioMoney";
+import { saveBot, type ExchangeId, type SaveBotInput, type SaveBotOptions, type TradingBot } from "../tradeClient";
 import { DEFAULT_LIVE_RISK_LIMITS, validLiveRiskLimits } from "../liveRisk";
+import { usePaperBotBinding } from "../usePaperBotBinding";
 
 interface CreateBotFormProps {
   strategies: StrategyArtifact[];
@@ -15,10 +19,20 @@ interface CreateBotFormProps {
   locale: Locale;
   canReadAccounts?: boolean;
   paperOnly?: boolean;
+  ownerUserId?: string;
+  paperPortfolioBindingRequired?: boolean;
   onCreated: (bot: TradingBot) => void;
+  onOpenPortfolioCenter?: () => void;
   loadAccounts?: () => Promise<TradingAccountView[]>;
-  saveTradingBot?: (bot: Partial<TradingBot>) => Promise<TradingBot>;
+  loadPaperPortfolios?: typeof listPaperPortfolios;
+  loadPaperPortfolio?: typeof getPaperPortfolio;
+  saveTradingBot?: (bot: SaveBotInput, options?: SaveBotOptions) => Promise<TradingBot>;
 }
+
+type DurablePaperBotInput = Required<Pick<
+  SaveBotInput,
+  "paperPortfolioId" | "paperAllocation" | "expectedPortfolioRevision" | "expectedLedgerEpoch"
+>>;
 
 export function CreateBotForm({
   strategies,
@@ -26,8 +40,13 @@ export function CreateBotForm({
   locale,
   canReadAccounts = false,
   paperOnly = false,
+  ownerUserId,
+  paperPortfolioBindingRequired,
   onCreated,
+  onOpenPortfolioCenter,
   loadAccounts = listTradingAccounts,
+  loadPaperPortfolios = listPaperPortfolios,
+  loadPaperPortfolio = getPaperPortfolio,
   saveTradingBot = saveBot
 }: CreateBotFormProps) {
   const runnable = useMemo(() => strategies.filter((item) => item.kind === "strategy"), [strategies]);
@@ -50,16 +69,37 @@ export function CreateBotForm({
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [accountsLoadFailed, setAccountsLoadFailed] = useState(false);
   const [accountId, setAccountId] = useState("");
+  const [paperAllocation, setPaperAllocation] = useState("10000.000000");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const strategy = runnable.find((item) => item.id === strategyId);
   const selectedExchange: ExchangeId = paperOnly ? "paper" : exchange;
+  const databasePaperBinding = (paperPortfolioBindingRequired ?? !!ownerUserId) && selectedExchange === "paper";
   const liveAccountsAvailable = canReadAccounts && !paperOnly;
   const exchangeAccounts = useMemo(
     () => selectedExchange === "paper" ? [] : (accounts ?? []).filter((account) => account.exchange === selectedExchange),
     [accounts, selectedExchange]
   );
   const selectedLiveAccount = exchangeAccounts.find((account) => account.id === accountId && selectableLiveAccount(account));
+  const paperBinding = usePaperBotBinding({
+    ownerUserId,
+    enabled: databasePaperBinding,
+    loadPortfolios: loadPaperPortfolios,
+    loadPortfolio: loadPaperPortfolio
+  });
+  const canonicalPaperAllocation = toCanonicalPositivePaperMoney(paperAllocation);
+  const availablePaperCapital = paperBinding.detail?.snapshot.aggregates.availableCapital;
+  const paperAllocationInsufficient = !!canonicalPaperAllocation && !!availablePaperCapital
+    && comparePaperMoney(canonicalPaperAllocation, availablePaperCapital) > 0;
+  const archivedPaperBinding = paperBinding.error?.message === "Selected paper portfolio is archived";
+  const paperBindingReady = !databasePaperBinding || Boolean(
+    !paperBinding.loading
+    && !paperBinding.error
+    && paperBinding.selectedPortfolioId
+    && paperBinding.detail?.portfolio.status === "active"
+    && canonicalPaperAllocation
+    && !paperAllocationInsufficient
+  );
 
   useEffect(() => {
     if (!liveAccountsAvailable) return;
@@ -85,6 +125,7 @@ export function CreateBotForm({
   }, [liveAccountsAvailable, loadAccounts]);
 
   const create = async () => {
+    let durablePaperInput: DurablePaperBotInput | undefined;
     if (!strategy) {
       setError(tradingText(locale, "pickStrategy"));
       return;
@@ -107,10 +148,34 @@ export function CreateBotForm({
       setError(tradingText(locale, "liveAccountInvalid"));
       return;
     }
+    if (databasePaperBinding) {
+      if (paperBinding.loading || paperBinding.error || !paperBinding.selectedPortfolioId || !paperBinding.detail) {
+        setError(paperPortfolioText(locale, archivedPaperBinding ? "archivedPortfolioForbidden" : paperBinding.error ? "bindingLoadFailed" : "noActivePortfolioHint"));
+        return;
+      }
+      if (paperBinding.detail.portfolio.status !== "active") {
+        setError(paperPortfolioText(locale, "archivedPortfolioForbidden"));
+        return;
+      }
+      if (!canonicalPaperAllocation) {
+        setError(paperPortfolioText(locale, "invalidAllocation"));
+        return;
+      }
+      if (paperAllocationInsufficient) {
+        setError(paperPortfolioText(locale, "insufficientCapital"));
+        return;
+      }
+      durablePaperInput = {
+        paperPortfolioId: paperBinding.selectedPortfolioId,
+        paperAllocation: canonicalPaperAllocation,
+        expectedPortfolioRevision: paperBinding.detail.portfolio.revision,
+        expectedLedgerEpoch: paperBinding.detail.snapshot.ledgerEpoch
+      };
+    }
     setBusy(true);
     setError(undefined);
     try {
-      const bot = await saveTradingBot({
+      const input: SaveBotInput = {
         name: name.trim() || strategy.name,
         strategyName: strategy.name,
         ir: compiled.ir,
@@ -124,8 +189,12 @@ export function CreateBotForm({
         bybitCrossCollateral: selectedExchange === "bybit" && market === "futures" && bybitCrossCollateral,
         notifyMarkers,
         ...(selectedLiveAccount ? { accountId: selectedLiveAccount.id } : {}),
+        ...durablePaperInput,
         ...(selectedExchange === "paper" ? {} : riskLimits)
-      });
+      };
+      const bot = databasePaperBinding
+        ? await saveTradingBot(input, { ownerUserId, idempotencyKey: createPaperIdempotencyKey() })
+        : await saveTradingBot(input);
       onCreated(bot);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : tradingText(locale, "createFailed"));
@@ -194,7 +263,76 @@ export function CreateBotForm({
           </label>
         </div>
         {selectedExchange === "binance" && <p className="field-help">{tradingText(locale, "binanceSpotDisabled")}</p>}
-        {selectedExchange === "paper" ? (
+        {selectedExchange === "paper" && databasePaperBinding ? (
+          <section className="paper-bot-binding" aria-labelledby="paper-bot-binding-title">
+            <div className="paper-bot-binding-head">
+              <strong id="paper-bot-binding-title">{paperPortfolioText(locale, "bindingTitle")}</strong>
+              <p>{paperPortfolioText(locale, "bindingHelp")}</p>
+            </div>
+            {paperBinding.loading && (
+              <p className="paper-binding-status" role="status" aria-live="polite">{paperPortfolioText(locale, "bindingLoading")}</p>
+            )}
+            {!paperBinding.loading && paperBinding.error && (
+              <div className="paper-binding-error" role="alert">
+                <span>{paperPortfolioText(locale, archivedPaperBinding ? "archivedPortfolioForbidden" : "bindingLoadFailed")}</span>
+                <button type="button" onClick={() => void paperBinding.refresh()}>{paperPortfolioText(locale, "refresh")}</button>
+              </div>
+            )}
+            {!paperBinding.loading && !paperBinding.error && paperBinding.activePortfolios.length === 0 && (
+              <div className="paper-binding-empty" role="note">
+                <strong>{paperPortfolioText(locale, "noActivePortfolio")}</strong>
+                <span>{paperPortfolioText(locale, "noActivePortfolioHint")}</span>
+                {onOpenPortfolioCenter && (
+                  <button type="button" onClick={onOpenPortfolioCenter}>{paperPortfolioText(locale, "openPortfolioCenter")}</button>
+                )}
+              </div>
+            )}
+            {!paperBinding.loading && !paperBinding.error && paperBinding.activePortfolios.length > 0 && (
+              <div className="paper-binding-grid">
+                <label>{paperPortfolioText(locale, "selectedPortfolio")}
+                  <select
+                    name="paper-portfolio-id"
+                    value={paperBinding.selectedPortfolioId ?? ""}
+                    required
+                    disabled={paperBinding.loading}
+                    onChange={(event) => paperBinding.selectPortfolio(event.target.value)}
+                  >
+                    {paperBinding.activePortfolios.map((portfolio) => (
+                      <option key={portfolio.id} value={portfolio.id}>
+                        {portfolio.name}{portfolio.isDefault ? ` · ${paperPortfolioText(locale, "defaultBadge")}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>{paperPortfolioText(locale, "allocation")}
+                  <input
+                    name="paper-allocation"
+                    type="text"
+                    inputMode="decimal"
+                    value={paperAllocation}
+                    required
+                    aria-invalid={!canonicalPaperAllocation || paperAllocationInsufficient}
+                    aria-describedby="paper-allocation-help"
+                    onChange={(event) => setPaperAllocation(event.target.value)}
+                    onBlur={() => {
+                      const canonical = toCanonicalPositivePaperMoney(paperAllocation);
+                      if (canonical) setPaperAllocation(canonical);
+                    }}
+                  />
+                </label>
+                <p id="paper-allocation-help" className="field-help paper-binding-allocation-help">{paperPortfolioText(locale, "allocationHelp")}</p>
+                {availablePaperCapital && (
+                  <p className="paper-binding-available">
+                    <span>{paperPortfolioText(locale, "availableCapital")}</span>
+                    <strong>{availablePaperCapital} USDT</strong>
+                  </p>
+                )}
+                {!canonicalPaperAllocation && <p className="paper-binding-validation" role="alert">{paperPortfolioText(locale, "invalidAllocation")}</p>}
+                {canonicalPaperAllocation && paperAllocationInsufficient && <p className="paper-binding-validation" role="alert">{paperPortfolioText(locale, "insufficientCapital")}</p>}
+              </div>
+            )}
+          </section>
+        ) : selectedExchange === "paper" ? (
           <p className="field-help" role="note">{tradingText(locale, "paperAccountHelp")}</p>
         ) : liveAccountsAvailable ? (
           <>
@@ -276,7 +414,7 @@ export function CreateBotForm({
 
       {selectedExchange !== "paper" && <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> {tradingText(locale, "realTradingWarning")}</div>}
       {error && <div className="strategy-warnings" role="alert"><span><AlertTriangle size={12} aria-hidden="true" /> {error}</span></div>}
-      <button type="submit" className="run-button form-submit" disabled={busy}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
+      <button type="submit" className="run-button form-submit" disabled={busy || !paperBindingReady}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
     </form>
   );
 }

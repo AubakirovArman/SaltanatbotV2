@@ -1,8 +1,9 @@
 # Configuration & deployment
 
 SaltanatbotV2 is configured mostly at runtime through the app itself. PostgreSQL stores accounts,
-revocable sessions, workspaces and research jobs. SQLite stores owner-scoped trading accounts,
-robots and journals plus AES-256-GCM-encrypted per-account exchange credentials and owner-scoped
+revocable sessions, workspaces, research jobs and the R4 durable executor-command queue. SQLite
+stores owner-scoped trading accounts, canonical paper portfolios, robots and journals plus
+AES-256-GCM-encrypted per-account exchange credentials and owner-scoped
 notification configuration. This split preserves existing trading state while keeping every
 authenticated user's private trading surface separate.
 
@@ -239,7 +240,7 @@ const secretPath = path.join(dataDir, ".secret");
 | Path                       | What it is                                                        |
 | -------------------------- | ---------------------------------------------------------------- |
 | `backend/data/.secret`     | Random 32-byte hex seed for the AES encryption key. Written with file mode `0600`. |
-| `backend/data/trading.db`  | SQLite database (`node:sqlite`) holding bots, fills, logs, and encrypted settings. |
+| `backend/data/trading.db`  | SQLite database (`node:sqlite`) holding paper portfolios/ledgers, bots, fills, logs, and encrypted settings. |
 | `backend/data/.trading-runtime-lock.sqlite` | Owner-only, user-data-free SQLite coordination file that enforces one trading backend process. It is not backed up. |
 | `backend/data/arbitrage-paper-multi-leg.sqlite` | Bounded append-only deterministic multi-leg paper runs and restart-recovery journal. |
 
@@ -285,6 +286,13 @@ authenticates every encrypted row. It never prints key material, ciphertext or p
 | `logs`     | Per-bot log lines (`info` / `warn` / `error`).                        |
 | `orders`   | Durable order-intent/result journal keyed by `clientOrderId` / exchange order id. |
 | `order_events` | Per-order lifecycle events, including intent, result, fill, and reconciliation records. |
+| `paper_events` | Append-only per-robot paper ledger, keyed by robot and ledger epoch in schema 9. |
+| `paper_portfolios` / `paper_portfolio_epochs` | Owner-scoped portfolio metadata and immutable accounting epochs. |
+| `paper_bot_allocations` | Exact fixed-micros capital reservation and release evidence for one robot revision. |
+| `paper_portfolio_mutations` | Durable idempotency/request receipts for portfolio and robot commands. |
+| `paper_bot_revision_evidence` / `paper_bot_tombstones` | Immutable configuration/deletion evidence retained independently of runtime status. |
+| `paper_valuation_marks` | Current durable, source- and expiry-bound valuation evidence. |
+| `paper_portfolio_events` / `paper_portfolio_projections` | Append-only lifecycle evidence and rebuildable versioned projection metadata. |
 | `audit_log` | Owner-scoped mutating trade API calls with actor, role, status, target and redacted request data. |
 | `settings` | Internal state and encrypted owner-scoped notification configuration; new exchange credentials do not live here. |
 | `schema_migrations` | Applied forward migration versions, names and timestamps. |
@@ -298,16 +306,26 @@ after successful re-encryption, and clears the former server-wide live arm. Crea
 backup before upgrading. If multiple administrators exist, set `TRADING_LEGACY_OWNER_USER_ID`
 before that first v6 start or migration fails closed. Schema v7 then changes fill, order and order
 event identity to `(botId, id)`, preserving every existing row while allowing independent tenants
-to receive the same venue/client identifier without journal collisions.
+to receive the same venue/client identifier without journal collisions. Schema v8 adds monotonic
+account/credential revisions and a per-owner authorization epoch. The R4 candidate's schema v9
+adds canonical owner-scoped paper portfolios, ledger epochs, capital reservations, immutable
+revision evidence, durable mutation receipts and valuation/projection evidence. Existing paper
+event ledgers remain authoritative; snapshot-only legacy state is imported with explicit
+`legacy-incomplete` evidence. See [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
-## Configuring exchange API keys
+## Dormant private-live credential contract
 
-Exchange API keys are **never** placed in environment variables or plaintext files. A user first
-creates a Binance or Bybit account in Trade → Accounts, then submits credentials for that exact
-account. The server takes ownership only from the authenticated session; no request field can select
-another user.
+> **Not an operator procedure for this release.** `public-http-paper` rejects exchange-account and
+> credential writes, rejects `private-live`, and stops startup when `ENABLE_LIVE_SPOT=true`.
+> Do not enter exchange API keys in the current application. The examples below document retained
+> future/private-live validation and storage contracts for security review only.
 
-Create account metadata (requires `live-trade`, CSRF and a secure trading origin):
+A future HTTPS/private-live release must never place exchange API keys in environment variables or
+plaintext files. Its authenticated owner would first create exact account metadata and then submit
+credentials for that account; no request field may select another user. The current server rejects
+both requests before storing anything.
+
+Future account-metadata contract (current release: `PAPER_ONLY_MODE`):
 
 ```
 POST /api/trade/accounts
@@ -316,7 +334,7 @@ Content-Type: application/json
 { "label": "My Binance", "exchange": "binance", "ownership": "own", "enabled": true }
 ```
 
-Store or rotate that account's credentials:
+Future credential-store/rotation contract (current release: `PAPER_ONLY_MODE`):
 
 ```
 PUT /api/trade/accounts/<account-id>/credentials
@@ -325,19 +343,19 @@ Content-Type: application/json
 { "apiKey": "<your-key>", "apiSecret": "<your-secret>" }
 ```
 
-Both values are required and bounded. Keys are encrypted in `trading_account_credentials` with
-AES-GCM authenticated context containing the owner, account and exchange. Plaintext is never
-returned. `GET /api/trade/accounts` reports only `credential.status` as `configured` or `missing`:
+The retained implementation requires bounded values and uses AES-GCM authenticated context
+containing the owner, account and exchange. Plaintext is never returned. If a future reviewed
+runtime activates the contract, `GET /api/trade/accounts` exposes only
+`credential.status` as `configured` or `missing`:
 
 ```
 GET /api/trade/accounts
 → { "accounts": [{ "id": "…", "exchange": "binance", "credential": { "status": "configured" } }] }
 ```
 
-Rotation is blocked while a bound robot is running. Credential removal is blocked until every bot
-is unbound/deleted. `DELETE /api/trade/accounts/:id/credentials` removes only the current user's
-credentials. The old `GET /api/trade/keys` endpoint is a tenant-scoped boolean compatibility view;
-`POST /api/trade/keys` returns `410 ACCOUNT_CREDENTIAL_ENDPOINT_REQUIRED`.
+The dormant contract blocks rotation while a bound robot is running and removal until every bot is
+unbound/deleted. It remains unreachable in the current profile. The old `GET /api/trade/keys`
+endpoint is only a tenant-scoped boolean compatibility view; no current endpoint can write a key.
 
 ## Configuring Telegram / VK notifications
 
@@ -575,10 +593,11 @@ server, complete this checklist.
 - [ ] **Protect account and database credentials.** Change the one-time administrator password,
   keep the PostgreSQL password file owner-only, review pending registrations, and disable departed
   users. Never expose a dump, cookie or CSRF value in logs/screenshots.
-- [ ] **Verify tenant ownership when crossing trading schema v6.** The current SQLite trading schema
-  is v8. Back up PostgreSQL plus
+- [ ] **Verify tenant ownership when crossing trading schema v6/v9.** The R4 candidate's SQLite trading schema
+  is v9. Create a paired PostgreSQL + SQLite recovery generation, keep
   `trading.db`/`.secret`, set `TRADING_LEGACY_OWNER_USER_ID` when multiple admins exist, and confirm
-  that migrated robots appear only for the selected administrator. Persisted live flags remain inert.
+  that migrated robots and their deterministic paper portfolios appear only for the selected
+  administrator. Persisted live flags remain inert.
 - [ ] **Grant the minimum trading role.** New users start with no trading access. Use `read-only` or
   `paper-trade`; a `live-trade` role cannot override this release gate. Disabling/changing a user
   revokes sessions and stops that user's runtimes.
@@ -597,4 +616,5 @@ server, complete this checklist.
 - [Architecture](./ARCHITECTURE.md)
 - [HTTP & WebSocket API](./API.md)
 - [Trading engine](./TRADING.md)
+- [Canonical paper portfolios](./PAPER_PORTFOLIOS.md)
 - [Strategies](./STRATEGIES.md)

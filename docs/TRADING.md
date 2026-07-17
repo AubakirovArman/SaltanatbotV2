@@ -22,10 +22,13 @@ as **Automation**, and market discovery as the read-only **Screener**. Automatio
 count and opens the robots/portfolio center without requiring the operator to find a particular bot
 first.
 
-In the current release, the center combines the isolated paper state the backend can prove:
-balance/equity, realized P&L, positions, open orders and associated bots. It has a literal empty
-state when nothing is active. Real exchange margin, borrowing and account telemetry are unavailable
-in `public-http-paper`.
+The R4 candidate replaces the ad hoc combined view with canonical owner-scoped paper portfolios.
+It shows only state the executor-owned ledger and durable valuation evidence can prove:
+balance/equity, realized/unrealized P&L, capital reservations, positions, open orders and associated
+robot revisions. It has literal empty/loading/error states. Missing or stale values remain typed as
+such; real exchange margin, borrowing and account telemetry are unavailable in
+`public-http-paper`. R4 is still under acceptance and this statement is not a production-cutover
+claim.
 
 Legacy Binance/Bybit registry and credential code is not an operator workflow in this release.
 Existing installations may retain dormant metadata for compatibility, but users and administrators
@@ -35,14 +38,36 @@ must not add keys or treat those rows as executable accounts before the separate
 
 1. Sign in with an activated account and open **Trading** or **Automation → Robots**.
 2. Save and validate a strategy in Strategy Studio.
-3. Create a bot and explicitly select **Paper (simulation)**.
-4. Choose the symbol, timeframe, virtual position size and simulated leverage.
-5. Start the bot, then monitor its isolated virtual balance, positions, open orders, fills and logs.
-6. Stop the bot or use the paper-only controls when the experiment is complete.
+3. Create or select an active paper portfolio.
+4. Create a bot, explicitly select **Paper (simulation)**, and reserve a positive allocation from
+   that portfolio.
+5. Choose the symbol, timeframe, virtual position size and simulated leverage.
+6. Start the bot, then monitor its isolated virtual balance, positions, open orders, fills and logs.
+7. Stop the bot or use the paper-only controls when the experiment is complete.
 
 Paper bots require no exchange credentials and cannot withdraw funds or submit exchange requests.
 If a screen or imported legacy configuration names Binance, Bybit, API keys, borrowing or live
 execution, leave it unused in the current release.
+
+### R4 canonical portfolio lifecycle
+
+Create, rename, choose-default, archive and reset are owner-scoped durable commands. A reset is not
+a delete: it closes one ledger epoch, preserves its events/revision evidence and creates the next
+epoch. Previously bound robots require an explicit rebind to new capital. Archive requires all
+active allocations to be released.
+
+The create-robot form reads exact available capital and sends a fixed six-decimal USDT allocation.
+Once bound, a paper robot's portfolio, epoch, allocation and revision evidence are immutable. Its
+start/pause/resume/stop controls require confirmation and pass through the same fenced idempotent
+command queue. A timeout is retried with the same idempotency key, not by creating a new action.
+Each paper order stores a SHA-256 identity of its complete canonical JSON-safe intent before
+execution. Crash-left non-terminal intents may resume only with that exact identity; terminal
+orders are never resubmitted. Known paper rejections, including a missing executable price, also
+receive a durable `command_completed` ledger receipt.
+
+See [Canonical paper portfolios](./PAPER_PORTFOLIOS.md) for storage authority, API behavior,
+migration, backup and rollback. HTTPS, exchange credentials and live/private execution remain out
+of scope.
 
 ## 1. The command language
 

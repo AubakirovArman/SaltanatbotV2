@@ -1,6 +1,7 @@
 import { Play, Square, Trash2, XOctagon } from "lucide-react";
 import { useState } from "react";
 import type { Locale } from "../../i18n";
+import { paperPortfolioText } from "../../i18n/paperPortfolio";
 import { tradingLiveConfirm, tradingTerm, tradingText } from "../../i18n/trading";
 import {
   deleteBot,
@@ -87,6 +88,31 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
           </div>
         )}
       </header>
+
+      {bot.exchange === "paper" && bot.paperPortfolioId && (
+        <aside className="paper-binding-lock-note" role="note">
+          <div>
+            <strong>{paperPortfolioText(locale, "bindingLocked")}</strong>
+            <span>{paperPortfolioText(locale, "bindingLockedHint")}</span>
+          </div>
+          <dl>
+            <div>
+              <dt>{paperPortfolioText(locale, "boundPortfolio")}</dt>
+              <dd>{bot.paperPortfolioId}</dd>
+            </div>
+            <div>
+              <dt>{paperPortfolioText(locale, "allocation")}</dt>
+              <dd>{bot.paperAllocation ? `${bot.paperAllocation} USDT` : "—"}</dd>
+            </div>
+            {bot.paperLedgerEpoch !== undefined && (
+              <div>
+                <dt>{paperPortfolioText(locale, "epoch")}</dt>
+                <dd>{bot.paperLedgerEpoch}</dd>
+              </div>
+            )}
+          </dl>
+        </aside>
+      )}
 
       <section className="trade-cards" aria-label={tradingText(locale, "runtimeSummary")}>
         <MetricCard label={tradingText(locale, "balance")} value={live?.account ? live.account.balance.toFixed(2) : "—"} />

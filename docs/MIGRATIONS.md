@@ -4,7 +4,7 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
-## Unreleased / PostgreSQL schema 11 and trading SQLite schema 8
+## Unreleased R4 candidate / PostgreSQL schema 12 and trading SQLite schema 9
 
 - PostgreSQL schema v5 adds a monotonic `users.authorization_revision`. Every status, role,
   temporary-password or password mutation advances it; login timestamps do not. It is a durable
@@ -48,9 +48,30 @@ migration.
   and database schema version to one current row. An onboarding row cascades when its owner is
   deleted; heartbeat startup replaces only that component's singleton row. Neither table stores
   credentials, sessions, strategies or exchange payloads.
+- PostgreSQL schema v12 adds `executor_commands`, the durable bridge from an authenticated
+  multi-user control plane to the singleton SQLite trading executor. A row binds the owner, actor,
+  session hash, authorization revision/epoch, command/target, idempotency key, request hash and a
+  bounded non-secret JSON payload. States are `queued`, `applying`, `applied` and `rejected`.
+  Renewable lease token/generation fencing rejects stale acknowledgements; a partial unique index
+  permits at most one applying command per owner. The default repository limits an owner to 256
+  active rows and retains terminal rows for the first of 90 days or 10,000 rows, pruned in bounded
+  batches. Payload/result/error bounds are 32 KiB, 16 KiB and 4,000 characters. The schema stores
+  neither exchange credentials nor raw browser session tokens.
 - Trading SQLite schema v8 adds monotonic account and credential revisions plus a per-owner
   arm/disarm epoch. Migration always starts every owner disarmed and removes legacy boolean arm
   settings; it never deletes accounts, credentials, bots or journals.
+- Trading SQLite schema v9 adds owner-scoped paper portfolios and monotonic ledger epochs; fixed
+  USDT-micros capital reservations; durable mutation receipts; immutable bot-revision evidence and
+  deletion tombstones; durable valuation marks; append-only portfolio events; and versioned
+  projection metadata. The `paper_events` key is rebuilt around `(botId, ledgerEpoch, sequence)` and
+  rejects both update and delete. Each pre-v9 paper bot is backfilled into its own deterministic
+  epoch-1 portfolio. Existing event ledgers are preserved. A snapshot/formula-only bot receives a
+  deterministic initialization ledger and `legacy-incomplete` evidence instead of an invented
+  complete history. The whole SQLite migration remains one transaction and rolls back on malformed
+  legacy evidence or an ownership/identity conflict. Legacy token-mode deletion remains usable
+  after the upgrade by atomically releasing only an exact flat, zero-open-order allocation before
+  retaining its tombstone and journal; database-auth deletion still requires the fenced canonical
+  workflow.
 
 - Trading SQLite state is upgraded transactionally through ordered `schema_migrations`; a database
   declaring a newer unsupported version is rejected without mutation.
@@ -88,14 +109,23 @@ migration.
   never rewrites candle timestamps, session membership or strategy artifacts.
 
 The project recovery format inventories the complete contiguous PostgreSQL migration chain,
-including schema v11 and the `user_onboarding` row count, together with checksummed SQLite runtime
-files and owner/count evidence. Verification is read-only. Restore always creates a separately
-named PostgreSQL replacement database and a separate absent/empty runtime directory; it does not
-change a service, Compose configuration, `PGDATABASE` or the active data path. The drill performs
-the same restore and removes only the marker/OID-bound temporary database and the verified
-tool-owned directory. This is replacement evidence, not an in-place down-migration or automatic
-cutover.
+including the schema-v12 checksum, together with checksummed SQLite runtime files, their
+`user_version` and bounded owner/count evidence. Verification is read-only. The R4 candidate
+inventory now includes the PostgreSQL executor-command table and every schema-9 SQLite
+paper-portfolio table in addition to the complete database archives. Restore always creates a
+separately named PostgreSQL replacement database and a separate absent/empty runtime directory; it
+does not change a service, Compose configuration, `PGDATABASE` or the active data path. The drill
+performs the same restore and removes only the marker/OID-bound temporary database and the verified
+tool-owned directory. R4 acceptance still requires that real isolated paired drill for the exact
+candidate. This is replacement evidence, not an in-place down-migration or automatic cutover.
 
 For server data, follow [Backup and restore](BACKUP_RESTORE.md) before deployment. A breaking future
 IR, API, storage or event-trace change must add a dated section here and executable backward-compatibility
 coverage in the same change.
+
+The R4 chain is not an in-place two-store transaction. Take and verify one paired recovery
+generation before the first schema-12/schema-9 start. If one store advances and startup then fails,
+keep the application stopped and restore the complete verified pair into replacement resources;
+never run an older binary against either advanced store or remove migration/ledger rows by hand.
+See [Canonical paper portfolios](PAPER_PORTFOLIOS.md#upgrade-to-postgresql-12-and-sqlite-9) for the
+operator sequence.

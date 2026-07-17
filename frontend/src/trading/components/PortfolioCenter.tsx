@@ -12,6 +12,7 @@ import {
   type PortfolioSummary
 } from "../portfolioClient";
 import type { TradingBot } from "../tradeClient";
+import { PaperPortfolioCenter } from "./paper-portfolio/PaperPortfolioCenter";
 
 interface PortfolioCenterProps {
   bots: TradingBot[];
@@ -23,6 +24,7 @@ interface PortfolioCenterProps {
   canReadAccounts?: boolean;
   canCreate?: boolean;
   loadAccounts?: () => Promise<TradingAccountView[]>;
+  ownerUserId?: string;
 }
 
 type LoadState = "loading" | "refreshing" | "ready";
@@ -36,7 +38,8 @@ export function PortfolioCenter({
   loadPortfolio = getPortfolio,
   canReadAccounts = false,
   canCreate = true,
-  loadAccounts = listTradingAccounts
+  loadAccounts = listTradingAccounts,
+  ownerUserId
 }: PortfolioCenterProps) {
   const [summary, setSummary] = useState<PortfolioSummary>();
   const [accounts, setAccounts] = useState<TradingAccountView[]>([]);
@@ -45,8 +48,13 @@ export function PortfolioCenter({
   const [accountRegistryError, setAccountRegistryError] = useState<string>();
   const [updatedAt, setUpdatedAt] = useState<number>();
   const request = useRef(0);
+  const legacyPortfolioEnabled = !ownerUserId || canReadAccounts;
 
   const refresh = useCallback(async () => {
+    if (!legacyPortfolioEnabled) {
+      setLoadState("ready");
+      return;
+    }
     const currentRequest = ++request.current;
     setLoadState((current) => current === "loading" ? "loading" : "refreshing");
     try {
@@ -72,9 +80,13 @@ export function PortfolioCenter({
       setError(cause instanceof Error ? cause.message : String(cause));
       setLoadState("ready");
     }
-  }, [canReadAccounts, loadAccounts, loadPortfolio]);
+  }, [canReadAccounts, legacyPortfolioEnabled, loadAccounts, loadPortfolio]);
 
   useEffect(() => {
+    if (!legacyPortfolioEnabled) {
+      setLoadState("ready");
+      return;
+    }
     void refresh();
     const timer = window.setInterval(() => {
       if (!document.hidden) void refresh();
@@ -83,7 +95,7 @@ export function PortfolioCenter({
       request.current += 1;
       window.clearInterval(timer);
     };
-  }, [refresh]);
+  }, [legacyPortfolioEnabled, refresh]);
 
   const runningBots = bots.filter((bot) => bot.status === "running");
   const positionCount = summary
@@ -108,42 +120,58 @@ export function PortfolioCenter({
               {automationText(locale, "openSettings")}
             </button>
           )}
-          <button type="button" className="icon-button" onClick={() => void refresh()} disabled={loadState !== "ready"} aria-label={automationText(locale, "refresh")} title={automationText(locale, "refresh")}>
+          {!ownerUserId && <button type="button" className="icon-button" onClick={() => void refresh()} disabled={loadState !== "ready"} aria-label={automationText(locale, "refresh")} title={automationText(locale, "refresh")}>
             <RefreshCw size={15} aria-hidden="true" />
-          </button>
+          </button>}
         </div>
       </header>
 
-      <div className="portfolio-update-status" role="status" aria-live="polite" aria-atomic="true">
+      {!ownerUserId && <div className="portfolio-update-status" role="status" aria-live="polite" aria-atomic="true">
         {loadState === "loading" || loadState === "refreshing"
           ? automationText(locale, "refreshing")
           : updatedAt
             ? `${automationText(locale, "lastUpdated")}: ${new Date(updatedAt).toLocaleTimeString(localeTag(locale))}`
             : ""}
-      </div>
+      </div>}
 
-      {error && (
+      {!ownerUserId && error && (
         <div className="portfolio-error" role="alert">
           <CircleAlert size={16} aria-hidden="true" />
           <span><strong>{automationText(locale, "loadFailed")}.</strong> {error}</span>
         </div>
       )}
 
-      {accountRegistryError && (
+      {legacyPortfolioEnabled && accountRegistryError && (
         <div className="portfolio-error metadata-warning" role="alert">
           <CircleAlert size={16} aria-hidden="true" />
           <span><strong>{automationText(locale, "accountRegistryFailed")}.</strong> {accountRegistryError}</span>
         </div>
       )}
 
-      {loadState === "loading" && !summary && (
+      {!ownerUserId && loadState === "loading" && !summary && (
         <div className="portfolio-loading" role="status">
           <span className="loader-ring" aria-hidden="true" />
           {automationText(locale, "refreshing")}
         </div>
       )}
 
-      {empty && (
+      {ownerUserId && (
+        <PaperPortfolioCenter
+          ownerUserId={ownerUserId}
+          locale={locale}
+          canMutate={canCreate}
+          onNewRobot={onNew}
+        />
+      )}
+
+      {ownerUserId && canReadAccounts && error && (
+        <div className="portfolio-error metadata-warning" role="alert">
+          <CircleAlert size={16} aria-hidden="true" />
+          <span><strong>{automationText(locale, "loadFailed")}.</strong> {error}</span>
+        </div>
+      )}
+
+      {!ownerUserId && empty && (
         <div className="trade-empty robots-empty">
           <Bot size={24} aria-hidden="true" />
           <h2>{automationText(locale, "noRunning")}</h2>
@@ -153,17 +181,17 @@ export function PortfolioCenter({
         </div>
       )}
 
-      {summary && !empty && (
+      {summary && (!empty || !!ownerUserId) && (
         <>
-          <dl className="portfolio-overview" aria-label={automationText(locale, "overview")}>
+          {!ownerUserId && <dl className="portfolio-overview" aria-label={automationText(locale, "overview")}>
             <Metric label={automationText(locale, "runningBots")} value={String(Math.max(runningBots.length, summary.paper.length))} />
             <Metric label={automationText(locale, "liveAccountCount")} value={String(summary.exchanges.length)} />
             <Metric label={automationText(locale, "realizedToday")} value={formatSigned(summary.totalRealizedToday, locale)} tone={summary.totalRealizedToday > 0 ? "positive" : summary.totalRealizedToday < 0 ? "negative" : undefined} />
             <Metric label={automationText(locale, "positions")} value={positionCount} />
             <Metric label={automationText(locale, "orders")} value={orderCount} />
-          </dl>
+          </dl>}
 
-          <section className="portfolio-section" aria-labelledby="live-accounts-title">
+          {(!ownerUserId || canReadAccounts) && <section className="portfolio-section" aria-labelledby="live-accounts-title">
             <div className="portfolio-section-heading">
               <WalletCards size={17} aria-hidden="true" />
               <h2 id="live-accounts-title">{automationText(locale, "liveAccounts")}</h2>
@@ -186,9 +214,9 @@ export function PortfolioCenter({
                 ))}
               </ul>
             )}
-          </section>
+          </section>}
 
-          <section className="portfolio-section" aria-labelledby="paper-bots-title">
+          {!ownerUserId && <section className="portfolio-section" aria-labelledby="paper-bots-title">
             <div className="portfolio-section-heading">
               <Bot size={17} aria-hidden="true" />
               <h2 id="paper-bots-title">{automationText(locale, "paperBots")}</h2>
@@ -233,7 +261,7 @@ export function PortfolioCenter({
                 </table>
               </div>
             )}
-          </section>
+          </section>}
         </>
       )}
     </section>

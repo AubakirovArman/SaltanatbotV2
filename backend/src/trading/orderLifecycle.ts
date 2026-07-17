@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { canAdvanceOrderState, deriveDurableOrderStatus } from "@saltanatbotv2/execution-core";
 import { getOrderJournal, insertOrderEvent, listOrderEvents, upsertOrderJournal } from "./store.js";
 import { requestedOpenOrderSlots } from "./liveRiskReservations.js";
+import { canonicalPersistedOrderIntent } from "./orderIntentComparison.js";
 import { beginProtectionChildren, completeProtectionChildren } from "./protectionChildLifecycle.js";
 import type { BotConfig, ExchangeOrderSnapshot, ExecOrder, ExecResult, ExecutionLifecycleStatus, FillRecord, OrderEventRecord, OrderJournalRecord, OrderJournalStatus } from "./types.js";
 
@@ -53,9 +54,16 @@ export class OrderLifecycle {
     const now = this.now();
     const identity = order.clientId || order.orderId || this.createId();
     if (!order.clientId && !order.orderId) order.clientId = identity;
+    const canonicalOrder = canonicalPersistedOrderIntent(order);
+    const existing = this.writer.getOrder?.(context.botId, identity);
+    if (existing) {
+      assertOrderReplayMatches(existing, context, order, canonicalOrder, this.writer.listEvents?.(context.botId, identity));
+      return existing;
+    }
     const record: OrderJournalRecord = {
       id: identity,
       botId: context.botId,
+      intentHash: createHash("sha256").update(canonicalOrder).digest("hex"),
       accountId: context.accountId,
       exchange: context.exchange,
       market: context.market,
@@ -257,7 +265,19 @@ export class OrderLifecycle {
   }
 
   async execute(context: OrderLifecycleContext, order: ExecOrder, send: () => Promise<ExecResult>): Promise<ExecResult> {
+    const suppliedIdentity = order.clientId || order.orderId;
+    const existing = suppliedIdentity
+      ? this.writer.getOrder?.(context.botId, suppliedIdentity)
+      : undefined;
     const record = this.begin(context, order);
+    if (existing) {
+      if (context.exchange !== "paper") {
+        throw new Error(`Execution identity ${record.id} already exists and requires reconciliation before live retry`);
+      }
+      if (terminalOrderStatus(existing.status)) {
+        throw new Error(`Paper execution identity ${record.id} is already terminal and cannot be resubmitted`);
+      }
+    }
     try {
       const result = await send();
       this.complete(record, result, order);
@@ -266,6 +286,35 @@ export class OrderLifecycle {
       this.markUnknown(record, error);
       throw error;
     }
+  }
+}
+
+function assertOrderReplayMatches(
+  record: OrderJournalRecord,
+  context: OrderLifecycleContext,
+  order: ExecOrder,
+  canonicalOrder: string,
+  events: OrderEventRecord[] | undefined
+): void {
+  if (
+    record.botId !== context.botId
+    || record.accountId !== context.accountId
+    || record.exchange !== context.exchange
+    || record.market !== context.market
+    || record.barTime !== context.barTime
+  ) {
+    throw new Error(`Execution identity ${record.id} belongs to another durable context`);
+  }
+  const original = events?.find((event) => event.type === "intent");
+  const canonicalHash = createHash("sha256").update(canonicalOrder).digest("hex");
+  if (record.intentHash && record.intentHash !== canonicalHash) {
+    throw new Error(`Execution identity ${record.id} was already used for another order`);
+  }
+  if (!record.intentHash && original && canonicalPersistedOrderIntent(original.data) !== canonicalOrder) {
+    throw new Error(`Execution identity ${record.id} was already used for another order`);
+  }
+  if (!record.intentHash && !original) {
+    throw new Error(`Execution identity ${record.id} lacks a durable canonical intent and cannot be retried`);
   }
 }
 

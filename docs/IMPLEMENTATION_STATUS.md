@@ -1,6 +1,6 @@
 # Improvement implementation status
 
-Updated: 2026-07-15
+Updated: 2026-07-17
 
 Active branch: `main`
 
@@ -18,13 +18,24 @@ observation; **private evidence** requires authenticated account/order/fill obse
 **production-ready** additionally requires sustained runtime, operational, legal and applicable
 private gates. No earlier level implies a later one.
 
+## Active R4 candidate — not delivered or deployed
+
+The current worktree contains PostgreSQL schema 12's durable executor-command queue, trading
+SQLite schema 9's canonical owner-scoped paper portfolios/epochs/reservations/receipts, versioned
+evidence-aware projections, bounded robot journals and the corresponding browser center and robot
+binding. This is implementation-candidate status only. R4 remains open until exact-candidate
+golden-ledger/restart/two-owner/browser evidence, the real isolated paired restore/rollback drill
+over the implemented extended recovery inventory, and all local/remote release gates pass. See
+[Canonical paper portfolios](./PAPER_PORTFOLIOS.md) and the
+[pre-HTTPS roadmap](./PRE_HTTPS_ROADMAP.md#r4--running-and-the-paper-portfolio-contract).
+
 ## Delivered slices (not full roadmap completion)
 
 ### Product workspaces, strategy research and market evidence — 2026-07-15
 
 - [x] Separate the primary browser information architecture into **Monitoring**, **Automation** and
   read-only **Screener**. Automation retains explicit **Strategies** and **Robots** sub-sections.
-- [x] Add a global running-robot count and a browser robots/portfolio center that groups available
+- [x] Add the pre-R4 global running-robot count and browser robots/portfolio center that groups available
   live exchange-account and isolated paper-bot state. It shows available balance/equity, realized
   P&L, positions and open orders, labels own versus managed account metadata, and has explicit
   loading, error and empty states. Margin and borrowing remain unavailable when the portfolio API
@@ -931,7 +942,8 @@ Current: 44 scenarios implemented; the critical-flow and accessibility checklist
 - [x] Display fee amount and asset in the localized fill journal.
 - [x] Reserve proactive exchange request weight with safety headroom and reconcile usage from venue headers.
 - [x] Reject stale live candles before they mutate price/runtime state and log missing-interval gaps.
-- [x] Publish EN/RU/KK capability matrices and operator checklist; label live controls Experimental.
+- [x] Publish EN/RU/KK capability matrices and a future security-review checklist; label every
+  retained live control dormant and unreachable in `public-http-paper`.
 
 - [x] Complete durable exchange order state machine.
   - [x] Persist intent before exchange I/O in a dedicated lifecycle module.
@@ -964,8 +976,9 @@ Current: 44 scenarios implemented; the critical-flow and accessibility checklist
   - [x] Fall back to matching open orders only when that evidence proves the original command outcome.
   - [x] Require terminal evidence for interrupted cancel commands and manual review for ambiguous replace commands.
   - [x] Mark crash-left intent `unknown` and pause the bot whenever an outcome remains unproven.
-- [x] Disable Binance live spot until authenticated spot execution accounting exists and keep Bybit
-  spot experimental behind `ENABLE_LIVE_SPOT`.
+- [x] Disable Binance live spot until authenticated spot execution accounting exists and retain the
+  Bybit spot implementation only as dormant code; `ENABLE_LIVE_SPOT` conflicts with the current
+  runtime and stops startup.
   - [x] Persist deduplicated bot-attributed quantity, weighted average, per-asset fees and remaining
     quantity from confirmed Bybit v5 executions.
   - [x] Constrain automated/manual bot closes to attributed inventory and pause instead of using account-wide balance when attribution is missing.

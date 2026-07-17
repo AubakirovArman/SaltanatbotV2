@@ -1,18 +1,21 @@
 # Exchange execution capability matrix
 
-This matrix is deliberately conservative and describes code paths covered by
-adapter/transport tests. It is not a mainnet-readiness claim. Live trading
-remains **Experimental** and disarmed by default.
+This matrix is deliberately conservative and describes retained code paths
+covered by adapter/transport tests. It is not an activation guide or a
+mainnet-readiness claim. The current `public-http-paper` build rejects
+`private-live`, credential use, signed requests, private streams and live
+orders; `ENABLE_LIVE_SPOT=true` stops startup. Every non-paper row below is a
+**dormant future/private-live reference** and is unreachable in this release.
 
 | Venue / market | Market | Limit | Conditional stop/TP | Exchange-held entry SL/TP | Private order/execution stream | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | Paper spot/futures | Yes | Yes | Yes | Simulated locally | Synchronous simulated fills | Supported for testing |
 | Binance spot | Adapter code exists, but live submission is disabled | Adapter code exists, but live submission is disabled | Disabled | No protected strategy-entry guarantee | None; the USDⓈ-M stream cannot account for spot executions | Disabled until authenticated spot execution accounting exists |
-| Binance USDⓈ-M linear | Yes | Yes | Stop-market / take-profit-market | Acknowledgement required; accepted entry is retained and paused on protection failure; separately identified emergency close | `ORDER_TRADE_UPDATE` + REST polling fallback | Experimental |
+| Binance USDⓈ-M linear | Yes | Yes | Stop-market / take-profit-market | Acknowledgement required; accepted entry is retained and paused on protection failure; separately identified emergency close | `ORDER_TRADE_UPDATE` + REST polling fallback | Dormant adapter; current runtime rejects activation |
 | Binance inverse | No | No | No | No | No | Unsupported |
-| Bybit spot | Yes | Yes | Adapter commands only; live replace/turnover are disabled | No protected strategy-entry guarantee | v5 `order` + `execution` with REST polling fallback | Experimental; requires `ENABLE_LIVE_SPOT` and attributed inventory |
-| Bybit USDT linear | Yes | Yes | Trigger orders / trading stop | Acknowledgement required; accepted entry is retained and paused on protection failure; separately identified emergency close | v5 order/execution + REST polling fallback | Experimental |
-| Bybit UTA cross collateral | Account snapshot + explicit collateral switch | Manual variable-rate borrow | No-conversion repay by default | IMR/MMR, funded-collateral and 80% borrow-usage guards | Signed V5 account APIs + audit log | Explicit bot opt-in; HTTPS required for UI mutations |
+| Bybit spot | Yes | Yes | Adapter commands only; live replace/turnover are disabled | No protected strategy-entry guarantee | v5 `order` + `execution` with REST polling fallback | Dormant adapter; `ENABLE_LIVE_SPOT` is rejected by current runtime |
+| Bybit USDT linear | Yes | Yes | Trigger orders / trading stop | Acknowledgement required; accepted entry is retained and paused on protection failure; separately identified emergency close | v5 order/execution + REST polling fallback | Dormant adapter; current runtime rejects activation |
+| Bybit UTA cross collateral | Account snapshot + explicit collateral switch | Manual variable-rate borrow | No-conversion repay by default | IMR/MMR, funded-collateral and 80% borrow-usage guards | Signed V5 account APIs + audit log | Dormant future reference; every private/account mutation is rejected |
 | Bybit inverse | No | No | No | No | No | Unsupported |
 
 Private execution normalization preserves venue execution ID, cumulative and
@@ -39,7 +42,10 @@ best-effort reduce-only emergency close uses a distinct `…-safety` client ID p
 ID. A missing ID or close failure is explicit. Likewise, an accepted ordinary live close leaves the
 managed position intact and paused until authenticated execution accounting proves the fill.
 
-## Operator checklist before any live use
+## Future security-review checklist before any live release
+
+These are future release gates, not current operator steps. Do not enter keys,
+arm adapters or attempt private exchange access in `public-http-paper`.
 
 1. Keep withdrawal permission disabled and enable exchange IP allowlisting.
 2. Verify encrypted keys, host NTP/chrony and the global live-trading kill switch.

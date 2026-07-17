@@ -1,8 +1,14 @@
 import type { Page, Route } from "@playwright/test";
+import type {
+  PaperPortfolioDetail,
+  PaperPortfolioListResponse,
+  PaperPortfolioMetadata
+} from "../../frontend/src/trading/paperPortfolioTypes";
 import type { TradingBot } from "../../frontend/src/trading/tradeClient";
 
 export const R33_OWNER_ID = "10000000-0000-4000-8000-000000000033";
 export const R33_OWNER_LOGIN = "fresh-r33";
+export const R33_PAPER_PORTFOLIO_ID = "20000000-0000-4000-8000-000000000033";
 
 export const R33_GOALS = ["monitoring", "price-alert", "backtest", "paper-robot"] as const;
 export type R33Goal = (typeof R33_GOALS)[number];
@@ -36,6 +42,15 @@ interface OnboardingRequest {
   body?: Record<string, unknown>;
 }
 
+export interface R33PaperBindingRequest {
+  method: string;
+  path: string;
+  ownerHeader: string | null;
+  csrfHeader: string | null;
+  idempotencyKey: string | null;
+  body?: Record<string, unknown>;
+}
+
 interface WorkspaceDocument {
   id: string;
   clientId: string;
@@ -49,6 +64,8 @@ interface WorkspaceDocument {
 export interface R33RouteFixture {
   readonly onboardingRequests: OnboardingRequest[];
   readonly ownerViolations: string[];
+  readonly paperBindingRequests: R33PaperBindingRequest[];
+  readonly paperBindingViolations: string[];
   readonly workspaceDocuments: WorkspaceDocument[];
   readonly bots: TradingBot[];
   state(): R33OnboardingState;
@@ -71,8 +88,11 @@ const MILESTONE_FIELD: Record<R33Milestone, keyof R33OnboardingState["milestones
 export async function installR33RouteFixture(page: Page): Promise<R33RouteFixture> {
   const ownerViolations: string[] = [];
   const onboardingRequests: OnboardingRequest[] = [];
+  const paperBindingRequests: R33PaperBindingRequest[] = [];
+  const paperBindingViolations: string[] = [];
   const workspaceDocuments: WorkspaceDocument[] = [];
   const bots: TradingBot[] = [];
+  const paperPortfolio = makePaperPortfolioDetail();
   const states = new Map<string, R33OnboardingState>([[R33_OWNER_ID, freshState()]]);
 
   await page.route("**/api/auth/config", (route) =>
@@ -275,6 +295,9 @@ export async function installR33RouteFixture(page: Page): Promise<R33RouteFixtur
   await page.route("**/api/trade/**", async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
+    const ownerHeader = request.headers()["x-sbv2-expected-user"] ?? null;
+    const csrfHeader = request.headers()["x-csrf-token"] ?? null;
+    const idempotencyKey = request.headers()["idempotency-key"] ?? null;
     if (request.method() === "GET" && pathname === "/api/trade/auth") {
       return json(route, {
         ok: true,
@@ -292,14 +315,80 @@ export async function installR33RouteFixture(page: Page): Promise<R33RouteFixtur
     if (request.method() === "POST" && pathname === "/api/trade/ws-ticket") {
       return json(route, { ticket: "r33-browser-ticket" });
     }
+    const paperDetailMatch = pathname.match(/^\/api\/trade\/paper-portfolios\/([^/]+)$/u);
+    if (
+      request.method() === "GET"
+      && (pathname === "/api/trade/paper-portfolios" || paperDetailMatch)
+    ) {
+      paperBindingRequests.push({
+        method: request.method(),
+        path: pathname,
+        ownerHeader,
+        csrfHeader,
+        idempotencyKey
+      });
+      if (ownerHeader !== R33_OWNER_ID) {
+        const violation = `${request.method()} ${pathname}: expected owner ${R33_OWNER_ID}, received ${ownerHeader ?? "<missing>"}`;
+        ownerViolations.push(violation);
+        paperBindingViolations.push(violation);
+        return json(route, { code: "owner_context_changed", error: "Owner context changed." }, 409);
+      }
+      if (pathname === "/api/trade/paper-portfolios") {
+        const list: PaperPortfolioListResponse = {
+          schemaVersion: "paper-portfolio-list-v1",
+          asOf: paperPortfolio.snapshot.asOf,
+          portfolios: [paperPortfolio.portfolio]
+        };
+        return json(route, clone(list));
+      }
+      const portfolioId = decodeURIComponent(paperDetailMatch![1]!);
+      return portfolioId === R33_PAPER_PORTFOLIO_ID
+        ? json(route, clone(paperPortfolio))
+        : json(route, { code: "not_found", error: "Paper portfolio not found." }, 404);
+    }
     if (pathname === "/api/trade/bots" && request.method() === "GET") {
       return json(route, { bots: clone(bots) });
     }
     if (pathname === "/api/trade/bots" && request.method() === "POST") {
       const body = safeBody(request.postData() ?? "");
+      paperBindingRequests.push({
+        method: request.method(),
+        path: pathname,
+        ownerHeader,
+        csrfHeader,
+        idempotencyKey,
+        body: clone(body)
+      });
+      if (ownerHeader !== R33_OWNER_ID) {
+        const violation = `${request.method()} ${pathname}: expected owner ${R33_OWNER_ID}, received ${ownerHeader ?? "<missing>"}`;
+        ownerViolations.push(violation);
+        paperBindingViolations.push(violation);
+        return json(route, { code: "owner_context_changed", error: "Owner context changed." }, 409);
+      }
+      if (csrfHeader !== "csrf-r33") {
+        paperBindingViolations.push(`${request.method()} ${pathname}: missing or invalid CSRF token`);
+        return json(route, { code: "csrf_invalid", error: "CSRF token is invalid." }, 403);
+      }
+      if (!idempotencyKey) {
+        paperBindingViolations.push(`${request.method()} ${pathname}: idempotency key is missing`);
+        return json(route, { code: "idempotency_key_required", error: "Idempotency-Key is required." }, 400);
+      }
+      if (
+        body.exchange !== "paper"
+        || body.paperPortfolioId !== R33_PAPER_PORTFOLIO_ID
+        || body.paperAllocation !== "10000.000000"
+        || body.expectedPortfolioRevision !== paperPortfolio.portfolio.revision
+        || body.expectedLedgerEpoch !== paperPortfolio.snapshot.ledgerEpoch
+      ) {
+        paperBindingViolations.push(`${request.method()} ${pathname}: canonical paper binding fence is invalid`);
+        return json(route, { code: "paper_binding_conflict", error: "Paper portfolio binding changed." }, 409);
+      }
+      const publicInput = Object.fromEntries(Object.entries(body).filter(([key]) => (
+        key !== "expectedPortfolioRevision" && key !== "expectedLedgerEpoch"
+      )));
       const now = Date.now();
       const bot = {
-        ...body,
+        ...publicInput,
         id: `paper-r33-${bots.length + 1}`,
         name: string(body.name) || `R3.3 paper bot ${bots.length + 1}`,
         strategyName: string(body.strategyName) || "Strategy",
@@ -311,6 +400,9 @@ export async function installR33RouteFixture(page: Page): Promise<R33RouteFixtur
         sizeValue: number(body.sizeValue, 100),
         leverage: number(body.leverage, 1),
         notifyMarkers: body.notifyMarkers !== false,
+        paperPortfolioId: R33_PAPER_PORTFOLIO_ID,
+        paperAllocation: "10000.000000",
+        paperLedgerEpoch: paperPortfolio.snapshot.ledgerEpoch,
         status: "stopped",
         createdAt: now,
         updatedAt: now
@@ -333,6 +425,8 @@ export async function installR33RouteFixture(page: Page): Promise<R33RouteFixtur
   return {
     onboardingRequests,
     ownerViolations,
+    paperBindingRequests,
+    paperBindingViolations,
     workspaceDocuments,
     bots,
     state: () => clone(states.get(R33_OWNER_ID)!)
@@ -428,6 +522,76 @@ function freshState(now = "2026-07-16T20:00:00.000Z"): R33OnboardingState {
     dismissedAt: null,
     createdAt: now,
     updatedAt: now
+  };
+}
+
+function makePaperPortfolioDetail(): PaperPortfolioDetail {
+  const createdAt = Date.parse("2026-07-16T20:00:00.000Z");
+  const asOf = createdAt + 60_000;
+  const portfolio: PaperPortfolioMetadata = {
+    ownerUserId: R33_OWNER_ID,
+    id: R33_PAPER_PORTFOLIO_ID,
+    name: "R3.3 default paper portfolio",
+    status: "active",
+    currency: "USDT",
+    revision: 1,
+    currentEpoch: 1,
+    isDefault: true,
+    createdAt,
+    updatedAt: createdAt
+  };
+  return {
+    portfolio,
+    snapshot: {
+      schemaVersion: "paper-portfolio-v1",
+      formulaVersion: "paper-metrics-v1",
+      ownerUserId: R33_OWNER_ID,
+      portfolioId: R33_PAPER_PORTFOLIO_ID,
+      ledgerEpoch: 1,
+      epochStartedAt: createdAt,
+      asOf,
+      robots: [],
+      positions: [],
+      openOrders: [],
+      aggregates: {
+        allocatedCapital: "0.000000",
+        unallocatedCash: "10000.000000",
+        initialCapital: "10000.000000",
+        cashBalance: "10000.000000",
+        feesPaid: "0.000000",
+        fundingNet: "0.000000",
+        realizedNetCashPnl: "0.000000",
+        legacyCashAdjustments: "0.000000",
+        cashEventMaxDrawdown: "0.000000",
+        unrealizedPnl: { status: "available", value: "0.000000", observedAt: asOf, source: "r33-browser-fixture" },
+        grossExposure: { status: "available", value: "0.000000", observedAt: asOf, source: "r33-browser-fixture" },
+        netExposure: { status: "available", value: "0.000000", observedAt: asOf, source: "r33-browser-fixture" },
+        equity: { status: "available", value: "10000.000000", observedAt: asOf, source: "r33-browser-fixture" },
+        reservedCapital: "0.000000",
+        availableCapital: "10000.000000",
+        committedCapital: { status: "available", value: "0.000000", observedAt: asOf, source: "r33-browser-fixture" },
+        margin: { status: "unavailable", reason: "No paper robot has reserved margin evidence." },
+        borrowing: { status: "unavailable", reason: "No paper robot has borrowing evidence." },
+        tradeStatistics: {
+          closedTrades: 0,
+          winningTrades: 0,
+          losingTrades: 0,
+          breakevenTrades: 0,
+          grossProfit: "0.000000",
+          grossLoss: "0.000000",
+          winRate: { status: "unavailable", reason: "No closed trades." },
+          profitFactor: { status: "unavailable", reason: "No closed trades." },
+          expectancy: { status: "unavailable", reason: "No closed trades." }
+        }
+      },
+      cashConservation: {
+        expectedCashBalance: "10000.000000",
+        actualCashBalance: "10000.000000",
+        difference: "0.000000",
+        balanced: true
+      }
+    },
+    robots: []
   };
 }
 

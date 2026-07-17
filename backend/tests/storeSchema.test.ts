@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { migrateTradingStore, TRADING_SCHEMA_VERSION } from "../src/trading/storeSchema.js";
 import { EXECUTION_RECONCILIATION_JOURNAL_SQL, RISK_ORDER_JOURNAL_SQL, withDatabaseTransaction } from "../src/trading/store.js";
 import { EmergencyStopCoordinator, type EmergencyStopResult } from "../src/trading/emergencyStop.js";
+import { deleteBotIntoForOwner } from "../src/trading/botStoreMutations.js";
 
 const databases: DatabaseSync[] = [];
 
@@ -81,11 +82,19 @@ describe("trading store schema migrations", () => {
         { version: 5, name: "durable_trading_account_registry" },
         { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
         { version: 7, name: "tenant_safe_execution_journal_identity" },
-        { version: 8, name: "execution_authority_revisions" }
+        { version: 8, name: "execution_authority_revisions" },
+        { version: 9, name: "owner_scoped_paper_portfolios" }
       ]
     });
-    expect(tableNames(database)).toEqual(["arbitrage_history", "audit_log", "bots", "fills", "logs", "order_events", "orders", "paper_events", "positions", "schema_migrations", "settings", "strategy_runs", "trading_account_credentials", "trading_accounts", "trading_owner_authority"]);
-    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 8 });
+    expect(tableNames(database)).toEqual([
+      "arbitrage_history", "audit_log", "bots", "fills", "logs", "order_events", "orders",
+      "paper_bot_allocations", "paper_bot_revision_evidence", "paper_bot_tombstones", "paper_events",
+      "paper_portfolio_epochs", "paper_portfolio_events", "paper_portfolio_mutations",
+      "paper_portfolio_projections", "paper_portfolios", "paper_valuation_marks", "positions",
+      "schema_migrations", "settings", "strategy_runs", "trading_account_credentials",
+      "trading_accounts", "trading_owner_authority"
+    ]);
+    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 9 });
   });
 
   it("upgrades an unversioned legacy database without deleting existing records", () => {
@@ -116,15 +125,27 @@ describe("trading store schema migrations", () => {
 
     expect(result).toEqual({
       fromVersion: 5,
-      toVersion: 8,
+      toVersion: 9,
       applied: [
         { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
         { version: 7, name: "tenant_safe_execution_journal_identity" },
-        { version: 8, name: "execution_authority_revisions" }
+        { version: 8, name: "execution_authority_revisions" },
+        { version: 9, name: "owner_scoped_paper_portfolios" }
       ]
     });
     expect(database.prepare("SELECT ownerUserId FROM bots WHERE id = 'legacy-bot'").get()).toEqual({ ownerUserId: "admin-user" });
     expect(database.prepare("SELECT ownerUserId FROM audit_log WHERE id = 'audit-1'").get()).toEqual({ ownerUserId: "admin-user" });
+    expect(deleteBotIntoForOwner(database, "admin-user", "legacy-bot", {
+      expectedRevision: 1,
+      deletedAt: 30,
+      reason: "legacy-token-delete",
+      releaseLegacyFlatAllocation: true
+    })).toBe(true);
+    expect(database.prepare("SELECT id FROM bots WHERE id = 'legacy-bot'").get()).toBeUndefined();
+    expect(database.prepare(`
+      SELECT status, releasedAt FROM paper_bot_allocations
+      WHERE ownerUserId = 'admin-user' AND botId = 'legacy-bot'
+    `).get()).toEqual({ status: "released", releasedAt: 30 });
   });
 
   it("upgrades v6 order identity without losing journal data", () => {
@@ -175,10 +196,11 @@ describe("trading store schema migrations", () => {
 
     expect(migrateTradingStore(database, () => 20)).toEqual({
       fromVersion: 6,
-      toVersion: 8,
+      toVersion: 9,
       applied: [
         { version: 7, name: "tenant_safe_execution_journal_identity" },
-        { version: 8, name: "execution_authority_revisions" }
+        { version: 8, name: "execution_authority_revisions" },
+        { version: 9, name: "owner_scoped_paper_portfolios" }
       ]
     });
     expect(database.prepare("SELECT data, ts, updatedAt FROM orders WHERE botId = ? AND id = ?").get("bot-a", "shared-client"))
@@ -219,8 +241,8 @@ describe("trading store schema migrations", () => {
     migrateTradingStore(database, () => 1);
     const result = migrateTradingStore(database, () => 2);
 
-    expect(result).toEqual({ fromVersion: 8, toVersion: 8, applied: [] });
-    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 8 });
+    expect(result).toEqual({ fromVersion: 9, toVersion: 9, applied: [] });
+    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 9 });
   });
 
   it("seeds legacy exchange accounts from stored keys and backfills bot account ids", () => {
@@ -265,12 +287,13 @@ describe("trading store schema migrations", () => {
 
     expect(result).toEqual({
       fromVersion: 4,
-      toVersion: 8,
+      toVersion: 9,
       applied: [
         { version: 5, name: "durable_trading_account_registry" },
         { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
         { version: 7, name: "tenant_safe_execution_journal_identity" },
-        { version: 8, name: "execution_authority_revisions" }
+        { version: 8, name: "execution_authority_revisions" },
+        { version: 9, name: "owner_scoped_paper_portfolios" }
       ]
     });
     expect(database.prepare("SELECT id, ownerUserId, exchange, ownership, enabled, createdAt FROM trading_accounts").all()).toEqual([
@@ -335,7 +358,7 @@ describe("trading store schema migrations", () => {
     expect(tableNames(database)).not.toContain("trading_account_credentials");
   });
 
-  it("enforces append-only paper events while allowing explicit bot deletion", () => {
+  it("enforces immutable paper event evidence", () => {
     const database = memoryDatabase();
     migrateTradingStore(database, () => 10);
     database.prepare("INSERT INTO paper_events (id, botId, sequence, type, data, ts) VALUES (?, ?, ?, ?, ?, ?)")
@@ -343,7 +366,8 @@ describe("trading store schema migrations", () => {
 
     expect(() => database.prepare("UPDATE paper_events SET ts = ? WHERE id = ?").run(20, "event-1"))
       .toThrow(/append-only/);
-    expect(database.prepare("DELETE FROM paper_events WHERE botId = ?").run("bot").changes).toBe(1);
+    expect(() => database.prepare("DELETE FROM paper_events WHERE botId = ?").run("bot"))
+      .toThrow(/append-only/);
   });
 
   it("rolls back every write when atomic execution accounting throws", () => {

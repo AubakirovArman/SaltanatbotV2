@@ -72,6 +72,7 @@ jobs:
       JOBS_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
       IDENTITY_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_identity_ci_test
       EXECUTION_LEDGER_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
+      EXECUTOR_COMMANDS_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
       WORKSPACES_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
     steps:
       - name: Checkout
@@ -115,6 +116,7 @@ jobs:
           npx --no-install vitest run backend/tests/computeJobsPostgres.integration.test.ts
           npx --no-install vitest run backend/tests/identityLifecyclePostgres.integration.test.ts
           npx --no-install vitest run backend/tests/executionStepLedgerPostgres.integration.test.ts
+          npx --no-install vitest run backend/tests/executorCommandsPostgres.integration.test.ts
           npx --no-install vitest run backend/tests/workspacesPostgres.integration.test.ts
 
   browser-e2e:

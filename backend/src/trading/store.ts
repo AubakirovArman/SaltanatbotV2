@@ -18,6 +18,16 @@ import { openCredentialPayload, sealCredentialPayload } from "./credentialCrypto
 import { assertBotCapacity } from "./resourceQuotas.js";
 import { getOrderJournalFrom, insertOrderEventInto, listOrderEventsForOwnerFrom, listOrderEventsFrom, listOrderJournalForOwnerFrom, listOrderJournalFrom, upsertOrderJournalInto } from "./orderJournalStore.js";
 import { openProtectedTradingStore, type ProtectedTradingStore } from "./tradingStoreBootstrap.js";
+import { upsertPaperValuationMarkIn, type PaperValuationMark } from "./paperPortfolioEvidenceStore.js";
+import {
+  assertPaperBotActiveAllocationInto,
+  deleteBotInto,
+  deleteBotIntoForOwner,
+  updateBotRuntimeStatusInto,
+  type ActivePaperBotAllocationBinding,
+  type BotDeleteOptions,
+  type BotRuntimeStatusMutation
+} from "./botStoreMutations.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../../data");
@@ -30,6 +40,15 @@ let activeStore: ProtectedTradingStore | undefined;
 
 export { LEGACY_TRADING_OWNER_ID } from "./storeSchema.js";
 export * from "./tradingAccountStore.js";
+export {
+  assertPaperBotActiveAllocationInto,
+  BotStoreMutationError,
+  deleteBotIntoForOwner,
+  updateBotRuntimeStatusInto,
+  type ActivePaperBotAllocationBinding,
+  type BotDeleteOptions,
+  type BotRuntimeStatusMutation
+} from "./botStoreMutations.js";
 
 export interface InitStoreOptions {
   /** Owner assigned to every pre-v6 trading row. Database-auth deployments
@@ -66,13 +85,15 @@ export function closeStore(): void {
 
 interface BotRow {
   ownerUserId: string;
+  revision: number;
   config: string;
 }
 
 function botFromRow(row: BotRow): BotConfig {
   return {
     ...withResolvedBotAccountId(JSON.parse(row.config) as BotConfig),
-    ownerUserId: row.ownerUserId
+    ownerUserId: row.ownerUserId,
+    revision: row.revision
   };
 }
 
@@ -80,7 +101,7 @@ function botFromRow(row: BotRow): BotConfig {
  * `listBotsForOwner` instead. */
 export function listBots(): BotConfig[] {
   return db
-    .prepare("SELECT ownerUserId, config FROM bots ORDER BY updatedAt DESC")
+    .prepare("SELECT ownerUserId, revision, config FROM bots ORDER BY updatedAt DESC")
     .all()
     .map((row) => botFromRow(row as unknown as BotRow));
 }
@@ -90,7 +111,7 @@ export function listBotsForOwner(ownerUserId: string): BotConfig[] {
   return (
     db
       .prepare(`
-    SELECT ownerUserId, config FROM bots
+    SELECT ownerUserId, revision, config FROM bots
     WHERE ownerUserId = ? ORDER BY updatedAt DESC
   `)
       .all(owner) as unknown as BotRow[]
@@ -99,7 +120,7 @@ export function listBotsForOwner(ownerUserId: string): BotConfig[] {
 
 export function getBotForOwner(ownerUserId: string, id: string): BotConfig | undefined {
   const owner = normalizeOwnerUserId(ownerUserId);
-  const row = db.prepare("SELECT ownerUserId, config FROM bots WHERE ownerUserId = ? AND id = ?").get(owner, id) as unknown as BotRow | undefined;
+  const row = db.prepare("SELECT ownerUserId, revision, config FROM bots WHERE ownerUserId = ? AND id = ?").get(owner, id) as unknown as BotRow | undefined;
   return row ? botFromRow(row) : undefined;
 }
 
@@ -133,69 +154,52 @@ export function upsertBotIntoForOwner(database: DatabaseSync, ownerUserId: strin
     throw new Error(`Bot ${bot.id} belongs to another owner`);
   }
   const normalized = withResolvedBotAccountId({ ...bot, ownerUserId: owner });
-  database.exec("BEGIN IMMEDIATE");
-  try {
-    const previous = database.prepare("SELECT config FROM bots WHERE ownerUserId = ? AND id = ?").get(owner, normalized.id) as { config: string } | undefined;
+  return withDatabaseTransaction(database, () => {
+    const previous = database.prepare("SELECT config, revision FROM bots WHERE ownerUserId = ? AND id = ?").get(owner, normalized.id) as { config: string; revision: number } | undefined;
     if (!previous && options.maxBots !== undefined) {
       const row = database.prepare("SELECT count(*) AS count FROM bots WHERE ownerUserId = ?").get(owner) as { count: number };
       assertBotCapacity(Number(row.count), options.maxBots);
     }
     const previousStatus = previous ? (JSON.parse(previous.config) as BotConfig).status : undefined;
+    const revision = previous ? previous.revision + 1 : 1;
+    normalized.revision = revision;
+    bot.revision = revision;
     database
       .prepare(`
-      INSERT INTO bots (id, ownerUserId, config, updatedAt) VALUES (?, ?, ?, ?)
+      INSERT INTO bots (id, ownerUserId, config, updatedAt, revision) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         config = excluded.config,
-        updatedAt = excluded.updatedAt
+        updatedAt = excluded.updatedAt,
+        revision = excluded.revision
       WHERE bots.ownerUserId = excluded.ownerUserId
     `)
-      .run(normalized.id, owner, JSON.stringify(normalized), normalized.updatedAt);
+      .run(normalized.id, owner, JSON.stringify(normalized), normalized.updatedAt, revision);
     recordBotStatusTransition(database, normalized, previousStatus);
-    database.exec("COMMIT");
-  } catch (error) {
-    database.exec("ROLLBACK");
-    throw error;
-  }
+    return normalized;
+  });
 }
 
-export function deleteBot(id: string) {
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    db.prepare("DELETE FROM bots WHERE id = ?").run(id);
-    deleteBotRecords(id);
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+export function updateBotRuntimeStatusForOwner(ownerUserId: string, input: BotRuntimeStatusMutation): BotConfig {
+  return updateBotRuntimeStatusInto(db, ownerUserId, input);
 }
 
-function deleteBotRecords(id: string): void {
-  db.prepare("DELETE FROM fills WHERE botId = ?").run(id);
-  db.prepare("DELETE FROM order_events WHERE botId = ?").run(id);
-  db.prepare("DELETE FROM orders WHERE botId = ?").run(id);
-  db.prepare("DELETE FROM logs WHERE botId = ?").run(id);
-  db.prepare("DELETE FROM positions WHERE botId = ?").run(id);
-  db.prepare("DELETE FROM strategy_runs WHERE botId = ?").run(id);
-  db.prepare("DELETE FROM paper_events WHERE botId = ?").run(id);
-  // Drop this bot's persisted paper-sim and durable strategy state.
-  db.prepare("DELETE FROM settings WHERE key = ? OR key = ?").run(`paper:${id}`, `state:${id}`);
-  db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`inventory:${id}:%`);
-  db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`futures-exposure:${id}:%`);
+export function assertPaperBotActiveAllocationForOwner(
+  ownerUserId: string,
+  config: BotConfig
+): ActivePaperBotAllocationBinding {
+  return assertPaperBotActiveAllocationInto(db, ownerUserId, config);
 }
 
-export function deleteBotForOwner(ownerUserId: string, id: string): boolean {
-  const owner = normalizeOwnerUserId(ownerUserId);
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const deleted = db.prepare("DELETE FROM bots WHERE ownerUserId = ? AND id = ?").run(owner, id).changes > 0;
-    if (deleted) deleteBotRecords(id);
-    db.exec("COMMIT");
-    return deleted;
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+export function upsertPaperValuationMark(mark: PaperValuationMark): PaperValuationMark {
+  return upsertPaperValuationMarkIn(db, mark);
+}
+
+export function deleteBot(id: string, options: BotDeleteOptions = {}): boolean {
+  return deleteBotInto(db, id, options);
+}
+
+export function deleteBotForOwner(ownerUserId: string, id: string, options: BotDeleteOptions = {}): boolean {
+  return deleteBotIntoForOwner(db, ownerUserId, id, options);
 }
 
 /** Remove a single setting (e.g. resetting a bot's durable strategy state). */
@@ -226,14 +230,18 @@ export function withStoreTransaction<T>(operation: () => T): T {
 }
 
 /** Exported for an in-memory rollback proof without opening the runtime DB. */
-export function withDatabaseTransaction<T>(database: Pick<DatabaseSync, "exec">, operation: () => T): T {
-  database.exec("BEGIN IMMEDIATE");
+export function withDatabaseTransaction<T>(
+  database: Pick<DatabaseSync, "exec" | "isTransaction">,
+  operation: () => T
+): T {
+  const ownsTransaction = !database.isTransaction;
+  if (ownsTransaction) database.exec("BEGIN IMMEDIATE");
   try {
     const result = operation();
-    database.exec("COMMIT");
+    if (ownsTransaction) database.exec("COMMIT");
     return result;
   } catch (error) {
-    database.exec("ROLLBACK");
+    if (ownsTransaction && database.isTransaction) database.exec("ROLLBACK");
     throw error;
   }
 }
@@ -255,8 +263,8 @@ export function appendPaperLedgerEvents(events: readonly PaperLedgerEvent[]): nu
   return appendPaperLedgerEventsTo(db, events);
 }
 
-export function listPaperLedgerEvents(botId: string): PaperLedgerEvent[] {
-  return listPaperLedgerEventsFrom(db, botId);
+export function listPaperLedgerEvents(botId: string, ledgerEpoch = 1): PaperLedgerEvent[] {
+  return listPaperLedgerEventsFrom(db, botId, ledgerEpoch);
 }
 
 // ---------- durable position snapshots ----------
@@ -587,10 +595,5 @@ export function pruneArbitrageHistory(before: number) {
   return db.prepare("DELETE FROM arbitrage_history WHERE ts < ?").run(before).changes;
 }
 
-function encrypt(plain: string, aad?: string): string {
-  return sealCredentialPayload(encKey, plain, aad);
-}
-
-function decrypt(payload: string, aad?: string): string {
-  return openCredentialPayload(encKey, payload, aad);
-}
+function encrypt(plain: string, aad?: string): string { return sealCredentialPayload(encKey, plain, aad); }
+function decrypt(payload: string, aad?: string): string { return openCredentialPayload(encKey, payload, aad); }

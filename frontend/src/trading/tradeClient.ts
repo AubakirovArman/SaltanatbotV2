@@ -3,6 +3,7 @@ import type { Timeframe } from "../types";
 import { getCsrfToken as getAccountCsrfToken } from "../auth/client";
 import { accountTelemetrySearch, parseAccountTelemetrySnapshot, type AccountTelemetryQuery, type AccountTelemetrySnapshot } from "./accountTelemetry";
 import type { TradingRuntimeDescriptor } from "./runtimeProfile";
+import type { PaperMoney } from "./paperPortfolioTypes";
 
 export type ExchangeId = "paper" | "binance" | "bybit";
 export type MarketType = "spot" | "futures";
@@ -12,6 +13,12 @@ export interface TradingBot {
   id: string;
   /** Durable account binding; legacy live bots resolve to the venue default. */
   accountId?: string;
+  /** Immutable paper-ledger binding returned by the canonical bot contract. */
+  paperPortfolioId?: string;
+  /** Canonical six-decimal USDT allocation; never internal micros. */
+  paperAllocation?: PaperMoney;
+  /** Ledger epoch captured when the paper bot binding was created. */
+  paperLedgerEpoch?: number;
   name: string;
   strategyName: string;
   ir: StrategyIR;
@@ -32,6 +39,19 @@ export interface TradingBot {
   createdAt: number;
   updatedAt: number;
 }
+
+export interface SaveBotOptions {
+  /** Required for tenant-bound durable paper commands in database-auth mode. */
+  ownerUserId?: string;
+  /** Stable command key. Callers must not silently retry with a different key. */
+  idempotencyKey?: string;
+}
+
+export type SaveBotInput = Partial<TradingBot> & {
+  /** Optimistic concurrency fence for a durable paper reservation command. */
+  expectedPortfolioRevision?: number;
+  expectedLedgerEpoch?: number;
+};
 
 export interface Fill {
   id: string;
@@ -362,7 +382,14 @@ export const killAll = (input: { operationId: string; flatten: boolean }) =>
   });
 
 export const listBots = () => req<{ bots: TradingBot[] }>("/bots").then((r) => r.bots);
-export const saveBot = (bot: Partial<TradingBot>) => req<{ bot: TradingBot }>("/bots", { method: "POST", body: JSON.stringify(bot) }).then((r) => r.bot);
+export const saveBot = (bot: SaveBotInput, options?: SaveBotOptions) => req<{ bot: TradingBot }>("/bots", {
+  method: "POST",
+  body: JSON.stringify(bot),
+  headers: {
+    ...(options?.ownerUserId ? { "X-SBV2-Expected-User": options.ownerUserId } : {}),
+    ...(options?.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {})
+  }
+}).then((r) => r.bot);
 export const deleteBot = (id: string) => req(`/bots/${id}`, { method: "DELETE" });
 export const startBot = (id: string, confirmLive = false) => req<{ ok: boolean; error?: string }>(`/bots/${id}/start`, { method: "POST", body: JSON.stringify({ confirmLive }) });
 export const stopBot = (id: string) => req(`/bots/${id}/stop`, { method: "POST" });

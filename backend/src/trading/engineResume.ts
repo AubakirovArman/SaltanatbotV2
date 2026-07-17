@@ -1,4 +1,5 @@
-import { listBots, upsertBotForOwner } from "./store.js";
+import { listBots } from "./store.js";
+import { persistBotRuntimeStatus } from "./botRuntimePersistence.js";
 import type { BotConfig } from "./types.js";
 import { tradingOwnerForBot } from "./ownership.js";
 
@@ -17,9 +18,7 @@ export async function resumePersistedBots(deps: ResumeDependencies): Promise<voi
     if (config.status !== "running" || deps.isRunning(config.id)) continue;
     try {
       if (!(await deps.authorize(config))) {
-        config.status = "stopped";
-        config.updatedAt = Date.now();
-        upsertBotForOwner(tradingOwnerForBot(config), config);
+        persistBotRuntimeStatus(config, "stopped");
         deps.log(config.id, "warn", "Automatic resume blocked because the owner no longer has the required trading permission");
         continue;
       }
@@ -27,9 +26,7 @@ export async function resumePersistedBots(deps: ResumeDependencies): Promise<voi
       deps.log(config.id, "info", "Resumed after restart");
     } catch (error) {
       deps.log(config.id, "error", `Resume failed: ${error instanceof Error ? error.message : error}`);
-      config.status = "stopped";
-      config.updatedAt = Date.now();
-      upsertBotForOwner(tradingOwnerForBot(config), config);
+      persistBotRuntimeStatus(config, "stopped");
     }
   }
 }

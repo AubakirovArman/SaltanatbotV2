@@ -1,12 +1,14 @@
 import {
   appendPaperEvents,
+  commandResultKey,
   replayPaperLedger,
   stampPaperLedgerEvent,
+  type PaperCommandResult,
   type PaperLedgerEvent,
   type PaperLedgerEventDraft,
   type PaperLedgerState
 } from "./paperLedger.js";
-import type { FillRecord, PendingOrder, PositionState } from "./types.js";
+import type { ExecResult, FillRecord, PendingOrder, PositionState } from "./types.js";
 
 export interface PaperState {
   balance: number;
@@ -29,6 +31,7 @@ export interface VerifiedPaperFundingSettlement {
 
 interface ControllerOptions {
   botId: string;
+  ledgerEpoch: number;
   startBalance: number;
   now: () => number;
   createId: () => string;
@@ -48,6 +51,7 @@ export class PaperLedgerController {
     }
     this.commitEvents([stampPaperLedgerEvent(
       options.botId,
+      options.ledgerEpoch,
       1,
       { type: "account_initialized", data: { balance: options.startBalance, leverage: 1, isolated: false, dualSide: false } },
       options.now(),
@@ -61,13 +65,25 @@ export class PaperLedgerController {
   }
 
   state(): PaperLedgerState {
-    return replayPaperLedger(this.eventsValue, this.options.botId);
+    return replayPaperLedger(this.eventsValue, this.options.botId, this.options.ledgerEpoch);
   }
 
   restore(events: readonly PaperLedgerEvent[]): PaperLedgerState {
-    const recovered = appendPaperEvents([], events, this.options.botId);
+    const recovered = appendPaperEvents([], events, this.options.botId, this.options.ledgerEpoch);
     this.eventsValue = recovered.events;
     return recovered.state;
+  }
+
+  commandResult(commandId: string, requestHash: string): ExecResult | undefined {
+    const receipt = this.eventsValue.find((event) => (
+      event.type === "command_completed"
+      && event.data.commandId === commandId
+    ));
+    if (!receipt || receipt.type !== "command_completed") return undefined;
+    if (receipt.data.requestHash !== requestHash) {
+      throw new Error(`Paper command ${commandId} was already used with another request`);
+    }
+    return structuredClone(receipt.data.result);
   }
 
   setPersistence(persist: (events: readonly PaperLedgerEvent[]) => void): void {
@@ -91,7 +107,13 @@ export class PaperLedgerController {
     return this.commitDrafts(drafts);
   }
 
-  commitTransition(before: PaperState, after: PaperState, fills: FillRecord[], reason: string): PaperLedgerState {
+  commitTransition(
+    before: PaperState,
+    after: PaperState,
+    fills: FillRecord[],
+    reason: string,
+    command?: PaperCommandResult
+  ): PaperLedgerState {
     const drafts: PaperLedgerEventDraft[] = [];
     for (const fill of fills) {
       drafts.push({ type: "fill", data: { fill: structuredClone(fill) } });
@@ -116,17 +138,34 @@ export class PaperLedgerController {
     if (before.leverage !== after.leverage || before.isolated !== after.isolated || before.dualSide !== after.dualSide) {
       drafts.push({ type: "settings", data: { leverage: after.leverage, isolated: after.isolated, dualSide: after.dualSide } });
     }
+    if (command) drafts.push({ type: "command_completed", data: structuredClone(command) });
     if (drafts.length === 0) {
       const recovered = this.state();
       if (!samePaperState(toPaperState(recovered), after)) throw new Error("Paper ledger transition does not reproduce the mutated state");
       return recovered;
     }
-    const additions = this.stampDrafts(drafts);
-    const preview = appendPaperEvents(this.eventsValue, additions, this.options.botId);
+    const additions = this.stampDrafts(drafts, this.options.now(), undefined, command?.commandId);
+    const preview = appendPaperEvents(
+      this.eventsValue,
+      additions,
+      this.options.botId,
+      this.options.ledgerEpoch
+    );
     if (!samePaperState(toPaperState(preview.state), after)) {
       throw new Error("Paper ledger transition does not reproduce the mutated state");
     }
     return this.commitEvents(additions, preview);
+  }
+
+  recordCommandResult(command: PaperCommandResult): PaperLedgerState {
+    const prior = this.commandResult(command.commandId, command.requestHash);
+    if (prior) return this.state();
+    return this.commitDrafts(
+      [{ type: "command_completed", data: structuredClone(command) }],
+      this.options.now(),
+      undefined,
+      command.commandId
+    );
   }
 
   applyFunding(settlement: VerifiedPaperFundingSettlement, position: PositionState | null): { amount: number; state: PaperLedgerState } {
@@ -145,26 +184,52 @@ export class PaperLedgerController {
     return { amount, state };
   }
 
-  private commitDrafts(drafts: PaperLedgerEventDraft[], ts = this.options.now(), idempotencyKey?: string): PaperLedgerState {
+  private commitDrafts(
+    drafts: PaperLedgerEventDraft[],
+    ts = this.options.now(),
+    idempotencyKey?: string,
+    commandId?: string
+  ): PaperLedgerState {
     if (drafts.length === 0) return this.state();
-    return this.commitEvents(this.stampDrafts(drafts, ts, idempotencyKey));
+    return this.commitEvents(this.stampDrafts(drafts, ts, idempotencyKey, commandId));
   }
 
-  private stampDrafts(drafts: PaperLedgerEventDraft[], ts = this.options.now(), idempotencyKey?: string): PaperLedgerEvent[] {
+  private stampDrafts(
+    drafts: PaperLedgerEventDraft[],
+    ts = this.options.now(),
+    idempotencyKey?: string,
+    commandId?: string
+  ): PaperLedgerEvent[] {
     let sequence = this.eventsValue.at(-1)?.sequence ?? 0;
-    return drafts.map((draft) => stampPaperLedgerEvent(
-      this.options.botId,
-      ++sequence,
-      draft,
-      ts,
-      this.options.createId(),
-      idempotencyKey && drafts.length === 1 ? idempotencyKey : undefined
-    ));
+    let commandOrdinal = 0;
+    return drafts.map((draft) => {
+      const key = draft.type === "command_completed"
+        ? commandResultKey(draft.data.commandId)
+        : commandId
+          ? `command:${commandId}:event:${commandOrdinal++}`
+          : idempotencyKey && drafts.length === 1
+            ? idempotencyKey
+            : undefined;
+      return stampPaperLedgerEvent(
+        this.options.botId,
+        this.options.ledgerEpoch,
+        ++sequence,
+        draft,
+        ts,
+        this.options.createId(),
+        key
+      );
+    });
   }
 
   private commitEvents(
     additions: PaperLedgerEvent[],
-    prepared = appendPaperEvents(this.eventsValue, additions, this.options.botId)
+    prepared = appendPaperEvents(
+      this.eventsValue,
+      additions,
+      this.options.botId,
+      this.options.ledgerEpoch
+    )
   ): PaperLedgerState {
     this.persistEvents?.(additions);
     this.eventsValue = prepared.events;

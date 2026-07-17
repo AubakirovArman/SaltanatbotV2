@@ -1,12 +1,15 @@
 # Threat model
 
 Status: alpha baseline
-Last reviewed: 2026-07-16
+Last reviewed for accepted deployment: 2026-07-16
+R4 candidate boundary reviewed: 2026-07-17
 
-SaltanatbotV2 is a self-hosted research and trading application. It stores sensitive exchange
-credentials and can submit real orders when an operator deliberately enables experimental live
-trading. This document describes the supported trust model, important assets and failure boundaries.
-It is not a claim that the application is production- or mainnet-ready.
+SaltanatbotV2 is a self-hosted research and paper-trading application. The repository retains
+encrypted legacy credential rows and dormant exchange-adapter code, but the current
+`public-http-paper` runtime rejects credential writes/decryption for use, signed requests, private
+streams and every live order. `private-live` and `ENABLE_LIVE_SPOT=true` stop startup before
+database, filesystem or listener side effects. This document describes the supported trust model,
+important assets and dormant future boundaries; it is not a mainnet-readiness claim.
 
 ## Security objectives
 
@@ -25,6 +28,7 @@ It is not a claim that the application is production- or mainnet-ready.
 | `backend/data/.secret` | Root needed to decrypt stored credentials | Owner-only mode; gitignored; backup treated as secret |
 | Access/scoped tokens | Authorize local sessions and roles | HttpOnly session exchange; scoped roles; redacted logs |
 | Trading database | Bots, settings, fills, orders and audit evidence | Local SQLite; durable lifecycle; checksummed backup |
+| Paper portfolio command/evidence | Capital reservations and owner-authorized lifecycle must not duplicate or cross tenants | PostgreSQL fenced queue plus executor-owned SQLite receipts/ledger in the R4 candidate |
 | Recovery generation | Combined PostgreSQL identity/workflow state and SQLite execution history | Private directories/files, SHA-256 manifests, strict inventory and isolated replacement restore |
 | Operational status | Can reveal capacity or deployment health | Public readiness is coarse/no-store; detailed counters require an administrator session |
 | Strategy/Pine artifacts | User intellectual property and execution rules | Local browser/storage; schema validation; no `eval` |
@@ -40,8 +44,11 @@ Browser/UI
 Backend on trusted host
   | encrypted local SQLite / filesystem
 Operator-controlled runtime data and backups
-  | signed HTTPS / authenticated private WebSocket
-Binance or Bybit public/private APIs
+  | public HTTPS/WebSocket market-data reads
+Binance or Bybit public APIs
+
+Dormant future boundary (not connected in `public-http-paper`):
+Backend | signed HTTPS / authenticated private WebSocket | private exchange APIs
 ```
 
 The browser, reverse proxy, operating-system account and deployment host are within the operator's
@@ -70,10 +77,11 @@ Threats include cross-origin requests, stolen admin tokens, exposed backend port
 Mitigations:
 
 - loopback bind by default and documented TLS reverse-proxy/firewall boundary;
-- key storage and risk-increasing live/account mutations reject public HTTP; forwarded HTTPS is accepted only from an explicitly configured `TRUST_PROXY`;
+- the current profile rejects every credential write, signed/private exchange request and live/account mutation regardless of proxy headers;
 - explicit authentication, scoped roles, HttpOnly sessions and CSRF validation;
 - one-use tickets for the private trade WebSocket;
-- demo mode disables exchange keys/live mutation; live requires global and per-bot arming;
+- the immutable `public-http-paper` profile disables exchange-key use and live mutation; every
+  retained live activator conflicts with this profile and stops startup;
 - non-paper bots require positive position, order, daily-loss and open-order caps, revalidated at start/resume and immediately before live order execution;
 - emergency stop disables live execution, but operators must still inspect exchange state.
 
@@ -238,6 +246,10 @@ Mitigations:
   with a verified SQLite runtime backup and records a bounded cross-store capture window;
 - its manifest binds every migration checksum, PostgreSQL/onboarding row counts, SQLite file
   digests/user versions and an owner-set checksum; verification is read-only;
+- the schema-12/schema-9 candidate inventory includes `executor_commands` and every canonical
+  `paper_portfolio_*` table, and restore compares their bounded counts with the manifest;
+- R4 is not accepted until the exact candidate passes the real isolated paired restore/rollback
+  drill using that inventory;
 - restore/drill target only a separately named database and a separate absent/empty data directory;
   they never switch a service, Compose file, `PGDATABASE` or active runtime path;
 - database cleanup requires the exact tool marker and database OID, while filesystem cleanup
@@ -249,6 +261,35 @@ Mitigations:
   verified atomic-slot rollback without opening runtime data;
 - transactional forward migrations with `PRAGMA user_version`;
 - databases from newer unsupported application versions are rejected.
+
+### Cross-store paper command replay and split-brain
+
+Threats include applying a paper mutation twice after a timeout, accepting an old browser session
+after its role changes, a stale executor acknowledging another lease, and restoring PostgreSQL and
+SQLite from unrelated points in time.
+
+R4 candidate mitigations:
+
+- one PostgreSQL command binds owner, actor, session hash, authorization revision/epoch, target,
+  request hash and idempotency key; secret-bearing JSON keys are rejected;
+- a fresh command, or a reclaimed command without an exact applied receipt, rechecks the active
+  session, paper role and current authorization immediately before apply;
+- one applying command per owner, renewable lease tokens and monotonic generations fence stale
+  workers and acknowledgements;
+- SQLite commits an immutable terminal mutation receipt with the portfolio change. After a lost
+  PostgreSQL acknowledgement, a reclaimed attempt may compare the exact owner, command ID,
+  idempotency key and request hash to that already-applied receipt and acknowledge it without
+  requiring the now-revoked session; this performs no second mutation. Any missing or mismatched
+  receipt still requires current authorization and fails closed;
+- capital allocation, robot revision, portfolio revision and ledger epoch are checked together;
+- reset creates a new epoch and retains prior events/evidence; missing valuation evidence is
+  unavailable rather than zero;
+- recovery requires one paired generation and replacement resources, never independently selected
+  PostgreSQL and SQLite halves.
+
+Residual boundary: one API/executor process remains mandatory for one `trading.db`; horizontal API
+replicas are not enabled by the queue alone. R4 remains a candidate until concurrent/restart,
+two-owner and paired-restore evidence passes for the exact release.
 
 ### Stale offline state and deferred commands
 

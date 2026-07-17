@@ -41,7 +41,20 @@ const RUNTIME_STAGING_ENTRIES = new Set([
   ".authtoken",
   "backup-manifest.json"
 ]);
-const SQLITE_COUNT_KEYS = ["tradingBots", "tradingAccounts", "tradingCredentials", "orders", "fills", "paperEvents", "candles", "multiLegRuns"];
+const SQLITE_TRADING_BASE_COUNT_KEYS = ["tradingBots", "tradingAccounts", "tradingCredentials", "orders", "fills", "paperEvents"];
+const SQLITE_PAPER_PORTFOLIO_TABLES = [
+  ["paperPortfolios", "paper_portfolios"],
+  ["paperPortfolioEpochs", "paper_portfolio_epochs"],
+  ["paperBotAllocations", "paper_bot_allocations"],
+  ["paperValuationMarks", "paper_valuation_marks"],
+  ["paperPortfolioMutations", "paper_portfolio_mutations"],
+  ["paperBotRevisionEvidence", "paper_bot_revision_evidence"],
+  ["paperBotTombstones", "paper_bot_tombstones"],
+  ["paperPortfolioJournalEvents", "paper_portfolio_events"],
+  ["paperPortfolioProjections", "paper_portfolio_projections"]
+];
+const SQLITE_PAPER_PORTFOLIO_COUNT_KEYS = SQLITE_PAPER_PORTFOLIO_TABLES.map(([key]) => key);
+const SQLITE_AUXILIARY_COUNT_KEYS = ["candles", "multiLegRuns"];
 
 export async function createProjectRecoveryBackup(options) {
   const outputDirectory = requiredPath(options?.outputDirectory, "backup output directory");
@@ -308,6 +321,11 @@ export async function restoreProjectRecovery(options) {
     toolEnvironment: dependencies.utilityEnvironment,
     metadataOnly: true
   });
+  const sourceSqlite = inspectSqliteInventory(sourceVerified.runtimeDirectory);
+  assertSameJson(sourceSqlite.counts, sourceVerified.manifest.sqlite.counts, "Source SQLite recovery counts");
+  if (sourceSqlite.ownerSetSha256 !== sourceVerified.manifest.sqlite.ownerSetSha256) {
+    throw new Error("Source SQLite owner-set checksum mismatch");
+  }
   const targetKind = options?.targetKind === "drill" ? "drill" : "restore";
   const targetDatabase = validateTargetDatabase(options?.targetDatabase, sourceVerified.manifest.postgres.database, targetKind);
   const targetOwner = validatePostgresRole(options?.targetOwner ?? sourceVerified.manifest.postgres.owner);
@@ -558,6 +576,10 @@ export function inspectSqliteInventory(dataDirectory) {
   const candlesPath = path.resolve(directory, "candles.db");
   const multiLegPath = path.resolve(directory, "arbitrage-paper-multi-leg.sqlite");
   const owners = new Set();
+  const tradingSchemaVersion = sqliteSchemaVersion(tradingPath);
+  if (tradingSchemaVersion >= 9) {
+    assertSqlitePaperPortfolioSchema(tradingPath, tradingSchemaVersion);
+  }
   const counts = {
     tradingBots: sqliteTableCount(tradingPath, "bots"),
     tradingAccounts: sqliteTableCount(tradingPath, "trading_accounts"),
@@ -565,13 +587,25 @@ export function inspectSqliteInventory(dataDirectory) {
     orders: sqliteTableCount(tradingPath, "orders"),
     fills: sqliteTableCount(tradingPath, "fills"),
     paperEvents: sqliteTableCount(tradingPath, "paper_events"),
+    ...(tradingSchemaVersion >= 9
+      ? Object.fromEntries(
+          SQLITE_PAPER_PORTFOLIO_TABLES.map(([key, table]) => [key, sqliteTableCount(tradingPath, table)])
+        )
+      : {}),
     candles: sqliteTableCount(candlesPath, "candles"),
     multiLegRuns: sqliteTableCount(multiLegPath, "runs")
   };
   if (existsSync(tradingPath)) {
     const database = openImmutableSqlite(tradingPath);
     try {
-      for (const table of ["bots", "trading_accounts", "orders", "fills", "paper_events"]) {
+      for (const table of [
+        "bots",
+        "trading_accounts",
+        "orders",
+        "fills",
+        "paper_events",
+        ...SQLITE_PAPER_PORTFOLIO_TABLES.map(([, table]) => table)
+      ]) {
         if (!sqliteTableExists(database, table) || !sqliteColumnExists(database, table, "ownerUserId")) continue;
         for (const row of database.prepare(`SELECT DISTINCT ownerUserId FROM "${table}" WHERE ownerUserId IS NOT NULL`).iterate()) {
           if (typeof row.ownerUserId === "string" && row.ownerUserId.length > 0) owners.add(row.ownerUserId);
@@ -822,7 +856,7 @@ function validateRecoveryManifest(value) {
     throw new Error("Project recovery runtime backup paths are invalid");
   }
   const files = validateRuntimeFiles(sqlite.files);
-  const counts = validateSqliteCounts(sqlite.counts);
+  const counts = validateSqliteCounts(sqlite.counts, files);
   const ownerSetSha256 = sha256Value(sqlite.ownerSetSha256, "SQLite owner set");
   const manifestSha256 = sha256Value(sqlite.manifestSha256, "Runtime backup manifest");
   const releaseCommit = validateReleaseCommit(value.releaseCommit);
@@ -872,7 +906,10 @@ function validatePostgresInventory(value) {
       workspaces: safeCount(counts.workspaces, "PostgreSQL workspaces"),
       workspaceRevisions: safeCount(counts.workspaceRevisions, "PostgreSQL workspace revisions"),
       computeJobs: safeCount(counts.computeJobs, "PostgreSQL compute jobs"),
-      userOnboarding: safeCount(counts.userOnboarding, "PostgreSQL onboarding rows")
+      userOnboarding: safeCount(counts.userOnboarding, "PostgreSQL onboarding rows"),
+      ...(migrations.at(-1)?.version >= 12 || counts.executorCommands !== undefined
+        ? { executorCommands: safeCount(counts.executorCommands, "PostgreSQL executor commands") }
+        : {})
     }
   };
 }
@@ -1443,6 +1480,42 @@ function sqliteTableCount(databasePath, table) {
   }
 }
 
+function sqliteSchemaVersion(databasePath) {
+  if (!existsSync(databasePath)) return 0;
+  assertRegularFile(databasePath, `SQLite database ${path.basename(databasePath)}`);
+  const database = openImmutableSqlite(databasePath);
+  try {
+    return safeCount(
+      Number(database.prepare("PRAGMA user_version").get()?.user_version),
+      `SQLite ${path.basename(databasePath)} schema version`
+    );
+  } finally {
+    database.close();
+  }
+}
+
+function assertSqlitePaperPortfolioSchema(databasePath, schemaVersion) {
+  const database = openImmutableSqlite(databasePath);
+  try {
+    if (!sqliteTableExists(database, "paper_events")) {
+      throw new Error(`SQLite trading schema ${schemaVersion} is missing required paper table paper_events`);
+    }
+    if (!sqliteColumnExists(database, "paper_events", "ledgerEpoch")) {
+      throw new Error(`SQLite trading schema ${schemaVersion} paper table paper_events is missing ledgerEpoch`);
+    }
+    for (const [, table] of SQLITE_PAPER_PORTFOLIO_TABLES) {
+      if (!sqliteTableExists(database, table)) {
+        throw new Error(`SQLite trading schema ${schemaVersion} is missing required paper table ${table}`);
+      }
+      if (!sqliteColumnExists(database, table, "ownerUserId")) {
+        throw new Error(`SQLite trading schema ${schemaVersion} paper table ${table} is missing ownerUserId`);
+      }
+    }
+  } finally {
+    database.close();
+  }
+}
+
 function openImmutableSqlite(databasePath) {
   const url = pathToFileURL(databasePath);
   url.searchParams.set("immutable", "1");
@@ -1478,9 +1551,24 @@ function validateRuntimeFiles(value) {
   });
 }
 
-function validateSqliteCounts(value) {
+function validateSqliteCounts(value, files) {
   if (!value || typeof value !== "object") throw new Error("SQLite recovery counts are missing");
-  return Object.fromEntries(SQLITE_COUNT_KEYS.map((key) => [key, safeCount(value[key], `SQLite ${key}`)]));
+  const counts = Object.fromEntries(
+    SQLITE_TRADING_BASE_COUNT_KEYS.map((key) => [key, safeCount(value[key], `SQLite ${key}`)])
+  );
+  const tradingVersion = files.find((entry) => entry.name === "trading.db")?.sqliteUserVersion ?? 0;
+  const hasPaperPortfolioCount = SQLITE_PAPER_PORTFOLIO_COUNT_KEYS.some(
+    (key) => value[key] !== undefined
+  );
+  if (tradingVersion >= 9 || hasPaperPortfolioCount) {
+    for (const key of SQLITE_PAPER_PORTFOLIO_COUNT_KEYS) {
+      counts[key] = safeCount(value[key], `SQLite ${key}`);
+    }
+  }
+  for (const key of SQLITE_AUXILIARY_COUNT_KEYS) {
+    counts[key] = safeCount(value[key], `SQLite ${key}`);
+  }
+  return counts;
 }
 
 function resolveReleaseCommit(configured, dependencies) {

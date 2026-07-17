@@ -5,6 +5,7 @@ import {
   installR33RouteFixture,
   installR33SocketFixture,
   R33_OWNER_ID,
+  R33_PAPER_PORTFOLIO_ID,
   type R33Goal,
   type R33Milestone,
   type R33RouteFixture
@@ -98,17 +99,44 @@ test("paper-robot onboarding opens the paper workspace and completes after creat
 
   await form.getByRole("textbox", { name: "Bot name" }).fill("R3.3 first paper robot");
   await expect(form.locator('select[name="exchange"]')).toHaveValue("paper");
-  await form.getByRole("button", { name: "Create bot", exact: true }).click();
+  await expect(form.locator('select[name="paper-portfolio-id"]')).toHaveValue(R33_PAPER_PORTFOLIO_ID);
+  await expect(form.locator('input[name="paper-allocation"]')).toHaveValue("10000.000000");
+  const createBot = form.getByRole("button", { name: "Create bot", exact: true });
+  await expect(createBot).toBeEnabled();
+  await createBot.click();
   await expect.poll(() => fixture.bots.length).toBe(1);
   expect(fixture.bots[0]).toMatchObject({
     name: "R3.3 first paper robot",
     exchange: "paper",
+    paperPortfolioId: R33_PAPER_PORTFOLIO_ID,
+    paperAllocation: "10000.000000",
+    paperLedgerEpoch: 1,
     status: "stopped"
   });
   await expect(page.locator(".trade-detail-head strong")).toHaveText("R3.3 first paper robot", { timeout: 20_000 });
 
   await expect.poll(() => fixture.state().status).toBe("completed");
   expectCompleted(fixture, "paper-robot", "paper-bot-created", "paperBotCreatedAt");
+  const portfolioReads = fixture.paperBindingRequests.filter((request) => request.method === "GET");
+  expect(new Set(portfolioReads.map((request) => request.path))).toEqual(new Set([
+    "/api/trade/paper-portfolios",
+    `/api/trade/paper-portfolios/${R33_PAPER_PORTFOLIO_ID}`
+  ]));
+  expect(new Set(portfolioReads.map((request) => request.ownerHeader))).toEqual(new Set([R33_OWNER_ID]));
+  const createRequests = fixture.paperBindingRequests.filter((request) => request.method === "POST" && request.path === "/api/trade/bots");
+  expect(createRequests).toHaveLength(1);
+  expect(createRequests[0]).toMatchObject({
+    ownerHeader: R33_OWNER_ID,
+    csrfHeader: "csrf-r33",
+    body: {
+      exchange: "paper",
+      paperPortfolioId: R33_PAPER_PORTFOLIO_ID,
+      paperAllocation: "10000.000000",
+      expectedPortfolioRevision: 1,
+      expectedLedgerEpoch: 1
+    }
+  });
+  expect(createRequests[0]!.idempotencyKey).toBeTruthy();
   expectOwnerFence(fixture);
 });
 
@@ -304,6 +332,7 @@ function expectCompleted(
 
 function expectOwnerFence(fixture: R33RouteFixture): void {
   expect(fixture.ownerViolations).toEqual([]);
+  expect(fixture.paperBindingViolations).toEqual([]);
   expect(fixture.onboardingRequests.length).toBeGreaterThanOrEqual(3);
   expect(new Set(fixture.onboardingRequests.map((request) => request.ownerHeader))).toEqual(new Set([R33_OWNER_ID]));
 }

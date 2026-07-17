@@ -2,10 +2,15 @@
 
 - Осалдықты public issue-де жарияламаңыз; [SECURITY.md](../../SECURITY.md) арнасын қолданыңыз.
 - `.env`, `.secrets/`, PostgreSQL dump, `backend/data/`, session cookie және exchange API кілттерін commit жасамаңыз.
-- Қаражат шығаруға рұқсаты жоқ бөлек API кілтін және IP allowlist пайдаланыңыз.
-- External access үшін HTTPS reverse proxy, firewall, қауіпсіз admin password және private database secret міндетті.
-- Paper әдепкі режим; live эксперименттік және бірнеше растауды қажет етеді.
-- Emergency stop-тан кейін де биржадағы positions/orders күйін тікелей тексеріңіз.
+- Қазіргі `public-http-paper` exchange key жазуды/қолдануды және барлық live
+  orders жолдарын қабылдамайды; credentials енгізбеңіз.
+- External access үшін private network/VPN/IP allowlist, firewall, қауіпсіз
+  admin password және private database secret қолданыңыз. HTTPS кейінгі бөлек
+  security roadmap-қа жатады.
+- Қазіргі ақауларды `DEMO_MODE=1` немесе Paper режимінде қайталаңыз; opt-in
+  testnet smoke тек read-only.
+- Болашақ HTTPS/private-live review бөлек withdrawal құқығы жоқ key, IP
+  allowlist және exchange-state reconciliation талап етеді.
 
 Бұл қысқаша аударма. Қолдау көрсетілетін нұсқалар мен хабарлау тәртібі үшін канондық
 [Security Policy](../../SECURITY.md) құжатын қараңыз.

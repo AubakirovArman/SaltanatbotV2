@@ -46,6 +46,36 @@ The initial Playwright suite must cover:
 
 Live-mainnet orders must never run in generic E2E. Exchange testnets require an explicit opt-in environment and isolated credentials.
 
+### R4 canonical paper-portfolio matrix
+
+R4 adds a mandatory cross-store and browser matrix:
+
+- PostgreSQL schema-12 migration/checksum, unprivileged test role, bounded
+  executor queue, owner fairness, leases, generation/token fencing, retention,
+  idempotency and authorization-revision/epoch rejection;
+- SQLite schema-9 migration from legacy paper bots, exact capital conservation,
+  epochs, allocations, valuation marks, immutable receipts/evidence,
+  tombstones, projections and foreign-key/integrity checks;
+- golden-ledger metrics, restart at lifecycle boundaries, duplicate closed-bar
+  handling, crash-left intent, terminal rejection replay, lost-ack recovery and
+  fresh-command reauthorization;
+- two-owner and administrator non-bypass tests across list/detail/mutations,
+  with expected-owner, CSRF, idempotency, revision and ledger-epoch assertions;
+- shutdown ordering and failure injection proving an active apply callback is
+  drained/aborted before the engine or SQLite can close;
+- desktop 1440×900, mobile 390×844 and narrow 320×700 journeys covering
+  portfolio lifecycle, table/cards, journal curve/metrics/fills/events,
+  confirmations, stale fallback, focus/Escape, reflow, scrolling and 44 px
+  coarse-pointer targets;
+- Axe WCAG 2.0/2.1 A/AA on the complete initial portfolio center and on the
+  same center with its named robot dialog open, with no application exclusions;
+- paired PostgreSQL/SQLite backup, isolated replacement restore, 11→12 and 8→9
+  migration, repeat no-op migration, extended inventory, rollback drill and
+  post-cutover generation.
+
+See [R4 release evidence](./evidence/R4_PAPER_PORTFOLIOS.md). Live exchange I/O
+is forbidden throughout this matrix.
+
 ## Pine compiler matrix
 
 For each supported construct, test:
@@ -290,6 +320,15 @@ respectively; the checker permits only 90% of each cap, preserving a mandatory 1
 Initial navigation remains small, while the lazy Blockly, total JS and total CSS policies no longer
 depend on a byte-for-byte snapshot. Total-distributable size is a secondary regression guard and
 must not be reported as bytes downloaded on initial navigation.
+
+The 2026-07-17 R4 portfolio/journal candidate measured 831.0 KiB total JavaScript and 46.3 KiB
+total CSS. Its protected predecessor already occupied 810.0/810.0 KiB of the usable JavaScript
+budget and 43.1/43.2 KiB of usable CSS. Concatenating every candidate JavaScript asset into one
+ideal gzip stream still measured 820.7 KiB, so chunk regrouping could not honestly satisfy the old
+total cap without removing the new strict parser, localized workflow or journal. Only the
+secondary total caps were therefore reviewed to 960 KiB JavaScript and 56 KiB CSS; the mandatory
+10% checker reserve is unchanged. The candidate occupies 84.6% and 82.7% of those raw caps,
+respectively. Initial, lazy-route, single-chunk and per-file CSS caps remain unchanged.
 
 - initial JS gzip <= 150 KB target;
 - no JavaScript chunk > 200 KiB gzip (enforced); the stable Blockly vendor boundary is currently

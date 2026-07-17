@@ -1,7 +1,7 @@
 # Accessibility release baseline
 
-Last verified: 2026-07-12
-Applies to: current alpha web terminal
+Last verified: 2026-07-17
+Applies to: current alpha web terminal and the R4 paper-portfolio candidate
 
 SaltanatbotV2 treats accessibility failures as release defects. The production Playwright suite runs
 axe WCAG 2 A/AA and WCAG 2.1 A/AA rules on the Chart, Strategy and locked Trading surfaces without
@@ -29,6 +29,10 @@ excluding application regions.
 | Price-chart construction | Every pane exposes native labelled number inputs, bounded help text and reset; pane-scoped persistence changes only the matching Canvas and semantic chart description | Same-symbol dual-Renko edit/reload/axe journey |
 | Per-pane drawings | Every pane/symbol owns a separate persistent Canvas set and exposes it through the maximized pane's native DOM object tree | Same-symbol create/reload/isolation and axe multi-chart journey |
 | Colour contrast | Dark/light semantic tokens meet text contrast targets on current core surfaces | axe WCAG AA audit; low-contrast secondary token regression fixed |
+| R4 paper portfolio center | Native select, menu/disclosures, table/cards, named status regions and explicit stale/unavailable evidence remain operable without colour alone | Component tests plus desktop, 390×844 and 320×700 Playwright journeys |
+| R4 robot detail and confirmations | Named modal drawer/bottom sheet, initial close-button focus, containment, Escape/opener restoration and confirmed pause/stop/reset/archive actions | Geometry, focus-return, scroll-range and keyboard Playwright assertions |
+| R4 reflow and touch | No horizontal document overflow; menu/dialog/drawer stay inside the viewport; visible coarse-pointer buttons are at least 44 px | 390×844 and 320×700 browser assertions |
+| R4 automated WCAG scope | Initial `.paper-portfolio-center` and the same complete center with the named robot dialog open | Axe WCAG 2.0/2.1 A/AA, no excluded selectors, zero violations |
 
 ## Known scope boundary
 
@@ -38,5 +42,7 @@ available, while a linear text strategy language is not currently offered. This 
 boundary, not permission to remove keyboard or screen-reader behavior from the Studio.
 
 Automated tools cannot prove comprehension, reading order quality or every screen-reader/browser
-combination. Before a stable release, repeat the manual matrix with current VoiceOver/Safari,
-NVDA/Firefox and NVDA/Chrome and record the versions/results in this page.
+combination. The R4 evidence proves automated semantics, contrast, keyboard, reflow and touch-target
+geometry; it does not claim a manual screen-reader or Android Opera result. Before a stable release,
+repeat the manual matrix with current VoiceOver/Safari, NVDA/Firefox, NVDA/Chrome and
+TalkBack/Android Opera and record the versions/results in this page.

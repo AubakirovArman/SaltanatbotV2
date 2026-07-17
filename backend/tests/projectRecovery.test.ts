@@ -1,10 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { createProjectRecoveryBackup, drillProjectRecovery, PROJECT_RECOVERY_MANIFEST, restoreProjectRecovery, runRecoveryTool, verifyProjectRecovery } from "../../scripts/lib/project-recovery.mjs";
+import { createProjectRecoveryBackup, drillProjectRecovery, inspectSqliteInventory, PROJECT_RECOVERY_MANIFEST, restoreProjectRecovery, runRecoveryTool, verifyProjectRecovery } from "../../scripts/lib/project-recovery.mjs";
 import { restoreRuntimeBackup } from "../../scripts/runtime-data.mjs";
 
 const TEST_SECRET = "11".repeat(32);
@@ -21,6 +21,7 @@ interface PostgresInventory {
     workspaceRevisions: number;
     computeJobs: number;
     userOnboarding: number;
+    executorCommands?: number;
   };
   userIds?: string[];
 }
@@ -56,23 +57,50 @@ function sourceInventory(): PostgresInventory {
   };
 }
 
+function migrationsThrough(version: number): PostgresInventory["migrations"] {
+  return Array.from({ length: version }, (_, index) => ({
+    version: index + 1,
+    name: `test_migration_${index + 1}`,
+    checksum: (index + 1).toString(16).padStart(2, "0").repeat(32)
+  }));
+}
+
 function seedRuntimeData(dataDirectory: string) {
   mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
   const trading = new DatabaseSync(path.resolve(dataDirectory, "trading.db"));
   trading.exec(`
+    PRAGMA user_version = 9;
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, encrypted INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE bots (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
     CREATE TABLE trading_accounts (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
     CREATE TABLE trading_account_credentials (id TEXT PRIMARY KEY);
     CREATE TABLE orders (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
     CREATE TABLE fills (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
-    CREATE TABLE paper_events (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
+    CREATE TABLE paper_events (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL, ledgerEpoch INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE paper_portfolios (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
+    CREATE TABLE paper_portfolio_epochs (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
+    CREATE TABLE paper_bot_allocations (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
+    CREATE TABLE paper_valuation_marks (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
+    CREATE TABLE paper_portfolio_mutations (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
+    CREATE TABLE paper_bot_revision_evidence (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
+    CREATE TABLE paper_bot_tombstones (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
+    CREATE TABLE paper_portfolio_events (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
+    CREATE TABLE paper_portfolio_projections (id TEXT PRIMARY KEY, ownerUserId TEXT NOT NULL);
     INSERT INTO settings (key, value, encrypted) VALUES ('marker', 'source', 0);
     INSERT INTO bots (id, ownerUserId) VALUES ('bot-1', 'owner-a'), ('bot-2', 'owner-b');
     INSERT INTO trading_accounts (id, ownerUserId) VALUES ('account-1', 'owner-a');
     INSERT INTO orders (id, ownerUserId) VALUES ('order-1', 'owner-a');
     INSERT INTO fills (id, ownerUserId) VALUES ('fill-1', 'owner-b');
     INSERT INTO paper_events (id, ownerUserId) VALUES ('event-1', 'owner-a');
+    INSERT INTO paper_portfolios (id, ownerUserId) VALUES ('portfolio-1', 'owner-a');
+    INSERT INTO paper_portfolio_epochs (id, ownerUserId) VALUES ('epoch-1', 'owner-a');
+    INSERT INTO paper_bot_allocations (id, ownerUserId) VALUES ('allocation-1', 'owner-a');
+    INSERT INTO paper_valuation_marks (id, ownerUserId) VALUES ('mark-1', 'owner-a');
+    INSERT INTO paper_portfolio_mutations (id, ownerUserId) VALUES ('mutation-1', 'owner-a');
+    INSERT INTO paper_bot_revision_evidence (id, ownerUserId) VALUES ('revision-1', 'owner-a');
+    INSERT INTO paper_bot_tombstones (id, ownerUserId) VALUES ('tombstone-1', 'owner-a');
+    INSERT INTO paper_portfolio_events (id, ownerUserId) VALUES ('journal-1', 'owner-a');
+    INSERT INTO paper_portfolio_projections (id, ownerUserId) VALUES ('projection-1', 'owner-a');
   `);
   trading.close();
   const candles = new DatabaseSync(path.resolve(dataDirectory, "candles.db"));
@@ -238,6 +266,10 @@ function writeManifest(generationDirectory: string, manifest: unknown) {
   chmodSync(file, 0o600);
 }
 
+function fileSha256(file: string): string {
+  return createHash("sha256").update(readFileSync(file)).digest("hex");
+}
+
 function readRuntimeMarker(dataDirectory: string) {
   const database = new DatabaseSync(path.resolve(dataDirectory, "trading.db"), { readOnly: true });
   try {
@@ -256,6 +288,161 @@ afterEach(() => {
 });
 
 describe("paired project recovery", () => {
+  it("keeps pre-v9 recovery count manifests backward-compatible", () => {
+    const directory = path.resolve(temporaryDirectory(), "legacy-runtime");
+    mkdirSync(directory, { mode: 0o700 });
+    const trading = new DatabaseSync(path.resolve(directory, "trading.db"));
+    trading.exec(`
+      PRAGMA user_version = 8;
+      CREATE TABLE bots (id TEXT PRIMARY KEY);
+      INSERT INTO bots (id) VALUES ('legacy-bot');
+    `);
+    trading.close();
+
+    expect(inspectSqliteInventory(directory).counts).toEqual({
+      tradingBots: 1,
+      tradingAccounts: 0,
+      tradingCredentials: 0,
+      orders: 0,
+      fills: 0,
+      paperEvents: 0,
+      candles: 0,
+      multiLegRuns: 0
+    });
+  });
+
+  it("fails closed when a v9 paper recovery table or owner scope is missing", () => {
+    const directory = path.resolve(temporaryDirectory(), "incomplete-v9-runtime");
+    seedRuntimeData(directory);
+    const database = new DatabaseSync(path.resolve(directory, "trading.db"));
+    database.exec("DROP TABLE paper_bot_tombstones");
+    database.close();
+
+    expect(() => inspectSqliteInventory(directory)).toThrow(/schema 9.*paper_bot_tombstones/i);
+
+    const malformed = new DatabaseSync(path.resolve(directory, "trading.db"));
+    malformed.exec("CREATE TABLE paper_bot_tombstones (id TEXT PRIMARY KEY)");
+    malformed.close();
+    expect(() => inspectSqliteInventory(directory)).toThrow(/paper_bot_tombstones.*ownerUserId/i);
+
+    const missingJournalDirectory = path.resolve(temporaryDirectory(), "missing-paper-journal");
+    seedRuntimeData(missingJournalDirectory);
+    const missingJournal = new DatabaseSync(path.resolve(missingJournalDirectory, "trading.db"));
+    missingJournal.exec("DROP TABLE paper_events");
+    missingJournal.close();
+    expect(() => inspectSqliteInventory(missingJournalDirectory)).toThrow(/schema 9.*paper_events/i);
+
+    const incompleteJournalDirectory = path.resolve(temporaryDirectory(), "incomplete-paper-journal");
+    seedRuntimeData(incompleteJournalDirectory);
+    const incompleteJournal = new DatabaseSync(path.resolve(incompleteJournalDirectory, "trading.db"));
+    incompleteJournal.exec("ALTER TABLE paper_events DROP COLUMN ledgerEpoch");
+    incompleteJournal.close();
+    expect(() => inspectSqliteInventory(incompleteJournalDirectory)).toThrow(/paper_events.*ledgerEpoch/i);
+  });
+
+  it("rejects a hash-consistent incomplete v9 generation before PostgreSQL restore", async () => {
+    const workspace = temporaryDirectory();
+    const created = await createGeneration(workspace);
+    const runtimeDirectory = path.resolve(created.generationDirectory, "runtime");
+    const tradingPath = path.resolve(runtimeDirectory, "trading.db");
+    const trading = new DatabaseSync(tradingPath);
+    trading.exec("DROP TABLE paper_bot_tombstones");
+    trading.close();
+
+    const runtimeManifestPath = path.resolve(runtimeDirectory, "backup-manifest.json");
+    const runtimeManifest = JSON.parse(readFileSync(runtimeManifestPath, "utf8"));
+    const runtimeTrading = runtimeManifest.files.find((entry: { name: string }) => entry.name === "trading.db");
+    runtimeTrading.size = readFileSync(tradingPath).length;
+    runtimeTrading.sha256 = fileSha256(tradingPath);
+    writeFileSync(runtimeManifestPath, `${JSON.stringify(runtimeManifest, null, 2)}\n`, { mode: 0o600 });
+
+    const recoveryManifest = readManifest(created.generationDirectory);
+    const recoveryTrading = recoveryManifest.sqlite.files.find((entry: { name: string }) => entry.name === "trading.db");
+    recoveryTrading.size = runtimeTrading.size;
+    recoveryTrading.sha256 = runtimeTrading.sha256;
+    recoveryManifest.sqlite.manifestSha256 = fileSha256(runtimeManifestPath);
+    recoveryManifest.sqlite.counts.paperBotTombstones = 0;
+    writeManifest(created.generationDirectory, recoveryManifest);
+
+    const targetDatabase = `saltanatbotv2_test_restore_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
+    await expect(restoreProjectRecovery({
+      generationDirectory: created.generationDirectory,
+      targetDatabase,
+      targetDataDirectory: path.resolve(workspace, "incomplete-v9-target"),
+      currentDataDirectory: created.dataDirectory,
+      postgres: created.runtime.postgres,
+      runTool: created.runtime.runTool,
+      pgRestore: "pg_restore"
+    })).rejects.toThrow(/schema 9.*paper_bot_tombstones/i);
+    expect(created.runtime.databases.has(targetDatabase)).toBe(false);
+    expect(created.runtime.toolCalls.filter((call) => call.command === "pg_restore" && call.args[0] !== "--list"))
+      .toEqual([]);
+  });
+
+  it("includes owners found only in every v9 paper recovery table", () => {
+    const directory = path.resolve(temporaryDirectory(), "paper-owner-runtime");
+    seedRuntimeData(directory);
+    const tables = [
+      "paper_portfolios",
+      "paper_portfolio_epochs",
+      "paper_bot_allocations",
+      "paper_valuation_marks",
+      "paper_portfolio_mutations",
+      "paper_bot_revision_evidence",
+      "paper_bot_tombstones",
+      "paper_portfolio_events",
+      "paper_portfolio_projections"
+    ];
+    const database = new DatabaseSync(path.resolve(directory, "trading.db"));
+    for (const [index, table] of tables.entries()) {
+      database.prepare(`INSERT INTO "${table}" (id, ownerUserId) VALUES (?, ?)`)
+        .run(`paper-owner-row-${index}`, `paper-owner-${index}`);
+    }
+    database.close();
+
+    expect(inspectSqliteInventory(directory).ownerUserIds).toEqual([
+      "owner-a",
+      "owner-b",
+      ...tables.map((_, index) => `paper-owner-${index}`)
+    ]);
+  });
+
+  it("keeps schema 11 manifests compatible and requires schema 12 executor command counts", async () => {
+    const workspace = temporaryDirectory();
+    const legacyRuntime = fakeRecoveryRuntime();
+    legacyRuntime.inventory.migrations = migrationsThrough(11);
+    const legacy = await createGeneration(path.resolve(workspace, "schema-11"), legacyRuntime);
+    expect(readManifest(legacy.generationDirectory).postgres.counts).not.toHaveProperty("executorCommands");
+    expect(verifyProjectRecovery(legacy.generationDirectory, {
+      runTool: legacyRuntime.runTool,
+      pgRestore: "pg_restore"
+    }).manifest.postgres.migrations).toHaveLength(11);
+
+    const currentRuntime = fakeRecoveryRuntime();
+    currentRuntime.inventory.migrations = migrationsThrough(12);
+    currentRuntime.inventory.counts.executorCommands = 6;
+    const current = await createGeneration(path.resolve(workspace, "schema-12"), currentRuntime);
+    expect(readManifest(current.generationDirectory).postgres.counts.executorCommands).toBe(6);
+    const restored = await restoreProjectRecovery({
+      generationDirectory: current.generationDirectory,
+      targetDatabase: `saltanatbotv2_test_restore_${randomUUID().replaceAll("-", "").slice(0, 8)}`,
+      targetDataDirectory: path.resolve(workspace, "schema-12-restored-data"),
+      currentDataDirectory: current.dataDirectory,
+      postgres: currentRuntime.postgres,
+      runTool: currentRuntime.runTool,
+      pgRestore: "pg_restore"
+    });
+    expect(restored.postgres.counts.executorCommands).toBe(6);
+
+    const incompleteManifest = readManifest(current.generationDirectory);
+    incompleteManifest.postgres.counts.executorCommands = undefined;
+    writeManifest(current.generationDirectory, incompleteManifest);
+    expect(() => verifyProjectRecovery(current.generationDirectory, {
+      runTool: currentRuntime.runTool,
+      pgRestore: "pg_restore"
+    })).toThrow(/executor commands.*count is invalid/i);
+  });
+
   it("kills a recovery process group while its direct leader remains alive", async () => {
     const workspace = temporaryDirectory();
     const descendantMarker = path.resolve(workspace, "descendant-survived");
@@ -479,6 +666,15 @@ describe("paired project recovery", () => {
           orders: 1,
           fills: 1,
           paperEvents: 1,
+          paperPortfolios: 1,
+          paperPortfolioEpochs: 1,
+          paperBotAllocations: 1,
+          paperValuationMarks: 1,
+          paperPortfolioMutations: 1,
+          paperBotRevisionEvidence: 1,
+          paperBotTombstones: 1,
+          paperPortfolioJournalEvents: 1,
+          paperPortfolioProjections: 1,
           candles: 2,
           multiLegRuns: 1
         }

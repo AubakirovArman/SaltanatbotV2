@@ -73,7 +73,10 @@ const tradeFlowHub = new TradeFlowHub();
 const venueClockCalibration = new VenueClockCalibrationService();
 const arbitrageAlerts = new ArbitrageAlertService({ clockCalibration: venueClockCalibration });
 const researchAlerts = new ResearchAlertService();
-const trading = createTradingApi(provider, arbitrageAlerts, { researchAlerts, legacyOwnerUserId: legacyTradingOwnerUserId, telegramControlEnabled: identityRuntime.mode === "legacy", runtimePolicy });
+const trading = createTradingApi(provider, arbitrageAlerts, { researchAlerts, legacyOwnerUserId: legacyTradingOwnerUserId, telegramControlEnabled: identityRuntime.mode === "legacy", runtimePolicy, executorCommandPool: identityRuntime.pool, identityService: identityRuntime.service });
+// Recover persisted engines before executor claims and before the HTTP listener.
+await trading.engine.resume(createTradingResumeAuthorization(identityRuntime, runtimePolicy));
+await trading.start();
 let tradingExecutorReady = true;
 const globalAdmission = new GlobalAdmissionController(runtimeConfig.operations.admission);
 const readinessRateLimiter = new ReadinessRateLimiter(runtimeConfig.operations.readiness.rateLimit);
@@ -84,7 +87,7 @@ const operationalStatus = new OperationalStatusService({
   admission: globalAdmission,
   apiMetrics,
   readinessRateLimit: readinessRateLimiter,
-  executorReady: () => tradingExecutorReady
+  executorReady: () => tradingExecutorReady && trading.executorReady()
 });
 identityRuntime.service?.setTradingAccessChangeHandler((ownerUserId, action) => (action === "restore" ? trading.restoreOwnerAccess(ownerUserId) : trading.revokeOwnerAccess(ownerUserId)));
 identityRuntime.service?.setSessionRevocationHandler(({ userId, sessionIdHash, reason }) => (sessionIdHash ? trading.disconnectSession(sessionIdHash, `Session ${reason.replaceAll("_", " ")}`) : trading.disconnectOwner(userId, `Session ${reason.replaceAll("_", " ")}`)));
@@ -545,9 +548,7 @@ installFrontendDistribution(app, frontendDistribution);
 
 server.listen(port, host, () => {
   console.log(`SaltanatbotV2 backend listening on http://${host}:${port}`);
-  // Upgrade the crypto catalog to the exchanges' full USDT-spot universe. Runs
-  // fire-and-forget: the curated fallback already serves requests, so a slow or
-  // failed fetch never delays startup or breaks the catalog endpoint.
+  // Upgrade the catalog in the background; the curated fallback already serves requests.
   void initCatalog()
     .then(() => console.log(`Instrument catalog ready (${getCatalog().instruments.length} instruments).`))
     .catch((error) => console.log(`Catalog fetch failed, using curated fallback: ${String(error)}`));
@@ -558,8 +559,6 @@ server.listen(port, host, () => {
   if (!loopback) {
     console.log(`⚠️  Bound to ${host} (reachable off-machine). During the current HTTP Research / Paper phase,\n` + "   allow only a trusted private network/VPN or strict source IPs. HTTPS is deferred. See docs/CONFIGURATION.md.");
   }
-  // Bring back bots that were running before the last shutdown/crash.
-  void trading.engine.resume(createTradingResumeAuthorization(identityRuntime, runtimePolicy));
   // Start the inbound Telegram control poller. No-op unless a token+chatId are
   // configured and Telegram is enabled; it can also be activated later from the
   // UI (POST /notify calls refresh()).
@@ -573,11 +572,11 @@ server.listen(port, host, () => {
 installGracefulShutdown(server, {
   quiesce() {
     tradingExecutorReady = false;
+    trading.quiesce();
     // Preserve desired status so running bots resume on the next start.
     trading.telegramControl.stop();
     researchAlerts.close();
     arbitrageAlerts.close();
-    trading.engine.shutdown();
     detachOpportunityLifecycle();
     detachContinuousRouteLifecycle();
     arbitrageStream.close();
@@ -586,7 +585,7 @@ installGracefulShutdown(server, {
     venueClockCalibration.stop();
   },
   closeResources: async () => {
-    trading.close();
+    await trading.close();
     await identityRuntime.close();
   }
 });

@@ -128,6 +128,14 @@ This index is a route-presence and access-classification contract. A change to a
 | `GET` | `/api/trade/paper-multi-leg/runs` | Authenticated · admin | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
 | `POST` | `/api/trade/paper-multi-leg/runs` | Authenticated · admin | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
 | `GET` | `/api/trade/paper-multi-leg/runs/:runId` | Authenticated · admin | `backend/src/arbitrage/paperMultiLeg/routes.ts` |
+| `GET` | `/api/trade/paper-portfolios` | Authenticated · owner-scoped | `backend/src/trading/paperPortfolioRoutes.ts` |
+| `POST` | `/api/trade/paper-portfolios` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/paperPortfolioRoutes.ts` |
+| `GET` | `/api/trade/paper-portfolios/:portfolioId` | Authenticated · owner-scoped | `backend/src/trading/paperPortfolioRoutes.ts` |
+| `PATCH` | `/api/trade/paper-portfolios/:portfolioId` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/paperPortfolioRoutes.ts` |
+| `POST` | `/api/trade/paper-portfolios/:portfolioId/archive` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/paperPortfolioRoutes.ts` |
+| `POST` | `/api/trade/paper-portfolios/:portfolioId/default` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/paperPortfolioRoutes.ts` |
+| `POST` | `/api/trade/paper-portfolios/:portfolioId/reset` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/paperPortfolioRoutes.ts` |
+| `POST` | `/api/trade/paper-portfolios/:portfolioId/robots/:botId/actions` | Authenticated · paper-trade · owner-scoped | `backend/src/trading/paperPortfolioRoutes.ts` |
 | `GET` | `/api/trade/portfolio` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
 | `DELETE` | `/api/trade/session` | Authenticated · read-only+ | `backend/src/trading/routes.ts` |
 | `POST` | `/api/trade/session` | Public | `backend/src/trading/routes.ts` |
@@ -162,4 +170,4 @@ This index is a route-presence and access-classification contract. A change to a
 | `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **142 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **150 HTTP endpoints** and **6 WebSocket endpoints**.

@@ -451,9 +451,11 @@ order:
      commit to `main`, verify GitHub Actions and cut over only project-owned
      services.
 
-**Dependencies:** backend R3 work may begin after R1 with stable owner IDs and
-the current workspace migration path; publishing R3 also requires the remaining
-R2 evidence to be closed.
+**Dependencies:** backend R3 work began after R1 with stable owner IDs and the
+workspace migration path. Its automated R2 browser, accessibility, visual and
+soak gates passed before R3 publication. The still-open manual Android Opera and
+assistive-technology matrix continues as a separate R2 record and does not
+retroactively invalidate the deployed R3 release.
 
 **Evidence:** two-owner and two-admin isolation tests; stale-tab conflict tests;
 quota boundary tests; admin audit/session-revocation tests; fresh-account E2E;
@@ -495,44 +497,48 @@ state, backup scope and failure test before its owning release is accepted.
 
 ## R4 — “Running” and the paper portfolio contract
 
-**Status:** planned consolidation. A browser robot/portfolio center and
-owner-scoped paper state exist, but they are not yet the complete durable
-contract below.
+**Status:** active release candidate, not yet accepted or deployed. The current
+worktree contains the schema-12/schema-9 authority boundary and canonical UI,
+but the complete R4 evidence and release gates below remain mandatory. Operator
+details are in [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
 **Baseline:**
 
-- the UI has loading, error and empty states and groups available robot/account
-  state by owner;
-- bots, orders, fills, journal rows and portfolio reads are owner-filtered;
-- missing margin or borrowing evidence is not synthesized.
+- PostgreSQL schema 12 contains a bounded durable executor-command queue with
+  owner/session authorization fences, leases and idempotent terminal outcomes;
+- trading SQLite schema 9 contains owner-scoped portfolios, monotonic ledger
+  epochs, capital reservations, mutation receipts, immutable robot-revision
+  evidence, valuation marks and append-only portfolio events;
+- the `paper-portfolio-v1`/`paper-metrics-v1` projection derives fixed-decimal
+  balances and evidence-aware metrics from durable ledgers and marks;
+- create/default/rename/archive/reset and robot create/control commands cross
+  the same fenced bridge; reset preserves prior epochs and requires rebind;
+- the UI has honest loading/error/empty states, a collapsible sticky summary,
+  mobile cards, desktop table/detail, filters and confirmed controls;
+- robot detail includes a bounded realized-cash curve, evidence-aware
+  performance/risk metrics, recent fills and recent ledger events without
+  inventing missing mark history;
+- missing or stale valuation, margin or borrowing evidence is not synthesized.
 
 **Remaining:**
 
-- implement the complete owner-scoped paper-portfolio lifecycle: create, select
-  a default, rename and archive; reset requires explicit confirmation, starts a
-  new versioned ledger epoch and never erases the prior journal or evidence;
-- publish a versioned `paper-portfolio-v1` snapshot owned by the singleton
-  trading executor and derived only from durable paper intents, orders, fills,
-  fees, simulated funding and valuation marks;
-- include `asOf`, valuation currency, evidence/freshness state, balance, reserved
-  capital, equity, realized/unrealized PnL, exposure, drawdown, positions, open
-  orders, robot summaries and last error;
-- define simulated margin and borrowing explicitly; return `unavailable` when
-  the paper model has no evidence instead of returning zero or reusing a real
-  exchange value;
-- version PnL, win-rate, profit-factor, expectancy and drawdown formulas and
-  make every backfill idempotent;
-- provide honest empty state, filters, sticky summary, mobile cards, desktop
-  table/detail drawer, and confirmation-bound pause/resume/stop;
-- bind every snapshot and mutation to owner, portfolio, bot revision and
-  idempotency key so restart cannot duplicate fills, reservations or commands.
+- record the completed journal/curve and golden-ledger, restart-boundary,
+  stale-mark, concurrent-command and two-owner authorization verification for
+  the exact candidate;
+- run the real isolated paired restore/rollback drill using the implemented
+  `executor_commands` and schema-9 paper-portfolio inventory checks;
+- run the remaining backend/frontend, migration, browser, accessibility,
+  visual, documentation and release gates;
+- publish only after exact-SHA GitHub Actions are green, then migrate and cut
+  over only the declared project resources under ADR 0002.
 
 **Dependencies:** R1 execution ledger, R3 owner/workspace lifecycle and ADR 0001
 authority boundaries.
 
 **Evidence:** golden-ledger reconciliation; restart at each lifecycle boundary;
 stale-mark/unavailable-state tests; concurrent command/idempotency tests;
-cross-owner REST/WS tests; mobile and desktop E2E.
+cross-owner REST/WS tests; mobile and desktop E2E. The candidate record is
+[R4 canonical paper portfolios](./evidence/R4_PAPER_PORTFOLIOS.md).
 
 **Exit criteria:** totals before and after restart are identical, every value has
 defined evidence and time, and no administrator or second tenant can read or
@@ -918,15 +924,15 @@ and stabilization.
 
 ### Immediate execution queue
 
-1. Start R4.1 by freezing the canonical owner-scoped paper-account, reservation,
-   order/fill/event and reconciliation contracts. Existing browser state and
-   legacy paper rows are inputs to migration, not a second system of record.
-2. Implement R4.1 behind the current Research/Paper runtime boundary, including
-   deterministic capital and PnL invariants, restart/partial-fill recovery,
-   tenant isolation, bounded jobs and paired backup/restore evidence.
-3. Build R4.2 “Running”, portfolio and journal UX only on the accepted R4.1
-   ledger. Cover empty/non-empty, profit/loss/margin/reservation and failure
-   states on mobile and desktop without exposing exchange credentials.
+1. Freeze and review the implemented R4 schema-12/schema-9 authority,
+   reservation, order/fill/event, reconciliation and bounded journal candidate.
+   Existing browser state and legacy paper rows remain migration inputs, never
+   a second system of record.
+2. Record the completed deterministic capital/PnL, restart/partial-fill,
+   two-owner, stale-evidence, desktop/mobile journal and accessibility
+   verification against the exact candidate.
+3. Execute the real isolated paired backup/restore/migration/rollback drill over
+   the implemented extended inventory and retain its checksummed evidence.
 4. Accept R4 only after the golden-ledger, restart reconciliation, PostgreSQL,
    browser, accessibility, bundle, recovery, documentation, CI and protected
    production smoke gates are green. R5 does not enter `main` before that gate.

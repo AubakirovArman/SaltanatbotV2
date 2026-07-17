@@ -7,6 +7,9 @@ This document separates five things that are easy to confuse: public market-data
 loss-detecting books, scanner participation, private account/execution code and operator/legal
 eligibility. A green result in one layer does not enable the next layer. Nothing in this document is
 a mainnet-readiness claim, and the excluded 7–14-day funded Binance/Bybit soak has not been run.
+In the current `public-http-paper` runtime every private/live path is dormant and unreachable:
+credential use, signed requests, private streams and live orders are rejected, while
+`private-live` or `ENABLE_LIVE_SPOT=true` stops startup.
 
 The adapter and continuous-runtime rows below are mechanically locked to the application sources by
 the [machine-readable capability truth register](CAPABILITY_TRUTHS.json); changing a registry, UI
@@ -20,7 +23,7 @@ stage of `npm run docs:check` fail.
 | Implemented public | A credential-free code path is registered, bounded and covered by repository tests |
 | Continuous route-ready | A selected-instrument WebSocket book can enter research discovery only after its implemented sequence/checksum, generation and freshness gates pass |
 | Continuous research-only | A stream or reducer exists, but its integrity/canonicality evidence is insufficient for route-ready books |
-| Experimental private | Authenticated code exists but is disarmed by default and is not mainnet-ready |
+| Dormant private reference | Authenticated code may exist for future review, but the current runtime cannot activate it |
 | Planned candidate | No adapter is implemented; the row is a researched priority, not a promise |
 | Excluded | Deliberately not offered for the stated deployment or legal scope |
 
@@ -46,7 +49,7 @@ borrow inventory, margin, fees, transfer networks, simultaneous fills or jurisdi
 | Continuous activation | Runtime wiring, a bounded file-backed loader and reviewed `config/continuous-routes.research.json` are implemented, but the file is not auto-loaded; the target process must set its absolute path (or mutually exclusive inline JSON) |
 | Continuous diagnostics | Public no-store `/api/arbitrage/continuous-feed-health`, strict SDK and EN/RU/KK Live routes diagnostics are delivered. `idle` is valid when configuration is absent; protocol-ready means fresh same-generation book continuity, not route or execution readiness |
 | Network identity | Static reviewed Binance/Bybit BTC/ETH native and Ethereum USDT/USDC registry plus bounded public preflight/SDK are delivered. Dynamic transfer status, fees, limits, confirmations and arrival observer are absent |
-| Private trading | Paper plus experimental Binance/Bybit paths only; every shared public adapter declares private execution false |
+| Private trading | Only Paper is reachable; retained Binance/Bybit private paths are dormant and every shared public adapter declares private execution false |
 
 `GET /api/instruments` exposes normalized metadata from the full registry above. `GET /api/venues`
 exposes capability manifests. Both include freshness/provenance state. The bounded public facade has
@@ -91,11 +94,11 @@ race. This is one-time public connectivity evidence, not soak or execution readi
 | --- | --- | --- |
 | Paper spot/futures and multi-leg journal | Supported for testing | Simulated fills and recovery do not prove venue execution |
 | Binance Spot | Disabled | No authenticated Spot execution stream/accounting path yet |
-| Binance USDⓈ-M | Experimental | Signed REST, private order updates and reconciliation exist; disarmed by default |
+| Binance USDⓈ-M | Dormant reference | Signed REST, private order updates and reconciliation exist in retained code; current runtime rejects activation |
 | Binance inverse | Unsupported | No order path |
-| Bybit Spot | Experimental | Requires `ENABLE_LIVE_SPOT`, attributed inventory and private v5 accounting |
-| Bybit USDT linear | Experimental | Signed v5 lifecycle/reconciliation exists; disarmed by default |
-| Bybit UTA cross collateral/manual debt | Explicit opt-in | Borrow, repay and collateral mutations are guard-railed operator actions, not scanner automation |
+| Bybit Spot | Dormant reference | Retained code requires `ENABLE_LIVE_SPOT`, but the current runtime rejects that flag |
+| Bybit USDT linear | Dormant reference | Signed v5 lifecycle/reconciliation exists in retained code; current runtime rejects activation |
+| Bybit UTA cross collateral/manual debt | Dormant reference | Every borrow, repay and collateral mutation is rejected by the current runtime |
 | All nine shared public adapters | Unsupported by design | Capability manifests keep private execution, borrow and transfers false |
 
 See [Exchange execution capabilities](EXCHANGE_CAPABILITIES.md) for the detailed order and recovery

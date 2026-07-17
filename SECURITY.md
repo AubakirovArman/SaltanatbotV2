@@ -14,8 +14,13 @@ If private reporting is unavailable, open a public issue requesting a private co
 
 - Never attach `backend/data/`, `.secrets/`, `.env`, `.secret`, PostgreSQL dumps, SQLite files or exchange credentials. `.authtoken` is a retired legacy artifact and must also stay private if an old installation still has one.
 - Change the generated bootstrap-admin password immediately. New registrations remain pending until an administrator activates them; disabling an account revokes its sessions.
-- Use exchange keys without withdrawal permission and restrict them by IP where possible.
-- Reproduce trading defects in `DEMO_MODE=1`, paper mode or an exchange testnet.
+- The current `public-http-paper` release rejects exchange-key writes/use and
+  every live order. Do not enter exchange credentials in it. Any future
+  HTTPS/private-live review must use dedicated keys without withdrawal
+  permission and an IP allowlist.
+- Reproduce current trading defects in `DEMO_MODE=1` or paper mode. The
+  separately opt-in exchange-testnet smoke is read-only and is not an
+  activation path.
 - Rotate every secret that may have entered logs, screenshots, commits or issue attachments.
 - Do not treat synthetic/fallback prices as executable live-market data.
 

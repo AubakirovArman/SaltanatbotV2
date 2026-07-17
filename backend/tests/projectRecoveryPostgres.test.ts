@@ -123,6 +123,7 @@ describe("project recovery PostgreSQL boundary", () => {
     let nextDatabaseOid = 20_000;
     let schemaVersion = 11;
     let onboardingTable = true;
+    let executorCommandsTable = false;
     let persistDatabaseMarker = true;
     const queries: string[] = [];
     class FakeClient {
@@ -170,7 +171,8 @@ describe("project recovery PostgreSQL boundary", () => {
                 workspaces: "3",
                 workspace_revisions: "4",
                 compute_jobs: "5",
-                has_user_onboarding: onboardingTable
+                has_user_onboarding: onboardingTable,
+                has_executor_commands: executorCommandsTable
               }
             ],
             rowCount: 1
@@ -179,6 +181,12 @@ describe("project recovery PostgreSQL boundary", () => {
         if (normalized.includes("FROM public.user_onboarding")) {
           return {
             rows: [{ user_onboarding: "1" }],
+            rowCount: 1
+          };
+        }
+        if (normalized.includes("FROM public.executor_commands")) {
+          return {
+            rows: [{ executor_commands: "6" }],
             rowCount: 1
           };
         }
@@ -265,6 +273,15 @@ describe("project recovery PostgreSQL boundary", () => {
     await expect(operations.withExportedSnapshot(async (value) => value.inventory)).rejects.toThrow(/schema 11.*user_onboarding/i);
 
     onboardingTable = true;
+    schemaVersion = 12;
+    executorCommandsTable = false;
+    await expect(operations.withExportedSnapshot(async (value) => value.inventory)).rejects.toThrow(/schema 12.*executor_commands/i);
+
+    executorCommandsTable = true;
+    await expect(
+      operations.withExportedSnapshot(async (value) => value.inventory)
+    ).resolves.toMatchObject({ counts: { executorCommands: 6 } });
+
     await expect(
       operations.withExportedSnapshot(async () => {
         throw new Error("pg_dump timed out after 50ms and was killed");

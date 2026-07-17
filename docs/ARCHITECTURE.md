@@ -82,27 +82,41 @@ Key pieces wired up in `backend/src/server.ts`:
   sockets accept at most 64 KiB per message.
 - **Static hosting** — before identity storage or a listener opens, the API validates the frozen runtime configuration's frontend distribution. Local source runs default to the repository `frontend/dist`; direct-host production pins `FRONTEND_DIST_DIR` to one exact protected release generation. The directory, shell, service worker and local module entries must be real, bounded files. After the API routes, `express.static` serves only that validated directory and a catch-all returns its `index.html` so the SPA can deep-link. Candidate builds may still use atomic publication inside their own staging generation, but a build in the checkout cannot replace the UI of an API pinned to a separate release slot. Shell metadata and the worker revalidate; content-hashed Vite assets are immutable.
 - **Configuration** — `PORT` (default `4180`) and `HOST` (default `127.0.0.1`) come from the environment. A wider bind must be explicitly requested.
-- **Graceful shutdown** — `SIGINT`/`SIGTERM` stop Telegram control, call `trading.engine.shutdown()` so desired bot state remains resumable, and close the server.
+- **Graceful shutdown** — `SIGINT`/`SIGTERM` stop Telegram control and quiesce new trading
+  submissions before closing the HTTP server. The R4 executor bridge first drains active callbacks,
+  requests abort after the bounded deadline and performs one final bounded drain. Only after every
+  callback settles may the engine persist resumable desired state and SQLite close. If a callback
+  ignores abort and remains active, shutdown fails closed and deliberately refuses both
+  `engine.shutdown()` and store close rather than racing an in-flight mutation.
 
 ### Persistence and secrets
 
 PostgreSQL stores users, Argon2id password hashes, revocable sessions, one-use WebSocket tickets,
-authentication audit events, owner-scoped onboarding/workspace revisions, durable research jobs and
-the current research-worker heartbeat. Checked-in migrations run atomically under an advisory lock
-and refuse checksum drift.
+authentication audit events, owner-scoped onboarding/workspace revisions, durable research jobs,
+the current research-worker heartbeat and, in the R4 candidate, the fenced executor-command queue.
+Checked-in migrations run atomically under an advisory lock and refuse checksum drift.
 
 The trading executor still uses built-in **`node:sqlite`** (`DatabaseSync`) in
 `backend/src/trading/store.ts`. Accounts, credentials, bots and journals are owner-scoped; exchange
 credentials are AES-256-GCM encrypted with a key derived by `scryptSync`. PostgreSQL authorization
 revisions and SQLite account/credential/arm revisions are joined only through short-lived internal
-execution permits, never through an unsafe dual write. Each exact signed exchange request crosses a
-mandatory fail-closed transport gate before timestamping, HMAC and network I/O. CPU-heavy backtests
-are claimed fairly from PostgreSQL and run by a separate supervisor in bounded worker threads; the
-API process never executes them synchronously. Queue telemetry uses a bounded 24-hour/10,000-row
-terminal sample and exposes only owner-scoped metrics to HTTP clients. The latest PostgreSQL schema
-is v11: v7 adds an owner-scoped prepared-step replay ledger, v8 adds bounded terminal-job artifact
+execution permits, never through an unsafe dual write. R4 paper mutations instead cross a durable
+PostgreSQL command plus an executor-owned SQLite receipt. The command is bound to owner, active
+session hash, authorization revision/epoch, target, request hash and idempotency key; a renewable
+lease token/generation fences apply and acknowledgement. A receipt committed with the SQLite
+mutation makes recovery after a lost PostgreSQL acknowledgement idempotent. Each exact signed
+exchange request crosses a mandatory fail-closed transport gate before timestamping, HMAC and
+network I/O. CPU-heavy backtests are claimed fairly from PostgreSQL and run by a separate supervisor
+in bounded worker threads; the API process never executes them synchronously. Queue telemetry uses
+a bounded 24-hour/10,000-row
+terminal sample and exposes only owner-scoped metrics to HTTP clients. Accepted production remains
+on PostgreSQL schema v11 while R4 is under review; the current R4 candidate's latest schema is v12:
+v7 adds an owner-scoped prepared-step replay ledger, v8 adds bounded terminal-job artifact
 retention, v9 adds the administrator control plane, v10 adds bounded versioned workspace workflow,
-and v11 adds owner onboarding plus runtime-component heartbeats. Existing accounts are seeded with
+v11 adds owner onboarding plus runtime-component heartbeats, and v12 adds the durable executor
+queue. Trading SQLite schema 9 adds canonical owner-scoped paper portfolios, monotonic ledger
+epochs, fixed capital reservations, mutation receipts, immutable robot-revision evidence, durable
+valuation marks and append-only portfolio events. Existing accounts are seeded with
 dismissed onboarding state; future accounts remain virtual revision-0 until their first onboarding
 mutation. A stable per-step `intentId` is checked against
 the exact permit-binding digest, compact keys are durable and owner-capped, and non-secret
@@ -114,13 +128,23 @@ production factory is intentionally not called by routes or adapters. Production
 deny-only and the pre-HTTPS configuration loader rejects `private-live`, so that boundary is
 unreachable in the current release.
 
+Canonical paper projections are versioned as `paper-portfolio-v1` with `paper-metrics-v1` formulas.
+The singleton executor rebuilds them only from exact robot-revision evidence, paper ledgers, capital
+reservations and current durable valuation marks. Missing/expired market evidence remains
+`unavailable`/`stale`; borrowing is not modeled. Portfolio reset closes one epoch and creates the
+next without deleting prior journals. See [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
+
 ### Recovery boundary
 
 Root recovery commands create one checksummed generation containing a PostgreSQL custom dump from
 an exported read-only snapshot plus the existing verified SQLite runtime backup. The manifest binds
 the release/profile, capture window, complete migration chain, PostgreSQL row counts (including
 onboarding), runtime file digests/user versions and a cross-store owner-set checksum. Verification
-does not mutate either store.
+does not mutate either store. The schema-12/schema-9 candidate extends that bounded inventory with
+the PostgreSQL `executor_commands` count and counts for every canonical SQLite paper-portfolio
+table; verification and replacement restore compare those counts with the manifest. That
+implementation evidence does not accept R4 by itself: the exact candidate must still pass the real
+isolated paired restore/rollback drill.
 
 Restore and drill operate only on a new database name and a separate absent/empty data directory.
 Database creation is tagged with a generation/operation marker and its OID; cleanup refuses to drop

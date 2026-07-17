@@ -1,6 +1,7 @@
 # Резервное копирование и восстановление
 
-Проверено: 2026-07-16.
+Проверено для принятого deployment: 2026-07-16. R4 schema-12/schema-9 checklist обновлён
+2026-07-17 как release-candidate guidance; acceptance не заявлена.
 
 Runtime-данные находятся в `backend/data/`. Рабочая копия должна сохранять вместе `trading.db` и
 `.secret`: без исходного `.secret` зашифрованные API-ключи расшифровать невозможно. `candles.db` и
@@ -229,6 +230,49 @@ npm run recovery:drill -- "/opt/saltanatbotv2-backups/$STAMP" \
   --current-data-dir "/opt/saltanatbotv2/backend/data"
 exit
 ```
+
+### Upgrade/rollback R4: PostgreSQL schema 12 и trading SQLite schema 9
+
+Кандидат R4 двигает оба persistence layers. PostgreSQL schema 12 добавляет durable fenced очередь
+executor-команд. Trading SQLite schema 9 добавляет canonical owner-scoped paper portfolios, ledger
+epochs, capital reservations, terminal mutation receipts, immutable robot-revision evidence,
+valuation marks и append-only portfolio events.
+
+Это две отдельные transactional forward migrations, а не одна distributed transaction. До первого
+старта R4 создайте и verify одну paired recovery generation описанным выше способом. Храните
+pre-upgrade generation вне mutable checkout/release tree и запишите exact release commit, database,
+data directory, Compose project или user units и loopback ports. Port/identity collision требует
+остановиться; нельзя завершать или переиспользовать чужой resource.
+
+Для cutover остановите только API и research worker этого проекта, установите accepted exact
+release и запустите ровно один API. Нельзя запускать два executor против одного `trading.db`.
+Readiness должна подтвердить expected PostgreSQL migration checksum и paper executor. Затем
+проверьте login, owner isolation, migrated paper portfolios и повтор одной mutation с тем же
+idempotency key. Matching research worker запускается только после этих проверок. После migration
+создайте и verify новую paired generation.
+
+Recovery format кандидата schema-12/schema-9 проверяет полный PostgreSQL
+archive/migration chain, записывает `executorCommands` и bounded counts всех девяти
+canonical SQLite tables: `paper_portfolios`, `paper_portfolio_epochs`,
+`paper_bot_allocations`, `paper_valuation_marks`, `paper_portfolio_mutations`,
+`paper_bot_revision_evidence`, `paper_bot_tombstones`, `paper_portfolio_events` и
+`paper_portfolio_projections`. Verify и replacement restore сравнивают эти counts с
+manifest вместе с checksummed SQLite files/user versions. Автоматическое
+inventory/validation coverage подтверждает реализацию, но не приёмку релиза. Пока
+exact candidate не прошёл real isolated paired restore/rollback drill, build остаётся
+кандидатом, а не принятым cutover.
+
+In-place downgrade отсутствует. Старый binary не должен открывать advanced store. Rollback — это
+остановка только процессов проекта, повторный verify retained pre-upgrade pair, restore обеих
+половин в новые replacement resources и отдельное переключение только остановленных units проекта
+на verified database/data directory вместе с matching protected pre-R4 release. Нельзя drop schema
+12, удалять command/receipt rows, уменьшать SQLite `user_version` или смешивать половины разных
+generation.
+
+Если PostgreSQL дошёл до schema 12, а SQLite migration 9 завершилась ошибкой, оставьте приложение
+остановленным. Сохраните logs и оба исходных store, выполняйте только read-only диагностику и при
+решении об откате восстановите полную pre-upgrade pair. Подробный checklist:
+[Канонические paper-портфели](PAPER_PORTFOLIOS.md).
 
 ## Низкоуровневое создание и проверка SQLite
 

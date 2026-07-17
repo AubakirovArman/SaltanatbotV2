@@ -98,16 +98,16 @@ function createPoolDouble(
 
 describe("PostgreSQL schema migrations", () => {
   it("uses contiguous checksummed versions and no extensions", () => {
-    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(11);
+    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(12);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
     ]);
-    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(11);
+    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(12);
     expect(DATABASE_MIGRATIONS.every((migration) => /^[0-9a-f]{64}$/.test(migration.checksum))).toBe(true);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.sql).join("\n")).not.toMatch(/CREATE\s+EXTENSION/i);
   });
 
-  it("keeps the published v1-v10 checksums stable and adds onboarding only in v11", () => {
+  it("keeps the published migrations stable and adds only the executor queue in v12", () => {
     expect(DATABASE_MIGRATIONS.slice(0, 10).map((migration) => migration.checksum)).toEqual([
       "9b538a4d07aad7251604f6f3b9a32e069cf9419efa993725762f00e4191cfd94",
       "4a164f3c2a96af3e7941cca8fd06e96147da4af10b2c9b1411713be32816192a",
@@ -161,6 +161,27 @@ describe("PostgreSQL schema migrations", () => {
     expect(DATABASE_MIGRATIONS[10].sql).not.toMatch(
       /\b(api_key|credential|password_hash|private_key|live_order)\b/i
     );
+    expect(DATABASE_MIGRATIONS[10].checksum).toBe(
+      "8e9906f5aa4e98cbf15cf31dd68c5fb5f8462889d7ba995ca4edbc5e456681f3"
+    );
+    expect(DATABASE_MIGRATIONS[11].name).toBe("durable_executor_command_queue");
+    expect(DATABASE_MIGRATIONS[11].checksum).toBe(
+      "72beb8455a9e96de97d28129b34a1a6a2c8a103090e1aa5455a9c9a0aa56d8d6"
+    );
+    expect(DATABASE_MIGRATIONS[11].sql).toContain("CREATE TABLE executor_commands");
+    expect(DATABASE_MIGRATIONS[11].sql).toContain("UNIQUE (owner_user_id, idempotency_key)");
+    expect(DATABASE_MIGRATIONS[11].sql).toContain("authorization_epoch >= 0");
+    expect(DATABASE_MIGRATIONS[11].sql).toContain("lease_generation = attempt");
+    expect(DATABASE_MIGRATIONS[11].sql).toContain(
+      "CREATE UNIQUE INDEX executor_commands_one_applying_per_owner"
+    );
+    expect(DATABASE_MIGRATIONS[11].sql).toContain("sqlite_receipt_hash");
+    expect(DATABASE_MIGRATIONS[11].sql).toContain(
+      "executor_commands_owner_terminal_retention_index"
+    );
+    expect(DATABASE_MIGRATIONS[11].sql).not.toMatch(
+      /\b(api_key|password_hash|private_key|exchange_secret|signed_request)\b/i
+    );
   });
 
   it("derives legacy public session IDs opaquely from the full secret hash", () => {
@@ -180,8 +201,8 @@ describe("PostgreSQL schema migrations", () => {
     const database = createPoolDouble();
     const result = await migrateDatabase(database.pool);
 
-    expect(result).toMatchObject({ fromVersion: 0, toVersion: 11 });
-    expect(result.applied).toHaveLength(11);
+    expect(result).toMatchObject({ fromVersion: 0, toVersion: 12 });
+    expect(result.applied).toHaveLength(12);
     expect(database.queries.some((query) => query.text.includes("pg_advisory_xact_lock"))).toBe(true);
     expect(database.queries.at(0)?.text).toBe("BEGIN");
     expect(database.queries.at(-1)?.text).toBe("COMMIT");

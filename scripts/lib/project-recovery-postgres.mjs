@@ -11,6 +11,7 @@ const DEFAULT_USER = "saltanatbotv2";
 const DEFAULT_MAINTENANCE_DATABASE = "postgres";
 const MAX_PASSWORD_BYTES = 8 * 1024;
 const ONBOARDING_SCHEMA_VERSION = 11;
+const EXECUTOR_COMMANDS_SCHEMA_VERSION = 12;
 
 export function resolveRecoveryConnections(env = process.env) {
   const source = connectionFromEnvironment(env, {
@@ -221,7 +222,8 @@ async function collectPostgresInventory(client) {
       (SELECT count(*)::text FROM public.workspaces) AS workspaces,
       (SELECT count(*)::text FROM public.workspace_revisions) AS workspace_revisions,
       (SELECT count(*)::text FROM public.compute_jobs) AS compute_jobs,
-      to_regclass('public.user_onboarding') IS NOT NULL AS has_user_onboarding
+      to_regclass('public.user_onboarding') IS NOT NULL AS has_user_onboarding,
+      to_regclass('public.executor_commands') IS NOT NULL AS has_executor_commands
   `);
   const userResult = await client.query("SELECT id::text AS id FROM public.users ORDER BY id ASC");
   const identity = identityResult.rows[0];
@@ -245,6 +247,13 @@ async function collectPostgresInventory(client) {
   if (schemaVersion >= ONBOARDING_SCHEMA_VERSION !== hasOnboardingTable) {
     throw new Error(`PostgreSQL schema ${schemaVersion} and user_onboarding table presence are inconsistent`);
   }
+  if (typeof counts.has_executor_commands !== "boolean") {
+    throw new Error("PostgreSQL executor command table inventory returned an invalid presence flag");
+  }
+  const hasExecutorCommandsTable = counts.has_executor_commands;
+  if (schemaVersion >= EXECUTOR_COMMANDS_SCHEMA_VERSION !== hasExecutorCommandsTable) {
+    throw new Error(`PostgreSQL schema ${schemaVersion} and executor_commands table presence are inconsistent`);
+  }
   let userOnboarding = 0;
   if (hasOnboardingTable) {
     const onboardingResult = await client.query("SELECT count(*)::text AS user_onboarding FROM public.user_onboarding");
@@ -253,6 +262,15 @@ async function collectPostgresInventory(client) {
       throw new Error("PostgreSQL onboarding recovery inventory returned no rows");
     }
     userOnboarding = countValue(onboardingCounts.user_onboarding, "onboarding rows");
+  }
+  let executorCommands = 0;
+  if (hasExecutorCommandsTable) {
+    const executorResult = await client.query("SELECT count(*)::text AS executor_commands FROM public.executor_commands");
+    const executorCounts = executorResult.rows[0];
+    if (!executorCounts) {
+      throw new Error("PostgreSQL executor command recovery inventory returned no rows");
+    }
+    executorCommands = countValue(executorCounts.executor_commands, "executor commands");
   }
   const userIds = userResult.rows.map((row) => boundedText(row.id, "PostgreSQL user ID", 255));
   if (userIds.length !== countValue(counts.users, "users")) {
@@ -267,7 +285,8 @@ async function collectPostgresInventory(client) {
       workspaces: countValue(counts.workspaces, "workspaces"),
       workspaceRevisions: countValue(counts.workspace_revisions, "workspace revisions"),
       computeJobs: countValue(counts.compute_jobs, "compute jobs"),
-      userOnboarding
+      userOnboarding,
+      ...(hasExecutorCommandsTable ? { executorCommands } : {})
     },
     userIds
   };

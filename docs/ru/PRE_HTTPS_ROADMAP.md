@@ -129,7 +129,7 @@ paper-портфелю или Telegram-каналу пользователя.
 | R1 | done | permits, execution ledger, bounded PostgreSQL queue, retention, ADR | future-live blockers остаются вне pre-HTTPS | migration/backup/restore + green CI |
 | R2 | active | mobile drawing sheet, gesture FSM, safe-area, компактные cards, Volume Profile/price-axis fixes, автоматизированная 320–1440 matrix, chart-only runtime ownership, lifecycle-gated subscriptions, O(1) provisional candle tail, принятый threshold-enforced soak и обязательный 10% bundle reserve | ручные Android Opera/assistive-tech smoke | 74 Chromium + 18 Firefox + 6 visual + soak `2/2` + manual artifacts |
 | R3 | done | R3.1–R3.3 развёрнуты на schema 11; lifecycle, workspace workflow, onboarding/PWA boundary и соответствующий срез O1 приняты | сопровождение; следующий продуктовый инкремент — R4 | [R3.1 evidence](../evidence/R3_1_IDENTITY_CONTROL_PLANE.md) + [R3.2 evidence](../evidence/R3_2_WORKSPACE_WORKFLOW.md) + [R3.3 evidence](../evidence/R3_3_ONBOARDING_OPERATIONS.md) |
-| R4 | pending | browser Running/portfolio center и owner-scoped paper/dormant legacy records | канонический paper-account, capital reservation, PnL/reconciliation и journal UX | golden ledger + restart/partial-fill tests |
+| R4 | active | schema-12 fenced commands, SQLite-9 canonical portfolios/epochs/reservations, versioned metrics, bounded Running journal/curve и extended recovery inventory | exact-candidate verification/evidence, real isolated paired restore/rollback drill и release gates | golden ledger + restart/partial-fill + paired restore tests |
 | R5 | pending | research alert/outbox slices, arbitrage screener, canonical indicators | unified alerts, technical screener MVP, notification worker и Telegram | scheduler/outbox crash tests + alert/chart parity |
 | R6 | pending | общий paper execution foundation частично существует | общий paper contract + DCA | deterministic replay + capital invariants |
 | R7 | pending | foundation R6 | Grid на том же ledger/state machine | gap/restart/golden replay |
@@ -585,9 +585,10 @@ R3.3 принят одним совместимым инкрементом и б
 
 ## 8. R4 — экран «Запущено» и paper-портфель
 
-Статус: pending. Baseline: browser Running center, owner-scoped bots/accounts,
-portfolio reads и explicit empty/loading/error states уже есть. Remaining delta:
-каноническая paper-account модель и доказуемая аналитика поверх общего ledger.
+Статус: active release candidate, ещё не принят и не развёрнут. В текущем
+worktree уже есть граница schema 12/schema 9 и canonical UI, но все evidence и
+release gates этого раздела остаются обязательными. Операторский runbook:
+[Канонические paper-портфели](./PAPER_PORTFOLIOS.md).
 
 Paper-account contract:
 
@@ -601,6 +602,23 @@ Paper-account contract:
 - формулы PnL/funding/fees versioned; reconciliation сверяет orders, fills,
   reservations и snapshots после restart/partial fill/unknown evidence;
 - при incomplete evidence операция и метрика маркируются `Недоступно`, а не нулём.
+
+Candidate baseline:
+
+- PostgreSQL schema 12 хранит bounded durable executor-command queue с
+  owner/session authorization fences, leases и idempotent terminal outcomes;
+- trading SQLite schema 9 хранит owner-scoped portfolios, monotonic ledger
+  epochs, capital reservations, mutation receipts, immutable robot-revision
+  evidence, valuation marks и append-only portfolio events;
+- `paper-portfolio-v1`/`paper-metrics-v1` строит fixed-decimal balances и
+  evidence-aware metrics только из durable ledgers/marks;
+- create/default/rename/archive/reset и robot create/control проходят через
+  один fenced bridge; reset сохраняет старые epochs и требует rebind;
+- UI уже имеет honest loading/error/empty states, collapsible sticky summary,
+  mobile cards, desktop table/detail, filters и confirmed controls;
+- robot detail уже содержит bounded realized-cash curve, evidence-aware
+  performance/risk metrics, recent fills и recent ledger events без выдуманной
+  истории marks.
 
 Экран **Запущено**:
 
@@ -620,9 +638,23 @@ Paper-account contract:
 - неполные данные показываются как `Недоступно`, а не как ложный ноль;
 - сверка с golden ledgers и restart tests.
 
+До приёмки остаётся:
+
+- зафиксировать выполненную проверку journal/curve, golden ledgers, restart
+  boundaries, stale marks, concurrent commands и two-owner authorization для
+  exact candidate;
+- выполнить real isolated paired restore/rollback drill по уже реализованным
+  inventory checks для `executor_commands` и canonical paper tables schema 9;
+- пройти остальные backend/frontend, migration, browser, accessibility,
+  visual, docs и release gates;
+- публиковать только после green GitHub Actions exact SHA, затем мигрировать и
+  переключать только заявленные resources проекта по ADR 0002.
+
 Критерий: totals до и после restart совпадают, каждая метрика имеет определённую
 формулу, evidence и время, а второй tenant или администратор не может прочитать
 или изменить чужой paper-портфель.
+
+Candidate evidence: [R4 canonical paper portfolios](../evidence/R4_PAPER_PORTFOLIOS.md).
 
 ## 9. R5 — алерты, технический скринер MVP и уведомления
 
@@ -1100,8 +1132,8 @@ tests/evidence → docs/rollback → production smoke. Частично гото
 | R3.2 | полный workspace document, explicit save/conflict/error, quotas и import/export | reload/two-tab/rollback tests |
 | R3.3 | onboarding, empty states, docs links и HTTP-safe PWA boundary | fresh-account journey |
 | O1 | SQLite integrity/retention, logs, metrics, readiness и global admission foundation | crash/overload/backup smoke |
-| R4.1 | канонический paper account, reservations и versioned order/fill/event contract | golden ledger + restart |
-| R4.2 | экран «Запущено», journal, equity/PnL/drawdown и mobile/desktop UX | reconciliation + tenant isolation |
+| R4.1 | candidate: канонический paper account, reservations и versioned order/fill/event contract; gate не принят | golden ledger + restart |
+| R4.2 | candidate: экран «Запущено», bounded journal, equity/PnL/drawdown и mobile/desktop UX; gate не принят | reconciliation + tenant isolation |
 | R5.1 | PostgreSQL alert rules/events/outbox, scheduler и price/indicator alerts | closed-browser restart/dedupe |
 | R5.2 | технический скринер на canonical indicator engine | chart/screener parity |
 | R5.3 | notification worker, Telegram binding/revoke и paper-only команды | at-least-once delivery drill |
@@ -1135,15 +1167,15 @@ tests/evidence → docs/rollback → production smoke. Частично гото
 
 ### 18.3. Ближайшая очередь работ
 
-1. Начать R4.1 с фиксации канонических owner-scoped контрактов paper account,
-   reservation, order/fill/event и reconciliation. Существующее browser state и
-   legacy paper rows являются входом миграции, а не вторым system of record.
-2. Реализовать R4.1 внутри текущей Research/Paper boundary: детерминированные
-   инварианты капитала и PnL, restart/partial-fill recovery, tenant isolation,
-   bounded jobs и парное backup/restore evidence.
-3. Построить R4.2 «Запущено», portfolio и journal UX только поверх принятого
-   ledger R4.1. Покрыть empty/non-empty, profit/loss/margin/reservation и failure
-   states на mobile/desktop без показа exchange credentials.
+1. Зафиксировать и проверить уже реализованный R4 schema-12/schema-9 authority,
+   reservation, order/fill/event, reconciliation и bounded journal candidate.
+   Существующее browser state и legacy paper rows остаются входом миграции, а
+   не вторым system of record.
+2. Записать exact-candidate evidence для deterministic capital/PnL,
+   restart/partial-fill, two-owner isolation, stale evidence, desktop/mobile
+   journal и accessibility.
+3. Выполнить real isolated paired backup/restore/migration/rollback drill по
+   extended inventory и сохранить checksummed evidence.
 4. Принять R4 только после green golden-ledger, restart reconciliation,
    PostgreSQL, browser, accessibility, bundle, recovery, documentation, CI и
    protected production smoke gates. R5 не попадает в `main` до этого gate.

@@ -1,8 +1,9 @@
-import type { FillRecord, PendingOrder, PositionState } from "./types.js";
+import type { ExecResult, FillRecord, PendingOrder, PositionState } from "./types.js";
 
 interface PaperEventBase {
   id: string;
   botId: string;
+  ledgerEpoch: number;
   sequence: number;
   ts: number;
   idempotencyKey?: string;
@@ -17,7 +18,8 @@ export type PaperLedgerEvent =
   | PaperEventBase & { type: "cash"; data: { amount: number; reason: "realized-pnl" | "legacy-balance-adjustment"; fillId?: string } }
   | PaperEventBase & { type: "position"; data: { position: PositionState | null } }
   | PaperEventBase & { type: "funding"; data: PaperFundingEvent }
-  | PaperEventBase & { type: "settings"; data: { leverage: number; isolated: boolean; dualSide: boolean } };
+  | PaperEventBase & { type: "settings"; data: { leverage: number; isolated: boolean; dualSide: boolean } }
+  | PaperEventBase & { type: "command_completed"; data: PaperCommandResult };
 
 type WithoutEventHeader<T> = T extends PaperEventBase ? Omit<T, keyof PaperEventBase> : never;
 export type PaperLedgerEventDraft = WithoutEventHeader<PaperLedgerEvent>;
@@ -32,6 +34,12 @@ export interface PaperFundingEvent {
   source: string;
   settledAt: number;
   verified: true;
+}
+
+export interface PaperCommandResult {
+  commandId: string;
+  requestHash: string;
+  result: ExecResult;
 }
 
 export interface PaperLedgerState {
@@ -50,19 +58,30 @@ export interface PaperLedgerState {
 
 export function stampPaperLedgerEvent(
   botId: string,
+  ledgerEpoch: number,
   sequence: number,
   draft: PaperLedgerEventDraft,
   ts: number,
   id: string,
   idempotencyKey?: string
 ): PaperLedgerEvent {
-  if (!botId.trim() || !Number.isSafeInteger(sequence) || sequence <= 0 || !Number.isSafeInteger(ts) || ts <= 0 || !id.trim()) {
+  if (
+    !botId.trim()
+    || !Number.isSafeInteger(ledgerEpoch)
+    || ledgerEpoch <= 0
+    || !Number.isSafeInteger(sequence)
+    || sequence <= 0
+    || !Number.isSafeInteger(ts)
+    || ts <= 0
+    || !id.trim()
+  ) {
     throw new Error("Invalid paper ledger event identity");
   }
   return {
     ...draft,
     id,
     botId,
+    ledgerEpoch,
     sequence,
     ts,
     ...(idempotencyKey ? { idempotencyKey } : {})
@@ -70,7 +89,11 @@ export function stampPaperLedgerEvent(
 }
 
 /** Deterministic recovery. Exact duplicate events are ignored; conflicting duplicates fail closed. */
-export function replayPaperLedger(input: readonly PaperLedgerEvent[], expectedBotId?: string): PaperLedgerState {
+export function replayPaperLedger(
+  input: readonly PaperLedgerEvent[],
+  expectedBotId?: string,
+  expectedLedgerEpoch?: number
+): PaperLedgerState {
   const byId = new Map<string, PaperLedgerEvent>();
   for (const event of input) {
     const prior = byId.get(event.id);
@@ -85,8 +108,9 @@ export function replayPaperLedger(input: readonly PaperLedgerEvent[], expectedBo
   const sequences = new Map<number, PaperLedgerEvent>();
   const idempotency = new Map<string, PaperLedgerEvent>();
   const accounting: ReplayAccounting = { fills: new Map(), fees: new Set(), cash: new Set() };
+  const ledgerEpoch = expectedLedgerEpoch ?? events[0]?.ledgerEpoch;
   for (const event of events) {
-    validateHeader(event, expectedBotId);
+    validateHeader(event, expectedBotId, ledgerEpoch);
     const atSequence = sequences.get(event.sequence);
     if (atSequence) throw new Error(`Conflicting paper event sequence ${event.sequence}`);
     sequences.set(event.sequence, event);
@@ -114,10 +138,14 @@ export function replayPaperLedger(input: readonly PaperLedgerEvent[], expectedBo
 export function appendPaperEvents(
   current: readonly PaperLedgerEvent[],
   additions: readonly PaperLedgerEvent[],
-  expectedBotId?: string
+  expectedBotId?: string,
+  expectedLedgerEpoch?: number
 ): { events: PaperLedgerEvent[]; state: PaperLedgerState } {
   const events = [...current, ...additions];
-  return { events: deduplicateExact(events), state: replayPaperLedger(events, expectedBotId) };
+  return {
+    events: deduplicateExact(events),
+    state: replayPaperLedger(events, expectedBotId, expectedLedgerEpoch)
+  };
 }
 
 interface ReplayAccounting {
@@ -195,9 +223,39 @@ function applyPaperEvent(state: PaperLedgerState, event: PaperLedgerEvent, accou
       state.isolated = requiredBoolean(event.data.isolated, "isolated");
       state.dualSide = requiredBoolean(event.data.dualSide, "dualSide");
       return;
+    case "command_completed":
+      validateCommandResult(event, accounting);
+      return;
     default:
       throw new Error(`Unknown paper ledger event ${(event as { type?: unknown }).type}`);
   }
+}
+
+function validateCommandResult(
+  event: Extract<PaperLedgerEvent, { type: "command_completed" }>,
+  accounting: ReplayAccounting
+): void {
+  const { commandId, requestHash, result } = event.data;
+  if (
+    !commandId?.trim()
+    || commandId.length > 200
+    || !/^[0-9a-f]{64}$/.test(requestHash)
+    || event.idempotencyKey !== commandResultKey(commandId)
+    || !result
+    || typeof result !== "object"
+    || typeof result.ok !== "boolean"
+    || !Array.isArray(result.fills)
+  ) {
+    throw new Error("Invalid paper command result");
+  }
+  for (const fill of result.fills) {
+    validateFill(fill, event.botId);
+    const recorded = accounting.fills.get(fill.id);
+    if (!recorded || stableStringify(recorded) !== stableStringify(fill)) {
+      throw new Error(`Paper command ${commandId} references an unrecorded fill ${fill.id}`);
+    }
+  }
+  if (stableStringify(result).length > 64 * 1024) throw new Error("Paper command result is too large");
 }
 
 function validateFunding(event: Extract<PaperLedgerEvent, { type: "funding" }>, position: PositionState | null): void {
@@ -241,11 +299,27 @@ function emptyPaperLedgerState(): PaperLedgerState {
   };
 }
 
-function validateHeader(event: PaperLedgerEvent, expectedBotId?: string): void {
-  if (!event.id?.trim() || !event.botId?.trim() || !Number.isSafeInteger(event.sequence) || event.sequence <= 0 || !Number.isSafeInteger(event.ts) || event.ts <= 0) {
+function validateHeader(
+  event: PaperLedgerEvent,
+  expectedBotId?: string,
+  expectedLedgerEpoch?: number
+): void {
+  if (
+    !event.id?.trim()
+    || !event.botId?.trim()
+    || !Number.isSafeInteger(event.ledgerEpoch)
+    || event.ledgerEpoch <= 0
+    || !Number.isSafeInteger(event.sequence)
+    || event.sequence <= 0
+    || !Number.isSafeInteger(event.ts)
+    || event.ts <= 0
+  ) {
     throw new Error("Invalid paper ledger event header");
   }
   if (expectedBotId && event.botId !== expectedBotId) throw new Error(`Paper event belongs to ${event.botId}, expected ${expectedBotId}`);
+  if (expectedLedgerEpoch !== undefined && event.ledgerEpoch !== expectedLedgerEpoch) {
+    throw new Error(`Paper event belongs to ledger epoch ${event.ledgerEpoch}, expected ${expectedLedgerEpoch}`);
+  }
 }
 
 function validateOrder(order: PendingOrder): void {
@@ -336,6 +410,10 @@ function moneyEqual(left: number, right: number): boolean {
 
 function round(value: number): number {
   return Math.round(value * 1e6) / 1e6;
+}
+
+export function commandResultKey(commandId: string): string {
+  return `command:${commandId}:result`;
 }
 
 function stableStringify(value: unknown): string {

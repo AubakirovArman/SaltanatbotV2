@@ -25,13 +25,36 @@ export function buildEngineAdapter(config: BotConfig, getPrice: () => number, po
   }
   return new PaperAdapter({
     botId: config.id,
+    ledgerEpoch: paperLedgerEpoch(config),
     accountId: botTradingAccountId(config),
     market: config.market,
-    startBalance: config.sizeMode === "quote" ? Math.max(config.sizeValue * 10, 10_000) : 10_000,
+    startBalance: paperStartBalance(config),
     feePct: 0.05,
     slipPct: 0.02,
     getPrice
   });
+}
+
+function paperLedgerEpoch(config: BotConfig): number {
+  const value = config.paperLedgerEpoch ?? 1;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`Paper bot ${config.id} has an invalid ledger epoch`);
+  }
+  return value;
+}
+
+function paperStartBalance(config: BotConfig): number {
+  if (config.paperAllocationMicros !== undefined) {
+    if (
+      !Number.isSafeInteger(config.paperAllocationMicros)
+      || config.paperAllocationMicros <= 0
+      || config.paperAllocationMicros > 1_000_000_000_000_000
+    ) {
+      throw new Error(`Paper bot ${config.id} has an invalid capital reservation`);
+    }
+    return config.paperAllocationMicros / 1_000_000;
+  }
+  return config.sizeMode === "quote" ? Math.max(config.sizeValue * 10, 10_000) : 10_000;
 }
 
 /** Signed account adapters for one owner, including accounts with no running bot. */

@@ -62,11 +62,19 @@ export interface PendingOrder {
 
 export interface BotConfig {
   id: string;
+  /** Monotonic server revision used by owner-scoped lifecycle CAS. */
+  revision?: number;
   /** Server-side tenant owner. It is injected from the authenticated store row,
    * never trusted from a client request. Optional only for legacy/test callers. */
   ownerUserId?: string;
   /** Durable account binding. Legacy configs resolve to the venue default. */
   accountId?: string;
+  /** Canonical paper portfolio binding. Present only for paper robots after R4 migration. */
+  paperPortfolioId?: string;
+  /** Capital reserved from the portfolio, stored as fixed USDT micros. */
+  paperAllocationMicros?: number;
+  /** Versioned append-only paper ledger epoch. */
+  paperLedgerEpoch?: number;
   name: string;
   strategyName: string;
   ir: StrategyIR;
@@ -145,6 +153,9 @@ export type ExecutionLifecycleStatus =
 export interface OrderJournalRecord {
   id: string;
   botId: string;
+  /** SHA-256 of the canonical JSON-safe submitted intent. New rows always
+   * carry it so a crash between row/event writes cannot weaken replay checks. */
+  intentHash?: string;
   /** Account identity at submission time; absent only on legacy journal rows. */
   accountId?: string;
   exchange: ExchangeId;

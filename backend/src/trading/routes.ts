@@ -2,10 +2,13 @@ import type { IncomingMessage } from "node:http";
 import { isDeepStrictEqual } from "node:util";
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
+import type { Pool } from "pg";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
 import { clearAuthSession, createAuthSession, isDatabaseAuthMode, issueWsTicketForRequest, requireAuth, revalidateTradingAuthorization, roleAllows, roleForToken } from "../auth.js";
 import type { IdentityPrincipal } from "../identity/types.js";
+import type { IdentityService } from "../identity/service.js";
+import { PostgresExecutorCommandRepository } from "../database/index.js";
 import type { ProviderRouter } from "../providers/router.js";
 import { TradingEngine } from "./engine.js";
 import type { TradeEvent } from "./engineEvents.js";
@@ -49,6 +52,9 @@ import { registerBotLifecycleMutationRoutes } from "./botLifecycleMutationRoutes
 import { isTradingResourceQuotaError, loadTradingResourceLimits, type TradingResourceLimits } from "./resourceQuotas.js";
 import { pausedOrderAllowed } from "./managedExecution.js";
 import { getRuntimePolicy, isPaperOnlyRuntime, paperOnlyErrorBody, runtimeProfilePublicState, type RuntimePolicy } from "../runtimeProfile.js";
+import { createPaperPortfolioRuntime } from "./paperPortfolioRuntime.js";
+import { registerPaperPortfolioRoutes } from "./paperPortfolioRoutes.js";
+import { formatMicros } from "./paperPortfolioProjectionStore.js";
 
 const commandBodySchema = z.object({
   command: z.string().min(1).max(2000),
@@ -74,7 +80,10 @@ export interface TradingApi {
   /** Allow starts again after an explicit trading grant. */
   restoreOwnerAccess(ownerUserId: string): void;
   /** Release the process-lifetime SQLite store and coordination lock. */
-  close(): void;
+  start(): Promise<void>;
+  quiesce(): void;
+  executorReady(): boolean;
+  close(): Promise<void>;
 }
 
 export interface TradingApiOptions {
@@ -89,6 +98,9 @@ export interface TradingApiOptions {
   resourceLimits?: TradingResourceLimits;
   /** Immutable process execution boundary; production resolves it once at boot. */
   runtimePolicy?: RuntimePolicy;
+  /** PostgreSQL control plane for durable cross-store paper commands. */
+  executorCommandPool?: Pool;
+  identityService?: IdentityService;
 }
 
 interface OwnerAccessRevocationOperations {
@@ -128,7 +140,7 @@ export async function revokeTradingOwnerAccess(ownerUserId: string, operations: 
 }
 
 export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: ArbitrageAlertService, options: TradingApiOptions = {}): TradingApi {
-  initStore({ legacyOwnerUserId: options.legacyOwnerUserId });
+  const tradingDatabase = initStore({ legacyOwnerUserId: options.legacyOwnerUserId });
   const runtimePolicy = options.runtimePolicy ?? getRuntimePolicy();
   if (isPaperOnlyRuntime(runtimePolicy)) disarmAllLiveTradingSettings();
   const resourceLimits = options.resourceLimits ?? loadTradingResourceLimits();
@@ -145,12 +157,22 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
   });
 
   const engine = new TradingEngine(provider, (event: TradeEvent) => tradeStream.publish(event), options.emergencyAdapters, resourceLimits, runtimePolicy);
+  const paperPortfolios = createPaperPortfolioRuntime({
+    database: tradingDatabase,
+    engine,
+    ...(options.executorCommandPool ? { executorCommands: new PostgresExecutorCommandRepository(options.executorCommandPool) } : {}),
+    ...(options.identityService ? { identityService: options.identityService } : {})
+  });
   const telegramControl = new TelegramControl(engine, options.legacyOwnerUserId ?? LEGACY_TRADING_OWNER_ID, options.telegramControlEnabled ?? !isDatabaseAuthMode(), runtimePolicy);
   const router = Router();
 
-  const withStatus = (ownerUserId: string, bot: BotConfig): Omit<BotConfig, "ownerUserId"> => {
-    const { ownerUserId: _privateOwner, ...publicBot } = bot;
-    return { ...publicBot, status: engine.isRunningForOwner(ownerUserId, bot.id) ? "running" : "stopped" };
+  const withStatus = (ownerUserId: string, bot: BotConfig) => {
+    const { ownerUserId: _privateOwner, paperAllocationMicros, ...publicBot } = bot;
+    return {
+      ...publicBot,
+      ...(paperAllocationMicros === undefined ? {} : { paperAllocation: formatMicros(paperAllocationMicros) }),
+      status: engine.isRunningForOwner(ownerUserId, bot.id) ? "running" as const : "stopped" as const
+    };
   };
 
   const liveEnabled = (ownerUserId: string) => runtimePolicy.liveBotConfigsAllowed && getTradingOwnerAuthorityForOwner(ownerUserId).armed;
@@ -206,6 +228,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     res.json({ demo: isPaperOnlyRuntime(runtimePolicy), ...runtimeState, liveTradingEnabled: liveEnabled(ownerUserId), secureTradingOrigin: isSecureTradingOrigin(req), role: res.locals.authRole });
   });
 
+  registerPaperPortfolioRoutes(router, paperPortfolios.reads, paperPortfolios.commands);
   registerTradingAccountRegistryRoutes(router, requireRole("live-trade"), {
     isBotRunning: (ownerUserId, botId) => engine.isRunningForOwner(ownerUserId, botId),
     maxAccountsPerOwner: resourceLimits.maxAccountsPerOwner,
@@ -248,7 +271,8 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
   registerBotLifecycleMutationRoutes(router, engine, {
     view: withStatus,
     maxBotsPerOwner: resourceLimits.maxBotsPerOwner,
-    runtimePolicy
+    runtimePolicy,
+    paperPortfolioCommands: paperPortfolios.commands
   });
 
   router.post("/bots/:id/start", async (req, res) => {
@@ -261,6 +285,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     }
     const requiredRole = roleForBot(bot);
     if (!ensureRole(res, requiredRole)) return;
+    if (!canonicalPaperMutationRoute(res, bot)) return;
     // Live trading is double-gated: a global arm flag AND per-request confirmation.
     if (bot.exchange !== "paper") {
       if (isPaperOnlyRuntime(runtimePolicy)) return void rejectPaperOnly(res, "live bot start");
@@ -318,6 +343,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
       return;
     }
     if (!ensureRole(res, roleForBot(bot))) return;
+    if (!canonicalPaperMutationRoute(res, bot)) return;
     try {
       await engine.stopSafelyForOwner(ownerUserId, id);
       res.json({ ok: true });
@@ -338,6 +364,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     }
     const requiredRole = roleForBot(bot);
     if (!ensureRole(res, requiredRole)) return;
+    if (!canonicalPaperMutationRoute(res, bot)) return;
     if (bot.exchange !== "paper" && isPaperOnlyRuntime(runtimePolicy)) return void rejectPaperOnly(res, "live bot resume");
     if (bot.exchange !== "paper" && !ensureSecureTradingOrigin(req, res)) return;
     const authorization = await revalidateTradingAuthorization(res, requiredRole);
@@ -362,6 +389,7 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
     const requiredRole = roleForBot(bot);
     if (!ensureRole(res, requiredRole)) return;
     const dryRun = parsed.data.dryRun === true;
+    if (!dryRun && !canonicalPaperMutationRoute(res, bot)) return;
     if (bot.exchange !== "paper" && !dryRun && isPaperOnlyRuntime(runtimePolicy)) return void rejectPaperOnly(res, "live bot command");
     if (bot.exchange !== "paper" && !dryRun && !ensureSecureTradingOrigin(req, res)) return;
     const authorization = dryRun ? undefined : await revalidateTradingAuthorization(res, requiredRole);
@@ -442,7 +470,15 @@ export function createTradingApi(provider: ProviderRouter, arbitrageAlerts?: Arb
         disarm: () => setTradingOwnerArmedForOwner(ownerUserId, false)
       }),
     restoreOwnerAccess: (ownerUserId) => engine.resumeOwnerStarts(ownerUserId),
-    close: () => closeStore()
+    start: () => paperPortfolios.start(),
+    quiesce: () => paperPortfolios.quiesce(),
+    executorReady: () => paperPortfolios.ready(),
+    close: async () => {
+      paperPortfolios.quiesce();
+      const executor = await paperPortfolios.close();
+      if (!executor.drained) throw new Error("Paper executor did not stop; refusing to close its engine or SQLite store");
+      try { engine.shutdown(); } finally { closeStore(); }
+    }
   };
 }
 
@@ -493,6 +529,15 @@ function ensureRole(res: Response, required: AuthRole): boolean {
   const role = res.locals.authRole as AuthRole | undefined;
   if (roleAllows(role, required)) return true;
   res.status(403).json({ error: `Forbidden — requires ${required} access.` });
+  return false;
+}
+
+function canonicalPaperMutationRoute(res: Response, bot: BotConfig): boolean {
+  if (!isDatabaseAuthMode() || bot.exchange !== "paper") return true;
+  res.status(409).json({
+    error: "Use the canonical paper portfolio action endpoint for this robot.",
+    code: "paper_portfolio_command_required"
+  });
   return false;
 }
 

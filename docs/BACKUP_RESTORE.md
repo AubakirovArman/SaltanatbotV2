@@ -396,6 +396,50 @@ Permanent workspace purge is deliberately owner-scoped and archived-only, but it
 workspace and cascades its retained revisions. Recovery after a successful purge requires a
 PostgreSQL backup; ordinary archive remains reversible.
 
+### R4 PostgreSQL schema 12 / trading SQLite schema 9 upgrade and rollback
+
+The R4 candidate advances both persistence layers. PostgreSQL schema 12 adds the durable fenced
+executor-command queue. Trading SQLite schema 9 adds canonical owner-scoped paper portfolios,
+ledger epochs, capital reservations, terminal mutation receipts, immutable robot-revision evidence,
+valuation marks and append-only portfolio events.
+
+These are two independently transactional forward migrations, not one distributed transaction.
+Before the first R4 start, create and verify one paired recovery generation with the workflow at the
+top of this guide. Retain the pre-upgrade generation outside the mutable checkout/release tree and
+record the exact release commit, database, data directory, Compose project or user units, and
+loopback ports. A port or identity collision is a stop condition; do not terminate or reuse the
+foreign resource.
+
+For cutover, stop only this project's API and research worker, install the accepted exact release,
+then start exactly one API instance. Do not run two executors against the same `trading.db`. Require
+readiness to confirm the expected PostgreSQL migration checksum and paper-executor state, then
+check login, owner isolation, migrated paper portfolios and one retried mutation with the same
+idempotency key. Start the matching research worker only after those checks pass. Take and verify a
+new paired generation after the migration.
+
+The schema-12/schema-9 candidate recovery format verifies the complete PostgreSQL
+archive/migration chain, records `executorCommands`, and records bounded counts for all nine
+canonical SQLite tables: `paper_portfolios`, `paper_portfolio_epochs`, `paper_bot_allocations`,
+`paper_valuation_marks`, `paper_portfolio_mutations`, `paper_bot_revision_evidence`,
+`paper_bot_tombstones`, `paper_portfolio_events` and `paper_portfolio_projections`. Verification and
+replacement restore compare those counts with the manifest together with the checksummed SQLite
+files/user versions. Automated inventory/validation coverage is implementation evidence, not
+release acceptance. Until an isolated paired restore/rollback drill passes for the exact candidate,
+the schema-12/schema-9 build remains a release candidate rather than an accepted cutover.
+
+There is no in-place downgrade. An older binary must not open either advanced store. Rollback means
+stopping this project's processes, verifying the retained pre-upgrade paired generation again,
+restoring both halves into new replacement resources, and separately pointing only this project's
+stopped services at the verified replacement database/data directory plus the matching protected
+pre-R4 release. Retain the former resources until the rollback evidence and site retention policy
+allow removal. Never drop the schema-12 table, delete command/receipt rows, decrement SQLite
+`user_version` or splice old/new recovery halves.
+
+If PostgreSQL reaches schema 12 but SQLite migration 9 fails, keep the application stopped. Preserve
+the logs and both original stores, perform only read-only diagnosis, and restore the complete
+pre-upgrade pair when rollback is chosen. The detailed lifecycle and operator checklist are in
+[Canonical paper portfolios](PAPER_PORTFOLIOS.md#upgrade-to-postgresql-12-and-sqlite-9).
+
 For a non-default Docker volume mount or a recovery drill, specify the source explicitly:
 
 ```bash

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { PaperLedgerEvent, PaperLedgerState } from "../paperLedger.js";
+import type { PaperCommandResult, PaperLedgerEvent, PaperLedgerState } from "../paperLedger.js";
 import {
   PaperLedgerController,
   toPaperState,
@@ -7,6 +7,7 @@ import {
   type VerifiedPaperFundingSettlement
 } from "../paperLedgerController.js";
 import { PaperExecutionModel, type PaperExecutionQuote } from "./paperExecution.js";
+import { paperCommandIdentity, paperFillMessage as fillMsg, roundPaperValue as round } from "./paperCommandSupport.js";
 import type {
   AccountState,
   ExchangeAdapter,
@@ -27,6 +28,7 @@ export type { PaperExecutionQuote } from "./paperExecution.js";
 
 interface PaperOptions {
   botId: string;
+  ledgerEpoch?: number;
   accountId?: string;
   market: MarketType;
   startBalance: number;
@@ -70,6 +72,7 @@ export class PaperAdapter implements ExchangeAdapter {
     this.execution = new PaperExecutionModel(opts.slipPct, opts.getExecutionQuote);
     this.ledger = new PaperLedgerController({
       botId: opts.botId,
+      ledgerEpoch: opts.ledgerEpoch ?? 1,
       startBalance: opts.startBalance,
       now: this.now,
       createId: this.createId,
@@ -163,18 +166,33 @@ export class PaperAdapter implements ExchangeAdapter {
   }
 
   async execute(order: ExecOrder): Promise<ExecResult> {
+    const command = paperCommandIdentity(order);
+    if (command) {
+      const prior = this.ledger.commandResult(command.commandId, command.requestHash);
+      if (prior) return prior;
+    }
     const before = this.snapshot();
     const mark = this.opts.getPrice(order.symbol);
     if (order.action !== "get" && order.action !== "set" && order.action !== "cancel" && order.action !== "cancelall" && order.action !== "cancelorphans" && (!Number.isFinite(mark) || mark <= 0)) {
-      return this.fail("No market price available");
+      const result = this.fail("No market price available");
+      if (command) this.ledger.recordCommandResult({ ...command, result: structuredClone(result) });
+      return result;
     }
     try {
       const result = this.executeMutation(order, mark);
       if (!result.ok) {
         this.restoreSnapshot(before);
+        if (result.fills.length > 0) throw new Error("A rejected paper command cannot contain fills");
+        if (command) this.ledger.recordCommandResult({ ...command, result: structuredClone(result) });
         return result;
       }
-      this.commitTransition(before, this.snapshot(), result.fills, order.clientId ?? order.orderId ?? `command:${order.action}`);
+      this.commitTransition(
+        before,
+        this.snapshot(),
+        result.fills,
+        order.clientId ?? order.orderId ?? `command:${order.action}`,
+        command ? { ...command, result: structuredClone(result) } : undefined
+      );
       return result;
     } catch (error) {
       this.restoreSnapshot(before);
@@ -564,20 +582,17 @@ export class PaperAdapter implements ExchangeAdapter {
     this.dualSide = state.dualSide ?? false;
   }
 
-  private commitTransition(before: PaperState, after: PaperState, fills: FillRecord[], reason: string): void {
-    this.applyLedgerState(this.ledger.commitTransition(before, after, fills, reason));
+  private commitTransition(
+    before: PaperState,
+    after: PaperState,
+    fills: FillRecord[],
+    reason: string,
+    command?: PaperCommandResult
+  ): void {
+    this.applyLedgerState(this.ledger.commitTransition(before, after, fills, reason, command));
   }
 
   private applyLedgerState(state: PaperLedgerState): void {
     this.restoreSnapshot(toPaperState(state));
   }
-}
-
-function fillMsg(fill: FillRecord): string {
-  return `${fill.kind === "open" ? "Opened" : "Closed"} ${fill.qty} ${fill.symbol} @ ${fill.price}${fill.kind === "close" ? ` · PnL ${fill.realizedPnl}` : ""}`;
-}
-
-
-function round(value: number): number {
-  return Math.round(value * 1e6) / 1e6;
 }

@@ -11,6 +11,7 @@ vi.mock("../src/auth.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/auth.js")>();
   return {
     ...actual,
+    isDatabaseAuthMode: vi.fn(() => false),
     revalidateTradingAuthorization: vi.fn(async () => ({ assertCurrent: () => true }))
   };
 });

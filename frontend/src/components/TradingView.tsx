@@ -22,6 +22,8 @@ import { notifyRunningBotsChanged } from "../trading/sessionEvents";
 import { OpportunityResearchPanel } from "../trading/components/OpportunityResearchPanel";
 import { resolveTradingRuntime } from "../trading/runtimeProfile";
 import "../styles/trading.css";
+import "../styles/paper-portfolio.css";
+import "../styles/paper-portfolio-journal.css";
 
 const PaperMultiLegPanel = lazy(loadPaperMultiLegPanel);
 
@@ -40,6 +42,7 @@ type SocketHealth = "connecting" | "connected" | "degraded";
 export function TradingView({ strategies, catalog, locale, portfolioRequest = 0, newBotRequest = 0, onPaperBotCreated }: TradingViewProps) {
   const accountAuth = useAuth();
   const localStorageOwner = accountAuth.authRequired ? (accountAuth.user?.id ?? "") : undefined;
+  const databaseOwnerUserId = accountAuth.config?.mode === "database" ? accountAuth.user?.id : undefined;
   const [bots, setBots] = useState<TradingBot[]>([]);
   const [view, setView] = useState<CenterView>(() => (newBotRequest > 0 ? { kind: "new" } : { kind: "portfolio" }));
   const [live, setLive] = useState<Record<string, LiveState>>({});
@@ -367,7 +370,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0,
               </li>
             )}
             {presentedBots.length === 0 && (
-              <li>
+              <li className="trade-bot-empty-note">
                 <p className="empty-note">{tradingText(locale, "noBots")}</p>
               </li>
             )}
@@ -420,7 +423,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0,
             </small>
           )}
         </div>
-        {view.kind === "portfolio" && <PortfolioCenter bots={presentedBots} locale={locale} canReadAccounts={canReadTradingAccounts} canCreate={canUsePaperTrading} onNew={() => setView({ kind: "new" })} onOpenBot={openBot} onOpenSettings={() => setView({ kind: "settings" })} />}
+        {view.kind === "portfolio" && <PortfolioCenter bots={presentedBots} locale={locale} ownerUserId={databaseOwnerUserId} canReadAccounts={canReadTradingAccounts} canCreate={canUsePaperTrading} onNew={() => setView({ kind: "new" })} onOpenBot={openBot} onOpenSettings={() => setView({ kind: "settings" })} />}
         {view.kind === "new" && canUsePaperTrading && (
           <CreateBotForm
             strategies={strategies}
@@ -428,6 +431,9 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0,
             locale={locale}
             canReadAccounts={canReadTradingAccounts}
             paperOnly={paperOnly}
+            ownerUserId={databaseOwnerUserId}
+            paperPortfolioBindingRequired={accountAuth.config?.mode === "database"}
+            onOpenPortfolioCenter={() => setView({ kind: "portfolio" })}
             onCreated={(bot) => {
               refreshBots();
               openBot(bot.id);

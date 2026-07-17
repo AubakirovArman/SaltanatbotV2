@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Response, Router } from "express";
 import { z } from "zod";
-import { revalidateTradingAuthorization, roleAllows } from "../auth.js";
+import { isDatabaseAuthMode, revalidateTradingAuthorization, roleAllows } from "../auth.js";
 import { timeframes } from "../market/timeframes.js";
 import { ensureSecureTradingOrigin } from "../secureTradingOrigin.js";
 import type { Timeframe } from "../types.js";
@@ -15,6 +15,23 @@ import { paperTradingAccountId, tradingAccountBindingIssue } from "./tradingAcco
 import type { AuthRole, BotConfig, ExchangeId } from "./types.js";
 import { isTradingResourceQuotaError } from "./resourceQuotas.js";
 import { getRuntimePolicy, isPaperOnlyRuntime, paperOnlyErrorBody, type RuntimePolicy } from "../runtimeProfile.js";
+import {
+  PAPER_PORTFOLIO_COMMAND_VERSION,
+  PaperPortfolioCommandInputError,
+  deterministicPaperRobotId,
+  paperPortfolioRequestHash,
+  parseCanonicalPaperMoneyMicros,
+  parsePaperPortfolioExecutorPayload
+} from "./paperPortfolioCommandContract.js";
+import {
+  PaperPortfolioHttpError,
+  type PaperPortfolioMutationGateway
+} from "./paperPortfolioGatewayTypes.js";
+import {
+  assertExpectedPaperOwner,
+  paperCommandPrincipal,
+  paperIdempotencyKey
+} from "./paperPortfolioHttpContext.js";
 
 const botBodySchema = z.object({
   id: z.string().optional(),
@@ -34,13 +51,18 @@ const botBodySchema = z.object({
   maxPositionQuote: z.coerce.number().nonnegative().finite().max(1_000_000_000).optional(),
   maxOrderQuote: z.coerce.number().nonnegative().finite().max(1_000_000_000).optional(),
   maxDailyLossQuote: z.coerce.number().nonnegative().finite().max(1_000_000_000).optional(),
-  maxOpenOrders: z.coerce.number().int().nonnegative().max(10_000).optional()
+  maxOpenOrders: z.coerce.number().int().nonnegative().max(10_000).optional(),
+  paperPortfolioId: z.string().trim().min(1).max(200).optional(),
+  paperAllocation: z.string().trim().regex(/^(?:0|[1-9]\d*)\.\d{6}$/).optional(),
+  expectedPortfolioRevision: z.coerce.number().int().positive().safe().optional(),
+  expectedLedgerEpoch: z.coerce.number().int().positive().safe().optional()
 });
 
 interface BotLifecycleRouteOptions {
   view(ownerUserId: string, bot: BotConfig): Omit<BotConfig, "ownerUserId">;
   maxBotsPerOwner: number;
   runtimePolicy?: RuntimePolicy;
+  paperPortfolioCommands?: PaperPortfolioMutationGateway;
 }
 
 export function registerBotLifecycleMutationRoutes(router: Router, engine: TradingEngine, options: BotLifecycleRouteOptions): void {
@@ -50,12 +72,30 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
     if (!parsed.success) return void res.status(400).json({ error: parsed.error.flatten() });
     const ownerUserId = tradingOwnerFromResponse(res);
     const body = parsed.data;
-    const id = body.id ?? randomUUID();
+    let paperCommandKey: string | undefined;
+    try {
+      if (body.exchange === "paper" && !body.id && isDatabaseAuthMode()) {
+        assertExpectedPaperOwner(req, ownerUserId);
+        paperCommandKey = paperIdempotencyKey(req);
+      }
+    } catch (error) {
+      if (error instanceof PaperPortfolioHttpError) {
+        return void res.status(error.status).json({ error: error.message, code: error.code });
+      }
+      throw error;
+    }
+    const id = body.id ?? (paperCommandKey ? deterministicPaperRobotId(ownerUserId, paperCommandKey) : randomUUID());
     const mutation = async () => {
       const persistedOwner = body.id ? getBotOwnerUserId(id) : undefined;
       if (persistedOwner && persistedOwner !== ownerUserId) return void res.status(404).json({ error: "Bot not found" });
       const existing = body.id ? getBotForOwner(ownerUserId, id) : undefined;
       if (body.id && !existing) return void res.status(400).json({ error: "Bot ids are assigned by the server.", code: "BOT_ID_SERVER_MANAGED" });
+      if (existing?.exchange === "paper" && existing.paperPortfolioId) {
+        return void res.status(409).json({
+          error: "A bound paper robot is immutable. Create a new robot revision instead.",
+          code: "PAPER_BOT_BINDING_IMMUTABLE"
+        });
+      }
       if (body.exchange !== "paper" && isPaperOnlyRuntime(runtimePolicy)) {
         return void res.status(403).json(paperOnlyErrorBody("live bot configuration"));
       }
@@ -96,6 +136,52 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
           createdAt: existing?.createdAt ?? now,
           updatedAt: Math.max(now, (existing?.updatedAt ?? 0) + 1)
         };
+        if (paperCommandKey) {
+          if (
+            !options.paperPortfolioCommands
+            || !body.paperPortfolioId
+            || !body.paperAllocation
+            || !body.expectedPortfolioRevision
+            || !body.expectedLedgerEpoch
+          ) {
+            return void res.status(409).json({
+              error: "Choose an active paper portfolio and allocation before creating the robot.",
+              code: "PAPER_PORTFOLIO_BINDING_REQUIRED"
+            });
+          }
+          const {
+            ownerUserId: _owner,
+            revision: _revision,
+            paperPortfolioId: _portfolio,
+            paperAllocationMicros: _allocation,
+            paperLedgerEpoch: _epoch,
+            status: _status,
+            createdAt: _createdAt,
+            updatedAt: _updatedAt,
+            ...publicConfig
+          } = bot;
+          const payload = parsePaperPortfolioExecutorPayload(JSON.parse(JSON.stringify({
+            version: PAPER_PORTFOLIO_COMMAND_VERSION,
+            kind: "paper-robot.create",
+            portfolioId: body.paperPortfolioId,
+            expectedPortfolioRevision: body.expectedPortfolioRevision,
+            expectedLedgerEpoch: body.expectedLedgerEpoch,
+            botId: id,
+            expectedBotRevision: 1,
+            allocationMicros: parseCanonicalPaperMoneyMicros(body.paperAllocation),
+            maxBots: options.maxBotsPerOwner,
+            bot: publicConfig
+          })));
+          await options.paperPortfolioCommands.execute({
+            principal: paperCommandPrincipal(res, ownerUserId),
+            idempotencyKey: paperCommandKey,
+            requestHash: paperPortfolioRequestHash(ownerUserId, payload),
+            payload
+          });
+          const persisted = getBotForOwner(ownerUserId, id);
+          if (!persisted) throw new Error("Paper robot command applied without a durable bot");
+          return void res.json({ bot: options.view(ownerUserId, persisted) });
+        }
         upsertBotForOwner(ownerUserId, bot, { maxBots: options.maxBotsPerOwner });
         res.json({ bot: options.view(ownerUserId, bot) });
       };
@@ -107,6 +193,12 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
       if (body.id) await engine.withBotLifecycleLock(ownerUserId, id, mutation);
       else await mutation();
     } catch (error) {
+      if (error instanceof PaperPortfolioHttpError) {
+        return void res.status(error.status).json({ error: error.message, code: error.code });
+      }
+      if (error instanceof PaperPortfolioCommandInputError) {
+        return void res.status(400).json({ error: error.message, code: error.code });
+      }
       if (!isTradingResourceQuotaError(error)) throw error;
       res.status(429).json({ error: error.message, code: error.code, limit: error.limit });
     }
@@ -118,6 +210,12 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
     const initial = ownedBot(engine, ownerUserId, id);
     if (!initial) return void res.status(404).json({ error: "Bot not found" });
     if (!ensureRole(res, roleForBot(initial))) return;
+    if (isDatabaseAuthMode() && initial.exchange === "paper") {
+      return void res.status(409).json({
+        error: "Paper robot deletion requires the canonical flat-release workflow.",
+        code: "PAPER_DELETE_COMMAND_REQUIRED"
+      });
+    }
     try {
       await engine.deleteSafelyForOwner(ownerUserId, id, async () => {
         const current = getBotForOwner(ownerUserId, id);
@@ -126,7 +224,12 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
         if (!ensureRole(res, role)) return;
         const authorization = await revalidateTradingAuthorization(res, role);
         if (!authorization?.assertCurrent()) return;
-        deleteBotForOwner(ownerUserId, id);
+        deleteBotForOwner(ownerUserId, id, {
+          expectedRevision: current.revision,
+          reason: "legacy-token-delete",
+          deletedAt: Date.now(),
+          releaseLegacyFlatAllocation: current.exchange === "paper"
+        });
         res.json({ ok: true });
       });
     } catch (error) {
@@ -142,6 +245,12 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
       if (!bot) return void res.status(404).json({ error: "Bot not found" });
       const role = roleForBot(bot);
       if (!ensureRole(res, role)) return;
+      if (isDatabaseAuthMode() && bot.exchange === "paper") {
+        return void res.status(409).json({
+          error: "Reset the canonical paper portfolio to start a new immutable ledger epoch.",
+          code: "PAPER_PORTFOLIO_RESET_REQUIRED"
+        });
+      }
       if (engine.isRunningForOwner(ownerUserId, id)) return void res.status(409).json({ error: "Stop the bot before resetting its state." });
       const authorization = await revalidateTradingAuthorization(res, role);
       if (!authorization?.assertCurrent()) return;

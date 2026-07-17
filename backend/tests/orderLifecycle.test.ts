@@ -21,6 +21,7 @@ function harness() {
   const events: OrderEventRecord[] = [];
   let id = 0;
   let time = 100;
+  let failNextIntentEvent = false;
   const orderKey = (botId: string, orderId: string) => `${botId}:${orderId}`;
   const writer: OrderLifecycleWriter = {
     upsertOrder(record) {
@@ -29,6 +30,10 @@ function harness() {
       current.set(orderKey(record.botId, record.id), structuredClone(record));
     },
     insertEvent(event) {
+      if (event.type === "intent" && failNextIntentEvent) {
+        failNextIntentEvent = false;
+        throw new Error("intent event disk write failed");
+      }
       calls.push(`event:${event.type}`);
       events.push(structuredClone(event));
     },
@@ -42,11 +47,26 @@ function harness() {
         .map((event) => structuredClone(event));
     }
   };
-  const lifecycle = new OrderLifecycle(writer, {
+  const createLifecycle = () => new OrderLifecycle(writer, {
     now: () => time++,
     createId: () => `event-${++id}`
   });
-  return { lifecycle, calls, records, events };
+  const restart = () => {
+    for (const [key, record] of current) current.set(key, JSON.parse(JSON.stringify(record)) as OrderJournalRecord);
+    const persistedEvents = events.map((event) => JSON.parse(JSON.stringify(event)) as OrderEventRecord);
+    events.splice(0, events.length, ...persistedEvents);
+    return createLifecycle();
+  };
+  return {
+    lifecycle: createLifecycle(),
+    calls,
+    records,
+    events,
+    restart,
+    failNextIntentEvent() {
+      failNextIntentEvent = true;
+    }
+  };
 }
 
 const accepted: ExecResult = {
@@ -114,6 +134,135 @@ describe("durable order lifecycle", () => {
     expect(h.records.map((record) => record.status)).toEqual(["intent", "filled"]);
     expect(h.records.at(-1)).toMatchObject({ filledQty: 1, avgFillPrice: 100 });
     expect(h.events.at(-1)?.data).toMatchObject({ status: "filled", ok: true, fills: [{ id: "fill-1" }] });
+  });
+
+  it("resumes one crash-left paper intent while rejecting identity conflicts", async () => {
+    const h = harness();
+    const send = vi.fn(async () => accepted);
+
+    h.lifecycle.begin(context, { ...order });
+    await h.lifecycle.execute(context, { ...order }, send);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(h.events.filter((event) => event.type === "intent")).toHaveLength(1);
+    await expect(h.lifecycle.execute(
+      context,
+      { ...order, qty: 2 },
+      send
+    )).rejects.toThrow(/another order/i);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays a JSON-persisted paper spot close after a crash drops its own undefined field", async () => {
+    const h = harness();
+    const spotClose: ExecOrder = {
+      action: "neworder",
+      market: "spot",
+      symbol: "BTCUSDT",
+      side: "sell",
+      type: "market",
+      qty: 0.25,
+      closePct: undefined,
+      reduceOnly: true,
+      clientId: "paper-spot-close-1",
+      reason: "signal:exit"
+    };
+
+    h.lifecycle.begin(context, { ...spotClose });
+    const restarted = h.restart();
+    const send = vi.fn(async () => ({ ok: true, message: "closed", fills: [] }));
+
+    await expect(restarted.execute(context, { ...spotClose }, send)).resolves.toMatchObject({ ok: true });
+    expect(send).toHaveBeenCalledOnce();
+    expect(h.events.filter((event) => event.type === "intent")).toHaveLength(1);
+  });
+
+  it("still rejects a meaningful paper spot-close change after JSON persistence", async () => {
+    const h = harness();
+    const spotClose: ExecOrder = {
+      action: "neworder",
+      market: "spot",
+      symbol: "BTCUSDT",
+      side: "sell",
+      type: "market",
+      qty: 0.25,
+      closePct: undefined,
+      reduceOnly: true,
+      clientId: "paper-spot-close-conflict",
+      reason: "signal:exit"
+    };
+
+    h.lifecycle.begin(context, { ...spotClose });
+    const restarted = h.restart();
+    const send = vi.fn(async () => ({ ok: true, message: "closed", fills: [] }));
+
+    await expect(restarted.execute(context, { ...spotClose, closePct: 50 }, send)).rejects.toThrow(/another order/i);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("uses the row intent hash when the intent-event write failed before a restart", async () => {
+    const h = harness();
+    const original: ExecOrder = {
+      ...order,
+      action: "neworder",
+      side: "sell",
+      reduceOnly: true,
+      closePct: undefined,
+      clientId: "row-hash-after-event-failure"
+    };
+    h.failNextIntentEvent();
+
+    expect(() => h.lifecycle.begin(context, { ...original })).toThrow(/intent event disk write failed/i);
+    expect(h.events).toHaveLength(0);
+    expect(h.records[0]?.intentHash).toMatch(/^[0-9a-f]{64}$/);
+    const restarted = h.restart();
+    const send = vi.fn(async () => accepted);
+
+    await expect(restarted.execute(context, { ...original, closePct: 50 }, send))
+      .rejects.toThrow(/another order/i);
+    expect(send).not.toHaveBeenCalled();
+    await expect(restarted.execute(context, { ...original }, send)).resolves.toBe(accepted);
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("never resubmits a terminal paper rejection even when an older ledger lacks a receipt", async () => {
+    const h = harness();
+    const noPrice: ExecResult = { ok: false, message: "No market price available", fills: [] };
+    const send = vi.fn(async () => accepted);
+
+    await h.lifecycle.execute(context, { ...order }, async () => noPrice);
+    await expect(h.lifecycle.execute(context, { ...order }, send)).rejects.toThrow(/already terminal/i);
+
+    expect(send).not.toHaveBeenCalled();
+    expect(h.events.filter((event) => event.type === "intent")).toHaveLength(1);
+    expect(h.records.at(-1)).toMatchObject({
+      status: "rejected",
+      message: "No market price available"
+    });
+  });
+
+  it("rejects values that JSON persistence would silently corrupt", () => {
+    const h = harness();
+
+    expect(() => h.lifecycle.begin(context, { ...order, qty: Number.NaN })).toThrow(/not JSON-safe/i);
+    expect(h.records).toHaveLength(0);
+    expect(h.events).toHaveLength(0);
+  });
+
+  it("never resubmits an existing live execution identity", async () => {
+    const h = harness();
+    const liveContext = { ...context, exchange: "bybit" as const, market: "futures" as const };
+    const send = vi.fn(async () => ({ ok: true, message: "accepted", fills: [] }));
+
+    await h.lifecycle.execute(liveContext, { ...order, market: "futures" }, send);
+    await expect(h.lifecycle.execute(
+      liveContext,
+      { ...order, market: "futures" },
+      send
+    )).rejects.toThrow(/requires reconciliation/i);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(h.events.filter((event) => event.type === "intent")).toHaveLength(1);
   });
 
   it("does not overwrite a private-stream fill that commits before the REST response", async () => {

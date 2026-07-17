@@ -7,6 +7,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const serverPath = path.join(root, "backend/src/server.ts");
 const tradingPath = path.join(root, "backend/src/trading/routes.ts");
 const botLifecycleMutationRoutesPath = path.join(root, "backend/src/trading/botLifecycleMutationRoutes.ts");
+const paperPortfolioRoutesPath = path.join(root, "backend/src/trading/paperPortfolioRoutes.ts");
 const tradingAccountRoutesPath = path.join(root, "backend/src/trading/tradingAccountRoutes.ts");
 const emergencyStopRoutesPath = path.join(root, "backend/src/trading/emergencyStopRoutes.ts");
 const notificationRoutesPath = path.join(root, "backend/src/trading/notificationRoutes.ts");
@@ -32,6 +33,7 @@ const identityServerPublicRoutes = new Set([
 const serverSource = readFileSync(serverPath, "utf8");
 const tradingSource = readFileSync(tradingPath, "utf8");
 const botLifecycleMutationRoutesSource = readFileSync(botLifecycleMutationRoutesPath, "utf8");
+const paperPortfolioRoutesSource = readFileSync(paperPortfolioRoutesPath, "utf8");
 const tradingAccountRoutesSource = readFileSync(tradingAccountRoutesPath, "utf8");
 const emergencyStopRoutesSource = readFileSync(emergencyStopRoutesPath, "utf8");
 const notificationRoutesSource = readFileSync(notificationRoutesPath, "utf8");
@@ -74,6 +76,12 @@ const endpoints = uniqueEndpoints([
   ...extractRoutes(botLifecycleMutationRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/botLifecycleMutationRoutes.ts").map((endpoint) => ({
     ...endpoint,
     access: "Authenticated · paper/live role by bot"
+  })),
+  ...extractRoutes(paperPortfolioRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/paperPortfolioRoutes.ts").map((endpoint) => ({
+    ...endpoint,
+    access: endpoint.method === "GET"
+      ? "Authenticated · owner-scoped"
+      : "Authenticated · paper-trade · owner-scoped"
   })),
   ...extractRoutes(tradingAccountRoutesSource, "router", "/api/trade", 0, "Public", "backend/src/trading/tradingAccountRoutes.ts").map((endpoint) => ({
     ...endpoint,

@@ -20,12 +20,15 @@ function order(overrides: Partial<ExecOrder>): ExecOrder {
 }
 
 function deterministicAdapter(overrides: {
+  idPrefix?: string;
+  ledgerEpoch?: number;
   feePct?: number;
   getExecutionQuote?: (symbol: string, side: Side, qty: number) => PaperExecutionQuote | undefined;
 } = {}) {
   let id = 0;
   return new PaperAdapter({
     botId: "paper-ledger-test",
+    ledgerEpoch: overrides.ledgerEpoch,
     market: "futures",
     startBalance: 10_000,
     feePct: overrides.feePct ?? 0,
@@ -33,7 +36,7 @@ function deterministicAdapter(overrides: {
     getPrice: () => 100,
     getExecutionQuote: overrides.getExecutionQuote,
     now: () => 1_720_000_000_000 + id,
-    createId: () => `event-${++id}`
+    createId: () => `${overrides.idPrefix ?? "event"}-${++id}`
   });
 }
 
@@ -141,6 +144,98 @@ describe("append-only paper ledger", () => {
     bad.id = "conflicting-sequence";
     expect(() => appendPaperLedgerEventsTo(database, [bad])).toThrow(/sequence/i);
     expect(listPaperLedgerEventsFrom(database, "paper-ledger-test")).toEqual(events);
+  });
+
+  it("isolates contiguous sequences and idempotency keys by ledger epoch", async () => {
+    const first = deterministicAdapter();
+    const second = deterministicAdapter({ ledgerEpoch: 2, idPrefix: "epoch-two-event" });
+    await first.execute(order({ action: "open", side: "buy", qty: 1, clientId: "epoch-one" }));
+    await second.execute(order({ action: "open", side: "buy", qty: 1, clientId: "epoch-two" }));
+
+    expect(first.getLedgerEvents().every((event) => event.ledgerEpoch === 1)).toBe(true);
+    expect(second.getLedgerEvents().every((event) => event.ledgerEpoch === 2)).toBe(true);
+    expect(() => replayPaperLedger(second.getLedgerEvents(), "paper-ledger-test", 1)).toThrow(/ledger epoch/i);
+
+    const database = new DatabaseSync(":memory:");
+    databases.push(database);
+    migrateTradingStore(database);
+    appendPaperLedgerEventsTo(database, first.getLedgerEvents());
+    appendPaperLedgerEventsTo(database, second.getLedgerEvents());
+    expect(listPaperLedgerEventsFrom(database, "paper-ledger-test", 1)).toEqual(first.getLedgerEvents());
+    expect(listPaperLedgerEventsFrom(database, "paper-ledger-test", 2)).toEqual(second.getLedgerEvents());
+  });
+
+  it("replays a completed command without duplicating fills after restart", async () => {
+    const command = order({ action: "open", side: "buy", qty: 1, clientId: "stable-paper-command" });
+    const adapter = deterministicAdapter();
+    const first = await adapter.execute(structuredClone(command));
+    const eventCount = adapter.getLedgerEvents().length;
+    const repeated = await adapter.execute(structuredClone(command));
+
+    expect(repeated).toEqual(first);
+    expect(adapter.getLedgerEvents()).toHaveLength(eventCount);
+    expect(adapter.getLedgerState().fillCount).toBe(1);
+
+    const restarted = new PaperAdapter({
+      botId: "paper-ledger-test",
+      ledgerEpoch: 1,
+      market: "futures",
+      startBalance: 1,
+      feePct: 0,
+      slipPct: 0,
+      getPrice: () => 100,
+      initialEvents: adapter.getLedgerEvents()
+    });
+    expect(await restarted.execute(structuredClone(command))).toEqual(first);
+    expect(restarted.getLedgerEvents()).toHaveLength(eventCount);
+    await expect(restarted.execute(order({
+      action: "close",
+      side: "sell",
+      qty: 1,
+      clientId: "stable-paper-command"
+    }))).rejects.toThrow(/another request/i);
+  });
+
+  it("durably replays a no-price rejection after restart instead of opening later", async () => {
+    let price = 0;
+    let id = 0;
+    const command = order({
+      action: "open",
+      side: "buy",
+      qty: 1,
+      clientId: "no-price-rejection"
+    });
+    const adapter = new PaperAdapter({
+      botId: "paper-ledger-test",
+      market: "futures",
+      startBalance: 10_000,
+      feePct: 0,
+      slipPct: 0,
+      getPrice: () => price,
+      createId: () => `no-price-event-${++id}`
+    });
+
+    const rejected = await adapter.execute(structuredClone(command));
+    expect(rejected).toMatchObject({ ok: false, message: "No market price available", fills: [] });
+    const events = adapter.getLedgerEvents();
+    expect(events.map((event) => event.type)).toContain("command_completed");
+
+    price = 100;
+    const restarted = new PaperAdapter({
+      botId: "paper-ledger-test",
+      market: "futures",
+      startBalance: 1,
+      feePct: 0,
+      slipPct: 0,
+      getPrice: () => price,
+      initialEvents: events
+    });
+    await expect(restarted.execute(structuredClone(command))).resolves.toEqual(rejected);
+    expect(restarted.getLedgerEvents()).toHaveLength(events.length);
+    expect(restarted.getLedgerState()).toMatchObject({
+      position: null,
+      fillCount: 0
+    });
   });
 
   it("rolls back the simulated mutation when durable append fails", async () => {

@@ -1019,10 +1019,11 @@ parameter, and internal ownership fields are not serialized. A bot's `status` fi
 computed live from that owner's runtime (`running` when the engine reports it running, otherwise
 `stopped`).
 
-Live execution remains experimental and disarmed by default. Binance live spot is disabled until an
-authenticated spot execution-accounting stream exists. Bybit spot is experimental behind
-`ENABLE_LIVE_SPOT` and uses the v5 `order` + `execution` topics. This API is not a mainnet-readiness
-claim; the funded 7–14-day exchange soak is explicitly outside the current verified scope.
+The current API is strictly Research / Paper. `RUNTIME_PROFILE=private-live`, credential writes,
+signed REST, private exchange streams and all non-paper execution are unreachable;
+`ENABLE_LIVE_SPOT=true` stops startup instead of enabling Bybit. The live lifecycle text below is a
+dormant future/private-live engineering reference, not an operator activation path or a
+mainnet-readiness claim.
 
 All live `replace` and `turnover` commands are rejected until every child cancel/close/new action has
 an independent durable lifecycle. Reservations also retain unaccounted partial fills from
@@ -1031,6 +1032,45 @@ larger of exact-symbol venue gross position quantity and the durable fill-accoun
 When one venue order matches one local reservation, price and quantity use a conservative maximum;
 identity conflicts fail closed. A terminal REST status without authenticated execution accounting
 pauses the bot after polling/reconnect reconciliation.
+
+### `/api/trade/paper-portfolios/*` (R4 candidate)
+
+The R4 candidate's canonical paper center uses PostgreSQL schema 12 for durable, authorization-
+fenced commands and executor-owned SQLite schema 9 for portfolio/ledger evidence. This section
+documents the candidate contract; it is not an R4 acceptance or production-cutover claim.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/trade/paper-portfolios` | List the current owner's active and archived portfolios. |
+| `GET` | `/api/trade/paper-portfolios/:portfolioId` | Return one `paper-portfolio-v1` projection. |
+| `POST` | `/api/trade/paper-portfolios` | Create an owner-scoped USDT portfolio. |
+| `PATCH` | `/api/trade/paper-portfolios/:portfolioId` | Rename at an exact revision/epoch. |
+| `POST` | `/api/trade/paper-portfolios/:portfolioId/default` | Select the active default. |
+| `POST` | `/api/trade/paper-portfolios/:portfolioId/archive` | Archive with exact name/constant confirmation after allocations are released. |
+| `POST` | `/api/trade/paper-portfolios/:portfolioId/reset` | Close the current epoch and create the next after exact confirmation. |
+| `POST` | `/api/trade/paper-portfolios/:portfolioId/robots/:botId/actions` | Confirm `start`, `pause`, `resume` or `stop` for one robot revision. |
+
+Every request requires `X-SBV2-Expected-User` equal to the current session user captured by the
+client before the operation. Mutations additionally require the normal session CSRF header and a
+stable `Idempotency-Key` of at most 160 safe characters. Existing-resource bodies carry
+`expectedPortfolioRevision` and `expectedLedgerEpoch`; robot actions also carry
+`expectedBotRevision` and `confirm: true`. Portfolio reset/archive requires the exact current name
+plus its typed confirmation constant. Responses are `Cache-Control: no-store`.
+
+Money is canonical positive USDT text with exactly six fractional digits. A create body is
+`{ "name": "Research", "initialCapital": "100000.000000", "currency": "USDT" }`.
+Retry the same logical mutation with the same key and identical body. A conflicting reuse is
+`409 idempotency_conflict`; `503 command_pending` means the durable command has not reached a
+terminal state within the synchronous wait and must be retried with that same key. Stale owner,
+portfolio, epoch or robot revision is a refresh-required conflict, never last-write-wins.
+
+Snapshots carry fixed-decimal values and evidence-aware fields. Stale/unavailable marks remain
+typed states. Borrowing is explicitly unavailable; no real exchange balance, debt or margin is
+read. Portfolio detail embeds a bounded `paper-robot-journal-v1` per robot: an explicitly
+current-epoch realized-cash curve (at most 256 points plus an evidence-backed current-equity point),
+at most 50 newest fills and 100 newest event metadata rows. It does not claim historical
+mark-to-market equity and omits event payload/idempotency fields. See
+[Canonical paper portfolios](./PAPER_PORTFOLIOS.md) for lifecycle and recovery details.
 
 ### `/api/trade/paper-multi-leg/*`
 
@@ -1075,7 +1115,7 @@ The core object accepted and returned by the bot endpoints.
 | `symbol` | `string` | Upper-cased on save (required) |
 | `timeframe` | `Timeframe` | Required |
 | `exchange` | `"paper" \| "binance" \| "bybit"` | Defaults to `paper` |
-| `market` | `"spot" \| "futures"` | `spot` only when explicitly `"spot"`, otherwise `futures`; Binance live spot is disabled and Bybit spot is experimental behind `ENABLE_LIVE_SPOT` |
+| `market` | `"spot" \| "futures"` | Paper market type only in the current runtime; every Binance/Bybit bot is rejected by the Research/Paper boundary |
 | `sizeMode` | `"quote" \| "base" \| "equity_pct" \| "risk_pct"` | Defaults to `quote` |
 | `sizeValue` | `number` | Defaults to `100` |
 | `leverage` | `number` | Floored at `1` |
@@ -1112,6 +1152,14 @@ Creates or updates one of the current user's bots. If `id` matches the caller's 
 `createdAt` is preserved. A foreign existing ID returns `404` rather than revealing ownership. A
 live bot must include `accountId` for an enabled, exchange-matching account owned by the caller.
 
+In database-auth mode, creating a paper bot is a create-only canonical portfolio command. The
+server assigns a deterministic bot ID from the idempotency key, atomically reserves the requested
+capital and stores immutable revision evidence. It requires `X-SBV2-Expected-User`, session CSRF,
+`Idempotency-Key`, `paperPortfolioId`, canonical `paperAllocation`,
+`expectedPortfolioRevision` and `expectedLedgerEpoch`. A bound paper robot cannot be edited through
+this endpoint; create a new robot workflow instead. Legacy single-operator behavior remains a
+compatibility path.
+
 **Required body fields:** `symbol`, `timeframe`, `ir`. If any is missing the endpoint returns `400`.
 
 | Body field | Type | Default |
@@ -1124,7 +1172,7 @@ live bot must include `accountId` for an enabled, exchange-matching account owne
 | `strategyName` | `string` | `"Strategy"` |
 | `exchange` | `"paper" \| "binance" \| "bybit"` | `paper` |
 | `accountId` | `string` | Required for Binance/Bybit; ignored/replaced for paper |
-| `market` | `"spot" \| "futures"` | `futures`; Binance live spot is rejected and Bybit spot requires `ENABLE_LIVE_SPOT` |
+| `market` | `"spot" \| "futures"` | `futures`; only paper creation is accepted, and every Binance/Bybit execution request is rejected |
 | `sizeMode` | `"quote" \| "base" \| "equity_pct" \| "risk_pct"` | `quote` |
 | `sizeValue` | `number` | `100` |
 | `leverage` | `number` | `1` (floored at 1) |
@@ -1133,6 +1181,10 @@ live bot must include `accountId` for an enabled, exchange-matching account owne
 | `maxOrderQuote` | positive `number` | Required for live; must not exceed position cap |
 | `maxDailyLossQuote` | positive `number` | Required for live |
 | `maxOpenOrders` | positive `integer` | Required for live |
+| `paperPortfolioId` | `string` | Required for a new database-auth paper bot |
+| `paperAllocation` | six-decimal positive USDT string | Required for a new database-auth paper bot |
+| `expectedPortfolioRevision` | positive integer | Required for a new database-auth paper bot |
+| `expectedLedgerEpoch` | positive integer | Required for a new database-auth paper bot |
 
 **Response `200`**
 
@@ -1152,11 +1204,19 @@ curl -X POST http://localhost:4180/api/trade/bots \
   -d '{"symbol":"BTCUSDT","timeframe":"1m","ir":{},"exchange":"paper","sizeMode":"quote","sizeValue":100}'
 ```
 
+The unauthenticated curl example above describes only the legacy local shape; it is not a valid
+database-auth paper create. First-party clients must use the authenticated canonical fields and
+headers described above.
+
 ---
 
 ### `DELETE /api/trade/bots/:id`
 
 Stops the bot (if running) and deletes it.
+
+In database-auth mode a canonical paper robot returns `409 PAPER_DELETE_COMMAND_REQUIRED` until a
+flat release/delete workflow records immutable evidence. Active allocations are never deleted
+through this compatibility route.
 
 **Response `200`**
 

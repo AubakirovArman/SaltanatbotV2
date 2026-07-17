@@ -2,7 +2,7 @@ import { notify } from "./notifications.js";
 import { persistPaper, persistRuntimeState } from "./engineState.js";
 import type { RunningBot } from "./engineRuntime.js";
 import type { KeyedExclusiveLock } from "./keyedExclusiveLock.js";
-import { upsertBotForOwner } from "./store.js";
+import { persistBotRuntimeStatus } from "./botRuntimePersistence.js";
 import { botTradingAccountId } from "./tradingAccounts.js";
 import { tradingOwnerForBot } from "./ownership.js";
 
@@ -67,10 +67,8 @@ export class EngineStopCoordinator {
     const id = bot.config.id;
     if (bot.paper) persistPaper(bot);
     persistRuntimeState(bot);
+    persistBotRuntimeStatus(bot.config, "stopped");
     this.deps.remove(id);
-    bot.config.status = "stopped";
-    bot.config.updatedAt = Date.now();
-    upsertBotForOwner(tradingOwnerForBot(bot.config), bot.config);
     this.deps.log(id, "Bot stopped");
     this.deps.emit(id);
     void notify({ ownerUserId: tradingOwnerForBot(bot.config), event: "stop", bot: bot.config.name, symbol: bot.config.symbol, text: "Stopped" });

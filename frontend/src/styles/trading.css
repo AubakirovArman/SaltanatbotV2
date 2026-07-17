@@ -923,6 +923,10 @@
     flex: 0 0 auto;
   }
 
+  .trade-bot-empty-note {
+    display: none;
+  }
+
   .trade-bot-row {
     min-inline-size: 210px;
   }

@@ -93,6 +93,7 @@ vi.mock("../src/trading/store.js", () => {
         .filter((event) => event.botId === botId)
         .sort((left, right) => left.sequence - right.sequence)
         .map((event) => clone(event)),
+    upsertPaperValuationMark: () => {},
     insertLog: () => {},
     listLogs: () => [],
     getSetting: (k: string) => {
@@ -121,6 +122,14 @@ vi.mock("../src/trading/store.js", () => {
     __orders: () => [...orders.values()].map((item) => clone(item)),
     __orderEvents: () => orderEvents.map((item) => clone(item))
   };
+});
+
+// This in-memory lifecycle harness predates database-auth portfolio binding and
+// intentionally exercises the standalone/legacy engine path. Canonical
+// database-auth binding is covered by paperPortfolioRuntimeSecurity.test.ts.
+vi.mock("../src/auth.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/auth.js")>("../src/auth.js");
+  return { ...actual, isDatabaseAuthMode: () => false };
 });
 
 const notificationState = vi.hoisted(() => ({ gate: undefined as Promise<void> | undefined }));

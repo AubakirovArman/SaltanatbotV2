@@ -597,6 +597,42 @@ describe("trading API E2E (real router, in-memory store)", () => {
     expect(list.bots.some((b: { id: string }) => b.id === bot.id)).toBe(true);
   });
 
+  it("never exposes internal paper allocation micros through the public bot view", async () => {
+    const id = `private-paper-fields-${Date.now()}`;
+    const now = Date.now();
+    upsertBotForOwner(LEGACY_TRADING_OWNER_ID, {
+      ...validBody(),
+      id,
+      ownerUserId: LEGACY_TRADING_OWNER_ID,
+      accountId: `paper:${id}`,
+      strategyName: "private-paper-fields",
+      leverage: 1,
+      bybitCrossCollateral: false,
+      notifyMarkers: false,
+      status: "stopped",
+      createdAt: now,
+      updatedAt: now,
+      paperPortfolioId: "paper-portfolio-public-view",
+      paperAllocationMicros: 1_234_567,
+      paperLedgerEpoch: 1
+    } as never);
+
+    const response = await get("/bots");
+    const body = await response.json() as { bots: Array<Record<string, unknown>> };
+    const publicBot = body.bots.find((bot) => bot.id === id);
+    expect(response.status).toBe(200);
+    expect(publicBot).toMatchObject({
+      id,
+      paperPortfolioId: "paper-portfolio-public-view",
+      paperLedgerEpoch: 1,
+      paperAllocation: "1.234567"
+    });
+    expect(publicBot).not.toHaveProperty("ownerUserId");
+    expect(publicBot).not.toHaveProperty("paperAllocationMicros");
+    expect(JSON.stringify(publicBot)).not.toContain("Micros");
+    expect((await del(`/bots/${id}`)).status).toBe(200);
+  });
+
   it("isolates bot REST resources by authenticated owner, including admin sessions", async () => {
     const ownerA = "11111111-1111-4111-8111-111111111111";
     const ownerB = "22222222-2222-4222-8222-222222222222";

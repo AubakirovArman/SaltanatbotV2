@@ -1,13 +1,20 @@
 # Self-hosting with account authentication
 
 Audience: operators and people installing a fork
-Last verified: 2026-07-16
+Last verified for accepted deployment: 2026-07-16
+R4 schema-12/schema-9 documentation reviewed: 2026-07-17 (candidate, not a cutover claim)
 
 SaltanatbotV2 remains self-hostable and does not require an OpenAI account, an OpenAI package, or
-any project-owned cloud service. PostgreSQL stores users, browser sessions, named workspaces and
-research jobs. SQLite stores owner-partitioned trading accounts, robots, journals and encrypted
+any project-owned cloud service. PostgreSQL stores users, browser sessions, named workspaces,
+research jobs and the R4 durable executor-command queue. SQLite stores owner-partitioned trading
+accounts, canonical paper portfolios, robots, journals and encrypted
 per-account exchange credentials, plus candles and paper journals. Forward migrations preserve
 existing records; make a verified backup before every upgrade.
+
+The R4 candidate advances PostgreSQL to schema 12 and trading SQLite to schema 9. Its paper
+portfolio lifecycle, two-store authority boundary and exact upgrade/rollback checklist are in
+[Canonical paper portfolios](./PAPER_PORTFOLIOS.md). The candidate must not be treated as accepted
+or deployed until its exact release evidence and recovery drill pass.
 
 The only runnable execution boundary in this pre-HTTPS release is
 `RUNTIME_PROFILE=public-http-paper`. It keeps monitoring, public
@@ -481,9 +488,27 @@ Per-user Telegram/VK notifications are outbound-only in database auth mode. Inbo
 commands remain available only in explicit legacy single-operator mode until the poller can bind a
 chat to a durable user and verify the current trading role on every command.
 
-### Upgrading a pre-tenant trading database
+### Canonical paper portfolios in the R4 candidate
 
-The current SQLite trading schema is v8. The migration that crosses v6 transactionally assigns every
+With database authentication, paper-portfolio mutations no longer write directly from an HTTP
+handler into ad hoc bot state. The browser supplies the expected owner, current portfolio/robot
+revisions and a stable idempotency key. PostgreSQL schema 12 durably queues that command and fences
+it to the active session authorization revision/epoch. The single trading executor applies it to
+SQLite schema 9 and records a terminal receipt with the same portfolio mutation.
+
+Run exactly one API/executor against one `backend/data/trading.db`. A second API replica is not a
+capacity upgrade and must fail closed on the SQLite runtime lock. The research worker has no need
+for `backend/data` access. Do not add a third service, listener or database for R4, and do not reuse
+another project's PostgreSQL database, volume, port or runtime directory.
+
+The browser's **Running / Paper portfolios** center creates and selects portfolios, reserves
+capital while creating a robot, and provides confirmed start/pause/resume/stop. Archive requires no
+active allocations. Reset closes the current ledger epoch, retains all prior evidence and requires
+explicit robot rebind. No part of this workflow asks for an exchange key.
+
+### Upgrading a pre-tenant or pre-portfolio trading database
+
+The R4 candidate's SQLite trading schema is v9. The migration that crosses v6 transactionally assigns every
 pre-v6 trading row to one administrator, re-encrypts each
 legacy `keys:binance`/`keys:bybit` value for its concrete migrated account and clears the old
 server-wide live arm. Nothing is assigned to newly registered users. Before the first v6 start:
@@ -495,21 +520,25 @@ server-wide live arm. Nothing is assigned to newly registered users. Before the 
 3. If there is more than one administrator, set `TRADING_LEGACY_OWNER_USER_ID` to the intended
    administrator UUID. Startup deliberately refuses an ambiguous migration.
 4. Start exactly one API process, inspect the migration log and verify the old robots under that
-   administrator. The current release keeps all live state inert.
+   administrator. When crossing v9, also verify that each legacy paper robot appears in its own
+   deterministic epoch-1 portfolio and that incomplete legacy evidence is labelled rather than
+   synthesized. The current profile keeps all live state inert.
 
 With exactly one administrator the server selects that account automatically. On a brand-new empty
 installation `TRADING_LEGACY_OWNER_USER_ID` is unnecessary.
 
 ## Updating a fork
 
-1. Verify PostgreSQL and SQLite backups.
+1. Create and verify one paired PostgreSQL + SQLite recovery generation. For the R4 candidate, use
+   the [schema-12/schema-9 checklist](./BACKUP_RESTORE.md).
 2. Pull or merge the desired commit.
 3. Run `npm ci`, tests and `npm run build` (or rebuild the Compose image).
-4. Restart one API instance; migrations run automatically. When first crossing trading schema v6,
-   follow
-   the legacy-owner procedure above.
+4. Stop only this project's API/worker for cutover, then start one API instance; migrations run
+   automatically. When first crossing trading schema v6, follow the legacy-owner procedure above.
+   Never run an older binary after PostgreSQL 12 or SQLite 9 has been applied.
 5. Check `/api/ready`, pending jobs, per-user account visibility, current robots and the
-   `public-http-paper` runtime state.
+   `public-http-paper` runtime state. For R4 also check the paper executor, migrated portfolio list
+   and one same-key idempotent retry before starting the matching research worker.
 
 Never start a second copy of the current trading backend against the same `trading.db`: both copies
 could restore the same bot. Horizontal API replicas become safe only after the trading executor and
