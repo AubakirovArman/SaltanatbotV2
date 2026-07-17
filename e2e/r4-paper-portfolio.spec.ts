@@ -23,6 +23,7 @@ test.describe("R4 canonical paper portfolio center", () => {
     await expect(center.getByRole("region", { name: "Portfolio" })).toContainText("Default");
     await expect(center.getByRole("table", { name: "Robots" })).toBeVisible();
     await expect(center.locator(".paper-robot-cards")).toBeHidden();
+    await assertTimeframeControlContainsTrigger(page);
     await assertNoHorizontalOverflow(page);
     await expectNoAxeViolations(page);
     await captureAudit(page, "01-desktop-portfolio-list.png");
@@ -309,6 +310,24 @@ async function assertMinimumTouchTargets(locator: Locator, minimum: number): Pro
   }
 }
 
+async function assertTimeframeControlContainsTrigger(page: Page): Promise<void> {
+  const geometry = await page.locator(".timeframe-control").evaluate((control) => {
+    const trigger = control.querySelector<HTMLElement>(".timeframe-more");
+    if (!trigger) throw new Error("Timeframe overflow trigger is missing");
+    const controlBox = control.getBoundingClientRect();
+    const triggerBox = trigger.getBoundingClientRect();
+    return {
+      controlWidth: controlBox.width,
+      triggerWidth: triggerBox.width,
+      leftDelta: triggerBox.left - controlBox.left,
+      rightDelta: controlBox.right - triggerBox.right
+    };
+  });
+  expect(geometry.controlWidth).toBeGreaterThanOrEqual(geometry.triggerWidth);
+  expect(geometry.leftDelta).toBeGreaterThanOrEqual(-1);
+  expect(geometry.rightDelta).toBeGreaterThanOrEqual(-1);
+}
+
 async function captureAudit(page: Page, name: string): Promise<void> {
   const directory = process.env.R4_AUDIT_SCREENSHOT_DIR;
   if (!directory) return;
@@ -317,7 +336,7 @@ async function captureAudit(page: Page, name: string): Promise<void> {
 
 async function expectNoAxeViolations(page: Page): Promise<void> {
   const audit = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
   expect(
     audit.violations,
