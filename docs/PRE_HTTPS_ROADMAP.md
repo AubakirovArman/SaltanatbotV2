@@ -301,9 +301,9 @@ VoiceOver/NVDA/TalkBack records are complete.
 
 ## R3 — administrator lifecycle, workspaces and first-run workflow
 
-**Status:** R3.1 and R3.2 are delivered and deployed. Production runs schema 10
-from the protected exact-commit release slot; R3.3 with its required O1 slice is
-the next increment.
+**Status:** delivered and deployed. Production runs schema 11 from the protected
+exact-commit release slot. R3.1, R3.2 and R3.3 with its required O1 slice are
+accepted; R4 is the next increment.
 
 **Baseline:**
 
@@ -332,23 +332,23 @@ the next increment.
 
 Evidence:
 [R3.1 identity control-plane acceptance](./evidence/R3_1_IDENTITY_CONTROL_PLANE.md)
-and [R3.2 workspace workflow](./evidence/R3_2_WORKSPACE_WORKFLOW.md).
+and [R3.2 workspace workflow](./evidence/R3_2_WORKSPACE_WORKFLOW.md), plus
+[R3.3 onboarding and operations](./evidence/R3_3_ONBOARDING_OPERATIONS.md).
 
-**Active — R3.3 onboarding:** implementation and targeted isolated verification
-are in progress. The full build/browser/recovery gate, production cutover and
-release evidence are not yet complete.
+**Delivered — R3.3 onboarding:** the complete build, browser, PostgreSQL,
+recovery, CI and production cutover gates are recorded in the R3.3 evidence.
 
-- add owner-scoped onboarding from goal selection to a first chart, backtest,
-  research alert or paper robot, never requesting exchange keys;
-- provide 192×192, 512×512, maskable and Apple Touch icons and enforce the
-  manifest contract in CI;
-- retain ordinary export over HTTP; install/update and offline-bundle actions
-  appear only on localhost or a browser-reported secure context. No HTTPS work
-  is part of this release.
+- owner-scoped onboarding now connects goal selection to a first chart,
+  backtest, research alert or paper robot without requesting exchange keys;
+- 192×192, 512×512, maskable and Apple Touch icons are enforced by the
+  manifest CI contract;
+- ordinary export remains available over HTTP, while install/update and
+  offline-bundle actions appear only on localhost or a browser-reported secure
+  context. No HTTPS work is part of this release.
 
 ### R3.3 + O1 executable implementation order
 
-R3.3 is accepted as one compatible increment, implemented internally in this
+R3.3 was accepted as one compatible increment and executed internally in this
 order:
 
 1. **Configuration and schema 11.**
@@ -903,7 +903,7 @@ and stabilization.
 | --- | --- | --- | ---: |
 | R1 | Safety, execution ledger, minimal workers and ADR | delivered Phase 0 | delivered foundation |
 | R2 | Mobile chart/navigation/Strategy Studio | R1 | 2-3 |
-| R3 | R3.1 and R3.2 deployed on schema 10; onboarding remains | R1-R2 | R3.3 plus its O1 slice |
+| R3 | administrator lifecycle, server workspaces and onboarding/PWA boundary | R1-R2 | delivered on schema 11 |
 | O1 | Operational hardening increments | starts in R3 and ships with each new workload | included in R3-R10 estimates |
 | R4 | “Running” and paper portfolio/journal contract | R1-R3 | 3-5 |
 | R5 | Alerts + technical screener MVP + notifications/Telegram | R3-R4 | 5-7 |
@@ -918,34 +918,22 @@ and stabilization.
 
 ### Immediate execution queue
 
-1. Close the remaining R2 manual evidence with a real Android Opera smoke and
-   VoiceOver/NVDA/TalkBack record. This is a verification item, not permission
-   to mix later release code into the current increment.
-2. Finish the active R3.3 + O1 implementation in isolation: merge the recovery
-   hardening, run the complete PostgreSQL integration matrix, build outside the
-   production checkout, and pass Chromium, Firefox, visual, PWA, bundle,
-   architecture and documentation gates. Reconcile the generated API index and
-   all schema/configuration/security docs with the protected onboarding and
-   operations routes; add the promised documentation links and next actions to
-   the accepted empty-state journeys.
-3. Before any production mutation, record the exact project/service/container/
-   port/database/data-directory identity, create a paired schema-10
-   PostgreSQL/SQLite generation, verify it and complete a replacement-only
-   restore drill using proven matching `pg_dump`/`pg_restore` tooling. Persist
-   and expose the last verified generation only after successful verification,
-   never as an unverified placeholder. Any identity mismatch or
-   foreign-resource collision stops the release.
-4. Commit the accepted increment to `main`, verify GitHub Actions, package one
-   protected exact-commit release, migrate only the project database to schema
-   11, restart only the project API/worker, switch only the protected frontend
-   slot and run owner/onboarding/readiness/backup smoke checks on port 4180.
-5. Start R4 only after R3.3 evidence and production smoke are accepted. The
-   “Running” UI must consume the canonical paper portfolio/ledger contract
-   rather than introduce another authoritative browser or database state.
+1. Start R4.1 by freezing the canonical owner-scoped paper-account, reservation,
+   order/fill/event and reconciliation contracts. Existing browser state and
+   legacy paper rows are inputs to migration, not a second system of record.
+2. Implement R4.1 behind the current Research/Paper runtime boundary, including
+   deterministic capital and PnL invariants, restart/partial-fill recovery,
+   tenant isolation, bounded jobs and paired backup/restore evidence.
+3. Build R4.2 “Running”, portfolio and journal UX only on the accepted R4.1
+   ledger. Cover empty/non-empty, profit/loss/margin/reservation and failure
+   states on mobile and desktop without exposing exchange credentials.
+4. Accept R4 only after the golden-ledger, restart reconciliation, PostgreSQL,
+   browser, accessibility, bundle, recovery, documentation, CI and protected
+   production smoke gates are green. R5 does not enter `main` before that gate.
 
 Acceptance, publication to `main` and production cutover of the remaining work
-are strictly sequential: R3.3 with its O1 slice → R4 → R5 → R6 → R7 →
-R8 → R9 → R10A → R10B → R11 → R12. Parallel work is allowed only inside the
+are strictly sequential: R4 → R5 → R6 → R7 → R8 → R9 → R10A → R10B → R11 →
+R12. Parallel work is allowed only inside the
 current increment after its contracts are fixed. Code or migrations for a later
 release do not enter `main` or production before the preceding release is
 accepted. The R10A calendar soak may continue in the background only as evidence;

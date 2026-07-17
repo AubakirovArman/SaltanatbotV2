@@ -1,7 +1,7 @@
 # Documentation status
 
 Last full repository documentation audit: **2026-07-15**
-Last focused R3.3 API/schema/operations reconciliation: **2026-07-16**
+Last focused R3.3 release/cutover reconciliation: **2026-07-17**
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -35,6 +35,8 @@ their source contracts, and user-facing claims were compared with the current im
 | [Release verification](RELEASING.md) | maintainers/users | current | 2026-07-11 |
 | [Threat model](THREAT_MODEL.md) | operators/contributors | current alpha baseline through onboarding ownership, bounded readiness, global admission and isolated recovery | 2026-07-16 |
 | [Roadmap](ROADMAP.md) | community | current | 2026-07-12 |
+| [Pre-HTTPS implementation roadmap](PRE_HTTPS_ROADMAP.md) | maintainers/community | current; R3 delivered on schema 11 and immediate product queue begins with planned R4 | 2026-07-17 |
+| [R3.3 onboarding and operations evidence](evidence/R3_3_ONBOARDING_OPERATIONS.md) | operators/release reviewers | accepted exact-commit CI, recovery and production cutover record | 2026-07-17 |
 | [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger | 2026-07-14 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |
