@@ -9,9 +9,11 @@ jobs successful, protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and
 schema 9. The exact-release paired recovery and rollback drill evidence passed. The runtime remains
 pre-HTTPS `public-http-paper`; private/live execution is still unreachable.
 
-R5.1 is an implementation candidate, not a deployed production baseline. Its checked-in
-PostgreSQL schema 13 adds owner-scoped server alerts; production remains on schema 12 until the
-candidate passes the release, paired-recovery and cutover gates. The alert control plane is
+R5.1 is now the accepted and deployed production baseline. Its PostgreSQL schema 13 adds
+owner-scoped server alerts; production moved to schema 13 from protected slot
+`r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0` after the release,
+paired-recovery and cutover gates passed
+([R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)). The alert control plane is
 notification-only, reads credential-free public REST candles, and does not widen the pre-HTTPS
 execution boundary. See [Owner-scoped server alerts](./ALERTS.md).
 
@@ -110,7 +112,7 @@ authentication audit events, owner-scoped onboarding/workspace revisions, durabl
 the current research-worker heartbeat and the R4 fenced executor-command queue.
 Checked-in migrations run atomically under an advisory lock and refuse checksum drift.
 
-The R5.1 candidate extends that PostgreSQL boundary at schema 13 with alert rules and immutable
+The R5.1 release extends that PostgreSQL boundary at schema 13 with alert rules and immutable
 revisions, exact durable evaluation state, revision-scoped receipts, per-owner event sequences,
 immutable events/outbox rows, in-app deliveries and import receipts. The research worker claims a
 rule through owner, authorization, lease and state-revision fences, reads exactly one final public
@@ -169,11 +171,12 @@ table; verification and replacement restore compare those counts with the manife
 isolated paired restore/rollback drill passed for the accepted R4 production release. A future
 self-hosted release must pass the same exact-build gate rather than inheriting this evidence.
 
-For the R5.1 candidate, the schema-13 inventory additionally counts every alert control-plane table,
+For the R5.1 release, the schema-13 inventory additionally counts every alert control-plane table,
 including the per-owner event counter and immutable evaluation receipts. That implementation
-coverage does not alter the accepted R4 evidence or prove deployment. Schema 12 to 13 cutover still
-requires a fresh pre-upgrade paired backup, an isolated marked restore, API-first migration and
-no-op restart, worker-second activation, then a post-upgrade paired backup and isolated restore.
+coverage does not alter the accepted R4 evidence. The schema 12 to 13 cutover passed its required
+gates for the accepted release: a fresh pre-upgrade paired backup, an isolated marked restore,
+API-first migration and no-op restart, worker-second activation, then a post-upgrade paired backup
+and isolated restore.
 
 Restore and drill operate only on a new database name and a separate absent/empty data directory.
 Database creation is tagged with a generation/operation marker and its OID; cleanup refuses to drop

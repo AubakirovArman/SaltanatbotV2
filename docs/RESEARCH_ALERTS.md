@@ -6,9 +6,10 @@ delivery/retry evidence for `paper-trade`, `live-trade` and `admin` sessions. En
 candidate/economics producers are not yet connected, so the mount and UI alone cannot create a
 notification.
 
-Production remains the accepted R4 release on PostgreSQL schema 12. Neither
-this disconnected producer workflow nor the schema-13 R5.1 implementation
-candidate is claimed as accepted or deployed.
+Production now runs the accepted and deployed R5.1 release on PostgreSQL
+schema 13 from protected slot r5a-schema13-66394fd
+([evidence](./evidence/R5_1_OWNER_ALERTS.md)). This disconnected producer
+workflow is still not claimed as accepted or deployed.
 
 ## Distinction from generic R5.1 price alerts
 
@@ -17,7 +18,7 @@ workflow. It is not the generic owner-scoped R5.1 alert control plane and its
 policy state must not be merged into a generic price rule merely because both
 systems use notification/outbox terminology.
 
-The R5.1 implementation candidate supports only `price-threshold` over public
+The accepted R5.1 release supports only `price-threshold` over public
 Binance/Bybit last-price closed candles with in-app delivery. It never reads
 account evidence or exchange credentials and cannot trade. Its beta bounds are
 100 active and 200 non-archived rules per owner, 400 total retained
@@ -27,11 +28,12 @@ provider. Evaluation receipts retain for 2 days and event/outbox/archive
 history for 30 days.
 
 R5.1 uses an owner-bound forward event cursor and intentional at-least-once
-publish-before-checkpoint behavior. Its remaining release gate includes
-browser-closed restart/dedup, same-owner multi-tab convergence, local-storage
-failure and desktop/mobile accessibility/visual evidence. R5.2 technical
-screener integration, R5.3 notification worker/Telegram delivery and R11
-integrated 100-user proof remain pending and unproven.
+publish-before-checkpoint behavior. Its release gate — browser-closed
+restart/dedup, same-owner multi-tab convergence, local-storage failure and
+desktop/mobile accessibility/visual evidence — passed before the production
+cutover. R5.2 technical screener integration, R5.3 notification
+worker/Telegram delivery and R11 integrated 100-user proof remain pending and
+unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md),
 [Russian](./ru/ALERTS.md) and [Kazakh](./kk/ALERTS.md).
@@ -93,4 +95,4 @@ compatible with the current basis alert operator workflow but uses its own state
 
 No funded mainnet/testnet soak or live-order readiness is claimed.
 The missing producer integrations above remain separate from R5.2/R5.3 and
-cannot inherit acceptance from the generic R5.1 candidate.
+cannot inherit acceptance from the accepted generic R5.1 release.

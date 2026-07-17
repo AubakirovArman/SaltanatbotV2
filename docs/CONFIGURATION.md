@@ -6,10 +6,11 @@ jobs successful, protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and
 schema 9. Exact-release recovery evidence passed. The supported runtime profile remains
 `public-http-paper`; HTTPS and private/live execution are outside this release.
 
-R5.1 is currently an implementation candidate only. Its source tree expects PostgreSQL schema 13
-for owner-scoped alerts, but the production installation described by the accepted evidence above
-still runs schema 12 and has not deployed R5.1. Do not treat candidate tests or documentation as a
-production cutover record. See [Owner-scoped server alerts](./ALERTS.md).
+R5.1 is now accepted and deployed. Production runs PostgreSQL schema 13 for owner-scoped alerts
+from protected slot `r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`,
+with exact-SHA GitHub Actions run `29574600648` green on 6/6 jobs; the cutover record is
+[R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md). See
+[Owner-scoped server alerts](./ALERTS.md).
 
 SaltanatbotV2 is configured mostly at runtime through the app itself. PostgreSQL stores accounts,
 revocable sessions, workspaces, research jobs and the R4 durable executor-command queue. SQLite
@@ -91,7 +92,7 @@ Variables outside that first slice are still owned by their feature modules and 
 | `ARBITRAGE_CONTINUOUS_ROUTES_FILE` | *(unset)* | Preferred absolute path to one bounded, regular, non-symlinked UTF-8 public-feed allowlist. Mutually exclusive with the inline JSON variable. |
 | `ARBITRAGE_CONTINUOUS_ROUTES_JSON` | *(unset)* | Optional bounded public-feed allowlist for continuous multi-venue research discovery; exact reviewed identity and fee metadata only, never credentials. |
 
-R5.1 alert capacity is deliberately **not** environment-configurable. The candidate fixes the beta
+R5.1 alert capacity is deliberately **not** environment-configurable. The release fixes the beta
 boundary at 100 active and 200 non-archived rules per owner, 400 total rule/history rows per owner,
 480 globally active rules, 100 claims per sweep by default (500 hard maximum), four concurrent
 public scopes, 16 unique public reads per sweep, eight per provider and one candle per read. Equal
@@ -338,16 +339,16 @@ revision evidence, durable mutation receipts and valuation/projection evidence. 
 event ledgers remain authoritative; snapshot-only legacy state is imported with explicit
 `legacy-incomplete` evidence. See [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
-### R5.1 PostgreSQL schema 13 candidate
+### R5.1 PostgreSQL schema 13
 
-The candidate adds ten owner-scoped alert tables, immutable revisions/receipts/events/outbox rows,
+The release adds ten owner-scoped alert tables, immutable revisions/receipts/events/outbox rows,
 a transactional per-owner event counter and bounded retention indexes. Its exact migration checksum
 is `1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
 Startup accepts the complete checksum-locked migration chain or fails closed; there is no supported
 flag to skip schema 13, downgrade to 12 in place or delete alert history as a rollback shortcut.
-Production remains schema 12 until the procedure in
-[Migration notes](./MIGRATIONS.md#r51-implementation-candidate-postgresql-schema-13) is executed
-and accepted for an exact release.
+Production moved to schema 13 after the procedure in
+[Migration notes](./MIGRATIONS.md#accepted-r51-release-postgresql-schema-13) was executed
+and accepted for the exact release.
 
 ## Dormant private-live credential contract
 
@@ -490,12 +491,12 @@ instead of decrypting under the wrong tenant.
 
 ## Production deployment
 
-The instructions below describe the accepted schema-12 production shape. For a future R5.1
-cutover, keep both application processes stopped, verify the pre-upgrade paired generation and its
-isolated restore, then start only the exact candidate API. Let it migrate 12 to 13, verify the
-checksum and a no-op API restart, and only then start the matching research worker. Never start the
-worker first against a schema being upgraded. HTTP remains transport-insecure throughout this
-candidate; a database migration does not provide TLS.
+The instructions below describe the accepted schema-13 production shape. The accepted R5.1
+cutover kept both application processes stopped, verified the pre-upgrade paired generation and its
+isolated restore, then started only the exact release API to migrate 12 to 13, verified the
+checksum and a no-op API restart, and only then started the matching research worker. Never start
+the worker first against a schema being upgraded. HTTP remains transport-insecure throughout this
+release; a database migration does not provide TLS.
 
 In production the frontend is compiled to static assets and served by the backend itself — there is no separate web server for the SPA. The backend resolves the path once from the frozen runtime configuration and validates the release before it opens databases or a network listener:
 

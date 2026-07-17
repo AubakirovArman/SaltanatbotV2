@@ -8,9 +8,10 @@ has two independent recovery layers:
 2. `AppErrorBoundary` replaces the mounted application when React rendering or a lazy workspace
    module throws. It exposes retry, ordinary reload and application-file refresh actions.
 
-Accepted production still runs PostgreSQL schema 12. R5.1/schema 13 alert startup behavior described
-below is an implementation candidate and has not been deployed; it does not modify the accepted R4
-startup evidence. See [Owner-scoped server alerts](./ALERTS.md).
+Accepted production now runs PostgreSQL schema 13 from slot `r5a-schema13-66394fd`. The R5.1/schema
+13 alert startup behavior described below is accepted and deployed; its acceptance evidence is
+recorded in [R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md). See
+[Owner-scoped server alerts](./ALERTS.md).
 
 EN, RU and KK copy is selected from the saved locale, with browser-language fallback. Both surfaces
 use a semantic `main`, sequential heading, native buttons, visible focus and a critical alert only
@@ -39,7 +40,7 @@ over the development origin.
 
 Schema 13 is forward-only and checksum-locked to
 `1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
-During a candidate cutover, start the API first while the research worker remains stopped. Only
+During a schema-13 cutover, start the API first while the research worker remains stopped. Only
 after the migration succeeds, readiness/login/owner isolation pass and a second API start reports a
 migration no-op may the matching worker start its public-REST alert lane.
 
@@ -52,7 +53,7 @@ replacement resources and switching only the stopped project services back to th
 
 If the API is healthy on schema 13 but the worker fails, alert rules and events remain durable; do
 not run a second or older worker as an improvised repair. Keep the alert lane stopped, inspect the
-aggregate heartbeat/metrics and correct the exact candidate service. A restored owner event stream
+aggregate heartbeat/metrics and correct the exact alert service. A restored owner event stream
 may reject a browser cursor that is ahead of its durable counter; re-baseline that owner through the
 documented API rather than changing database sequence rows.
 

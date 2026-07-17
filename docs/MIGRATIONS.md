@@ -4,10 +4,13 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
-## R5.1 implementation candidate: PostgreSQL schema 13
+## Accepted R5.1 release: PostgreSQL schema 13
 
-R5.1 is implemented and tested in the source tree but is **not deployed** on the accepted
-production installation. Production remains on PostgreSQL schema 12 and trading SQLite schema 9.
+R5.1 was accepted and deployed on 2026-07-17 from commit
+`66394fd38765d8da36174411cecd95a33fda1ea0` after GitHub Actions run `29574600648` completed all
+6 required jobs successfully. Production now runs PostgreSQL schema 13 and unchanged trading
+SQLite schema 9 from protected slot `r5a-schema13-66394fd`
+([R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)).
 Nothing in this section replaces, edits or extends the immutable R4 acceptance evidence below.
 
 Schema 13 is one atomic, advisory-lock-protected PostgreSQL migration named

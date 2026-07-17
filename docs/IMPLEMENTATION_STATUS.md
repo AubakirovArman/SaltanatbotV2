@@ -20,7 +20,7 @@ private gates. No earlier level implies a later one.
 
 ## R4 accepted and deployed — 2026-07-17
 
-Production runs PostgreSQL schema 12 and trading SQLite schema 9 from protected
+Production ran PostgreSQL schema 12 and trading SQLite schema 9 from protected
 slot `r4c-schema12-bb455fa` at commit
 `bb455facdfe5a1b3cabe15490c86c299ea684ee7`. Exact-SHA GitHub Actions run
 `29560112312` passed all 6/6 jobs. The delivered contract includes the durable
@@ -31,14 +31,15 @@ the corresponding browser center and fenced PostgreSQL-to-SQLite executor.
 Golden-ledger, restart, two-owner/browser, isolated paired
 restore/migration/rollback and protected production-smoke gates are recorded in
 [R4 canonical paper portfolios evidence](./evidence/R4_PAPER_PORTFOLIOS.md).
-R5.1 is now an implementation candidate in the worktree, but it is not yet
-accepted, committed or deployed. Production therefore remains on the exact R4
-slot and schema 12 until the schema-13 backup/restore/rollback, exact-CI,
-browser-closed and visual gates pass. The runtime remains `public-http-paper`:
-HTTPS, exchange credential use, private streams, signed requests and live orders
-remain outside this release.
+R5.1 is now accepted, committed and deployed: the schema-13
+backup/restore/rollback, exact-CI, browser-closed and visual gates passed, and
+production cut over to protected slot `r5a-schema13-66394fd` (PostgreSQL schema
+13) at commit `66394fd38765d8da36174411cecd95a33fda1ea0`, still on port 4180
+([R5.1 owner-scoped alerts evidence](./evidence/R5_1_OWNER_ALERTS.md)). The
+runtime remains `public-http-paper`: HTTPS, exchange credential use, private
+streams, signed requests and live orders remain outside this release.
 
-## R5.1 implementation candidate — not yet deployed
+## R5.1 owner alerts accepted and deployed — 2026-07-17
 
 - [x] Define strict research-only price-rule, event, outbox and public projection
   contracts shared by the browser and backend.
@@ -51,12 +52,15 @@ remain outside this release.
   at-least-once browser checkpoints, multi-tab fences and deletion tombstones.
 - [x] Add beta quotas, provider-fair admission, structured metrics and bounded
   2-day/30-day retention.
-- [ ] Finish full unit/integration/build/browser/visual/soak gates and the exact
+- [x] Finish full unit/integration/build/browser/visual/soak gates and the exact
   unprivileged PostgreSQL schema-13 recovery rehearsal.
-- [ ] Commit/push the exact candidate, pass all six GitHub CI jobs, create a
+- [x] Commit/push the exact candidate, pass all six GitHub CI jobs, create a
   protected release slot and cut over schema 13 without changing port 4180.
 
-Canonical behavior and current limits are documented in
+Gate, rehearsal and cutover evidence, including exact-SHA GitHub Actions run
+`29574600648` (6/6 jobs), is recorded in
+[R5.1 owner-scoped alerts evidence](./evidence/R5_1_OWNER_ALERTS.md). Canonical
+behavior and current limits are documented in
 [Owner-scoped server alerts](./ALERTS.md).
 
 ## Delivered slices (not full roadmap completion)

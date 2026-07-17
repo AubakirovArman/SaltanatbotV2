@@ -8,11 +8,12 @@ run `29560112312` with all 6 required jobs successful, protected slot
 `r4c-schema12-bb455fa`, PostgreSQL schema 12 and trading SQLite schema 9. The exact-release paired
 backup/verify/isolated-restore/drill and post-migration recovery evidence passed.
 
-R5.1 is an implementation candidate and is not deployed on the accepted production installation.
-Its repository migration advances PostgreSQL from schema 12 to 13 for owner-scoped server alerts;
-production remains schema 12 until an exact candidate completes the backup, isolated-restore and
-cutover procedure below. The accepted R4 evidence is immutable and is not evidence for R5.1. See
-[Owner-scoped server alerts](./ALERTS.md).
+R5.1 is accepted and deployed on the production installation. Its migration advanced PostgreSQL
+from schema 12 to 13 for owner-scoped server alerts after the exact release commit
+`66394fd38765d8da36174411cecd95a33fda1ea0` completed the backup, isolated-restore and cutover
+procedure below; production now runs protected slot `r5a-schema13-66394fd`, still on port 4180
+([R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)). The accepted R4 evidence is immutable and is
+not evidence for R5.1. See [Owner-scoped server alerts](./ALERTS.md).
 
 SaltanatbotV2 remains self-hostable and does not require an OpenAI account, an OpenAI package, or
 any project-owned cloud service. PostgreSQL stores users, browser sessions, named workspaces,
@@ -251,9 +252,9 @@ The production application has exactly two independently supervised Node process
 
 1. `saltanatbotv2.service` serves the built frontend, API, public WebSockets and the single
    owner-partitioned paper runtime on port `4180`;
-2. `saltanatbotv2-research-worker.service` claims bounded PostgreSQL research jobs and, in the R5.1
-   candidate, evaluates owner alerts from credential-free public REST candles. It opens no HTTP
-   port and receives no exchange secrets.
+2. `saltanatbotv2-research-worker.service` claims bounded PostgreSQL research jobs and, since the
+   accepted R5.1 release, evaluates owner alerts from credential-free public REST candles. It
+   opens no HTTP port and receives no exchange secrets.
 
 Do not also run `npm start`, `npm run dev`, PM2, another container or a second API unit against the
 same `backend/data/trading.db`. PostgreSQL is supervised separately by the operating system and is
@@ -538,10 +539,11 @@ server-wide live arm. Nothing is assigned to newly registered users. Before the 
 With exactly one administrator the server selects that account automatically. On a brand-new empty
 installation `TRADING_LEGACY_OWNER_USER_ID` is unnecessary.
 
-### R5.1 schema 13 candidate cutover
+### R5.1 schema 13 cutover
 
-This is a future candidate procedure, not a statement that production has already moved beyond
-schema 12. The schema-13 checksum is
+This procedure was executed and accepted on 2026-07-17; production has moved to schema 13 from
+protected slot `r5a-schema13-66394fd`. It remains the template for the next schema upgrade. The
+schema-13 checksum is
 `1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
 
 1. Build and test the exact R5.1 commit without changing the running release.

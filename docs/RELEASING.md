@@ -11,9 +11,10 @@ SaltanatbotV2 publishes the same built application shape through four maturity c
 
 Only a pushed, supported Git tag creates a GitHub Release. Manual runs build attestable artifacts without inventing or moving a Git tag.
 
-Accepted production remains the immutable R4 PostgreSQL-schema-12 baseline. R5.1/schema 13 is an
-implementation candidate and must not be described as deployed, stable or production-accepted
-until the additional gate below passes for one exact commit. See
+Accepted production is now the R5.1 PostgreSQL-schema-13 baseline: protected release slot
+r5a-schema13-66394fd built from commit 66394fd38765d8da36174411cecd95a33fda1ea0, with exact-SHA
+Actions run 29574600648 green on 6/6 jobs. The additional gate below passed for that exact
+commit; the acceptance record is [R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md). See
 [Owner-scoped server alerts](./ALERTS.md).
 
 ## Produced assets
@@ -67,7 +68,9 @@ Verification must confirm the expected repository, workflow identity and digest.
 
 ### Additional R5.1/schema 13 release gate
 
-The candidate migration checksum must be exactly
+This gate was satisfied for commit 66394fd38765d8da36174411cecd95a33fda1ea0, as recorded in
+[R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md); the steps below remain the template for any
+future schema-13-family hotfix. The migration checksum must be exactly
 `1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
 In addition to the ordinary release sequence:
 

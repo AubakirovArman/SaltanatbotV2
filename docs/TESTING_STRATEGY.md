@@ -87,12 +87,13 @@ evidence only: it is not a manual Opera/real-Android-device or
 VoiceOver/NVDA/TalkBack result, and it does not validate HTTPS, private/live
 exchange access, real borrowing or real margin telemetry.
 
-### R5.1 implementation-candidate alert matrix
+### R5.1 accepted-release alert matrix
 
-R5.1 is an implementation candidate, not an accepted or deployed release.
-Production remains the accepted R4 slot on PostgreSQL schema 12. The candidate
-introduces schema 13 and must retain this matrix, exact-SHA CI and an isolated
-upgrade/restore drill before its status can change. The canonical contract and
+R5.1 is an accepted and deployed release. Production now runs the accepted
+R5.1 slot `r5a-schema13-66394fd` on PostgreSQL schema 13. The release
+introduced schema 13 and passed this matrix, exact-SHA CI run `29574600648`
+(`6/6`) and the isolated upgrade/restore drill; acceptance evidence is in
+[R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md). The canonical contract and
 safety boundary are documented in [Owner-scoped server
 alerts](./ALERTS.md), with [Russian](./ru/ALERTS.md) and
 [Kazakh](./kk/ALERTS.md) translations.

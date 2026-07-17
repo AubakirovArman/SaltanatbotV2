@@ -13,9 +13,11 @@ No R0-R12 release depends on a domain, certificate, reverse proxy or TLS. That
 boundary changes only if the project owner separately initiates and approves a
 new HTTPS/security roadmap.
 
-Current production status is the accepted R4 release on PostgreSQL schema 12.
-The schema-13 R5.1 alert work described below is an implementation candidate,
-not an accepted or deployed release.
+Current production status is the accepted R5.1 release on PostgreSQL schema 13
+and unchanged trading SQLite schema 9, deployed from protected slot
+`r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`.
+The acceptance record is [R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md);
+the pending R5.2 and R5.3 work described below keeps R5 active.
 
 > Important: HTTP does not protect passwords or session cookies from network
 > interception. Before HTTPS, expose the instance only through a private
@@ -308,8 +310,8 @@ VoiceOver/NVDA/TalkBack records are complete.
 
 **Status:** delivered and deployed in R3 on schema 11. R3.1, R3.2 and R3.3 with
 its required O1 slice remain accepted historical increments. Production later
-advanced through the accepted R4 schema-12/schema-9 release. R5.1 is now an
-unaccepted implementation candidate; R5.2 and R5.3 remain pending.
+advanced through the accepted R4 schema-12/schema-9 release and now runs the
+accepted R5.1 schema-13 release; R5.2 and R5.3 remain pending.
 
 **Baseline:**
 
@@ -503,11 +505,12 @@ state, backup scope and failure test before its owning release is accepted.
 
 ## R4 — “Running” and the paper portfolio contract
 
-**Status:** delivered, accepted and deployed. Production runs PostgreSQL schema
-12 and trading SQLite schema 9 from protected slot `r4c-schema12-bb455fa` at
-commit `bb455facdfe5a1b3cabe15490c86c299ea684ee7`; exact-SHA GitHub Actions run
-`29560112312` passed all 6/6 jobs. The runtime remains
-`public-http-paper`. Operator details are in
+**Status:** delivered, accepted and deployed on PostgreSQL schema 12 and
+trading SQLite schema 9 from protected slot `r4c-schema12-bb455fa` at commit
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7`; exact-SHA GitHub Actions run
+`29560112312` passed all 6/6 jobs. Production has since advanced to the
+accepted R5.1 schema-13 release; the runtime remains `public-http-paper`.
+Operator details are in
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
 **Baseline:**
@@ -553,10 +556,15 @@ mutate the portfolio.
 
 ## R5 — alerts, technical screener MVP and notifications
 
-**Status:** R5.1 exists as an implementation candidate but is not accepted or
-deployed. Production remains R4 on PostgreSQL schema 12. R5.2 and R5.3 have not
-been implemented and remain pending. The technical screener is intentionally
-moved earlier so it can feed later alerts before robot strategy expansion.
+**Status:** active. R5.1 is accepted and deployed: production runs PostgreSQL
+schema 13 and unchanged trading SQLite schema 9 from protected slot
+`r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`;
+exact-SHA GitHub Actions run `29574600648` passed all 6/6 jobs and the runtime
+remains `public-http-paper` on port 4180. The accepted release record is
+[R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md). R5.2 and R5.3 have not
+been implemented and remain pending, so R5 as a whole stays active. The
+technical screener is intentionally moved earlier so it can feed later alerts
+before robot strategy expansion.
 
 **Baseline:**
 
@@ -566,11 +574,11 @@ moved earlier so it can feed later alerts before robot strategy expansion.
 - chart candle and indicator engines provide canonical values;
 - read-only arbitrage research already exposes freshness and evidence states.
 
-**R5.1 implementation candidate — generic owner price alerts:**
+**R5.1 accepted release — generic owner price alerts:**
 
 - PostgreSQL schema 13 owns owner-scoped rules, immutable revisions, state,
   evaluation receipts, forward-sequenced events, in-app outbox evidence and
-  bounded retention; production schema 12 has not been migrated;
+  bounded retention; production completed the verified 12→13 migration;
 - the only server-evaluated kind is `price-threshold` over public Binance/Bybit
   last-price closed candles. It is notification-only, reads no credential and
   cannot place an order, borrow, change margin or grant a trading role;
@@ -587,8 +595,8 @@ moved earlier so it can feed later alerts before robot strategy expansion.
   repeat, but an unseen event is not acknowledged;
 - same-owner tabs converge through owner-local revisions, `storage` events and
   `BroadcastChannel`; local-storage failure and create/delete races fail closed;
-- acceptance still requires the exact upgrade/recovery, browser-closed,
-  multi-tab, forward-cursor, desktop/mobile accessibility and visual gates.
+- acceptance passed the exact upgrade/recovery, browser-closed, multi-tab,
+  forward-cursor, desktop/mobile accessibility and visual gates.
 
 Canonical details: [Owner-scoped server alerts](./ALERTS.md),
 [Russian](./ru/ALERTS.md) and [Kazakh](./kk/ALERTS.md).
@@ -614,9 +622,9 @@ Canonical details: [Owner-scoped server alerts](./ALERTS.md),
 
 **Remaining — R5.2 screener alerts and R5.3 external delivery:**
 
-- extend the candidate beyond generic price thresholds only after canonical
-  indicator/drawing/screener and paper-robot health/drawdown evidence contracts
-  exist; no schema placeholder is runtime support;
+- extend the accepted R5.1 baseline beyond generic price thresholds only after
+  canonical indicator/drawing/screener and paper-robot health/drawdown evidence
+  contracts exist; no schema placeholder is runtime support;
 - add any required idempotent legacy import without merging account-aware
   arbitrage policy state into generic owner price-alert state;
 - keep the implemented evaluation lane outside the API request path and add the
@@ -662,12 +670,12 @@ Canonical details: [Owner-scoped server alerts](./ALERTS.md),
 **Dependencies:** R1 queue/ADR foundation, R3 ownership, R4 paper metrics and the
 canonical candle/indicator engine.
 
-**R5.1 candidate evidence:** schema 12→13/checksum/no-op migration, real
+**R5.1 acceptance evidence:** schema 12→13/checksum/no-op migration, real
 unprivileged PostgreSQL ownership/quota/capacity/retention/forward-cursor tests,
 closed-candle restart/dedupe, forged/stale evidence rejection, local-storage
 failure, create/delete race, multi-tab convergence and desktop/mobile
-accessibility/visual checks. These gates make a candidate reviewable; they do
-not by themselves mark it accepted or deployed.
+accessibility/visual checks. These gates passed; the accepted release record is
+[R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md).
 
 **Remaining R5.2/R5.3 evidence:** chart-versus-screener golden fixtures; worker
 crash before/after provider acceptance; Telegram timeout/429/retry and long-poll
@@ -676,7 +684,7 @@ before/after cursor persistence; expired/brute-forced/replayed codes; revoke
 races and cross-owner commands; duplicate-ID evidence and isolated migration/
 recovery reconciliation.
 
-**Complete R5 exit criteria:** the R5.1 candidate passes release acceptance; a
+**Complete R5 exit criteria:** the R5.1 release has passed acceptance; a
 saved R5.2 screen can produce an owner-scoped alert with the browser closed;
 restarts lose no durable transition; duplicates are bounded and identifiable;
 each R5.3 Telegram `update_id` creates at most one durable paper mutation across
@@ -891,13 +899,13 @@ capacity and failure-recovery proof.
 
 **Baseline:** API and worker PostgreSQL pools, authentication hashing, shared
 market subscriptions, slow-client disconnects, owner-scoped job quotas,
-retention and a separate bounded research worker are implemented. The R5.1
-candidate also implements its 100/200/400/480 rule limits, 4/16/8 scheduler
+retention and a separate bounded research worker are implemented. The accepted
+R5.1 release also implements its 100/200/400/480 rule limits, 4/16/8 scheduler
 admission and 2/30-day retention, but none has integrated 100-user evidence.
 ADR 0001 keeps one authoritative trading executor.
 
 **Remaining:** tune the implemented process-wide API admission slice from load
-evidence; validate the candidate alert cap and add the missing WebSocket, robot,
+evidence; validate the deployed alert cap and add the missing WebSocket, robot,
 job, screener and L2 global caps plus their metrics and dashboards; run the
 quantified workload, failure drills, backup/recovery targets and second-API
 fencing prerequisites in
@@ -961,7 +969,7 @@ and stabilization.
 | R3 | administrator lifecycle, server workspaces and onboarding/PWA boundary | R1-R2 | delivered on schema 11 |
 | O1 | Operational hardening increments | starts in R3 and ships with each new workload | included in R3-R10 estimates |
 | R4 | “Running” and paper portfolio/journal contract | R1-R3 | delivered |
-| R5 | R5.1 generic price-alert candidate; R5.2 technical screener and R5.3 notifications/Telegram pending | R3-R4 | remaining acceptance/implementation within the original 5-7 estimate |
+| R5 | R5.1 generic price alerts accepted; R5.2 technical screener and R5.3 notifications/Telegram pending | R3-R4 | remaining R5.2/R5.3 implementation within the original 5-7 estimate |
 | R6 | DCA paper | R4-R5 | 3-4 |
 | R7 | Grid paper | R4-R6 | 4-5 |
 | R8 | Spread/inefficiency paper research | R4-R5 | 4-6 |
@@ -976,9 +984,10 @@ and stabilization.
 1. Keep the accepted R4 schema-12/schema-9 release and its checksummed recovery
    evidence immutable; R5 must reuse its owner, paper-ledger and operational
    boundaries rather than create a second system of record.
-2. Review the R5.1 implementation candidate against its schema-13 upgrade,
-   owner isolation, forward-cursor, multi-tab, mobile and recovery gates; do not
-   describe it as deployed before exact-SHA acceptance and cutover evidence.
+2. The R5.1 review is complete: its schema-13 upgrade, owner isolation,
+   forward-cursor, multi-tab, mobile and recovery gates passed, and the
+   exact-SHA acceptance and cutover evidence is recorded in
+   [R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md).
 3. Freeze and implement the still-pending R5.2 technical-screener and R5.3
    notification/Telegram contracts, then complete chart/screener parity,
    bounded delivery and isolated recovery evidence.

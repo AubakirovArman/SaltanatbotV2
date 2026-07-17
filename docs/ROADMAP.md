@@ -42,13 +42,15 @@ release.
   research, while KuCoin and MEXC use bounded connected public protocol paths; none adds private
   execution or mainnet readiness.
 
-## Current R5.1 implementation candidate
+## Accepted R5.1 release
 
-Production is still the accepted R4 release on PostgreSQL schema 12. R5.1 is a
-reviewable implementation candidate only: it has not been accepted, deployed or
-proven as a 100-user service, and schema 13 is not the production schema.
+Production now runs the accepted R5.1 release on PostgreSQL schema 13 from
+protected slot `r5a-schema13-66394fd` (commit
+`66394fd38765d8da36174411cecd95a33fda1ea0`, exact-SHA CI run `29574600648`,
+`6/6`). R5.1 is accepted and deployed, but it remains notification-only and is
+still not proven as a 100-user service.
 
-The candidate adds generic owner-scoped `price-threshold` alerts over public
+The release adds generic owner-scoped `price-threshold` alerts over public
 Binance/Bybit last-price closed candles with durable in-app history. It is
 notification-only and cannot trade, borrow, change margin, read exchange
 credentials or grant trading authority. Its conservative beta bounds are 100
@@ -58,12 +60,14 @@ four public reads concurrently, 16 unique reads per sweep and eight per
 provider; evaluation receipts retain for 2 days and event/outbox/archive history
 for 30 days.
 
-Acceptance still requires the checksum-locked upgrade/recovery gate,
-owner-forward cursor and intentional at-least-once UI behavior, same-owner
-multi-tab convergence, browser-storage failure handling and desktop/mobile
-accessibility/visual evidence. This generic price-alert control plane is not the
-older account-aware arbitrage research-alert policy/outbox: its engine-owned
-candidate/economics producers remain disconnected. R5.2 technical screener,
+Acceptance passed the checksum-locked upgrade/recovery gate, owner-forward
+cursor and intentional at-least-once UI behavior, same-owner multi-tab
+convergence, browser-storage failure handling and desktop/mobile
+accessibility/visual evidence; see the recorded
+[R5.1 acceptance evidence](./evidence/R5_1_OWNER_ALERTS.md). This generic
+price-alert control plane is not the older account-aware arbitrage
+research-alert policy/outbox: its engine-owned candidate/economics producers
+remain disconnected. R5.2 technical screener,
 R5.3 notification worker/Telegram delivery and R11 integrated 100-user capacity
 proof remain pending and unproven.
 

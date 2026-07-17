@@ -8,11 +8,13 @@ Status: baseline measured; the first process-wide API admission/readiness slice
 is implemented and the accepted/deployed R4 release adds a bounded per-owner
 fenced paper-command queue. R4 final SHA
 `bb455facdfe5a1b3cabe15490c86c299ea684ee7` passed CI run `29560112312`
-(`6/6`) and was deployed in slot `r4c-schema12-bb455fa`. An R5.1 server-alert
-implementation candidate now exists, but it is neither accepted nor deployed;
-production remains R4 on PostgreSQL schema 12. The quantified 100-user proof,
-global executor cap and remaining cross-workload caps are still planned for
-R11.
+(`6/6`) and was deployed in slot `r4c-schema12-bb455fa`. The R5.1 owner-scoped
+server-alert release is now accepted and deployed: SHA
+`66394fd38765d8da36174411cecd95a33fda1ea0` passed CI run `29574600648` (`6/6`)
+and production runs PostgreSQL schema 13 from slot `r5a-schema13-66394fd` (see
+[R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)). The quantified 100-user
+proof, global executor cap and remaining cross-workload caps are still planned
+for R11.
 
 This plan covers the `public-http-paper` Research / Paper release. SSL/TLS,
 HTTPS termination and live exchange execution are explicitly outside its active
@@ -22,9 +24,9 @@ network/VPN/IP allowlist and use passwords that are not reused elsewhere.
 The practical target is a bounded modular monolith, not a ChatGPT-scale
 microservice fleet. One API process serves the SPA, authenticated REST and
 shared public market WebSockets. PostgreSQL owns identity, workspaces, durable
-authorization and research jobs. The R5.1 implementation candidate adds
-multi-user alert/outbox records through PostgreSQL schema 13, but that schema is
-not the production state. One
+authorization and research jobs. The accepted/deployed R5.1 release adds
+multi-user alert/outbox records through PostgreSQL schema 13, which is now the
+production state. One
 singleton trading executor owns the protected SQLite trading/paper state under
 [ADR 0001](adr/0001-execution-authority-and-system-of-record.md). CPU-heavy
 research executes in a separate bounded worker.
@@ -46,7 +48,7 @@ research worker supervisor (implemented)
         |
 bounded backtest worker threads
 
-PostgreSQL schema-13 alert/outbox -> existing research worker evaluator (R5.1 candidate)
+PostgreSQL schema-13 alert/outbox -> existing research worker evaluator (R5.1 accepted)
                               \-> dedicated notification worker (R5.3 pending)
 ```
 
@@ -59,12 +61,12 @@ release may add one, but it is not a dependency or deliverable here.
 baseline.
 
 **Baseline:** only limits explicitly marked implemented are part of the accepted
-baseline. Limits marked R5.1 candidate have implementation and test coverage but
-are not deployed evidence. The host snapshot is observation only and is not
+baseline. Limits marked R5.1 are accepted and deployed in production, but they
+are not R11 capacity evidence. The host snapshot is observation only and is not
 capacity evidence.
 
 **Remaining:** measure and tune the initial API governor, implement the missing
-WebSocket/robot/screener caps below, validate the R5.1 candidate alert caps under
+WebSocket/robot/screener caps below, validate the accepted R5.1 alert caps under
 the integrated workload, meet the recovery targets and pass every failure
 drill.
 
@@ -148,7 +150,7 @@ that limitation.
 - Compose currently caps the API at 4 CPU/4 GiB, PostgreSQL at 2 CPU/2 GiB and
   the research service at 2 CPU/2 GiB. These are conservative defaults, not a
   measured final allocation.
-- The R5.1 implementation candidate bounds generic owner price alerts at 100
+- The accepted/deployed R5.1 release bounds generic owner price alerts at 100
   active and 200 non-archived rules per owner, 400 total retained rule/history
   rows per owner and 480 globally active rules. Its scheduler claims at most
   500 rules per sweep (default 100), performs at most four public reads
@@ -158,7 +160,7 @@ that limitation.
   for 30 days under bounded compaction. These are beta safety ceilings, not
   proof of comfortable 100-user operation. See [owner-scoped server
   alerts](./ALERTS.md).
-- The same candidate has owner-bound forward event pages, intentional
+- The same release has owner-bound forward event pages, intentional
   at-least-once publish-before-checkpoint semantics, same-owner multi-tab
   convergence and mobile/desktop release gates. It is distinct from the older
   account-aware arbitrage research-alert policy/outbox, whose engine-owned
@@ -187,8 +189,8 @@ measured evidence.
 | Outstanding research jobs | 200 | 5, with 1 running | reject submission with retry hint; never enqueue without bound | per-owner cap exists; global cap planned |
 | Research execution | 2 active tasks initially | 1 | fair queueing; tune only after profiling | implemented |
 | Technical screener runs | 4 active; 250 symbols per preset | 1 active | queue fairly or reject; minimum scheduled interval 60 seconds | R5.2 pending |
-| Active generic price-alert rules | 480 | 100 active; 200 non-archived and 400 total history rows | reject activation/create before exceeding the cap; archive always remains available | R5.1 implementation candidate; production schema 12 has none of these rows |
-| Alert evaluation sweep | 500 claims; 16 unique public reads, eight/provider, four concurrent | owner-fair claims | coalesce equal scope/cursor reads; capacity-defer saturated-provider work without starving the other provider | R5.1 implementation candidate; R11 load proof pending |
+| Active generic price-alert rules | 480 | 100 active; 200 non-archived and 400 total history rows | reject activation/create before exceeding the cap; archive always remains available | R5.1 accepted/deployed on production schema 13; R11 load proof pending |
+| Alert evaluation sweep | 500 claims; 16 unique public reads, eight/provider, four concurrent | owner-fair claims | coalesce equal scope/cursor reads; capacity-defer saturated-provider work without starving the other provider | R5.1 accepted/deployed; R11 load proof pending |
 | Telegram deliveries | lower of provider budget or 20 sends/second | 2 sends/second | token-bucket delay, retry/backoff and dead-letter state | R5.3 pending; unavailable in R5.1 |
 | Workspaces | 75 total, 25 active and 64 MiB retained payload per owner | same | reject create/import; preserve existing revisions | per-owner quotas plus 4 MiB metadata-first keyset responses implemented; global admission/load proof remains R11 |
 | L2 capture scopes | 24 selected scopes | operator-governed owner access | stop new capture when disk free space falls below 30% | R10A planned |
@@ -265,14 +267,14 @@ not claims about the current manual backup schedule.
 | Rebuildable candle/public market cache | no durability promise | 30 minutes to repopulate accepted hot scopes | discard/rebuild without blocking tenant state |
 | Release binary/configuration | release artifact is immutable | 30 minutes | verified archive, configuration backup and atomic rollback drill |
 
-The R5.1 candidate publishes owner-bound forward event pages before persisting
-the browser cursor checkpoint. Restore or browser-storage failure may therefore
-repeat an in-app toast, but cannot acknowledge an unseen event; this is
-intentional at-least-once behavior. A future R5.3 provider outbox may also
-redeliver a provider-accepted message whose acknowledgement was not retained.
-Stable event/delivery deduplication identity must survive backup/restore; the
-documentation must describe possible duplicates rather than promise
-exactly-once delivery.
+The accepted R5.1 release publishes owner-bound forward event pages before
+persisting the browser cursor checkpoint. Restore or browser-storage failure
+may therefore repeat an in-app toast, but cannot acknowledge an unseen event;
+this is intentional at-least-once behavior. A future R5.3 provider outbox may
+also redeliver a provider-accepted message whose acknowledgement was not
+retained. Stable event/delivery deduplication identity must survive
+backup/restore; the documentation must describe possible duplicates rather than
+promise exactly-once delivery.
 
 ## Mandatory failure drills
 

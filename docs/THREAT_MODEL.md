@@ -4,10 +4,12 @@ Status: alpha baseline
 Last reviewed for accepted deployment: 2026-07-17
 R4 accepted/deployed boundary: final SHA `bb455facdfe5a1b3cabe15490c86c299ea684ee7`,
 CI `29560112312` (`6/6`), slot `r4c-schema12-bb455fa`
+R5.1 accepted/deployed boundary: final SHA `66394fd38765d8da36174411cecd95a33fda1ea0`,
+CI `29574600648` (`6/6`), slot `r5a-schema13-66394fd`
 
-R5.1/schema 13 is an implementation candidate, not part of the deployed R4 evidence. Production
-remains on schema 12. Candidate alert controls below describe required boundaries for a future
-release and must not be read as production acceptance. See
+R5.1/schema 13 is accepted and deployed: production now runs the R5.1 slot `r5a-schema13-66394fd`
+on PostgreSQL schema 13. The alert controls below are deployed production boundaries; acceptance
+evidence is recorded in [R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md). See
 [Owner-scoped server alerts](./ALERTS.md).
 
 SaltanatbotV2 is a self-hosted research and paper-trading application. The repository retains
@@ -62,7 +64,7 @@ Operator-controlled runtime data and backups
   | public HTTPS/WebSocket market-data reads
 Binance or Bybit public APIs
 
-R5.1 candidate notification path:
+R5.1 deployed notification path:
 Research worker | credential-free public REST closed candles | Binance or Bybit
 Research worker | owner/auth/lease/state fences | PostgreSQL schema 13
 
@@ -180,7 +182,7 @@ worker completing after authorization/lease/state changes, a forged first-bar tr
 candle cursor, decimal threshold rounding, an event committing behind an acknowledged cursor and
 unbounded alert traffic exhausting the public providers or PostgreSQL history.
 
-Candidate mitigations:
+Deployed mitigations:
 
 - every route derives the owner from the active database session, checks the expected browser user,
   requires CSRF for mutation and provides no administrator cross-owner alert path;
@@ -302,9 +304,9 @@ Mitigations:
   `paper_portfolio_*` table, and restore compares their bounded counts with the manifest;
 - R4 acceptance required the exact release to pass the isolated paired restore/rollback drill
   using that inventory; the final release receipt is recorded at the top of this document;
-- the R5.1 candidate extends recovery inventory with all ten schema-13 alert tables and checksum
-  `1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`;
-  release still requires a fresh pre-upgrade backup, isolated restore, API-first migration/no-op,
+- the accepted R5.1 release extends recovery inventory with all ten schema-13 alert tables and
+  checksum `1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`;
+  release passed a fresh pre-upgrade backup, isolated restore, API-first migration/no-op,
   worker-second activation and post-upgrade isolated restore. Rollback restores the schema-12 pair
   into new resources; deletion or in-place downgrade is forbidden;
 - restore/drill target only a separately named database and a separate absent/empty data directory;

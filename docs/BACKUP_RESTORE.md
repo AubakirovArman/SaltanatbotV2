@@ -10,10 +10,11 @@ successful), protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and tra
 and rollback proof passed. Self-hosted operators must repeat these gates for their own exact build;
 this evidence does not make a different installation recoverable.
 
-R5.1 is an implementation candidate, not a deployed recovery baseline. Accepted production still
-runs PostgreSQL schema 12. Schema-13 alert inventory and restore coverage must be proved again for
-the exact candidate before cutover; it cannot inherit the immutable R4 evidence above. See
-[Owner-scoped server alerts](./ALERTS.md).
+R5.1 is now the accepted and deployed recovery baseline. Production runs PostgreSQL schema 13 from
+protected slot `r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`.
+Schema-13 alert inventory and restore coverage were proved for that exact release before cutover
+([R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)); it does not inherit the immutable R4 evidence
+above. See [Owner-scoped server alerts](./ALERTS.md).
 
 SaltanatbotV2 uses two independent persistence layers. PostgreSQL stores users, hashed passwords,
 sessions, workspaces and research jobs. Trading state and encrypted credentials remain under
@@ -459,10 +460,11 @@ the logs and both original stores, perform only read-only diagnosis, and restore
 pre-upgrade pair when rollback is chosen. The detailed lifecycle and operator checklist are in
 [Canonical paper portfolios](PAPER_PORTFOLIOS.md#upgrade-to-postgresql-12-and-sqlite-9).
 
-### R5.1 PostgreSQL schema 13 candidate backup, cutover and rollback
+### R5.1 PostgreSQL schema 13 backup, cutover and rollback
 
-Production remains schema 12; this is the required procedure for a future exact R5.1 candidate.
-The candidate schema-13 checksum is
+This procedure was executed and accepted for the exact R5.1 release on 2026-07-17; production now
+runs schema 13. It remains the required template for any future exact build.
+The schema-13 checksum is
 `1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
 
 Before cutover, stop this project's API and research worker and run the paired
@@ -491,7 +493,7 @@ receipt/event history, splice pre/post-upgrade halves or decrement the migration
 Backup and migration do not add transport encryption. During this pre-HTTPS phase, run the service
 only on loopback, a trusted private network/VPN or an SSH tunnel; never transmit an account password
 or session cookie over public HTTP. Alert evaluation uses public market REST and needs no exchange
-key. See [Migration notes](./MIGRATIONS.md#r51-implementation-candidate-postgresql-schema-13).
+key. See [Migration notes](./MIGRATIONS.md#accepted-r51-release-postgresql-schema-13).
 
 For a non-default Docker volume mount or a recovery drill, specify the source explicitly:
 
