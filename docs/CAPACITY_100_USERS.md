@@ -13,12 +13,18 @@ server-alert release is accepted and deployed: SHA
 `66394fd38765d8da36174411cecd95a33fda1ea0` passed CI run `29574600648` (`6/6`)
 and was deployed in slot `r5a-schema13-66394fd` (see
 [R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)). The R5.2.1 technical
-screener MVP is now accepted and deployed: SHA
+screener MVP is accepted and deployed: SHA
 `20be5b1d2fb87df38cc298953dfe7a2f414dd831` passed CI run `29584556266` (`6/6`)
-and production runs PostgreSQL schema 14 from slot `r5b-schema14-20be5b1` (see
+and was deployed in slot `r5b-schema14-20be5b1` (see
 [R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md)); its beta limits
-are not R11 capacity evidence. The quantified 100-user proof, global executor
-cap and remaining cross-workload caps are still planned for R11.
+are not R11 capacity evidence. The R5.3a screener alert promotion is now
+accepted and deployed with no migration: SHA
+`86712bac3293ac8d746b638218eb66995d8e5edb` passed CI run `29590401183`
+(`6/6`) and production runs unchanged PostgreSQL schema 14 from slot
+`r5c-schema14-86712ba` (see
+[R5.3a evidence](./evidence/R5_3A_SCREENER_ALERTS.md)). The quantified
+100-user proof, global executor cap and remaining cross-workload caps are
+still planned for R11.
 
 This plan covers the `public-http-paper` Research / Paper release. SSL/TLS,
 HTTPS termination and live exchange execution are explicitly outside its active
@@ -170,8 +176,9 @@ that limitation.
   convergence and mobile/desktop release gates. It is distinct from the older
   account-aware arbitrage research-alert policy/outbox, whose engine-owned
   candidate/economics producers remain disconnected. The R5.2.1 screener MVP
-  is now accepted and deployed; saved-screen alert promotion, R5.3 and the
-  integrated R11 workload remain pending and unproven.
+  and the R5.3a saved-screen alert promotion are now accepted and deployed;
+  R5.3b notification delivery and the integrated R11 workload remain pending
+  and unproven.
 
 ## Global admission caps and remaining work
 

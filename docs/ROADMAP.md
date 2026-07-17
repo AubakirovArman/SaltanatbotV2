@@ -67,10 +67,10 @@ accessibility/visual evidence; see the recorded
 [R5.1 acceptance evidence](./evidence/R5_1_OWNER_ALERTS.md). This generic
 price-alert control plane is not the older account-aware arbitrage
 research-alert policy/outbox: its engine-owned candidate/economics producers
-remain disconnected. The R5.2.1 technical screener MVP is now accepted and
-deployed (see below); saved-screen alert promotion,
-R5.3 notification worker/Telegram delivery and R11 integrated 100-user capacity
-proof remain pending and unproven.
+remain disconnected. The R5.2.1 technical screener MVP and the R5.3a
+screener alert promotion are now accepted and deployed (see below); the
+R5.3b notification worker/Telegram delivery and R11 integrated 100-user
+capacity proof remain pending and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md),
 [Russian](./ru/ALERTS.md), [Kazakh](./kk/ALERTS.md) and the detailed
@@ -78,7 +78,7 @@ See [Owner-scoped server alerts](./ALERTS.md),
 
 ## Accepted R5.2.1 release
 
-Production now runs the accepted R5.2.1 technical screener MVP on PostgreSQL
+The accepted R5.2.1 technical screener MVP was deployed on PostgreSQL
 schema 14 from protected slot `r5b-schema14-20be5b1` (commit
 `20be5b1d2fb87df38cc298953dfe7a2f414dd831`, exact-SHA CI run `29584556266`,
 `6/6`). R5.2.1 is accepted and deployed, but it remains research-only and is
@@ -99,13 +99,42 @@ end-to-end screener rehearsal on the isolated replacement pair — 30/30 symbols
 evaluated, 30 matched, 0 unavailable against live Binance closed candles; see
 the recorded
 [R5.2.1 acceptance evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md).
-Saved-screen promotion into a server alert (rule kind `screener` stays a
-reserved placeholder), the R5.3 notification worker with owner-bound Telegram
-delivery, chart research tools and the R11 integrated 100-user capacity proof
-remain pending and unproven.
+Saved-screen promotion into a server alert is now delivered by the accepted
+R5.3a release (see below); the R5.3b notification worker with owner-bound
+Telegram delivery, chart research tools and the R11 integrated 100-user
+capacity proof remain pending and unproven.
 
 See [On-demand technical screener](./SCREENER.md),
 [Russian](./ru/SCREENER.md), [Kazakh](./kk/SCREENER.md) and the detailed
+[pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
+## Accepted R5.3a release
+
+Production now runs the accepted R5.3a screener alert promotion from
+protected slot `r5c-schema14-86712ba` (commit
+`86712bac3293ac8d746b638218eb66995d8e5edb`, exact-SHA CI run `29590401183`,
+`6/6`). The release adds no migration: PostgreSQL schema 14 and trading
+SQLite schema 9 are unchanged, and the runtime remains `public-http-paper`.
+
+The release promotes a saved screen into the server alert rule kind
+`screener`: the embedded screen re-runs at the timeframe-derived cadence on
+closed candles and raises an on-change alert event when the matched symbol
+set changes, with unknown carry-over, the 30% availability floor, cooldown
+fencing and the 5-per-owner/40-global quotas. Delivery stays in-app only;
+`telegram` on a screener rule still answers a clear `400` until R5.3b. It
+cannot trade, borrow, change margin, read exchange credentials or grant
+trading authority.
+
+Acceptance passed the exact-SHA CI gate and the paired no-migration
+backup/recovery drill, and the production journal shows the dedicated
+screener-alert worker lane running; see the recorded
+[R5.3a acceptance evidence](./evidence/R5_3A_SCREENER_ALERTS.md). The R5.3b
+notification worker with owner-bound Telegram binding/commands, chart
+research tools and the R11 integrated 100-user capacity proof remain
+pending and unproven.
+
+See [Owner-scoped server alerts](./ALERTS.md), [Russian](./ru/ALERTS.md),
+[Kazakh](./kk/ALERTS.md) and the detailed
 [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
 
 ## Explicitly deferred external validation

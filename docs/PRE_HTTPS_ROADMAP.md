@@ -13,13 +13,13 @@ No R0-R12 release depends on a domain, certificate, reverse proxy or TLS. That
 boundary changes only if the project owner separately initiates and approves a
 new HTTPS/security roadmap.
 
-Current production status is the accepted R5.2.1 release on PostgreSQL schema 14
-and unchanged trading SQLite schema 9, deployed from protected slot
-`r5b-schema14-20be5b1` at commit `20be5b1d2fb87df38cc298953dfe7a2f414dd831`.
-The acceptance record is
-[R5.2.1 technical screener](./evidence/R5_2_1_TECHNICAL_SCREENER.md); the
-pending R5.3, saved-screen→server-alert promotion and chart research tool work
-described below keeps R5 active.
+Current production status is the accepted R5.3a screener alert promotion
+release on unchanged PostgreSQL schema 14 and trading SQLite schema 9, deployed
+with no migration from protected slot `r5c-schema14-86712ba` at commit
+`86712bac3293ac8d746b638218eb66995d8e5edb`. The acceptance record is
+[R5.3a screener alerts](./evidence/R5_3A_SCREENER_ALERTS.md); the pending
+R5.3b notification worker and chart research tool work described below keeps
+R5 active.
 
 > Important: HTTP does not protect passwords or session cookies from network
 > interception. Before HTTPS, expose the instance only through a private
@@ -35,7 +35,7 @@ The public HTTP deployment may provide:
 - deterministic backtests, optimizers and paper robots;
 - screeners and research alerts;
 - in-app notifications that do not expose exchange secrets; Telegram remains a
-  permitted future R5.3 scope, not a current R5.1 capability.
+  permitted future R5.3b scope, not a current alert capability.
 
 The delivered baseline already includes PostgreSQL authentication, registration,
 administrator activation and owner-scoped sessions. An administrator may manage
@@ -312,8 +312,9 @@ VoiceOver/NVDA/TalkBack records are complete.
 
 **Status:** delivered and deployed in R3 on schema 11. R3.1, R3.2 and R3.3 with
 its required O1 slice remain accepted historical increments. Production later
-advanced through the accepted R4 schema-12/schema-9 and R5.1 schema-13 releases
-and now runs the accepted R5.2.1 schema-14 release; R5.3 remains pending.
+advanced through the accepted R4 schema-12/schema-9, R5.1 schema-13 and R5.2.1
+schema-14 releases and now runs the accepted R5.3a release on unchanged
+schema 14; R5.3b remains pending.
 
 **Baseline:**
 
@@ -511,8 +512,8 @@ state, backup scope and failure test before its owning release is accepted.
 trading SQLite schema 9 from protected slot `r4c-schema12-bb455fa` at commit
 `bb455facdfe5a1b3cabe15490c86c299ea684ee7`; exact-SHA GitHub Actions run
 `29560112312` passed all 6/6 jobs. Production has since advanced through the
-accepted R5.1 schema-13 release to the accepted R5.2.1 schema-14 release; the
-runtime remains `public-http-paper`.
+accepted R5.1 schema-13 and R5.2.1 schema-14 releases to the accepted R5.3a
+release on unchanged schema 14; the runtime remains `public-http-paper`.
 Operator details are in
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
@@ -559,20 +560,24 @@ mutate the portfolio.
 
 ## R5 — alerts, technical screener MVP and notifications
 
-**Status:** active. R5.1 and the R5.2.1 technical screener MVP are accepted
-and deployed: production runs PostgreSQL schema 14 and unchanged trading
-SQLite schema 9 from protected slot `r5b-schema14-20be5b1` at commit
-`20be5b1d2fb87df38cc298953dfe7a2f414dd831`; exact-SHA GitHub Actions run
-`29584556266` passed all 6/6 jobs and the runtime remains `public-http-paper`
+**Status:** active. R5.1, the R5.2.1 technical screener MVP and the R5.3a
+saved-screen→server-alert promotion are accepted and deployed: production runs
+unchanged PostgreSQL schema 14 and trading SQLite schema 9 from protected slot
+`r5c-schema14-86712ba` at commit
+`86712bac3293ac8d746b638218eb66995d8e5edb`; exact-SHA GitHub Actions run
+`29590401183` passed all 6/6 jobs and the runtime remains `public-http-paper`
 on port 4180. R5.1 was previously deployed from protected slot
 `r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`
-with exact-SHA run `29574600648` (6/6 jobs). The accepted release records are
-[R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md) and
-[R5.2.1 technical screener](./evidence/R5_2_1_TECHNICAL_SCREENER.md). R5.3,
-the saved-screen→server-alert promotion and the chart research tools remain
-pending, so R5 as a whole stays active. The technical screener was
-intentionally delivered before robot strategy expansion so it can feed later
-alerts.
+with exact-SHA run `29574600648` (6/6 jobs), and R5.2.1 from protected slot
+`r5b-schema14-20be5b1` at commit
+`20be5b1d2fb87df38cc298953dfe7a2f414dd831` with exact-SHA run `29584556266`
+(6/6 jobs). The accepted release records are
+[R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md),
+[R5.2.1 technical screener](./evidence/R5_2_1_TECHNICAL_SCREENER.md) and
+[R5.3a screener alerts](./evidence/R5_3A_SCREENER_ALERTS.md). The R5.3b
+notification worker and the chart research tools remain pending, so R5 as a
+whole stays active. The technical screener was intentionally delivered before
+robot strategy expansion so it can feed later alerts.
 
 **Baseline:**
 
@@ -624,8 +629,36 @@ Canonical details: [Owner-scoped server alerts](./ALERTS.md),
 - beta limits are 40 presets per owner and 400 presets globally; none of these
   caps is R11 capacity evidence;
 - funding, OI and ML filters stay deferred until their data contracts are
-  delivered, and the saved-screen→server-alert promotion remains pending: rule
-  kind `screener` stays a reserved placeholder, not runtime support.
+  delivered; at R5.2.1 acceptance the saved-screen→server-alert promotion was
+  still pending and rule kind `screener` was a reserved placeholder, since
+  delivered by the accepted R5.3a release below.
+
+**R5.3a accepted release — saved-screen→server-alert promotion:**
+
+- alert rule kind `screener` is runtime support: a rule embeds the full
+  `screener-definition-v1` by value, immutable per rule revision, and the
+  research worker re-evaluates it at the screen's timeframe cadence
+  (300-86 400 s) under a 300 s lease, at most one evaluation per sweep with
+  the bounded 90 s market-data budget;
+- transitions use match-set-changed semantics: the first evaluation
+  initializes without triggering, unavailable symbols carry over as unknown
+  rather than departed, more than 30% unavailable universe defers the
+  evaluation and cooldown defers without advancing state; the rule stays
+  active after a trigger (`repeat: "on-change"`; rearm answers
+  `409 alert_rearm_unsupported`);
+- completion writes the `triggered` event, the outbox row and the
+  pre-delivered in-app delivery in one transaction keyed by the sha256
+  transition key, under receipts producer `screener-alert-worker`;
+- screener rules carry their own caps — 5 enabled per owner and 40 active
+  globally — inside the shared alert quotas, and `telegram` delivery on a
+  screener rule is rejected with `400 unsupported_alert_delivery_channel`
+  until R5.3b;
+- the Screener workspace promotes the current screen via "Create alert from
+  this screen"; screener rules list in the alerts panel without ever opening
+  price-quote subscriptions;
+- the release added no migration — schema 14 and trading SQLite schema 9 are
+  unchanged — and the total-JS bundle cap moved 960→984 KiB under the
+  reviewed-cap pattern with the mandatory 10% reserve intact.
 
 **Remaining — research chart tools:**
 
@@ -636,16 +669,17 @@ Canonical details: [Owner-scoped server alerts](./ALERTS.md),
 - expose the complete set through the common mobile drawing sheet rather than a
   reduced mobile-only catalog.
 
-**Remaining — saved-screen alert promotion and R5.3 external delivery:**
+**Remaining — R5.3b external delivery:**
 
-- extend the accepted R5.1 baseline beyond generic price thresholds only after
-  canonical indicator/drawing/screener and paper-robot health/drawdown evidence
-  contracts exist; no schema placeholder is runtime support;
+- extend the accepted alert baseline beyond the delivered price-threshold and
+  screener kinds only after canonical indicator/drawing and paper-robot
+  health/drawdown evidence contracts exist; no schema placeholder is runtime
+  support;
 - add any required idempotent legacy import without merging account-aware
   arbitrage policy state into generic owner price-alert state;
-- keep the implemented evaluation lane outside the API request path and add the
-  separate R5.3 delivery worker, retry/backoff and dead-letter behavior without
-  giving either worker trading authority;
+- keep the implemented evaluation lanes outside the API request path and add
+  the separate R5.3b delivery worker, retry/backoff and dead-letter behavior
+  without giving either worker trading authority;
 - use a dedicated project-owned notification service that never opens trading
   SQLite and never receives exchange credentials. Its delivery lane reads only
   the PostgreSQL outbox and minimal owner/chat scope; its ingress lane writes
@@ -705,17 +739,25 @@ replacement-only rollback pair. An earlier revision `d422100` failed CI run
 commit `20be5b1` before any production change. The accepted release record is
 [R5.2.1 technical screener](./evidence/R5_2_1_TECHNICAL_SCREENER.md).
 
-**Remaining R5.3 and promotion evidence:** saved-screen→server-alert promotion
-fixtures; worker crash before/after provider acceptance; Telegram
-timeout/429/retry and long-poll lease-takeover tests; duplicate, replayed and
-out-of-order updates; crashes before/after cursor persistence;
+**R5.3a acceptance evidence:** the no-migration release passed the
+exact-worktree gates, the new evaluator/routes/runner suites, the twice-run
+real-PostgreSQL screener-alert integration suite and the container browser
+gates before cutover; the production worker journal shows the screener alert
+lane running (`evaluationsPerSweep` 1, 0 failures) and the recovery chronology
+retained the verified pre-cutover generation `dd5c0827` and post-cutover
+generation `3632bd9f` with its passed isolated drill. The accepted release
+record is [R5.3a screener alerts](./evidence/R5_3A_SCREENER_ALERTS.md).
+
+**Remaining R5.3b evidence:** worker crash before/after provider acceptance;
+Telegram timeout/429/retry and long-poll lease-takeover tests; duplicate,
+replayed and out-of-order updates; crashes before/after cursor persistence;
 expired/brute-forced/replayed codes; revoke races and cross-owner commands;
 duplicate-ID evidence and isolated migration/recovery reconciliation.
 
-**Complete R5 exit criteria:** the R5.1 and R5.2.1 releases have passed
-acceptance; a saved screen can produce an owner-scoped alert with the browser
+**Complete R5 exit criteria:** the R5.1, R5.2.1 and R5.3a releases have passed
+acceptance, and a saved screen produces an owner-scoped alert with the browser
 closed; restarts lose no durable transition; duplicates are bounded and
-identifiable; each R5.3 Telegram `update_id` creates at most one durable paper
+identifiable; each R5.3b Telegram `update_id` creates at most one durable paper
 mutation across restart or consumer takeover; notification failure cannot
 stall login, charts or paper execution.
 
@@ -929,9 +971,10 @@ capacity and failure-recovery proof.
 market subscriptions, slow-client disconnects, owner-scoped job quotas,
 retention and a separate bounded research worker are implemented. The accepted
 R5.1 release also implements its 100/200/400/480 rule limits, 4/16/8 scheduler
-admission and 2/30-day retention, and the accepted R5.2.1 release adds its
+admission and 2/30-day retention, the accepted R5.2.1 release adds its
 40-per-owner/400-global screener preset caps, ≤200-symbol universe and bounded
-compute-job runs, but none has integrated 100-user evidence. ADR 0001 keeps
+compute-job runs, and the accepted R5.3a release adds its 5-per-owner/40-global
+screener-rule caps, but none has integrated 100-user evidence. ADR 0001 keeps
 one authoritative trading executor.
 
 **Remaining:** tune the implemented process-wide API admission slice from load
@@ -999,7 +1042,7 @@ and stabilization.
 | R3 | administrator lifecycle, server workspaces and onboarding/PWA boundary | R1-R2 | delivered on schema 11 |
 | O1 | Operational hardening increments | starts in R3 and ships with each new workload | included in R3-R10 estimates |
 | R4 | “Running” and paper portfolio/journal contract | R1-R3 | delivered |
-| R5 | R5.1 generic price alerts and R5.2.1 technical screener MVP accepted; R5.3 notifications/Telegram, saved-screen→alert promotion and chart research tools pending | R3-R4 | remaining R5.3/promotion implementation within the original 5-7 estimate |
+| R5 | R5.1 generic price alerts, R5.2.1 technical screener MVP and R5.3a saved-screen→alert promotion accepted; R5.3b notifications/Telegram and chart research tools pending | R3-R4 | remaining R5.3b implementation within the original 5-7 estimate |
 | R6 | DCA paper | R4-R5 | 3-4 |
 | R7 | Grid paper | R4-R6 | 4-5 |
 | R8 | Spread/inefficiency paper research | R4-R5 | 4-6 |
@@ -1022,10 +1065,13 @@ and stabilization.
    chart/screener parity, isolated rehearsal and recovery gates passed, and
    the exact-SHA acceptance and cutover evidence is recorded in
    [R5.2.1 technical screener](./evidence/R5_2_1_TECHNICAL_SCREENER.md).
-4. Freeze and implement the still-pending R5.3 notification/Telegram contracts
-   and the saved-screen→server-alert promotion, then complete bounded delivery
-   and isolated recovery evidence.
-5. Keep R6 and later code out of `main` and production until the complete R5
+4. The R5.3a saved-screen→server-alert promotion review is complete: its
+   no-migration runtime, transition-semantics, quota, browser and recovery
+   gates passed, and the exact-SHA acceptance and cutover evidence is recorded
+   in [R5.3a screener alerts](./evidence/R5_3A_SCREENER_ALERTS.md).
+5. Freeze and implement the still-pending R5.3b notification/Telegram
+   contracts, then complete bounded delivery and isolated recovery evidence.
+6. Keep R6 and later code out of `main` and production until the complete R5
    release gate is accepted.
 
 Acceptance, publication to `main` and production cutover of the remaining work

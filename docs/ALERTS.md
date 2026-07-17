@@ -34,8 +34,9 @@ evidence.
 
 R5.3a adds a second server-evaluated rule kind, `screener`, which promotes a
 [technical screen](./SCREENER.md) into a durable on-change alert. The
-increment is code-complete in this tree but **not yet accepted**; acceptance
-status is tracked in [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md).
+increment is accepted and deployed with no schema migration; the acceptance
+and cutover record is
+[R5.3a evidence](./evidence/R5_3A_SCREENER_ALERTS.md).
 Like every alert, it is notification-only research: `researchOnly: true`,
 `executionPermission: false`, and it cannot place an order.
 

@@ -96,15 +96,12 @@ and a Bybit-primary universe remain explicitly outside this increment.
 Canonical behavior is documented in
 [On-demand technical screener](./SCREENER.md).
 
-## R5.3a screener alert promotion — in progress, not accepted
+## R5.3a screener alert promotion accepted and deployed — 2026-07-17
 
 R5.3a promotes a saved technical screen into a durable server alert rule of
-kind `screener` with repeat-on-change semantics. The working tree contains the
-candidate implementation and its test suites, but the increment is **not
-accepted**: there is no exact-SHA CI acceptance run, no protected release
-slot, no recovery rehearsal and no cutover evidence yet. Production remains on
-the R5.2.1 slot `r5b-schema14-20be5b1` (PostgreSQL schema 14); R5.3a adds no
-migration.
+kind `screener` with repeat-on-change semantics. The increment adds no
+migration: PostgreSQL schema 14 and the trading SQLite schema 9 are
+unchanged.
 
 - [x] Widen the shared alert contracts with the `screener` rule kind and
   `ScreenerAlertDefinitionV1`, embedding a full `screener-definition-v1` by
@@ -126,13 +123,25 @@ migration.
   only until R5.3b.
 - [x] Deliver the browser "Create alert from this screen" promotion, screener
   rule listing/toggle/archive, envelope-titled toasts and EN/RU/KK strings.
-- [ ] Pass exact-commit GitHub CI, create a protected release slot, run the
+- [x] Pass exact-commit GitHub CI, create a protected release slot, run the
   backup/restore rehearsal, cut production over and record acceptance
   evidence per [RELEASING.md](./RELEASING.md).
 
-Candidate behavior is documented in [Screener alerts (R5.3a)](./ALERTS.md)
-and the promotion paragraph in [SCREENER.md](./SCREENER.md); those sections
-describe this working tree, not the deployed R5.2.1 production slot.
+Production now runs protected slot `r5c-schema14-86712ba` at commit
+`86712bac3293ac8d746b638218eb66995d8e5edb`, still on port 4180 in the
+`public-http-paper` runtime. Exact-SHA GitHub Actions run `29590401183`
+passed all 6/6 jobs. The production worker journal shows the
+`screenerAlertLane` running (`evaluationsPerSweep` 1, 0 failures), and
+paired recovery generations `dd5c0827` (pre-cutover) and `3632bd9f`
+(post-cutover, isolated drill passed) were verified. Gate, rehearsal and
+cutover evidence is recorded in
+[R5.3a screener alerts evidence](./evidence/R5_3A_SCREENER_ALERTS.md).
+
+The R5.3b notification worker with owner-bound Telegram binding/commands and
+the chart research tools (text notes and the parallel channel) remain open
+in R5; Telegram delivery on screener rules still returns `400` until R5.3b.
+Canonical behavior is documented in [Screener alerts (R5.3a)](./ALERTS.md)
+and the promotion paragraph in [SCREENER.md](./SCREENER.md).
 
 ## Delivered slices (not full roadmap completion)
 

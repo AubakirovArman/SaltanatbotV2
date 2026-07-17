@@ -242,7 +242,7 @@ The release gate includes:
 - browser client, workspace and EN/RU/KK localization tests plus the
   end-to-end screen-to-chart journey with accessibility checks.
 
-R5.2.1 is accepted and deployed: production runs PostgreSQL schema 14 from
+R5.2.1 is accepted and was deployed on PostgreSQL schema 14 from
 protected slot `r5b-schema14-20be5b1` (commit
 `20be5b1d2fb87df38cc298953dfe7a2f414dd831`, exact-SHA CI run `29584556266`,
 6/6 jobs). The acceptance and cutover record is
@@ -254,7 +254,9 @@ rule of kind `screener` that re-runs the screen at the timeframe cadence and
 raises an on-change alert event when the matched symbol set changes, with
 in-app delivery only until R5.3b. Semantics, unknown carry-over, the
 availability floor, cooldown and the 5-per-owner/40-global quotas are
-documented in [Screener alerts (R5.3a)](./ALERTS.md). R5.3a is in progress
-and not yet accepted
-([implementation status](./IMPLEMENTATION_STATUS.md)); scheduled screens and
-a Bybit-primary universe remain future work.
+documented in [Screener alerts (R5.3a)](./ALERTS.md). R5.3a is accepted and
+deployed with no migration: production runs unchanged PostgreSQL schema 14
+from protected slot `r5c-schema14-86712ba` (commit
+`86712bac3293ac8d746b638218eb66995d8e5edb`, exact-SHA CI run `29590401183`,
+6/6 jobs); see [R5.3a evidence](./evidence/R5_3A_SCREENER_ALERTS.md).
+Scheduled screens and a Bybit-primary universe remain future work.

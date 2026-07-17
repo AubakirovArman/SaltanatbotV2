@@ -5,6 +5,7 @@ Last focused R3.3 release/cutover reconciliation: **2026-07-17**
 Last focused R4 release/cutover reconciliation: **2026-07-17** (`bb455fa`, CI `29560112312` 6/6)
 Last focused R5.1 release/cutover reconciliation: **2026-07-17** (`66394fd`, CI `29574600648` 6/6)
 Last focused R5.2.1 release/cutover reconciliation: **2026-07-17** (`20be5b1`, CI `29584556266` 6/6)
+Last focused R5.3a release/cutover reconciliation: **2026-07-17** (`86712ba`, CI `29590401183` 6/6)
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -44,6 +45,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [R4 canonical paper portfolios evidence](evidence/R4_PAPER_PORTFOLIOS.md) | operators/release reviewers | accepted exact-commit CI, paired recovery, protected slot and production cutover record | 2026-07-17 |
 | [R5.1 owner-scoped price alerts evidence](evidence/R5_1_OWNER_ALERTS.md) | operators/release reviewers | accepted exact-commit CI, paired recovery, protected slot and production cutover record | 2026-07-17 |
 | [R5.2.1 technical screener evidence](evidence/R5_2_1_TECHNICAL_SCREENER.md) | operators/release reviewers | accepted exact-commit CI, paired recovery, protected slot and production cutover record | 2026-07-17 |
+| [R5.3a screener alert promotion evidence](evidence/R5_3A_SCREENER_ALERTS.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record | 2026-07-17 |
 | [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R4 delivered and R5 next/pending | 2026-07-17 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |
