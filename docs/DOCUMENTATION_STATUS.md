@@ -2,7 +2,7 @@
 
 Last full repository documentation audit: **2026-07-15**
 Last focused R3.3 release/cutover reconciliation: **2026-07-17**
-Last focused R4 candidate documentation review: **2026-07-17** (not release acceptance)
+Last focused R4 release/cutover reconciliation: **2026-07-17** (`bb455fa`, CI `29560112312` 6/6)
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -14,20 +14,20 @@ their source contracts, and user-facing claims were compared with the current im
 | Document | Audience | Status | Last verified |
 | --- | --- | --- | --- |
 | [README](../README.md) | users/contributors | current | 2026-07-14 |
-| [Architecture](ARCHITECTURE.md) | contributors | accepted deployment through schema v11; R4 schema-12/schema-9 authority candidate documented separately from acceptance | 2026-07-17 |
+| [Architecture](ARCHITECTURE.md) | contributors | accepted deployment through PostgreSQL schema 12 / trading SQLite schema 9 | 2026-07-17 |
 | [Modular architecture](MODULAR_ARCHITECTURE.md) | contributors | current | 2026-07-11 |
-| [API reference](API.md) | integrators | current hand-maintained accepted API plus explicitly labelled R4 canonical paper candidate contract | 2026-07-17 |
+| [API reference](API.md) | integrators | current accepted API including the canonical R4 paper-portfolio contract | 2026-07-17 |
 | [Generated endpoint index](API_ENDPOINTS.generated.md) | integrators | generated/current; 150 HTTP routes including canonical R4 paper-portfolio ownership/access metadata | 2026-07-17 |
 | [Machine-readable capability truths](CAPABILITY_TRUTHS.json) | maintainers/release reviewers | source-backed semantic guard for scanner modes, public/continuous venues and generated endpoint totals | 2026-07-17 |
 | [Public arbitrage SDK](../packages/arbitrage-sdk/README.md) | integrators/SDK users | current; public/read-only | 2026-07-14 |
 | [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current | 2026-07-11 |
 | [Declarative plugin contract](PLUGINS.md) | users/plugin authors | current foundation | 2026-07-12 |
-| [Trading guide](TRADING.md) | users/operators | current accepted paper boundary plus explicitly labelled R4 portfolio candidate; live remains outside pre-HTTPS | 2026-07-17 |
-| [Canonical paper portfolios](PAPER_PORTFOLIOS.md) | users/operators/integrators | R4 candidate lifecycle, authority, API and schema-12/schema-9 recovery runbook; acceptance not claimed | 2026-07-17 |
-| [Configuration](CONFIGURATION.md) | operators | current through typed readiness limits and R4 candidate SQLite-9 inventory | 2026-07-17 |
-| [Self-hosting with account authentication](SELF_HOSTING.md) | operators/forks | current Docker/direct-host paths plus isolated R4 candidate migration boundary | 2026-07-17 |
-| [Capacity plan for 100 users](CAPACITY_100_USERS.md) | operators/maintainers | current measured baseline plus R4 per-owner command bound; 100-user/global proof remains pending | 2026-07-17 |
-| [Backup and restore](BACKUP_RESTORE.md) | operators | accepted paired recovery workflow plus implemented R4 candidate inventory; real isolated drill still pending | 2026-07-17 |
+| [Trading guide](TRADING.md) | users/operators | current accepted R4 paper boundary; live remains outside pre-HTTPS | 2026-07-17 |
+| [Canonical paper portfolios](PAPER_PORTFOLIOS.md) | users/operators/integrators | accepted R4 lifecycle, authority, API and schema-12/schema-9 recovery runbook | 2026-07-17 |
+| [Configuration](CONFIGURATION.md) | operators | current through typed readiness limits and accepted SQLite-9 inventory | 2026-07-17 |
+| [Self-hosting with account authentication](SELF_HOSTING.md) | operators/forks | current Docker/direct-host paths plus accepted R4 migration boundary | 2026-07-17 |
+| [Capacity plan for 100 users](CAPACITY_100_USERS.md) | operators/maintainers | accepted R4 per-owner command foundation; 100-user/global proof remains pending for R11 | 2026-07-17 |
+| [Backup and restore](BACKUP_RESTORE.md) | operators | accepted paired recovery workflow, R4 inventory and isolated drill | 2026-07-17 |
 | [Pine coverage](PINE_COVERAGE.md) | users/contributors | current | 2026-07-11 |
 | [Exchange capabilities](EXCHANGE_CAPABILITIES.md) | operators/users | current; non-paper execution is a dormant future reference and unreachable in `public-http-paper` | 2026-07-17 |
 | [Generated Pine matrix](PINE_COMPATIBILITY.generated.md) | users/contributors | generated/current | 2026-07-11 |
@@ -35,18 +35,18 @@ their source contracts, and user-facing claims were compared with the current im
 | [Event traces](EVENT_TRACES.md) | contributors/auditors | current | 2026-07-11 |
 | [Testing strategy](TESTING_STRATEGY.md) | contributors | current, including R4 cross-store/browser/recovery matrix | 2026-07-17 |
 | [Release verification](RELEASING.md) | maintainers/users | current | 2026-07-11 |
-| [Threat model](THREAT_MODEL.md) | operators/contributors | current accepted baseline plus explicitly unaccepted R4 cross-store command boundary | 2026-07-17 |
+| [Threat model](THREAT_MODEL.md) | operators/contributors | current accepted R4 cross-store command boundary; one-API and no-live limits remain explicit | 2026-07-17 |
 | [Roadmap](ROADMAP.md) | community | current | 2026-07-12 |
-| [Pre-HTTPS implementation roadmap](PRE_HTTPS_ROADMAP.md) | maintainers/community | current; R3 delivered on schema 11 and R4 is an active schema-12/schema-9 candidate, not accepted/deployed | 2026-07-17 |
+| [Pre-HTTPS implementation roadmap](PRE_HTTPS_ROADMAP.md) | maintainers/community | current; R4 accepted/deployed on schema 12/schema 9 and R5 is next/pending | 2026-07-17 |
 | [R3.3 onboarding and operations evidence](evidence/R3_3_ONBOARDING_OPERATIONS.md) | operators/release reviewers | accepted exact-commit CI, recovery and production cutover record | 2026-07-17 |
-| [R4 canonical paper portfolios evidence](evidence/R4_PAPER_PORTFOLIOS.md) | operators/release reviewers | candidate local ledger; exact-SHA CI, recovery and production cutover remain pending | 2026-07-17 |
-| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R4 candidate explicitly separated from delivered slices | 2026-07-17 |
+| [R4 canonical paper portfolios evidence](evidence/R4_PAPER_PORTFOLIOS.md) | operators/release reviewers | accepted exact-commit CI, paired recovery, protected slot and production cutover record | 2026-07-17 |
+| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R4 delivered and R5 next/pending | 2026-07-17 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |
 | [Accessibility baseline](ACCESSIBILITY.md) | users/contributors | current automated baseline including R4 center/drawer/mobile evidence; manual AT/Opera still pending | 2026-07-17 |
 | [Contributor map](CONTRIBUTOR_MAP.md) | contributors | current | 2026-07-11 |
 | [Asset provenance policy](ASSET_POLICY.md) | contributors | current | 2026-07-11 |
-| [Migration notes](MIGRATIONS.md) | operators/contributors | current through the unreleased PostgreSQL-12/SQLite-9 candidate; recovery inventory implemented, acceptance drill pending | 2026-07-17 |
+| [Migration notes](MIGRATIONS.md) | operators/contributors | current through accepted PostgreSQL-12/SQLite-9; recovery inventory and acceptance drill verified | 2026-07-17 |
 | [Application startup recovery](STARTUP_RECOVERY.md) | users/operators | current; production-build browser-tested | 2026-07-13 |
 | [Distribution incident response](INCIDENT_RESPONSE.md) | operators/maintainers | current; drill-tested | 2026-07-13 |
 | [Offline local research](OFFLINE_RESEARCH.md) | users/operators | current; production-build browser-tested | 2026-07-13 |
@@ -82,7 +82,7 @@ They must be read together with `IMPLEMENTATION_STATUS.md` and must not be prese
 | Strategy Studio / Pine / backtest | [strategy reference](STRATEGIES.md) | [guide](ru/STRATEGY_STUDIO.md) | [guide](kk/STRATEGY_STUDIO.md) |
 | Declarative plugin import | [plugin contract](PLUGINS.md) | [guide](ru/PLUGINS.md) | [guide](kk/PLUGINS.md) |
 | Paper/live trading | [trading reference](TRADING.md) | [guide](ru/TRADING.md) | [guide](kk/TRADING.md) |
-| Canonical paper portfolios (R4 candidate) | [operator/API runbook](PAPER_PORTFOLIOS.md) | [runbook](ru/PAPER_PORTFOLIOS.md) | English canonical contract until a KK operator translation is reviewed |
+| Canonical paper portfolios (R4 accepted) | [operator/API runbook](PAPER_PORTFOLIOS.md) | [runbook](ru/PAPER_PORTFOLIOS.md) | English canonical contract until a KK operator translation is reviewed |
 | Event/execution traces | [reference](EVENT_TRACES.md) | [guide](ru/EVENT_TRACES.md) | [guide](kk/EVENT_TRACES.md) |
 | Safety summary | [security policy](../SECURITY.md) | [summary](ru/SECURITY.md) | [summary](kk/SECURITY.md) |
 | Backup and recovery | [operator guide](BACKUP_RESTORE.md) | [guide](ru/BACKUP_RESTORE.md) | [guide](kk/BACKUP_RESTORE.md) |

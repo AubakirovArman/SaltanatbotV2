@@ -18,16 +18,22 @@ observation; **private evidence** requires authenticated account/order/fill obse
 **production-ready** additionally requires sustained runtime, operational, legal and applicable
 private gates. No earlier level implies a later one.
 
-## Active R4 candidate — not delivered or deployed
+## R4 accepted and deployed — 2026-07-17
 
-The current worktree contains PostgreSQL schema 12's durable executor-command queue, trading
-SQLite schema 9's canonical owner-scoped paper portfolios/epochs/reservations/receipts, versioned
-evidence-aware projections, bounded robot journals and the corresponding browser center and robot
-binding. This is implementation-candidate status only. R4 remains open until exact-candidate
-golden-ledger/restart/two-owner/browser evidence, the real isolated paired restore/rollback drill
-over the implemented extended recovery inventory, and all local/remote release gates pass. See
-[Canonical paper portfolios](./PAPER_PORTFOLIOS.md) and the
-[pre-HTTPS roadmap](./PRE_HTTPS_ROADMAP.md#r4--running-and-the-paper-portfolio-contract).
+Production runs PostgreSQL schema 12 and trading SQLite schema 9 from protected
+slot `r4c-schema12-bb455fa` at commit
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7`. Exact-SHA GitHub Actions run
+`29560112312` passed all 6/6 jobs. The delivered contract includes the durable
+executor-command queue, canonical owner-scoped paper portfolios, epochs,
+reservations and receipts, evidence-aware projections, bounded robot journals,
+the corresponding browser center and fenced PostgreSQL-to-SQLite executor.
+
+Golden-ledger, restart, two-owner/browser, isolated paired
+restore/migration/rollback and protected production-smoke gates are recorded in
+[R4 canonical paper portfolios evidence](./evidence/R4_PAPER_PORTFOLIOS.md).
+R5 is the next pending increment; its implementation is not active yet. The
+runtime remains `public-http-paper`: HTTPS, exchange credential use, private
+streams, signed requests and live orders remain outside this release.
 
 ## Delivered slices (not full roadmap completion)
 

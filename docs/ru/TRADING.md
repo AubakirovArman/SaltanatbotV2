@@ -41,9 +41,11 @@ snapshot `paper:<botId>` импортируется один раз только
 исключительно по подтверждённому settlement с уникальным ID, источником, ставкой, mark price и
 временем; по приблизительной ставке или таймеру начисления не создаются.
 
-### Канонический portfolio lifecycle кандидата R4
+### Канонический portfolio lifecycle R4
 
-Кандидат R4 заменяет ad hoc сводный экран на owner-scoped paper portfolios. Create, rename,
+Принятый и развёрнутый R4 заменяет ad hoc сводный экран на owner-scoped paper portfolios. Финальный
+SHA `bb455facdfe5a1b3cabe15490c86c299ea684ee7` прошёл CI `29560112312` (`6/6`) и развёрнут в
+слоте `r4c-schema12-bb455fa`. Create, rename,
 choose-default, archive и reset являются durable commands. Reset не удаляет историю: он закрывает
 ledger epoch, сохраняет events/revision evidence и создаёт следующий epoch. Старые robot bindings
 не переносятся на новый капитал молча. Archive доступен только после освобождения active
@@ -61,8 +63,14 @@ timeout повторяют тот же action с тем же idempotency key, а
 Running center показывает balance/equity, realized/unrealized PnL, reservations, positions, open
 orders и robot revisions только при наличии durable evidence. Missing/stale остаются такими, а не
 становятся нулём. Borrowing и реальные exchange margin/account telemetry недоступны. Полный
-operator/API/backup runbook: [Канонические paper-портфели](./PAPER_PORTFOLIOS.md). R4 ещё проходит
-приёмку; это не заявление о production cutover. HTTPS и live/private execution вне scope.
+operator/API/backup runbook: [Канонические paper-портфели](./PAPER_PORTFOLIOS.md).
+
+Production visual acceptance выполнен в Chromium 149 для 1440×900, 390×844 и 320×700; принято
+восемь PNG. Axe не выявил нарушений, проверки touch targets и document overflow не выявили
+замечаний, возврат фокуса и прокрутка drawer робота прошли. Это автоматизированное browser-evidence,
+а не ручная проверка Opera/реального Android-устройства или VoiceOver/NVDA/TalkBack. Production
+cutover относится только к этому paper workflow: HTTPS, private exchange access, live execution,
+реальные borrowing и margin/account telemetry не включены.
 
 ## Multi-leg paper-журнал
 

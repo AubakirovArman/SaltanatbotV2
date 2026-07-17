@@ -1,12 +1,16 @@
-# Канонические paper-портфели (кандидат R4)
+# Канонические paper-портфели (R4)
 
 Аудитория: операторы self-hosted установки, разработчики и интеграторы API
-Статус: реализовано в текущем кандидате R4; этот документ не заявляет приёмку релиза или production
-cutover
+Статус: принят и развёрнут в production 2026-07-17
+
+Принятые production evidence: commit `bb455facdfe5a1b3cabe15490c86c299ea684ee7`, GitHub Actions
+run `29560112312` со всеми 6 успешными required jobs, protected slot
+`r4c-schema12-bb455fa`, PostgreSQL schema 12 и trading SQLite schema 9. Для этого exact release
+приняты paired backup/verify/isolated-restore/drill evidence и post-migration recovery generation.
 
 Каноническая английская версия: [PAPER_PORTFOLIOS.md](../PAPER_PORTFOLIOS.md).
 
-Этот runbook описывает pre-HTTPS контур paper-портфелей кандидата R4. Он работает только с
+Этот runbook описывает pre-HTTPS контур paper-портфелей принятого R4 release. Он работает только с
 `RUNTIME_PROFILE=public-http-paper`. Здесь нет настройки TLS, ввода биржевых API-ключей, приватных
 потоков, реальных ордеров, займов или изменения настоящей маржи.
 
@@ -38,7 +42,7 @@ Paper-портфель принадлежит ровно одному автор
 
 R4 использует два хранилища и один fenced bridge:
 
-| Хранилище | Каноническая ответственность | Schema кандидата R4 |
+| Хранилище | Каноническая ответственность | Schema R4 |
 | --- | --- | --- |
 | PostgreSQL | owner/session, authorization revision/epoch и durable очередь executor-команд | 12 |
 | `backend/data/trading.db` | portfolio/epochs/reservations, robot revisions, orders/fills/events, marks, projections и terminal receipts | SQLite 9 |
@@ -110,7 +114,7 @@ legacy snapshot/formula, миграция создаёт deterministic initializ
 капитала. После привязки поля portfolio/allocation неизменяемы; для изменения используйте новый
 versioned workflow, а не правку данных за спиной ledger.
 
-Robot detail кандидата содержит bounded `paper-robot-journal-v1`. Его curve явно имеет basis
+Robot detail R4 содержит bounded `paper-robot-journal-v1`. Его curve явно имеет basis
 `current-epoch-realized-cash`, это не выдуманная историческая mark-to-market equity series. В curve
 не больше 256 oldest-first downsampled cash points и, только при наличии current durable valuation
 evidence, одна последняя current-equity point. Journal также возвращает максимум 50 newest fills и
@@ -169,7 +173,8 @@ Migration chain forward-only. PostgreSQL 12 добавляет durable executor 
 portfolio/epoch/reservation/receipt/revision-evidence/valuation/projection tables и перестраивает
 ключ paper events с учётом `ledgerEpoch`.
 
-Порядок для принятого R4 release:
+Production deployment прошёл этот порядок; self-hosted upgrade обязан повторить его для своего
+exact release:
 
 1. Подтвердите, что checkout/release, database name, loopback port, systemd units либо Compose
    project и runtime data directory относятся именно к этой установке.

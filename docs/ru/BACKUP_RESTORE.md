@@ -1,7 +1,13 @@
 # Резервное копирование и восстановление
 
-Проверено для принятого deployment: 2026-07-16. R4 schema-12/schema-9 checklist обновлён
-2026-07-17 как release-candidate guidance; acceptance не заявлена.
+Проверено для принятого R4 deployment: 2026-07-17.
+
+Принятые R4 recovery evidence привязаны к commit
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7`, GitHub Actions run `29560112312` (6/6 required jobs
+успешны), protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 и trading SQLite schema 9.
+Успешно прошли paired pre-cutover backup/verify, isolated replacement restore/drill,
+post-migration backup и rollback proof. Self-hosted оператор обязан повторить эти gates для своего
+exact build; evidence production-инсталляции не заменяет его собственную проверку.
 
 Runtime-данные находятся в `backend/data/`. Рабочая копия должна сохранять вместе `trading.db` и
 `.secret`: без исходного `.secret` зашифрованные API-ключи расшифровать невозможно. `candles.db` и
@@ -233,7 +239,7 @@ exit
 
 ### Upgrade/rollback R4: PostgreSQL schema 12 и trading SQLite schema 9
 
-Кандидат R4 двигает оба persistence layers. PostgreSQL schema 12 добавляет durable fenced очередь
+Принятый R4 release двигает оба persistence layers. PostgreSQL schema 12 добавляет durable fenced очередь
 executor-команд. Trading SQLite schema 9 добавляет canonical owner-scoped paper portfolios, ledger
 epochs, capital reservations, terminal mutation receipts, immutable robot-revision evidence,
 valuation marks и append-only portfolio events.
@@ -251,16 +257,17 @@ Readiness должна подтвердить expected PostgreSQL migration chec
 idempotency key. Matching research worker запускается только после этих проверок. После migration
 создайте и verify новую paired generation.
 
-Recovery format кандидата schema-12/schema-9 проверяет полный PostgreSQL
+Recovery format schema-12/schema-9 проверяет полный PostgreSQL
 archive/migration chain, записывает `executorCommands` и bounded counts всех девяти
 canonical SQLite tables: `paper_portfolios`, `paper_portfolio_epochs`,
 `paper_bot_allocations`, `paper_valuation_marks`, `paper_portfolio_mutations`,
 `paper_bot_revision_evidence`, `paper_bot_tombstones`, `paper_portfolio_events` и
 `paper_portfolio_projections`. Verify и replacement restore сравнивают эти counts с
 manifest вместе с checksummed SQLite files/user versions. Автоматическое
-inventory/validation coverage подтверждает реализацию, но не приёмку релиза. Пока
-exact candidate не прошёл real isolated paired restore/rollback drill, build остаётся
-кандидатом, а не принятым cutover.
+inventory/validation coverage подтверждает реализацию, но само по себе не принимает релиз. Для
+production release, указанного в начале документа, real isolated paired restore/rollback drill
+успешно пройден. Любой будущий/self-hosted exact build остаётся не принятым к cutover, пока не
+пройдёт собственный drill.
 
 In-place downgrade отсутствует. Старый binary не должен открывать advanced store. Rollback — это
 остановка только процессов проекта, повторный verify retained pre-upgrade pair, restore обеих

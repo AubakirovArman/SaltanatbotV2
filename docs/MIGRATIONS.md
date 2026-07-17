@@ -4,7 +4,14 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
-## Unreleased R4 candidate / PostgreSQL schema 12 and trading SQLite schema 9
+## Accepted R4 release / PostgreSQL schema 12 and trading SQLite schema 9
+
+R4 was accepted and deployed on 2026-07-17 from commit
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7` after GitHub Actions run `29560112312` completed all
+6 required jobs successfully. The protected production slot is `r4c-schema12-bb455fa`; production
+now runs PostgreSQL schema 12 and trading SQLite schema 9. The exact-release paired
+backup/verify/isolated-restore/drill evidence and post-migration recovery generation passed. This
+acceptance does not add HTTPS or enable private/live execution.
 
 - PostgreSQL schema v5 adds a monotonic `users.authorization_revision`. Every status, role,
   temporary-password or password mutation advances it; login timestamps do not. It is a durable
@@ -110,14 +117,15 @@ migration.
 
 The project recovery format inventories the complete contiguous PostgreSQL migration chain,
 including the schema-v12 checksum, together with checksummed SQLite runtime files, their
-`user_version` and bounded owner/count evidence. Verification is read-only. The R4 candidate
-inventory now includes the PostgreSQL executor-command table and every schema-9 SQLite
+`user_version` and bounded owner/count evidence. Verification is read-only. The accepted R4
+inventory includes the PostgreSQL executor-command table and every schema-9 SQLite
 paper-portfolio table in addition to the complete database archives. Restore always creates a
 separately named PostgreSQL replacement database and a separate absent/empty runtime directory; it
 does not change a service, Compose configuration, `PGDATABASE` or the active data path. The drill
 performs the same restore and removes only the marker/OID-bound temporary database and the verified
-tool-owned directory. R4 acceptance still requires that real isolated paired drill for the exact
-candidate. This is replacement evidence, not an in-place down-migration or automatic cutover.
+tool-owned directory. That real isolated paired drill passed for the accepted exact R4 release;
+every future self-hosted upgrade must produce equivalent evidence for its own exact build. This is
+replacement evidence, not an in-place down-migration or automatic cutover.
 
 For server data, follow [Backup and restore](BACKUP_RESTORE.md) before deployment. A breaking future
 IR, API, storage or event-trace change must add a dated section here and executable backward-compatibility

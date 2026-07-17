@@ -1,7 +1,14 @@
 # Runtime backup and restore
 
 Audience: self-hosted operators
-Last verified: 2026-07-16
+Last verified for accepted R4 deployment: 2026-07-17
+
+Accepted R4 recovery evidence is bound to commit
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7`, GitHub Actions run `29560112312` (6/6 required jobs
+successful), protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and trading SQLite schema
+9. The paired pre-cutover backup, verify, isolated replacement restore/drill, post-migration backup
+and rollback proof passed. Self-hosted operators must repeat these gates for their own exact build;
+this evidence does not make a different installation recoverable.
 
 SaltanatbotV2 uses two independent persistence layers. PostgreSQL stores users, hashed passwords,
 sessions, workspaces and research jobs. Trading state and encrypted credentials remain under
@@ -398,7 +405,7 @@ PostgreSQL backup; ordinary archive remains reversible.
 
 ### R4 PostgreSQL schema 12 / trading SQLite schema 9 upgrade and rollback
 
-The R4 candidate advances both persistence layers. PostgreSQL schema 12 adds the durable fenced
+The accepted R4 release advances both persistence layers. PostgreSQL schema 12 adds the durable fenced
 executor-command queue. Trading SQLite schema 9 adds canonical owner-scoped paper portfolios,
 ledger epochs, capital reservations, terminal mutation receipts, immutable robot-revision evidence,
 valuation marks and append-only portfolio events.
@@ -417,15 +424,16 @@ check login, owner isolation, migrated paper portfolios and one retried mutation
 idempotency key. Start the matching research worker only after those checks pass. Take and verify a
 new paired generation after the migration.
 
-The schema-12/schema-9 candidate recovery format verifies the complete PostgreSQL
+The schema-12/schema-9 recovery format verifies the complete PostgreSQL
 archive/migration chain, records `executorCommands`, and records bounded counts for all nine
 canonical SQLite tables: `paper_portfolios`, `paper_portfolio_epochs`, `paper_bot_allocations`,
 `paper_valuation_marks`, `paper_portfolio_mutations`, `paper_bot_revision_evidence`,
 `paper_bot_tombstones`, `paper_portfolio_events` and `paper_portfolio_projections`. Verification and
 replacement restore compare those counts with the manifest together with the checksummed SQLite
 files/user versions. Automated inventory/validation coverage is implementation evidence, not
-release acceptance. Until an isolated paired restore/rollback drill passes for the exact candidate,
-the schema-12/schema-9 build remains a release candidate rather than an accepted cutover.
+release acceptance. The isolated paired restore/rollback drill passed for the accepted production
+release identified at the top of this document. Every future/self-hosted exact build remains
+unaccepted for cutover until its own drill passes.
 
 There is no in-place downgrade. An older binary must not open either advanced store. Rollback means
 stopping this project's processes, verifying the retained pre-upgrade paired generation again,

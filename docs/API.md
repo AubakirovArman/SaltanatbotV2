@@ -1,6 +1,12 @@
 # HTTP & WebSocket API reference
 
-SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live candle/quote/order-book/trade-flow/arbitrage streams, and a paper/live trading engine. All HTTP endpoints return JSON, CORS is allowlist-based, and the generic application body limit is 1 MB; identity, onboarding and job routes apply their own bounded envelopes. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and six WebSocket endpoints are exposed at `/stream`, `/quotes`, `/orderbook`, `/trade-flow`, `/arbitrage-stream` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
+R4 API deployment evidence (accepted 2026-07-17): commit
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7`, GitHub Actions run `29560112312` with all 6 required
+jobs successful, protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and trading SQLite
+schema 9. Paired recovery evidence passed. This remains a pre-HTTPS, paper-only API; private/live
+exchange execution is not enabled.
+
+SaltanatbotV2 exposes an Express + WebSocket backend that serves market data (catalog, candles, sparklines), live public candle/quote/order-book/trade-flow/arbitrage streams, and a persisted paper-trading engine. Dormant private/live adapter contracts are retained for future work but are unreachable in the supported `public-http-paper` runtime. All HTTP endpoints return JSON, CORS is allowlist-based, and the generic application body limit is 1 MB; identity, onboarding and job routes apply their own bounded envelopes. By default the server listens on `http://127.0.0.1:4180` (override with the `PORT` and `HOST` environment variables). Market endpoints live under `/api/*`, trading endpoints under `/api/trade/*`, and six WebSocket endpoints are exposed at `/stream`, `/quotes`, `/orderbook`, `/trade-flow`, `/arbitrage-stream` and `/trade-stream`. Any unmatched non-API path falls through to the bundled frontend single-page app.
 
 Market catalog, candle, sparkline and WebSocket payloads have canonical TypeScript contracts
 plus fail-closed runtime parsers in `packages/contracts`. The frontend validates untrusted JSON at
@@ -1033,11 +1039,11 @@ When one venue order matches one local reservation, price and quantity use a con
 identity conflicts fail closed. A terminal REST status without authenticated execution accounting
 pauses the bot after polling/reconnect reconciliation.
 
-### `/api/trade/paper-portfolios/*` (R4 candidate)
+### `/api/trade/paper-portfolios/*` (R4)
 
-The R4 candidate's canonical paper center uses PostgreSQL schema 12 for durable, authorization-
-fenced commands and executor-owned SQLite schema 9 for portfolio/ledger evidence. This section
-documents the candidate contract; it is not an R4 acceptance or production-cutover claim.
+The accepted R4 canonical paper center uses PostgreSQL schema 12 for durable, authorization-fenced
+commands and executor-owned SQLite schema 9 for portfolio/ledger evidence. This is the deployed
+first-party contract for the exact release identified above.
 
 | Method | Path | Purpose |
 | --- | --- | --- |

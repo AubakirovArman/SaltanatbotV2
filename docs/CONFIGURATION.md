@@ -1,5 +1,11 @@
 # Configuration & deployment
 
+Accepted R4 production baseline (2026-07-17): commit
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7`, GitHub Actions run `29560112312` with 6/6 required
+jobs successful, protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and trading SQLite
+schema 9. Exact-release recovery evidence passed. The supported runtime profile remains
+`public-http-paper`; HTTPS and private/live execution are outside this release.
+
 SaltanatbotV2 is configured mostly at runtime through the app itself. PostgreSQL stores accounts,
 revocable sessions, workspaces, research jobs and the R4 durable executor-command queue. SQLite
 stores owner-scoped trading accounts, canonical paper portfolios, robots and journals plus
@@ -307,7 +313,7 @@ backup before upgrading. If multiple administrators exist, set `TRADING_LEGACY_O
 before that first v6 start or migration fails closed. Schema v7 then changes fill, order and order
 event identity to `(botId, id)`, preserving every existing row while allowing independent tenants
 to receive the same venue/client identifier without journal collisions. Schema v8 adds monotonic
-account/credential revisions and a per-owner authorization epoch. The R4 candidate's schema v9
+account/credential revisions and a per-owner authorization epoch. R4 schema v9
 adds canonical owner-scoped paper portfolios, ledger epochs, capital reservations, immutable
 revision evidence, durable mutation receipts and valuation/projection evidence. Existing paper
 event ledgers remain authoritative; snapshot-only legacy state is imported with explicit
@@ -593,7 +599,7 @@ server, complete this checklist.
 - [ ] **Protect account and database credentials.** Change the one-time administrator password,
   keep the PostgreSQL password file owner-only, review pending registrations, and disable departed
   users. Never expose a dump, cookie or CSRF value in logs/screenshots.
-- [ ] **Verify tenant ownership when crossing trading schema v6/v9.** The R4 candidate's SQLite trading schema
+- [ ] **Verify tenant ownership when crossing trading schema v6/v9.** R4's SQLite trading schema
   is v9. Create a paired PostgreSQL + SQLite recovery generation, keep
   `trading.db`/`.secret`, set `TRADING_LEGACY_OWNER_USER_ID` when multiple admins exist, and confirm
   that migrated robots and their deterministic paper portfolios appear only for the selected

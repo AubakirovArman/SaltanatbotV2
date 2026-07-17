@@ -1,8 +1,12 @@
 # Self-hosting with account authentication
 
 Audience: operators and people installing a fork
-Last verified for accepted deployment: 2026-07-16
-R4 schema-12/schema-9 documentation reviewed: 2026-07-17 (candidate, not a cutover claim)
+Last verified for accepted R4 deployment: 2026-07-17
+
+Accepted production evidence: commit `bb455facdfe5a1b3cabe15490c86c299ea684ee7`, GitHub Actions
+run `29560112312` with all 6 required jobs successful, protected slot
+`r4c-schema12-bb455fa`, PostgreSQL schema 12 and trading SQLite schema 9. The exact-release paired
+backup/verify/isolated-restore/drill and post-migration recovery evidence passed.
 
 SaltanatbotV2 remains self-hostable and does not require an OpenAI account, an OpenAI package, or
 any project-owned cloud service. PostgreSQL stores users, browser sessions, named workspaces,
@@ -11,10 +15,10 @@ accounts, canonical paper portfolios, robots, journals and encrypted
 per-account exchange credentials, plus candles and paper journals. Forward migrations preserve
 existing records; make a verified backup before every upgrade.
 
-The R4 candidate advances PostgreSQL to schema 12 and trading SQLite to schema 9. Its paper
+The accepted R4 release advances PostgreSQL to schema 12 and trading SQLite to schema 9. Its paper
 portfolio lifecycle, two-store authority boundary and exact upgrade/rollback checklist are in
-[Canonical paper portfolios](./PAPER_PORTFOLIOS.md). The candidate must not be treated as accepted
-or deployed until its exact release evidence and recovery drill pass.
+[Canonical paper portfolios](./PAPER_PORTFOLIOS.md). A fork or later release must still pass its own
+exact-build recovery and cutover gates; it cannot inherit the production evidence above.
 
 The only runnable execution boundary in this pre-HTTPS release is
 `RUNTIME_PROFILE=public-http-paper`. It keeps monitoring, public
@@ -488,7 +492,7 @@ Per-user Telegram/VK notifications are outbound-only in database auth mode. Inbo
 commands remain available only in explicit legacy single-operator mode until the poller can bind a
 chat to a durable user and verify the current trading role on every command.
 
-### Canonical paper portfolios in the R4 candidate
+### Canonical paper portfolios in R4
 
 With database authentication, paper-portfolio mutations no longer write directly from an HTTP
 handler into ad hoc bot state. The browser supplies the expected owner, current portfolio/robot
@@ -508,7 +512,7 @@ explicit robot rebind. No part of this workflow asks for an exchange key.
 
 ### Upgrading a pre-tenant or pre-portfolio trading database
 
-The R4 candidate's SQLite trading schema is v9. The migration that crosses v6 transactionally assigns every
+R4's SQLite trading schema is v9. The migration that crosses v6 transactionally assigns every
 pre-v6 trading row to one administrator, re-encrypts each
 legacy `keys:binance`/`keys:bybit` value for its concrete migrated account and clears the old
 server-wide live arm. Nothing is assigned to newly registered users. Before the first v6 start:
@@ -529,7 +533,7 @@ installation `TRADING_LEGACY_OWNER_USER_ID` is unnecessary.
 
 ## Updating a fork
 
-1. Create and verify one paired PostgreSQL + SQLite recovery generation. For the R4 candidate, use
+1. Create and verify one paired PostgreSQL + SQLite recovery generation. For R4, use
    the [schema-12/schema-9 checklist](./BACKUP_RESTORE.md).
 2. Pull or merge the desired commit.
 3. Run `npm ci`, tests and `npm run build` (or rebuild the Compose image).

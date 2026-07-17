@@ -1,8 +1,9 @@
 # Threat model
 
 Status: alpha baseline
-Last reviewed for accepted deployment: 2026-07-16
-R4 candidate boundary reviewed: 2026-07-17
+Last reviewed for accepted deployment: 2026-07-17
+R4 accepted/deployed boundary: final SHA `bb455facdfe5a1b3cabe15490c86c299ea684ee7`,
+CI `29560112312` (`6/6`), slot `r4c-schema12-bb455fa`
 
 SaltanatbotV2 is a self-hosted research and paper-trading application. The repository retains
 encrypted legacy credential rows and dormant exchange-adapter code, but the current
@@ -10,6 +11,12 @@ encrypted legacy credential rows and dormant exchange-adapter code, but the curr
 streams and every live order. `private-live` and `ENABLE_LIVE_SPOT=true` stop startup before
 database, filesystem or listener side effects. This document describes the supported trust model,
 important assets and dormant future boundaries; it is not a mainnet-readiness claim.
+
+The R4 production visual acceptance retained eight PNG captures from Chromium 149 at 1440×900,
+390×844 and 320×700. Axe, touch-target and document-overflow checks reported zero findings, and
+focus restoration plus robot-drawer scrolling passed. This automated result does not claim manual
+Opera/real-Android-device or assistive-technology coverage, HTTPS/private exchange access, live
+execution, real borrowing or real margin/account telemetry.
 
 ## Security objectives
 
@@ -28,7 +35,7 @@ important assets and dormant future boundaries; it is not a mainnet-readiness cl
 | `backend/data/.secret` | Root needed to decrypt stored credentials | Owner-only mode; gitignored; backup treated as secret |
 | Access/scoped tokens | Authorize local sessions and roles | HttpOnly session exchange; scoped roles; redacted logs |
 | Trading database | Bots, settings, fills, orders and audit evidence | Local SQLite; durable lifecycle; checksummed backup |
-| Paper portfolio command/evidence | Capital reservations and owner-authorized lifecycle must not duplicate or cross tenants | PostgreSQL fenced queue plus executor-owned SQLite receipts/ledger in the R4 candidate |
+| Paper portfolio command/evidence | Capital reservations and owner-authorized lifecycle must not duplicate or cross tenants | PostgreSQL fenced queue plus executor-owned SQLite receipts/ledger in the accepted/deployed R4 release |
 | Recovery generation | Combined PostgreSQL identity/workflow state and SQLite execution history | Private directories/files, SHA-256 manifests, strict inventory and isolated replacement restore |
 | Operational status | Can reveal capacity or deployment health | Public readiness is coarse/no-store; detailed counters require an administrator session |
 | Strategy/Pine artifacts | User intellectual property and execution rules | Local browser/storage; schema validation; no `eval` |
@@ -246,10 +253,10 @@ Mitigations:
   with a verified SQLite runtime backup and records a bounded cross-store capture window;
 - its manifest binds every migration checksum, PostgreSQL/onboarding row counts, SQLite file
   digests/user versions and an owner-set checksum; verification is read-only;
-- the schema-12/schema-9 candidate inventory includes `executor_commands` and every canonical
+- the deployed schema-12/schema-9 inventory includes `executor_commands` and every canonical
   `paper_portfolio_*` table, and restore compares their bounded counts with the manifest;
-- R4 is not accepted until the exact candidate passes the real isolated paired restore/rollback
-  drill using that inventory;
+- R4 acceptance required the exact release to pass the isolated paired restore/rollback drill
+  using that inventory; the final release receipt is recorded at the top of this document;
 - restore/drill target only a separately named database and a separate absent/empty data directory;
   they never switch a service, Compose file, `PGDATABASE` or active runtime path;
 - database cleanup requires the exact tool marker and database OID, while filesystem cleanup
@@ -268,7 +275,7 @@ Threats include applying a paper mutation twice after a timeout, accepting an ol
 after its role changes, a stale executor acknowledging another lease, and restoring PostgreSQL and
 SQLite from unrelated points in time.
 
-R4 candidate mitigations:
+R4 deployed mitigations:
 
 - one PostgreSQL command binds owner, actor, session hash, authorization revision/epoch, target,
   request hash and idempotency key; secret-bearing JSON keys are rejected;
@@ -288,8 +295,9 @@ R4 candidate mitigations:
   PostgreSQL and SQLite halves.
 
 Residual boundary: one API/executor process remains mandatory for one `trading.db`; horizontal API
-replicas are not enabled by the queue alone. R4 remains a candidate until concurrent/restart,
-two-owner and paired-restore evidence passes for the exact release.
+replicas are not enabled by the queue alone. R4 acceptance covers the exact release's
+concurrent/restart, two-owner and paired-restore boundary; it is not R11 proof for 100 active users
+or multi-replica failover.
 
 ### Stale offline state and deferred commands
 

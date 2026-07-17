@@ -22,13 +22,16 @@ as **Automation**, and market discovery as the read-only **Screener**. Automatio
 count and opens the robots/portfolio center without requiring the operator to find a particular bot
 first.
 
-The R4 candidate replaces the ad hoc combined view with canonical owner-scoped paper portfolios.
+The accepted/deployed R4 release replaces the ad hoc combined view with canonical owner-scoped
+paper portfolios. Final SHA `bb455facdfe5a1b3cabe15490c86c299ea684ee7` passed CI run
+`29560112312` (`6/6`) and was deployed in slot `r4c-schema12-bb455fa`.
 It shows only state the executor-owned ledger and durable valuation evidence can prove:
 balance/equity, realized/unrealized P&L, capital reservations, positions, open orders and associated
 robot revisions. It has literal empty/loading/error states. Missing or stale values remain typed as
 such; real exchange margin, borrowing and account telemetry are unavailable in
-`public-http-paper`. R4 is still under acceptance and this statement is not a production-cutover
-claim.
+`public-http-paper`. The production cutover is limited to this paper-only portfolio workflow; it
+does not enable HTTPS, private exchange access, live execution, real borrowing or real margin
+telemetry.
 
 Legacy Binance/Bybit registry and credential code is not an operator workflow in this release.
 Existing installations may retain dormant metadata for compatibility, but users and administrators
@@ -50,6 +53,11 @@ If a screen or imported legacy configuration names Binance, Bybit, API keys, bor
 execution, leave it unused in the current release.
 
 ### R4 canonical portfolio lifecycle
+
+Production visual acceptance used Chromium 149 at 1440×900, 390×844 and 320×700 and retained eight
+accepted PNG captures. Axe reported zero violations, touch-target and document-overflow checks
+reported zero findings, and opener-focus restoration plus robot-drawer scrolling passed. This is
+automated browser evidence, not a manual Opera/real-Android-device or VoiceOver/NVDA/TalkBack claim.
 
 Create, rename, choose-default, archive and reset are owner-scoped durable commands. A reset is not
 a delete: it closes one ledger epoch, preserves its events/revision evidence and creates the next

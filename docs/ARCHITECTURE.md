@@ -3,6 +3,12 @@
 The cross-store authority boundary and single-executor constraint are normative in
 [ADR 0001](adr/0001-execution-authority-and-system-of-record.md).
 
+R4 production baseline (accepted 2026-07-17): commit
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7`, GitHub Actions run `29560112312` with 6/6 required
+jobs successful, protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and trading SQLite
+schema 9. The exact-release paired recovery and rollback drill evidence passed. The runtime remains
+pre-HTTPS `public-http-paper`; private/live execution is still unreachable.
+
 SaltanatbotV2 is an open-source crypto trading terminal built as an npm-workspaces monorepo. The Express 5 + `ws` backend proxies public market data, runs a read-only arbitrage research hub and drives a persisted trading engine; the React 18 + Vite 8 frontend renders a custom canvas chart, arbitrage screener and Blockly strategy builder; shared workspaces own canonical transport and strategy contracts. Candle data is normalized behind a `ProviderRouter`, arbitrage quotes behind venue-specific public adapters, and strategies compile to a shared intermediate representation (IR).
 
 ## Monorepo layout
@@ -93,7 +99,7 @@ Key pieces wired up in `backend/src/server.ts`:
 
 PostgreSQL stores users, Argon2id password hashes, revocable sessions, one-use WebSocket tickets,
 authentication audit events, owner-scoped onboarding/workspace revisions, durable research jobs,
-the current research-worker heartbeat and, in the R4 candidate, the fenced executor-command queue.
+the current research-worker heartbeat and the R4 fenced executor-command queue.
 Checked-in migrations run atomically under an advisory lock and refuse checksum drift.
 
 The trading executor still uses built-in **`node:sqlite`** (`DatabaseSync`) in
@@ -109,8 +115,8 @@ exchange request crosses a mandatory fail-closed transport gate before timestamp
 network I/O. CPU-heavy backtests are claimed fairly from PostgreSQL and run by a separate supervisor
 in bounded worker threads; the API process never executes them synchronously. Queue telemetry uses
 a bounded 24-hour/10,000-row
-terminal sample and exposes only owner-scoped metrics to HTTP clients. Accepted production remains
-on PostgreSQL schema v11 while R4 is under review; the current R4 candidate's latest schema is v12:
+terminal sample and exposes only owner-scoped metrics to HTTP clients. Accepted production runs
+PostgreSQL schema v12:
 v7 adds an owner-scoped prepared-step replay ledger, v8 adds bounded terminal-job artifact
 retention, v9 adds the administrator control plane, v10 adds bounded versioned workspace workflow,
 v11 adds owner onboarding plus runtime-component heartbeats, and v12 adds the durable executor
@@ -140,11 +146,11 @@ Root recovery commands create one checksummed generation containing a PostgreSQL
 an exported read-only snapshot plus the existing verified SQLite runtime backup. The manifest binds
 the release/profile, capture window, complete migration chain, PostgreSQL row counts (including
 onboarding), runtime file digests/user versions and a cross-store owner-set checksum. Verification
-does not mutate either store. The schema-12/schema-9 candidate extends that bounded inventory with
+does not mutate either store. The schema-12/schema-9 recovery boundary extends that bounded inventory with
 the PostgreSQL `executor_commands` count and counts for every canonical SQLite paper-portfolio
-table; verification and replacement restore compare those counts with the manifest. That
-implementation evidence does not accept R4 by itself: the exact candidate must still pass the real
-isolated paired restore/rollback drill.
+table; verification and replacement restore compare those counts with the manifest. The real
+isolated paired restore/rollback drill passed for the accepted R4 production release. A future
+self-hosted release must pass the same exact-build gate rather than inheriting this evidence.
 
 Restore and drill operate only on a new database name and a separate absent/empty data directory.
 Database creation is tagged with a generation/operation marker and its OID; cleanup refuses to drop

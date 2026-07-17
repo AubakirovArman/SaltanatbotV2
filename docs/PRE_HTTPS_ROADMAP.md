@@ -301,9 +301,10 @@ VoiceOver/NVDA/TalkBack records are complete.
 
 ## R3 — administrator lifecycle, workspaces and first-run workflow
 
-**Status:** delivered and deployed. Production runs schema 11 from the protected
-exact-commit release slot. R3.1, R3.2 and R3.3 with its required O1 slice are
-accepted; R4 is the next increment.
+**Status:** delivered and deployed in R3 on schema 11. R3.1, R3.2 and R3.3 with
+its required O1 slice remain accepted historical increments. Production later
+advanced through the accepted R4 schema-12/schema-9 release; R5 is the next
+pending increment.
 
 **Baseline:**
 
@@ -497,10 +498,12 @@ state, backup scope and failure test before its owning release is accepted.
 
 ## R4 — “Running” and the paper portfolio contract
 
-**Status:** active release candidate, not yet accepted or deployed. The current
-worktree contains the schema-12/schema-9 authority boundary and canonical UI,
-but the complete R4 evidence and release gates below remain mandatory. Operator
-details are in [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
+**Status:** delivered, accepted and deployed. Production runs PostgreSQL schema
+12 and trading SQLite schema 9 from protected slot `r4c-schema12-bb455fa` at
+commit `bb455facdfe5a1b3cabe15490c86c299ea684ee7`; exact-SHA GitHub Actions run
+`29560112312` passed all 6/6 jobs. The runtime remains
+`public-http-paper`. Operator details are in
+[Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
 **Baseline:**
 
@@ -520,24 +523,23 @@ details are in [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
   inventing missing mark history;
 - missing or stale valuation, margin or borrowing evidence is not synthesized.
 
-**Remaining:**
+**Acceptance evidence:**
 
-- record the completed journal/curve and golden-ledger, restart-boundary,
-  stale-mark, concurrent-command and two-owner authorization verification for
-  the exact candidate;
-- run the real isolated paired restore/rollback drill using the implemented
-  `executor_commands` and schema-9 paper-portfolio inventory checks;
-- run the remaining backend/frontend, migration, browser, accessibility,
-  visual, documentation and release gates;
-- publish only after exact-SHA GitHub Actions are green, then migrate and cut
-  over only the declared project resources under ADR 0002.
+- journal/curve, golden-ledger, restart-boundary, stale-mark,
+  concurrent-command and two-owner authorization verification passed;
+- the isolated paired restore/migration/rollback drill verified
+  `executor_commands` and every schema-9 canonical paper-portfolio table;
+- backend/frontend, migration, browser, accessibility, visual, documentation
+  and protected production-smoke gates passed;
+- exact-SHA Actions were green before the protected slot cutover, and only the
+  declared project resources changed under ADR 0002.
 
 **Dependencies:** R1 execution ledger, R3 owner/workspace lifecycle and ADR 0001
 authority boundaries.
 
 **Evidence:** golden-ledger reconciliation; restart at each lifecycle boundary;
 stale-mark/unavailable-state tests; concurrent command/idempotency tests;
-cross-owner REST/WS tests; mobile and desktop E2E. The candidate record is
+cross-owner REST/WS tests; mobile and desktop E2E. The accepted release record is
 [R4 canonical paper portfolios](./evidence/R4_PAPER_PORTFOLIOS.md).
 
 **Exit criteria:** totals before and after restart are identical, every value has
@@ -546,9 +548,10 @@ mutate the portfolio.
 
 ## R5 — alerts, technical screener MVP and notifications
 
-**Status:** planned integration on top of existing research-alert and indicator
-engines. The technical screener is intentionally moved earlier so it can feed
-alerts before robot strategy expansion.
+**Status:** next pending pre-HTTPS increment; implementation has not started.
+It builds on existing research-alert and indicator engines. The technical
+screener is intentionally moved earlier so it can feed alerts before robot
+strategy expansion.
 
 **Baseline:**
 
@@ -911,7 +914,7 @@ and stabilization.
 | R2 | Mobile chart/navigation/Strategy Studio | R1 | 2-3 |
 | R3 | administrator lifecycle, server workspaces and onboarding/PWA boundary | R1-R2 | delivered on schema 11 |
 | O1 | Operational hardening increments | starts in R3 and ships with each new workload | included in R3-R10 estimates |
-| R4 | “Running” and paper portfolio/journal contract | R1-R3 | 3-5 |
+| R4 | “Running” and paper portfolio/journal contract | R1-R3 | delivered |
 | R5 | Alerts + technical screener MVP + notifications/Telegram | R3-R4 | 5-7 |
 | R6 | DCA paper | R4-R5 | 3-4 |
 | R7 | Grid paper | R4-R6 | 4-5 |
@@ -924,21 +927,20 @@ and stabilization.
 
 ### Immediate execution queue
 
-1. Freeze and review the implemented R4 schema-12/schema-9 authority,
-   reservation, order/fill/event, reconciliation and bounded journal candidate.
-   Existing browser state and legacy paper rows remain migration inputs, never
-   a second system of record.
-2. Record the completed deterministic capital/PnL, restart/partial-fill,
-   two-owner, stale-evidence, desktop/mobile journal and accessibility
-   verification against the exact candidate.
-3. Execute the real isolated paired backup/restore/migration/rollback drill over
-   the implemented extended inventory and retain its checksummed evidence.
-4. Accept R4 only after the golden-ledger, restart reconciliation, PostgreSQL,
-   browser, accessibility, bundle, recovery, documentation, CI and protected
-   production smoke gates are green. R5 does not enter `main` before that gate.
+1. Keep the accepted R4 schema-12/schema-9 release and its checksummed recovery
+   evidence immutable; R5 must reuse its owner, paper-ledger and operational
+   boundaries rather than create a second system of record.
+2. Freeze the R5 alert, technical-screener and notification contracts before
+   implementation, including tenant ownership, scheduler/outbox authority and
+   explicit paper-only Telegram capabilities.
+3. Deliver R5.1-R5.3 with chart/screener parity, closed-browser restart/dedupe
+   evidence, bounded notification delivery and an isolated recovery drill.
+4. Keep R6 and later code out of `main` and production until the complete R5
+   release gate is accepted.
 
 Acceptance, publication to `main` and production cutover of the remaining work
-are strictly sequential: R4 → R5 → R6 → R7 → R8 → R9 → R10A → R10B → R11 →
+are strictly sequential from the next pending increment: R5 → R6 → R7 → R8 →
+R9 → R10A → R10B → R11 →
 R12. Parallel work is allowed only inside the
 current increment after its contracts are fixed. Code or migrations for a later
 release do not enter `main` or production before the preceding release is

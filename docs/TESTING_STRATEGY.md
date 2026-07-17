@@ -76,6 +76,17 @@ R4 adds a mandatory cross-store and browser matrix:
 See [R4 release evidence](./evidence/R4_PAPER_PORTFOLIOS.md). Live exchange I/O
 is forbidden throughout this matrix.
 
+R4 is accepted and deployed from final SHA
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7` in slot
+`r4c-schema12-bb455fa`; CI run `29560112312` passed `6/6`. Production visual
+acceptance used Chromium 149 at 1440×900, 390×844 and 320×700 and retained
+eight accepted PNG captures. Axe reported zero violations, the touch-target
+and document-overflow checks reported zero findings, and opener-focus
+restoration plus robot-drawer scrolling passed. This is automated browser
+evidence only: it is not a manual Opera/real-Android-device or
+VoiceOver/NVDA/TalkBack result, and it does not validate HTTPS, private/live
+exchange access, real borrowing or real margin telemetry.
+
 ## Pine compiler matrix
 
 For each supported construct, test:
@@ -321,13 +332,13 @@ Initial navigation remains small, while the lazy Blockly, total JS and total CSS
 depend on a byte-for-byte snapshot. Total-distributable size is a secondary regression guard and
 must not be reported as bytes downloaded on initial navigation.
 
-The 2026-07-17 R4 portfolio/journal candidate measured 831.0 KiB total JavaScript and 46.3 KiB
+The accepted 2026-07-17 R4 portfolio/journal release measured 831.0 KiB total JavaScript and 46.4 KiB
 total CSS. Its protected predecessor already occupied 810.0/810.0 KiB of the usable JavaScript
-budget and 43.1/43.2 KiB of usable CSS. Concatenating every candidate JavaScript asset into one
+budget and 43.1/43.2 KiB of usable CSS. Concatenating every release JavaScript asset into one
 ideal gzip stream still measured 820.7 KiB, so chunk regrouping could not honestly satisfy the old
 total cap without removing the new strict parser, localized workflow or journal. Only the
 secondary total caps were therefore reviewed to 960 KiB JavaScript and 56 KiB CSS; the mandatory
-10% checker reserve is unchanged. The candidate occupies 84.6% and 82.7% of those raw caps,
+10% checker reserve is unchanged. The release occupies 86.6% and 82.9% of those raw caps,
 respectively. Initial, lazy-route, single-chunk and per-file CSS caps remain unchanged.
 
 - initial JS gzip <= 150 KB target;

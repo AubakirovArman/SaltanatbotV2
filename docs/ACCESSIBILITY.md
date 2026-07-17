@@ -1,7 +1,7 @@
 # Accessibility release baseline
 
 Last verified: 2026-07-17
-Applies to: current alpha web terminal and the R4 paper-portfolio candidate
+Applies to: current alpha web terminal and the accepted/deployed R4 paper-portfolio center
 
 SaltanatbotV2 treats accessibility failures as release defects. The production Playwright suite runs
 axe WCAG 2 A/AA and WCAG 2.1 A/AA rules on the Chart, Strategy and locked Trading surfaces without
@@ -32,7 +32,17 @@ excluding application regions.
 | R4 paper portfolio center | Native select, menu/disclosures, table/cards, named status regions and explicit stale/unavailable evidence remain operable without colour alone | Component tests plus desktop, 390×844 and 320×700 Playwright journeys |
 | R4 robot detail and confirmations | Named modal drawer/bottom sheet, initial close-button focus, containment, Escape/opener restoration and confirmed pause/stop/reset/archive actions | Geometry, focus-return, scroll-range and keyboard Playwright assertions |
 | R4 reflow and touch | No horizontal document overflow; menu/dialog/drawer stay inside the viewport; visible coarse-pointer buttons are at least 44 px | 390×844 and 320×700 browser assertions |
-| R4 automated WCAG scope | Initial `.paper-portfolio-center` and the same complete center with the named robot dialog open | Axe WCAG 2.0/2.1 A/AA, no excluded selectors, zero violations |
+| R4 automated WCAG scope | Initial `.paper-portfolio-center` and the same complete center with the named robot dialog open | Axe WCAG 2.0/2.1 A/AA, no excluded selectors, zero violations in the accepted run |
+
+## R4 production acceptance receipt
+
+R4 was accepted and deployed from final SHA
+`bb455facdfe5a1b3cabe15490c86c299ea684ee7` in release slot
+`r4c-schema12-bb455fa`. CI run `29560112312` passed all `6/6` jobs. The
+production visual acceptance used Chromium 149 at 1440×900, 390×844 and
+320×700, retained eight accepted PNG captures, reported zero Axe violations
+and zero touch-target/document-overflow findings, and passed opener-focus
+restoration plus robot-drawer scrolling.
 
 ## Known scope boundary
 
@@ -42,7 +52,7 @@ available, while a linear text strategy language is not currently offered. This 
 boundary, not permission to remove keyboard or screen-reader behavior from the Studio.
 
 Automated tools cannot prove comprehension, reading order quality or every screen-reader/browser
-combination. The R4 evidence proves automated semantics, contrast, keyboard, reflow and touch-target
-geometry; it does not claim a manual screen-reader or Android Opera result. Before a stable release,
-repeat the manual matrix with current VoiceOver/Safari, NVDA/Firefox, NVDA/Chrome and
-TalkBack/Android Opera and record the versions/results in this page.
+combination. The R4 evidence proves the automated semantics, contrast, keyboard, reflow and
+touch-target geometry listed above; it does not claim a manual assistive-technology, real Android
+device or Opera result. A later manual matrix must record current VoiceOver/Safari, NVDA/Firefox,
+NVDA/Chrome and TalkBack/Android Opera versions and results before making those claims.

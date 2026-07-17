@@ -5,8 +5,10 @@ Audience: self-hosted operators and maintainers
 Last measured: 2026-07-16
 
 Status: baseline measured; the first process-wide API admission/readiness slice
-is implemented and the R4 candidate adds a bounded per-owner fenced paper-command queue. The
-quantified 100-user proof, global executor cap and remaining cross-workload caps are still planned.
+is implemented and the accepted/deployed R4 release adds a bounded per-owner fenced paper-command
+queue. R4 final SHA `bb455facdfe5a1b3cabe15490c86c299ea684ee7` passed CI run `29560112312`
+(`6/6`) and was deployed in slot `r4c-schema12-bb455fa`. The quantified 100-user proof, global
+executor cap and remaining cross-workload caps are still planned for R11.
 
 This plan covers the `public-http-paper` Research / Paper release. SSL/TLS,
 HTTPS termination and live exchange execution are explicitly outside its active
@@ -82,8 +84,9 @@ The shared host measured during this implementation had:
 Full swap alone is not evidence of current memory exhaustion: the kernel may
 retain old cold pages there. The zero swap-in/out and pressure readings showed no
 active memory contention at the time. These figures are a point-in-time
-observation on a shared machine, not reserved capacity, proof of 100-user
-comfort or an SLA.
+observation on a shared machine, not a load test, reserved capacity, proof of
+100-user comfort or an SLA. The R4 production acceptance receipt does not change
+that limitation.
 
 ## Implemented baseline protections
 
@@ -153,7 +156,7 @@ measured evidence.
 | Browser market WebSockets | 300 connections | 4 | close/reject with retryable `1013/429`; never grow buffers | global admission planned; slow-client bound exists |
 | PostgreSQL application connections | 20 total: API 12 + research 4 + notification 4 | n/a | fail readiness before exhausting operator reserve | API/research 16 exist; notification 4 planned |
 | PostgreSQL `max_connections` deployment floor | 40 | n/a | retain at least 20 connections for migration, backup and operator recovery | deployment validation planned |
-| Active paper executor commands | global cap/load proof pending | 256 | reject new owner command before unbounded queue growth; terminal rows are bounded separately | per-owner schema-12 candidate bound implemented; global R11 evidence pending |
+| Active paper executor commands | global cap/load proof pending | 256 | reject new owner command before unbounded queue growth; terminal rows are bounded separately | accepted/deployed per-owner schema-12 bound implemented; global R11 evidence pending |
 | Running paper robots | 100 | 4 | reject new start; existing robots remain controllable | per-owner cap exists; global cap planned |
 | Outstanding research jobs | 200 | 5, with 1 running | reject submission with retry hint; never enqueue without bound | per-owner cap exists; global cap planned |
 | Research execution | 2 active tasks initially | 1 | fair queueing; tune only after profiling | implemented |
@@ -292,13 +295,14 @@ is allowed only after all of the following are implemented and tested:
 Until that evidence exists, scaling means tuning the one API, PostgreSQL pools
 and bounded worker services—not cloning the API.
 
-The R4 candidate supplies the paper-command/SQLite-receipt foundation for items 2–4 inside the
-current singleton API, including one applying command per owner and authorization revision/epoch
-revalidation. It does not extract the executor, provide cross-process event fan-out or prove
-two-replica failover. Therefore it does not change the one-API rule. Its candidate paired recovery
-format now inventories `executor_commands` and every canonical paper-portfolio table. The real
-isolated paired drill is an R4 acceptance gate; the integrated 100-user proof remains the separate
-R11 gate and is not required to accept R4. See [Canonical paper
+The accepted/deployed R4 release supplies the paper-command/SQLite-receipt foundation for items 2–4
+inside the current singleton API, including one applying command per owner and authorization
+revision/epoch revalidation. It does not extract the executor, provide cross-process event fan-out
+or prove two-replica failover. Therefore it does not change the one-API rule. Its paired recovery
+format inventories `executor_commands` and every canonical paper-portfolio table. R4 acceptance
+does not satisfy the separate R11 gate: the integrated 100-user workload, global-cap and recovery
+proof remains pending. Point-in-time production CPU, RAM, disk and process measurements are not a
+substitute for that proof. See [Canonical paper
 portfolios](./PAPER_PORTFOLIOS.md).
 
 ## Evidence and exit criteria

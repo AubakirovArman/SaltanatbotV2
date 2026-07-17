@@ -1,12 +1,17 @@
-# Canonical paper portfolios (R4 candidate)
+# Canonical paper portfolios (R4)
 
 Audience: self-hosted operators, maintainers and API integrators
-Status: implemented in the current R4 candidate; release acceptance and production cutover are not
-claimed by this document
+Status: accepted and deployed on 2026-07-17
+
+Accepted production evidence: commit `bb455facdfe5a1b3cabe15490c86c299ea684ee7`, GitHub Actions
+run `29560112312` with all 6 required jobs successful, protected slot
+`r4c-schema12-bb455fa`, PostgreSQL schema 12 and trading SQLite schema 9. The paired
+backup/verify/isolated-restore/drill evidence and post-migration recovery generation were accepted
+for this exact release.
 
 Russian version: [ru/PAPER_PORTFOLIOS.md](./ru/PAPER_PORTFOLIOS.md).
 
-This guide describes the pre-HTTPS paper-portfolio boundary introduced by the R4 candidate. It is
+This guide describes the pre-HTTPS paper-portfolio boundary introduced by the accepted R4 release. It is
 available only with `RUNTIME_PROFILE=public-http-paper`. It does not configure TLS, accept exchange
 API keys, open private exchange streams, place live orders, borrow assets or mutate real margin.
 
@@ -40,7 +45,7 @@ not exchange account telemetry.
 
 R4 intentionally uses two stores with one fenced bridge:
 
-| Store | Authority | R4 candidate schema |
+| Store | Authority | R4 schema |
 | --- | --- | --- |
 | PostgreSQL | authenticated owner/session, authorization revision and epoch, durable executor command queue | 12 |
 | `backend/data/trading.db` | paper portfolios, epochs, reservations, robot revisions, orders/fills/events, valuation marks, projections and terminal mutation receipts | SQLite 9 |
@@ -113,7 +118,7 @@ Robot creation requires an active portfolio and a positive allocation that does 
 unallocated cash. A robot bound to a portfolio has immutable portfolio/allocation fields; create a
 new revision/workflow instead of editing those fields behind the ledger.
 
-Each robot detail returned by the candidate includes a bounded `paper-robot-journal-v1`. Its curve
+Each robot detail returned by R4 includes a bounded `paper-robot-journal-v1`. Its curve
 is explicitly `current-epoch-realized-cash`, not an invented historical mark-to-market equity
 series. It contains at most 256 oldest-first downsampled cash points and, only when current durable
 valuation evidence is available, one final current-equity point. The journal also returns at most
@@ -173,7 +178,8 @@ The migration chain is forward-only. PostgreSQL 12 adds the durable executor que
 the canonical portfolio, epoch, reservation, receipt, revision-evidence, valuation and projection
 tables while rebuilding the paper event key around `ledgerEpoch`.
 
-Use this sequence for an accepted R4 release:
+The accepted production deployment followed this sequence; self-hosted upgrades must follow it for
+their own exact release:
 
 1. Confirm the exact checkout/release, database name, loopback port, service units or Compose
    project, and runtime data directory all belong to this installation.
