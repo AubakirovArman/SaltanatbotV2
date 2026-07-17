@@ -3,7 +3,7 @@
 English reference: [SCREENER.md](../SCREENER.md).
 Қазақша нұсқа: [kk/SCREENER.md](../kk/SCREENER.md).
 
-Документ описывает технический скринер R5.2.1, добавляемый PostgreSQL
+Документ описывает технический скринер R5.2.1, добавленный PostgreSQL
 schema 14. Это исключительно исследовательский индикаторный скан по спотовой
 USDT-вселенной Binance, запускаемый по запросу. Каждый payload несёт
 `researchOnly: true` и `executionPermission: false`. Скринер не может выставить
@@ -243,6 +243,9 @@ Release gate включает:
 - браузерные тесты клиента, workspace и локализации EN/RU/KK плюс сквозной
   сценарий скрин→график с проверками доступности.
 
-R5.2.1 — незавершённый инкремент; приёмка и деплой фиксируются отдельно в
-[IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md). Превращение строк
+R5.2.1 принят и задеплоен: production работает на PostgreSQL schema 14 из
+защищённого slot `r5b-schema14-20be5b1` (коммит
+`20be5b1d2fb87df38cc298953dfe7a2f414dd831`, exact-SHA CI run `29584556266`,
+6/6 jobs). Запись приёмки и cutover —
+[R5.2.1 evidence](../evidence/R5_2_1_TECHNICAL_SCREENER.md). Превращение строк
 скринера в алерты и запланированные сканы остаются будущей работой.

@@ -10,11 +10,20 @@ successful), protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and tra
 and rollback proof passed. Self-hosted operators must repeat these gates for their own exact build;
 this evidence does not make a different installation recoverable.
 
-R5.1 is now the accepted and deployed recovery baseline. Production runs PostgreSQL schema 13 from
-protected slot `r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`.
+R5.1 followed as an accepted and deployed recovery baseline. Production moved to PostgreSQL schema
+13 from protected slot `r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`.
 Schema-13 alert inventory and restore coverage were proved for that exact release before cutover
 ([R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)); it does not inherit the immutable R4 evidence
 above. See [Owner-scoped server alerts](./ALERTS.md).
+
+R5.2.1 is now the accepted and deployed recovery baseline. Production runs PostgreSQL schema 14 and
+unchanged trading SQLite schema 9 from protected slot `r5b-schema14-20be5b1` at commit
+`20be5b1d2fb87df38cc298953dfe7a2f414dd831`. The pre-upgrade schema-13 generation `281b88c8` and the
+post-upgrade schema-14 generation `b18d3380` each passed a verified isolated replacement restore
+drill for that exact release; the stopped rollback source `bee7eced` and the replacement-only
+rollback pair are retained ([R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md)). This
+baseline does not inherit the immutable R4 or R5.1 evidence above. See
+[On-demand technical screener](./SCREENER.md).
 
 SaltanatbotV2 uses two independent persistence layers. PostgreSQL stores users, hashed passwords,
 sessions, workspaces and research jobs. Trading state and encrypted credentials remain under
@@ -462,10 +471,17 @@ pre-upgrade pair when rollback is chosen. The detailed lifecycle and operator ch
 
 ### R5.1 PostgreSQL schema 13 backup, cutover and rollback
 
-This procedure was executed and accepted for the exact R5.1 release on 2026-07-17; production now
-runs schema 13. It remains the required template for any future exact build.
+This procedure was executed and accepted for the exact R5.1 release on 2026-07-17, and was
+repeated the same day for the exact R5.2.1 release, whose migration advanced schema 13 to 14;
+production now runs schema 14. It remains the required template for any future exact build.
 The schema-13 checksum is
-`1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
+`1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`; the schema-14
+(`owner_screener_presets`) checksum is
+`0d7f90cadfa230c7b20fcbe03d7432d71add45760c1a3379ee2362e206c102f3`.
+The R5.2.1 rehearsal additionally ran an end-to-end screener proof on the isolated replacement
+pair — a preset created and a run executed through a compute job against live Binance closed
+candles, 30/30 symbols evaluated, 30 matched, 0 unavailable
+([R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md)).
 
 Before cutover, stop this project's API and research worker and run the paired
 `recovery:backup`/`recovery:verify` workflow at the top of this guide. Retain that schema-12

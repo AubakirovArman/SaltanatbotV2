@@ -44,7 +44,7 @@ release.
 
 ## Accepted R5.1 release
 
-Production now runs the accepted R5.1 release on PostgreSQL schema 13 from
+The accepted R5.1 release was deployed on PostgreSQL schema 13 from
 protected slot `r5a-schema13-66394fd` (commit
 `66394fd38765d8da36174411cecd95a33fda1ea0`, exact-SHA CI run `29574600648`,
 `6/6`). R5.1 is accepted and deployed, but it remains notification-only and is
@@ -67,12 +67,45 @@ accessibility/visual evidence; see the recorded
 [R5.1 acceptance evidence](./evidence/R5_1_OWNER_ALERTS.md). This generic
 price-alert control plane is not the older account-aware arbitrage
 research-alert policy/outbox: its engine-owned candidate/economics producers
-remain disconnected. R5.2 technical screener,
+remain disconnected. The R5.2.1 technical screener MVP is now accepted and
+deployed (see below); saved-screen alert promotion,
 R5.3 notification worker/Telegram delivery and R11 integrated 100-user capacity
 proof remain pending and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md),
 [Russian](./ru/ALERTS.md), [Kazakh](./kk/ALERTS.md) and the detailed
+[pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
+## Accepted R5.2.1 release
+
+Production now runs the accepted R5.2.1 technical screener MVP on PostgreSQL
+schema 14 from protected slot `r5b-schema14-20be5b1` (commit
+`20be5b1d2fb87df38cc298953dfe7a2f414dd831`, exact-SHA CI run `29584556266`,
+`6/6`). R5.2.1 is accepted and deployed, but it remains research-only and is
+still not proven as a 100-user service.
+
+The release adds an on-demand indicator screener over the public Binance spot
+USDT universe: owner-scoped server presets with revisions and archive, runs
+executed as bounded compute jobs, closed-candle-only evaluation with
+fail-closed unavailability, deterministic bounded results and click-to-chart
+indicator parity. It cannot trade, borrow, change margin, read exchange
+credentials or grant trading authority. Its conservative beta bounds are 40
+active presets per owner, 400 globally active presets, a universe of at most
+200 symbols and the existing five-active compute-job quota per owner; they are
+not R11 capacity evidence.
+
+Acceptance passed the checksum-locked schema-14 upgrade/recovery gate and an
+end-to-end screener rehearsal on the isolated replacement pair — 30/30 symbols
+evaluated, 30 matched, 0 unavailable against live Binance closed candles; see
+the recorded
+[R5.2.1 acceptance evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md).
+Saved-screen promotion into a server alert (rule kind `screener` stays a
+reserved placeholder), the R5.3 notification worker with owner-bound Telegram
+delivery, chart research tools and the R11 integrated 100-user capacity proof
+remain pending and unproven.
+
+See [On-demand technical screener](./SCREENER.md),
+[Russian](./ru/SCREENER.md), [Kazakh](./kk/SCREENER.md) and the detailed
 [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
 
 ## Explicitly deferred external validation

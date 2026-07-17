@@ -9,13 +9,22 @@ jobs successful, protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and
 schema 9. The exact-release paired recovery and rollback drill evidence passed. The runtime remains
 pre-HTTPS `public-http-paper`; private/live execution is still unreachable.
 
-R5.1 is now the accepted and deployed production baseline. Its PostgreSQL schema 13 adds
+R5.1 followed as an accepted and deployed production baseline. Its PostgreSQL schema 13 adds
 owner-scoped server alerts; production moved to schema 13 from protected slot
 `r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0` after the release,
 paired-recovery and cutover gates passed
 ([R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)). The alert control plane is
 notification-only, reads credential-free public REST candles, and does not widen the pre-HTTPS
 execution boundary. See [Owner-scoped server alerts](./ALERTS.md).
+
+R5.2.1 is now the accepted and deployed production baseline. Its PostgreSQL schema 14 adds
+owner-scoped screener presets; production moved to schema 14 from protected slot
+`r5b-schema14-20be5b1` at commit `20be5b1d2fb87df38cc298953dfe7a2f414dd831` after the release,
+paired-recovery and cutover gates passed
+([R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md)). The technical screener is
+research-only over public Binance spot candles, runs as bounded owner-scoped compute jobs, and
+does not widen the pre-HTTPS execution boundary. See
+[On-demand technical screener](./SCREENER.md).
 
 SaltanatbotV2 is an open-source crypto trading terminal built as an npm-workspaces monorepo. The Express 5 + `ws` backend proxies public market data, runs a read-only arbitrage research hub and drives a persisted trading engine; the React 18 + Vite 8 frontend renders a custom canvas chart, arbitrage screener and Blockly strategy builder; shared workspaces own canonical transport and strategy contracts. Candle data is normalized behind a `ProviderRouter`, arbitrage quotes behind venue-specific public adapters, and strategies compile to a shared intermediate representation (IR).
 

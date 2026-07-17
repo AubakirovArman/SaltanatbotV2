@@ -9,12 +9,16 @@ is implemented and the accepted/deployed R4 release adds a bounded per-owner
 fenced paper-command queue. R4 final SHA
 `bb455facdfe5a1b3cabe15490c86c299ea684ee7` passed CI run `29560112312`
 (`6/6`) and was deployed in slot `r4c-schema12-bb455fa`. The R5.1 owner-scoped
-server-alert release is now accepted and deployed: SHA
+server-alert release is accepted and deployed: SHA
 `66394fd38765d8da36174411cecd95a33fda1ea0` passed CI run `29574600648` (`6/6`)
-and production runs PostgreSQL schema 13 from slot `r5a-schema13-66394fd` (see
-[R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)). The quantified 100-user
-proof, global executor cap and remaining cross-workload caps are still planned
-for R11.
+and was deployed in slot `r5a-schema13-66394fd` (see
+[R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)). The R5.2.1 technical
+screener MVP is now accepted and deployed: SHA
+`20be5b1d2fb87df38cc298953dfe7a2f414dd831` passed CI run `29584556266` (`6/6`)
+and production runs PostgreSQL schema 14 from slot `r5b-schema14-20be5b1` (see
+[R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md)); its beta limits
+are not R11 capacity evidence. The quantified 100-user proof, global executor
+cap and remaining cross-workload caps are still planned for R11.
 
 This plan covers the `public-http-paper` Research / Paper release. SSL/TLS,
 HTTPS termination and live exchange execution are explicitly outside its active
@@ -25,8 +29,9 @@ The practical target is a bounded modular monolith, not a ChatGPT-scale
 microservice fleet. One API process serves the SPA, authenticated REST and
 shared public market WebSockets. PostgreSQL owns identity, workspaces, durable
 authorization and research jobs. The accepted/deployed R5.1 release adds
-multi-user alert/outbox records through PostgreSQL schema 13, which is now the
-production state. One
+multi-user alert/outbox records through PostgreSQL schema 13, and the
+accepted/deployed R5.2.1 release adds owner-scoped screener presets through
+PostgreSQL schema 14, which is now the production state. One
 singleton trading executor owns the protected SQLite trading/paper state under
 [ADR 0001](adr/0001-execution-authority-and-system-of-record.md). CPU-heavy
 research executes in a separate bounded worker.
@@ -164,7 +169,8 @@ that limitation.
   at-least-once publish-before-checkpoint semantics, same-owner multi-tab
   convergence and mobile/desktop release gates. It is distinct from the older
   account-aware arbitrage research-alert policy/outbox, whose engine-owned
-  candidate/economics producers remain disconnected. R5.2, R5.3 and the
+  candidate/economics producers remain disconnected. The R5.2.1 screener MVP
+  is now accepted and deployed; saved-screen alert promotion, R5.3 and the
   integrated R11 workload remain pending and unproven.
 
 ## Global admission caps and remaining work
@@ -188,7 +194,7 @@ measured evidence.
 | Running paper robots | 100 | 4 | reject new start; existing robots remain controllable | per-owner cap exists; global cap planned |
 | Outstanding research jobs | 200 | 5, with 1 running | reject submission with retry hint; never enqueue without bound | per-owner cap exists; global cap planned |
 | Research execution | 2 active tasks initially | 1 | fair queueing; tune only after profiling | implemented |
-| Technical screener runs | 4 active; 250 symbols per preset | 1 active | queue fairly or reject; minimum scheduled interval 60 seconds | R5.2 pending |
+| Technical screener runs | 4 active; 250 symbols per preset | 1 active | queue fairly or reject; minimum scheduled interval 60 seconds | R5.2.1 accepted/deployed on schema 14 as on-demand compute jobs (5-active-per-owner job quota, 40 presets/owner, 400 global, universe ≤200); scheduled screens and R11 load proof pending |
 | Active generic price-alert rules | 480 | 100 active; 200 non-archived and 400 total history rows | reject activation/create before exceeding the cap; archive always remains available | R5.1 accepted/deployed on production schema 13; R11 load proof pending |
 | Alert evaluation sweep | 500 claims; 16 unique public reads, eight/provider, four concurrent | owner-fair claims | coalesce equal scope/cursor reads; capacity-defer saturated-provider work without starving the other provider | R5.1 accepted/deployed; R11 load proof pending |
 | Telegram deliveries | lower of provider budget or 20 sends/second | 2 sends/second | token-bucket delay, retry/backoff and dead-letter state | R5.3 pending; unavailable in R5.1 |

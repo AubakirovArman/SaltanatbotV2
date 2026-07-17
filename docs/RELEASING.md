@@ -11,10 +11,13 @@ SaltanatbotV2 publishes the same built application shape through four maturity c
 
 Only a pushed, supported Git tag creates a GitHub Release. Manual runs build attestable artifacts without inventing or moving a Git tag.
 
-Accepted production is now the R5.1 PostgreSQL-schema-13 baseline: protected release slot
-r5a-schema13-66394fd built from commit 66394fd38765d8da36174411cecd95a33fda1ea0, with exact-SHA
-Actions run 29574600648 green on 6/6 jobs. The additional gate below passed for that exact
-commit; the acceptance record is [R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md). See
+Accepted production is now the R5.2.1 PostgreSQL-schema-14 baseline: protected release slot
+r5b-schema14-20be5b1 built from commit 20be5b1d2fb87df38cc298953dfe7a2f414dd831, with exact-SHA
+Actions run 29584556266 green on 6/6 jobs; the acceptance record is
+[R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md). It supersedes the R5.1
+PostgreSQL-schema-13 baseline: protected release slot r5a-schema13-66394fd built from commit
+66394fd38765d8da36174411cecd95a33fda1ea0, with exact-SHA Actions run 29574600648 green on
+6/6 jobs and its acceptance record in [R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md). See
 [Owner-scoped server alerts](./ALERTS.md).
 
 ## Produced assets
@@ -85,6 +88,12 @@ In addition to the ordinary release sequence:
 5. create and verify a post-upgrade paired generation and restore it into new isolated resources;
 6. record replacement-only rollback evidence to a new database/runtime pair. Never prove rollback
    by deleting schema-13 data, downgrading the migration ledger or running R4 on schema 13.
+
+R5.2.1/schema 14 acceptance: the same gate template was executed for commit
+20be5b1d2fb87df38cc298953dfe7a2f414dd831 against migration 14 (`owner_screener_presets`), whose
+checksum must be exactly
+`0d7f90cadfa230c7b20fcbe03d7432d71add45760c1a3379ee2362e206c102f3`; the execution is recorded
+in [R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md).
 
 The announcement must state that R5.1 remains notification-only, uses fixed conservative beta
 limits and is not R11 evidence for 100 simultaneous users. It must also state that this pre-HTTPS

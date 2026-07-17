@@ -63,31 +63,38 @@ Gate, rehearsal and cutover evidence, including exact-SHA GitHub Actions run
 behavior and current limits are documented in
 [Owner-scoped server alerts](./ALERTS.md).
 
-## R5.2.1 technical screener — in progress
+## R5.2.1 technical screener accepted and deployed — 2026-07-17
 
-R5.2.1 is being implemented in the working tree on top of accepted R5.1. It is
-**not accepted, not released and not deployed**; no gate, CI, recovery-drill or
-cutover evidence exists yet, and the additive PostgreSQL schema-14
-`screener_presets` migration has not run in production. The increment under
-implementation covers:
-
-- [ ] Strict `screener-definition/run-request/run-result/preset` v1 contracts
+- [x] Strict `screener-definition/run-request/run-result/preset` v1 contracts
   shared by the browser and backend.
-- [ ] Owner-scoped PostgreSQL preset persistence (schema 14) with client-ID
+- [x] Owner-scoped PostgreSQL preset persistence (schema 14) with client-ID
   idempotency, revision fences, archive and 40-per-owner/400-global beta
   quotas.
-- [ ] On-demand runs through the existing compute-job queue (`kind: screener`)
+- [x] On-demand runs through the existing compute-job queue (`kind: screener`)
   with a pure closed-candle indicator engine, fail-closed unavailability and
   deterministic bounded results.
-- [ ] EN/RU/KK technical scanner mode with presets, honest run states and
+- [x] EN/RU/KK technical scanner mode with presets, honest run states and
   click-to-chart carrying symbol, timeframe and indicator context.
-- [ ] Unit/route/integration/worker/browser/E2E test gates and documentation.
+- [x] Unit/route/integration/worker/browser/E2E test gates and documentation.
+
+Production now runs PostgreSQL schema 14 (additive migration 14
+`owner_screener_presets`) and the unchanged trading SQLite schema 9 from
+protected slot `r5b-schema14-20be5b1` at commit
+`20be5b1d2fb87df38cc298953dfe7a2f414dd831` (a test fix on top of feature
+commit `d42210022dd38e17aa002d140e489acd0fbc30a5`), still on port 4180 in the
+`public-http-paper` runtime. Exact-SHA GitHub Actions run `29584556266` passed
+all 6/6 jobs; an earlier revision `d422100` failed CI run `29583889332` on
+migration-chain assertions and was fixed forward before any production change.
+The recovery rehearsal included an end-to-end screener proof on the isolated
+replacement pair: a preset was created and a run executed via a compute job
+against live Binance closed candles with 30/30 symbols evaluated, 30 matched
+and 0 unavailable. Gate, rehearsal and cutover evidence is recorded in
+[R5.2.1 technical screener evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md).
 
 Scheduled screens, screen-to-alert promotion (reserved rule kind `screener`)
-and a Bybit-primary universe are explicitly out of this increment. Intended
-behavior is documented in [On-demand technical screener](./SCREENER.md);
-acceptance evidence will be recorded here by the release orchestrator only
-after the full gate passes.
+and a Bybit-primary universe remain explicitly outside this increment.
+Canonical behavior is documented in
+[On-demand technical screener](./SCREENER.md).
 
 ## Delivered slices (not full roadmap completion)
 

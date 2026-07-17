@@ -4,11 +4,43 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## Accepted R5.2.1 release: PostgreSQL schema 14
+
+R5.2.1 was accepted and deployed on 2026-07-17 from commit
+`20be5b1d2fb87df38cc298953dfe7a2f414dd831` after GitHub Actions run `29584556266` completed all
+6 required jobs successfully. Production now runs PostgreSQL schema 14 and unchanged trading
+SQLite schema 9 from protected slot `r5b-schema14-20be5b1`
+([R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md)). An earlier candidate revision
+`d422100` failed exact-SHA CI run `29583889332` on migration-chain assertions and was fixed
+forward to `20be5b1` before any production change. Nothing in this section replaces, edits or
+extends the R5.1 and R4 acceptance evidence below.
+
+Schema 14 is one atomic, advisory-lock-protected PostgreSQL migration named
+`owner_screener_presets`. Its exact checksum is
+`0d7f90cadfa230c7b20fcbe03d7432d71add45760c1a3379ee2362e206c102f3`.
+It adds one table, `screener_presets`: owner-scoped unique preset and client IDs, a size-checked
+`jsonb` definition, a definition hash, positive revisions and an archive timestamp. The migration
+is additive and touches no schema-13 object. Screener runs are ordinary owner-scoped compute jobs
+under the existing five-active-per-owner quota and 30-day/200-artifact/256 MiB retention; presets
+are limited to 40 active per owner, 400 globally active and a universe of at most 200 symbols.
+These are conservative beta limits, not R11 capacity evidence for 100 simultaneous users. See
+[On-demand technical screener](./SCREENER.md).
+
+The accepted cutover repeated the schema-13 discipline: pre-upgrade paired generation `281b88c8`
+(schema 13) with its isolated restore drill, API-first migration with checksum verification and a
+no-op restart, worker-second activation, then post-upgrade paired generation `b18d3380`
+(schema 14) with its own drill. The rehearsal included an end-to-end screener proof on the
+isolated replacement pair: a preset was created and a run executed through a compute job against
+live Binance closed candles, evaluating 30/30 symbols with 30 matched and 0 unavailable. The
+stopped rollback source `bee7eced` and the replacement-only rollback pair are retained. There is
+no in-place downgrade: never delete schema-14 rows, drop the `screener_presets` table or
+decrement `schema_migrations` to roll back.
+
 ## Accepted R5.1 release: PostgreSQL schema 13
 
 R5.1 was accepted and deployed on 2026-07-17 from commit
 `66394fd38765d8da36174411cecd95a33fda1ea0` after GitHub Actions run `29574600648` completed all
-6 required jobs successfully. Production now runs PostgreSQL schema 13 and unchanged trading
+6 required jobs successfully. Production moved to PostgreSQL schema 13 and unchanged trading
 SQLite schema 9 from protected slot `r5a-schema13-66394fd`
 ([R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)).
 Nothing in this section replaces, edits or extends the immutable R4 acceptance evidence below.

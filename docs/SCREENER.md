@@ -240,6 +240,9 @@ The release gate includes:
 - browser client, workspace and EN/RU/KK localization tests plus the
   end-to-end screen-to-chart journey with accessibility checks.
 
-R5.2.1 is an in-progress increment; acceptance and deployment are recorded
-separately in [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md). Alert
-promotion from screener rows and scheduled screens remain future work.
+R5.2.1 is accepted and deployed: production runs PostgreSQL schema 14 from
+protected slot `r5b-schema14-20be5b1` (commit
+`20be5b1d2fb87df38cc298953dfe7a2f414dd831`, exact-SHA CI run `29584556266`,
+6/6 jobs). The acceptance and cutover record is
+[R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md). Alert promotion
+from screener rows and scheduled screens remain future work.

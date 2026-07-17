@@ -6,11 +6,18 @@ jobs successful, protected slot `r4c-schema12-bb455fa`, PostgreSQL schema 12 and
 schema 9. Exact-release recovery evidence passed. The supported runtime profile remains
 `public-http-paper`; HTTPS and private/live execution are outside this release.
 
-R5.1 is now accepted and deployed. Production runs PostgreSQL schema 13 for owner-scoped alerts
+R5.1 is accepted and deployed. Production moved to PostgreSQL schema 13 for owner-scoped alerts
 from protected slot `r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`,
 with exact-SHA GitHub Actions run `29574600648` green on 6/6 jobs; the cutover record is
 [R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md). See
 [Owner-scoped server alerts](./ALERTS.md).
+
+R5.2.1 is now accepted and deployed. Production runs PostgreSQL schema 14 for owner-scoped
+screener presets from protected slot `r5b-schema14-20be5b1` at commit
+`20be5b1d2fb87df38cc298953dfe7a2f414dd831`, with exact-SHA GitHub Actions run `29584556266` green
+on 6/6 jobs; the cutover record is
+[R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md). See
+[On-demand technical screener](./SCREENER.md).
 
 SaltanatbotV2 is configured mostly at runtime through the app itself. PostgreSQL stores accounts,
 revocable sessions, workspaces, research jobs and the R4 durable executor-command queue. SQLite
@@ -350,6 +357,17 @@ Production moved to schema 13 after the procedure in
 [Migration notes](./MIGRATIONS.md#accepted-r51-release-postgresql-schema-13) was executed
 and accepted for the exact release.
 
+### R5.2.1 PostgreSQL schema 14
+
+The release adds the owner-scoped `screener_presets` table with a size-checked `jsonb` definition,
+a definition hash, positive revisions and an archive timestamp. Its exact migration checksum is
+`0d7f90cadfa230c7b20fcbe03d7432d71add45760c1a3379ee2362e206c102f3`.
+The same checksum-locked chain rule applies: there is no supported flag to skip schema 14,
+downgrade to 13 in place or delete screener presets as a rollback shortcut. Production moved to
+schema 14 after the procedure in
+[Migration notes](./MIGRATIONS.md#accepted-r521-release-postgresql-schema-14) was executed and
+accepted for the exact release.
+
 ## Dormant private-live credential contract
 
 > **Not an operator procedure for this release.** `public-http-paper` rejects exchange-account and
@@ -491,10 +509,11 @@ instead of decrypting under the wrong tenant.
 
 ## Production deployment
 
-The instructions below describe the accepted schema-13 production shape. The accepted R5.1
+The instructions below describe the accepted schema-14 production shape. The accepted R5.1
 cutover kept both application processes stopped, verified the pre-upgrade paired generation and its
 isolated restore, then started only the exact release API to migrate 12 to 13, verified the
-checksum and a no-op API restart, and only then started the matching research worker. Never start
+checksum and a no-op API restart, and only then started the matching research worker. The accepted
+R5.2.1 cutover repeated the same API-first discipline to migrate 13 to 14. Never start
 the worker first against a schema being upgraded. HTTP remains transport-insecure throughout this
 release; a database migration does not provide TLS.
 

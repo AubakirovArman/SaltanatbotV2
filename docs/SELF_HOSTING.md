@@ -11,9 +11,17 @@ backup/verify/isolated-restore/drill and post-migration recovery evidence passed
 R5.1 is accepted and deployed on the production installation. Its migration advanced PostgreSQL
 from schema 12 to 13 for owner-scoped server alerts after the exact release commit
 `66394fd38765d8da36174411cecd95a33fda1ea0` completed the backup, isolated-restore and cutover
-procedure below; production now runs protected slot `r5a-schema13-66394fd`, still on port 4180
+procedure below; production then ran protected slot `r5a-schema13-66394fd`, still on port 4180
 ([R5.1 evidence](./evidence/R5_1_OWNER_ALERTS.md)). The accepted R4 evidence is immutable and is
 not evidence for R5.1. See [Owner-scoped server alerts](./ALERTS.md).
+
+R5.2.1 is accepted and deployed on the production installation. Its migration advanced PostgreSQL
+from schema 13 to 14 for owner-scoped screener presets after the exact release commit
+`20be5b1d2fb87df38cc298953dfe7a2f414dd831` completed the same backup, isolated-restore and cutover
+procedure; production now runs protected slot `r5b-schema14-20be5b1`, still on port 4180
+([R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md)). The accepted R4 and R5.1 evidence
+is immutable and is not evidence for R5.2.1. See
+[On-demand technical screener](./SCREENER.md).
 
 SaltanatbotV2 remains self-hostable and does not require an OpenAI account, an OpenAI package, or
 any project-owned cloud service. PostgreSQL stores users, browser sessions, named workspaces,
@@ -541,10 +549,14 @@ installation `TRADING_LEGACY_OWNER_USER_ID` is unnecessary.
 
 ### R5.1 schema 13 cutover
 
-This procedure was executed and accepted on 2026-07-17; production has moved to schema 13 from
-protected slot `r5a-schema13-66394fd`. It remains the template for the next schema upgrade. The
-schema-13 checksum is
-`1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`.
+This procedure was executed and accepted on 2026-07-17, and was repeated the same day for the
+exact R5.2.1 release, whose migration advanced schema 13 to 14; production has moved to schema 14
+from protected slot `r5b-schema14-20be5b1`
+([R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md)). It remains the template for the
+next schema upgrade. The schema-13 checksum is
+`1419c56fb6d0ccd5ff3c4feee3aa310f71f767bec00ff13a7078bc051e235f02`; the schema-14
+(`owner_screener_presets`) checksum is
+`0d7f90cadfa230c7b20fcbe03d7432d71add45760c1a3379ee2362e206c102f3`.
 
 1. Build and test the exact R5.1 commit without changing the running release.
 2. Stop this project's API and research worker. Create and verify one paired project-recovery

@@ -4,6 +4,7 @@ Last full repository documentation audit: **2026-07-15**
 Last focused R3.3 release/cutover reconciliation: **2026-07-17**
 Last focused R4 release/cutover reconciliation: **2026-07-17** (`bb455fa`, CI `29560112312` 6/6)
 Last focused R5.1 release/cutover reconciliation: **2026-07-17** (`66394fd`, CI `29574600648` 6/6)
+Last focused R5.2.1 release/cutover reconciliation: **2026-07-17** (`20be5b1`, CI `29584556266` 6/6)
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -15,7 +16,7 @@ their source contracts, and user-facing claims were compared with the current im
 | Document | Audience | Status | Last verified |
 | --- | --- | --- | --- |
 | [README](../README.md) | users/contributors | current | 2026-07-14 |
-| [Architecture](ARCHITECTURE.md) | contributors | accepted deployment through PostgreSQL schema 13 / trading SQLite schema 9 | 2026-07-17 |
+| [Architecture](ARCHITECTURE.md) | contributors | accepted deployment through PostgreSQL schema 14 / trading SQLite schema 9 | 2026-07-17 |
 | [Modular architecture](MODULAR_ARCHITECTURE.md) | contributors | current | 2026-07-11 |
 | [API reference](API.md) | integrators | current accepted API including the canonical R4 paper-portfolio contract | 2026-07-17 |
 | [Generated endpoint index](API_ENDPOINTS.generated.md) | integrators | generated/current; 159 HTTP routes including nine owner-scoped research-only alert routes | 2026-07-16 |
@@ -28,7 +29,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Configuration](CONFIGURATION.md) | operators | current through typed readiness limits and accepted SQLite-9 inventory | 2026-07-17 |
 | [Self-hosting with account authentication](SELF_HOSTING.md) | operators/forks | current Docker/direct-host paths plus accepted R5.1 migration boundary | 2026-07-17 |
 | [Capacity plan for 100 users](CAPACITY_100_USERS.md) | operators/maintainers | accepted R4 per-owner command foundation; 100-user/global proof remains pending for R11 | 2026-07-17 |
-| [Backup and restore](BACKUP_RESTORE.md) | operators | accepted paired recovery workflow, schema-13 inventory and isolated drill | 2026-07-17 |
+| [Backup and restore](BACKUP_RESTORE.md) | operators | accepted paired recovery workflow, schema-13/14 inventories and isolated drills | 2026-07-17 |
 | [Pine coverage](PINE_COVERAGE.md) | users/contributors | current | 2026-07-11 |
 | [Exchange capabilities](EXCHANGE_CAPABILITIES.md) | operators/users | current; non-paper execution is a dormant future reference and unreachable in `public-http-paper` | 2026-07-17 |
 | [Generated Pine matrix](PINE_COMPATIBILITY.generated.md) | users/contributors | generated/current | 2026-07-11 |
@@ -42,13 +43,14 @@ their source contracts, and user-facing claims were compared with the current im
 | [R3.3 onboarding and operations evidence](evidence/R3_3_ONBOARDING_OPERATIONS.md) | operators/release reviewers | accepted exact-commit CI, recovery and production cutover record | 2026-07-17 |
 | [R4 canonical paper portfolios evidence](evidence/R4_PAPER_PORTFOLIOS.md) | operators/release reviewers | accepted exact-commit CI, paired recovery, protected slot and production cutover record | 2026-07-17 |
 | [R5.1 owner-scoped price alerts evidence](evidence/R5_1_OWNER_ALERTS.md) | operators/release reviewers | accepted exact-commit CI, paired recovery, protected slot and production cutover record | 2026-07-17 |
+| [R5.2.1 technical screener evidence](evidence/R5_2_1_TECHNICAL_SCREENER.md) | operators/release reviewers | accepted exact-commit CI, paired recovery, protected slot and production cutover record | 2026-07-17 |
 | [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R4 delivered and R5 next/pending | 2026-07-17 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |
 | [Accessibility baseline](ACCESSIBILITY.md) | users/contributors | current automated baseline including R4 center/drawer/mobile evidence; manual AT/Opera still pending | 2026-07-17 |
 | [Contributor map](CONTRIBUTOR_MAP.md) | contributors | current | 2026-07-11 |
 | [Asset provenance policy](ASSET_POLICY.md) | contributors | current | 2026-07-11 |
-| [Migration notes](MIGRATIONS.md) | operators/contributors | current through accepted PostgreSQL-13/SQLite-9; recovery inventory and acceptance drill verified | 2026-07-17 |
+| [Migration notes](MIGRATIONS.md) | operators/contributors | current through accepted PostgreSQL-14/SQLite-9; recovery inventory and acceptance drill verified | 2026-07-17 |
 | [Application startup recovery](STARTUP_RECOVERY.md) | users/operators | current; production-build browser-tested | 2026-07-13 |
 | [Distribution incident response](INCIDENT_RESPONSE.md) | operators/maintainers | current; drill-tested | 2026-07-13 |
 | [Offline local research](OFFLINE_RESEARCH.md) | users/operators | current; production-build browser-tested | 2026-07-13 |
