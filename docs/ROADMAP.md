@@ -299,6 +299,59 @@ See the [trading guide](./TRADING.md),
 [canonical paper portfolios](./PAPER_PORTFOLIOS.md) and the detailed
 [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
 
+## Accepted R7 release — grid paper robot
+
+Production now runs the accepted R7 grid paper robot on the shared paper
+execution contract from protected slot `r7a-schema16-baf4217` (commit
+`baf42178d33043fde0965d008aee9f09462df699`, exact-SHA CI run `29636312303`,
+`6/6`). The release adds no migration: PostgreSQL schema 16 and trading
+SQLite schema 9 are unchanged, the runtime remains `public-http-paper` with
+the same three project-owned units and the API still serves port 4180.
+
+The release adds a third additive robot kind `grid` next to strategy and
+DCA robots — legacy create payloads hash identically. A grid robot embeds
+versioned `grid-params-v1` parameters (an arithmetic or geometric level
+ladder inside strict 2–50 bounds, neutral/long/short modes, per-level
+quote size, cooldown between refills, optional stop-loss and cycle cap,
+and an outside-range pause-or-stop action) driven by the pure versioned
+`grid-state-v1` machine; level prices come from one shared deterministic
+helper used by the machine, the server and the UI preview alike. Every
+transition carries the deterministic idempotency key
+`grid:<botId>:<epochCycle>:<ordinal>` (also the order clientId) and
+persists a durable snapshot, so journal-deduplicated restart recovery
+never re-places an existing clientId, and gap batches settle in one
+consolidated placement round. Fills reuse the R6 `averaging-v1` behavior,
+and realized grid PnL stays strictly separated from the evidence-aware
+inventory PnL. The worst-case capital bound
+`gridLevels · orderQuote · (1 + feePct/100)` is enforced server-side at
+creation (`WORST_CASE_EXCEEDS_ALLOCATION`) and previewed live in the
+create form together with the pre-start level-price list. Everything
+stays paper-only research: it cannot trade live, borrow, change margin,
+read exchange credentials or grant trading authority.
+
+Acceptance passed the exact-SHA CI gate and the roadmap §10 criterion on
+the real adapter/ledger path: a 17-bar golden replay with one bar gapping
+across four grid levels settled the gap in a single consolidated
+placement round with a contiguous, duplicate-free order clientId set — a
+price gap never creates a cascade; a mid-cycle restart reached the
+identical terminal state, events and order clientId set as the
+uninterrupted run — restart never duplicates levels or reserves; a
+double drive produced byte-identical event streams,
+`replayPaperLedger(events)` equaled the final adapter state and committed
+capital never exceeded the worst-case bound. One pre-acceptance bug — the
+browser read-model parser rejecting negative (short) inventory
+quantities — was found by the test pass and fixed before acceptance, and
+the paired no-migration backup/recovery drill passed; see the recorded
+[R7 acceptance evidence](./evidence/R7_GRID_PAPER_ROBOT.md). The next
+pending increment is R8 (unified multi-leg paper execution integrating
+the existing paperMultiLeg module with the common ledger, capital
+reservations and market-driven fills); the R11 integrated 100-user
+capacity proof remains pending and unproven.
+
+See the [trading guide](./TRADING.md),
+[canonical paper portfolios](./PAPER_PORTFOLIOS.md) and the detailed
+[pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
 ## Explicitly deferred external validation
 
 | Item | Why deferred | Required before claim |

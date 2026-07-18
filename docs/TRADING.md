@@ -94,10 +94,11 @@ simulation like every other robot here. Exact parameters, formulas, the cycle st
 averaging fill model, determinism and restart semantics:
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
-### Grid robot type (R7, in progress)
+### Grid robot type (R7, accepted)
 
-R7 — **in progress, not accepted**: the release gate has not run for it and production still
-serves the accepted R6 release. The create form's robot-type toggle gains a third option
+R7 — **accepted and deployed**; see the recorded
+[R7 acceptance evidence](./evidence/R7_GRID_PAPER_ROBOT.md). The create form's robot-type
+toggle gains a third option
 (**Strategy | DCA | Grid**). The grid panel replaces the strategy picker with the
 `grid-params-v1` inputs — mode (neutral/long/short), spacing (arithmetic/geometric), lower/upper
 bound, level count, per-level quote size, outside-range action, optional stop-loss price and

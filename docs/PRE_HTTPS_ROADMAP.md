@@ -13,13 +13,13 @@ No R0-R12 release depends on a domain, certificate, reverse proxy or TLS. That
 boundary changes only if the project owner separately initiates and approves a
 new HTTPS/security roadmap.
 
-Current production status is the accepted R6 release (the shared paper
-execution contract and the DCA paper robot) on PostgreSQL schema 16 and
-unchanged trading SQLite schema 9, deployed with no migration from protected
-slot `r6a-schema16-e2411ab` at commit
-`e2411ab2f0b4540200089af8128304f71d3f73e0`. The acceptance record is
-[R6 DCA paper robot](./evidence/R6_DCA_PAPER_ROBOT.md); with it R6 is
-complete and the next pending increment is R7.
+Current production status is the accepted R7 release (the grid paper robot
+on the shared execution contract) on PostgreSQL schema 16 and unchanged
+trading SQLite schema 9, deployed with no migration from protected slot
+`r7a-schema16-baf4217` at commit
+`baf42178d33043fde0965d008aee9f09462df699`. The acceptance record is
+[R7 grid paper robot](./evidence/R7_GRID_PAPER_ROBOT.md); with it R7 is
+complete and the next pending increment is R8.
 
 > Important: HTTP does not protect passwords or session cookies from network
 > interception. Before HTTPS, expose the instance only through a private
@@ -315,9 +315,9 @@ VoiceOver/NVDA/TalkBack records are complete.
 **Status:** delivered and deployed in R3 on schema 11. R3.1, R3.2 and R3.3 with
 its required O1 slice remain accepted historical increments. Production later
 advanced through the accepted R4 schema-12/schema-9, R5.1 schema-13, R5.2.1
-schema-14, R5.3a schema-14, R5.3b-1 schema-15, R5.3b-2 schema-16 and R5
-chart research tools releases and now runs the accepted R6 DCA paper robot
-release on unchanged schema 16.
+schema-14, R5.3a schema-14, R5.3b-1 schema-15, R5.3b-2 schema-16, R5 chart
+research tools and R6 DCA paper robot releases and now runs the accepted R7
+grid paper robot release on unchanged schema 16.
 
 **Baseline:**
 
@@ -515,9 +515,9 @@ state, backup scope and failure test before its owning release is accepted.
 trading SQLite schema 9 from protected slot `r4c-schema12-bb455fa` at commit
 `bb455facdfe5a1b3cabe15490c86c299ea684ee7`; exact-SHA GitHub Actions run
 `29560112312` passed all 6/6 jobs. Production has since advanced through the
-accepted R5.1, R5.2.1, R5.3a, R5.3b-1, R5.3b-2 and R5 chart research tools
-releases to the accepted R6 DCA paper robot release on schema 16; the
-runtime remains `public-http-paper`.
+accepted R5.1, R5.2.1, R5.3a, R5.3b-1, R5.3b-2, R5 chart research tools and
+R6 DCA paper robot releases to the accepted R7 grid paper robot release on
+schema 16; the runtime remains `public-http-paper`.
 Operator details are in
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
@@ -571,9 +571,10 @@ tools (text notes and the parallel channel) are all accepted and deployed:
 the completed R5 release shipped on PostgreSQL schema 16 and unchanged
 trading SQLite schema 9 from protected slot `r5f-schema16-2ff6101` at commit
 `2ff6101b950b42a77c378233dabecf1a5ee76ce7`; exact-SHA GitHub Actions run
-`29629886774` passed all 6/6 jobs. Production has since advanced to the
-accepted R6 DCA paper robot release on unchanged schema 16, and the runtime
-remains `public-http-paper` on port 4180. R5.1 was previously deployed
+`29629886774` passed all 6/6 jobs. Production has since advanced through the
+accepted R6 DCA paper robot release to the accepted R7 grid paper robot
+release on unchanged schema 16, and the runtime remains `public-http-paper`
+on port 4180. R5.1 was previously deployed
 from protected slot `r5a-schema13-66394fd` at commit
 `66394fd38765d8da36174411cecd95a33fda1ea0` with exact-SHA run
 `29574600648` (6/6 jobs), R5.2.1 from protected slot
@@ -836,8 +837,9 @@ closed.
 PostgreSQL schema 16 and trading SQLite schema 9 from protected slot
 `r6a-schema16-e2411ab` at commit
 `e2411ab2f0b4540200089af8128304f71d3f73e0`; exact-SHA GitHub Actions run
-`29633743310` passed all 6/6 jobs and the runtime remains `public-http-paper`
-on port 4180 across the three systemd units.
+`29633743310` passed all 6/6 jobs. Production has since advanced to the
+accepted R7 grid paper robot release on unchanged schema 16, and the runtime
+remains `public-http-paper` on port 4180 across the three systemd units.
 
 **Delivered — the shared paper execution contract and the DCA robot:**
 
@@ -871,23 +873,52 @@ duplicate order or reservation.
 
 ## R7 — Grid paper robot
 
-**Status:** planned.
+**Status:** delivered, accepted and deployed with no migration on unchanged
+PostgreSQL schema 16 and trading SQLite schema 9 from protected slot
+`r7a-schema16-baf4217` at commit
+`baf42178d33043fde0965d008aee9f09462df699`; exact-SHA GitHub Actions run
+`29636312303` passed all 6/6 jobs and the runtime remains `public-http-paper`
+on port 4180 across the three systemd units.
 
-**Baseline:** generic paper lifecycle components exist; a completed Grid product
-is not claimed.
+**Delivered — the grid robot on the shared execution contract:**
 
-**Remaining:** arithmetic/geometric levels, neutral/long/short paper modes,
-inventory/capital/order-count limits, recenter and outside-range behavior,
-preview on chart, fee/partial-fill/gap/restart handling, and separate grid versus
-inventory PnL.
+- `grid-params-v1` covers arithmetic/geometric level ladders (2-50 levels),
+  neutral/long/short modes, an outside-range pause or stop action, an
+  optional stop-loss and cycle cap, with one shared deterministic
+  level-price helper and the worst-case math
+  `gridLevels · orderQuote · (1 + feePct/100)` used by the machine, the
+  server and the UI preview alike;
+- the pure `grid-state-v1` machine carries the idempotency key
+  `grid:<botId>:<epochCycle>:<ordinal>` (also the order clientId) on every
+  transition, settles gap batches in one consolidated placement round and
+  recovers from restart through a journal-deduplicated resume that never
+  re-places an existing clientId;
+- fills reuse the R6 `averaging-v1` behavior, and robot kind `grid` is
+  additive — legacy create payloads hash identically;
+- the worst-case bound is enforced server-side
+  (`WORST_CASE_EXCEEDS_ALLOCATION`) with a live preview and a pre-start
+  level-price preview list, and realized grid PnL is separated from
+  evidence-aware inventory PnL in en/ru/kk.
 
 **Dependencies:** R4 portfolio/journal and R6 shared robot lifecycle lessons.
 
-**Evidence:** bounded-level property tests, gap/cascade scenarios, partial-fill
-fixtures, restart/recovery tests and mobile preview/management E2E.
+**Acceptance evidence:** the release criterion passed by golden replay on the
+real adapter/ledger path — a four-level gap bar settled in a single
+consolidated placement round with a contiguous, duplicate-free clientId set,
+so a price gap never creates a cascade; a mid-cycle restart reproduced the
+identical clientId set, events and terminal state as the uninterrupted run,
+so restart never duplicates levels or reserves; the double drive is
+byte-identical, replay equals the final durable state and the worst-case
+capital bound was never exceeded and is previewed before confirmation. One
+pre-acceptance defect (the browser read-model parser rejected negative
+short-inventory quantities) was fixed before acceptance, and the recovery
+chronology retained pre-cutover generation `0ee96dbe` and post-cutover
+generation `cb3702ac` with its passed drill. The accepted release record is
+[R7 grid paper robot](./evidence/R7_GRID_PAPER_ROBOT.md).
 
-**Exit criteria:** worst-case capital is visible before start, a gap cannot
-create an unbounded cascade, and restart cannot duplicate levels or reserves.
+**Exit criteria (met):** worst-case capital is visible before start, a gap
+cannot create an unbounded cascade, and restart cannot duplicate levels or
+reserves.
 
 ## R8 — spread trading and market-inefficiency research (paper only)
 
@@ -1133,7 +1164,7 @@ and stabilization.
 | R4 | “Running” and paper portfolio/journal contract | R1-R3 | delivered |
 | R5 | R5.1 generic price alerts, R5.2.1 technical screener MVP, R5.3a saved-screen→alert promotion, R5.3b-1 Telegram delivery/chat binding, R5.3b-2 Telegram paper commands and the chart research tools (text notes and parallel channel) all accepted | R3-R4 | delivered |
 | R6 | Shared paper execution contract and DCA paper robot accepted | R4-R5 | delivered |
-| R7 | Grid paper | R4-R6 | 4-5 |
+| R7 | Grid paper robot on the shared execution contract accepted | R4-R6 | delivered |
 | R8 | Spread/inefficiency paper research | R4-R5 | 4-6 |
 | R9 | Generator/genetic optimizer | R1 + R4 portfolio metrics + canonical IR/dataset/backtest | 5-8 |
 | R10A | Funding/OI/MTF + L2 capture/storage/quality | R1 + public data contracts | 3-5 plus 4-8 calendar weeks soak |
@@ -1177,12 +1208,19 @@ and stabilization.
    determinism, worst-case capital, restart and recovery gates passed, and
    the exact-SHA acceptance and cutover evidence is recorded in
    [R6 DCA paper robot](./evidence/R6_DCA_PAPER_ROBOT.md).
-9. R7 — the Grid paper robot on the same paper ledger and state machine — is
-   the next pending increment; keep code for releases after the current
-   pending increment out of `main` and production until it is accepted.
+9. The R7 review is complete: the grid paper robot shipped without a
+   migration on the shared execution contract, its consolidated-gap,
+   restart-no-duplicate, worst-case capital and recovery gates passed, and
+   the exact-SHA acceptance and cutover evidence is recorded in
+   [R7 grid paper robot](./evidence/R7_GRID_PAPER_ROBOT.md).
+10. R8 — unified multi-leg paper execution integrating the existing
+    paperMultiLeg module with the common ledger, capital reservations and
+    market-driven fills — is the next pending increment; keep code for
+    releases after the current pending increment out of `main` and
+    production until it is accepted.
 
 Acceptance, publication to `main` and production cutover of the remaining work
-are strictly sequential from the next pending increment: R7 → R8 →
+are strictly sequential from the next pending increment: R8 →
 R9 → R10A → R10B → R11 →
 R12. Parallel work is allowed only inside the
 current increment after its contracts are fixed. Code or migrations for a later

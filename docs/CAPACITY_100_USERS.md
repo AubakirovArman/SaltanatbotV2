@@ -36,9 +36,14 @@ R5: SHA `2ff6101b950b42a77c378233dabecf1a5ee76ce7` passed CI run
 [R5 chart tools evidence](./evidence/R5_CHART_RESEARCH_TOOLS.md)). The R6
 shared paper execution contract and DCA robot is accepted and deployed
 with no migration: SHA `e2411ab2f0b4540200089af8128304f71d3f73e0` passed
-CI run `29633743310` (`6/6`) and production runs PostgreSQL schema 16 from
-protected slot `r6a-schema16-e2411ab` (see
-[R6 evidence](./evidence/R6_DCA_PAPER_ROBOT.md)). The quantified 100-user
+CI run `29633743310` (`6/6`) and was deployed in slot
+`r6a-schema16-e2411ab` (see
+[R6 evidence](./evidence/R6_DCA_PAPER_ROBOT.md)). The R7 grid paper robot
+is accepted and deployed with no migration: SHA
+`baf42178d33043fde0965d008aee9f09462df699` passed CI run `29636312303`
+(`6/6`) and production runs PostgreSQL schema 16 from protected slot
+`r7a-schema16-baf4217` (see
+[R7 evidence](./evidence/R7_GRID_PAPER_ROBOT.md)). The quantified 100-user
 proof, global executor cap and remaining cross-workload caps are still
 planned for R11.
 

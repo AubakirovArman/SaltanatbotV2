@@ -11,21 +11,21 @@ SaltanatbotV2 publishes the same built application shape through four maturity c
 
 Only a pushed, supported Git tag creates a GitHub Release. Manual runs build attestable artifacts without inventing or moving a Git tag.
 
-Accepted production is now the R6 DCA paper robot baseline: protected release slot
-r6a-schema16-e2411ab built from commit e2411ab2f0b4540200089af8128304f71d3f73e0, with exact-SHA
-Actions run 29633743310 green on 6/6 jobs; the acceptance record is
-[R6 DCA paper robot evidence](./evidence/R6_DCA_PAPER_ROBOT.md). The release carries no runtime
-migration — PostgreSQL schema 16 and the trading SQLite schema 9 are unchanged — and shipped
-under the same owner-only direct-main release gate template: exact-commit CI, the paired
+Accepted production is now the R7 grid paper robot baseline: protected release slot
+r7a-schema16-baf4217 built from commit baf42178d33043fde0965d008aee9f09462df699, with exact-SHA
+Actions run 29636312303 green on 6/6 jobs; the acceptance record is
+[R7 grid paper robot evidence](./evidence/R7_GRID_PAPER_ROBOT.md). The release carries no
+runtime migration — PostgreSQL schema 16 and the trading SQLite schema 9 are unchanged — and
+shipped under the same owner-only direct-main release gate template: exact-commit CI, the paired
 backup/isolated-restore rehearsal, a protected slot and the cutover. The next pending increment
-is R7. It supersedes the R5 chart research tools baseline (which completed R5): protected
-release slot r5f-schema16-2ff6101 built from commit 2ff6101b950b42a77c378233dabecf1a5ee76ce7,
-with exact-SHA Actions run 29629886774 green on 6/6 jobs and its acceptance record in
-[R5 chart research tools evidence](./evidence/R5_CHART_RESEARCH_TOOLS.md), which itself
-superseded the R5.3b-2 Telegram paper-command baseline: protected release slot
-r5e-schema16-17e12f1 built from commit 17e12f17933de5ffb047d63358a05fad8f0211f0, with exact-SHA
-Actions run 29625979877 green on 6/6 jobs and its acceptance record in
-[R5.3b-2 evidence](./evidence/R5_3B2_TELEGRAM_COMMANDS.md). See
+is R8. It supersedes the R6 DCA paper robot baseline: protected release slot
+r6a-schema16-e2411ab built from commit e2411ab2f0b4540200089af8128304f71d3f73e0, with exact-SHA
+Actions run 29633743310 green on 6/6 jobs and its acceptance record in
+[R6 DCA paper robot evidence](./evidence/R6_DCA_PAPER_ROBOT.md), which itself superseded the
+R5 chart research tools baseline (which completed R5): protected release slot
+r5f-schema16-2ff6101 built from commit 2ff6101b950b42a77c378233dabecf1a5ee76ce7, with exact-SHA
+Actions run 29629886774 green on 6/6 jobs and its acceptance record in
+[R5 chart research tools evidence](./evidence/R5_CHART_RESEARCH_TOOLS.md). See
 [Owner-scoped server alerts](./ALERTS.md).
 
 ## Produced assets

@@ -4,6 +4,19 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## Accepted R7 grid paper robot release: no migration
+
+The R7 grid paper robot release was accepted and deployed on 2026-07-18 from commit
+`baf42178d33043fde0965d008aee9f09462df699` after GitHub Actions run `29636312303` completed all
+6 required jobs successfully. It added no runtime migration: PostgreSQL stays at schema 16 and
+the trading SQLite at schema 9. The robot kind `grid` is additive — legacy strategy/DCA create
+payloads hash identically — and the grid rides the R6-delivered `averaging-v1` fill behavior,
+existing paper event types and settings snapshots. Production now runs protected slot
+`r7a-schema16-baf4217`, superseding `r6a-schema16-e2411ab` below. Paired recovery generations
+`0ee96dbe` (pre-cutover) and `cb3702ac` (post-cutover, isolated drill passed) were verified
+([R7 grid paper robot evidence](./evidence/R7_GRID_PAPER_ROBOT.md)). Nothing in this note
+replaces the accepted schema-16 migration record below.
+
 ## Accepted R6 DCA paper robot release: no migration
 
 The R6 shared paper execution contract and DCA robot release was accepted and deployed on

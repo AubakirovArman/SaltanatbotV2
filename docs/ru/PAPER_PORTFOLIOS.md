@@ -239,14 +239,15 @@ fail-closed, а не продолжает с угаданного состоян
 цена входа, следующая safety-цена, цель take-profit, cooldown) из того же durable snapshot;
 старые клиенты игнорируют дополнительное поле.
 
-## Grid paper-роботы (R7, в работе)
+## Grid paper-роботы (R7, принят)
 
-Статус R7: **в работе — не принят**. Раздел описывает grid-срез так, как он реализован в `main`;
-gate из [RELEASING.md](../RELEASING.md) — exact-commit CI, protected release slot, paired
-recovery rehearsal, cutover и acceptance record — для R7 не выполнялся, и production по-прежнему
-обслуживает принятый R6 release. Как и R6, R7 не меняет схемы PostgreSQL и SQLite: grid-роботы
-используют существующие типы paper-событий и settings snapshots, а каждый ledger до R7
-воспроизводится без изменений.
+Статус R7: **принят и развёрнут**. Release gate из [RELEASING.md](../RELEASING.md) —
+exact-commit CI run `29636312303` (`6/6`) на commit
+`baf42178d33043fde0965d008aee9f09462df699`, защищённый слот `r7a-schema16-baf4217`, paired
+recovery rehearsal и cutover — пройден; см. записанное
+[R7 acceptance evidence](../evidence/R7_GRID_PAPER_ROBOT.md). Как и R6, R7 не меняет схемы
+PostgreSQL и SQLite: grid-роботы используют существующие типы paper-событий и settings
+snapshots, а каждый ledger до R7 воспроизводится без изменений.
 
 Дискриминатор конфигурации paper-робота получает третье значение
 `kind: "strategy" | "dca" | "grid"`. Отсутствующий `kind` по-прежнему означает "strategy",

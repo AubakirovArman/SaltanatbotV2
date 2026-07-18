@@ -240,14 +240,15 @@ optional `dca` runtime-metadata section (cycle phase, safety orders filled/total
 next safety price, take-profit target, cooldown) derived from the same durable snapshot; old
 clients ignore the extra field.
 
-## Grid paper robots (R7, in progress)
+## Grid paper robots (R7, accepted)
 
-R7 status: **in progress — not accepted**. This section documents the grid robot slice as
-implemented on `main`; the [RELEASING.md](./RELEASING.md) gate — exact-commit CI, a protected
-release slot, the paired recovery rehearsal, cutover and acceptance record — has not run for R7,
-and production still serves the accepted R6 release. Like R6, R7 changes no PostgreSQL or SQLite
-schema: grid robots ride the existing paper event types and settings snapshots, and every pre-R7
-ledger replays unchanged.
+R7 status: **accepted and deployed**. The R7 release gate in [RELEASING.md](./RELEASING.md) —
+exact-commit CI run `29636312303` (`6/6`) at commit
+`baf42178d33043fde0965d008aee9f09462df699`, protected slot `r7a-schema16-baf4217`, paired
+recovery rehearsal and cutover — passed; see the recorded
+[R7 acceptance evidence](./evidence/R7_GRID_PAPER_ROBOT.md). Like R6, R7 changes no PostgreSQL
+or SQLite schema: grid robots ride the existing paper event types and settings snapshots, and
+every pre-R7 ledger replays unchanged.
 
 The paper robot config discriminator gains a third value, `kind: "strategy" | "dca" | "grid"`. An
 absent `kind` still means "strategy", so historical robots and old create payloads are unchanged.

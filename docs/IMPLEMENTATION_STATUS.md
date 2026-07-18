@@ -387,19 +387,21 @@ verified. Gate, rehearsal and cutover evidence is recorded in
 [R6 DCA paper robot evidence](./evidence/R6_DCA_PAPER_ROBOT.md).
 
 R7 (the Grid paper robot on the same ledger and golden-replay harness) is
-now in progress; see the next section.
+now also accepted and deployed; see the next section.
 
-## R7 grid paper robot — in progress, not accepted
+## R7 grid paper robot accepted and deployed — 2026-07-18
 
 This slice (roadmap R7) puts a Grid robot on the shared paper execution
 contract delivered by R6, reusing that foundation verbatim: the robot-kind
 discriminator, the `averaging-v1` fill behavior, settings-table machine
 snapshots, per-transition idempotency keys, the golden-replay harness, the
 worst-case preview pattern, engine kind dispatch and additive read-model
-runtime metadata. It changes no PostgreSQL or SQLite schema. This section
-is a work ledger, **not** an acceptance record: the
-[RELEASING.md](./RELEASING.md) gate has not run for R7, and production
-still serves the accepted R6 slot `r6a-schema16-e2411ab`.
+runtime metadata. It passed the full [RELEASING.md](./RELEASING.md) gate —
+exact-commit CI, a protected release slot, the paired
+backup/isolated-restore rehearsal and the production cutover — and was
+accepted and deployed on 2026-07-18. The increment changes no PostgreSQL
+or SQLite schema, and legacy strategy/DCA create payloads hash
+identically.
 
 - [x] Shared `grid-params-v1` contract (`packages/contracts/grid.ts`):
   exact fail-closed parser with the research-only safety envelope, the
@@ -432,15 +434,40 @@ still serves the accepted R6 slot `r6a-schema16-e2411ab`.
   [ru/PAPER_PORTFOLIOS.md](./ru/PAPER_PORTFOLIOS.md) and the
   [TRADING.md](./TRADING.md) / [ru](./ru/TRADING.md) /
   [kk](./kk/TRADING.md) guides.
-- [ ] Full R7 verification matrix consolidated green in exact-commit CI:
+- [x] Full R7 verification matrix consolidated green in exact-commit CI:
   contract goldens, machine suite (gap batches, pause/resume/stop
   variants, stop-loss, `maxCycles`, long/short, snapshot round-trip),
   golden replay driven twice byte-identically with a duplicate-free
   mid-cycle restart, command-handler round trip, frontend and e2e
-  journeys.
-- [ ] Release gate: exact-commit CI evidence, protected slot, paired
+  journeys. The roadmap §10 determinism criterion passed: the golden
+  replay produced byte-identical event streams twice, the four-level gap
+  bar settled in a single consolidated placement round with a contiguous
+  duplicate-free order clientId set (a price gap never creates a
+  cascade), a mid-cycle restart reached the identical terminal state with
+  the identical order clientId set as the uninterrupted run (restart
+  never duplicates levels or reserves), ledger replay equals the final
+  adapter state, and committed capital never exceeded the worst-case
+  bound, which is previewed in the create form before confirmation. One
+  pre-acceptance bug (the browser read-model parser rejected negative
+  short-grid inventory quantities) was found by the test pass and fixed
+  before acceptance.
+- [x] Release gate: exact-commit CI evidence, protected slot, paired
   backup/isolated-restore rehearsal, production cutover and acceptance
   record.
+
+Production now runs protected slot `r7a-schema16-baf4217` at commit
+`baf42178d33043fde0965d008aee9f09462df699`, still on port 4180 in the
+`public-http-paper` runtime with the same three project-owned units.
+Exact-SHA GitHub Actions run `29636312303` passed all 6/6 jobs. The
+release carries no migration: PostgreSQL schema 16 and the trading SQLite
+schema 9 are unchanged. Paired recovery generations `0ee96dbe`
+(pre-cutover) and `cb3702ac` (post-cutover, isolated drill passed) were
+verified. Gate, rehearsal and cutover evidence is recorded in
+[R7 grid paper robot evidence](./evidence/R7_GRID_PAPER_ROBOT.md).
+
+The next pending increment is R8 (unified multi-leg paper execution,
+integrating the existing paperMultiLeg module with the common ledger,
+capital reservations and market-driven fills).
 
 ## Delivered slices (not full roadmap completion)
 
