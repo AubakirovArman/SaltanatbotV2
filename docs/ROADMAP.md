@@ -68,9 +68,10 @@ accessibility/visual evidence; see the recorded
 price-alert control plane is not the older account-aware arbitrage
 research-alert policy/outbox: its engine-owned candidate/economics producers
 remain disconnected. The R5.2.1 technical screener MVP, the R5.3a screener
-alert promotion and the R5.3b-1 Telegram delivery worker are now accepted
-and deployed (see below); the R5.3b-2 Telegram commands and R11 integrated
-100-user capacity proof remain pending and unproven.
+alert promotion, the R5.3b-1 Telegram delivery worker and the R5.3b-2
+Telegram paper commands are now accepted and deployed (see below); the
+chart research tools and R11 integrated 100-user capacity proof remain
+pending and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md),
 [Russian](./ru/ALERTS.md), [Kazakh](./kk/ALERTS.md) and the detailed
@@ -100,10 +101,10 @@ evaluated, 30 matched, 0 unavailable against live Binance closed candles; see
 the recorded
 [R5.2.1 acceptance evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md).
 Saved-screen promotion into a server alert is now delivered by the accepted
-R5.3a release, and owner-bound Telegram delivery by the accepted R5.3b-1
-release (see below); the R5.3b-2 Telegram read commands, chart research
-tools and the R11 integrated 100-user capacity proof remain pending and
-unproven.
+R5.3a release, owner-bound Telegram delivery by the accepted R5.3b-1
+release and Telegram read commands by the accepted R5.3b-2 release (see
+below); the chart research tools and the R11 integrated 100-user capacity
+proof remain pending and unproven.
 
 See [On-demand technical screener](./SCREENER.md),
 [Russian](./ru/SCREENER.md), [Kazakh](./kk/SCREENER.md) and the detailed
@@ -131,9 +132,9 @@ backup/recovery drill, and the production journal shows the dedicated
 screener-alert worker lane running; see the recorded
 [R5.3a acceptance evidence](./evidence/R5_3A_SCREENER_ALERTS.md). The
 owner-bound Telegram binding/delivery worker is now delivered by the
-accepted R5.3b-1 release (see below); the R5.3b-2 Telegram commands, chart
-research tools and the R11 integrated 100-user capacity proof remain
-pending and unproven.
+accepted R5.3b-1 release and the Telegram paper commands by the accepted
+R5.3b-2 release (see below); the chart research tools and the R11
+integrated 100-user capacity proof remain pending and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md), [Russian](./ru/ALERTS.md),
 [Kazakh](./kk/ALERTS.md) and the detailed
@@ -164,8 +165,45 @@ upgrade/recovery rehearsal — including the notification-worker idle boot
 and the one-consume binding-code smoke — and the paired backup/recovery
 drills; see the recorded
 [R5.3b-1 acceptance evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md). The
-R5.3b-2 Telegram read commands, chart research tools and the R11 integrated
-100-user capacity proof remain pending and unproven.
+Telegram read commands are now delivered by the accepted R5.3b-2 release
+(see below); the chart research tools and the R11 integrated 100-user
+capacity proof remain pending and unproven.
+
+See [Owner-scoped server alerts](./ALERTS.md), [Russian](./ru/ALERTS.md),
+[Kazakh](./kk/ALERTS.md), [Self-hosting](./SELF_HOSTING.md) and the
+detailed [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
+## Accepted R5.3b-2 release
+
+Production now runs the accepted R5.3b-2 Telegram paper commands over the
+fenced executor from protected slot `r5e-schema16-17e12f1` (commit
+`17e12f17933de5ffb047d63358a05fad8f0211f0`, exact-SHA CI run `29625979877`,
+`6/6`). The release migrates PostgreSQL to schema 16
+(`telegram_command_bridge`); trading SQLite schema 9 is unchanged, the
+runtime remains `public-http-paper` and the API still serves port 4180.
+
+The release extends the bound private chat with the read commands `/help`,
+`/balance`, `/daily`, `/profit`, `/performance`, `/trades` and `/alerts`
+plus a two-step fenced `/pause`/`/resume`/`/stop` and `/confirm` control
+flow for paper robots. Every paper answer is one durable executor command
+applied by the API-process fenced executor; the notification worker opens
+no HTTP listener and never opens the trading SQLite. Confirmation tokens
+are hashed-only one-consume 120-second secrets and replies are explicitly
+at-most-once. The production host provisions no bot token, so the worker
+keeps idling by design; provisioning the token file later activates
+commands together with delivery without a new release. Everything stays
+paper-only research: it cannot trade live, borrow, change margin, read
+exchange credentials or grant trading authority.
+
+Acceptance passed the exact-SHA CI gate, the real-fenced-executor
+PostgreSQL integration suite (the full `/pause` → `/confirm` → action →
+reply round trip, one durable command per `update_id` and fail-closed
+confirmation fences), the checksum-locked isolated 15→16 rehearsal with
+both workers ready at schema 16, and the paired backup/recovery drills
+with a retained replacement-only rollback pair; see the recorded
+[R5.3b-2 acceptance evidence](./evidence/R5_3B2_TELEGRAM_COMMANDS.md). The
+chart research tools and the R11 integrated 100-user capacity proof remain
+pending and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md), [Russian](./ru/ALERTS.md),
 [Kazakh](./kk/ALERTS.md), [Self-hosting](./SELF_HOSTING.md) and the

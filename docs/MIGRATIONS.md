@@ -4,14 +4,47 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## Accepted R5.3b-2 release: PostgreSQL schema 16
+
+R5.3b-2 was accepted and deployed on 2026-07-18 from commit
+`17e12f17933de5ffb047d63358a05fad8f0211f0` after GitHub Actions run `29625979877` completed all
+6 required jobs successfully. Production now runs PostgreSQL schema 16 and unchanged trading
+SQLite schema 9 from protected slot `r5e-schema16-17e12f1`
+([R5.3b-2 evidence](./evidence/R5_3B2_TELEGRAM_COMMANDS.md)). The same three project-owned units
+keep running; no bot token is provisioned on the production host, so the notification worker
+still idles by design, and provisioning the token file later activates the Telegram command lane
+together with delivery without a new release. Because production has no token, the end-to-end
+command proof is the real-fenced-executor PostgreSQL integration suite: the full
+`/pause` → `/confirm` → action → reply round trip, one durable command per `update_id`, and
+fail-closed cross-owner/revoked/expired/stale-authorization fences. Nothing in this section
+replaces, edits or extends the R5.3b-1, R5.2.1, R5.1 and R4 acceptance evidence below.
+
+Schema 16 is one atomic, advisory-lock-protected PostgreSQL migration named
+`telegram_command_bridge`. Its exact checksum is
+`499297dca5cc11a4c84f4988d5c159dc71160b4a8acfe864cc3c04e15d163b8e`.
+It adds `telegram_command_replies` (one pending reply per durable executor command with a
+`replied_at` fence) and `telegram_confirmations` (hashed one-consume control tokens) with
+owner/binding composite foreign keys and retention indexes. The migration is additive: it
+creates only new objects and rewrites or drops nothing from schema 15; the frozen schema-12
+`executor_commands` table needed no DDL.
+
+The accepted cutover repeated the schema-15 discipline: pre-upgrade paired generation `3e4dc4f1`
+(schema 15) with its isolated restore drill; then the isolated 15-to-16 rehearsal, in which the
+candidate API migrated to schema 16 with the exact checksum, a restart reported a migration
+no-op and both workers pulsed ready heartbeats at schema 16; then the stopped pre-cutover
+rollback source `0898a08d` (schema 15); then post-upgrade paired generation `08b6defe`
+(schema 16) with its own drill. The replacement-only rollback pair is retained. There is no
+in-place downgrade: never delete schema-16 rows, drop the command-reply/confirmation tables or
+decrement `schema_migrations` to roll back.
+
 ## Accepted R5.3b-1 release: PostgreSQL schema 15
 
 R5.3b-1 was accepted and deployed on 2026-07-18 from commit
 `cd34ec8d11810a652bf087718f498dcece3b75fa` after GitHub Actions run `29622330910` completed all
-6 required jobs successfully. Production now runs PostgreSQL schema 15 and unchanged trading
+6 required jobs successfully. Production moved to PostgreSQL schema 15 and unchanged trading
 SQLite schema 9 from protected slot `r5d-schema15-cd34ec8`
-([R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md)). Production now runs three
-project-owned units — the API, the research worker and the new
+([R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md)). The cutover brought production to
+three project-owned units — the API, the research worker and the new
 `saltanatbotv2-notification-worker.service`. No bot token is provisioned on the production host,
 so the worker idles by design (`notification_worker_idle`, reason `token_absent`) with a healthy
 heartbeat; readiness keeps the worker optional unless `OPERATIONS_REQUIRE_NOTIFICATION_WORKER`

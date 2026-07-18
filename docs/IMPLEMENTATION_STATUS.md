@@ -198,21 +198,22 @@ provisioning the token file later activates delivery without a new release.
 Gate, rehearsal and cutover evidence is recorded in
 [R5.3b-1 Telegram delivery evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md).
 
-R5.3b-2 — the Telegram paper commands — is in progress (section below). The
-chart research tools (text notes and the parallel channel) remain open in
-R5.
+R5.3b-2 — the Telegram paper commands — is now accepted and deployed
+(section below), completing R5.3. The chart research tools (text notes and
+the parallel channel) remain the only open R5 item.
 
-## R5.3b-2 Telegram paper commands — in progress (NOT accepted)
+## R5.3b-2 Telegram paper commands accepted and deployed — 2026-07-18
 
 R5.3b-2 extends the bound Telegram chat with the read commands (`/help`,
 `/balance`, `/daily`, `/profit`, `/performance`, `/trades`, `/alerts`) and
 the two-step `/pause`/`/resume`/`/stop` + `/confirm` paper control flow
-through the existing API-process fenced executor. This section records work
-in progress: **no release gate has run, no protected slot exists and
-production has not been cut over** — production stays on the accepted
-R5.3b-1 slot `r5d-schema15-cd34ec8` with PostgreSQL schema 15.
+through the existing API-process fenced executor. The slice passed the full
+[RELEASING.md](./RELEASING.md) gate — exact-commit CI, the additive
+schema-16 migration with its paired backup/isolated-restore rehearsal, a
+protected slot and the production cutover — and was accepted and deployed
+on 2026-07-18.
 
-- [x] Candidate additive PostgreSQL migration 16 `telegram_command_bridge`:
+- [x] Additive PostgreSQL migration 16 `telegram_command_bridge`:
   `telegram_command_replies` (one pending reply per durable executor
   command, `replied_at` fence) and `telegram_confirmations` (hashed
   one-consume control tokens) with owner/binding composite foreign keys and
@@ -240,18 +241,33 @@ R5.3b-1 slot `r5d-schema15-cd34ec8` with PostgreSQL schema 15.
   replies), 10-minute non-terminal timeout reply, shared send rate limits,
   and retention stages for confirmations (2 days) and replied rows
   (7 days).
-- [ ] Full unit and env-gated PostgreSQL integration coverage of the
+- [x] Full unit and env-gated PostgreSQL integration coverage of the
   command round trip (one update ⇒ one durable command across a crash,
   cross-owner/revoked/expired fail-closed, confirmation quota) wired into
   CI.
-- [ ] Full release gate per [RELEASING.md](./RELEASING.md): exact-commit
+- [x] Full release gate per [RELEASING.md](./RELEASING.md): exact-commit
   CI, schema-16 backup/isolated-restore rehearsal, protected slot,
   production cutover and recorded acceptance evidence.
 
-In-progress behavior is documented in
+Production now runs PostgreSQL schema 16 (additive migration 16
+`telegram_command_bridge`) and the unchanged trading SQLite schema 9 from
+protected slot `r5e-schema16-17e12f1` at commit
+`17e12f17933de5ffb047d63358a05fad8f0211f0`, still on port 4180 in the
+`public-http-paper` runtime. Exact-SHA GitHub Actions run `29625979877`
+passed all 6/6 jobs. The same three project-owned units keep running; no
+bot token is provisioned on this host, so the notification worker still
+idles by design, and provisioning the token file later activates the
+command lane together with delivery without a new release. Because
+production has no token, the end-to-end command proof is the
+real-fenced-executor PostgreSQL integration suite (the full `/pause` →
+`/confirm` → action → reply round trip, one durable command per
+`update_id`, fail-closed fences). Gate, rehearsal and cutover evidence is
+recorded in
+[R5.3b-2 Telegram commands evidence](./evidence/R5_3B2_TELEGRAM_COMMANDS.md).
+
+Canonical behavior is documented in
 [Telegram paper commands (R5.3b-2)](./ALERTS.md) (EN/RU/KK) and the threat
-analysis in [THREAT_MODEL.md](./THREAT_MODEL.md); none of it is a
-production claim until the release gate passes.
+analysis in [THREAT_MODEL.md](./THREAT_MODEL.md).
 
 ## Delivered slices (not full roadmap completion)
 

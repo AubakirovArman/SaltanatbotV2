@@ -90,7 +90,7 @@ Variables outside that first slice are still owned by their feature modules and 
 | `NOTIFICATION_WORKER_HEARTBEAT_INTERVAL_MS` | `15000` | Component-heartbeat interval written by the optional notification worker; accepted range 5–60 seconds. |
 | `NOTIFICATION_WORKER_IDLE_RECHECK_MS` | `60000` | How often the idling notification worker rechecks its token file and schema version; accepted range 5–300 seconds. |
 | `NOTIFICATION_DELIVERY_POLL_INTERVAL_MS` | `1000` | Telegram delivery-lane sweep interval; accepted range 250 ms–60 seconds. |
-| `NOTIFICATION_REPLIES_POLL_INTERVAL_MS` | `1000` | Telegram command-replies-lane sweep interval used by the in-progress R5.3b-2 command bridge; accepted range 250 ms–60 seconds. |
+| `NOTIFICATION_REPLIES_POLL_INTERVAL_MS` | `1000` | Telegram command-replies-lane sweep interval used by the accepted/deployed R5.3b-2 command bridge; accepted range 250 ms–60 seconds. |
 | `NOTIFICATION_WORKER_SHUTDOWN_TIMEOUT_MS` | `20000` | Maximum graceful notification-worker shutdown; accepted range 5–25 seconds, below the supervisor stop timeout. |
 | `OPERATIONS_DISK_PATH` | `backend/data` | Normalized absolute path checked by readiness for project runtime storage. Direct-host and container supervisors should set the actual persistent data path explicitly. |
 | `OPERATIONS_RECOVERY_STATUS_FILE` | *(unset)* | Optional normalized absolute path to the owner-only receipt journal written by a successful `recovery:verify -- --status-file`. Keep it in separate persistent operations storage, never `backend/data`. Missing, malformed, oversized, unexpectedly linked or permission-unsafe files produce `lastVerifiedGeneration: null` and never affect readiness. |

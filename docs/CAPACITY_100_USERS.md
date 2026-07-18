@@ -22,11 +22,15 @@ accepted and deployed with no migration: SHA
 `86712bac3293ac8d746b638218eb66995d8e5edb` passed CI run `29590401183`
 (`6/6`) and was deployed in slot `r5c-schema14-86712ba` (see
 [R5.3a evidence](./evidence/R5_3A_SCREENER_ALERTS.md)). The R5.3b-1
-Telegram delivery worker is now accepted and deployed: SHA
+Telegram delivery worker is accepted and deployed: SHA
 `cd34ec8d11810a652bf087718f498dcece3b75fa` passed CI run `29622330910`
-(`6/6`) and production runs PostgreSQL schema 15 from slot
-`r5d-schema15-cd34ec8` (see
-[R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md)). The quantified
+(`6/6`) and was deployed in slot `r5d-schema15-cd34ec8` (see
+[R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md)). The R5.3b-2
+Telegram paper commands are now accepted and deployed: SHA
+`17e12f17933de5ffb047d63358a05fad8f0211f0` passed CI run `29625979877`
+(`6/6`) and production runs PostgreSQL schema 16 from slot
+`r5e-schema16-17e12f1` (see
+[R5.3b-2 evidence](./evidence/R5_3B2_TELEGRAM_COMMANDS.md)). The quantified
 100-user proof, global executor cap and remaining cross-workload caps are
 still planned for R11.
 
@@ -41,9 +45,11 @@ shared public market WebSockets. PostgreSQL owns identity, workspaces, durable
 authorization and research jobs. The accepted/deployed R5.1 release adds
 multi-user alert/outbox records through PostgreSQL schema 13, the
 accepted/deployed R5.2.1 release adds owner-scoped screener presets through
-PostgreSQL schema 14, and the accepted/deployed R5.3b-1 release adds
-Telegram binding/delivery/ingress records through PostgreSQL schema 15,
-which is now the production state. One
+PostgreSQL schema 14, the accepted/deployed R5.3b-1 release adds
+Telegram binding/delivery/ingress records through PostgreSQL schema 15, and
+the accepted/deployed R5.3b-2 release adds Telegram command-reply and
+confirmation records through PostgreSQL schema 16, which is now the
+production state. One
 singleton trading executor owns the protected SQLite trading/paper state under
 [ADR 0001](adr/0001-execution-authority-and-system-of-record.md). CPU-heavy
 research executes in a separate bounded worker.
@@ -182,9 +188,9 @@ that limitation.
   convergence and mobile/desktop release gates. It is distinct from the older
   account-aware arbitrage research-alert policy/outbox, whose engine-owned
   candidate/economics producers remain disconnected. The R5.2.1 screener MVP,
-  the R5.3a saved-screen alert promotion and the R5.3b-1 Telegram delivery
-  worker are now accepted and deployed; the R5.3b-2 Telegram commands and the
-  integrated R11 workload remain pending and unproven.
+  the R5.3a saved-screen alert promotion, the R5.3b-1 Telegram delivery
+  worker and the R5.3b-2 Telegram commands are now accepted and deployed;
+  the integrated R11 workload remains pending and unproven.
 
 ## Global admission caps and remaining work
 

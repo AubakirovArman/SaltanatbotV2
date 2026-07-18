@@ -11,16 +11,16 @@ SaltanatbotV2 publishes the same built application shape through four maturity c
 
 Only a pushed, supported Git tag creates a GitHub Release. Manual runs build attestable artifacts without inventing or moving a Git tag.
 
-Accepted production is now the R5.3b-1 Telegram delivery baseline: protected release slot
-r5d-schema15-cd34ec8 built from commit cd34ec8d11810a652bf087718f498dcece3b75fa, with exact-SHA
-Actions run 29622330910 green on 6/6 jobs; the acceptance record is
-[R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md). The additive PostgreSQL schema-15
-migration (`telegram_notification_ingress`) shipped under the same owner-only direct-main release
+Accepted production is now the R5.3b-2 Telegram paper-command baseline: protected release slot
+r5e-schema16-17e12f1 built from commit 17e12f17933de5ffb047d63358a05fad8f0211f0, with exact-SHA
+Actions run 29625979877 green on 6/6 jobs; the acceptance record is
+[R5.3b-2 evidence](./evidence/R5_3B2_TELEGRAM_COMMANDS.md). The additive PostgreSQL schema-16
+migration (`telegram_command_bridge`) shipped under the same owner-only direct-main release
 gate template — exact-commit CI, the paired backup/isolated-restore rehearsal, a protected slot
-and the cutover — while the trading SQLite schema 9 is unchanged. It supersedes the R5.3a
-screener-alert baseline: protected release slot r5c-schema14-86712ba built from commit
-86712bac3293ac8d746b638218eb66995d8e5edb, with exact-SHA Actions run 29590401183 green on 6/6
-jobs and its acceptance record in [R5.3a evidence](./evidence/R5_3A_SCREENER_ALERTS.md). See
+and the cutover — while the trading SQLite schema 9 is unchanged. It supersedes the R5.3b-1
+Telegram delivery baseline: protected release slot r5d-schema15-cd34ec8 built from commit
+cd34ec8d11810a652bf087718f498dcece3b75fa, with exact-SHA Actions run 29622330910 green on 6/6
+jobs and its acceptance record in [R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md). See
 [Owner-scoped server alerts](./ALERTS.md).
 
 ## Produced assets

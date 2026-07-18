@@ -105,16 +105,16 @@ limits apply. Exceeding them maps to `429 screener_alert_quota_exceeded` and
 
 R5.3b-1 adds a separate notification worker that delivers alert notifications
 to Telegram and binds one private chat to one owner through one-consume codes.
-The increment is **accepted and deployed**: production runs PostgreSQL
-schema 15 from protected slot `r5d-schema15-cd34ec8`, and a notification is
-delivered to `telegram` whenever the owner holds an active binding; the
-acceptance and cutover record is
+The increment is **accepted and deployed**: production cut over to
+PostgreSQL schema 15 from protected slot `r5d-schema15-cd34ec8`, and a
+notification is delivered to `telegram` whenever the owner holds an active
+binding; the acceptance and cutover record is
 [R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md).
 Like every alert feature it is notification-only research: the worker opens no
 HTTP listener, never opens the trading SQLite, and cannot place an order.
 Inbound bot commands beyond `/start`, `/bind` and the static fallback reply
-are the in-progress increment described in
-[Telegram paper commands (R5.3b-2)](#telegram-paper-commands-r53b-2-in-progress).
+are the accepted R5.3b-2 release described in
+[Telegram paper commands (R5.3b-2)](#telegram-paper-commands-r53b-2).
 
 ### Binding lifecycle
 
@@ -192,8 +192,8 @@ takeover) keeps exactly one poller per bot, and the durable
 `(bot, update_id)` cursor advances in the same transaction as the batch
 outcomes, so a replayed batch is a no-op. Only private-chat text messages are
 parsed; group chats and non-message updates are recorded as ignored, and any
-other private message receives the static "commands arrive in R5.3b-2"
-reply. Stored ingress rows are normalized only — hashed chat fingerprint,
+other private message receives the static unknown-command reply pointing at
+`/help`. Stored ingress rows are normalized only — hashed chat fingerprint,
 kind and outcome — never message text or raw chat ids.
 
 ### Telegram limits
@@ -223,17 +223,21 @@ migration runs only in the API process under the existing checksum-locked
 advisory-locked chain; acceptance follows the same backup/isolated-restore/
 cutover procedure as schema 13 and 14.
 
-## Telegram paper commands (R5.3b-2, in progress)
+## Telegram paper commands (R5.3b-2)
 
 R5.3b-2 extends the bound private chat with read commands and a fenced
-two-step control flow for paper robots. The increment is **in progress and
-not accepted**: candidate migration 16 `telegram_command_bridge` adds the
-`telegram_command_replies` and `telegram_confirmations` tables, and no
-production cutover has happened. The worker still opens no HTTP listener and
-never opens the trading SQLite: every paper answer is produced by one durable
-executor command applied by the existing API-process fenced executor.
-Everything stays paper-only research — no command can reach live trading —
-and administrators bypass none of the limits below.
+two-step control flow for paper robots. The increment is **accepted and
+deployed**: production runs PostgreSQL schema 16 from protected slot
+`r5e-schema16-17e12f1` (migration 16 `telegram_command_bridge` adds the
+`telegram_command_replies` and `telegram_confirmations` tables), commands
+activate together with delivery once the bot token file is provisioned, and
+the acceptance and cutover record is
+[R5.3b-2 evidence](./evidence/R5_3B2_TELEGRAM_COMMANDS.md). The worker still
+opens no HTTP listener and never opens the trading SQLite: every paper
+answer is produced by one durable executor command applied by the existing
+API-process fenced executor. Everything stays paper-only research — no
+command can reach live trading — and administrators bypass none of the
+limits below.
 
 Every command works only in a private chat holding an active binding. The
 worker resolves the single active binding by the hashed chat fingerprint (a
@@ -576,6 +580,5 @@ runs screens on demand, and R5.3a promotes a screen into the `screener` rule
 kind described above. The separate notification worker and Telegram
 binding/revoke/delivery flow are the accepted R5.3b-1 release described
 in [Telegram delivery and chat binding](#telegram-delivery-and-chat-binding-r53b-1);
-the richer inbound bot commands are the in-progress R5.3b-2 increment
-described in
-[Telegram paper commands](#telegram-paper-commands-r53b-2-in-progress).
+the richer inbound bot commands are the accepted R5.3b-2 release described
+in [Telegram paper commands](#telegram-paper-commands-r53b-2).

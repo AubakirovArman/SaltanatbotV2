@@ -13,13 +13,13 @@ No R0-R12 release depends on a domain, certificate, reverse proxy or TLS. That
 boundary changes only if the project owner separately initiates and approves a
 new HTTPS/security roadmap.
 
-Current production status is the accepted R5.3b-1 Telegram delivery and chat
-binding release on PostgreSQL schema 15 and unchanged trading SQLite schema 9,
-deployed from protected slot `r5d-schema15-cd34ec8` at commit
-`cd34ec8d11810a652bf087718f498dcece3b75fa`. The acceptance record is
-[R5.3b-1 Telegram delivery](./evidence/R5_3B1_TELEGRAM_DELIVERY.md); the
-pending R5.3b-2 Telegram command and chart research tool work described below
-keeps R5 active.
+Current production status is the accepted R5.3b-2 Telegram paper-command
+release on PostgreSQL schema 16 and unchanged trading SQLite schema 9,
+deployed from protected slot `r5e-schema16-17e12f1` at commit
+`17e12f17933de5ffb047d63358a05fad8f0211f0`. The acceptance record is
+[R5.3b-2 Telegram commands](./evidence/R5_3B2_TELEGRAM_COMMANDS.md); the
+pending chart research tool work described below (text notes and the parallel
+channel) keeps R5 active.
 
 > Important: HTTP does not protect passwords or session cookies from network
 > interception. Before HTTPS, expose the instance only through a private
@@ -35,8 +35,9 @@ The public HTTP deployment may provide:
 - deterministic backtests, optimizers and paper robots;
 - screeners and research alerts;
 - in-app notifications that do not expose exchange secrets; the accepted
-  R5.3b-1 release adds Telegram delivery and owner-scoped chat binding, while
-  inbound Telegram commands remain future R5.3b-2 scope.
+  R5.3b-1 release adds Telegram delivery and owner-scoped chat binding, and
+  the accepted R5.3b-2 release adds paper-only inbound Telegram commands over
+  the fenced executor.
 
 The delivered baseline already includes PostgreSQL authentication, registration,
 administrator activation and owner-scoped sessions. An administrator may manage
@@ -314,8 +315,8 @@ VoiceOver/NVDA/TalkBack records are complete.
 **Status:** delivered and deployed in R3 on schema 11. R3.1, R3.2 and R3.3 with
 its required O1 slice remain accepted historical increments. Production later
 advanced through the accepted R4 schema-12/schema-9, R5.1 schema-13, R5.2.1
-schema-14 and R5.3a schema-14 releases and now runs the accepted R5.3b-1
-release on schema 15; R5.3b-2 remains pending.
+schema-14, R5.3a schema-14 and R5.3b-1 schema-15 releases and now runs the
+accepted R5.3b-2 release on schema 16.
 
 **Baseline:**
 
@@ -562,27 +563,31 @@ mutate the portfolio.
 ## R5 — alerts, technical screener MVP and notifications
 
 **Status:** active. R5.1, the R5.2.1 technical screener MVP, the R5.3a
-saved-screen→server-alert promotion and the R5.3b-1 Telegram delivery worker
-with chat binding are accepted and deployed: production runs PostgreSQL
-schema 15 and unchanged trading SQLite schema 9 from protected slot
-`r5d-schema15-cd34ec8` at commit
-`cd34ec8d11810a652bf087718f498dcece3b75fa`; exact-SHA GitHub Actions run
-`29622330910` passed all 6/6 jobs and the runtime remains `public-http-paper`
+saved-screen→server-alert promotion, the R5.3b-1 Telegram delivery worker
+with chat binding and the R5.3b-2 Telegram paper commands are accepted and
+deployed: production runs PostgreSQL schema 16 and unchanged trading SQLite
+schema 9 from protected slot `r5e-schema16-17e12f1` at commit
+`17e12f17933de5ffb047d63358a05fad8f0211f0`; exact-SHA GitHub Actions run
+`29625979877` passed all 6/6 jobs and the runtime remains `public-http-paper`
 on port 4180. R5.1 was previously deployed from protected slot
 `r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`
 with exact-SHA run `29574600648` (6/6 jobs), R5.2.1 from protected slot
 `r5b-schema14-20be5b1` at commit
 `20be5b1d2fb87df38cc298953dfe7a2f414dd831` with exact-SHA run `29584556266`
-(6/6 jobs), and R5.3a from protected slot `r5c-schema14-86712ba` at commit
+(6/6 jobs), R5.3a from protected slot `r5c-schema14-86712ba` at commit
 `86712bac3293ac8d746b638218eb66995d8e5edb` with exact-SHA run `29590401183`
+(6/6 jobs), and R5.3b-1 from protected slot `r5d-schema15-cd34ec8` at commit
+`cd34ec8d11810a652bf087718f498dcece3b75fa` with exact-SHA run `29622330910`
 (6/6 jobs). The accepted release records are
 [R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md),
 [R5.2.1 technical screener](./evidence/R5_2_1_TECHNICAL_SCREENER.md),
-[R5.3a screener alerts](./evidence/R5_3A_SCREENER_ALERTS.md) and
-[R5.3b-1 Telegram delivery](./evidence/R5_3B1_TELEGRAM_DELIVERY.md). The
-R5.3b-2 Telegram commands and the chart research tools remain pending, so R5
-as a whole stays active. The technical screener was intentionally delivered
-before robot strategy expansion so it can feed later alerts.
+[R5.3a screener alerts](./evidence/R5_3A_SCREENER_ALERTS.md),
+[R5.3b-1 Telegram delivery](./evidence/R5_3B1_TELEGRAM_DELIVERY.md) and
+[R5.3b-2 Telegram commands](./evidence/R5_3B2_TELEGRAM_COMMANDS.md). The
+chart research tools (text notes and the parallel channel) are the only
+remaining R5 work, so R5 as a whole stays active. The technical screener was
+intentionally delivered before robot strategy expansion so it can feed later
+alerts.
 
 **Baseline:**
 
@@ -709,29 +714,33 @@ Canonical details: [Owner-scoped server alerts](./ALERTS.md),
   high-entropy codes stored only as hashes, with a short TTL, one consume and
   a bounded attempt count; they never appear in URLs, logs or metrics.
 
-**Remaining — R5.3b-2 Telegram commands:**
+**R5.3b-2 accepted release — Telegram paper commands:**
 
-- extend the accepted alert baseline beyond the delivered price-threshold and
-  screener kinds only after canonical indicator/drawing and paper-robot
-  health/drawdown evidence contracts exist; no schema placeholder is runtime
-  support;
-- add any required idempotent legacy import without merging account-aware
+- the accepted alert baseline still extends beyond the delivered
+  price-threshold and screener kinds only after canonical indicator/drawing
+  and paper-robot health/drawdown evidence contracts exist; no schema
+  placeholder is runtime support;
+- any required idempotent legacy import must still not merge account-aware
   arbitrage policy state into generic owner price-alert state;
-- limit commands to paper balance, reports, alerts and pause/resume/stop. Each
-  state-changing confirmation is a separate high-entropy one-use token bound to
-  owner, chat, action, portfolio/bot revision and authorization epoch, with a
-  short TTL and final-consume validation; expose paper-only `/balance`,
-  `/daily`, `/profit`, `/performance`, `/trades` and `/alerts`, and route the
-  paper `/pause`, `/resume` and `/stop` mutations through the fenced executor
-  with a durable command idempotency key persisted before any mutating
-  command;
-- at final consume, revalidate the active binding revision, owner status and
-  authorization epoch, portfolio/bot ownership and confirmation. Unbound,
-  revoked and cross-owner commands fail closed without exposing tenant data
-  and emit a structured audit event/counter; a command allowlist, bounded
-  command sizes and failed confirmation-attempt limits complete the ingress
-  controls;
-- keep Web Push disabled because HTTPS is outside this roadmap.
+- commands are limited to paper balance, reports, alerts and
+  pause/resume/stop. Each state-changing confirmation is a separate
+  high-entropy one-use token bound to owner, chat, action, portfolio/bot
+  revision and authorization epoch, with a short TTL and final-consume
+  validation; the release exposes paper-only `/balance`, `/daily`, `/profit`,
+  `/performance`, `/trades` and `/alerts`, and routes the paper `/pause`,
+  `/resume` and `/stop` mutations through the fenced executor with a durable
+  command idempotency key persisted before any mutating command;
+- at final consume, the worker revalidates the active binding revision, owner
+  status and authorization epoch, portfolio/bot ownership and confirmation.
+  Unbound, revoked and cross-owner commands fail closed without exposing
+  tenant data and emit a structured audit event/counter; a command allowlist,
+  bounded command sizes and failed confirmation-attempt limits complete the
+  ingress controls;
+- PostgreSQL schema 16 (migration 16 `telegram_command_bridge`) adds the
+  confirmation and command-bridge tables; without a provisioned bot token the
+  notification worker still idles by design, and provisioning the token file
+  later activates commands without a release;
+- Web Push stays disabled because HTTPS is outside this roadmap.
 
 **Dependencies:** R1 queue/ADR foundation, R3 ownership, R4 paper metrics and the
 canonical candle/indicator engine.
@@ -776,17 +785,28 @@ post-upgrade schema-15 generation `ba4f9d40` with its drill and the
 replacement-only rollback pair. The accepted release record is
 [R5.3b-1 Telegram delivery](./evidence/R5_3B1_TELEGRAM_DELIVERY.md).
 
-**Remaining R5.3b-2 evidence:** expired/brute-forced/replayed confirmation
-tokens; duplicate, replayed and out-of-order command updates; revoke races and
-cross-owner commands; each command `update_id` creating at most one durable
-paper mutation across restart or consumer takeover.
+**R5.3b-2 acceptance evidence:** the isolated 15→16 migration rehearsal with
+the exact migration-16 checksum and a restart migration no-op with both
+workers ready at schema 16, and the real-fenced-executor PostgreSQL command
+integration suite — the full /pause→/confirm→action→reply round trip;
+expired/brute-forced/replayed confirmation tokens; duplicate, replayed and
+out-of-order command updates; revoke races and cross-owner commands failing
+closed; and each command `update_id` creating at most one durable paper
+mutation across restart or consumer takeover — passed before cutover. The
+recovery chronology retained the pre-upgrade schema-15 generation `3e4dc4f1`
+with its drill, stopped rollback source `0898a08d`, the post-upgrade
+schema-16 generation `08b6defe` with its drill and the replacement-only
+rollback pair. The accepted release record is
+[R5.3b-2 Telegram commands](./evidence/R5_3B2_TELEGRAM_COMMANDS.md).
 
-**Complete R5 exit criteria:** the R5.1, R5.2.1, R5.3a and R5.3b-1 releases
-have passed acceptance, and a saved screen produces an owner-scoped alert with
-the browser closed; restarts lose no durable transition; duplicates are
-bounded and identifiable; each R5.3b-2 Telegram `update_id` creates at most
-one durable paper mutation across restart or consumer takeover; notification
-failure cannot stall login, charts or paper execution.
+**Complete R5 exit criteria:** the R5.1, R5.2.1, R5.3a, R5.3b-1 and R5.3b-2
+releases have passed acceptance, and a saved screen produces an owner-scoped
+alert with the browser closed; restarts lose no durable transition;
+duplicates are bounded and identifiable; each R5.3b-2 Telegram `update_id`
+creates at most one durable paper mutation across restart or consumer
+takeover, as proven by the accepted integration suite; notification failure
+cannot stall login, charts or paper execution. Only the chart research tools
+(text notes and the parallel channel) remain before R5 closes.
 
 ## R6 — DCA paper robot
 
@@ -1071,7 +1091,7 @@ and stabilization.
 | R3 | administrator lifecycle, server workspaces and onboarding/PWA boundary | R1-R2 | delivered on schema 11 |
 | O1 | Operational hardening increments | starts in R3 and ships with each new workload | included in R3-R10 estimates |
 | R4 | “Running” and paper portfolio/journal contract | R1-R3 | delivered |
-| R5 | R5.1 generic price alerts, R5.2.1 technical screener MVP, R5.3a saved-screen→alert promotion and R5.3b-1 Telegram delivery/chat binding accepted; R5.3b-2 Telegram commands and chart research tools pending | R3-R4 | remaining R5.3b-2 implementation within the original 5-7 estimate |
+| R5 | R5.1 generic price alerts, R5.2.1 technical screener MVP, R5.3a saved-screen→alert promotion, R5.3b-1 Telegram delivery/chat binding and R5.3b-2 Telegram paper commands accepted; only chart research tools (text notes and parallel channel) pending | R3-R4 | remaining chart research tools within the original 5-7 estimate |
 | R6 | DCA paper | R4-R5 | 3-4 |
 | R7 | Grid paper | R4-R6 | 4-5 |
 | R8 | Spread/inefficiency paper research | R4-R5 | 4-6 |
@@ -1102,10 +1122,14 @@ and stabilization.
    schema-15 migration, idle-boot, binding-code, delivery-lane and recovery
    gates passed, and the exact-SHA acceptance and cutover evidence is recorded
    in [R5.3b-1 Telegram delivery](./evidence/R5_3B1_TELEGRAM_DELIVERY.md).
-6. Implement the remaining R5.3b-2 Telegram read and paper-control commands
-   with their one-time confirmations through the fenced executor, then
-   complete the remaining command and recovery evidence.
-7. Keep R6 and later code out of `main` and production until the complete R5
+6. The R5.3b-2 Telegram command review is complete: its schema-16 migration,
+   fenced-executor command, confirmation-token and recovery gates passed, and
+   the exact-SHA acceptance and cutover evidence is recorded in
+   [R5.3b-2 Telegram commands](./evidence/R5_3B2_TELEGRAM_COMMANDS.md).
+7. Implement the remaining R5 chart research tools (text notes and the
+   parallel channel) on the canonical geometry contract to complete the R5
+   release gate.
+8. Keep R6 and later code out of `main` and production until the complete R5
    release gate is accepted.
 
 Acceptance, publication to `main` and production cutover of the remaining work

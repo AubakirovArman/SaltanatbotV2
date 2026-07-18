@@ -54,7 +54,7 @@ execution, real borrowing or real margin/account telemetry.
 | R5.1 alert state/receipts/events | A forged crossing, stale lease or cross-owner cursor could create or hide a notification | Composite owner keys, authorization/lease/state-revision fences, immutable receipts/events and per-owner transactional sequence |
 | Telegram bot token file (R5.3b-1) | Whoever holds the token can send as the bot and read its update stream | Owner-only `0600`/`0400` regular file, `O_NOFOLLOW`/uid/size checks, never logged; SHA-256 fingerprint used everywhere else |
 | Telegram binding codes and chat ids (R5.3b-1) | A guessed/replayed code or leaked chat id could bind or expose another person's chat | 128-bit one-consume codes stored as SHA-256 with 10-minute TTL; chat ids hashed in every projection/log and kept server-side only |
-| Telegram confirmation tokens and command replies (R5.3b-2, in progress) | A guessed, replayed or cross-chat token could pause/resume/stop a paper robot; a reply could reach a revoked or re-bound chat | 80-bit one-consume tokens stored only as SHA-256, 120-second TTL, ≤3 outstanding per owner; consumption re-proves chat/owner/binding/authorization under a row lock without consuming on mismatch; replies re-prove the exact binding before every send |
+| Telegram confirmation tokens and command replies (R5.3b-2) | A guessed, replayed or cross-chat token could pause/resume/stop a paper robot; a reply could reach a revoked or re-bound chat | 80-bit one-consume tokens stored only as SHA-256, 120-second TTL, ≤3 outstanding per owner; consumption re-proves chat/owner/binding/authorization under a row lock without consuming on mismatch; replies re-prove the exact binding before every send |
 
 ## Trust boundaries
 
@@ -75,8 +75,8 @@ R5.3b-1 deployed Telegram path:
 Notification worker | egress-only HTTPS sendMessage/getUpdates long poll | api.telegram.org
 Notification worker | binding/lease/cursor fences, hashed identifiers | PostgreSQL schema 15
 
-R5.3b-2 in-progress Telegram command path (not yet accepted):
-Notification worker | durable owner/authorization-fenced executor commands | PostgreSQL schema 16 candidate
+R5.3b-2 deployed Telegram command path:
+Notification worker | durable owner/authorization-fenced executor commands | PostgreSQL schema 16
 API-process fenced executor | read-only snapshot/trades, confirmed paper pause/resume/stop | trading SQLite
 
 Dormant future boundary (not connected in `public-http-paper`):
@@ -264,11 +264,12 @@ necessarily leaves the host for the Telegram Bot API and the recipient's chat hi
 route alerts whose names encode secrets. Telegram the platform, its availability and the secrecy
 of the operator's BotFather account are outside this project's control.
 
-### Telegram paper commands and control confirmations (R5.3b-2, in progress)
+### Telegram paper commands and control confirmations (R5.3b-2)
 
-This boundary is **in progress and not accepted**: it ships with candidate PostgreSQL
-migration 16 (`telegram_command_replies`, `telegram_confirmations`) and no production cutover has
-happened. Threats include a guessed, replayed or cross-chat confirmation token
+This boundary is **accepted and deployed** with the R5.3b-2 release: production runs PostgreSQL
+migration 16 (`telegram_command_replies`, `telegram_confirmations`), and the command lane
+activates together with delivery once the bot token file is provisioned — no further release is
+needed. Threats include a guessed, replayed or cross-chat confirmation token
 pausing/resuming/stopping a paper robot, a replayed Telegram update turning one command into two
 durable executor commands, a reply reaching a chat whose binding was revoked or re-bound, command
 floods exhausting the per-owner executor queue, and tenant data leaking through replies or error
