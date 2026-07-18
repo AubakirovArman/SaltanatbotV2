@@ -42,7 +42,7 @@ describePostgres("GA evolution lineage against isolated PostgreSQL (schema v17)"
 
   beforeEach(async () => {
     await pool.query("TRUNCATE ga_candidates, ga_runs CASCADE");
-    await pool.query("TRUNCATE compute_jobs, compute_job_retention_usage");
+    await pool.query("TRUNCATE compute_jobs, compute_job_retention_usage CASCADE");
   });
 
   afterAll(async () => {
@@ -172,7 +172,7 @@ describePostgres("GA evolution lineage against isolated PostgreSQL (schema v17)"
     // The driving job is still queued: nothing to heal.
     expect(await repository.failOrphanedRuns(OWNER_A)).toBe(0);
 
-    await pool.query("UPDATE compute_jobs SET status = 'failed' WHERE id = $1", [run.jobId]);
+    await pool.query("UPDATE compute_jobs SET status = 'failed', completed_at = NOW() WHERE id = $1", [run.jobId]);
     expect(await repository.failOrphanedRuns(OWNER_A)).toBe(1);
     expect((await repository.getRun(OWNER_A, run.id))?.status).toBe("failed");
     // A queued ga-evolution job still counts as active capacity on its own.
