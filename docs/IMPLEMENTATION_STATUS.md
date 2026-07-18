@@ -198,10 +198,60 @@ provisioning the token file later activates delivery without a new release.
 Gate, rehearsal and cutover evidence is recorded in
 [R5.3b-1 Telegram delivery evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md).
 
-R5.3b-2 — the Telegram read commands (`/balance`, `/daily`, `/profit`,
-`/performance`, `/trades`, `/alerts`) and paper `/pause`/`/resume`/`/stop`
-with one-time confirmations through the fenced executor — and the chart
-research tools (text notes and the parallel channel) remain open in R5.
+R5.3b-2 — the Telegram paper commands — is in progress (section below). The
+chart research tools (text notes and the parallel channel) remain open in
+R5.
+
+## R5.3b-2 Telegram paper commands — in progress (NOT accepted)
+
+R5.3b-2 extends the bound Telegram chat with the read commands (`/help`,
+`/balance`, `/daily`, `/profit`, `/performance`, `/trades`, `/alerts`) and
+the two-step `/pause`/`/resume`/`/stop` + `/confirm` paper control flow
+through the existing API-process fenced executor. This section records work
+in progress: **no release gate has run, no protected slot exists and
+production has not been cut over** — production stays on the accepted
+R5.3b-1 slot `r5d-schema15-cd34ec8` with PostgreSQL schema 15.
+
+- [x] Candidate additive PostgreSQL migration 16 `telegram_command_bridge`:
+  `telegram_command_replies` (one pending reply per durable executor
+  command, `replied_at` fence) and `telegram_confirmations` (hashed
+  one-consume control tokens) with owner/binding composite foreign keys and
+  retention indexes.
+- [x] Pure command parser and Phase A command bridge: the ingress batch
+  transaction resolves the active binding by hashed chat fingerprint,
+  re-checks owner status and the current authorization revision, and
+  enqueues exactly one durable executor command per update
+  (`telegram:<botFingerprint>:<updateId>` idempotency key, payload `origin`
+  marker, no `executor_commands` DDL); `/alerts` answers directly from
+  PostgreSQL (≤10 rules, ≤5 events).
+- [x] Read-only executor kinds `paper-portfolio.snapshot` (one bounded
+  result feeds `/balance`, `/daily`, `/profit` and `/performance`;
+  unavailable evidence stays unavailable, never zero; ≤20 robots with a
+  truncation flag) and `paper-robot.trades` (≤10 fills), applied through
+  the existing lease/fence executor path.
+- [x] Two-step fenced control: confirm-target snapshot, 8-character handle
+  resolution (0/1/many), 16-character base32 one-consume tokens stored as
+  SHA-256 (120-second TTL, ≤3 outstanding per owner), `FOR UPDATE`
+  consumption that re-proves chat/owner/binding/authorization and pins the
+  portfolio/ledger/robot revisions into the `paper-robot.action` command.
+- [x] Bounded replies lane beside the delivery lane
+  (`NOTIFICATION_REPLIES_POLL_INTERVAL_MS`): binding re-proof before every
+  send, `replied_at` settled before the external send (at-most-once
+  replies), 10-minute non-terminal timeout reply, shared send rate limits,
+  and retention stages for confirmations (2 days) and replied rows
+  (7 days).
+- [ ] Full unit and env-gated PostgreSQL integration coverage of the
+  command round trip (one update ⇒ one durable command across a crash,
+  cross-owner/revoked/expired fail-closed, confirmation quota) wired into
+  CI.
+- [ ] Full release gate per [RELEASING.md](./RELEASING.md): exact-commit
+  CI, schema-16 backup/isolated-restore rehearsal, protected slot,
+  production cutover and recorded acceptance evidence.
+
+In-progress behavior is documented in
+[Telegram paper commands (R5.3b-2)](./ALERTS.md) (EN/RU/KK) and the threat
+analysis in [THREAT_MODEL.md](./THREAT_MODEL.md); none of it is a
+production claim until the release gate passes.
 
 ## Delivered slices (not full roadmap completion)
 

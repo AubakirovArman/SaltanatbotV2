@@ -3,6 +3,7 @@ import { loadRuntimeConfig } from "../config/runtimeConfig.js";
 import { createDatabasePool, LATEST_DATABASE_SCHEMA_VERSION, loadDatabaseConfig, verifyDatabaseConnection } from "../database/index.js";
 import { TelegramDeliveryLane } from "../notifications/deliveryLane.js";
 import { TelegramIngressLane } from "../notifications/ingressLane.js";
+import { TelegramRepliesLane } from "../notifications/repliesLane.js";
 import { createTelegramIngressRateLimits, createTelegramSendRateLimits } from "../notifications/rateLimits.js";
 import { TelegramApi } from "../notifications/telegramApi.js";
 import { readTelegramBotTokenFile, TELEGRAM_TOKEN_FILE_ENV } from "../notifications/tokenFile.js";
@@ -26,6 +27,7 @@ loadRuntimeConfig(process.env);
 const heartbeatIntervalMs = boundedEnv("NOTIFICATION_WORKER_HEARTBEAT_INTERVAL_MS", 15_000, 5_000, 60_000);
 const idleRecheckMs = boundedEnv("NOTIFICATION_WORKER_IDLE_RECHECK_MS", 60_000, 5_000, 300_000);
 const deliveryPollMs = boundedEnv("NOTIFICATION_DELIVERY_POLL_INTERVAL_MS", 1_000, 250, 60_000);
+const repliesPollMs = boundedEnv("NOTIFICATION_REPLIES_POLL_INTERVAL_MS", 1_000, 250, 60_000);
 const shutdownTimeoutMs = boundedEnv("NOTIFICATION_WORKER_SHUTDOWN_TIMEOUT_MS", 20_000, 5_000, 25_000);
 const MIN_INGRESS_BACKOFF_MS = 1_000;
 const MAX_INGRESS_BACKOFF_MS = 30_000;
@@ -40,6 +42,7 @@ interface ActiveLanes {
   readonly botFingerprint: string;
   readonly deliveryLane: TelegramDeliveryLane;
   readonly ingressLane: TelegramIngressLane;
+  readonly repliesLane: TelegramRepliesLane;
   ingressLoop?: Promise<void>;
 }
 
@@ -50,6 +53,7 @@ let activeLanes: ActiveLanes | undefined;
 let supervisorPromise: Promise<void> | undefined;
 let heartbeatPromise: Promise<void> | undefined;
 let deliveryPromise: Promise<void> | undefined;
+let repliesPromise: Promise<void> | undefined;
 
 await triggerSupervisor();
 console.info(
@@ -67,6 +71,8 @@ const heartbeatTimer = setInterval(() => void triggerHeartbeat(), heartbeatInter
 heartbeatTimer.unref();
 const deliveryTimer = setInterval(() => void triggerDeliverySweep(), deliveryPollMs);
 deliveryTimer.unref();
+const repliesTimer = setInterval(() => void triggerRepliesSweep(), repliesPollMs);
+repliesTimer.unref();
 void triggerHeartbeat();
 
 function triggerSupervisor(): Promise<void> {
@@ -113,10 +119,14 @@ async function superviseOnce(): Promise<void> {
   const onError = (error: unknown, phase: string) => {
     console.error(JSON.stringify({ event: "notification_worker_lane_error", workerId, phase, error: safeErrorMessage(error, "lane error") }));
   };
+  // One shared send-limit set: delivery and replies honour the same global,
+  // per-chat and per-owner budgets instead of doubling the bot's ceiling.
+  const sendLimits = createTelegramSendRateLimits();
   const lanes: ActiveLanes = {
     botFingerprint: token.botFingerprint,
-    deliveryLane: new TelegramDeliveryLane(pool, { workerId, api, limits: createTelegramSendRateLimits(), onError }),
-    ingressLane: new TelegramIngressLane(pool, { workerId, api, botFingerprint: token.botFingerprint, limits: createTelegramIngressRateLimits(), onError })
+    deliveryLane: new TelegramDeliveryLane(pool, { workerId, api, limits: sendLimits, onError }),
+    ingressLane: new TelegramIngressLane(pool, { workerId, api, botFingerprint: token.botFingerprint, limits: createTelegramIngressRateLimits(), onError }),
+    repliesLane: new TelegramRepliesLane(pool, { api, limits: sendLimits, onError })
   };
   activeLanes = lanes;
   lanes.ingressLoop = runIngressLoop(lanes);
@@ -179,6 +189,22 @@ function triggerDeliverySweep(): Promise<void> {
   return running;
 }
 
+function triggerRepliesSweep(): Promise<void> {
+  if (stopping || !activeLanes) return Promise.resolve();
+  if (repliesPromise) return repliesPromise;
+  const lanes = activeLanes;
+  const running = lanes.repliesLane.sweep().then((result) => {
+    if (result.replied + result.timedOut + result.suppressed + result.confirmationsIssued > 0) {
+      console.info(JSON.stringify({ event: "notification_worker_replies_sweep", workerId, ...result }));
+    }
+  });
+  repliesPromise = running;
+  void running.finally(() => {
+    if (repliesPromise === running) repliesPromise = undefined;
+  });
+  return running;
+}
+
 /** Upsert the heartbeat whenever the observed schema version changes. */
 async function registerHeartbeat(): Promise<void> {
   if (schemaVersion < 1 || schemaVersion === registeredHeartbeatVersion) return;
@@ -236,6 +262,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     clearInterval(supervisorTimer);
     clearInterval(heartbeatTimer);
     clearInterval(deliveryTimer);
+    clearInterval(repliesTimer);
     const forcedExit = setTimeout(() => {
       console.error(JSON.stringify({ event: "notification_worker_shutdown_timeout", workerId, timeoutMs: shutdownTimeoutMs }));
       process.exit(1);
@@ -245,7 +272,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         if (registeredHeartbeatVersion > 0) {
           await componentHeartbeat.mark("notification-worker", generationId, "draining").catch(() => undefined);
         }
-        await Promise.allSettled([supervisorPromise, heartbeatPromise, deliveryPromise]);
+        await Promise.allSettled([supervisorPromise, heartbeatPromise, deliveryPromise, repliesPromise]);
         await deactivateLanes();
         if (registeredHeartbeatVersion > 0) {
           await componentHeartbeat.mark("notification-worker", generationId, "stopped").catch(() => undefined);

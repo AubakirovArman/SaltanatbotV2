@@ -54,6 +54,7 @@ execution, real borrowing or real margin/account telemetry.
 | R5.1 alert state/receipts/events | A forged crossing, stale lease or cross-owner cursor could create or hide a notification | Composite owner keys, authorization/lease/state-revision fences, immutable receipts/events and per-owner transactional sequence |
 | Telegram bot token file (R5.3b-1) | Whoever holds the token can send as the bot and read its update stream | Owner-only `0600`/`0400` regular file, `O_NOFOLLOW`/uid/size checks, never logged; SHA-256 fingerprint used everywhere else |
 | Telegram binding codes and chat ids (R5.3b-1) | A guessed/replayed code or leaked chat id could bind or expose another person's chat | 128-bit one-consume codes stored as SHA-256 with 10-minute TTL; chat ids hashed in every projection/log and kept server-side only |
+| Telegram confirmation tokens and command replies (R5.3b-2, in progress) | A guessed, replayed or cross-chat token could pause/resume/stop a paper robot; a reply could reach a revoked or re-bound chat | 80-bit one-consume tokens stored only as SHA-256, 120-second TTL, ≤3 outstanding per owner; consumption re-proves chat/owner/binding/authorization under a row lock without consuming on mismatch; replies re-prove the exact binding before every send |
 
 ## Trust boundaries
 
@@ -73,6 +74,10 @@ Research worker | owner/auth/lease/state fences | PostgreSQL schema 13
 R5.3b-1 deployed Telegram path:
 Notification worker | egress-only HTTPS sendMessage/getUpdates long poll | api.telegram.org
 Notification worker | binding/lease/cursor fences, hashed identifiers | PostgreSQL schema 15
+
+R5.3b-2 in-progress Telegram command path (not yet accepted):
+Notification worker | durable owner/authorization-fenced executor commands | PostgreSQL schema 16 candidate
+API-process fenced executor | read-only snapshot/trades, confirmed paper pause/resume/stop | trading SQLite
 
 Dormant future boundary (not connected in `public-http-paper`):
 Backend | signed HTTPS / authenticated private WebSocket | private exchange APIs
@@ -258,6 +263,49 @@ deduplication key, but Telegram itself does not deduplicate). Notification title
 necessarily leaves the host for the Telegram Bot API and the recipient's chat history; do not
 route alerts whose names encode secrets. Telegram the platform, its availability and the secrecy
 of the operator's BotFather account are outside this project's control.
+
+### Telegram paper commands and control confirmations (R5.3b-2, in progress)
+
+This boundary is **in progress and not accepted**: it ships with candidate PostgreSQL
+migration 16 (`telegram_command_replies`, `telegram_confirmations`) and no production cutover has
+happened. Threats include a guessed, replayed or cross-chat confirmation token
+pausing/resuming/stopping a paper robot, a replayed Telegram update turning one command into two
+durable executor commands, a reply reaching a chat whose binding was revoked or re-bound, command
+floods exhausting the per-owner executor queue, and tenant data leaking through replies or error
+text.
+
+Current mitigations:
+
+- every command resolves the single ACTIVE binding by hashed chat fingerprint (one chat actively
+  bound by two owners is refused as ambiguous), re-checks `users.status = 'active'` and the
+  current authorization revision, and fails closed with a static reply on any mismatch;
+  per-chat command and attempt budgets apply and administrators bypass none of them;
+- paper answers flow only through durable executor commands: the
+  `telegram:<botFingerprint>:<updateId>` idempotency key makes a replayed or crash-redelivered
+  update settle on one durable command before and after a takeover, the frozen `executor_commands`
+  table gets no DDL (provenance is the payload `origin` marker plus the key prefix),
+  telegram-origin commands carry a deterministic synthetic session digest with epoch 0, and the
+  API-process fenced executor re-proves the durable authorization revision at apply. The
+  notification worker still opens no listener and never opens the trading SQLite;
+- confirmation tokens are 80-bit base32 one-consume secrets stored only as SHA-256 with a
+  120-second TTL and at most 3 outstanding per owner. Consumption locks the row (`FOR UPDATE`)
+  and re-proves the chat fingerprint, owner, exact binding id/revision and the same authorization
+  revision; a mismatch rejects uniformly without consuming the token, and invalid tokens burn the
+  same per-chat attempt budget as binding codes (5 per 10 minutes). The resulting
+  `paper-robot.action` command is additionally pinned to the portfolio/ledger/robot revisions
+  observed at issue time, so a concurrent mutation rejects instead of acting on stale state;
+- replies re-prove the exact binding tuple and the active owner inside the settle transaction
+  before every send, and `replied_at` is settled durably before the external send, so replies are
+  at-most-once and are never duplicated to a stale recipient; snapshots report missing valuation
+  evidence as unavailable rather than zero, rejected commands map to safe error codes only, and
+  a non-terminal command older than 10 minutes receives one timeout reply.
+
+Residual risks: an at-most-once reply can be lost between the durable fence and the Telegram
+send — the sender repeats the command (an unsent confirmation token simply expires). The raw
+confirmation token travels through Telegram's infrastructure and the recipient's chat history, so
+a compromised chat device could confirm a pending paper action within the 120-second window. All
+commands remain paper-only research: even a fully compromised chat cannot reach credentials,
+signed requests or live trading.
 
 ### Misleading or stale arbitrage opportunities
 

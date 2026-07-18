@@ -374,7 +374,7 @@ describePostgres("onboarding against isolated PostgreSQL", () => {
 
       await expect(migrateDatabase(legacyPool)).resolves.toMatchObject({
         fromVersion: 10,
-        toVersion: 15,
+        toVersion: 16,
         applied: [
           {
             version: 11,
@@ -395,6 +395,10 @@ describePostgres("onboarding against isolated PostgreSQL", () => {
           {
             version: 15,
             name: "telegram_notification_ingress"
+          },
+          {
+            version: 16,
+            name: "telegram_command_bridge"
           }
         ]
       });

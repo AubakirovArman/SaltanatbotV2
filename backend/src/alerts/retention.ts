@@ -8,6 +8,13 @@ export const ALERT_HISTORY_RETENTION_DAYS = 30;
 // two days before compaction catches up (R11 must soak this bound).
 export const ALERT_EVALUATION_RECEIPT_RETENTION_DAYS = 2;
 export const ALERT_ARCHIVED_RULE_RETENTION_DAYS = 30;
+// Telegram command bridge (R5.3b-2): tokens die at their 120s expiry, so a
+// consumed/expired confirmation row is pure audit residue after two days.
+// Replied reply rows keep a week of command history; unreplied rows are left
+// to the replies lane, and executor_commands retention cascades the rest
+// through the ON DELETE CASCADE foreign key.
+export const TELEGRAM_CONFIRMATION_RETENTION_DAYS = 2;
+export const TELEGRAM_COMMAND_REPLY_RETENTION_DAYS = 7;
 export const ALERT_RETENTION_DEFAULT_BATCH_SIZE = 1_000;
 export const ALERT_RETENTION_MAX_BATCH_SIZE = 5_000;
 export const ALERT_RETENTION_DEFAULT_MAX_ROWS = 6_000;
@@ -35,6 +42,8 @@ export interface AlertRetentionResult {
   states: number;
   revisions: number;
   archivedRules: number;
+  telegramConfirmations: number;
+  telegramReplies: number;
   deletedRows: number;
   elapsedMs: number;
 }
@@ -49,7 +58,9 @@ interface RetentionStage {
  * Incremental alert-history compaction. One transaction holds a non-blocking
  * advisory lock, every candidate scan uses SKIP LOCKED, and both statements and
  * the whole run are bounded. Child rows are removed before their immutable
- * parents; archived rules are the final stage and rely on declared CASCADE FKs.
+ * parents; archived rules close the alert stages and rely on declared CASCADE
+ * FKs. The Telegram command-bridge stages (consumed/expired confirmations,
+ * replied reply rows) run last — they reference nothing downstream.
  */
 export class AlertControlPlaneRetention {
   private readonly batchSize: number;
@@ -293,6 +304,40 @@ const RETENTION_STAGES: readonly RetentionStage[] = [
     USING candidates c
     WHERE r.owner_user_id = c.owner_user_id AND r.id = c.id
     RETURNING r.id`
+  },
+  {
+    key: "telegramConfirmations",
+    retentionDays: TELEGRAM_CONFIRMATION_RETENTION_DAYS,
+    sql: `WITH candidates AS MATERIALIZED (
+      SELECT t.id
+      FROM telegram_confirmations t
+      WHERE (t.consumed_at IS NOT NULL OR t.expires_at < clock_timestamp())
+        AND t.created_at < clock_timestamp() - ($2::integer * interval '1 day')
+      ORDER BY t.created_at, t.owner_user_id, t.id
+      FOR UPDATE OF t SKIP LOCKED
+      LIMIT $1
+    )
+    DELETE FROM telegram_confirmations t
+    USING candidates c
+    WHERE t.id = c.id
+    RETURNING t.id`
+  },
+  {
+    key: "telegramReplies",
+    retentionDays: TELEGRAM_COMMAND_REPLY_RETENTION_DAYS,
+    sql: `WITH candidates AS MATERIALIZED (
+      SELECT r.command_id
+      FROM telegram_command_replies r
+      WHERE r.replied_at IS NOT NULL
+        AND r.created_at < clock_timestamp() - ($2::integer * interval '1 day')
+      ORDER BY r.created_at, r.owner_user_id, r.command_id
+      FOR UPDATE OF r SKIP LOCKED
+      LIMIT $1
+    )
+    DELETE FROM telegram_command_replies r
+    USING candidates c
+    WHERE r.command_id = c.command_id
+    RETURNING r.command_id`
   }
 ];
 
@@ -312,6 +357,8 @@ function emptyResult(): AlertRetentionResult {
     states: 0,
     revisions: 0,
     archivedRules: 0,
+    telegramConfirmations: 0,
+    telegramReplies: 0,
     deletedRows: 0,
     elapsedMs: 0
   };

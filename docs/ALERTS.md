@@ -113,7 +113,8 @@ acceptance and cutover record is
 Like every alert feature it is notification-only research: the worker opens no
 HTTP listener, never opens the trading SQLite, and cannot place an order.
 Inbound bot commands beyond `/start`, `/bind` and the static fallback reply
-belong to R5.3b-2.
+are the in-progress increment described in
+[Telegram paper commands (R5.3b-2)](#telegram-paper-commands-r53b-2-in-progress).
 
 ### Binding lifecycle
 
@@ -221,6 +222,110 @@ lease/cursor row and the normalized `telegram_updates` dedup journal. The
 migration runs only in the API process under the existing checksum-locked
 advisory-locked chain; acceptance follows the same backup/isolated-restore/
 cutover procedure as schema 13 and 14.
+
+## Telegram paper commands (R5.3b-2, in progress)
+
+R5.3b-2 extends the bound private chat with read commands and a fenced
+two-step control flow for paper robots. The increment is **in progress and
+not accepted**: candidate migration 16 `telegram_command_bridge` adds the
+`telegram_command_replies` and `telegram_confirmations` tables, and no
+production cutover has happened. The worker still opens no HTTP listener and
+never opens the trading SQLite: every paper answer is produced by one durable
+executor command applied by the existing API-process fenced executor.
+Everything stays paper-only research — no command can reach live trading —
+and administrators bypass none of the limits below.
+
+Every command works only in a private chat holding an active binding. The
+worker resolves the single active binding by the hashed chat fingerprint (a
+chat actively bound by two different owners is refused as ambiguous),
+re-checks `users.status = 'active'` and reads the owner's current
+authorization revision; any failure receives a static fail-closed reply that
+leaks no tenant data. The existing per-chat command budget (6/min) applies.
+
+| Command | Answer |
+| --- | --- |
+| `/help` | Static command reference |
+| `/balance` | Default-portfolio snapshot: available/reserved capital, evidence-aware equity (an honest `unavailable`, never zero), realized PnL and up to 20 robots with 8-character handles |
+| `/daily` | Realized PnL for the current UTC day |
+| `/profit` | Total realized PnL |
+| `/performance` | Per-robot realized PnL with bounded win/loss counts |
+| `/trades <robot>` | Last ≤10 fills of one robot by its 8-character handle |
+| `/alerts` | Direct PostgreSQL read: ≤10 enabled rules and ≤5 recent events |
+| `/pause`, `/resume`, `/stop <robot>` | Two-step fenced control (below) |
+| `/confirm <token>` | Consume a one-use confirmation token |
+
+### Two durable phases
+
+Phase A runs inside the same ingress batch transaction that journals the
+update: a paper command enqueues exactly one durable executor command with
+idempotency key `telegram:<botFingerprint>:<updateId>` plus a pending row in
+`telegram_command_replies`. The `(owner, idempotency key)` uniqueness makes a
+replayed or crash-redelivered update settle on the same single durable
+command before and after a restart or takeover. The frozen `executor_commands`
+table receives no DDL: Telegram provenance is the payload `origin` marker
+plus the idempotency-key prefix, telegram-origin commands carry a
+deterministic synthetic session digest with authorization epoch 0, and the
+executor re-proves the durable authorization revision at apply time. The
+ingress cursor never waits on the executor.
+
+Phase B is a bounded replies lane beside the delivery lane
+(`NOTIFICATION_REPLIES_POLL_INTERVAL_MS`). It joins pending reply rows to
+their executor commands; a terminal `applied`/`rejected` command is formatted
+(rejections map to safe error codes only) and a non-terminal command older
+than 10 minutes receives one "timed out" reply. The binding (active, same
+revision, chat still present) and the active owner are re-proven inside the
+settle transaction before **every** send; a revoked binding suppresses the
+reply entirely. `replied_at` is settled durably before the external send, so
+each reply is **at-most-once**: a crash between the fence and the send drops
+that one message instead of ever duplicating it — for a pending control
+command the unsent token simply expires and the command can be repeated.
+Replies share the delivery lane's global/per-chat/per-owner send buckets.
+
+The two read kinds `paper-portfolio.snapshot` and `paper-robot.trades` are
+strictly read-only and run through the same lease/fence path as every other
+executor command; `/balance`, `/daily`, `/profit` and `/performance` are all
+formatted from one snapshot result.
+
+### Two-step control and confirmation tokens
+
+1. `/pause <robot>` (or `/resume`, `/stop`) enqueues a confirm-target
+   snapshot command in Phase A.
+2. On its terminal result the replies lane resolves the 8-character handle
+   against the owner's robots — no match replies with the available handles,
+   two or more matches are refused as ambiguous — and mints a one-use
+   confirmation: a 16-character base32 token stored only as its SHA-256 hash
+   beside the pinned binding tuple, chat fingerprint, authorization revision
+   and the portfolio/ledger/robot revisions observed at issue time. The raw
+   token exists exactly once, inside the reply; it expires after 120 seconds
+   and at most 3 unconsumed confirmations may be outstanding per owner.
+3. `/confirm <token>` hashes the token and locks the unconsumed, unexpired
+   row (`FOR UPDATE`) inside Phase A, then re-proves the chat fingerprint,
+   owner, exact binding id and revision, and the same authorization revision.
+   Any mismatch is one uniform rejection that does **not** consume the token.
+   Consumption and the durable `paper-robot.action` command commit in one
+   transaction; the executor then applies the action under the pinned
+   optimistic fences. Invalid tokens burn the same per-chat attempt budget as
+   binding codes.
+4. The replies lane answers the terminal action command with the applied
+   outcome or a safely worded rejection.
+
+### Command limits and retention
+
+| Boundary | Limit |
+| --- | ---: |
+| Confirmation token TTL | 120 s |
+| Unconsumed confirmations per owner | 3 |
+| Confirmation/binding-code attempts per chat | 5 / 10 min |
+| Handled commands per chat | 6 / min |
+| Robots per snapshot reply | 20 |
+| Fills per `/trades` reply | 10 |
+| Rules / events per `/alerts` reply | 10 / 5 |
+| Reply timeout for a non-terminal command | 10 min |
+
+Retention deletes consumed or expired confirmations after 2 days and replied
+reply rows after 7 days through the same bounded `SKIP LOCKED` stages as the
+other alert history; a reply row also follows its executor command through
+`ON DELETE CASCADE`, so executor-command retention cannot orphan it.
 
 ## HTTP-only deployment boundary
 
@@ -471,4 +576,6 @@ runs screens on demand, and R5.3a promotes a screen into the `screener` rule
 kind described above. The separate notification worker and Telegram
 binding/revoke/delivery flow are the accepted R5.3b-1 release described
 in [Telegram delivery and chat binding](#telegram-delivery-and-chat-binding-r53b-1);
-richer inbound bot commands remain R5.3b-2.
+the richer inbound bot commands are the in-progress R5.3b-2 increment
+described in
+[Telegram paper commands](#telegram-paper-commands-r53b-2-in-progress).

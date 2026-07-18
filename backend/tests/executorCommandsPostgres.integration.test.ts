@@ -43,7 +43,7 @@ describePostgres("executor commands against isolated PostgreSQL", () => {
   });
 
   beforeEach(async () => {
-    await pool.query("TRUNCATE executor_commands");
+    await pool.query("TRUNCATE executor_commands CASCADE");
     repository = new PostgresExecutorCommandRepository(pool);
   });
 

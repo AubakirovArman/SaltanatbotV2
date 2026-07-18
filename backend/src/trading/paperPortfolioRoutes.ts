@@ -7,7 +7,7 @@ import {
   deterministicPaperPortfolioId,
   paperPortfolioRequestHash,
   parseCanonicalPaperMoneyMicros,
-  type PaperPortfolioExecutorPayload
+  type PaperPortfolioMutationPayload
 } from "./paperPortfolioCommandContract.js";
 import {
   PaperPortfolioHttpError,
@@ -91,7 +91,7 @@ export function registerPaperPortfolioRoutes(
     try {
       const body = createSchema.parse(request.body);
       const key = paperIdempotencyKey(request);
-      const payload: PaperPortfolioExecutorPayload = {
+      const payload: PaperPortfolioMutationPayload = {
         version: PAPER_PORTFOLIO_COMMAND_VERSION,
         kind: "paper-portfolio.create",
         portfolioId: deterministicPaperPortfolioId(owner, key),
@@ -160,7 +160,7 @@ export function registerPaperPortfolioRoutes(
       const portfolioId = portfolioIdSchema.parse(routeParam(request, "portfolioId"));
       const botId = portfolioIdSchema.parse(routeParam(request, "botId"));
       const key = paperIdempotencyKey(request);
-      const payload: PaperPortfolioExecutorPayload = {
+      const payload: PaperPortfolioMutationPayload = {
         version: 1,
         kind: "paper-robot.action",
         portfolioId,
@@ -185,7 +185,7 @@ async function mutateExisting<T extends z.ZodType>(
   commands: PaperPortfolioMutationGateway,
   reads: PaperPortfolioReadService,
   schema: T,
-  payload: (owner: string, portfolioId: string, body: z.infer<T>) => PaperPortfolioExecutorPayload
+  payload: (owner: string, portfolioId: string, body: z.infer<T>) => PaperPortfolioMutationPayload
 ): Promise<void> {
   noStore(response);
   const owner = mutationOwner(request, response);
@@ -207,7 +207,7 @@ async function executeAndRespond(
   reads: PaperPortfolioReadService,
   owner: string,
   key: string,
-  payload: PaperPortfolioExecutorPayload
+  payload: PaperPortfolioMutationPayload
 ): Promise<void> {
   const outcome = await commands.execute({
     principal: paperCommandPrincipal(response, owner),

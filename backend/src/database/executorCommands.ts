@@ -33,11 +33,82 @@ import {
   validateExecutorCommandListLimit,
   validateExecutorCommandRepositoryOptions,
   validateRejectedExecutorCommandAcknowledgement,
+  type ValidatedEnqueueExecutorCommandInput,
   type ValidatedExecutorCommandOptions
 } from "./executorCommandValidation.js";
 
 const EXECUTOR_COMMAND_ADVISORY_LOCK_NAMESPACE = 1_614_704_467;
 const EXHAUSTED_RECOVERY_BATCH_SIZE = 1_000;
+
+/**
+ * One idempotent enqueue inside the CALLER's open transaction: serialize on
+ * the owner advisory lock, prune terminal history, replay on an identical
+ * (owner, idempotency key, request hash), enforce the active-command cap and
+ * insert. The Telegram ingress lane reuses this so a paper command becomes
+ * durable in the SAME transaction as its journaled update row.
+ */
+export async function enqueueExecutorCommandInTransaction(
+  client: PoolClient,
+  command: ValidatedEnqueueExecutorCommandInput,
+  options: ValidatedExecutorCommandOptions
+): Promise<EnqueueExecutorCommandResult> {
+  await lockExecutorCommandOwner(client, command.ownerUserId);
+  await pruneExecutorCommandsForOwner(client, command.ownerUserId, options);
+
+  const existing = await client.query<ExecutorCommandRow>(
+    `${selectExecutorCommandSql()}
+     WHERE owner_user_id = $1 AND idempotency_key = $2
+     LIMIT 1`,
+    [command.ownerUserId, command.idempotencyKey]
+  );
+  if (existing.rows[0]) {
+    if (existing.rows[0].request_hash !== command.requestHash) {
+      throw new ExecutorCommandIdempotencyConflictError();
+    }
+    return { outcome: "replayed", command: mapExecutorCommand(existing.rows[0]) };
+  }
+
+  const active = await client.query<{ count: string }>(
+    `SELECT count(*)::text AS count
+     FROM executor_commands
+     WHERE owner_user_id = $1 AND status IN ('queued', 'applying')`,
+    [command.ownerUserId]
+  );
+  if (
+    executorCommandSafeInteger(active.rows[0]?.count ?? "0", "active command count")
+    >= options.maxActivePerOwner
+  ) {
+    throw new ExecutorCommandCapacityError(options.maxActivePerOwner);
+  }
+
+  const inserted = await client.query<ExecutorCommandRow>(
+    `INSERT INTO executor_commands (
+       id, owner_user_id, actor_user_id, session_id_hash,
+       authorization_revision, authorization_epoch,
+       command_type, target_type, target_id,
+       idempotency_key, request_hash, payload, max_attempts
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13
+     )
+     RETURNING *`,
+    [
+      randomUUID(),
+      command.ownerUserId,
+      command.actorUserId,
+      command.sessionIdHash,
+      command.authorizationRevision,
+      command.authorizationEpoch,
+      command.commandType,
+      command.targetType,
+      command.targetId,
+      command.idempotencyKey,
+      command.requestHash,
+      command.payloadJson,
+      options.maxAttempts
+    ]
+  );
+  return { outcome: "enqueued", command: mapExecutorCommand(inserted.rows[0]!) };
+}
 
 /** PostgreSQL system of record for fenced, idempotent commands sent to the singleton executor. */
 export class PostgresExecutorCommandRepository implements ExecutorCommandRepository {
@@ -52,64 +123,9 @@ export class PostgresExecutorCommandRepository implements ExecutorCommandReposit
 
   async enqueue(input: EnqueueExecutorCommandInput): Promise<EnqueueExecutorCommandResult> {
     const command = validateEnqueueExecutorCommandInput(input);
-    return this.transaction(async (client) => {
-      await this.lockOwner(client, command.ownerUserId);
-      await pruneExecutorCommandsForOwner(client, command.ownerUserId, this.options);
-
-      const existing = await client.query<ExecutorCommandRow>(
-        `${selectExecutorCommandSql()}
-         WHERE owner_user_id = $1 AND idempotency_key = $2
-         LIMIT 1`,
-        [command.ownerUserId, command.idempotencyKey]
-      );
-      if (existing.rows[0]) {
-        if (existing.rows[0].request_hash !== command.requestHash) {
-          throw new ExecutorCommandIdempotencyConflictError();
-        }
-        return { outcome: "replayed", command: mapExecutorCommand(existing.rows[0]) };
-      }
-
-      const active = await client.query<{ count: string }>(
-        `SELECT count(*)::text AS count
-         FROM executor_commands
-         WHERE owner_user_id = $1 AND status IN ('queued', 'applying')`,
-        [command.ownerUserId]
-      );
-      if (
-        executorCommandSafeInteger(active.rows[0]?.count ?? "0", "active command count")
-        >= this.options.maxActivePerOwner
-      ) {
-        throw new ExecutorCommandCapacityError(this.options.maxActivePerOwner);
-      }
-
-      const inserted = await client.query<ExecutorCommandRow>(
-        `INSERT INTO executor_commands (
-           id, owner_user_id, actor_user_id, session_id_hash,
-           authorization_revision, authorization_epoch,
-           command_type, target_type, target_id,
-           idempotency_key, request_hash, payload, max_attempts
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13
-         )
-         RETURNING *`,
-        [
-          randomUUID(),
-          command.ownerUserId,
-          command.actorUserId,
-          command.sessionIdHash,
-          command.authorizationRevision,
-          command.authorizationEpoch,
-          command.commandType,
-          command.targetType,
-          command.targetId,
-          command.idempotencyKey,
-          command.requestHash,
-          command.payloadJson,
-          this.options.maxAttempts
-        ]
-      );
-      return { outcome: "enqueued", command: mapExecutorCommand(inserted.rows[0]!) };
-    });
+    return this.transaction(
+      (client) => enqueueExecutorCommandInTransaction(client, command, this.options)
+    );
   }
 
   /** Tenant-facing reads always require the authenticated owner identifier. */
@@ -452,10 +468,7 @@ export class PostgresExecutorCommandRepository implements ExecutorCommandReposit
   }
 
   private async lockOwner(client: PoolClient, ownerUserId: string): Promise<void> {
-    await client.query("SELECT pg_advisory_xact_lock($1::integer, hashtext($2))", [
-      EXECUTOR_COMMAND_ADVISORY_LOCK_NAMESPACE,
-      ownerUserId
-    ]);
+    await lockExecutorCommandOwner(client, ownerUserId);
   }
 
   private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -472,6 +485,13 @@ export class PostgresExecutorCommandRepository implements ExecutorCommandReposit
       client.release();
     }
   }
+}
+
+async function lockExecutorCommandOwner(client: PoolClient, ownerUserId: string): Promise<void> {
+  await client.query("SELECT pg_advisory_xact_lock($1::integer, hashtext($2))", [
+    EXECUTOR_COMMAND_ADVISORY_LOCK_NAMESPACE,
+    ownerUserId
+  ]);
 }
 
 function isApplyingOwnerConflict(error: unknown): boolean {

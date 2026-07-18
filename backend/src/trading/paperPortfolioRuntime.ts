@@ -14,8 +14,16 @@ import type {
 import { roleAllows } from "../auth.js";
 import type { IdentityService } from "../identity/service.js";
 import {
+  isPaperPortfolioReadPayload,
+  PAPER_TELEGRAM_COMMAND_ORIGIN,
+  PAPER_TELEGRAM_IDEMPOTENCY_KEY_PREFIX,
+  paperPortfolioCommandTarget,
   parsePaperPortfolioExecutorPayload
 } from "./paperPortfolioCommandContract.js";
+import {
+  executePaperPortfolioRead,
+  paperPortfolioReadReceiptHash
+} from "./paperPortfolioExecutorReads.js";
 import {
   PaperPortfolioCommandHandler,
   type PaperPortfolioApplicationContext,
@@ -84,19 +92,35 @@ export function createPaperPortfolioRuntime(options: PaperPortfolioRuntimeOption
     apply: async (command, context) => {
       context.signal.throwIfAborted();
       const payload = parsePaperPortfolioExecutorPayload(command.payload);
-      const robotCommand = payload.kind === "paper-robot.action" || payload.kind === "paper-robot.create";
-      const expectedTargetType = robotCommand ? "paper-robot" : "paper-portfolio";
-      const expectedTargetId = robotCommand ? payload.botId : payload.portfolioId;
+      const target = paperPortfolioCommandTarget(payload);
       if (
         command.commandType !== payload.kind
-        || command.targetType !== expectedTargetType
-        || command.targetId !== expectedTargetId
+        || command.targetType !== target.targetType
+        || command.targetId !== target.targetId
       ) {
         return {
           outcome: "rejected" as const,
           errorCode: "invalid_command_identity",
           errorMessage: "Executor command target does not match its validated payload."
         };
+      }
+      if (isPaperPortfolioReadPayload(payload)) {
+        try {
+          const result = executePaperPortfolioRead(reads, command.ownerUserId, payload);
+          context.signal.throwIfAborted();
+          return {
+            outcome: "applied" as const,
+            sqliteReceiptHash: paperPortfolioReadReceiptHash(command, result),
+            result
+          };
+        } catch (error) {
+          if (!(error instanceof PaperPortfolioStoreError)) throw error;
+          return {
+            outcome: "rejected" as const,
+            errorCode: domainErrorCode(error.code),
+            errorMessage: error.message.slice(0, 4_000)
+          };
+        }
       }
       try {
         const applied = await handler.apply(applicationContext(command));
@@ -141,6 +165,7 @@ class FencedPaperPortfolioGateway implements PaperPortfolioMutationGateway {
 
   async execute(input: Parameters<PaperPortfolioMutationGateway["execute"]>[0]): Promise<{ replayed: boolean }> {
     const payload = input.payload;
+    const target = paperPortfolioCommandTarget(payload);
     try {
       const outcome = await this.bridge.submitAndWait({
         ownerUserId: input.principal.ownerUserId,
@@ -149,8 +174,8 @@ class FencedPaperPortfolioGateway implements PaperPortfolioMutationGateway {
         authorizationRevision: input.principal.authorizationRevision,
         authorizationEpoch: input.principal.authorizationEpoch,
         commandType: payload.kind,
-        targetType: payload.kind === "paper-robot.action" || payload.kind === "paper-robot.create" ? "paper-robot" : "paper-portfolio",
-        targetId: payload.kind === "paper-robot.action" || payload.kind === "paper-robot.create" ? payload.botId : payload.portfolioId,
+        targetType: target.targetType,
+        targetId: target.targetId,
         idempotencyKey: input.idempotencyKey,
         requestHash: input.requestHash,
         payload
@@ -213,10 +238,49 @@ function engineRuntime(engine: TradingEngine): PaperPortfolioCommandRuntime {
   };
 }
 
+/**
+ * Owner-scoped system principal for Telegram-origin commands. The notification
+ * worker holds no browser session and cannot know this process's in-memory
+ * authorization epoch, so recognition rests on all three durable markers
+ * together (payload origin + reserved idempotency-key prefix + a null actor —
+ * HTTP enqueues always set the actor). Authorization then re-proves the owner
+ * against the CURRENT snapshot: active user, paper-trade role, the exact
+ * durable authorization_revision carried by the command, and no in-process
+ * authorization transition. The epoch equality check is deliberately replaced
+ * by the snapshot-currency check for these commands.
+ */
+function isTelegramOriginExecutorCommand(command: {
+  readonly actorUserId: string | null;
+  readonly idempotencyKey: string;
+  readonly payload: Record<string, unknown>;
+}): boolean {
+  return (
+    command.actorUserId === null
+    && command.idempotencyKey.startsWith(PAPER_TELEGRAM_IDEMPOTENCY_KEY_PREFIX)
+    && command.payload["origin"] === PAPER_TELEGRAM_COMMAND_ORIGIN
+  );
+}
+
 async function authorizeExecutorCommand(
   service: IdentityService,
   command: Parameters<NonNullable<ConstructorParameters<typeof FencedExecutorBridge>[0]["authorize"]>>[0]
 ) {
+  if (isTelegramOriginExecutorCommand(command)) {
+    const authorization = await service.executionAuthorizationSnapshot(command.ownerUserId);
+    if (
+      !authorization
+      || !roleAllows(authorization.role, "paper-trade")
+      || authorization.authorizationRevision !== command.authorizationRevision
+      || !service.isExecutionAuthorizationCurrent(authorization)
+    ) {
+      return {
+        outcome: "rejected" as const,
+        errorCode: "authorization_stale",
+        errorMessage: "Trading authorization changed before the paper command was applied."
+      };
+    }
+    return { outcome: "authorized" as const };
+  }
   const [authorization, session] = await Promise.all([
     service.executionAuthorizationSnapshot(command.ownerUserId),
     service.repository.findSession(command.sessionIdHash)

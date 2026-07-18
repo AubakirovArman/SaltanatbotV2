@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   deterministicPaperPortfolioId,
+  isPaperPortfolioReadPayload,
+  paperPortfolioCommandTarget,
   paperPortfolioRequestHash,
   parseCanonicalPaperMoneyMicros,
   parsePaperPortfolioExecutorPayload
@@ -53,6 +55,39 @@ describe("paper portfolio executor command contract", () => {
       expectedBotRevision: 3,
       action: "flatten",
       confirm: true
+    })).toThrow();
+  });
+
+  it("parses the read kinds with an optional telegram origin and stable queue targets", () => {
+    const snapshot = parsePaperPortfolioExecutorPayload({
+      version: 1,
+      kind: "paper-portfolio.snapshot"
+    });
+    const trades = parsePaperPortfolioExecutorPayload({
+      version: 1,
+      kind: "paper-robot.trades",
+      botId: "bot-1234",
+      origin: "telegram"
+    });
+
+    expect(snapshot).toEqual({ version: 1, kind: "paper-portfolio.snapshot" });
+    expect(trades).toMatchObject({ botId: "bot-1234", origin: "telegram" });
+    expect(isPaperPortfolioReadPayload(snapshot)).toBe(true);
+    expect(isPaperPortfolioReadPayload(trades)).toBe(true);
+    expect(paperPortfolioCommandTarget(snapshot))
+      .toEqual({ targetType: "paper-portfolio", targetId: "default" });
+    expect(paperPortfolioCommandTarget(trades))
+      .toEqual({ targetType: "paper-robot", targetId: "bot-1234" });
+    expect(() => parsePaperPortfolioExecutorPayload({
+      version: 1,
+      kind: "paper-portfolio.snapshot",
+      portfolioId: "paper-id"
+    })).toThrow();
+    expect(() => parsePaperPortfolioExecutorPayload({
+      version: 1,
+      kind: "paper-robot.trades",
+      botId: "bot-1234",
+      origin: "web"
     })).toThrow();
   });
 });

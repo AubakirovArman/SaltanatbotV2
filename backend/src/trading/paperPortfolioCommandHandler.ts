@@ -169,6 +169,12 @@ export class PaperPortfolioCommandHandler {
         return this.createRobot(ownerUserId, mutation, payload);
       case "paper-robot.action":
         return this.robotAction(ownerUserId, mutation, payload);
+      case "paper-portfolio.snapshot":
+      case "paper-robot.trades":
+        fail(
+          "READ_ONLY_COMMAND",
+          "Paper executor read commands are answered by the runtime and never mutate the store"
+        );
     }
   }
 

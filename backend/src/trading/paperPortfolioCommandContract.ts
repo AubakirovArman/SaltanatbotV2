@@ -12,11 +12,23 @@ export const PAPER_PORTFOLIO_COMMAND_TYPES = [
   "paper-portfolio.archive",
   "paper-portfolio.reset",
   "paper-robot.create",
-  "paper-robot.action"
+  "paper-robot.action",
+  "paper-portfolio.snapshot",
+  "paper-robot.trades"
 ] as const;
 
 export type PaperPortfolioCommandType = (typeof PAPER_PORTFOLIO_COMMAND_TYPES)[number];
 export type PaperRobotAction = "start" | "pause" | "resume" | "stop";
+
+/**
+ * Origin marker for commands enqueued by the Telegram notification worker.
+ * The frozen v12 executor_commands table stays DDL-free: provenance is carried
+ * by this optional payload field plus the owner-scoped idempotency-key prefix.
+ */
+export const PAPER_TELEGRAM_COMMAND_ORIGIN = "telegram" as const;
+export const PAPER_TELEGRAM_IDEMPOTENCY_KEY_PREFIX = "telegram:" as const;
+/** Stable target identity for snapshot reads that resolve the default portfolio at apply time. */
+export const PAPER_PORTFOLIO_SNAPSHOT_TARGET_ID = "default" as const;
 
 const id = z.string().trim().min(1).max(200);
 const name = z.string().trim().min(1).max(120);
@@ -50,6 +62,9 @@ const base = {
 const expected = {
   expectedPortfolioRevision: positiveRevision,
   expectedLedgerEpoch: positiveRevision
+};
+const telegramOrigin = {
+  origin: z.literal(PAPER_TELEGRAM_COMMAND_ORIGIN).optional()
 };
 
 export const paperPortfolioExecutorPayloadSchema = z.discriminatedUnion("kind", [
@@ -99,18 +114,60 @@ export const paperPortfolioExecutorPayloadSchema = z.discriminatedUnion("kind", 
   z.object({
     ...base,
     ...expected,
+    ...telegramOrigin,
     kind: z.literal("paper-robot.action"),
     botId: id,
     expectedBotRevision: positiveRevision,
     action: z.enum(["start", "pause", "resume", "stop"]),
     confirm: z.literal(true)
+  }).strict(),
+  z.object({
+    version: z.literal(PAPER_PORTFOLIO_COMMAND_VERSION),
+    ...telegramOrigin,
+    kind: z.literal("paper-portfolio.snapshot")
+  }).strict(),
+  z.object({
+    version: z.literal(PAPER_PORTFOLIO_COMMAND_VERSION),
+    ...telegramOrigin,
+    kind: z.literal("paper-robot.trades"),
+    botId: id
   }).strict()
 ]);
 
 export type PaperPortfolioExecutorPayload = z.infer<typeof paperPortfolioExecutorPayloadSchema>;
+export type PaperPortfolioReadPayload = Extract<
+  PaperPortfolioExecutorPayload,
+  { kind: "paper-portfolio.snapshot" | "paper-robot.trades" }
+>;
+export type PaperPortfolioMutationPayload = Exclude<
+  PaperPortfolioExecutorPayload,
+  PaperPortfolioReadPayload
+>;
 
 export function parsePaperPortfolioExecutorPayload(value: unknown): PaperPortfolioExecutorPayload {
   return paperPortfolioExecutorPayloadSchema.parse(value);
+}
+
+export function isPaperPortfolioReadPayload(
+  payload: PaperPortfolioExecutorPayload
+): payload is PaperPortfolioReadPayload {
+  return payload.kind === "paper-portfolio.snapshot" || payload.kind === "paper-robot.trades";
+}
+
+/** One authoritative queue-target identity shared by enqueue and fenced apply. */
+export function paperPortfolioCommandTarget(
+  payload: PaperPortfolioExecutorPayload
+): { targetType: "paper-portfolio" | "paper-robot"; targetId: string } {
+  switch (payload.kind) {
+    case "paper-robot.create":
+    case "paper-robot.action":
+    case "paper-robot.trades":
+      return { targetType: "paper-robot", targetId: payload.botId };
+    case "paper-portfolio.snapshot":
+      return { targetType: "paper-portfolio", targetId: PAPER_PORTFOLIO_SNAPSHOT_TARGET_ID };
+    default:
+      return { targetType: "paper-portfolio", targetId: payload.portfolioId };
+  }
 }
 
 export function parseCanonicalPaperMoneyMicros(value: string): number {

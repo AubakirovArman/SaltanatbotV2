@@ -129,6 +129,7 @@ jobs:
           npx --no-install vitest run backend/tests/screenerRepositoryPostgres.integration.test.ts
           npx --no-install vitest run backend/tests/screenerAlertPostgres.integration.test.ts
           npx --no-install vitest run backend/tests/telegramIngressPostgres.integration.test.ts
+          npx --no-install vitest run backend/tests/telegramCommandsPostgres.integration.test.ts
           npx --no-install vitest run backend/tests/notificationWorkerBoot.integration.test.ts
 
   browser-e2e:
