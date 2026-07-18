@@ -50,9 +50,14 @@ SQLite migration since R4: SHA
 [R8 evidence](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md)). The R9.1 server
 multi-market evaluation and ADR 0003 are accepted and deployed with no
 migration: SHA `4f5bc64e9dfb35d379a55690755a76f7594b226d` passed CI run
-`29643197555` (`6/6`) and production runs PostgreSQL schema 16 and
-trading SQLite schema 10 from protected slot `r9a-schema16-4f5bc64` (see
-[R9.1 evidence](./evidence/R9_1_SERVER_EVALUATION.md)). The quantified
+`29643197555` (`6/6`) and was deployed in slot `r9a-schema16-4f5bc64` (see
+[R9.1 evidence](./evidence/R9_1_SERVER_EVALUATION.md)). The R9.2 server GA
+evolution is accepted and deployed with the first PostgreSQL migration
+since R5.3b-2: SHA `3ed6af138f197ee985bd8ac998ab58cc8769b83c` passed CI
+run `29647276230` (`6/6`) and production runs PostgreSQL schema 17
+(additive migration `ga_evolution_lineage`) and trading SQLite schema 10
+from protected slot `r9b-schema17-3ed6af1` (see
+[R9.2 evidence](./evidence/R9_2_GA_EVOLUTION.md)). The quantified
 100-user proof, global executor cap and remaining cross-workload caps are
 still planned for R11.
 
@@ -70,8 +75,10 @@ accepted/deployed R5.2.1 release adds owner-scoped screener presets through
 PostgreSQL schema 14, the accepted/deployed R5.3b-1 release adds
 Telegram binding/delivery/ingress records through PostgreSQL schema 15, and
 the accepted/deployed R5.3b-2 release adds Telegram command-reply and
-confirmation records through PostgreSQL schema 16, which is now the
-production state. One
+confirmation records through PostgreSQL schema 16, and the
+accepted/deployed R9.2 release adds owner-scoped GA evolution
+run/candidate lineage records through PostgreSQL schema 17, which is now
+the production state. One
 singleton trading executor owns the protected SQLite trading/paper state under
 [ADR 0001](adr/0001-execution-authority-and-system-of-record.md). CPU-heavy
 research executes in a separate bounded worker.

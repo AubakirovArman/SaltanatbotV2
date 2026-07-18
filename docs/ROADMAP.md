@@ -472,6 +472,69 @@ See the [strategy and backtest guide](./STRATEGIES.md), the
 [API reference](./API.md) and the detailed
 [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
 
+## Accepted R9.2 release — server GA evolution
+
+Production now runs the accepted R9.2 server GA evolution with lineage,
+Pareto ranking and out-of-sample promotion from protected slot
+`r9b-schema17-3ed6af1` (release commit
+`3ed6af138f197ee985bd8ac998ab58cc8769b83c`, exact-SHA CI run
+`29647276230`, `6/6`; the feature landed in
+`2b45f9ff57b7f4b31952193a2f216ac47a512390`, followed by two test-only
+forward fixes for the shared CI database's new foreign keys). Unlike R9.1
+— and like R8 — this is a migration release, the first PostgreSQL
+migration since R5.3b-2: migration 17 `ga_evolution_lineage` (SQL SHA-256
+`4169ec0148c63415abe913195d34b03fa603039d0fe7defabfe76a89f7a61a73`) is
+additive only, adding the owner-scoped `ga_runs` and `ga_candidates`
+tables with a single-active-run partial unique index, bounded checkpoint
+storage and a promotion-requires-OOS CHECK while every earlier object
+stays untouched. Trading SQLite schema 10 is unchanged, the runtime
+remains `public-http-paper` with the same three project-owned units and
+the API still serves port 4180.
+
+The pure structural generator primitives now live in the workspace
+package `@saltanatbotv2/strategy-generator` (zero IO preserved; the
+frontend keeps a re-export shim so existing imports are untouched), and
+the release adds the job kind `ga-evolution` on the R9.1 registry and the
+durable owner-fair queue: a bounded config (one to four catalog markets
+on a shared timeframe, a 500–20 000-bar lookback, population 8–64,
+generations 1–16, a uint32 seed), the dataset fetched once per run under
+the real-closed-bars discipline and pinned by its `dataset-v1`
+fingerprint, fingerprint-deduplicated train/out-of-sample evaluation
+through the existing worker-thread backtests, and a per-generation atomic
+commit of lineage rows (parents, mutation log, IR, metrics, objectives),
+non-dominated Pareto ranks over out-of-sample objectives and a resume
+checkpoint — cancellation yields a durable resumable `checkpointed` run,
+and resume refetches the market data and verifies the pinned fingerprint,
+failing explicitly with `ga_dataset_drift` on drifted history. The
+owner-scoped `/api/ga` routes expose runs, the frontier, candidate
+lineage chains and promotion. Promotion targets the owner's **own**
+strategy library only: the repository and the SQL CHECK both refuse a
+candidate without a clean out-of-sample report, flagged overfit
+candidates are refused, and a promoted artifact carries full provenance
+(seed, dataset fingerprint, engine and generator versions, lineage chain,
+OOS report). The strategy studio's server evolution section ships in
+en/ru/kk, and the public strategy gallery remains forbidden until R9.3.
+
+Acceptance passed the exact-SHA CI gate, the paired 16→17 migration
+rehearsal on a copy of the production PostgreSQL data and the roadmap
+§13 / §18.1 R9.2 **seeded reproducibility** criterion: two identical runs
+(same seed, same dataset) produced a byte-identical result and
+row-identical lineage; a run cancelled after generation 1 resumed on a
+fresh instance to a byte-identical final state with equal candidate row
+sets and zero re-evaluation across the checkpoint boundary; a resume
+whose refetched market data no longer reproduces the pinned dataset
+fingerprint fails explicitly with `ga_dataset_drift`; and fingerprint
+dedup guarantees a genome is never evaluated twice. The paired pre/post
+recovery generations and the isolated drill passed; see the recorded
+[R9.2 acceptance evidence](./evidence/R9_2_GA_EVOLUTION.md). The next
+pending increment is R9.3 (the versioned strategy gallery with
+provenance, safe import and revocation inside R9); the R11 integrated
+100-user capacity proof remains pending and unproven.
+
+See the [strategy and backtest guide](./STRATEGIES.md), the
+[API reference](./API.md) and the detailed
+[pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
 ## Explicitly deferred external validation
 
 | Item | Why deferred | Required before claim |

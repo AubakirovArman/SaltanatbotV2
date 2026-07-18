@@ -295,12 +295,12 @@ catalog only, so results carry survivorship bias. This is research evidence, not
 claim or a promotion path: a high rank starts nothing — import, backtest, walk-forward and paper
 review remain the only way forward.
 
-### Server GA evolution with lineage and promotion (R9.2, in progress — not accepted)
+### Server GA evolution with lineage and promotion (R9.2, accepted)
 
-R9.2 is implemented but **not yet accepted or deployed**: production still runs the accepted R9.1
-slot on PostgreSQL schema 16, so treat this section as the contract under acceptance, not a
-release record. Everything here is research-only, and the public strategy gallery stays out of
-scope until R9.3.
+R9.2 is **accepted and deployed** with the additive PostgreSQL 16→17 migration
+`ga_evolution_lineage`; see the recorded
+[R9.2 acceptance evidence](evidence/R9_2_GA_EVOLUTION.md). Everything here is research-only, and
+the public strategy gallery stays out of scope until R9.3.
 
 The pure generator primitives now live in the workspace package
 `@saltanatbotv2/strategy-generator` (`frontend/src/strategy/generator` re-exports it unchanged,

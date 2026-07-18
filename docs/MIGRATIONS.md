@@ -4,27 +4,46 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
-## In progress: R9.2 PostgreSQL schema 17 (NOT accepted)
+## Accepted R9.2 PostgreSQL schema 17 migration
 
-R9.2 (server GA evolution with lineage, Pareto/OOS promotion and checkpoint/resume) adds one
-additive PostgreSQL migration, version 17, named `ga_evolution_lineage`. Its exact checksum is
-`4169ec0148c63415abe913195d34b03fa603039d0fe7defabfe76a89f7a61a73`. It creates only new objects:
-`ga_runs` (owner-scoped GA runs with a bounded JSONB config, seed, dataset fingerprint,
-engine/generator versions, a size-checked resume checkpoint of at most 512 KiB, a bounded Pareto
-frontier summary and a partial unique index permitting at most one `running` row per owner) and
-`ga_candidates` (per-run lineage rows keyed `(run_id, fingerprint)` carrying parents, mutation
-log, IR, metrics, the objective vector, Pareto rank, out-of-sample report and promotion
-timestamp). Migrations v1–v16 stay byte-identical, no existing table is rewritten and the trading
-SQLite is untouched at schema 10.
+The R9.2 server GA evolution release (lineage, Pareto/OOS promotion and checkpoint/resume) was
+accepted and deployed on 2026-07-18 from commit `3ed6af138f197ee985bd8ac998ab58cc8769b83c` (the
+feature landed in `2b45f9ff57b7f4b31952193a2f216ac47a512390`, followed by two test-only forward
+fixes for the shared CI database's new foreign keys) after GitHub Actions run `29647276230`
+completed all 6 required jobs successfully. Production now runs PostgreSQL schema 17 and
+unchanged trading SQLite schema 10 from protected slot `r9b-schema17-3ed6af1`, superseding
+`r9a-schema16-4f5bc64` below ([R9.2 GA evolution evidence](./evidence/R9_2_GA_EVOLUTION.md)).
+This is the first PostgreSQL migration since the accepted R5.3b-2 schema 16. Nothing in this
+section replaces, edits or extends the accepted R9.1 and earlier records below.
 
-**This migration is not accepted.** Production still runs the accepted R9.1 slot
-`r9a-schema16-4f5bc64` on PostgreSQL schema 16 and trading SQLite schema 10; no production
-database has applied version 17. Applying it to durable data must wait for the full
-[RELEASING.md](RELEASING.md) gate — exact-commit CI, a protected release slot, the paired
-backup/isolated-restore rehearsal of the 16-to-17 upgrade and the recorded cutover — after which
-a dated accepted section will replace this note. The chain stays forward-only: once any database
-reaches version 17, never run an older binary against it and never remove migration rows to roll
-back. Nothing in this note replaces, edits or extends the accepted records below.
+Schema 17 is one additive PostgreSQL migration, version 17, named `ga_evolution_lineage`. Its
+exact checksum is `4169ec0148c63415abe913195d34b03fa603039d0fe7defabfe76a89f7a61a73`. It creates
+only new objects: `ga_runs` (owner-scoped GA runs with a bounded JSONB config, seed, dataset
+fingerprint, engine/generator versions, a size-checked resume checkpoint of at most 512 KiB, a
+bounded Pareto frontier summary and a partial unique index permitting at most one `running` row
+per owner) and `ga_candidates` (per-run lineage rows keyed `(run_id, fingerprint)` carrying
+parents, mutation log, IR, metrics, the objective vector, Pareto rank, out-of-sample report and
+promotion timestamp, with a CHECK constraint refusing a promotion timestamp without an
+out-of-sample report). Migrations v1–v16 stay byte-identical, no existing table is rewritten and
+the trading SQLite is untouched at schema 10.
+
+The accepted cutover extended the paired-generation discipline with the restore-based PostgreSQL
+rehearsal: pre-migration paired generation `c9fbff05`
+(`pre-r9b-schema16-v10-20260718T140000Z`, backup and verify passed at PostgreSQL schema 16 /
+SQLite 10); then the paired migration rehearsal, which restored the production-data copy into the
+isolated database `saltanatbotv2_restore_r9b_rehearsal` and migrated it `fromVersion 16 →
+toVersion 17`, applying exactly `ga_evolution_lineage` with `ga_runs`/`ga_candidates` present,
+after which the rehearsal database was dropped and the replacement directory removed; then fresh
+pre-cutover paired generation `35d3b199` (`pre-r9b-cutover-schema16-v10-20260718T142500Z`, backup
+and verify at the green SHA, still schema 16, retained as the replacement-only rollback source);
+then the cutover to slot `r9b-schema17-3ed6af1`, whose three restarted units applied migration 17
+on startup (schema 17 in the identity log, `NRestarts=0`, `/api/ready` ready, served asset
+SHA-256 identical to the slot frontend dist); then post-cutover paired generation `fb95a706`
+(`post-r9b-schema17-v10-20260718T143000Z`, backup, verify and isolated drill passed at schema
+17). Rollback remains replacement-only — the superseded slot `r9a-schema16-4f5bc64` and the
+verified schema-16 pre-cutover generations are retained. The chain stays forward-only: once a
+database reaches version 17, never run an older binary against it and never remove migration
+rows to roll back.
 
 ## Accepted R9.1 server evaluation release: no migration
 

@@ -159,12 +159,12 @@ fingerprint, config, engine version) inputs produce byte-identical results. The 
 universe is the currently listed public catalog only, so results carry survivorship bias and are
 research evidence, not performance claims.
 
-### Server GA evolution and promotion (R9.2, in progress — not accepted)
+### Server GA evolution and promotion (R9.2, accepted)
 
-R9.2 is implemented on `main` but **not yet accepted or deployed**: production still runs the
-accepted R9.1 slot `r9a-schema16-4f5bc64` on PostgreSQL schema 16, and this contract may change
-until an acceptance record exists. The surface is authenticated, owner-scoped and research-only;
-the public strategy gallery stays out of scope until R9.3.
+R9.2 is **accepted and deployed**: production runs protected slot `r9b-schema17-3ed6af1` on
+PostgreSQL schema 17 (additive migration `ga_evolution_lineage`); see the recorded
+[R9.2 acceptance evidence](evidence/R9_2_GA_EVOLUTION.md). The surface is authenticated,
+owner-scoped and research-only; the public strategy gallery stays out of scope until R9.3.
 
 `kind: "ga-evolution"` enqueues a durable, checkpointed genetic-algorithm run over the pure
 generator primitives (the workspace package `@saltanatbotv2/strategy-generator`). The strict start

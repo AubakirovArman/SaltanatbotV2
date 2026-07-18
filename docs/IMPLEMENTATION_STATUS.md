@@ -672,21 +672,24 @@ isolated drill passed) were verified. Gate and cutover evidence is
 recorded in
 [R9.1 server evaluation evidence](./evidence/R9_1_SERVER_EVALUATION.md).
 
-R9 overall is not finished: R9.2 (GA lineage, Pareto/OOS promotion and
-checkpoint/resume) is implemented on `main` but **not accepted** — see
-the next section — and R9.3 (the strategy gallery) has not started.
+R9 overall is not finished: R9.2 (server GA evolution with lineage,
+Pareto/OOS promotion and checkpoint/resume) is now also accepted and
+deployed — see the next section — and R9.3 (the strategy gallery) has
+not started.
 
-## R9.2 server GA evolution with lineage and promotion — in progress, NOT accepted
+## R9.2 server GA evolution with lineage and promotion accepted and deployed — 2026-07-18
 
-This slice is **implemented but not accepted or deployed**. Production
-still runs the accepted R9.1 slot `r9a-schema16-4f5bc64` on PostgreSQL
-schema 16 and trading SQLite schema 10; the new schema-17 migration has
-not been applied to any production database, and no protected release
-slot, exact-SHA CI acceptance run, paired backup/rehearsal or cutover
-evidence exists yet. Everything below is code-and-test evidence only.
-The slice stays research-only: promotion targets the owner's own
-strategy library, and the public gallery remains out of scope until
-R9.3.
+This slice delivered the server GA evolution pipeline — per-generation
+lineage, Pareto/OOS-gated promotion and checkpoint/resume. It passed
+the full [RELEASING.md](./RELEASING.md) gate — exact-commit CI, a
+protected release slot, the paired backup/isolated-restore rehearsal
+of the 16-to-17 PostgreSQL upgrade and the production cutover — and
+was accepted and deployed on 2026-07-18. Unlike R9.1 — and like R8 —
+it is a migration release: the additive PostgreSQL migration 17
+`ga_evolution_lineage` moved production from schema 16 to schema 17,
+while the trading SQLite stays unchanged at schema 10. The slice
+stays research-only: promotion targets the owner's own strategy
+library, and the public gallery remains out of scope until R9.3.
 
 - [x] Pure package extraction: the browser generator primitives moved
   byte-identically into the workspace package
@@ -732,24 +735,68 @@ R9.3.
   OOS report is missing or flags overfit), saving promoted candidates
   into the existing portable-artifact library flow with provenance;
   EN/RU/KK catalogs.
-- [ ] The dedicated R9.2 verification program from the increment spec:
-  the seeded-reproducibility suite (same seed + dataset ⇒ identical
-  results and lineage, checkpoint/resume equal to an uninterrupted
-  run, dataset drift, dedup evaluation counts, Pareto golden sets,
-  promotion refusals, single-active-run limit, result bounds), the
-  GA route suites, the frontend server-evolution suites, the
-  PG-gated migration-17 integration coverage and the
-  `r9b-ga-evolution` E2E journey.
-- [ ] The [RELEASING.md](./RELEASING.md) acceptance gate: exact-commit
-  CI, a protected slot, the schema-16→17 paired
-  backup/isolated-restore rehearsal, the production cutover and
-  recorded evidence. Until this box is checked, R9.2 is not accepted
-  and this section must not be read as a release record.
+- [x] The dedicated R9.2 verification program from the increment
+  spec, all green. The roadmap §13 / §18.1 R9.2 release criterion
+  (**seeded reproducibility**) passed: two identical runs (same seed,
+  same dataset) produced a **byte-identical result and row-identical
+  lineage**; a run cancelled after generation 1 resumed on a fresh
+  instance to a **byte-identical final state** with equal candidate
+  row sets and **zero re-evaluation across the checkpoint boundary**;
+  a resume whose refetched market data no longer reproduces the
+  pinned dataset fingerprint fails explicitly with
+  `ga_dataset_drift`; and fingerprint dedup guarantees a genome is
+  never evaluated twice (evaluation-count accounting asserted).
+  Vitest passed 3307 with 136 skipped; the new PG-gated
+  `gaEvolutionPostgres` integration suite is wired into CI against
+  the isolated database (25/25 together with the compute-jobs suite);
+  Chromium e2e passed 97/97 including the new R9.2 server-evolution
+  journey (start a run → Pareto frontier with a blocked overfit
+  candidate → promote the clean candidate into the library; one R9.1
+  spec selector was disambiguated), Firefox smoke 19/19 and visual
+  regression 6/6.
+- [x] The [RELEASING.md](./RELEASING.md) acceptance gate: exact-commit
+  CI on release commit `3ed6af138f197ee985bd8ac998ab58cc8769b83c` —
+  the feature landed in `2b45f9ff57b7f4b31952193a2f216ac47a512390`,
+  followed by two test-only forward fixes for the shared CI
+  database's new foreign keys (the queue truncation now cascades
+  through the schema-17 foreign keys, and the orphaned-run scenario
+  stamps `completed_at` on the forced-terminal driving job) — with
+  GitHub Actions run `29647276230` green on 6/6 jobs, a protected
+  slot, the schema-16→17 paired backup/isolated-restore rehearsal,
+  the production cutover and recorded evidence.
 
-Contract documentation for the in-progress surfaces lives in the
+Canonical behavior for the delivered contracts is documented in the
 [API reference](./API.md) server-GA-evolution section, the
 [strategy reference](./STRATEGIES.md) R9.2 section and the
-[migration notes](./MIGRATIONS.md) in-progress schema-17 note.
+[migration notes](./MIGRATIONS.md) accepted schema-17 record.
+
+Production now runs protected slot `r9b-schema17-3ed6af1` at commit
+`3ed6af138f197ee985bd8ac998ab58cc8769b83c`, still on port 4180 in the
+`public-http-paper` runtime with the same three project-owned units.
+Exact-SHA GitHub Actions run `29647276230` passed all 6/6 jobs. The
+release migrated PostgreSQL from schema 16 to 17 — the additive
+migration `ga_evolution_lineage`, SQL SHA-256
+`4169ec0148c63415abe913195d34b03fa603039d0fe7defabfe76a89f7a61a73` —
+while the trading SQLite stays at schema 10. Before the cutover, the
+paired migration rehearsal restored the pre-migration generation's
+production-data copy into the isolated database
+`saltanatbotv2_restore_r9b_rehearsal` and migrated it from version 16
+to 17, applying exactly `ga_evolution_lineage`
+(`ga_runs`/`ga_candidates` present); the rehearsal database was
+dropped and the replacement directory removed afterwards. Paired
+recovery generations `c9fbff05` (pre-migration at schema 16),
+`35d3b199` (fresh pre-cutover at the green SHA, still schema 16,
+retained as the replacement-only rollback source) and `fb95a706`
+(post-cutover at schema 17, isolated drill passed) were verified.
+Rollback remains replacement-only; the superseded slot
+`r9a-schema16-4f5bc64` is retained. Gate, rehearsal and cutover
+evidence is recorded in
+[R9.2 GA evolution evidence](./evidence/R9_2_GA_EVOLUTION.md).
+
+R9 overall is still not finished: R9.1 and R9.2 are accepted and
+deployed, but R9.3 (the versioned strategy gallery with provenance,
+safe import and revoke) has not started and is the next pending
+increment inside R9.
 
 ## Delivered slices (not full roadmap completion)
 

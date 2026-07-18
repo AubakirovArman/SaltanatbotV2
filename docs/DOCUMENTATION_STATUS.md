@@ -13,6 +13,7 @@ Last focused R6 release/cutover reconciliation: **2026-07-18** (`e2411ab`, CI `2
 Last focused R7 release/cutover reconciliation: **2026-07-18** (`baf4217`, CI `29636312303` 6/6, no migration)
 Last focused R8 release/cutover reconciliation: **2026-07-18** (`69621f8`, CI `29639908389` 6/6, trading SQLite 9→10 migration)
 Last focused R9.1 release/cutover reconciliation: **2026-07-18** (`4f5bc64`, CI `29643197555` 6/6, no migration; closes D2 via ADR 0003)
+Last focused R9.2 release/cutover reconciliation: **2026-07-18** (`3ed6af1`, CI `29647276230` 6/6, PostgreSQL 16→17 migration)
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -26,11 +27,11 @@ their source contracts, and user-facing claims were compared with the current im
 | [README](../README.md) | users/contributors | current | 2026-07-14 |
 | [Architecture](ARCHITECTURE.md) | contributors | accepted deployment through PostgreSQL schema 14 / trading SQLite schema 9 | 2026-07-17 |
 | [Modular architecture](MODULAR_ARCHITECTURE.md) | contributors | current | 2026-07-11 |
-| [API reference](API.md) | integrators | current accepted API including the canonical R4 paper-portfolio contract and the accepted R9.1 `multi-market-eval` job kind | 2026-07-18 |
+| [API reference](API.md) | integrators | current accepted API including the canonical R4 paper-portfolio contract, the accepted R9.1 `multi-market-eval` job kind and the accepted R9.2 `ga-evolution` job kind with the owner-scoped `/api/ga` routes | 2026-07-18 |
 | [Generated endpoint index](API_ENDPOINTS.generated.md) | integrators | generated/current; 159 HTTP routes including nine owner-scoped research-only alert routes | 2026-07-16 |
 | [Machine-readable capability truths](CAPABILITY_TRUTHS.json) | maintainers/release reviewers | source-backed semantic guard for scanner modes, public/continuous venues and generated endpoint totals | 2026-07-17 |
 | [Public arbitrage SDK](../packages/arbitrage-sdk/README.md) | integrators/SDK users | current; public/read-only | 2026-07-14 |
-| [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current including the accepted R9.1 server multi-market evaluation | 2026-07-18 |
+| [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current including the accepted R9.1 server multi-market evaluation and the accepted R9.2 server GA evolution | 2026-07-18 |
 | [Declarative plugin contract](PLUGINS.md) | users/plugin authors | current foundation | 2026-07-12 |
 | [Trading guide](TRADING.md) | users/operators | current accepted paper boundary including the accepted R6 DCA and R7 grid robot types and the accepted R8 multi-leg paper intents; live remains outside pre-HTTPS | 2026-07-18 |
 | [Canonical paper portfolios](PAPER_PORTFOLIOS.md) | users/operators/integrators | accepted R4 lifecycle, authority, API and schema-12/schema-9 recovery runbook plus the accepted R6 DCA, R7 grid and R8 multi-leg intent contracts | 2026-07-18 |
@@ -60,7 +61,8 @@ their source contracts, and user-facing claims were compared with the current im
 | [R7 grid paper robot evidence](evidence/R7_GRID_PAPER_ROBOT.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record | 2026-07-18 |
 | [R8 multi-leg paper intents evidence](evidence/R8_MULTI_LEG_PAPER_INTENTS.md) | operators/release reviewers | accepted exact-commit CI, SQLite-10 paired migration rehearsal and recovery, protected slot and production cutover record | 2026-07-18 |
 | [R9.1 server multi-market evaluation evidence](evidence/R9_1_SERVER_EVALUATION.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record; closes D2 via ADR 0003 | 2026-07-18 |
-| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R5 complete, R6, R7, R8 and R9.1 accepted/deployed | 2026-07-18 |
+| [R9.2 server GA evolution evidence](evidence/R9_2_GA_EVOLUTION.md) | operators/release reviewers | accepted exact-commit CI, PostgreSQL 16→17 paired migration rehearsal and recovery, protected slot and production cutover record | 2026-07-18 |
+| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R5 complete, R6, R7, R8, R9.1 and R9.2 accepted/deployed | 2026-07-18 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |
 | [Accessibility baseline](ACCESSIBILITY.md) | users/contributors | current automated baseline including R4 center/drawer/mobile evidence; manual AT/Opera still pending | 2026-07-17 |
