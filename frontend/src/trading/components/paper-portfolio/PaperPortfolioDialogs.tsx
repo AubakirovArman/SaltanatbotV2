@@ -116,7 +116,7 @@ export function RobotActionDialog({
   );
 }
 
-function AccessibleDialog({
+export function AccessibleDialog({
   title,
   locale,
   busy,

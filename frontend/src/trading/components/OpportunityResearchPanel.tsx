@@ -1,7 +1,12 @@
 import type { MarketOpportunityEnvelope } from "@saltanatbotv2/arbitrage-sdk";
-import { ArrowRight, FlaskConical, ShieldX, Trash2 } from "lucide-react";
+import { ArrowRight, FlaskConical, GitFork, ShieldX, Trash2 } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { localeTag, type Locale } from "../../i18n";
+import { multiLegText } from "../../i18n/multiLeg";
+import { paperMultiLegSourceFromEnvelope } from "../multiLegPreview";
 import { opportunityResearchText as text } from "../opportunityResearchText";
+import type { PaperPortfolioMutationResult } from "../paperPortfolioTypes";
+import { RunPaperMultiLegDialog } from "./RunPaperMultiLegDialog";
 import "../../styles/opportunity-research.css";
 
 interface Props {
@@ -12,11 +17,19 @@ interface Props {
   canOpenPaperJournal: boolean;
   onOpenPaperJournal(): void;
   onClear(): void;
+  /** Enables the owner-scoped "Run paper multi-leg" handoff; absent keeps the panel read-only. */
+  paperMultiLeg?: {
+    ownerUserId: string;
+    onSubmitted: (result: PaperPortfolioMutationResult) => void;
+  };
 }
 
-export function OpportunityResearchPanel({ opportunity, expiresAt, now, locale, canOpenPaperJournal, onOpenPaperJournal, onClear }: Props) {
+export function OpportunityResearchPanel({ opportunity, expiresAt, now, locale, canOpenPaperJournal, onOpenPaperJournal, onClear, paperMultiLeg }: Props) {
   const expired = now >= expiresAt;
   const paperReady = opportunity.execution.paperPlan === "ready" && !expired;
+  const multiLegSource = useMemo(() => (paperMultiLeg ? paperMultiLegSourceFromEnvelope(opportunity) : undefined), [opportunity, paperMultiLeg]);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const runTrigger = useRef<HTMLElement | null>(null);
   const blockers = unique([
     ...opportunity.blockers.map((blocker) => blocker.message),
     ...opportunity.execution.paperBlockers,
@@ -148,6 +161,18 @@ export function OpportunityResearchPanel({ opportunity, expiresAt, now, locale, 
       </section>
 
       <footer className="opportunity-research-actions">
+        {paperReady && paperMultiLeg && multiLegSource && (
+          <button
+            type="button"
+            className="run-button"
+            onClick={(event) => {
+              runTrigger.current = event.currentTarget;
+              setRunDialogOpen(true);
+            }}
+          >
+            <GitFork size={15} aria-hidden="true" /> {multiLegText(locale, "runAction")}
+          </button>
+        )}
         {paperReady && canOpenPaperJournal && (
           <button type="button" className="run-button" onClick={onOpenPaperJournal}>
             {text(locale, "openPaper")} <ArrowRight size={15} aria-hidden="true" />
@@ -157,6 +182,21 @@ export function OpportunityResearchPanel({ opportunity, expiresAt, now, locale, 
           <Trash2 size={15} aria-hidden="true" /> {text(locale, "clear")}
         </button>
       </footer>
+
+      {runDialogOpen && paperMultiLeg && multiLegSource && (
+        <RunPaperMultiLegDialog
+          locale={locale}
+          ownerUserId={paperMultiLeg.ownerUserId}
+          opportunity={opportunity}
+          source={multiLegSource}
+          returnFocus={runTrigger.current}
+          onClose={() => setRunDialogOpen(false)}
+          onSubmitted={(result) => {
+            setRunDialogOpen(false);
+            paperMultiLeg.onSubmitted(result);
+          }}
+        />
+      )}
     </article>
   );
 }

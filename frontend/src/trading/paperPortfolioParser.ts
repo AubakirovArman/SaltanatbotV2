@@ -21,6 +21,7 @@ import {
   type PaperRobotRuntimeMetadata,
   type PaperTradeStatistics
 } from "./paperPortfolioTypes";
+import { lenientPaperMultiLegSection } from "./paperMultiLegIntentParser";
 import { parsePaperRobotJournal, validatePaperRuntimeJournals } from "./paperRobotJournalParser";
 
 type JsonRecord = Record<string, unknown>;
@@ -51,6 +52,7 @@ export function parsePaperPortfolioDetail(value: unknown, expectedOwnerUserId?: 
       portfolio,
       snapshot,
       robots,
+      multiLeg: lenientPaperMultiLegSection(item.multiLeg),
       lastError: optionalText(item.lastError, "detail.lastError")
     };
   });
@@ -71,6 +73,7 @@ export function parsePaperPortfolioMutation(value: unknown, expectedOwnerUserId?
       portfolio,
       snapshot,
       robots,
+      multiLeg: lenientPaperMultiLegSection(item.multiLeg),
       lastError: optionalText(item.lastError, "mutation.lastError"),
       replayed: optionalBoolean(item.replayed, "mutation.replayed")
     };

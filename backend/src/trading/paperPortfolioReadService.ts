@@ -1,15 +1,27 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { DcaParamsV1, GridModeV1, GridParamsV1, GridSpacingV1 } from "@saltanatbotv2/contracts";
+import { replayPaperMultiLegEvents } from "../arbitrage/paperMultiLeg/engine.js";
+import type { PaperMultiLegPlanLeg, PaperMultiLegState, PaperMultiLegTerminalStatus } from "../arbitrage/paperMultiLeg/types.js";
 import { DCA_STATE_SCHEMA_V1, dcaStateSettingsKey, parseDcaStateSnapshotV1, type DcaPhaseV1 } from "./dca/types.js";
 import { GRID_STATE_SCHEMA_V1, gridStateSettingsKey, parseGridStateSnapshotV1, type GridPhaseV1 } from "./grid/types.js";
-import { buildPaperPortfolioSnapshotFrom } from "./paperPortfolioProjectionStore.js";
+import { formatSignedMultiLegMicros, isPaperMultiLegKillSwitchEnabled } from "./multiLeg/intentService.js";
+import {
+  listPaperMultiLegIntentEventsFrom,
+  listPaperMultiLegIntentsFrom,
+  sumRunningPaperMultiLegReservedMicrosFrom,
+  type PaperMultiLegIntent,
+  type PaperMultiLegIntentStatus,
+  type PaperMultiLegSourceEngine
+} from "./multiLeg/intentStore.js";
+import { buildPaperPortfolioSnapshotFrom, formatMicros } from "./paperPortfolioProjectionStore.js";
 import { buildPaperRobotJournalFrom } from "./paperRobotJournal.js";
 import { listPaperPortfoliosFrom } from "./paperPortfolioStore.js";
 import type { PaperPortfolio } from "./paperPortfolioStoreSupport.js";
-import type { PaperRobotJournal } from "./paperPortfolioTypes.js";
+import type { PaperMoney, PaperRobotJournal } from "./paperPortfolioTypes.js";
 import type { BotConfig } from "./types.js";
 
 export const PAPER_PORTFOLIO_LIST_SCHEMA_VERSION = "paper-portfolio-list-v1" as const;
+export const PAPER_MULTI_LEG_RECENT_INTENT_LIMIT = 20;
 
 export type PaperRobotControlStatus = "idle" | "stopped" | "running" | "paused" | "error";
 
@@ -81,10 +93,56 @@ export interface PaperPortfolioRuntimeView {
   isPaused(ownerUserId: string, botId: string): boolean;
 }
 
+/** Browser-shaped per-leg disclosure: planned vs filled quantities plus every modeled fee. */
+export interface PaperMultiLegIntentLegView {
+  venue: string;
+  instrumentId: string;
+  side: "buy" | "sell";
+  plannedQuantity: number;
+  filledQuantity: number;
+  averagePrice: number;
+  fee: number;
+  compensated: boolean;
+}
+
+export interface PaperMultiLegResidualExposureView {
+  legId: string;
+  instrumentId: string;
+  quantityUnit: string;
+  quantity: number;
+}
+
+/**
+ * Additive multi-leg intent row. Field names match the browser's lenient
+ * multi-leg parser exactly; residual exposure is always listed explicitly and
+ * never silently priced into the combined net figure.
+ */
+export interface PaperMultiLegIntentView {
+  intentId: string;
+  status: PaperMultiLegIntentStatus;
+  outcome: PaperMultiLegTerminalStatus | null;
+  sourceEngine: PaperMultiLegSourceEngine;
+  sourceOpportunityId: string;
+  legCount: number;
+  reservedCapital: PaperMoney;
+  netPnl: PaperMoney | null;
+  fees: PaperMoney | null;
+  createdAt: number;
+  legs: PaperMultiLegIntentLegView[];
+  residualExposure: PaperMultiLegResidualExposureView[];
+}
+
+export interface PaperPortfolioMultiLegSection {
+  killSwitchEnabled: boolean;
+  intents: PaperMultiLegIntentView[];
+}
+
 export interface PaperPortfolioDetail {
   portfolio: PaperPortfolio;
   snapshot: ReturnType<typeof buildPaperPortfolioSnapshotFrom>["snapshot"];
   robots: PaperRobotRuntimeMetadata[];
+  /** Additive R8 section; old clients ignore it. */
+  multiLeg: PaperPortfolioMultiLegSection;
   lastError?: string;
 }
 
@@ -134,13 +192,106 @@ export class PaperPortfolioReadService {
     });
     return {
       portfolio: record.portfolio,
-      snapshot: record.snapshot,
+      snapshot: multiLegAdjustedSnapshot(
+        record.snapshot,
+        sumRunningPaperMultiLegReservedMicrosFrom(this.database, ownerUserId, record.portfolio.id)
+      ),
       robots,
+      multiLeg: multiLegSection(this.database, ownerUserId, record.portfolio.id),
       ...(robots.find((robot) => robot.lastError)?.lastError
         ? { lastError: newestPortfolioError(this.database, ownerUserId, record.snapshot.robots.map((robot) => robot.botId)) }
         : {})
     };
   }
+}
+
+/**
+ * Available capital keeps the robot-allocation semantics and additionally
+ * subtracts every running multi-leg worst-case reservation; the durable epoch
+ * cash itself is never mutated by an intent, so the terminal status flip is
+ * the single release.
+ */
+function multiLegAdjustedSnapshot(
+  snapshot: ReturnType<typeof buildPaperPortfolioSnapshotFrom>["snapshot"],
+  runningReservedMicros: number
+): ReturnType<typeof buildPaperPortfolioSnapshotFrom>["snapshot"] {
+  if (runningReservedMicros <= 0) return snapshot;
+  const match = /^(\d+)\.(\d{6})$/.exec(snapshot.aggregates.availableCapital);
+  if (!match) return snapshot;
+  const availableMicros = Number(match[1]) * 1_000_000 + Number(match[2]);
+  if (!Number.isSafeInteger(availableMicros)) return snapshot;
+  return {
+    ...snapshot,
+    aggregates: {
+      ...snapshot.aggregates,
+      availableCapital: formatMicros(Math.max(0, availableMicros - runningReservedMicros))
+    }
+  };
+}
+
+function multiLegSection(database: DatabaseSync, ownerUserId: string, portfolioId: string): PaperPortfolioMultiLegSection {
+  const intents = listPaperMultiLegIntentsFrom(database, ownerUserId, {
+    portfolioId,
+    limit: PAPER_MULTI_LEG_RECENT_INTENT_LIMIT
+  }).map((intent) => multiLegIntentView(database, ownerUserId, intent));
+  return {
+    killSwitchEnabled: isPaperMultiLegKillSwitchEnabled(database, ownerUserId),
+    intents
+  };
+}
+
+function multiLegIntentView(database: DatabaseSync, ownerUserId: string, intent: PaperMultiLegIntent): PaperMultiLegIntentView {
+  const state = replayedMultiLegState(database, ownerUserId, intent.intentId);
+  return {
+    intentId: intent.intentId,
+    status: intent.status,
+    outcome: intent.terminalOutcome ?? null,
+    sourceEngine: intent.sourceEngine,
+    sourceOpportunityId: intent.sourceOpportunityId,
+    legCount: intent.plan.legs.length,
+    reservedCapital: formatMicros(intent.reservedCapitalMicros),
+    netPnl: intent.netPnlMicros === undefined ? null : formatSignedMultiLegMicros(intent.netPnlMicros),
+    fees: intent.feesMicros === undefined ? null : formatMicros(intent.feesMicros),
+    createdAt: intent.createdAt,
+    legs: intent.plan.legs.map((leg) => multiLegLegView(leg, state)),
+    residualExposure: (state?.terminal?.unresolvedExposure ?? []).map((line) => ({
+      legId: line.legId,
+      instrumentId: line.instrumentId,
+      quantityUnit: line.quantityUnit,
+      quantity: line.quantity
+    }))
+  };
+}
+
+/**
+ * The durable journal is replayed through the pure engine for per-leg fills.
+ * The view degrades to plan-only leg rows instead of failing the whole detail
+ * response when a journal is unreadable, mirroring the DCA/grid metadata
+ * degradation discipline.
+ */
+function replayedMultiLegState(database: DatabaseSync, ownerUserId: string, intentId: string): PaperMultiLegState | undefined {
+  try {
+    return replayPaperMultiLegEvents(listPaperMultiLegIntentEventsFrom(database, ownerUserId, intentId), intentId);
+  } catch {
+    return undefined;
+  }
+}
+
+function multiLegLegView(leg: PaperMultiLegPlanLeg, state: PaperMultiLegState | undefined): PaperMultiLegIntentLegView {
+  const original = state?.originalFills.find((fill) => fill.legId === leg.legId);
+  const compensation = state?.compensationFills.filter((fill) => fill.legId === leg.legId) ?? [];
+  const fee = (original?.estimatedFee ?? 0) + compensation.reduce((sum, fill) => sum + fill.estimatedFee, 0);
+  const rounded = Number(fee.toFixed(6));
+  return {
+    venue: leg.venue,
+    instrumentId: leg.instrumentId,
+    side: leg.side,
+    plannedQuantity: leg.plannedQuantity,
+    filledQuantity: original?.filledQuantity ?? 0,
+    averagePrice: original?.averagePrice ?? leg.referencePrice,
+    fee: Object.is(rounded, -0) ? 0 : rounded,
+    compensated: compensation.some((fill) => fill.filledQuantity > 0)
+  };
 }
 
 function runtimeMetadata(

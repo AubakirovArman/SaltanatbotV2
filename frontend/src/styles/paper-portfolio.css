@@ -570,3 +570,40 @@
   .paper-binding-error button,
   .paper-binding-empty button { min-block-size: 48px; }
 }
+
+/* R8 — owner-scoped multi-leg paper intents inside the portfolio center. */
+.paper-multi-leg-section { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--panel); }
+.paper-multi-leg-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.paper-multi-leg-head h3 { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+.paper-multi-leg-head p { margin: 2px 0 0; color: var(--dim); font-size: var(--fs-xs); }
+.paper-multi-leg-kill-switch { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.paper-multi-leg-kill-switch .secondary-button { min-block-size: 44px; }
+.paper-multi-leg-kill-state { display: inline-flex; gap: 5px; align-items: center; color: var(--dim); font-size: var(--fs-xs); }
+.paper-multi-leg-kill-state.on { color: var(--down); }
+.paper-multi-leg-kill-state.off { color: var(--up); }
+.paper-multi-leg-intent-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.paper-multi-leg-intent { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line-soft); border-radius: 8px; }
+.paper-multi-leg-intent > header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.paper-multi-leg-intent > header > span:first-child { display: grid; gap: 2px; min-inline-size: 0; }
+.paper-multi-leg-intent > header small { color: var(--dim); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.paper-multi-leg-badge { padding: 3px 8px; border: 1px solid var(--line-soft); border-radius: 999px; color: var(--dim); font-size: var(--fs-xs); }
+.paper-multi-leg-badge.completed { border-color: color-mix(in srgb, var(--up) 36%, var(--line)); color: var(--up); }
+.paper-multi-leg-badge.running { color: var(--up); }
+.paper-multi-leg-badge.compensated,
+.paper-multi-leg-badge.manual { border-color: color-mix(in srgb, var(--down) 45%, var(--line)); color: var(--down); }
+.paper-multi-leg-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 0; }
+.paper-multi-leg-metric { min-inline-size: 0; }
+.paper-multi-leg-metric dt { color: var(--dim); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: var(--ls-caps); }
+.paper-multi-leg-metric dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.paper-multi-leg-metric.positive dd { color: var(--up); }
+.paper-multi-leg-metric.negative dd { color: var(--down); }
+.paper-multi-leg-legs summary { display: inline-flex; gap: 5px; align-items: center; min-block-size: 44px; color: var(--dim); font-size: var(--fs-sm); cursor: pointer; }
+.paper-multi-leg-table { inline-size: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.paper-multi-leg-table th,
+.paper-multi-leg-table td { padding: 6px 8px; border-block-start: 1px solid var(--line-soft); text-align: start; overflow-wrap: anywhere; }
+.paper-multi-leg-table thead th { color: var(--dim); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: var(--ls-caps); }
+.paper-multi-leg-residual { display: grid; gap: 4px; padding: 8px 10px; border: 1px dashed var(--line-soft); border-radius: 8px; font-size: var(--fs-sm); }
+.paper-multi-leg-residual ul { margin: 0; padding-inline-start: 18px; }
+.paper-multi-leg-residual span { color: var(--dim); font-size: var(--fs-xs); }
+.paper-multi-leg-worst-case { display: grid; gap: 6px; }
+.paper-dialog-note { margin: 0; color: var(--dim); font-size: var(--fs-xs); }

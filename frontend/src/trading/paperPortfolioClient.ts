@@ -111,6 +111,60 @@ export function runPaperRobotAction(
   }, options);
 }
 
+/**
+ * Opaque research source for a durable multi-leg paper intent. The opportunity
+ * payload is passed through unmodified; the server re-validates it fail-closed
+ * before any plan is built. It never carries credentials.
+ */
+export interface PaperMultiLegSubmitSource {
+  type: "n-leg" | "route-family";
+  opportunity: Record<string, unknown>;
+  family?: string;
+}
+
+/** Per-leg deterministic paper failure-injection overrides; absent fields keep server defaults. */
+export interface PaperMultiLegFillScenarioInput {
+  fillRatioBps?: number;
+  compensationFillRatioBps?: number;
+  compensationPrice?: number;
+  compensationFeeBps?: number;
+}
+
+/** Submits the "paper-multi-leg.submit" payload kind through the fenced executor path. */
+export function submitPaperMultiLegIntent(
+  ownerUserId: string,
+  portfolioId: string,
+  input: { source: PaperMultiLegSubmitSource; fillScenario?: PaperMultiLegFillScenarioInput[] },
+  options: PaperMutationOptions
+): Promise<PaperPortfolioMutationResult> {
+  return mutate(`/${segment(portfolioId)}/multi-leg`, ownerUserId, {
+    method: "POST",
+    body: {
+      kind: "paper-multi-leg.submit",
+      source: input.source,
+      ...(input.fillScenario ? { fillScenario: input.fillScenario } : {})
+    }
+  }, options);
+}
+
+/** Submits the owner-level "paper-multi-leg.kill-switch" payload kind through the fenced executor path. */
+export function setPaperMultiLegKillSwitch(
+  ownerUserId: string,
+  input: { enabled: boolean },
+  options: PaperMutationOptions
+): Promise<{ enabled: boolean }> {
+  const key = requiredHeader(options.idempotencyKey, "Idempotency-Key");
+  return request("/multi-leg/kill-switch", ownerUserId, {
+    method: "POST",
+    body: JSON.stringify({ kind: "paper-multi-leg.kill-switch", enabled: input.enabled }),
+    headers: { "Idempotency-Key": key },
+    signal: options.signal
+  }).then((value) => {
+    const item = asRecord(value);
+    return { enabled: typeof item?.enabled === "boolean" ? item.enabled : input.enabled };
+  });
+}
+
 export function createPaperIdempotencyKey(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
   const bytes = new Uint8Array(16);

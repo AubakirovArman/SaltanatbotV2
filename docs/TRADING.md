@@ -115,6 +115,40 @@ research-only paper simulation like every other robot here. Exact parameters, le
 worst case, gap/restart semantics and the PnL separation:
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
+### Multi-leg paper intents from opportunity research (R8, in progress — NOT accepted)
+
+R8 is **in progress in this checkout and not accepted**; production still runs the R7 slot with
+trading SQLite schema 9. It adds an owner-scoped one-click path from a researched opportunity to a
+durable multi-leg paper simulation inside a paper portfolio:
+
+1. Research an opportunity in the Screener (a sequence-verified N-leg cycle or a compatible
+   route-family result) and use the existing research handoff to open its `market-opportunity-v1`
+   card in **Automation**.
+2. When the card's paper boundary reports `paperPlan: ready` and the envelope has not expired, a
+   **Run paper multi-leg** action appears next to the existing journal link.
+3. The confirm dialog selects a paper portfolio (the default portfolio is preselected) and shows
+   the worst-case capital reserve preview — planned notional, the fee reserve for both the
+   original and the compensation direction, and the resulting worst case — computed by the client
+   mirror of the exact server formula. Missing numeric fees or quantities are stated honestly; the
+   server always reserves the exact fee-inclusive worst case from the validated plan.
+4. Confirming submits one `paper-multi-leg.submit` command through the same fenced idempotent
+   command queue as every portfolio mutation, with one stable idempotency key per dialog. A
+   rejection surfaces the exact server code and reason (`MULTI_LEG_KILL_SWITCH`,
+   `MULTI_LEG_PLAN_REJECTED`, `MULTI_LEG_LIMIT_EXCEEDED`, `MULTI_LEG_INSUFFICIENT_CAPITAL`).
+5. The intent appears in the portfolio center's **Multi-leg paper intents** section: an outcome
+   badge, source engine and opportunity, reserved capital, the combined net PnL with the explicit
+   note that it includes both legs and all modeled fees, a legs disclosure (venue, instrument,
+   side, planned/filled quantity, average price, fee, compensation flag) and explicit
+   residual-exposure lines for `compensated`/`manual-review-required` outcomes. The section also
+   carries a confirmed owner-level kill-switch toggle that blocks new submissions without touching
+   running intents.
+
+The run is research-only paper simulation like everything else here: no credentials, no private
+requests, no live orders, and residual exposure is listed explicitly instead of being priced into
+the PnL. Capital math, limits, recovery semantics and the in-progress trading SQLite v10
+migration: [Canonical paper portfolios](./PAPER_PORTFOLIOS.md). This action is separate from the
+legacy admin multi-leg journal below, which keeps its exact-plan-JSON import unchanged.
+
 ## 1. The command language
 
 Manual commands are entered on the Trade tab and executed against a running bot via `TradingEngine.manualCommand()`, which calls `parseMessageSet()` and runs the resulting steps in order.
@@ -332,8 +366,9 @@ strict, short-lived `market-opportunity-v1` envelope and opens a card with legs,
 evidence and explicit blockers. The envelope always blocks live execution and is **not** the exact
 `paper-multi-leg-plan-v1` required by this journal. A research card may open the journal only when its
 paper boundary says a verified plan is possible; the operator must still supply the separate exact,
-unexpired plan JSON before a simulation can start. Clicking the Screener action alone therefore
-cannot submit a paper or live order.
+unexpired plan JSON before a simulation can start in this journal. The in-progress R8 research card
+action described above submits a durable owner-scoped paper intent instead — it never creates this
+journal's plan JSON and can never place a live order.
 
 ### 3.4 Quantity resolution
 

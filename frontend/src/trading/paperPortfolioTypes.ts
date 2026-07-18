@@ -288,6 +288,57 @@ export interface PaperRobotGridRuntime {
   params?: GridParamsV1;
 }
 
+/**
+ * Additive multi-leg paper intent leg row. Every field is optional and parsed
+ * leniently: malformed values are dropped, never fatal, so older and newer
+ * server payloads both render. These field names are the canonical browser
+ * shape the server read-model mirrors exactly.
+ */
+export interface PaperMultiLegIntentLeg {
+  venue?: string;
+  instrumentId?: string;
+  side?: "buy" | "sell";
+  plannedQuantity?: number;
+  filledQuantity?: number;
+  averagePrice?: number;
+  fee?: number;
+  compensated?: boolean;
+}
+
+/** Residual inventory line; it is reported explicitly and never silently priced. */
+export interface PaperMultiLegResidualExposureLine {
+  instrumentId: string;
+  quantity: number;
+  quantityUnit?: string;
+  legId?: string;
+}
+
+/**
+ * Additive multi-leg paper intent row. `intentId` is required; every other
+ * field is optional and parsed leniently (drop-malformed, absence is never
+ * rendered as zero, negative amounts allowed for netPnl).
+ */
+export interface PaperMultiLegIntentRow {
+  intentId: string;
+  status?: string;
+  outcome?: string;
+  sourceEngine?: string;
+  sourceOpportunityId?: string;
+  legCount?: number;
+  reservedCapital?: number;
+  netPnl?: number;
+  fees?: number;
+  createdAt?: number;
+  legs: PaperMultiLegIntentLeg[];
+  residualExposure?: PaperMultiLegResidualExposureLine[];
+}
+
+/** Additive owner-scoped multi-leg section of the portfolio detail response. */
+export interface PaperMultiLegSection {
+  killSwitchEnabled?: boolean;
+  intents: PaperMultiLegIntentRow[];
+}
+
 export interface PaperRobotRuntimeMetadata {
   botId: string;
   botRevision?: number;
@@ -311,6 +362,8 @@ export interface PaperPortfolioDetail {
   portfolio: PaperPortfolioMetadata;
   snapshot: PaperPortfolioProjection;
   robots: PaperRobotRuntimeMetadata[];
+  /** Additive R8 section; absent on older server payloads. */
+  multiLeg?: PaperMultiLegSection;
   lastError?: string;
 }
 

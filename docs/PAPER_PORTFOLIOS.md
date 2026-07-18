@@ -359,6 +359,116 @@ level counts resting/filled/cooldown, inventory quantity and average cost, reali
 completed cycles, stop reason and the parameters disclosure with the worst case); old clients
 ignore the extra field.
 
+## Multi-leg paper intents (R8, in progress — NOT accepted)
+
+R8 status: **in progress in this checkout, not accepted and not deployed**. Production still runs
+protected slot `r7a-schema16-baf4217` with PostgreSQL schema 16 and trading SQLite schema 9.
+Nothing in this section is production evidence; the R8 release gate in
+[RELEASING.md](./RELEASING.md) has not run.
+
+R8 unifies multi-leg paper execution with the canonical portfolio boundary: an owner runs a
+validated research opportunity as one durable **multi-leg intent** inside a paper portfolio, with a
+common capital reservation and a combined both-legs-all-costs research PnL. The deterministic run
+machine is the delivered `backend/src/arbitrage/paperMultiLeg` engine reused verbatim — plan
+builders, freshness/expiry validation, compensation state machine and replay are the same pure
+code; R8 does not fork the state machine. The legacy admin-gated multi-leg journal and its own
+unversioned store stay untouched next to this owner-scoped path. Like everything in
+`public-http-paper`, intents are research-only simulation: no exchange credentials, no private
+requests, no live orders, and the builders fail closed unless the source opportunity is explicitly
+`executable: false` research evidence.
+
+### Submit pipeline and executor commands
+
+Two additive executor payload kinds ride the existing fenced PostgreSQL-to-SQLite command queue:
+
+- `paper-multi-leg.submit` — `{ portfolioId, source, fillScenario? }` where `source` is
+  `{ type: "n-leg", opportunity }` or `{ type: "route-family", opportunity, family }`. The
+  opportunity is a bounded opaque research envelope; the server-side builders re-validate every
+  field at apply time and fail closed with `MULTI_LEG_PLAN_REJECTED`.
+- `paper-multi-leg.kill-switch` — `{ enabled }`, an owner-level switch stored under the trading
+  settings key `multiLegKillSwitch:<ownerUserId>`.
+
+Legacy command request hashes stay byte-identical; the new kinds are additive.
+
+The fenced apply runs, in order: kill-switch check (an unreadable stored value fails closed as
+enabled, `MULTI_LEG_KILL_SWITCH`) → fail-closed plan build from the source opportunity → plan
+validation (source evidence at most 60 seconds old, plan lifetime at most 5 minutes, 2..8 legs) →
+active-intent limits (at most **3** running intents per owner and **2** per portfolio,
+`MULTI_LEG_LIMIT_EXCEEDED`) → worst-case capital reservation against the portfolio's available
+cash (`MULTI_LEG_INSUFFICIENT_CAPITAL`) → durable intent creation → the pure engine driven to its
+terminal state with every transition journaled → combined PnL stamped with the terminal outcome
+and the reservation released, together with the executor receipt, in one transaction. A
+redelivered command resumes its own intent — the intent ID is derived deterministically from the
+owner and the command idempotency key — instead of double-reserving; reusing the key for a
+different portfolio is a conflict.
+
+### Worst-case capital reservation
+
+```text
+worstCase = Σ over legs of plannedQuantity · referencePrice · (1 + 2 · feeBps/10000)
+```
+
+rounded **up** to six decimals. Every leg reserves its full planned notional plus a modeled fee
+for the original direction plus a modeled fee for a complete compensation (unwind) pass —
+`leg.feeBps` is used for both directions — so the reservation covers the worst deterministic
+scenario before the first simulated fill. The reservation is compared with the portfolio's current
+epoch cash minus the reservations of already-running multi-leg intents; the boundary is exact to
+one micro. The browser confirm dialog previews the same formula (planned notional, fee reserve for
+both directions, worst case) and states its degraded forms honestly when the envelope lacks
+numeric fees or quantities; the server always computes the exact value from the validated plan.
+
+### Combined PnL definition
+
+The terminal figure is the combined both-legs-all-costs paper research PnL over **every recorded
+fill**, original and compensation alike: a buy contributes `−qty·price − fee`, a sell contributes
+`+qty·price − fee`; `netPnl` is the sum and `fees` is the sum of all modeled fees. Negative net
+PnL is rendered explicitly. Residual inventory — unfilled or partially compensated exposure from
+`compensated` or `manual-review-required` outcomes — is **never silently priced into the PnL**: it
+is reported as explicit residual-exposure lines (leg, instrument, unit, exact quantity) while the
+net figure keeps only realized flows. Terminal outcomes are `completed`, `compensated`,
+`aborted-no-exposure` and `manual-review-required`.
+
+### Durability, restart recovery and single release
+
+Every engine transition is appended to the append-only `paper_multi_leg_intent_events` journal
+with the deterministic idempotency key `mleg:<intentId>:<sequence>` before it becomes
+authoritative; sequences are contiguous per intent and SQLite rejects update/delete. On restart,
+recovery runs on the same startup path that resumes persisted robots: every `running` intent is
+replayed through the pure engine (`replayPaperMultiLegEvents`) and continued to the **identical**
+terminal state a crash-free run would have reached. Recovery never re-appends an existing
+idempotency key, and the terminal stamp is a guarded `running → terminal` flip, so the capital
+reservation is released exactly once no matter how many times a command is redelivered or a
+restart interrupts the drive loop.
+
+### Read model and browser workflow
+
+The portfolio detail gains an additive `multiLeg` section: the owner kill-switch state plus up to
+20 recent intents with status, terminal outcome, source engine (`n-leg-v1` or
+`route-families-v1`), source opportunity ID, leg count, reserved capital, combined net PnL, fees
+and per-leg rows (venue, instrument, side, planned/filled quantity, average price, fee,
+compensated flag) replayed from the durable journal; an unreadable journal degrades a card to
+plan-only leg rows instead of failing the detail response. `availableCapital` now additionally
+subtracts the reservations of running multi-leg intents. The portfolio center renders the intents
+with outcome badges, a legs disclosure, the explicit note that the combined net PnL includes both
+legs and all modeled fees, residual-exposure lines for compensated/manual-review outcomes, and a
+confirmed owner-level kill-switch toggle. Enabling the kill switch blocks new submissions only;
+already-running intents still finish deterministically. The submit entry point is the
+**Run paper multi-leg** action on an eligible opportunity research card — see
+[TRADING.md](./TRADING.md) for the user flow.
+
+### Trading SQLite migration v10 (in progress)
+
+R8 carries the first trading SQLite migration since R4: v10 `owner_scoped_paper_multi_leg`,
+**additive DDL only** — `paper_multi_leg_intents` (owner/portfolio/epoch binding, plan JSON and
+hash, source evidence, status/outcome CHECK constraints, reserved/net/fee micros) and the
+append-only `paper_multi_leg_intent_events` journal with a unique idempotency key per event.
+Migrations v1..v9 stay byte-identical, PostgreSQL stays at schema 16, and existing paper ledgers
+replay unchanged. The migration has **not** run in production; the accepted production store
+remains SQLite schema 9 until the R8 release gate passes. `scripts/rehearse-trading-migration.mjs`
+supports the paired release-time rehearsal by migrating a **copy** of a `trading.db` file and
+printing `{fromVersion, toVersion, applied[]}`; it never touches the live data directory. See
+[Migration notes](./MIGRATIONS.md).
+
 ## HTTP contract for first-party clients
 
 The canonical routes are below. Reads require the normal authenticated trading boundary; mutations

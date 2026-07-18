@@ -38,6 +38,7 @@ import {
   type PaperMutationIdentity,
   type VerifiedFlatBotEvidence
 } from "./paperPortfolioStoreSupport.js";
+import { setPaperMultiLegKillSwitch, submitPaperMultiLegIntent } from "./multiLeg/intentService.js";
 import type { BotConfig } from "./types.js";
 import { upsertBotIntoForOwner, withDatabaseTransaction } from "./store.js";
 import type { StrategyIR } from "./strategy/ir.js";
@@ -179,6 +180,10 @@ export class PaperPortfolioCommandHandler {
         return this.createRobot(ownerUserId, mutation, payload);
       case "paper-robot.action":
         return this.robotAction(ownerUserId, mutation, payload);
+      case "paper-multi-leg.submit":
+        return submitPaperMultiLegIntent(this.database, ownerUserId, mutation, payload);
+      case "paper-multi-leg.kill-switch":
+        return setPaperMultiLegKillSwitch(this.database, ownerUserId, mutation, payload);
       case "paper-portfolio.snapshot":
       case "paper-robot.trades":
         fail(

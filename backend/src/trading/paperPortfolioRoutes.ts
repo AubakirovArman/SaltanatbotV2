@@ -23,6 +23,9 @@ import { PaperPortfolioStoreError } from "./paperPortfolioStoreSupport.js";
 import { tradingOwnerFromResponse } from "./ownership.js";
 import type { AuthRole } from "./types.js";
 
+/** These REST routes always mutate one portfolio; owner-level kinds never travel through them. */
+type PortfolioScopedMutationPayload = Extract<PaperPortfolioMutationPayload, { portfolioId: string }>;
+
 const portfolioIdSchema = z.string().trim().min(1).max(200);
 const nameSchema = z.string().trim().min(1).max(120);
 const revisionSchema = z.number().int().positive().safe();
@@ -91,7 +94,7 @@ export function registerPaperPortfolioRoutes(
     try {
       const body = createSchema.parse(request.body);
       const key = paperIdempotencyKey(request);
-      const payload: PaperPortfolioMutationPayload = {
+      const payload: PortfolioScopedMutationPayload = {
         version: PAPER_PORTFOLIO_COMMAND_VERSION,
         kind: "paper-portfolio.create",
         portfolioId: deterministicPaperPortfolioId(owner, key),
@@ -160,7 +163,7 @@ export function registerPaperPortfolioRoutes(
       const portfolioId = portfolioIdSchema.parse(routeParam(request, "portfolioId"));
       const botId = portfolioIdSchema.parse(routeParam(request, "botId"));
       const key = paperIdempotencyKey(request);
-      const payload: PaperPortfolioMutationPayload = {
+      const payload: PortfolioScopedMutationPayload = {
         version: 1,
         kind: "paper-robot.action",
         portfolioId,
@@ -185,7 +188,7 @@ async function mutateExisting<T extends z.ZodType>(
   commands: PaperPortfolioMutationGateway,
   reads: PaperPortfolioReadService,
   schema: T,
-  payload: (owner: string, portfolioId: string, body: z.infer<T>) => PaperPortfolioMutationPayload
+  payload: (owner: string, portfolioId: string, body: z.infer<T>) => PortfolioScopedMutationPayload
 ): Promise<void> {
   noStore(response);
   const owner = mutationOwner(request, response);
@@ -207,7 +210,7 @@ async function executeAndRespond(
   reads: PaperPortfolioReadService,
   owner: string,
   key: string,
-  payload: PaperPortfolioMutationPayload
+  payload: PortfolioScopedMutationPayload
 ): Promise<void> {
   const outcome = await commands.execute({
     principal: paperCommandPrincipal(response, owner),

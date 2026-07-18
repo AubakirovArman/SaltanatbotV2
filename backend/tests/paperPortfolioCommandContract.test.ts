@@ -191,4 +191,53 @@ describe("paper portfolio executor command contract", () => {
       origin: "web"
     })).toThrow();
   });
+
+  it("extends the union additively with the R8 multi-leg kinds", () => {
+    const submit = parsePaperPortfolioExecutorPayload({
+      version: 1,
+      kind: "paper-multi-leg.submit",
+      portfolioId: "portfolio-1",
+      source: { type: "n-leg", opportunity: { strategyKind: "n-leg-cycle", executable: false } }
+    });
+    const killSwitch = parsePaperPortfolioExecutorPayload({
+      version: 1,
+      kind: "paper-multi-leg.kill-switch",
+      enabled: true
+    });
+
+    expect(submit).toMatchObject({ kind: "paper-multi-leg.submit", portfolioId: "portfolio-1" });
+    expect(paperPortfolioCommandTarget(submit))
+      .toEqual({ targetType: "paper-portfolio", targetId: "portfolio-1" });
+    expect(paperPortfolioCommandTarget(killSwitch))
+      .toEqual({ targetType: "paper-portfolio", targetId: "multi-leg-kill-switch" });
+    expect(paperPortfolioRequestHash("owner-a", submit))
+      .toBe(paperPortfolioRequestHash("owner-a", structuredClone(submit)));
+
+    // The envelope stays opaque but bounded; scenarios are strictly validated.
+    expect(() => parsePaperPortfolioExecutorPayload({
+      version: 1,
+      kind: "paper-multi-leg.submit",
+      portfolioId: "portfolio-1",
+      source: { type: "n-leg", opportunity: [] }
+    })).toThrow(/bounded JSON object/);
+    expect(() => parsePaperPortfolioExecutorPayload({
+      version: 1,
+      kind: "paper-multi-leg.submit",
+      portfolioId: "portfolio-1",
+      source: { type: "route-family", opportunity: {}, family: "not-a-family" }
+    })).toThrow();
+    expect(() => parsePaperPortfolioExecutorPayload({
+      version: 1,
+      kind: "paper-multi-leg.submit",
+      portfolioId: "portfolio-1",
+      source: { type: "n-leg", opportunity: {} },
+      fillScenario: [{ fillRatioBps: 10_001 }]
+    })).toThrow();
+    expect(() => parsePaperPortfolioExecutorPayload({
+      version: 1,
+      kind: "paper-multi-leg.kill-switch",
+      enabled: true,
+      portfolioId: "portfolio-1"
+    })).toThrow();
+  });
 });

@@ -1,9 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
+import { PAPER_MULTI_LEG_SCHEMA_V10_SQL } from "./multiLeg/migration.js";
 import { migrateLegacyPaperPortfolios, PAPER_PORTFOLIO_SCHEMA_V9_SQL } from "./paperPortfolioMigration.js";
 import { legacyTradingAccountId, paperTradingAccountId } from "./tradingAccounts.js";
 import type { TradingAccountExchange } from "./types.js";
 
-export const TRADING_SCHEMA_VERSION = 9;
+export const TRADING_SCHEMA_VERSION = 10;
 export const TRADING_TENANT_OWNERSHIP_SCHEMA_VERSION = 6;
 
 /** Stable standalone/legacy tenant. Database-auth deployments should pass the
@@ -267,6 +268,11 @@ const migrations: Migration[] = [
     name: "owner_scoped_paper_portfolios",
     sql: PAPER_PORTFOLIO_SCHEMA_V9_SQL,
     apply: migrateLegacyPaperPortfolios
+  },
+  {
+    version: 10,
+    name: "owner_scoped_paper_multi_leg",
+    sql: PAPER_MULTI_LEG_SCHEMA_V10_SQL
   }
 ];
 

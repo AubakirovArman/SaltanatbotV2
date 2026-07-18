@@ -4,6 +4,34 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## In progress — R8 trading SQLite schema 10 (NOT accepted, NOT deployed)
+
+The R8 unified multi-leg paper execution increment is **in progress in this checkout**. It has not
+passed the release gate, has no CI/slot/cutover evidence, and **production still runs trading
+SQLite schema 9 and PostgreSQL schema 16 from protected slot `r7a-schema16-baf4217`**. Nothing in
+this note claims acceptance; it exists so the pending schema change is visible before release.
+
+The candidate change is one additive trading SQLite migration, version 10
+`owner_scoped_paper_multi_leg` — the first SQLite migration since the accepted R4 schema 9. It
+creates only new objects: `paper_multi_leg_intents` (owner-scoped durable multi-leg intents with
+plan JSON/hash, source evidence, `running`/`terminal` status, terminal outcome and fixed-micro
+reservation/PnL/fee columns) and the append-only `paper_multi_leg_intent_events` journal
+(per-intent contiguous sequences, a globally unique event idempotency key and triggers rejecting
+update/delete). Migrations v1..v9 stay byte-identical, no existing table is rewritten, PostgreSQL
+is untouched at schema 16, and existing paper ledgers replay unchanged. The chain remains
+forward-only: after a store reaches version 10, never run an older binary against it and never
+remove migration rows to roll back — rollback is restoring a verified pre-upgrade paired
+generation into replacement resources.
+
+Release-time rehearsal support: `scripts/rehearse-trading-migration.mjs` copies a `trading.db`
+(with its WAL/SHM sidecars) to an isolated location, runs the checked-in migration chain on the
+**copy only** and prints `{fromVersion, toVersion, applied[]}`. It never opens the live data
+directory. The R8 acceptance will require the standard paired backup/verify/isolated-restore
+discipline plus this SQLite rehearsal (9 → 10 on a copy, then a rerun proving a no-op) before any
+production cutover; the accepted sections below remain the only production migration record until
+then. See [Canonical paper portfolios](PAPER_PORTFOLIOS.md) for the multi-leg intent contract this
+schema serves.
+
 ## Accepted R7 grid paper robot release: no migration
 
 The R7 grid paper robot release was accepted and deployed on 2026-07-18 from commit

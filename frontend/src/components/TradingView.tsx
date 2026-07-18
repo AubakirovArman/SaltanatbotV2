@@ -469,6 +469,11 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0,
               setOpportunityHandoff(undefined);
               setView({ kind: "portfolio" });
             }}
+            paperMultiLeg={canUsePaperTrading && databaseOwnerUserId ? {
+              ownerUserId: databaseOwnerUserId,
+              // The submitted intent lands in the durable portfolio center list.
+              onSubmitted: () => setView({ kind: "portfolio" })
+            } : undefined}
           />
         )}
         {view.kind === "bot" && selectedBot && (

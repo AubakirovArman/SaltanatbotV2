@@ -6,7 +6,8 @@ import { localeTag, type Locale } from "../../../i18n";
 import type { PaperPortfolioCenterClient } from "../../usePaperPortfolioCenter";
 import { usePaperPortfolioCenter } from "../../usePaperPortfolioCenter";
 import type { PaperPortfolioAggregates, PaperRobotAction } from "../../paperPortfolioTypes";
-import { PaperPortfolioApiError } from "../../paperPortfolioClient";
+import { createPaperIdempotencyKey, PaperPortfolioApiError, setPaperMultiLegKillSwitch } from "../../paperPortfolioClient";
+import { PaperMultiLegIntentsSection } from "./PaperMultiLegIntentsSection";
 import { PortfolioLifecycleDialog, RobotActionDialog, type PortfolioDialogKind } from "./PaperPortfolioDialogs";
 import {
   buildPaperRobotRows,
@@ -164,6 +165,16 @@ export function PaperPortfolioCenter({
           </div>
           {filteredRows.length === 0 ? <p className="paper-filter-empty">{paperPortfolioText(locale, "noFilterResults")}</p> : <PaperRobotViews rows={filteredRows} locale={locale} busy={portfolioBusy} actionsEnabled={robotActionsEnabled} onOpen={(row, trigger) => { setDetailTrigger(trigger); setSelectedRobotId(row.robot.botId); }} onAction={openAction} />}
         </>}
+        {center.detail.multiLeg && <PaperMultiLegIntentsSection
+          locale={locale}
+          multiLeg={center.detail.multiLeg}
+          canMutate={canMutate}
+          busy={center.busyKeys.size > 0}
+          onToggleKillSwitch={async (enabled) => {
+            await setPaperMultiLegKillSwitch(ownerUserId, { enabled }, { idempotencyKey: createPaperIdempotencyKey() });
+            await center.refresh();
+          }}
+        />}
       </>}
 
       {selectedRow && <PaperRobotDetailDrawer row={selectedRow} locale={locale} busy={portfolioBusy} actionsEnabled={robotActionsEnabled} snapshotStale={center.stale} portfolioLastError={center.detail?.lastError} returnFocus={detailTrigger} onClose={closeDetail} onAction={openAction} />}

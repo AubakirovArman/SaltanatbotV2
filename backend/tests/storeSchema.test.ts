@@ -4,6 +4,7 @@ import { migrateTradingStore, TRADING_SCHEMA_VERSION } from "../src/trading/stor
 import { EXECUTION_RECONCILIATION_JOURNAL_SQL, RISK_ORDER_JOURNAL_SQL, withDatabaseTransaction } from "../src/trading/store.js";
 import { EmergencyStopCoordinator, type EmergencyStopResult } from "../src/trading/emergencyStop.js";
 import { deleteBotIntoForOwner } from "../src/trading/botStoreMutations.js";
+import { createPaperPortfolioIn } from "../src/trading/paperPortfolioStore.js";
 
 const databases: DatabaseSync[] = [];
 
@@ -83,18 +84,19 @@ describe("trading store schema migrations", () => {
         { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
         { version: 7, name: "tenant_safe_execution_journal_identity" },
         { version: 8, name: "execution_authority_revisions" },
-        { version: 9, name: "owner_scoped_paper_portfolios" }
+        { version: 9, name: "owner_scoped_paper_portfolios" },
+        { version: 10, name: "owner_scoped_paper_multi_leg" }
       ]
     });
     expect(tableNames(database)).toEqual([
       "arbitrage_history", "audit_log", "bots", "fills", "logs", "order_events", "orders",
-      "paper_bot_allocations", "paper_bot_revision_evidence", "paper_bot_tombstones", "paper_events",
+      "paper_bot_allocations", "paper_bot_revision_evidence", "paper_bot_tombstones", "paper_events", "paper_multi_leg_intent_events", "paper_multi_leg_intents",
       "paper_portfolio_epochs", "paper_portfolio_events", "paper_portfolio_mutations",
       "paper_portfolio_projections", "paper_portfolios", "paper_valuation_marks", "positions",
       "schema_migrations", "settings", "strategy_runs", "trading_account_credentials",
       "trading_accounts", "trading_owner_authority"
     ]);
-    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 9 });
+    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 10 });
   });
 
   it("upgrades an unversioned legacy database without deleting existing records", () => {
@@ -125,12 +127,13 @@ describe("trading store schema migrations", () => {
 
     expect(result).toEqual({
       fromVersion: 5,
-      toVersion: 9,
+      toVersion: 10,
       applied: [
         { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
         { version: 7, name: "tenant_safe_execution_journal_identity" },
         { version: 8, name: "execution_authority_revisions" },
-        { version: 9, name: "owner_scoped_paper_portfolios" }
+        { version: 9, name: "owner_scoped_paper_portfolios" },
+        { version: 10, name: "owner_scoped_paper_multi_leg" }
       ]
     });
     expect(database.prepare("SELECT ownerUserId FROM bots WHERE id = 'legacy-bot'").get()).toEqual({ ownerUserId: "admin-user" });
@@ -196,11 +199,12 @@ describe("trading store schema migrations", () => {
 
     expect(migrateTradingStore(database, () => 20)).toEqual({
       fromVersion: 6,
-      toVersion: 9,
+      toVersion: 10,
       applied: [
         { version: 7, name: "tenant_safe_execution_journal_identity" },
         { version: 8, name: "execution_authority_revisions" },
-        { version: 9, name: "owner_scoped_paper_portfolios" }
+        { version: 9, name: "owner_scoped_paper_portfolios" },
+        { version: 10, name: "owner_scoped_paper_multi_leg" }
       ]
     });
     expect(database.prepare("SELECT data, ts, updatedAt FROM orders WHERE botId = ? AND id = ?").get("bot-a", "shared-client"))
@@ -241,8 +245,8 @@ describe("trading store schema migrations", () => {
     migrateTradingStore(database, () => 1);
     const result = migrateTradingStore(database, () => 2);
 
-    expect(result).toEqual({ fromVersion: 9, toVersion: 9, applied: [] });
-    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 9 });
+    expect(result).toEqual({ fromVersion: 10, toVersion: 10, applied: [] });
+    expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({ count: 10 });
   });
 
   it("seeds legacy exchange accounts from stored keys and backfills bot account ids", () => {
@@ -287,13 +291,14 @@ describe("trading store schema migrations", () => {
 
     expect(result).toEqual({
       fromVersion: 4,
-      toVersion: 9,
+      toVersion: 10,
       applied: [
         { version: 5, name: "durable_trading_account_registry" },
         { version: 6, name: "tenant_owned_trading_resources_and_credentials" },
         { version: 7, name: "tenant_safe_execution_journal_identity" },
         { version: 8, name: "execution_authority_revisions" },
-        { version: 9, name: "owner_scoped_paper_portfolios" }
+        { version: 9, name: "owner_scoped_paper_portfolios" },
+        { version: 10, name: "owner_scoped_paper_multi_leg" }
       ]
     });
     expect(database.prepare("SELECT id, ownerUserId, exchange, ownership, enabled, createdAt FROM trading_accounts").all()).toEqual([
@@ -356,6 +361,55 @@ describe("trading store schema migrations", () => {
     expect(database.prepare("SELECT value FROM settings WHERE key = 'keys:bybit'").get()).toEqual({ value: "ciphertext" });
     expect((database.prepare("PRAGMA table_info(bots)").all() as Array<{ name: string }>).some((column) => column.name === "ownerUserId")).toBe(false);
     expect(tableNames(database)).not.toContain("trading_account_credentials");
+  });
+
+  it("upgrades v9 to v10 additively with existing paper portfolio data intact", () => {
+    const database = memoryDatabase();
+    migrateTradingStore(database, () => 10, { legacyOwnerUserId: "admin-user" });
+    // Reconstruct an exact v9 database: the v10 migration is additive DDL only,
+    // so dropping its two tables (their indexes and triggers go with them)
+    // yields the byte-equivalent v9 schema.
+    database.exec(`
+      DROP TABLE paper_multi_leg_intent_events;
+      DROP TABLE paper_multi_leg_intents;
+      DELETE FROM schema_migrations WHERE version = 10;
+      PRAGMA user_version = 9;
+    `);
+    createPaperPortfolioIn(database, "admin-user", {
+      mutationId: "v9-create",
+      idempotencyKey: "v9-create-key",
+      requestHash: "a".repeat(64),
+      now: 20,
+      portfolioId: "v9-portfolio",
+      name: "Pre-upgrade portfolio",
+      initialCapitalMicros: 250_000_000,
+      makeDefault: true
+    });
+    database.prepare("INSERT INTO paper_events (id, botId, sequence, type, data, ts) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("v9-event", "v9-bot", 1, "account_initialized", '{"marker":"preserved"}', 21);
+
+    const result = migrateTradingStore(database, () => 30, { legacyOwnerUserId: "admin-user" });
+
+    expect(result).toEqual({
+      fromVersion: 9,
+      toVersion: 10,
+      applied: [{ version: 10, name: "owner_scoped_paper_multi_leg" }]
+    });
+    expect(database.prepare("SELECT name, status, isDefault FROM paper_portfolios WHERE id = 'v9-portfolio'").get())
+      .toEqual({ name: "Pre-upgrade portfolio", status: "active", isDefault: 1 });
+    expect(database.prepare("SELECT initialCapitalMicros, cashBalanceMicros, status FROM paper_portfolio_epochs WHERE portfolioId = 'v9-portfolio'").get())
+      .toMatchObject({ initialCapitalMicros: 250_000_000, cashBalanceMicros: 250_000_000, status: "active" });
+    expect(database.prepare("SELECT data, ts FROM paper_events WHERE id = 'v9-event'").get())
+      .toEqual({ data: '{"marker":"preserved"}', ts: 21 });
+    expect(database.prepare("SELECT status FROM paper_portfolio_mutations WHERE idempotencyKey = 'v9-create-key'").get())
+      .toEqual({ status: "applied" });
+    expect(tableNames(database)).toEqual(expect.arrayContaining(["paper_multi_leg_intent_events", "paper_multi_leg_intents"]));
+    // The new journal is immediately usable and append-only after the upgrade.
+    database.prepare(`
+      INSERT INTO paper_multi_leg_intent_events (intentId, sequence, eventJson, idempotencyKey, ts)
+      VALUES ('upgrade-intent', 1, '{}', 'mleg:upgrade-intent:1', 31)
+    `).run();
+    expect(() => database.prepare("DELETE FROM paper_multi_leg_intent_events").run()).toThrow(/append-only/);
   });
 
   it("enforces immutable paper event evidence", () => {

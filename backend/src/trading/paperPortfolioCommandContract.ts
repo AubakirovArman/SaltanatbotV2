@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { parseDcaParamsV1, parseGridParamsV1, type DcaParamsV1, type GridParamsV1 } from "@saltanatbotv2/contracts";
 import { z } from "zod";
+import { PAPER_MULTI_LEG_MAX_LEGS } from "../arbitrage/paperMultiLeg/types.js";
+import { ROUTE_FAMILIES } from "../arbitrage/routeFamilies/index.js";
 import { timeframes } from "../market/timeframes.js";
 import type { Timeframe } from "../types.js";
 import { PAPER_MONEY_MICROS_MAX } from "./paperPortfolioMigration.js";
@@ -15,7 +17,9 @@ export const PAPER_PORTFOLIO_COMMAND_TYPES = [
   "paper-robot.create",
   "paper-robot.action",
   "paper-portfolio.snapshot",
-  "paper-robot.trades"
+  "paper-robot.trades",
+  "paper-multi-leg.submit",
+  "paper-multi-leg.kill-switch"
 ] as const;
 
 export type PaperPortfolioCommandType = (typeof PAPER_PORTFOLIO_COMMAND_TYPES)[number];
@@ -30,6 +34,10 @@ export const PAPER_TELEGRAM_COMMAND_ORIGIN = "telegram" as const;
 export const PAPER_TELEGRAM_IDEMPOTENCY_KEY_PREFIX = "telegram:" as const;
 /** Stable target identity for snapshot reads that resolve the default portfolio at apply time. */
 export const PAPER_PORTFOLIO_SNAPSHOT_TARGET_ID = "default" as const;
+/** Stable queue-target identity for the owner-level multi-leg kill switch. */
+export const PAPER_MULTI_LEG_KILL_SWITCH_TARGET_ID = "multi-leg-kill-switch" as const;
+/** Upper bound for an embedded opportunity envelope in canonical JSON characters. */
+export const PAPER_MULTI_LEG_OPPORTUNITY_MAX_JSON_CHARS = 262_144;
 
 const id = z.string().trim().min(1).max(200);
 const name = z.string().trim().min(1).max(120);
@@ -101,6 +109,39 @@ const telegramOrigin = {
   origin: z.literal(PAPER_TELEGRAM_COMMAND_ORIGIN).optional()
 };
 
+/**
+ * Bounded opaque opportunity envelope. The fail-closed paper multi-leg plan
+ * builders re-validate every field at apply time; the contract only rejects
+ * non-objects and oversized or non-serializable payloads before the queue.
+ */
+const multiLegOpportunityEnvelope = z.custom<Record<string, unknown>>((value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  try {
+    const encoded: string | undefined = JSON.stringify(value);
+    return typeof encoded === "string" && encoded.length <= PAPER_MULTI_LEG_OPPORTUNITY_MAX_JSON_CHARS;
+  } catch {
+    return false;
+  }
+}, "source.opportunity must be a bounded JSON object");
+/** Per-leg deterministic paper failure-injection overrides; absent fields keep builder defaults. */
+const multiLegFillScenario = z.object({
+  fillRatioBps: z.number().int().min(0).max(10_000).optional(),
+  compensationFillRatioBps: z.number().int().min(0).max(10_000).optional(),
+  compensationPrice: z.number().finite().positive().max(1e15).optional(),
+  compensationFeeBps: z.number().finite().min(0).max(10_000).optional()
+}).strict();
+const multiLegSource = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("n-leg"),
+    opportunity: multiLegOpportunityEnvelope
+  }).strict(),
+  z.object({
+    type: z.literal("route-family"),
+    opportunity: multiLegOpportunityEnvelope,
+    family: z.enum(ROUTE_FAMILIES)
+  }).strict()
+]);
+
 export const paperPortfolioExecutorPayloadSchema = z.discriminatedUnion("kind", [
   z.object({
     ...base,
@@ -165,6 +206,19 @@ export const paperPortfolioExecutorPayloadSchema = z.discriminatedUnion("kind", 
     ...telegramOrigin,
     kind: z.literal("paper-robot.trades"),
     botId: id
+  }).strict(),
+  // Additive R8 extension: multi-leg kinds never change legacy payload shapes,
+  // so every historical request hash stays byte-identical.
+  z.object({
+    ...base,
+    kind: z.literal("paper-multi-leg.submit"),
+    source: multiLegSource,
+    fillScenario: z.array(multiLegFillScenario).min(1).max(PAPER_MULTI_LEG_MAX_LEGS).optional()
+  }).strict(),
+  z.object({
+    version: z.literal(PAPER_PORTFOLIO_COMMAND_VERSION),
+    kind: z.literal("paper-multi-leg.kill-switch"),
+    enabled: z.boolean()
   }).strict()
 ]);
 
@@ -199,6 +253,8 @@ export function paperPortfolioCommandTarget(
       return { targetType: "paper-robot", targetId: payload.botId };
     case "paper-portfolio.snapshot":
       return { targetType: "paper-portfolio", targetId: PAPER_PORTFOLIO_SNAPSHOT_TARGET_ID };
+    case "paper-multi-leg.kill-switch":
+      return { targetType: "paper-portfolio", targetId: PAPER_MULTI_LEG_KILL_SWITCH_TARGET_ID };
     default:
       return { targetType: "paper-portfolio", targetId: payload.portfolioId };
   }

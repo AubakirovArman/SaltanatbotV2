@@ -360,6 +360,117 @@ spacing, границы, счётчики уровней resting/filled/cooldown
 realized grid PnL, завершённые циклы, причина остановки и раскрытие параметров с worst case);
 старые клиенты игнорируют дополнительное поле.
 
+## Multi-leg paper-интенты (R8, в работе — НЕ принят)
+
+Статус R8: **в работе в этом checkout, не принят и не развёрнут**. Production по-прежнему
+работает на protected slot `r7a-schema16-baf4217` с PostgreSQL schema 16 и trading SQLite
+schema 9. Этот раздел не является production evidence; release gate R8 из
+[RELEASING.md](../RELEASING.md) не выполнялся.
+
+R8 объединяет multi-leg paper-исполнение с canonical границей портфелей: владелец запускает
+проверенную research-возможность как один durable **multi-leg интент** внутри paper-портфеля с
+общим резервированием капитала и комбинированным research PnL «обе ноги + все издержки».
+Детерминированная машина прогона — уже поставленный движок
+`backend/src/arbitrage/paperMultiLeg`, переиспользованный дословно: builders плана, проверка
+freshness/expiry, машина компенсации и replay — тот же чистый код; R8 не делает fork state
+machine. Legacy admin-журнал multi-leg и его отдельное неверсионированное хранилище остаются
+нетронутыми рядом с этим owner-scoped путём. Как и всё в `public-http-paper`, интенты —
+research-only симуляция: без биржевых ключей, private-запросов и live-ордеров, а builders
+fail-closed принимают только источники с явным `executable: false`.
+
+### Submit pipeline и executor-команды
+
+Два аддитивных executor payload kinds проходят через существующую fenced очередь команд
+PostgreSQL → SQLite:
+
+- `paper-multi-leg.submit` — `{ portfolioId, source, fillScenario? }`, где `source` — это
+  `{ type: "n-leg", opportunity }` либо `{ type: "route-family", opportunity, family }`.
+  Opportunity — ограниченный по размеру opaque research-конверт; server-side builders повторно
+  валидируют каждое поле в момент apply и fail-closed отвечают `MULTI_LEG_PLAN_REJECTED`.
+- `paper-multi-leg.kill-switch` — `{ enabled }`, переключатель уровня владельца под ключом
+  настроек trading store `multiLegKillSwitch:<ownerUserId>`.
+
+Request hashes legacy-команд остаются байт-идентичными; новые kinds аддитивны.
+
+Fenced apply выполняет по порядку: проверку kill switch (нечитаемое сохранённое значение
+fail-closed считается включённым, `MULTI_LEG_KILL_SWITCH`) → fail-closed построение плана из
+source opportunity → валидацию плана (source evidence не старше 60 секунд, срок жизни плана не
+больше 5 минут, 2..8 ног) → лимиты активных интентов (не больше **3** running-интентов на
+владельца и **2** на портфель, `MULTI_LEG_LIMIT_EXCEEDED`) → worst-case резервирование капитала
+против доступного cash портфеля (`MULTI_LEG_INSUFFICIENT_CAPITAL`) → durable создание интента →
+прогон чистого движка до terminal-состояния с журналированием каждого перехода →
+комбинированный PnL, terminal outcome и освобождение резерва вместе с executor receipt в одной
+транзакции. Повторно доставленная команда возобновляет собственный интент — intent ID
+детерминированно выводится из владельца и idempotency key команды — вместо повторного
+резервирования; повтор того же ключа для другого портфеля — конфликт.
+
+### Worst-case резервирование капитала
+
+```text
+worstCase = Σ по ногам plannedQuantity · referencePrice · (1 + 2 · feeBps/10000)
+```
+
+с округлением **вверх** до шести знаков. Каждая нога резервирует полный планируемый notional
+плюс модельную комиссию исходного направления плюс модельную комиссию полного компенсационного
+(unwind) прохода — `leg.feeBps` применяется в обе стороны, — поэтому резерв покрывает худший
+детерминированный сценарий до первого симулированного fill. Резерв сравнивается с cash текущего
+epoch портфеля за вычетом резервов уже запущенных multi-leg интентов; граница точна до одного
+micro. Confirm-диалог в браузере показывает ту же формулу (planned notional, fee-резерв обоих
+направлений, worst case) и честно называет degraded-состояния, когда в конверте нет числовых
+комиссий или количеств; сервер всегда вычисляет точное значение из валидированного плана.
+
+### Определение комбинированного PnL
+
+Итоговая величина — комбинированный paper research PnL «обе ноги + все издержки» по **каждому
+записанному fill**, исходному и компенсационному: buy даёт `−qty·price − fee`, sell даёт
+`+qty·price − fee`; `netPnl` — сумма, `fees` — сумма всех модельных комиссий. Отрицательный net
+PnL показывается явно. Остаточный inventory — незаполненная или частично компенсированная
+экспозиция исходов `compensated` и `manual-review-required` — **никогда не вписывается в PnL
+молча**: он выводится явными строками residual exposure (нога, инструмент, единица, точное
+количество), а net-величина сохраняет только реализованные потоки. Terminal outcomes:
+`completed`, `compensated`, `aborted-no-exposure` и `manual-review-required`.
+
+### Durability, восстановление после рестарта и единственное освобождение
+
+Каждый переход движка добавляется в append-only журнал `paper_multi_leg_intent_events` с
+детерминированным idempotency key `mleg:<intentId>:<sequence>` до того, как станет
+авторитетным; последовательности контигуозны для интента, а SQLite отклоняет update/delete. На
+рестарте recovery идёт тем же startup-путём, что и восстановление persisted robots: каждый
+`running`-интент воспроизводится чистым движком (`replayPaperMultiLegEvents`) и продолжается до
+**идентичного** terminal-состояния, которого достиг бы прогон без сбоя. Recovery никогда не
+добавляет существующий idempotency key повторно, а terminal-штамп — это guarded переход
+`running → terminal`, поэтому резерв капитала освобождается ровно один раз независимо от числа
+redelivery команды или рестартов внутри drive loop.
+
+### Read model и workflow в браузере
+
+Detail портфеля получает аддитивную секцию `multiLeg`: состояние owner kill switch и до 20
+недавних интентов со status, terminal outcome, source engine (`n-leg-v1` или
+`route-families-v1`), source opportunity ID, числом ног, зарезервированным капиталом,
+комбинированным net PnL, комиссиями и строками ног (venue, инструмент, сторона,
+planned/filled количество, средняя цена, комиссия, флаг компенсации), восстановленными replay
+durable-журнала; нечитаемый журнал деградирует карточку до plan-only строк ног, а не ломает
+detail-ответ. `availableCapital` теперь дополнительно вычитает резервы запущенных multi-leg
+интентов. Центр портфелей показывает интенты с бейджами исхода, раскрытием ног, явной пометкой,
+что комбинированный net PnL включает обе ноги и все модельные комиссии, строками residual
+exposure для исходов compensated/manual-review и подтверждаемым owner-переключателем kill
+switch. Включённый kill switch блокирует только новые отправки; уже запущенные интенты
+детерминированно завершаются. Точка входа — действие **Запустить paper multi-leg** на
+подходящей карточке исследования возможности; user flow: [TRADING.md](./TRADING.md).
+
+### Trading SQLite миграция v10 (в работе)
+
+R8 несёт первую trading SQLite миграцию после R4: v10 `owner_scoped_paper_multi_leg`, **только
+аддитивный DDL** — `paper_multi_leg_intents` (привязка owner/portfolio/epoch, JSON и hash
+плана, source evidence, CHECK-ограничения status/outcome, micros резерва/net/fees) и
+append-only журнал `paper_multi_leg_intent_events` с уникальным idempotency key каждого события.
+Миграции v1..v9 остаются байт-идентичными, PostgreSQL остаётся на schema 16, существующие paper
+ledgers воспроизводятся без изменений. Миграция **не** выполнялась в production; принятое
+production-хранилище остаётся на SQLite schema 9, пока release gate R8 не пройден.
+`scripts/rehearse-trading-migration.mjs` поддерживает paired репетицию на release: он мигрирует
+**копию** файла `trading.db` и печатает `{fromVersion, toVersion, applied[]}`, не касаясь
+рабочего data directory. См. [Migration notes](../MIGRATIONS.md).
+
 ## HTTP-контракт first-party клиента
 
 Канонические read routes используют authenticated trading boundary; mutations дополнительно

@@ -144,7 +144,7 @@ describe("paper portfolio schema v9 migration", () => {
 
     const result = migrateTradingStore(database, () => 5_000);
 
-    expect(result).toMatchObject({ fromVersion: 8, toVersion: 9 });
+    expect(result).toMatchObject({ fromVersion: 8, toVersion: 10 });
     expect(database.prepare("SELECT id, botId, sequence, type, idempotencyKey, data, ts FROM paper_events WHERE id = 'event-1'").get()).toEqual(exactBefore);
     expect(database.prepare("SELECT ledgerEpoch FROM paper_events WHERE id = 'event-1'").get()).toEqual({ ledgerEpoch: 1 });
     const portfolios = listPaperPortfoliosFrom(database, "owner-a", true);

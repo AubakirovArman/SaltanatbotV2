@@ -92,9 +92,12 @@ rows to paper plans.
 
 The SDK permits `paperPlan: ready` only for a separately verified `n-leg-v1` opportunity with
 sequence and exchange-time evidence and concrete leg sides. Even then the handoff is not the exact,
-short-lived `paper-multi-leg-plan-v1` accepted by the protected paper journal. The operator must
-still obtain and review that plan; clicking the Screener handoff alone cannot place a paper or live
-order.
+short-lived `paper-multi-leg-plan-v1` accepted by the protected paper journal; the operator must
+still obtain and review that plan for the journal. The in-progress R8 slice (NOT accepted) adds a
+separate confirmed **Run paper multi-leg** action to a `paperPlan: ready` research card: it submits
+a durable owner-scoped paper intent through the fenced portfolio command queue with a worst-case
+capital-reserve preview, and the server rebuilds and re-validates the plan fail-closed at apply
+time ([TRADING.md](./TRADING.md)). Neither path can place a live order.
 
 ## Calculation
 
@@ -232,8 +235,13 @@ only below authenticated `/api/trade/paper-multi-leg` with the `paper-trade` rol
 mutation. The Trade workspace provides a strict EN/RU/KK plan-import, recovery, run-list and event
 journal UI. A separate one-click Screener action can now open the normalized opportunity research
 card in Automation, but it deliberately does not copy or create the exact plan JSON required here.
-The module has no private exchange client, accepts no credentials, is absent from the public SDK,
-and is not a live venue-wide scanner or real multi-order executor.
+The in-progress R8 slice (NOT accepted) reuses this module's pure engine, builders and validation
+verbatim for owner-scoped durable multi-leg intents inside the versioned trading store — with a
+common capital reservation, a combined both-legs-all-costs research PnL and explicit residual
+exposure — while this isolated journal, its own store and its admin gating stay byte-identical;
+see [Canonical paper portfolios](./PAPER_PORTFOLIOS.md). The module has no private exchange
+client, accepts no credentials, is absent from the public SDK, and is not a live venue-wide
+scanner or real multi-order executor.
 
 ## Funding curve scenarios
 

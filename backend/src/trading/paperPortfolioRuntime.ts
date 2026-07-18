@@ -29,6 +29,7 @@ import {
   type PaperPortfolioApplicationContext,
   type PaperPortfolioCommandRuntime
 } from "./paperPortfolioCommandHandler.js";
+import { recoverIncompletePaperMultiLegIntents } from "./multiLeg/intentService.js";
 import { PaperPortfolioReadService } from "./paperPortfolioReadService.js";
 import {
   PaperPortfolioHttpError,
@@ -66,7 +67,9 @@ export function createPaperPortfolioRuntime(options: PaperPortfolioRuntimeOption
     return {
       reads,
       commands: new DirectPaperPortfolioGateway(handler),
-      async start() {},
+      // Same startup discipline as persisted robot resume: incomplete durable
+      // multi-leg intents replay to their identical terminal state first.
+      async start() { recoverIncompletePaperMultiLegIntents(options.database); },
       quiesce() {},
       ready: () => true,
       readiness: () => undefined,
@@ -129,7 +132,7 @@ export function createPaperPortfolioRuntime(options: PaperPortfolioRuntimeOption
           outcome: "applied" as const,
           sqliteReceiptHash: applied.sqliteReceiptHash,
           result: {
-            portfolioId: payload.portfolioId,
+            portfolioId: "portfolioId" in payload ? payload.portfolioId : target.targetId,
             commandType: payload.kind
           }
         };
@@ -152,7 +155,12 @@ export function createPaperPortfolioRuntime(options: PaperPortfolioRuntimeOption
   return {
     reads,
     commands: new FencedPaperPortfolioGateway(bridge),
-    async start() { await bridge.start(); },
+    // Recover incomplete multi-leg intents on the robot-resume startup path,
+    // before the executor bridge claims any queued command.
+    async start() {
+      recoverIncompletePaperMultiLegIntents(options.database);
+      await bridge.start();
+    },
     quiesce() { bridge.quiesce(); },
     ready: () => bridge.readiness().ready,
     readiness: () => bridge.readiness(),

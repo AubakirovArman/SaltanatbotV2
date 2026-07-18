@@ -465,9 +465,77 @@ schema 9 are unchanged. Paired recovery generations `0ee96dbe`
 verified. Gate, rehearsal and cutover evidence is recorded in
 [R7 grid paper robot evidence](./evidence/R7_GRID_PAPER_ROBOT.md).
 
-The next pending increment is R8 (unified multi-leg paper execution,
-integrating the existing paperMultiLeg module with the common ledger,
-capital reservations and market-driven fills).
+The next increment, R8 (unified multi-leg paper execution), is in
+progress; see the next section.
+
+## R8 unified multi-leg paper execution — IN PROGRESS, NOT accepted
+
+This slice (roadmap R8) integrates the delivered, isolated
+`backend/src/arbitrage/paperMultiLeg` research run machine with the
+canonical owner-scoped portfolio boundary: durable multi-leg intents
+inside the versioned trading store, a common worst-case capital
+reservation, a combined both-legs-all-costs research PnL and an
+opportunity-to-intent browser handoff. The pure engine, plan builders,
+freshness validation and canonical hashing are reused verbatim — the
+state machine is not forked — and the legacy admin-gated multi-leg
+journal stays byte-identical. **R8 is NOT accepted and NOT deployed: no
+release gate, CI acceptance run, protected slot, rehearsal or cutover
+has happened. Production still runs `r7a-schema16-baf4217` with
+PostgreSQL schema 16 and trading SQLite schema 9.** Checked items below
+are engineering slices proven by the local test suites only.
+
+- [x] Trading SQLite migration v10 `owner_scoped_paper_multi_leg`
+  (`backend/src/trading/multiLeg/migration.ts`): additive-only
+  `paper_multi_leg_intents` plus append-only
+  `paper_multi_leg_intent_events` with contiguous sequences, a unique
+  event idempotency key and update/delete-rejecting triggers;
+  `TRADING_SCHEMA_VERSION` 10 with the pinned migration-chain tests
+  extended and v1..v9 SQL byte-identical.
+- [x] Server contract (`backend/src/trading/multiLeg/contract.ts`):
+  ceil-to-six-decimals `worstCaseMultiLegCapitalQuote` (every leg
+  notional plus modeled fees for both the original and the compensation
+  direction), `combinedMultiLegPnl` over all recorded original and
+  compensation fills with explicit residual-exposure lines, exact micro
+  conversion, the `MULTI_LEG_*` error codes and the 3-per-owner /
+  2-per-portfolio active-intent limits.
+- [x] Additive executor payload kinds `paper-multi-leg.submit` and
+  `paper-multi-leg.kill-switch` with legacy request hashes asserted
+  byte-identical, plus the fenced apply pipeline
+  (`backend/src/trading/multiLeg/{intentStore,intentService}.ts`):
+  kill-switch check, fail-closed plan build/validation, limits,
+  worst-case reservation against epoch cash minus running reservations,
+  every engine transition durably journaled under
+  `mleg:<intentId>:<sequence>`, terminal stamp and receipt in one
+  transaction, redelivery resuming the same intent and startup
+  `recoverIncompletePaperMultiLegIntents` reaching the identical
+  terminal state with a single guarded reservation release.
+- [x] Read model: `availableCapital` subtracting running multi-leg
+  reservations and the additive `multiLeg` detail section (kill-switch
+  state, recent intents with outcome, source, reserved capital, signed
+  net PnL, fees, per-leg fill/compensation rows and residual exposure)
+  with browser-exact field names.
+- [x] Browser slice: the **Run paper multi-leg** action on eligible
+  (`paperPlan: ready`) opportunity research cards with a confirm dialog
+  (portfolio selector, client worst-case mirror with honest degraded
+  states, stable idempotency key, exact rejection-code surfacing), the
+  portfolio-center multi-leg intents section with outcome badges, legs
+  disclosure, the explicit combined-PnL note, residual-exposure lines
+  and the confirmed owner kill-switch toggle, plus EN/RU/KK catalogs.
+- [x] Migration rehearsal script
+  `scripts/rehearse-trading-migration.mjs` (copy-only 0→10/9→10 runs
+  verified, rerun no-op) for the release-time paired rehearsal.
+- [x] EN/RU/KK user documentation marked in progress:
+  [PAPER_PORTFOLIOS.md](./PAPER_PORTFOLIOS.md) /
+  [ru](./ru/PAPER_PORTFOLIOS.md) multi-leg intents section,
+  [TRADING.md](./TRADING.md) / [ru](./ru/TRADING.md) /
+  [kk](./kk/TRADING.md) opportunity-research user flow, the
+  [ARBITRAGE_SCREENER.md](./ARBITRAGE_SCREENER.md) handoff notes and
+  the [MIGRATIONS.md](./MIGRATIONS.md) in-progress schema-10 note.
+- [ ] E2E journey, full-matrix consolidation and the complete
+  [RELEASING.md](./RELEASING.md) release gate: exact-commit CI, a
+  protected slot, the paired backup/isolated-restore rehearsal
+  including the SQLite 9→10 rehearsal, production cutover and the
+  recorded acceptance evidence.
 
 ## Delivered slices (not full roadmap completion)
 
