@@ -115,11 +115,12 @@ research-only paper simulation like every other robot here. Exact parameters, le
 worst case, gap/restart semantics and the PnL separation:
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
-### Multi-leg paper intents from opportunity research (R8, in progress — NOT accepted)
+### Multi-leg paper intents from opportunity research (R8, accepted)
 
-R8 is **in progress in this checkout and not accepted**; production still runs the R7 slot with
-trading SQLite schema 9. It adds an owner-scoped one-click path from a researched opportunity to a
-durable multi-leg paper simulation inside a paper portfolio:
+R8 is **accepted and deployed** on trading SQLite schema 10; see the recorded
+[R8 acceptance evidence](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md). It adds an owner-scoped
+one-click path from a researched opportunity to a durable multi-leg paper simulation inside a
+paper portfolio:
 
 1. Research an opportunity in the Screener (a sequence-verified N-leg cycle or a compatible
    route-family result) and use the existing research handoff to open its `market-opportunity-v1`
@@ -145,7 +146,7 @@ durable multi-leg paper simulation inside a paper portfolio:
 
 The run is research-only paper simulation like everything else here: no credentials, no private
 requests, no live orders, and residual exposure is listed explicitly instead of being priced into
-the PnL. Capital math, limits, recovery semantics and the in-progress trading SQLite v10
+the PnL. Capital math, limits, recovery semantics and the production-applied trading SQLite v10
 migration: [Canonical paper portfolios](./PAPER_PORTFOLIOS.md). This action is separate from the
 legacy admin multi-leg journal below, which keeps its exact-plan-JSON import unchanged.
 
@@ -366,7 +367,7 @@ strict, short-lived `market-opportunity-v1` envelope and opens a card with legs,
 evidence and explicit blockers. The envelope always blocks live execution and is **not** the exact
 `paper-multi-leg-plan-v1` required by this journal. A research card may open the journal only when its
 paper boundary says a verified plan is possible; the operator must still supply the separate exact,
-unexpired plan JSON before a simulation can start in this journal. The in-progress R8 research card
+unexpired plan JSON before a simulation can start in this journal. The accepted R8 research card
 action described above submits a durable owner-scoped paper intent instead — it never creates this
 journal's plan JSON and can never place a live order.
 

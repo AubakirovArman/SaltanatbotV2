@@ -465,10 +465,10 @@ schema 9 are unchanged. Paired recovery generations `0ee96dbe`
 verified. Gate, rehearsal and cutover evidence is recorded in
 [R7 grid paper robot evidence](./evidence/R7_GRID_PAPER_ROBOT.md).
 
-The next increment, R8 (unified multi-leg paper execution), is in
-progress; see the next section.
+R8 (owner-scoped multi-leg paper intents on the common capital plane) is
+now also accepted and deployed; see the next section.
 
-## R8 unified multi-leg paper execution — IN PROGRESS, NOT accepted
+## R8 owner-scoped multi-leg paper intents accepted and deployed — 2026-07-18
 
 This slice (roadmap R8) integrates the delivered, isolated
 `backend/src/arbitrage/paperMultiLeg` research run machine with the
@@ -478,11 +478,14 @@ reservation, a combined both-legs-all-costs research PnL and an
 opportunity-to-intent browser handoff. The pure engine, plan builders,
 freshness validation and canonical hashing are reused verbatim — the
 state machine is not forked — and the legacy admin-gated multi-leg
-journal stays byte-identical. **R8 is NOT accepted and NOT deployed: no
-release gate, CI acceptance run, protected slot, rehearsal or cutover
-has happened. Production still runs `r7a-schema16-baf4217` with
-PostgreSQL schema 16 and trading SQLite schema 9.** Checked items below
-are engineering slices proven by the local test suites only.
+journal stays byte-identical. It passed the full
+[RELEASING.md](./RELEASING.md) gate — exact-commit CI, a protected
+release slot, the paired backup/isolated-restore rehearsal including the
+copy-only SQLite 9→10 migration rehearsal, and the production cutover —
+and was accepted and deployed on 2026-07-18. Unlike R6/R7 this increment
+carries a migration: the trading SQLite moved to schema 10 (additive
+only, the first SQLite migration since R4) while PostgreSQL stays at
+schema 16, and legacy executor request hashes stay byte-identical.
 
 - [x] Trading SQLite migration v10 `owner_scoped_paper_multi_leg`
   (`backend/src/trading/multiLeg/migration.ts`): additive-only
@@ -524,18 +527,52 @@ are engineering slices proven by the local test suites only.
 - [x] Migration rehearsal script
   `scripts/rehearse-trading-migration.mjs` (copy-only 0→10/9→10 runs
   verified, rerun no-op) for the release-time paired rehearsal.
-- [x] EN/RU/KK user documentation marked in progress:
+- [x] EN/RU/KK user documentation:
   [PAPER_PORTFOLIOS.md](./PAPER_PORTFOLIOS.md) /
   [ru](./ru/PAPER_PORTFOLIOS.md) multi-leg intents section,
   [TRADING.md](./TRADING.md) / [ru](./ru/TRADING.md) /
   [kk](./kk/TRADING.md) opportunity-research user flow, the
   [ARBITRAGE_SCREENER.md](./ARBITRAGE_SCREENER.md) handoff notes and
-  the [MIGRATIONS.md](./MIGRATIONS.md) in-progress schema-10 note.
-- [ ] E2E journey, full-matrix consolidation and the complete
+  the [MIGRATIONS.md](./MIGRATIONS.md) accepted schema-10 record.
+- [x] E2E journey, full-matrix consolidation and the complete
   [RELEASING.md](./RELEASING.md) release gate: exact-commit CI, a
   protected slot, the paired backup/isolated-restore rehearsal
   including the SQLite 9→10 rehearsal, production cutover and the
-  recorded acceptance evidence.
+  recorded acceptance evidence. The roadmap §12/R8.2 release criterion
+  passed: a partially driven run truncated mid-flight recovered on a
+  fresh service instance to a journal byte-equal to the uninterrupted
+  run — identical terminal state, contiguous sequences with no
+  duplicates and the capital reservation released exactly once
+  (re-recovery is a no-op, and a redelivered submit resumes its own
+  crashed intent replaying the exact durable receipt); the combined
+  paper PnL includes both legs and every modeled cost with residual
+  exposure listed explicitly instead of silently priced; and no
+  opportunity is executable without depth/freshness evidence —
+  research simulation only. Chromium e2e passed 95/95 including the
+  new R8 journey, Firefox smoke 19/19 and visual regression 6/6.
+
+Production now runs protected slot `r8a-schema16-69621f8` at commit
+`69621f8107a713031f768320e9dc496010234100`, still on port 4180 in the
+`public-http-paper` runtime with the same three project-owned units.
+Exact-SHA GitHub Actions run `29639908389` passed all 6/6 jobs. Unlike
+R6/R7 this release carries a migration: the trading SQLite migrated
+9 → 10 with the additive-only `owner_scoped_paper_multi_leg` migration
+(SQL SHA-256
+`34584a750937468d065d90b0af09a074a541da29ba1e7a38f2c5278cc6e9890d`) —
+the first SQLite migration since R4 — while PostgreSQL schema 16 is
+unchanged. Before the cutover, `scripts/rehearse-trading-migration.mjs`
+migrated a copy of the pre-cutover generation's production `trading.db`
+from version 9 to 10, applying exactly `owner_scoped_paper_multi_leg`;
+the rehearsal copies were removed and the generation re-verified.
+Paired recovery generations `ddf80eba` (pre-cutover, verified at
+SQLite 9 and retained as the replacement-only rollback source) and
+`7ac9a851` (post-cutover at SQLite 10, isolated drill passed) were
+verified. Gate, rehearsal and cutover evidence is recorded in
+[R8 multi-leg paper intents evidence](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md).
+
+The next pending increment is R9 (the server multi-market GA pipeline
+plus the D2 ADR for the canonical Strategy IR/dataset/backtest
+contract).
 
 ## Delivered slices (not full roadmap completion)
 

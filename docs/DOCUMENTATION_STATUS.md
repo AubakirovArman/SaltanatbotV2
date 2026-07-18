@@ -11,6 +11,7 @@ Last focused R5.3b-2 release/cutover reconciliation: **2026-07-18** (`17e12f1`, 
 Last focused R5 chart research tools release/cutover reconciliation: **2026-07-18** (`2ff6101`, CI `29629886774` 6/6, no migration; completes R5)
 Last focused R6 release/cutover reconciliation: **2026-07-18** (`e2411ab`, CI `29633743310` 6/6, no migration)
 Last focused R7 release/cutover reconciliation: **2026-07-18** (`baf4217`, CI `29636312303` 6/6, no migration)
+Last focused R8 release/cutover reconciliation: **2026-07-18** (`69621f8`, CI `29639908389` 6/6, trading SQLite 9→10 migration)
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -30,8 +31,8 @@ their source contracts, and user-facing claims were compared with the current im
 | [Public arbitrage SDK](../packages/arbitrage-sdk/README.md) | integrators/SDK users | current; public/read-only | 2026-07-14 |
 | [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current | 2026-07-11 |
 | [Declarative plugin contract](PLUGINS.md) | users/plugin authors | current foundation | 2026-07-12 |
-| [Trading guide](TRADING.md) | users/operators | current accepted paper boundary including the accepted R6 DCA and R7 grid robot types; live remains outside pre-HTTPS | 2026-07-18 |
-| [Canonical paper portfolios](PAPER_PORTFOLIOS.md) | users/operators/integrators | accepted R4 lifecycle, authority, API and schema-12/schema-9 recovery runbook plus the accepted R6 DCA and R7 grid robot contracts | 2026-07-18 |
+| [Trading guide](TRADING.md) | users/operators | current accepted paper boundary including the accepted R6 DCA and R7 grid robot types and the accepted R8 multi-leg paper intents; live remains outside pre-HTTPS | 2026-07-18 |
+| [Canonical paper portfolios](PAPER_PORTFOLIOS.md) | users/operators/integrators | accepted R4 lifecycle, authority, API and schema-12/schema-9 recovery runbook plus the accepted R6 DCA, R7 grid and R8 multi-leg intent contracts | 2026-07-18 |
 | [Configuration](CONFIGURATION.md) | operators | current through typed readiness limits and accepted SQLite-9 inventory | 2026-07-17 |
 | [Self-hosting with account authentication](SELF_HOSTING.md) | operators/forks | current Docker/direct-host paths plus accepted R5.1 migration boundary | 2026-07-17 |
 | [Capacity plan for 100 users](CAPACITY_100_USERS.md) | operators/maintainers | accepted R4 per-owner command foundation; 100-user/global proof remains pending for R11 | 2026-07-17 |
@@ -56,7 +57,8 @@ their source contracts, and user-facing claims were compared with the current im
 | [R5 chart research tools evidence](evidence/R5_CHART_RESEARCH_TOOLS.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record; completes R5 | 2026-07-18 |
 | [R6 DCA paper robot evidence](evidence/R6_DCA_PAPER_ROBOT.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record | 2026-07-18 |
 | [R7 grid paper robot evidence](evidence/R7_GRID_PAPER_ROBOT.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record | 2026-07-18 |
-| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R5 complete, R6 and R7 accepted/deployed | 2026-07-18 |
+| [R8 multi-leg paper intents evidence](evidence/R8_MULTI_LEG_PAPER_INTENTS.md) | operators/release reviewers | accepted exact-commit CI, SQLite-10 paired migration rehearsal and recovery, protected slot and production cutover record | 2026-07-18 |
+| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R5 complete, R6, R7 and R8 accepted/deployed | 2026-07-18 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |
 | [Accessibility baseline](ACCESSIBILITY.md) | users/contributors | current automated baseline including R4 center/drawer/mobile evidence; manual AT/Opera still pending | 2026-07-17 |

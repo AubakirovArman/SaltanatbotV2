@@ -359,12 +359,15 @@ level counts resting/filled/cooldown, inventory quantity and average cost, reali
 completed cycles, stop reason and the parameters disclosure with the worst case); old clients
 ignore the extra field.
 
-## Multi-leg paper intents (R8, in progress — NOT accepted)
+## Multi-leg paper intents (R8, accepted)
 
-R8 status: **in progress in this checkout, not accepted and not deployed**. Production still runs
-protected slot `r7a-schema16-baf4217` with PostgreSQL schema 16 and trading SQLite schema 9.
-Nothing in this section is production evidence; the R8 release gate in
-[RELEASING.md](./RELEASING.md) has not run.
+R8 status: **accepted and deployed**. The R8 release gate in [RELEASING.md](./RELEASING.md) —
+exact-commit CI run `29639908389` (`6/6`) at commit
+`69621f8107a713031f768320e9dc496010234100`, protected slot `r8a-schema16-69621f8`, paired
+v9→v10 migration rehearsal on a copy of the production `trading.db`, paired recovery and
+cutover — passed; see the recorded
+[R8 acceptance evidence](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md). Production runs unchanged
+PostgreSQL schema 16 and trading SQLite schema 10 — the first SQLite migration since R4.
 
 R8 unifies multi-leg paper execution with the canonical portfolio boundary: an owner runs a
 validated research opportunity as one durable **multi-leg intent** inside a paper portfolio, with a
@@ -456,17 +459,18 @@ already-running intents still finish deterministically. The submit entry point i
 **Run paper multi-leg** action on an eligible opportunity research card — see
 [TRADING.md](./TRADING.md) for the user flow.
 
-### Trading SQLite migration v10 (in progress)
+### Trading SQLite migration v10 (applied in production)
 
 R8 carries the first trading SQLite migration since R4: v10 `owner_scoped_paper_multi_leg`,
 **additive DDL only** — `paper_multi_leg_intents` (owner/portfolio/epoch binding, plan JSON and
 hash, source evidence, status/outcome CHECK constraints, reserved/net/fee micros) and the
 append-only `paper_multi_leg_intent_events` journal with a unique idempotency key per event.
 Migrations v1..v9 stay byte-identical, PostgreSQL stays at schema 16, and existing paper ledgers
-replay unchanged. The migration has **not** run in production; the accepted production store
-remains SQLite schema 9 until the R8 release gate passes. `scripts/rehearse-trading-migration.mjs`
-supports the paired release-time rehearsal by migrating a **copy** of a `trading.db` file and
-printing `{fromVersion, toVersion, applied[]}`; it never touches the live data directory. See
+replay unchanged. The migration was applied in production during the accepted R8 cutover:
+`scripts/rehearse-trading-migration.mjs` first migrated a **copy** of the production
+`trading.db` (`fromVersion 9 → toVersion 10`, applying exactly `owner_scoped_paper_multi_leg`)
+without touching the live data directory, then the restart through slot
+`r8a-schema16-69621f8` applied v10 on startup (`PRAGMA user_version` = 10). See
 [Migration notes](./MIGRATIONS.md).
 
 ## HTTP contract for first-party clients

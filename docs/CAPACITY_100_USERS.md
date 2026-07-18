@@ -41,11 +41,16 @@ CI run `29633743310` (`6/6`) and was deployed in slot
 [R6 evidence](./evidence/R6_DCA_PAPER_ROBOT.md)). The R7 grid paper robot
 is accepted and deployed with no migration: SHA
 `baf42178d33043fde0965d008aee9f09462df699` passed CI run `29636312303`
-(`6/6`) and production runs PostgreSQL schema 16 from protected slot
-`r7a-schema16-baf4217` (see
-[R7 evidence](./evidence/R7_GRID_PAPER_ROBOT.md)). The quantified 100-user
-proof, global executor cap and remaining cross-workload caps are still
-planned for R11.
+(`6/6`) and was deployed in slot `r7a-schema16-baf4217` (see
+[R7 evidence](./evidence/R7_GRID_PAPER_ROBOT.md)). The R8 owner-scoped
+multi-leg paper intents are accepted and deployed with the first trading
+SQLite migration since R4: SHA
+`69621f8107a713031f768320e9dc496010234100` passed CI run `29639908389`
+(`6/6`) and production runs PostgreSQL schema 16 and trading SQLite
+schema 10 from protected slot `r8a-schema16-69621f8` (see
+[R8 evidence](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md)). The quantified
+100-user proof, global executor cap and remaining cross-workload caps are
+still planned for R11.
 
 This plan covers the `public-http-paper` Research / Paper release. SSL/TLS,
 HTTPS termination and live exchange execution are explicitly outside its active

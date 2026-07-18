@@ -352,6 +352,65 @@ See the [trading guide](./TRADING.md),
 [canonical paper portfolios](./PAPER_PORTFOLIOS.md) and the detailed
 [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
 
+## Accepted R8 release — owner-scoped multi-leg paper intents
+
+Production now runs the accepted R8 owner-scoped multi-leg paper intents
+on the common capital plane from protected slot `r8a-schema16-69621f8`
+(commit `69621f8107a713031f768320e9dc496010234100`, exact-SHA CI run
+`29639908389`, `6/6`). Unlike R6 and R7 this is a migration release —
+the first trading SQLite migration since R4: v10
+`owner_scoped_paper_multi_leg` (SQL SHA-256
+`34584a750937468d065d90b0af09a074a541da29ba1e7a38f2c5278cc6e9890d`) is
+additive only, adding the owner-scoped `paper_multi_leg_intents` table
+and the append-only `paper_multi_leg_intent_events` journal while every
+v1..v9 object stays untouched. PostgreSQL schema 16 is unchanged, the
+runtime remains `public-http-paper` with the same three project-owned
+units and the API still serves port 4180.
+
+The release adds two additive fenced executor command kinds,
+`paper-multi-leg.submit` and `paper-multi-leg.kill-switch` — legacy
+request hashes stay byte-identical. Submit builds the plan through the
+existing fail-closed research builders (research-simulation only,
+`executable === false` enforced, per-leg evidence mandatory), enforces
+the shared freshness gate (source evidence at most 60 seconds old, plan
+lifetime at most 5 minutes), the per-owner (3) and per-portfolio (2)
+active-intent limits and the deterministic worst-case reservation
+`Σ plannedQuantity·referencePrice·(1 + 2·feeBps/10000)` (rounded up to
+six decimals) against the portfolio's available capital, then drives the
+pure deterministic engine — the delivered arbitrage `paperMultiLeg`
+engine reused verbatim, not forked — to its terminal state with every
+transition durably journaled under `mleg:<intentId>:<sequence>`. The
+combined both-legs-all-costs paper PnL reports residual exposure
+explicitly instead of silently pricing it, and the guarded
+running→terminal flip releases the single capital reservation exactly
+once. The portfolio read model gains an additive `multiLeg` section and
+subtracts running reservations from available capital; opportunity
+research gains the confirmed "Run paper multi-leg" flow with a live
+worst-case preview next to the portfolio-center intents section and the
+owner-level kill switch, in en/ru/kk. The legacy isolated arbitrage
+multi-leg journal stays byte-identical. Everything stays paper-only
+research: it cannot trade live, borrow, change margin, read exchange
+credentials or grant trading authority.
+
+Acceptance passed the exact-SHA CI gate, the paired v9→v10 migration
+rehearsal on a copy of the production `trading.db` and the roadmap
+§12/R8.2 criterion: a partially driven run recovered on a fresh service
+instance reached a journal byte-equal to the uninterrupted run —
+identical terminal state, contiguous duplicate-free sequences and the
+capital reservation released exactly once (re-recovery is a no-op); the
+combined paper PnL includes both legs and every modeled cost, and no
+opportunity is executable without depth/freshness evidence —
+research-simulation only. The paired pre/post recovery generations and
+the isolated drill passed; see the recorded
+[R8 acceptance evidence](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md). The
+next pending increment is R9 (the server multi-market GA pipeline plus
+the D2 ADR fixing the canonical Strategy IR/dataset/backtest contract);
+the R11 integrated 100-user capacity proof remains pending and unproven.
+
+See the [trading guide](./TRADING.md),
+[canonical paper portfolios](./PAPER_PORTFOLIOS.md) and the detailed
+[pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
 ## Explicitly deferred external validation
 
 | Item | Why deferred | Required before claim |

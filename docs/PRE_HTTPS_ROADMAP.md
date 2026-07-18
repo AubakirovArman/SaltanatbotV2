@@ -13,13 +13,14 @@ No R0-R12 release depends on a domain, certificate, reverse proxy or TLS. That
 boundary changes only if the project owner separately initiates and approves a
 new HTTPS/security roadmap.
 
-Current production status is the accepted R7 release (the grid paper robot
-on the shared execution contract) on PostgreSQL schema 16 and unchanged
-trading SQLite schema 9, deployed with no migration from protected slot
-`r7a-schema16-baf4217` at commit
-`baf42178d33043fde0965d008aee9f09462df699`. The acceptance record is
-[R7 grid paper robot](./evidence/R7_GRID_PAPER_ROBOT.md); with it R7 is
-complete and the next pending increment is R8.
+Current production status is the accepted R8 release (owner-scoped multi-leg
+paper intents on the common capital plane) on unchanged PostgreSQL schema 16
+and trading SQLite schema 10, deployed through the additive
+`owner_scoped_paper_multi_leg` 9→10 migration — the first SQLite migration
+since R4 — from protected slot `r8a-schema16-69621f8` at commit
+`69621f8107a713031f768320e9dc496010234100`. The acceptance record is
+[R8 multi-leg paper intents](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md); with
+it R8 is complete and the next pending increment is R9.
 
 > Important: HTTP does not protect passwords or session cookies from network
 > interception. Before HTTPS, expose the instance only through a private
@@ -316,8 +317,9 @@ VoiceOver/NVDA/TalkBack records are complete.
 its required O1 slice remain accepted historical increments. Production later
 advanced through the accepted R4 schema-12/schema-9, R5.1 schema-13, R5.2.1
 schema-14, R5.3a schema-14, R5.3b-1 schema-15, R5.3b-2 schema-16, R5 chart
-research tools and R6 DCA paper robot releases and now runs the accepted R7
-grid paper robot release on unchanged schema 16.
+research tools, R6 DCA paper robot and R7 grid paper robot releases and now
+runs the accepted R8 multi-leg paper intents release on schema 16 and trading
+SQLite schema 10.
 
 **Baseline:**
 
@@ -515,9 +517,10 @@ state, backup scope and failure test before its owning release is accepted.
 trading SQLite schema 9 from protected slot `r4c-schema12-bb455fa` at commit
 `bb455facdfe5a1b3cabe15490c86c299ea684ee7`; exact-SHA GitHub Actions run
 `29560112312` passed all 6/6 jobs. Production has since advanced through the
-accepted R5.1, R5.2.1, R5.3a, R5.3b-1, R5.3b-2, R5 chart research tools and
-R6 DCA paper robot releases to the accepted R7 grid paper robot release on
-schema 16; the runtime remains `public-http-paper`.
+accepted R5.1, R5.2.1, R5.3a, R5.3b-1, R5.3b-2, R5 chart research tools,
+R6 DCA paper robot and R7 grid paper robot releases to the accepted R8
+multi-leg paper intents release on schema 16 and trading SQLite schema 10;
+the runtime remains `public-http-paper`.
 Operator details are in
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
@@ -572,9 +575,9 @@ the completed R5 release shipped on PostgreSQL schema 16 and unchanged
 trading SQLite schema 9 from protected slot `r5f-schema16-2ff6101` at commit
 `2ff6101b950b42a77c378233dabecf1a5ee76ce7`; exact-SHA GitHub Actions run
 `29629886774` passed all 6/6 jobs. Production has since advanced through the
-accepted R6 DCA paper robot release to the accepted R7 grid paper robot
-release on unchanged schema 16, and the runtime remains `public-http-paper`
-on port 4180. R5.1 was previously deployed
+accepted R6 DCA paper robot and R7 grid paper robot releases to the accepted
+R8 multi-leg paper intents release on schema 16 and trading SQLite schema 10,
+and the runtime remains `public-http-paper` on port 4180. R5.1 was previously deployed
 from protected slot `r5a-schema13-66394fd` at commit
 `66394fd38765d8da36174411cecd95a33fda1ea0` with exact-SHA run
 `29574600648` (6/6 jobs), R5.2.1 from protected slot
@@ -837,8 +840,9 @@ closed.
 PostgreSQL schema 16 and trading SQLite schema 9 from protected slot
 `r6a-schema16-e2411ab` at commit
 `e2411ab2f0b4540200089af8128304f71d3f73e0`; exact-SHA GitHub Actions run
-`29633743310` passed all 6/6 jobs. Production has since advanced to the
-accepted R7 grid paper robot release on unchanged schema 16, and the runtime
+`29633743310` passed all 6/6 jobs. Production has since advanced through the
+accepted R7 grid paper robot release to the accepted R8 multi-leg paper
+intents release on schema 16 and trading SQLite schema 10, and the runtime
 remains `public-http-paper` on port 4180 across the three systemd units.
 
 **Delivered — the shared paper execution contract and the DCA robot:**
@@ -877,8 +881,10 @@ duplicate order or reservation.
 PostgreSQL schema 16 and trading SQLite schema 9 from protected slot
 `r7a-schema16-baf4217` at commit
 `baf42178d33043fde0965d008aee9f09462df699`; exact-SHA GitHub Actions run
-`29636312303` passed all 6/6 jobs and the runtime remains `public-http-paper`
-on port 4180 across the three systemd units.
+`29636312303` passed all 6/6 jobs. Production has since advanced to the
+accepted R8 multi-leg paper intents release, which migrated trading SQLite
+to schema 10 on unchanged PostgreSQL schema 16, and the runtime remains
+`public-http-paper` on port 4180 across the three systemd units.
 
 **Delivered — the grid robot on the shared execution contract:**
 
@@ -922,35 +928,67 @@ reserves.
 
 ## R8 — spread trading and market-inefficiency research (paper only)
 
-**Status:** planned product integration on top of substantial read-only
-arbitrage engines. Existing research rows are not a claim of executable trading.
+**Status:** delivered, accepted and deployed on unchanged PostgreSQL schema 16
+and trading SQLite schema 10 — the first SQLite migration since R4, additive
+migration `owner_scoped_paper_multi_leg` 9→10 (SQL SHA-256
+`34584a750937468d065d90b0af09a074a541da29ba1e7a38f2c5278cc6e9890d`) — from
+protected slot `r8a-schema16-69621f8` at commit
+`69621f8107a713031f768320e9dc496010234100`; exact-SHA GitHub Actions run
+`29639908389` passed all 6/6 jobs and the runtime remains `public-http-paper`
+on port 4180 across the three systemd units.
 
-**Baseline:** public spot/perpetual, cross-venue, native spread, triangular,
-funding, options-parity and multi-leg research includes bounded economics and
-freshness evidence; all routes remain read-only/non-executable.
+**Delivered — owner-scoped multi-leg paper intents on the common capital
+plane:**
 
-**Remaining:**
-
-- normalize executable bid/ask depth, fees, funding/borrow/transfer assumptions,
-  timestamps, clock quality, freshness and exact venue/instrument identity;
-- show gross spread, net forecast, executable paper size, confidence and every
-  unavailable reason;
-- create one durable paper intent group for all legs and model latency, partial
-  fill, leg risk and unwind;
-- enforce owner capital, venue, symbol and concurrency limits;
-- feed the common portfolio, journal and alert contracts;
-- keep the mobile mode/parameter surface collapsed by default.
+- the fenced executor gains additive command kinds `paper-multi-leg.submit`
+  and `paper-multi-leg.kill-switch` (legacy request hashes byte-identical);
+  submit builds the plan through the existing fail-closed research builders
+  (research-simulation only, `executable === false` enforced, per-leg evidence
+  mandatory), enforces the shared freshness gate (≤60 s source age, ≤5 min
+  plan lifetime) and the per-owner (3) / per-portfolio (2) active-intent
+  limits, and reserves the deterministic worst case
+  `Σ plannedQuantity·referencePrice·(1 + 2·feeBps/10000)` (ceil to six
+  decimals) against the portfolio's available capital;
+- the pure deterministic engine runs to terminal inside the fenced apply with
+  every transition durably journaled under `mleg:<intentId>:<sequence>`; leg
+  risk, partial fills and reverse-order compensation (unwind) follow the
+  proven engine semantics, restart recovery replays to the identical terminal
+  state, and the guarded running→terminal flip releases the single capital
+  reservation exactly once;
+- combined paper PnL includes both legs and every modeled cost, and residual
+  exposure is always listed explicitly instead of being silently priced;
+- the portfolio read model exposes a browser-shaped `multiLeg` section and
+  subtracts running reservations from available capital; opportunity research
+  gains the "Run paper multi-leg" flow with a live worst-case preview, the
+  Robots portfolio center renders the intents section and the owner-level
+  paper kill switch fails closed, in en/ru/kk;
+- the legacy isolated arbitrage paperMultiLeg module is byte-identical — its
+  pure engine/schema/builders are reused, not forked.
 
 **Dependencies:** R4 journal, R5 alerts, verified public depth/identity contracts
 and the R1 execution ledger.
 
-**Evidence:** stale/gap/clock-skew rejection, matched-depth fixtures, leg-failure
-and unwind simulations, cost/PnL reconciliation and proof of zero private/signed
-network calls.
+**Acceptance evidence:** the R8.1 normalization/freshness/depth/economics
+baseline was already delivered pre-R8 by the read-only research builders and
+was reused unchanged, so this release closed R8.2, and its release criterion
+passed — a partially driven run recovered on a fresh service instance reached
+a journal byte-equal to the uninterrupted pure-engine run, with an identical
+terminal state, no duplicate sequences and the capital reservation released
+exactly once; combined paper PnL includes both legs and all modeled costs
+with residual exposure explicit; and no opportunity is executable without
+sufficient fresh depth behind the freshness gates (research-simulation only).
+The paired migration rehearsal (`scripts/rehearse-trading-migration.mjs`)
+migrated a copy of the production `trading.db` 9→10 applying exactly
+`owner_scoped_paper_multi_leg`, and the recovery chronology retained the
+pre-cutover generation `ddf80eba` (verified at SQLite 9) and the post-cutover
+generation `7ac9a851` with its passed isolated drill; rollback remains
+replacement-only with slot `r7a-schema16-baf4217` retained. The accepted
+release record is
+[R8 multi-leg paper intents](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md).
 
-**Exit criteria:** no row is labelled paper-executable without sufficient fresh
-depth, and paper PnL accounts for every leg and declared modeled cost without
-opening any live path.
+**Exit criteria (met):** no row is labelled paper-executable without sufficient
+fresh depth, and paper PnL accounts for every leg and declared modeled cost
+without opening any live path.
 
 ## R9 — strategy generator and genetic optimizer
 
@@ -1165,7 +1203,7 @@ and stabilization.
 | R5 | R5.1 generic price alerts, R5.2.1 technical screener MVP, R5.3a saved-screen→alert promotion, R5.3b-1 Telegram delivery/chat binding, R5.3b-2 Telegram paper commands and the chart research tools (text notes and parallel channel) all accepted | R3-R4 | delivered |
 | R6 | Shared paper execution contract and DCA paper robot accepted | R4-R5 | delivered |
 | R7 | Grid paper robot on the shared execution contract accepted | R4-R6 | delivered |
-| R8 | Spread/inefficiency paper research | R4-R5 | 4-6 |
+| R8 | Owner-scoped multi-leg paper intents on the common capital plane accepted | R4-R5 | delivered |
 | R9 | Generator/genetic optimizer | R1 + R4 portfolio metrics + canonical IR/dataset/backtest | 5-8 |
 | R10A | Funding/OI/MTF + L2 capture/storage/quality | R1 + public data contracts | 3-5 plus 4-8 calendar weeks soak |
 | R10B | ML baseline/model/UI | accepted R10A corpus | 5-8 |
@@ -1213,15 +1251,21 @@ and stabilization.
    restart-no-duplicate, worst-case capital and recovery gates passed, and
    the exact-SHA acceptance and cutover evidence is recorded in
    [R7 grid paper robot](./evidence/R7_GRID_PAPER_ROBOT.md).
-10. R8 — unified multi-leg paper execution integrating the existing
-    paperMultiLeg module with the common ledger, capital reservations and
-    market-driven fills — is the next pending increment; keep code for
-    releases after the current pending increment out of `main` and
-    production until it is accepted.
+10. The R8 review is complete: the owner-scoped multi-leg paper intents
+    shipped on the common capital plane with the additive trading SQLite
+    9→10 migration, their restart-replay, worst-case reservation, freshness
+    and recovery gates passed, and the exact-SHA acceptance and cutover
+    evidence is recorded in
+    [R8 multi-leg paper intents](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md).
+11. R9 — the server multi-market GA pipeline, with decision D2 (the
+    canonical Strategy IR, versioned dataset contract and reproducible
+    backtest-engine versions) closed before the R9.1 schema/job API — is the
+    next pending increment; keep code for releases after the current pending
+    increment out of `main` and production until it is accepted.
 
 Acceptance, publication to `main` and production cutover of the remaining work
-are strictly sequential from the next pending increment: R8 →
-R9 → R10A → R10B → R11 →
+are strictly sequential from the next pending increment: R9 →
+R10A → R10B → R11 →
 R12. Parallel work is allowed only inside the
 current increment after its contracts are fixed. Code or migrations for a later
 release do not enter `main` or production before the preceding release is
