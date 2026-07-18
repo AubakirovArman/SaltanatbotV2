@@ -267,10 +267,12 @@ described below; until at least one server evaluation completes, the ranking sec
 reports itself as unavailable, and imported candidates always still require ordinary backtest,
 walk-forward and paper review.
 
-### Server multi-market evaluation
+### Server multi-market evaluation (R9.1, accepted)
 
-Once the generator holds valid candidates, its **Server evaluation (multi-market)** section
-submits one `kind: "multi-market-eval"` research job per candidate to `POST /api/jobs`. The
+R9.1 is **accepted and deployed** with no migration; see the recorded
+[R9.1 acceptance evidence](evidence/R9_1_SERVER_EVALUATION.md). Once the generator holds valid
+candidates, its **Server evaluation (multi-market)** section submits one
+`kind: "multi-market-eval"` research job per candidate to `POST /api/jobs`. The
 contract is governed by [ADR 0003](adr/0003-canonical-ir-dataset-backtest-contract.md) and
 documented in the [API reference](API.md): one to six unique catalog markets sharing a single
 timeframe, a lookback of 500–20000 bars (default 3000) and a leakage-safe split (`trainFraction`

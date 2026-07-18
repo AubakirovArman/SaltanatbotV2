@@ -13,14 +13,14 @@ No R0-R12 release depends on a domain, certificate, reverse proxy or TLS. That
 boundary changes only if the project owner separately initiates and approves a
 new HTTPS/security roadmap.
 
-Current production status is the accepted R8 release (owner-scoped multi-leg
-paper intents on the common capital plane) on unchanged PostgreSQL schema 16
-and trading SQLite schema 10, deployed through the additive
-`owner_scoped_paper_multi_leg` 9→10 migration — the first SQLite migration
-since R4 — from protected slot `r8a-schema16-69621f8` at commit
-`69621f8107a713031f768320e9dc496010234100`. The acceptance record is
-[R8 multi-leg paper intents](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md); with
-it R8 is complete and the next pending increment is R9.
+Current production status is the accepted R9.1 release (the D2 ADR with the
+generic research job registry and server multi-market evaluation) on unchanged
+PostgreSQL schema 16 and trading SQLite schema 10, deployed with no migration
+from protected slot `r9a-schema16-4f5bc64` at commit
+`4f5bc64e9dfb35d379a55690755a76f7594b226d`. The acceptance record is
+[R9.1 server evaluation](./evidence/R9_1_SERVER_EVALUATION.md); with it R9.1
+is complete, R9 itself remains in progress and the next pending increment is
+R9.2.
 
 > Important: HTTP does not protect passwords or session cookies from network
 > interception. Before HTTPS, expose the instance only through a private
@@ -114,7 +114,7 @@ dependency or enable HTTPS/live execution.
 | ID | Status | Decision | Owner | Decide-by gate | Fail-closed fallback |
 | --- | --- | --- | --- | --- | --- |
 | D1 | decided | [ADR 0002: owner-only direct-main release gate](adr/0002-owner-only-direct-main-release-gate.md) — direct push only after exact-worktree local gates, remote-head/fast-forward recheck and no force | project owner + release maintainer | accepted 2026-07-17; applies to R3.3 and every direct-main release | production cutover stays blocked until Actions for the exact SHA are green; failure uses a gated fix-forward or new `git revert`, and a required-check ruleset supersedes this ADR |
-| D2 | open | Canonical Strategy IR, dataset schema/fingerprint/split and deterministic backtest-engine versions for R9 | R9 technical owner + architecture maintainer | before the R9.1 schema/job API and first server evolutionary run | server GA/generator stays disabled; only the current browser research baseline remains available, with promotion/gallery forbidden |
+| D2 | decided | [ADR 0003: canonical IR, dataset and backtest contract](adr/0003-canonical-ir-dataset-backtest-contract.md) — canonical Strategy IR `IR_VERSION 4` with a pinned checksum guard in `npm run check`, the versioned `dataset-v1` fingerprint/embargo time-split contract and the deterministic engine version `backtest-core-v1` | R9 technical owner + architecture maintainer | accepted 2026-07-18; closed before the R9.1 schema/job API and first server evolutionary run as required | server GA/generator surfaces are now permitted; promotion and the gallery stay forbidden until R9.2/R9.3 deliver their gates |
 | D3 | open | Exact licensed R10A scope: venues, native symbols/markets, source terms, hot/warm retention, downsampling and deletion policy | project owner + market-data/ML maintainer | before R10A.2 online ingest and the corpus soak start | online collection stays disabled; only bounded uploads/read-only adapters for documented permitted sources remain, and R10B is blocked |
 
 ## Phase 0 — enforce Research / Paper mode
@@ -317,9 +317,9 @@ VoiceOver/NVDA/TalkBack records are complete.
 its required O1 slice remain accepted historical increments. Production later
 advanced through the accepted R4 schema-12/schema-9, R5.1 schema-13, R5.2.1
 schema-14, R5.3a schema-14, R5.3b-1 schema-15, R5.3b-2 schema-16, R5 chart
-research tools, R6 DCA paper robot and R7 grid paper robot releases and now
-runs the accepted R8 multi-leg paper intents release on schema 16 and trading
-SQLite schema 10.
+research tools, R6 DCA paper robot, R7 grid paper robot and R8 multi-leg
+paper intents releases and now runs the accepted R9.1 server multi-market
+evaluation release on schema 16 and trading SQLite schema 10.
 
 **Baseline:**
 
@@ -518,9 +518,10 @@ trading SQLite schema 9 from protected slot `r4c-schema12-bb455fa` at commit
 `bb455facdfe5a1b3cabe15490c86c299ea684ee7`; exact-SHA GitHub Actions run
 `29560112312` passed all 6/6 jobs. Production has since advanced through the
 accepted R5.1, R5.2.1, R5.3a, R5.3b-1, R5.3b-2, R5 chart research tools,
-R6 DCA paper robot and R7 grid paper robot releases to the accepted R8
-multi-leg paper intents release on schema 16 and trading SQLite schema 10;
-the runtime remains `public-http-paper`.
+R6 DCA paper robot, R7 grid paper robot and R8 multi-leg paper intents
+releases to the accepted R9.1 server multi-market evaluation release on
+schema 16 and trading SQLite schema 10; the runtime remains
+`public-http-paper`.
 Operator details are in
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
@@ -575,9 +576,10 @@ the completed R5 release shipped on PostgreSQL schema 16 and unchanged
 trading SQLite schema 9 from protected slot `r5f-schema16-2ff6101` at commit
 `2ff6101b950b42a77c378233dabecf1a5ee76ce7`; exact-SHA GitHub Actions run
 `29629886774` passed all 6/6 jobs. Production has since advanced through the
-accepted R6 DCA paper robot and R7 grid paper robot releases to the accepted
-R8 multi-leg paper intents release on schema 16 and trading SQLite schema 10,
-and the runtime remains `public-http-paper` on port 4180. R5.1 was previously deployed
+accepted R6 DCA paper robot, R7 grid paper robot and R8 multi-leg paper
+intents releases to the accepted R9.1 server multi-market evaluation release
+on schema 16 and trading SQLite schema 10, and the runtime remains
+`public-http-paper` on port 4180. R5.1 was previously deployed
 from protected slot `r5a-schema13-66394fd` at commit
 `66394fd38765d8da36174411cecd95a33fda1ea0` with exact-SHA run
 `29574600648` (6/6 jobs), R5.2.1 from protected slot
@@ -841,9 +843,10 @@ PostgreSQL schema 16 and trading SQLite schema 9 from protected slot
 `r6a-schema16-e2411ab` at commit
 `e2411ab2f0b4540200089af8128304f71d3f73e0`; exact-SHA GitHub Actions run
 `29633743310` passed all 6/6 jobs. Production has since advanced through the
-accepted R7 grid paper robot release to the accepted R8 multi-leg paper
-intents release on schema 16 and trading SQLite schema 10, and the runtime
-remains `public-http-paper` on port 4180 across the three systemd units.
+accepted R7 grid paper robot and R8 multi-leg paper intents releases to the
+accepted R9.1 server multi-market evaluation release on schema 16 and trading
+SQLite schema 10, and the runtime remains `public-http-paper` on port 4180
+across the three systemd units.
 
 **Delivered — the shared paper execution contract and the DCA robot:**
 
@@ -881,10 +884,11 @@ duplicate order or reservation.
 PostgreSQL schema 16 and trading SQLite schema 9 from protected slot
 `r7a-schema16-baf4217` at commit
 `baf42178d33043fde0965d008aee9f09462df699`; exact-SHA GitHub Actions run
-`29636312303` passed all 6/6 jobs. Production has since advanced to the
+`29636312303` passed all 6/6 jobs. Production has since advanced through the
 accepted R8 multi-leg paper intents release, which migrated trading SQLite
-to schema 10 on unchanged PostgreSQL schema 16, and the runtime remains
-`public-http-paper` on port 4180 across the three systemd units.
+to schema 10 on unchanged PostgreSQL schema 16, to the accepted R9.1 server
+multi-market evaluation release, and the runtime remains `public-http-paper`
+on port 4180 across the three systemd units.
 
 **Delivered — the grid robot on the shared execution contract:**
 
@@ -934,8 +938,10 @@ migration `owner_scoped_paper_multi_leg` 9→10 (SQL SHA-256
 `34584a750937468d065d90b0af09a074a541da29ba1e7a38f2c5278cc6e9890d`) — from
 protected slot `r8a-schema16-69621f8` at commit
 `69621f8107a713031f768320e9dc496010234100`; exact-SHA GitHub Actions run
-`29639908389` passed all 6/6 jobs and the runtime remains `public-http-paper`
-on port 4180 across the three systemd units.
+`29639908389` passed all 6/6 jobs. Production has since advanced to the
+accepted R9.1 server multi-market evaluation release with no further
+migration, and the runtime remains `public-http-paper` on port 4180 across
+the three systemd units.
 
 **Delivered — owner-scoped multi-leg paper intents on the common capital
 plane:**
@@ -992,22 +998,69 @@ without opening any live path.
 
 ## R9 — strategy generator and genetic optimizer
 
-**Status:** planned server-grade evolution. A bounded browser parameter optimizer
-and structural generator exist, but no complete owner-fair multi-market
-evolution pipeline is claimed.
+**Status:** active. The R9.1 increment is delivered, accepted and deployed
+with no migration on unchanged PostgreSQL schema 16 and trading SQLite
+schema 10 from protected slot `r9a-schema16-4f5bc64` at commit
+`4f5bc64e9dfb35d379a55690755a76f7594b226d`; exact-SHA GitHub Actions run
+`29643197555` passed all 6/6 jobs and the runtime remains `public-http-paper`
+on port 4180 across the three systemd units. R9.2 (GA/generator lineage,
+Pareto/OOS promotion and checkpoint/resume) and R9.3 (the strategy gallery)
+remain, so R9 as a whole is still in progress and no complete owner-fair
+multi-market evolution pipeline is claimed.
 
 **Baseline:** validated Strategy IR, seeded parameter mutation/crossover and
 deterministic structural candidate generation already have bounded browser-side
-implementations.
+implementations; the accepted R9.1 release below adds the D2 contracts and the
+server evaluation path they gate.
 
-**Remaining:**
+**R9.1 accepted release — the D2 ADR, generic job registry and server
+multi-market evaluation:**
+
+- decision D2 is closed by
+  [ADR 0003: canonical IR, dataset and backtest contract](adr/0003-canonical-ir-dataset-backtest-contract.md)
+  (Accepted 2026-07-18), before the R9.1 job API as this roadmap required:
+  the canonical Strategy IR is `IR_VERSION 4` with the pinned checksum guard
+  `scripts/check-strategy-core-ir.mjs` wired into `npm run check` and
+  `parseStrategyIR` as the sole trust boundary for inbound IR; the versioned
+  `dataset-v1` contract fixes a canonical serialization with a SHA-256
+  fingerprint and a time-ordered train/test split with an embargo gap — never
+  random, never lookahead, with the survivorship limitation recorded — and
+  every server evaluation is stamped with the deterministic engine version
+  `BACKTEST_ENGINE_VERSION = "backtest-core-v1"`;
+- the generic research job-kind registry dispatches kind-discriminated
+  definitions over in-process and worker-thread lanes; the two pre-existing
+  job kinds (screener and backtest) re-registered byte-identically and
+  unknown kinds still hard-fail;
+- job kind `multi-market-eval` performs server-owned candle evaluation: real
+  closed bars only from the public provider under the 90 s screener budget
+  with explicit fail-closed reasons, 1-6 markets on one timeframe,
+  500-20 000 lookback bars and the embargo split; per-market train/OOS
+  backtests run through the existing worker-thread protocol, an
+  out-of-sample shared capital-pool portfolio section comes from the R4
+  portfolio allocator, and the bounded (≤256 KiB) deterministic
+  `multi-market-eval-v1` result carries the dataset fingerprint, engine
+  version and seed;
+- the strategy generator panel gains the "Evaluate on server" flow feeding
+  the pure ranker, whose section flips from unavailable to a ranked list
+  with a provenance line (engine version, seed, dataset fingerprint), in
+  en/ru/kk.
+
+**R9.1 acceptance evidence:** the release criterion passed — the same dataset
+driven twice through the full evaluation path produced byte-identical result
+JSON (golden dataset fingerprint `d076618630cf5842…`), and the tested
+embargo/no-lookahead split laws prove no leakage; one pre-acceptance fix maps
+the JSONB-nulled infinite profit factor to NaN so the ranker's finite-metrics
+gate fails that window closed. The recovery chronology retained the verified
+pre-cutover generation `92026f70` and post-cutover generation `e894eede` with
+its passed isolated drill; rollback remains replacement-only with slot
+`r8a-schema16-69621f8` retained. The accepted release record is
+[R9.1 server evaluation](./evidence/R9_1_SERVER_EVALUATION.md).
+
+**Remaining (R9.2/R9.3):**
 
 - evolve only versioned Strategy IR, never arbitrary code;
-- close decision D2 before the R9.1 schema/job API or first server evolutionary
-  run by fixing the canonical IR, versioned dataset contract and reproducible
-  backtest-engine versions;
 - add bounded parameter/operator/indicator/timeframe/risk mutation, compatible
-  subtree crossover and deterministic repair/rejection;
+  subtree crossover and deterministic repair/rejection to the server pipeline;
 - persist seed, dataset/engine fingerprints and full candidate lineage;
 - select a Pareto frontier over return, drawdown, stability, turnover and
   complexity, with mandatory walk-forward/out-of-sample evidence and leakage
@@ -1204,7 +1257,7 @@ and stabilization.
 | R6 | Shared paper execution contract and DCA paper robot accepted | R4-R5 | delivered |
 | R7 | Grid paper robot on the shared execution contract accepted | R4-R6 | delivered |
 | R8 | Owner-scoped multi-leg paper intents on the common capital plane accepted | R4-R5 | delivered |
-| R9 | Generator/genetic optimizer | R1 + R4 portfolio metrics + canonical IR/dataset/backtest | 5-8 |
+| R9 | Generator/genetic optimizer — R9.1 (D2 ADR, job registry, server multi-market evaluation) accepted; R9.2 lineage/Pareto/checkpoints and R9.3 gallery remain | R1 + R4 portfolio metrics + canonical IR/dataset/backtest (D2 closed by ADR 0003) | 5-8 |
 | R10A | Funding/OI/MTF + L2 capture/storage/quality | R1 + public data contracts | 3-5 plus 4-8 calendar weeks soak |
 | R10B | ML baseline/model/UI | accepted R10A corpus | 5-8 |
 | R11 | 100-user capacity and operational proof | accepted workload contracts | 5-9 |
@@ -1257,15 +1310,21 @@ and stabilization.
     and recovery gates passed, and the exact-SHA acceptance and cutover
     evidence is recorded in
     [R8 multi-leg paper intents](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md).
-11. R9 — the server multi-market GA pipeline, with decision D2 (the
-    canonical Strategy IR, versioned dataset contract and reproducible
-    backtest-engine versions) closed before the R9.1 schema/job API — is the
-    next pending increment; keep code for releases after the current pending
-    increment out of `main` and production until it is accepted.
+11. The R9.1 review is complete: decision D2 was closed by
+    [ADR 0003](adr/0003-canonical-ir-dataset-backtest-contract.md) before the
+    job API, the generic research job registry and the server multi-market
+    evaluation shipped without a migration, their byte-identical determinism,
+    embargo/no-lookahead and recovery gates passed, and the exact-SHA
+    acceptance and cutover evidence is recorded in
+    [R9.1 server evaluation](./evidence/R9_1_SERVER_EVALUATION.md).
+12. R9.2 — GA/generator lineage, Pareto/OOS promotion and checkpoint/resume
+    inside the still-open R9 — is the next pending increment; keep code for
+    releases after the current pending increment out of `main` and
+    production until it is accepted.
 
 Acceptance, publication to `main` and production cutover of the remaining work
-are strictly sequential from the next pending increment: R9 →
-R10A → R10B → R11 →
+are strictly sequential from the next pending increment: R9.2 →
+R9.3 → R10A → R10B → R11 →
 R12. Parallel work is allowed only inside the
 current increment after its contracts are fixed. Code or migrations for a later
 release do not enter `main` or production before the preceding release is

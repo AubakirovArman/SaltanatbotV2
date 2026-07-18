@@ -411,6 +411,67 @@ See the [trading guide](./TRADING.md),
 [canonical paper portfolios](./PAPER_PORTFOLIOS.md) and the detailed
 [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
 
+## Accepted R9.1 release — server multi-market evaluation and ADR 0003
+
+Production now runs the accepted R9.1 server multi-market evaluation from
+protected slot `r9a-schema16-4f5bc64` (commit
+`4f5bc64e9dfb35d379a55690755a76f7594b226d`, exact-SHA CI run `29643197555`,
+`6/6`). The release adds no migration: PostgreSQL schema 16 and trading
+SQLite schema 10 are unchanged, the runtime remains `public-http-paper`
+with the same three project-owned units and the API still serves port 4180.
+
+Decision D2 is closed by
+[ADR 0003](./adr/0003-canonical-ir-dataset-backtest-contract.md) (Accepted
+2026-07-18), which fixes — before the R9.1 job API — the canonical
+Strategy IR (`IR_VERSION 4`, its hand-maintained runtime/declaration pair
+now guarded by a pinned SHA-256 checksum inside `npm run check`, with
+`parseStrategyIR` the sole trust boundary for inbound IR), the versioned
+`dataset-v1` contract (canonical serialization with a SHA-256 fingerprint
+and a time-ordered train/test split with an embargo gap — never random,
+never lookahead, with the survivorship/delisting limitation recorded) and
+the deterministic backtest engine version `backtest-core-v1` stamped into
+every server evaluation result. Server GA/generator surfaces are now
+permitted; promotion and gallery surfaces remain forbidden until
+R9.2/R9.3.
+
+The release moves research-job dispatch into a generic kind registry — the
+pre-existing `screener` and `backtest` kinds are re-registered with
+byte-identical request, response, dedupe-key and error behavior, and
+unknown kinds still hard-fail — and adds the job kind `multi-market-eval`:
+the server owns candle evaluation, fetching only real closed bars from the
+public provider under the 90-second screener budget discipline with
+explicit fail-closed reasons (synthetic bars are never accepted), for one
+to six catalog-validated markets sharing one timeframe, a 500–20 000-bar
+lookback and an embargo train/out-of-sample split. Per-market train and
+out-of-sample backtests run through the existing worker-thread protocol,
+an out-of-sample shared capital-pool portfolio section comes from the R4
+portfolio backtest allocator, and the bounded (≤256 KiB) deterministic
+`multi-market-eval-v1` result is stamped with the dataset fingerprint, the
+engine version and the seed. The strategy generator panel gains an
+"Evaluate on server" flow feeding the pure multi-market ranker, whose
+section flips from unavailable to a ranked list with a provenance line, in
+en/ru/kk. Everything stays research evidence, not a performance claim: a
+high rank starts nothing.
+
+Acceptance passed the exact-SHA CI gate and the roadmap §13 criterion: the
+same candle set driven twice through the full evaluation path produced
+byte-identical result JSON (golden dataset fingerprint
+`d076618630cf5842…`), and the tested embargo split laws prove no
+lookahead/leakage. One pre-acceptance bug — a zero-loss window's infinite
+profit factor is stored as JSONB null, and the client parser now maps it
+to NaN so the pure ranker's finite-metrics gate fails that window closed —
+was found by the test pass and fixed before acceptance, and the paired
+no-migration backup/recovery generations and the isolated drill passed;
+see the recorded
+[R9.1 acceptance evidence](./evidence/R9_1_SERVER_EVALUATION.md). The next
+pending increment is R9.2 (GA lineage, Pareto/OOS promotion and
+checkpoint/resume inside R9); the R11 integrated 100-user capacity proof
+remains pending and unproven.
+
+See the [strategy and backtest guide](./STRATEGIES.md), the
+[API reference](./API.md) and the detailed
+[pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
 ## Explicitly deferred external validation
 
 | Item | Why deferred | Required before claim |

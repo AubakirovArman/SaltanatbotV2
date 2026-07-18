@@ -570,20 +570,26 @@ SQLite 9 and retained as the replacement-only rollback source) and
 verified. Gate, rehearsal and cutover evidence is recorded in
 [R8 multi-leg paper intents evidence](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md).
 
-The next pending increment is R9 (the server multi-market GA pipeline
-plus the D2 ADR for the canonical Strategy IR/dataset/backtest
-contract); its first slice R9.1 is in progress below.
+The next increment is R9 (the server multi-market GA pipeline plus the
+D2 ADR for the canonical Strategy IR/dataset/backtest contract); its
+first slice R9.1 is now also accepted and deployed — see the next
+section.
 
-## R9.1 server multi-market evaluation — in progress (NOT accepted)
+## R9.1 server multi-market evaluation accepted and deployed — 2026-07-18
 
-This slice (roadmap R9.1 plus decision D2) exists in the worktree but has
-NOT passed the [RELEASING.md](./RELEASING.md) gate: there is no release
-commit, no exact-SHA CI evidence, no protected slot and no production
-cutover, and production stays on `r8a-schema16-69621f8`. It carries no
-PostgreSQL or trading-SQLite schema change (the compute-job queue already
-accepts arbitrary kinds), keeps the existing `backtest`/`screener` job
-APIs byte-identical and stays research-only: no promotion or gallery
-surface ships in this increment.
+This slice (roadmap R9.1 plus decision D2) closed decision D2 with
+[ADR 0003](./adr/0003-canonical-ir-dataset-backtest-contract.md) and
+delivered the generic research-job registry, the server-owned
+`multi-market-eval` job kind and the generator panel's server
+evaluation flow. It passed the full [RELEASING.md](./RELEASING.md)
+gate — exact-commit CI, a protected release slot, the paired
+backup/isolated-restore rehearsal and the production cutover — and was
+accepted and deployed on 2026-07-18. Like R6/R7 — and unlike R8 — it
+carries no PostgreSQL or trading-SQLite schema change (the durable
+compute-job queue already accepts kind-discriminated jobs), keeps the
+existing `backtest`/`screener` job APIs byte-identical and stays
+research-only: promotion and gallery surfaces remain forbidden until
+R9.2/R9.3.
 
 - [x] [ADR 0003 canonical IR, dataset and backtest contract](./adr/0003-canonical-ir-dataset-backtest-contract.md)
   recorded with Status: Accepted, closing decision D2 before the job API:
@@ -591,8 +597,8 @@ surface ships in this increment.
   `parseStrategyIR` as the only inbound trust boundary, the versioned
   `dataset-v1` contract with embargo split and survivorship policy, and
   the deterministic engine identity `BACKTEST_ENGINE_VERSION`. The
-  roadmap decision-table flip for D2 happens in the acceptance workflow,
-  not in this in-progress record.
+  roadmap D2 decision-table row is now flipped open → closed with the
+  ADR link as part of this acceptance.
 - [x] IR drift guard `scripts/check-strategy-core-ir.mjs`: pinned SHA-256
   digests of the hand-maintained `packages/strategy-core`
   `index.js`/`index.d.ts` pair plus an `IR_VERSION 4` assertion, wired
@@ -631,18 +637,44 @@ surface ships in this increment.
   (`backend/tests/backtestDatasetContract.test.ts`) covering fingerprint
   goldens, canonical formatting, split determinism, the embargo gap and
   no-lookahead ordering.
-- [ ] Remaining before acceptance: the registry/multi-market-eval/route
-  parity suites, frontend client and generator-flow suites, the
-  `r9-generator-eval` E2E journey, and the full
-  [RELEASING.md](./RELEASING.md) gate (exact-commit CI, protected slot,
-  paired backup/isolated-restore rehearsal, production cutover and
-  recorded evidence). Only that acceptance workflow may flip this section
-  to accepted and the roadmap D2 row to closed.
+- [x] The registry/multi-market-eval/route parity suites, frontend
+  client and generator-flow suites, the `r9-generator-eval` E2E
+  journey, and the full [RELEASING.md](./RELEASING.md) gate
+  (exact-commit CI, protected slot, paired backup/isolated-restore
+  rehearsal, production cutover and recorded evidence). The roadmap
+  §13 release criterion passed: the same candle set driven twice
+  through the full evaluation path produced **byte-identical result
+  JSON** (golden dataset fingerprint `d076618630cf5842…`, golden
+  train/OOS metrics), and the tested embargo split laws prove no
+  lookahead or leakage. One integration bug was found and fixed
+  pre-acceptance: a zero-loss window's infinite profit factor is
+  stored as JSONB null, and the client parser now maps it to NaN so
+  the pure ranker's finite-metrics gate fails that window closed
+  instead of rejecting the whole completed job. Vitest passed 3263
+  with 130 skipped; Chromium e2e passed 96/96 including the new R9.1
+  generator-evaluation journey, Firefox smoke 19/19 and visual
+  regression 6/6.
 
 Canonical behavior for the delivered contracts is documented in the
 [API reference](./API.md) research-jobs section and the
 [strategy reference](./STRATEGIES.md) server multi-market evaluation
 section.
+
+Production now runs protected slot `r9a-schema16-4f5bc64` at commit
+`4f5bc64e9dfb35d379a55690755a76f7594b226d`, still on port 4180 in the
+`public-http-paper` runtime with the same three project-owned units.
+Exact-SHA GitHub Actions run `29643197555` passed all 6/6 jobs. Like
+R6/R7 — and unlike R8 — this release carries no migration: PostgreSQL
+schema 16 and the trading SQLite schema 10 are unchanged. Paired
+recovery generations `92026f70` (pre-cutover, verified and retained as
+the replacement-only rollback source) and `e894eede` (post-cutover,
+isolated drill passed) were verified. Gate and cutover evidence is
+recorded in
+[R9.1 server evaluation evidence](./evidence/R9_1_SERVER_EVALUATION.md).
+
+R9 overall is not finished: the next pending work inside R9 is R9.2
+(GA lineage, Pareto/OOS promotion and checkpoint/resume), followed by
+R9.3 (the strategy gallery).
 
 ## Delivered slices (not full roadmap completion)
 

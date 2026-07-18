@@ -136,7 +136,8 @@ compaction, list responses expose `artifactsExpired: true`; `GET /api/jobs/:id` 
 different content remains `409 job_idempotency_conflict`, while a new request ID may rerun the same
 content.
 
-`kind: "multi-market-eval"` (R9.1, governed by
+`kind: "multi-market-eval"` (part of the accepted R9.1 release — see the recorded
+[R9.1 acceptance evidence](evidence/R9_1_SERVER_EVALUATION.md) — governed by
 [ADR 0003](adr/0003-canonical-ir-dataset-backtest-contract.md)) evaluates one generated strategy
 across one to six unique catalog markets that share a single timeframe. The strict body is
 `{kind, ir, markets: [{symbol, timeframe}], lookbackBars (500..20000), split: {trainFraction

@@ -46,9 +46,13 @@ is accepted and deployed with no migration: SHA
 multi-leg paper intents are accepted and deployed with the first trading
 SQLite migration since R4: SHA
 `69621f8107a713031f768320e9dc496010234100` passed CI run `29639908389`
-(`6/6`) and production runs PostgreSQL schema 16 and trading SQLite
-schema 10 from protected slot `r8a-schema16-69621f8` (see
-[R8 evidence](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md)). The quantified
+(`6/6`) and was deployed in slot `r8a-schema16-69621f8` (see
+[R8 evidence](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md)). The R9.1 server
+multi-market evaluation and ADR 0003 are accepted and deployed with no
+migration: SHA `4f5bc64e9dfb35d379a55690755a76f7594b226d` passed CI run
+`29643197555` (`6/6`) and production runs PostgreSQL schema 16 and
+trading SQLite schema 10 from protected slot `r9a-schema16-4f5bc64` (see
+[R9.1 evidence](./evidence/R9_1_SERVER_EVALUATION.md)). The quantified
 100-user proof, global executor cap and remaining cross-workload caps are
 still planned for R11.
 

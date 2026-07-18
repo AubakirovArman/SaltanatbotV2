@@ -4,6 +4,20 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## Accepted R9.1 server evaluation release: no migration
+
+The R9.1 server multi-market evaluation release was accepted and deployed on 2026-07-18 from
+commit `4f5bc64e9dfb35d379a55690755a76f7594b226d` after GitHub Actions run `29643197555` completed
+all 6 required jobs successfully. It added no runtime migration: PostgreSQL stays at schema 16
+and the trading SQLite at schema 10 — the durable `compute_jobs` queue already accepts
+kind-discriminated jobs, so the generic job registry and the new `multi-market-eval` kind are
+purely additive at the application layer and the existing `backtest`/`screener` job APIs stay
+byte-identical. Production now runs protected slot `r9a-schema16-4f5bc64`, superseding
+`r8a-schema16-69621f8` below. Paired recovery generations `92026f70` (pre-cutover) and `e894eede`
+(post-cutover, isolated drill passed) were verified
+([R9.1 server evaluation evidence](./evidence/R9_1_SERVER_EVALUATION.md)). Nothing in this note
+replaces the accepted schema-10 migration record below.
+
 ## Accepted R8 trading SQLite schema 10 migration
 
 The R8 owner-scoped multi-leg paper intents release was accepted and deployed on 2026-07-18 from
