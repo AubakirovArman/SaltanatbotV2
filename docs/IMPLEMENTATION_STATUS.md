@@ -137,10 +137,10 @@ paired recovery generations `dd5c0827` (pre-cutover) and `3632bd9f`
 cutover evidence is recorded in
 [R5.3a screener alerts evidence](./evidence/R5_3A_SCREENER_ALERTS.md).
 
-The chart research tools (text notes and the parallel channel) remain open
-in R5. The R5.3b-1 notification worker with owner-bound Telegram
-binding/delivery is now accepted and deployed (section below). Canonical
-behavior is documented in
+The chart research tools (text notes and the parallel channel) are now
+accepted and deployed (section below). The R5.3b-1 notification worker with
+owner-bound Telegram binding/delivery is now accepted and deployed (section
+below). Canonical behavior is documented in
 [Screener alerts (R5.3a)](./ALERTS.md) and the promotion paragraph in
 [SCREENER.md](./SCREENER.md).
 
@@ -200,8 +200,8 @@ Gate, rehearsal and cutover evidence is recorded in
 
 R5.3b-2 — the Telegram paper commands — is now accepted and deployed
 (section below), completing R5.3. The chart research tools (text notes and
-the parallel channel) remain the only open R5 item and are in progress
-(section below), not accepted.
+the parallel channel) — the last open R5 item — are now also accepted and
+deployed (section below), completing R5.
 
 ## R5.3b-2 Telegram paper commands accepted and deployed — 2026-07-18
 
@@ -270,37 +270,55 @@ Canonical behavior is documented in
 [Telegram paper commands (R5.3b-2)](./ALERTS.md) (EN/RU/KK) and the threat
 analysis in [THREAT_MODEL.md](./THREAT_MODEL.md).
 
-## R5 chart research tools — in progress, NOT accepted
+## R5 chart research tools accepted and deployed — 2026-07-18
 
 This slice — the last open R5 item (roadmap section 9, research chart
-tools) — adds the **text note** and **parallel channel** drawing tools. It
-is active work on `main`: no release gate from [RELEASING.md](./RELEASING.md)
-has been run for it, nothing below is deployed, and this section must not be
-read as an acceptance record. The slice is browser/workspace-only and
-requires **no PostgreSQL migration**; existing v7/v8 workspace documents
-stay valid unchanged.
+tools) — adds the **text note** and **parallel channel** drawing tools. The
+slice is browser/workspace-only and required **no runtime migration**;
+existing v7/v8 workspace documents stay valid unchanged. It passed the full
+[RELEASING.md](./RELEASING.md) gate — exact-commit CI, a protected release
+slot, the paired backup/isolated-restore rehearsal and the production
+cutover — and was accepted and deployed on 2026-07-18.
 
-- [ ] Canonical chart geometry contract (`packages/contracts`):
-  horizontal/trend/channel shapes with exact-key parsers shared by the
-  canvas, workspace export/import and the future server alert evaluator.
-- [ ] Text note tool: one data-space anchor, up to 500 characters of
+- [x] Canonical chart geometry contract
+  (`packages/contracts/chartGeometry`): horizontal/trend/channel shapes
+  with exact-key parsers shared by the canvas, the drawing store, workspace
+  export/import validation and the backend v9 document contract.
+- [x] Text note tool: one data-space anchor, up to 500 characters of
   multiline text, inline editor (save/cancel, keyboard accessible),
   informational author-login and creation-time metadata stored in the
   owner-scoped client workspace document (not a server-verified signature).
-- [ ] Parallel channel tool: three anchors (base line plus signed width
+- [x] Parallel channel tool: three anchors (base line plus signed width
   offset), unified body movement, endpoint reshape preserving width, a
   width-only anchor, translucent fill and a Δ width label in price units.
-- [ ] Additive workspace schema v9 (frontend and backend document
+- [x] Additive workspace schema v9 (frontend and backend document
   contract): both tools plus their optional fields validated on both
-  sides; v7/v8 documents load unchanged; versions above 9 stay rejected.
-- [ ] Shared drawing tool catalog entries (desktop rail and the mobile
-  bottom sheet, no reduced set) with EN/RU/KK labels and editor strings.
-- [ ] Frontend, backend, contracts and e2e coverage for the new tools,
+  sides; v9 is additive over the untouched v8 shape, v7/v8 documents stay
+  byte-for-byte valid and load unchanged, the backend accepts versions 7,
+  8 and 9, and versions above 9 stay rejected.
+- [x] Shared drawing tool catalog entries (desktop rail and the mobile
+  bottom sheet, no reduced set; the catalog grew from 19 to 21 tools and
+  the visual drawing-tools baseline was deliberately regenerated) with
+  EN/RU/KK labels and editor strings.
+- [x] Frontend, backend, contracts and e2e coverage for the new tools,
   and user documentation in the RU/KK chart guides plus the EN/RU/KK site
-  feature cards.
+  feature cards. The new journey's axe audit exposed two real WCAG AA
+  contrast defects, both fixed before acceptance.
 
-Acceptance, slot/cutover and evidence will be recorded here only after the
-full release gate passes.
+Production now runs protected slot `r5f-schema16-2ff6101` at commit
+`2ff6101b950b42a77c378233dabecf1a5ee76ce7`, still on port 4180 in the
+`public-http-paper` runtime with the same three project-owned units.
+Exact-SHA GitHub Actions run `29629886774` passed all 6/6 jobs. The
+release carries no migration: PostgreSQL schema 16 and the trading SQLite
+schema 9 are unchanged. Paired recovery generations `7a734401`
+(pre-cutover) and `83c4b37e` (post-cutover, isolated drill passed) were
+verified. Gate, rehearsal and cutover evidence is recorded in
+[R5 chart research tools evidence](./evidence/R5_CHART_RESEARCH_TOOLS.md).
+
+With this acceptance every R5 deliverable — R5.1, R5.2.1, R5.3a, R5.3b-1,
+R5.3b-2 and the chart research tools — is accepted and deployed: **R5 is
+complete**. The next pending increment is R6 (the shared paper execution
+contract and the DCA robot).
 
 ## Delivered slices (not full roadmap completion)
 

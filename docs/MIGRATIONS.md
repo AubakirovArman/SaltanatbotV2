@@ -4,6 +4,19 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## Accepted R5 chart research tools release: no migration
+
+The R5 chart research tools release was accepted and deployed on 2026-07-18 from commit
+`2ff6101b950b42a77c378233dabecf1a5ee76ce7` after GitHub Actions run `29629886774` completed all
+6 required jobs successfully. It added no runtime migration: PostgreSQL stays at schema 16 and
+the trading SQLite at schema 9, and the cutover restart verified a byte-identical migration
+ledger. Production now runs protected slot `r5f-schema16-2ff6101`, superseding
+`r5e-schema16-17e12f1` below; the browser workspace document gained additive schema v9 (v7/v8
+documents stay valid unchanged, versions above 9 stay rejected). Paired recovery generations
+`7a734401` (pre-cutover) and `83c4b37e` (post-cutover, isolated drill passed) were verified
+([R5 chart research tools evidence](./evidence/R5_CHART_RESEARCH_TOOLS.md)). This release
+completed R5. Nothing in this note replaces the accepted schema-16 migration record below.
+
 ## Accepted R5.3b-2 release: PostgreSQL schema 16
 
 R5.3b-2 was accepted and deployed on 2026-07-18 from commit

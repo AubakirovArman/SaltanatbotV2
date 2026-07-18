@@ -13,13 +13,13 @@ No R0-R12 release depends on a domain, certificate, reverse proxy or TLS. That
 boundary changes only if the project owner separately initiates and approves a
 new HTTPS/security roadmap.
 
-Current production status is the accepted R5.3b-2 Telegram paper-command
-release on PostgreSQL schema 16 and unchanged trading SQLite schema 9,
-deployed from protected slot `r5e-schema16-17e12f1` at commit
-`17e12f17933de5ffb047d63358a05fad8f0211f0`. The acceptance record is
-[R5.3b-2 Telegram commands](./evidence/R5_3B2_TELEGRAM_COMMANDS.md); the
-pending chart research tool work described below (text notes and the parallel
-channel) keeps R5 active.
+Current production status is the accepted R5 chart research tools release
+(text notes and the parallel channel) on PostgreSQL schema 16 and unchanged
+trading SQLite schema 9, deployed from protected slot `r5f-schema16-2ff6101`
+at commit `2ff6101b950b42a77c378233dabecf1a5ee76ce7`. The acceptance record is
+[R5 chart research tools](./evidence/R5_CHART_RESEARCH_TOOLS.md); with it
+every R5 deliverable is accepted, R5 is complete and the next pending
+increment is R6.
 
 > Important: HTTP does not protect passwords or session cookies from network
 > interception. Before HTTPS, expose the instance only through a private
@@ -315,8 +315,9 @@ VoiceOver/NVDA/TalkBack records are complete.
 **Status:** delivered and deployed in R3 on schema 11. R3.1, R3.2 and R3.3 with
 its required O1 slice remain accepted historical increments. Production later
 advanced through the accepted R4 schema-12/schema-9, R5.1 schema-13, R5.2.1
-schema-14, R5.3a schema-14 and R5.3b-1 schema-15 releases and now runs the
-accepted R5.3b-2 release on schema 16.
+schema-14, R5.3a schema-14, R5.3b-1 schema-15 and R5.3b-2 schema-16 releases
+and now runs the accepted R5 chart research tools release on unchanged
+schema 16.
 
 **Baseline:**
 
@@ -514,8 +515,9 @@ state, backup scope and failure test before its owning release is accepted.
 trading SQLite schema 9 from protected slot `r4c-schema12-bb455fa` at commit
 `bb455facdfe5a1b3cabe15490c86c299ea684ee7`; exact-SHA GitHub Actions run
 `29560112312` passed all 6/6 jobs. Production has since advanced through the
-accepted R5.1 schema-13 and R5.2.1 schema-14 releases to the accepted R5.3a
-release on unchanged schema 14; the runtime remains `public-http-paper`.
+accepted R5.1, R5.2.1, R5.3a, R5.3b-1 and R5.3b-2 releases to the accepted
+R5 chart research tools release on schema 16; the runtime remains
+`public-http-paper`.
 Operator details are in
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
@@ -562,13 +564,14 @@ mutate the portfolio.
 
 ## R5 — alerts, technical screener MVP and notifications
 
-**Status:** active. R5.1, the R5.2.1 technical screener MVP, the R5.3a
+**Status:** complete. R5.1, the R5.2.1 technical screener MVP, the R5.3a
 saved-screen→server-alert promotion, the R5.3b-1 Telegram delivery worker
-with chat binding and the R5.3b-2 Telegram paper commands are accepted and
-deployed: production runs PostgreSQL schema 16 and unchanged trading SQLite
-schema 9 from protected slot `r5e-schema16-17e12f1` at commit
-`17e12f17933de5ffb047d63358a05fad8f0211f0`; exact-SHA GitHub Actions run
-`29625979877` passed all 6/6 jobs and the runtime remains `public-http-paper`
+with chat binding, the R5.3b-2 Telegram paper commands and the chart research
+tools (text notes and the parallel channel) are all accepted and deployed:
+production runs PostgreSQL schema 16 and unchanged trading SQLite schema 9
+from protected slot `r5f-schema16-2ff6101` at commit
+`2ff6101b950b42a77c378233dabecf1a5ee76ce7`; exact-SHA GitHub Actions run
+`29629886774` passed all 6/6 jobs and the runtime remains `public-http-paper`
 on port 4180. R5.1 was previously deployed from protected slot
 `r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`
 with exact-SHA run `29574600648` (6/6 jobs), R5.2.1 from protected slot
@@ -576,18 +579,19 @@ with exact-SHA run `29574600648` (6/6 jobs), R5.2.1 from protected slot
 `20be5b1d2fb87df38cc298953dfe7a2f414dd831` with exact-SHA run `29584556266`
 (6/6 jobs), R5.3a from protected slot `r5c-schema14-86712ba` at commit
 `86712bac3293ac8d746b638218eb66995d8e5edb` with exact-SHA run `29590401183`
-(6/6 jobs), and R5.3b-1 from protected slot `r5d-schema15-cd34ec8` at commit
+(6/6 jobs), R5.3b-1 from protected slot `r5d-schema15-cd34ec8` at commit
 `cd34ec8d11810a652bf087718f498dcece3b75fa` with exact-SHA run `29622330910`
+(6/6 jobs), and R5.3b-2 from protected slot `r5e-schema16-17e12f1` at commit
+`17e12f17933de5ffb047d63358a05fad8f0211f0` with exact-SHA run `29625979877`
 (6/6 jobs). The accepted release records are
 [R5.1 owner alerts](./evidence/R5_1_OWNER_ALERTS.md),
 [R5.2.1 technical screener](./evidence/R5_2_1_TECHNICAL_SCREENER.md),
 [R5.3a screener alerts](./evidence/R5_3A_SCREENER_ALERTS.md),
-[R5.3b-1 Telegram delivery](./evidence/R5_3B1_TELEGRAM_DELIVERY.md) and
-[R5.3b-2 Telegram commands](./evidence/R5_3B2_TELEGRAM_COMMANDS.md). The
-chart research tools (text notes and the parallel channel) are the only
-remaining R5 work, so R5 as a whole stays active. The technical screener was
-intentionally delivered before robot strategy expansion so it can feed later
-alerts.
+[R5.3b-1 Telegram delivery](./evidence/R5_3B1_TELEGRAM_DELIVERY.md),
+[R5.3b-2 Telegram commands](./evidence/R5_3B2_TELEGRAM_COMMANDS.md) and
+[R5 chart research tools](./evidence/R5_CHART_RESEARCH_TOOLS.md). No R5 work
+remains. The technical screener was intentionally delivered before robot
+strategy expansion so it can feed later alerts.
 
 **Baseline:**
 
@@ -670,14 +674,21 @@ Canonical details: [Owner-scoped server alerts](./ALERTS.md),
   unchanged — and the total-JS bundle cap moved 960→984 KiB under the
   reviewed-cap pattern with the mandatory 10% reserve intact.
 
-**Remaining — research chart tools:**
+**Chart research tools accepted release — text notes and the parallel
+channel:**
 
-- add text notes with data-space anchors and owner-scoped workspace persistence;
-- add parallel channels as one movable, measurable drawing object;
-- use one canonical horizontal/trend/channel geometry contract for canvas,
-  workspace import/export and server alert evaluation;
-- expose the complete set through the common mobile drawing sheet rather than a
-  reduced mobile-only catalog.
+- text notes carry data-space anchors and owner-scoped workspace persistence,
+  and the parallel channel is one movable, measurable drawing object;
+- one canonical geometry contract in `packages/contracts/chartGeometry` is
+  shared by the canvas, the store, workspace validation and the backend v9
+  schema for horizontal/trend/channel geometry;
+- workspace schema v9 is additive over the untouched v8 document: v7/v8
+  documents stay byte-for-byte valid and the backend accepts revisions 7|8|9;
+- the complete 21-tool catalog (previously 19) is exposed through the common
+  mobile drawing sheet rather than a reduced mobile-only catalog, and the
+  visual baseline was regenerated;
+- the release added no migration — PostgreSQL schema 16 and trading SQLite
+  schema 9 are unchanged.
 
 **R5.3b-1 accepted release — Telegram delivery worker and chat binding:**
 
@@ -799,14 +810,23 @@ schema-16 generation `08b6defe` with its drill and the replacement-only
 rollback pair. The accepted release record is
 [R5.3b-2 Telegram commands](./evidence/R5_3B2_TELEGRAM_COMMANDS.md).
 
-**Complete R5 exit criteria:** the R5.1, R5.2.1, R5.3a, R5.3b-1 and R5.3b-2
-releases have passed acceptance, and a saved screen produces an owner-scoped
-alert with the browser closed; restarts lose no durable transition;
-duplicates are bounded and identifiable; each R5.3b-2 Telegram `update_id`
-creates at most one durable paper mutation across restart or consumer
-takeover, as proven by the accepted integration suite; notification failure
-cannot stall login, charts or paper execution. Only the chart research tools
-(text notes and the parallel channel) remain before R5 closes.
+**Chart research tools acceptance evidence:** the no-migration release passed
+the exact-worktree gates and the container browser gates before cutover; the
+new axe accessibility audit found two WCAG AA contrast defects that were
+fixed before acceptance, and the recovery chronology retained the verified
+pre-cutover generation `7a734401` and post-cutover generation `83c4b37e`
+with its passed isolated drill. The accepted release record is
+[R5 chart research tools](./evidence/R5_CHART_RESEARCH_TOOLS.md).
+
+**Complete R5 exit criteria (met):** the R5.1, R5.2.1, R5.3a, R5.3b-1,
+R5.3b-2 and chart research tool releases have passed acceptance, and a saved
+screen produces an owner-scoped alert with the browser closed; restarts lose
+no durable transition; duplicates are bounded and identifiable; each R5.3b-2
+Telegram `update_id` creates at most one durable paper mutation across
+restart or consumer takeover, as proven by the accepted integration suite;
+notification failure cannot stall login, charts or paper execution. With the
+chart research tools (text notes and the parallel channel) accepted, R5 is
+closed.
 
 ## R6 — DCA paper robot
 
@@ -1091,7 +1111,7 @@ and stabilization.
 | R3 | administrator lifecycle, server workspaces and onboarding/PWA boundary | R1-R2 | delivered on schema 11 |
 | O1 | Operational hardening increments | starts in R3 and ships with each new workload | included in R3-R10 estimates |
 | R4 | “Running” and paper portfolio/journal contract | R1-R3 | delivered |
-| R5 | R5.1 generic price alerts, R5.2.1 technical screener MVP, R5.3a saved-screen→alert promotion, R5.3b-1 Telegram delivery/chat binding and R5.3b-2 Telegram paper commands accepted; only chart research tools (text notes and parallel channel) pending | R3-R4 | remaining chart research tools within the original 5-7 estimate |
+| R5 | R5.1 generic price alerts, R5.2.1 technical screener MVP, R5.3a saved-screen→alert promotion, R5.3b-1 Telegram delivery/chat binding, R5.3b-2 Telegram paper commands and the chart research tools (text notes and parallel channel) all accepted | R3-R4 | delivered |
 | R6 | DCA paper | R4-R5 | 3-4 |
 | R7 | Grid paper | R4-R6 | 4-5 |
 | R8 | Spread/inefficiency paper research | R4-R5 | 4-6 |
@@ -1126,14 +1146,18 @@ and stabilization.
    fenced-executor command, confirmation-token and recovery gates passed, and
    the exact-SHA acceptance and cutover evidence is recorded in
    [R5.3b-2 Telegram commands](./evidence/R5_3B2_TELEGRAM_COMMANDS.md).
-7. Implement the remaining R5 chart research tools (text notes and the
-   parallel channel) on the canonical geometry contract to complete the R5
-   release gate.
-8. Keep R6 and later code out of `main` and production until the complete R5
-   release gate is accepted.
+7. The R5 chart research tools review is complete: the text notes and the
+   parallel channel shipped on the canonical geometry contract, their
+   no-migration, browser, accessibility and recovery gates passed, and the
+   exact-SHA acceptance and cutover evidence is recorded in
+   [R5 chart research tools](./evidence/R5_CHART_RESEARCH_TOOLS.md); the
+   complete R5 release gate is closed.
+8. R6 — the common paper execution contract and the DCA paper robot — is the
+   next pending increment; keep code for releases after the current pending
+   increment out of `main` and production until it is accepted.
 
 Acceptance, publication to `main` and production cutover of the remaining work
-are strictly sequential from the next pending increment: R5 → R6 → R7 → R8 →
+are strictly sequential from the next pending increment: R6 → R7 → R8 →
 R9 → R10A → R10B → R11 →
 R12. Parallel work is allowed only inside the
 current increment after its contracts are fixed. Code or migrations for a later

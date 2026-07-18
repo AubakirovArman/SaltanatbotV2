@@ -8,6 +8,7 @@ Last focused R5.2.1 release/cutover reconciliation: **2026-07-17** (`20be5b1`, C
 Last focused R5.3a release/cutover reconciliation: **2026-07-17** (`86712ba`, CI `29590401183` 6/6)
 Last focused R5.3b-1 release/cutover reconciliation: **2026-07-18** (`cd34ec8`, CI `29622330910` 6/6)
 Last focused R5.3b-2 release/cutover reconciliation: **2026-07-18** (`17e12f1`, CI `29625979877` 6/6)
+Last focused R5 chart research tools release/cutover reconciliation: **2026-07-18** (`2ff6101`, CI `29629886774` 6/6, no migration; completes R5)
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -50,6 +51,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [R5.3a screener alert promotion evidence](evidence/R5_3A_SCREENER_ALERTS.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record | 2026-07-17 |
 | [R5.3b-1 Telegram delivery evidence](evidence/R5_3B1_TELEGRAM_DELIVERY.md) | operators/release reviewers | accepted exact-commit CI, schema-15 paired recovery, protected slot and production cutover record | 2026-07-18 |
 | [R5.3b-2 Telegram paper commands evidence](evidence/R5_3B2_TELEGRAM_COMMANDS.md) | operators/release reviewers | accepted exact-commit CI, schema-16 paired recovery, protected slot and production cutover record | 2026-07-18 |
+| [R5 chart research tools evidence](evidence/R5_CHART_RESEARCH_TOOLS.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record; completes R5 | 2026-07-18 |
 | [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R4 delivered and R5 next/pending | 2026-07-17 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |

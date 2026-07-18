@@ -68,10 +68,10 @@ accessibility/visual evidence; see the recorded
 price-alert control plane is not the older account-aware arbitrage
 research-alert policy/outbox: its engine-owned candidate/economics producers
 remain disconnected. The R5.2.1 technical screener MVP, the R5.3a screener
-alert promotion, the R5.3b-1 Telegram delivery worker and the R5.3b-2
-Telegram paper commands are now accepted and deployed (see below); the
-chart research tools and R11 integrated 100-user capacity proof remain
-pending and unproven.
+alert promotion, the R5.3b-1 Telegram delivery worker, the R5.3b-2
+Telegram paper commands and the chart research tools are now accepted and
+deployed (see below), completing R5; the R11 integrated 100-user capacity
+proof remains pending and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md),
 [Russian](./ru/ALERTS.md), [Kazakh](./kk/ALERTS.md) and the detailed
@@ -102,9 +102,9 @@ the recorded
 [R5.2.1 acceptance evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md).
 Saved-screen promotion into a server alert is now delivered by the accepted
 R5.3a release, owner-bound Telegram delivery by the accepted R5.3b-1
-release and Telegram read commands by the accepted R5.3b-2 release (see
-below); the chart research tools and the R11 integrated 100-user capacity
-proof remain pending and unproven.
+release, Telegram read commands by the accepted R5.3b-2 release and the
+chart research tools by the accepted release below, completing R5; the R11
+integrated 100-user capacity proof remains pending and unproven.
 
 See [On-demand technical screener](./SCREENER.md),
 [Russian](./ru/SCREENER.md), [Kazakh](./kk/SCREENER.md) and the detailed
@@ -132,9 +132,10 @@ backup/recovery drill, and the production journal shows the dedicated
 screener-alert worker lane running; see the recorded
 [R5.3a acceptance evidence](./evidence/R5_3A_SCREENER_ALERTS.md). The
 owner-bound Telegram binding/delivery worker is now delivered by the
-accepted R5.3b-1 release and the Telegram paper commands by the accepted
-R5.3b-2 release (see below); the chart research tools and the R11
-integrated 100-user capacity proof remain pending and unproven.
+accepted R5.3b-1 release, the Telegram paper commands by the accepted
+R5.3b-2 release and the chart research tools by the accepted release
+below, completing R5; the R11 integrated 100-user capacity proof remains
+pending and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md), [Russian](./ru/ALERTS.md),
 [Kazakh](./kk/ALERTS.md) and the detailed
@@ -166,8 +167,8 @@ and the one-consume binding-code smoke — and the paired backup/recovery
 drills; see the recorded
 [R5.3b-1 acceptance evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md). The
 Telegram read commands are now delivered by the accepted R5.3b-2 release
-(see below); the chart research tools and the R11 integrated 100-user
-capacity proof remain pending and unproven.
+and the chart research tools by the accepted release below, completing R5;
+the R11 integrated 100-user capacity proof remains pending and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md), [Russian](./ru/ALERTS.md),
 [Kazakh](./kk/ALERTS.md), [Self-hosting](./SELF_HOSTING.md) and the
@@ -202,12 +203,53 @@ confirmation fences), the checksum-locked isolated 15→16 rehearsal with
 both workers ready at schema 16, and the paired backup/recovery drills
 with a retained replacement-only rollback pair; see the recorded
 [R5.3b-2 acceptance evidence](./evidence/R5_3B2_TELEGRAM_COMMANDS.md). The
-chart research tools and the R11 integrated 100-user capacity proof remain
-pending and unproven.
+chart research tools are now delivered by the accepted release below,
+completing R5; the R11 integrated 100-user capacity proof remains pending
+and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md), [Russian](./ru/ALERTS.md),
 [Kazakh](./kk/ALERTS.md), [Self-hosting](./SELF_HOSTING.md) and the
 detailed [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
+## Accepted R5 chart research tools release — R5 complete
+
+Production now runs the accepted chart research tools — data-anchored text
+notes and the three-point parallel channel — from protected slot
+`r5f-schema16-2ff6101` (commit
+`2ff6101b950b42a77c378233dabecf1a5ee76ce7`, exact-SHA CI run `29629886774`,
+`6/6`). The release adds no migration: PostgreSQL schema 16 and trading
+SQLite schema 9 are unchanged, the runtime remains `public-http-paper` and
+the API still serves port 4180. With this increment every R5 deliverable —
+R5.1, R5.2.1, R5.3a, R5.3b-1, R5.3b-2 and the chart research tools — is
+accepted and deployed: **R5 is complete**.
+
+The text note anchors optional multiline text (1–500 characters) to one
+data-space time/price point, records informational author-login and
+creation-time metadata, and stays re-editable from the canvas, context
+menu and object list through an accessible dialog editor. The parallel
+channel derives its second line from a three-anchor base line plus a
+signed price width, with unified body drag, width-preserving endpoint
+reshaping, a dedicated width anchor, a translucent fill and a measurable
+"Δ price" label. Both tools join the shared drawing catalog — now 21 tools
+with EN/RU/KK labels and no reduced mobile set. A canonical geometry
+contract in `packages/contracts/chartGeometry` is enforced identically by
+the canvas, the drawing store, frontend workspace validation and the
+additive backend workspace schema v9, which keeps v7/v8 documents
+byte-for-byte valid and accepts versions 7|8|9. Everything stays
+client-side research drawing: the release cannot trade, borrow, change
+margin, read exchange credentials or grant trading authority.
+
+Acceptance passed the exact-SHA CI gate, the full local and container
+browser gates — including the regenerated 21-tool visual baseline and an
+axe audit that exposed two real WCAG AA contrast defects, both fixed
+before acceptance — and the paired no-migration backup/recovery drill; see
+the recorded
+[R5 chart research tools evidence](./evidence/R5_CHART_RESEARCH_TOOLS.md).
+The R11 integrated 100-user capacity proof remains pending and unproven.
+
+See the [Russian](./ru/CHART.md) and [Kazakh](./kk/CHART.md) chart guides,
+the canonical [chart architecture](../frontend/src/chart/README.md) and
+the detailed [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
 
 ## Explicitly deferred external validation
 
