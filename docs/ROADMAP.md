@@ -251,6 +251,54 @@ See the [Russian](./ru/CHART.md) and [Kazakh](./kk/CHART.md) chart guides,
 the canonical [chart architecture](../frontend/src/chart/README.md) and
 the detailed [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
 
+## Accepted R6 release — shared paper execution contract and DCA robot
+
+Production now runs the accepted R6 DCA paper robot on the shared paper
+execution contract from protected slot `r6a-schema16-e2411ab` (commit
+`e2411ab2f0b4540200089af8128304f71d3f73e0`, exact-SHA CI run `29633743310`,
+`6/6`). The release adds no migration: PostgreSQL schema 16 and trading
+SQLite schema 9 are unchanged, the runtime remains `public-http-paper` with
+the same three project-owned units and the API still serves port 4180.
+
+The release makes `paper-fill-model-v1` (fee 0.05% / slippage 0.02%) the
+single fee/slippage parity source consumed by the live paper adapter and
+the backtest defaults, and versions the paper fill behavior:
+`single-position-v1` stays the default, byte-compatible with every
+historical ledger — a conflicting triggered order now cancels explicitly
+with reason `position-conflict:single-position-v1` instead of silently
+vanishing — while `averaging-v1` merges same-side adds into one position
+with a volume-weighted average entry for the new DCA robots. A DCA robot
+embeds versioned `dca-params-v1` parameters (base order, up to 25 scaled
+safety orders, take-profit re-placed from the volume-weighted average
+entry after every fill, optional stop-loss, optional trailing take-profit,
+cooldown between cycles and an optional maximum cycle duration; long and
+short) driven by the versioned `dca-state-v1` machine. Every transition
+carries the deterministic idempotency key `dca:<botId>:<cycle>:<ordinal>`
+and persists a durable state snapshot, so restart recovery resumes
+mid-cycle exactly. The worst-case capital bound is enforced server-side at
+creation (`WORST_CASE_EXCEEDS_ALLOCATION`) and previewed live in the
+create form from the same shared contract math. Everything stays
+paper-only research: it cannot trade live, borrow, change margin, read
+exchange credentials or grant trading authority.
+
+Acceptance passed the exact-SHA CI gate and the roadmap §10 determinism
+criterion: a 120-bar golden replay driven twice through the real
+adapter/ledger path produced byte-identical event streams, a mid-cycle
+restart reached the identical terminal state and events,
+`replayPaperLedger(events)` equaled the final adapter state and committed
+capital never exceeded the worst-case bound. One pre-acceptance bug —
+read-model DCA metadata field names diverging from the browser contract —
+was found by the test pass and fixed before acceptance, and the paired
+no-migration backup/recovery drill passed; see the recorded
+[R6 acceptance evidence](./evidence/R6_DCA_PAPER_ROBOT.md). The
+golden-replay harness is reusable for R7, the next pending increment (the
+Grid paper robot on the same ledger and state machine); the R11 integrated
+100-user capacity proof remains pending and unproven.
+
+See the [trading guide](./TRADING.md),
+[canonical paper portfolios](./PAPER_PORTFOLIOS.md) and the detailed
+[pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
 ## Explicitly deferred external validation
 
 | Item | Why deferred | Required before claim |

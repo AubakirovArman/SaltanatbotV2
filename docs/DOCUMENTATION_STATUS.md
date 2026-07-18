@@ -9,6 +9,7 @@ Last focused R5.3a release/cutover reconciliation: **2026-07-17** (`86712ba`, CI
 Last focused R5.3b-1 release/cutover reconciliation: **2026-07-18** (`cd34ec8`, CI `29622330910` 6/6)
 Last focused R5.3b-2 release/cutover reconciliation: **2026-07-18** (`17e12f1`, CI `29625979877` 6/6)
 Last focused R5 chart research tools release/cutover reconciliation: **2026-07-18** (`2ff6101`, CI `29629886774` 6/6, no migration; completes R5)
+Last focused R6 release/cutover reconciliation: **2026-07-18** (`e2411ab`, CI `29633743310` 6/6, no migration)
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -28,8 +29,8 @@ their source contracts, and user-facing claims were compared with the current im
 | [Public arbitrage SDK](../packages/arbitrage-sdk/README.md) | integrators/SDK users | current; public/read-only | 2026-07-14 |
 | [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current | 2026-07-11 |
 | [Declarative plugin contract](PLUGINS.md) | users/plugin authors | current foundation | 2026-07-12 |
-| [Trading guide](TRADING.md) | users/operators | current accepted R4 paper boundary plus a clearly labeled in-progress R6 DCA section (not accepted); live remains outside pre-HTTPS | 2026-07-18 |
-| [Canonical paper portfolios](PAPER_PORTFOLIOS.md) | users/operators/integrators | accepted R4 lifecycle, authority, API and schema-12/schema-9 recovery runbook plus a clearly labeled in-progress R6 DCA section (not accepted) | 2026-07-18 |
+| [Trading guide](TRADING.md) | users/operators | current accepted paper boundary including the accepted R6 DCA robot type; live remains outside pre-HTTPS | 2026-07-18 |
+| [Canonical paper portfolios](PAPER_PORTFOLIOS.md) | users/operators/integrators | accepted R4 lifecycle, authority, API and schema-12/schema-9 recovery runbook plus the accepted R6 DCA robot contract | 2026-07-18 |
 | [Configuration](CONFIGURATION.md) | operators | current through typed readiness limits and accepted SQLite-9 inventory | 2026-07-17 |
 | [Self-hosting with account authentication](SELF_HOSTING.md) | operators/forks | current Docker/direct-host paths plus accepted R5.1 migration boundary | 2026-07-17 |
 | [Capacity plan for 100 users](CAPACITY_100_USERS.md) | operators/maintainers | accepted R4 per-owner command foundation; 100-user/global proof remains pending for R11 | 2026-07-17 |
@@ -52,7 +53,8 @@ their source contracts, and user-facing claims were compared with the current im
 | [R5.3b-1 Telegram delivery evidence](evidence/R5_3B1_TELEGRAM_DELIVERY.md) | operators/release reviewers | accepted exact-commit CI, schema-15 paired recovery, protected slot and production cutover record | 2026-07-18 |
 | [R5.3b-2 Telegram paper commands evidence](evidence/R5_3B2_TELEGRAM_COMMANDS.md) | operators/release reviewers | accepted exact-commit CI, schema-16 paired recovery, protected slot and production cutover record | 2026-07-18 |
 | [R5 chart research tools evidence](evidence/R5_CHART_RESEARCH_TOOLS.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record; completes R5 | 2026-07-18 |
-| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R5 complete and R6 in progress (not accepted) | 2026-07-18 |
+| [R6 DCA paper robot evidence](evidence/R6_DCA_PAPER_ROBOT.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record | 2026-07-18 |
+| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R5 complete and R6 accepted/deployed | 2026-07-18 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |
 | [Accessibility baseline](ACCESSIBILITY.md) | users/contributors | current automated baseline including R4 center/drawer/mobile evidence; manual AT/Opera still pending | 2026-07-17 |

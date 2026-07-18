@@ -13,13 +13,13 @@ No R0-R12 release depends on a domain, certificate, reverse proxy or TLS. That
 boundary changes only if the project owner separately initiates and approves a
 new HTTPS/security roadmap.
 
-Current production status is the accepted R5 chart research tools release
-(text notes and the parallel channel) on PostgreSQL schema 16 and unchanged
-trading SQLite schema 9, deployed from protected slot `r5f-schema16-2ff6101`
-at commit `2ff6101b950b42a77c378233dabecf1a5ee76ce7`. The acceptance record is
-[R5 chart research tools](./evidence/R5_CHART_RESEARCH_TOOLS.md); with it
-every R5 deliverable is accepted, R5 is complete and the next pending
-increment is R6.
+Current production status is the accepted R6 release (the shared paper
+execution contract and the DCA paper robot) on PostgreSQL schema 16 and
+unchanged trading SQLite schema 9, deployed with no migration from protected
+slot `r6a-schema16-e2411ab` at commit
+`e2411ab2f0b4540200089af8128304f71d3f73e0`. The acceptance record is
+[R6 DCA paper robot](./evidence/R6_DCA_PAPER_ROBOT.md); with it R6 is
+complete and the next pending increment is R7.
 
 > Important: HTTP does not protect passwords or session cookies from network
 > interception. Before HTTPS, expose the instance only through a private
@@ -315,9 +315,9 @@ VoiceOver/NVDA/TalkBack records are complete.
 **Status:** delivered and deployed in R3 on schema 11. R3.1, R3.2 and R3.3 with
 its required O1 slice remain accepted historical increments. Production later
 advanced through the accepted R4 schema-12/schema-9, R5.1 schema-13, R5.2.1
-schema-14, R5.3a schema-14, R5.3b-1 schema-15 and R5.3b-2 schema-16 releases
-and now runs the accepted R5 chart research tools release on unchanged
-schema 16.
+schema-14, R5.3a schema-14, R5.3b-1 schema-15, R5.3b-2 schema-16 and R5
+chart research tools releases and now runs the accepted R6 DCA paper robot
+release on unchanged schema 16.
 
 **Baseline:**
 
@@ -515,9 +515,9 @@ state, backup scope and failure test before its owning release is accepted.
 trading SQLite schema 9 from protected slot `r4c-schema12-bb455fa` at commit
 `bb455facdfe5a1b3cabe15490c86c299ea684ee7`; exact-SHA GitHub Actions run
 `29560112312` passed all 6/6 jobs. Production has since advanced through the
-accepted R5.1, R5.2.1, R5.3a, R5.3b-1 and R5.3b-2 releases to the accepted
-R5 chart research tools release on schema 16; the runtime remains
-`public-http-paper`.
+accepted R5.1, R5.2.1, R5.3a, R5.3b-1, R5.3b-2 and R5 chart research tools
+releases to the accepted R6 DCA paper robot release on schema 16; the
+runtime remains `public-http-paper`.
 Operator details are in
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
@@ -568,13 +568,15 @@ mutate the portfolio.
 saved-screen→server-alert promotion, the R5.3b-1 Telegram delivery worker
 with chat binding, the R5.3b-2 Telegram paper commands and the chart research
 tools (text notes and the parallel channel) are all accepted and deployed:
-production runs PostgreSQL schema 16 and unchanged trading SQLite schema 9
-from protected slot `r5f-schema16-2ff6101` at commit
+the completed R5 release shipped on PostgreSQL schema 16 and unchanged
+trading SQLite schema 9 from protected slot `r5f-schema16-2ff6101` at commit
 `2ff6101b950b42a77c378233dabecf1a5ee76ce7`; exact-SHA GitHub Actions run
-`29629886774` passed all 6/6 jobs and the runtime remains `public-http-paper`
-on port 4180. R5.1 was previously deployed from protected slot
-`r5a-schema13-66394fd` at commit `66394fd38765d8da36174411cecd95a33fda1ea0`
-with exact-SHA run `29574600648` (6/6 jobs), R5.2.1 from protected slot
+`29629886774` passed all 6/6 jobs. Production has since advanced to the
+accepted R6 DCA paper robot release on unchanged schema 16, and the runtime
+remains `public-http-paper` on port 4180. R5.1 was previously deployed
+from protected slot `r5a-schema13-66394fd` at commit
+`66394fd38765d8da36174411cecd95a33fda1ea0` with exact-SHA run
+`29574600648` (6/6 jobs), R5.2.1 from protected slot
 `r5b-schema14-20be5b1` at commit
 `20be5b1d2fb87df38cc298953dfe7a2f414dd831` with exact-SHA run `29584556266`
 (6/6 jobs), R5.3a from protected slot `r5c-schema14-86712ba` at commit
@@ -830,24 +832,42 @@ closed.
 
 ## R6 — DCA paper robot
 
-**Status:** planned.
+**Status:** delivered, accepted and deployed with no migration on unchanged
+PostgreSQL schema 16 and trading SQLite schema 9 from protected slot
+`r6a-schema16-e2411ab` at commit
+`e2411ab2f0b4540200089af8128304f71d3f73e0`; exact-SHA GitHub Actions run
+`29633743310` passed all 6/6 jobs and the runtime remains `public-http-paper`
+on port 4180 across the three systemd units.
 
-**Baseline:** deterministic strategy/backtest and paper execution primitives are
-available; no completed DCA product is claimed.
+**Delivered — the shared paper execution contract and the DCA robot:**
 
-**Remaining:** base and safety orders, step/volume scales, bounded reserved
-capital, TP/SL/trailing exit/cooldown, one lifecycle state machine shared by
-replay and paper execution, pre-run maximum-capital/worst-case summary, and
-idempotent recovery.
+- `paper-fill-model-v1` is the single fill/fee/slippage parity source shared
+  by replay and paper execution;
+- versioned fill behaviors: the `single-position-v1` default stays
+  byte-compatible and adds an explicit conflict cancel, and `averaging-v1`
+  supports DCA safety-order averaging;
+- `dca-params-v1`/`dca-state-v1` cover base and safety orders, step/volume
+  scales, TP/SL/trailing exit, cooldown and one lifecycle state machine
+  shared by replay and paper execution;
+- worst-case reserved capital is enforced server-side with a live pre-run
+  preview;
+- every lifecycle transition carries its own idempotency key, and the
+  goldenReplay harness is reusable for R7.
 
 **Dependencies:** R4 portfolio/journal and R5 health alerts.
 
-**Evidence:** deterministic path fixtures, gaps/partial fills/fees, restart at
-every state, quota rejection and property tests for capital bounds.
+**Acceptance evidence:** the determinism criterion passed — the golden replay
+is byte-identical across two runs, a mid-cycle restart reproduces the
+identical result, replay equals the final durable state and the worst-case
+capital bound was never exceeded. One pre-acceptance defect (read-model DCA
+metadata field names) was fixed before acceptance, and the recovery
+chronology retained pre-cutover generation `440523a6` and post-cutover
+generation `65bb4359` with its passed drill. The accepted release record is
+[R6 DCA paper robot](./evidence/R6_DCA_PAPER_ROBOT.md).
 
-**Exit criteria:** one price path produces the same replay and paper result,
-instrument/capital limits cannot be exceeded, and restart creates no duplicate
-order or reservation.
+**Exit criteria (met):** one price path produces the same replay and paper
+result, instrument/capital limits cannot be exceeded, and restart creates no
+duplicate order or reservation.
 
 ## R7 — Grid paper robot
 
@@ -1112,7 +1132,7 @@ and stabilization.
 | O1 | Operational hardening increments | starts in R3 and ships with each new workload | included in R3-R10 estimates |
 | R4 | “Running” and paper portfolio/journal contract | R1-R3 | delivered |
 | R5 | R5.1 generic price alerts, R5.2.1 technical screener MVP, R5.3a saved-screen→alert promotion, R5.3b-1 Telegram delivery/chat binding, R5.3b-2 Telegram paper commands and the chart research tools (text notes and parallel channel) all accepted | R3-R4 | delivered |
-| R6 | DCA paper | R4-R5 | 3-4 |
+| R6 | Shared paper execution contract and DCA paper robot accepted | R4-R5 | delivered |
 | R7 | Grid paper | R4-R6 | 4-5 |
 | R8 | Spread/inefficiency paper research | R4-R5 | 4-6 |
 | R9 | Generator/genetic optimizer | R1 + R4 portfolio metrics + canonical IR/dataset/backtest | 5-8 |
@@ -1152,12 +1172,17 @@ and stabilization.
    exact-SHA acceptance and cutover evidence is recorded in
    [R5 chart research tools](./evidence/R5_CHART_RESEARCH_TOOLS.md); the
    complete R5 release gate is closed.
-8. R6 — the common paper execution contract and the DCA paper robot — is the
-   next pending increment; keep code for releases after the current pending
-   increment out of `main` and production until it is accepted.
+8. The R6 review is complete: the shared paper execution contract and the
+   DCA paper robot shipped without a migration, their golden-replay
+   determinism, worst-case capital, restart and recovery gates passed, and
+   the exact-SHA acceptance and cutover evidence is recorded in
+   [R6 DCA paper robot](./evidence/R6_DCA_PAPER_ROBOT.md).
+9. R7 — the Grid paper robot on the same paper ledger and state machine — is
+   the next pending increment; keep code for releases after the current
+   pending increment out of `main` and production until it is accepted.
 
 Acceptance, publication to `main` and production cutover of the remaining work
-are strictly sequential from the next pending increment: R6 → R7 → R8 →
+are strictly sequential from the next pending increment: R7 → R8 →
 R9 → R10A → R10B → R11 →
 R12. Parallel work is allowed only inside the
 current increment after its contracts are fixed. Code or migrations for a later

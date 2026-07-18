@@ -125,13 +125,15 @@ valuation evidence is available, one final current-equity point. The journal als
 50 newest fills and 100 newest event metadata rows with `truncated` flags. Event payloads,
 idempotency keys and command fields are not exposed by this read model.
 
-## DCA paper robots (R6, in progress)
+## DCA paper robots (R6, accepted)
 
-R6 status: implemented on `main`, **not accepted and not deployed**. The accepted production
-evidence above still describes R4; the R6 release gate in [RELEASING.md](./RELEASING.md) —
-exact-commit CI, protected slot, paired recovery rehearsal and cutover — has not run yet. R6
-changes no PostgreSQL or SQLite schema: DCA robots ride the existing paper event types and
-settings snapshots, and every pre-R6 ledger replays byte-identically.
+R6 status: **accepted and deployed**. The R6 release gate in [RELEASING.md](./RELEASING.md) —
+exact-commit CI run `29633743310` (`6/6`) at commit
+`e2411ab2f0b4540200089af8128304f71d3f73e0`, protected slot `r6a-schema16-e2411ab`, paired
+recovery rehearsal and cutover — passed; see the recorded
+[R6 acceptance evidence](./evidence/R6_DCA_PAPER_ROBOT.md). R6 changes no PostgreSQL or SQLite
+schema: DCA robots ride the existing paper event types and settings snapshots, and every pre-R6
+ledger replays byte-identically.
 
 A paper robot config gains an optional behavior discriminator `kind: "strategy" | "dca"`. An
 absent `kind` still means "strategy", so historical robots and old create payloads are unchanged.

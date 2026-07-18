@@ -32,11 +32,15 @@ Telegram paper commands are accepted and deployed: SHA
 [R5.3b-2 evidence](./evidence/R5_3B2_TELEGRAM_COMMANDS.md)). The R5 chart
 research tools are now accepted and deployed with no migration, completing
 R5: SHA `2ff6101b950b42a77c378233dabecf1a5ee76ce7` passed CI run
-`29629886774` (`6/6`) and production runs PostgreSQL schema 16 from slot
-`r5f-schema16-2ff6101` (see
-[R5 chart tools evidence](./evidence/R5_CHART_RESEARCH_TOOLS.md)). The
-quantified 100-user proof, global executor cap and remaining
-cross-workload caps are still planned for R11.
+`29629886774` (`6/6`) and was deployed in slot `r5f-schema16-2ff6101` (see
+[R5 chart tools evidence](./evidence/R5_CHART_RESEARCH_TOOLS.md)). The R6
+shared paper execution contract and DCA robot is accepted and deployed
+with no migration: SHA `e2411ab2f0b4540200089af8128304f71d3f73e0` passed
+CI run `29633743310` (`6/6`) and production runs PostgreSQL schema 16 from
+protected slot `r6a-schema16-e2411ab` (see
+[R6 evidence](./evidence/R6_DCA_PAPER_ROBOT.md)). The quantified 100-user
+proof, global executor cap and remaining cross-workload caps are still
+planned for R11.
 
 This plan covers the `public-http-paper` Research / Paper release. SSL/TLS,
 HTTPS termination and live exchange execution are explicitly outside its active

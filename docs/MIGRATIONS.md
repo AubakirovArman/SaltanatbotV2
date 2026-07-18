@@ -4,6 +4,20 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## Accepted R6 DCA paper robot release: no migration
+
+The R6 shared paper execution contract and DCA robot release was accepted and deployed on
+2026-07-18 from commit `e2411ab2f0b4540200089af8128304f71d3f73e0` after GitHub Actions run
+`29633743310` completed all 6 required jobs successfully. It added no runtime migration:
+PostgreSQL stays at schema 16 and the trading SQLite at schema 9. The paper fill behavior is
+versioned — `single-position-v1` stays the byte-compatible default and the DCA-only
+`averaging-v1` behavior is additive — and the cutover verified that every pre-R6 paper ledger
+replays byte-identically. Production now runs protected slot `r6a-schema16-e2411ab`,
+superseding `r5f-schema16-2ff6101` below. Paired recovery generations `440523a6` (pre-cutover)
+and `65bb4359` (post-cutover, isolated drill passed) were verified
+([R6 DCA paper robot evidence](./evidence/R6_DCA_PAPER_ROBOT.md)). Nothing in this note
+replaces the accepted schema-16 migration record below.
+
 ## Accepted R5 chart research tools release: no migration
 
 The R5 chart research tools release was accepted and deployed on 2026-07-18 from commit

@@ -317,19 +317,19 @@ verified. Gate, rehearsal and cutover evidence is recorded in
 
 With this acceptance every R5 deliverable — R5.1, R5.2.1, R5.3a, R5.3b-1,
 R5.3b-2 and the chart research tools — is accepted and deployed: **R5 is
-complete**. The next pending increment is R6 (the shared paper execution
-contract and the DCA robot); its in-progress state is tracked in the next
-section.
+complete**. R6 (the shared paper execution contract and the DCA robot) is
+now also accepted and deployed; see the next section.
 
-## R6 shared paper execution contract and DCA robot — in progress, NOT accepted
+## R6 shared paper execution contract and DCA robot accepted and deployed — 2026-07-18
 
-This slice (roadmap R6) is being implemented on `main`. It has **not**
-passed the [RELEASING.md](./RELEASING.md) gate: there is no exact-commit CI
-evidence, no protected release slot, no paired recovery rehearsal and no
-production cutover for R6. Production still runs the accepted R5 slot
-`r5f-schema16-2ff6101`. The increment changes no PostgreSQL or SQLite
-schema — DCA robots ride the existing paper event types and settings
-snapshots, and every pre-R6 ledger must replay byte-identically.
+This slice (roadmap R6) delivers the shared versioned paper execution
+contract and the DCA robot on top of it. It passed the full
+[RELEASING.md](./RELEASING.md) gate — exact-commit CI, a protected release
+slot, the paired backup/isolated-restore rehearsal and the production
+cutover — and was accepted and deployed on 2026-07-18. The increment
+changes no PostgreSQL or SQLite schema — DCA robots ride the existing
+paper event types and settings snapshots, and the cutover verified that
+every pre-R6 ledger replays byte-identically.
 
 - [x] Shared versioned paper fill model `paper-fill-model-v1`
   (`packages/execution-core/fillModel.ts`, feePct 0.05 / slipPct 0.02) as
@@ -363,12 +363,31 @@ snapshots, and every pre-R6 ledger must replay byte-identically.
   [ru/PAPER_PORTFOLIOS.md](./ru/PAPER_PORTFOLIOS.md) and the
   [TRADING.md](./TRADING.md) / [ru](./ru/TRADING.md) / [kk](./kk/TRADING.md)
   guides.
-- [ ] Full R6 verification matrix (machine/golden-replay/restart suites,
+- [x] Full R6 verification matrix (machine/golden-replay/restart suites,
   command-handler and e2e journeys) consolidated and green in exact-commit
-  CI.
-- [ ] Release gate: exact-commit CI evidence, protected slot, paired
+  CI. The roadmap §10 determinism criterion passed: the golden replay
+  produced byte-identical event streams twice, a mid-cycle restart reached
+  the identical terminal state, ledger replay equals the final adapter
+  state, and committed capital never exceeded the worst-case bound. One
+  pre-acceptance bug (read-model DCA metadata field names diverging from
+  the browser contract) was found by the test pass and fixed before
+  acceptance.
+- [x] Release gate: exact-commit CI evidence, protected slot, paired
   backup/isolated-restore rehearsal, production cutover and acceptance
   record.
+
+Production now runs protected slot `r6a-schema16-e2411ab` at commit
+`e2411ab2f0b4540200089af8128304f71d3f73e0`, still on port 4180 in the
+`public-http-paper` runtime with the same three project-owned units.
+Exact-SHA GitHub Actions run `29633743310` passed all 6/6 jobs. The
+release carries no migration: PostgreSQL schema 16 and the trading SQLite
+schema 9 are unchanged. Paired recovery generations `440523a6`
+(pre-cutover) and `65bb4359` (post-cutover, isolated drill passed) were
+verified. Gate, rehearsal and cutover evidence is recorded in
+[R6 DCA paper robot evidence](./evidence/R6_DCA_PAPER_ROBOT.md).
+
+The next pending increment is R7 (the Grid paper robot on the same ledger
+and cycle state machine, reusing the golden-replay harness).
 
 ## Delivered slices (not full roadmap completion)
 

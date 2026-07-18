@@ -72,9 +72,10 @@ Production visual acceptance выполнен в Chromium 149 для 1440×900, 
 cutover относится только к этому paper workflow: HTTPS, private exchange access, live execution,
 реальные borrowing и margin/account telemetry не включены.
 
-### Тип робота DCA (R6, в работе)
+### Тип робота DCA (R6, принят)
 
-R6 — реализован на `main`, **ещё не принят и не развёрнут** — добавляет второй тип paper-робота
+R6 — **принят и развёрнут**; см. записанное
+[R6 acceptance evidence](../evidence/R6_DCA_PAPER_ROBOT.md) — добавляет второй тип paper-робота
 рядом со стратегическими. Форма создания получает переключатель типа (**Стратегия | DCA**);
 DCA-панель заменяет выбор стратегии на направление и поля `dca-params-v1` (размеры base и
 safety-ордеров, число safety-ордеров, отклонение цены, множители step/volume, take-profit,

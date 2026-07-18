@@ -77,9 +77,10 @@ See [Canonical paper portfolios](./PAPER_PORTFOLIOS.md) for storage authority, A
 migration, backup and rollback. HTTPS, exchange credentials and live/private execution remain out
 of scope.
 
-### DCA robot type (R6, in progress)
+### DCA robot type (R6, accepted)
 
-R6 — implemented on `main`, **not accepted or deployed yet** — adds a second paper robot type
+R6 — **accepted and deployed**; see the recorded
+[R6 acceptance evidence](./evidence/R6_DCA_PAPER_ROBOT.md) — adds a second paper robot type
 next to strategy robots. The create form gains a robot-type toggle (**Strategy | DCA**); the DCA
 panel replaces the strategy picker with direction and the `dca-params-v1` inputs (base and safety
 order sizes, safety-order count, price deviation, step/volume scales, take-profit, optional
