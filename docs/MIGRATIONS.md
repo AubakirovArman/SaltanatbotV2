@@ -4,11 +4,43 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## Accepted R5.3b-1 release: PostgreSQL schema 15
+
+R5.3b-1 was accepted and deployed on 2026-07-18 from commit
+`cd34ec8d11810a652bf087718f498dcece3b75fa` after GitHub Actions run `29622330910` completed all
+6 required jobs successfully. Production now runs PostgreSQL schema 15 and unchanged trading
+SQLite schema 9 from protected slot `r5d-schema15-cd34ec8`
+([R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md)). Production now runs three
+project-owned units — the API, the research worker and the new
+`saltanatbotv2-notification-worker.service`. No bot token is provisioned on the production host,
+so the worker idles by design (`notification_worker_idle`, reason `token_absent`) with a healthy
+heartbeat; readiness keeps the worker optional unless `OPERATIONS_REQUIRE_NOTIFICATION_WORKER`
+is set, and provisioning the token file later activates delivery without a new release. Nothing
+in this section replaces, edits or extends the R5.2.1, R5.1 and R4 acceptance evidence below.
+
+Schema 15 is one atomic, advisory-lock-protected PostgreSQL migration named
+`telegram_notification_ingress`. Its exact checksum is
+`1265ad195e84411807c64b35330d611520a2caacc2cafe6cebce75626a7cec25`.
+It adds the nullable `notification_bindings.recipient_chat_id` column, the hashed one-consume
+`notification_binding_codes` table, the fenced single-consumer `telegram_ingress_consumers`
+lease/cursor table and the normalized hashed-only `telegram_updates` dedup journal. The migration
+is additive: it extends `notification_bindings` with one nullable column, creates only new
+objects and rewrites or drops nothing from schema 14.
+
+The accepted cutover repeated the schema-14 discipline: pre-upgrade paired generation `47645c55`
+(schema 14) with its isolated restore drill; then the isolated 14-to-15 rehearsal, which included
+the notification-worker idle boot proof and the binding-code smoke (three unique one-time codes
+issued, a fourth request answering `429`, hashed-only storage verified); then post-upgrade paired
+generation `ba4f9d40` (schema 15) with its own drill. The stopped rollback source `d86692ad` and
+the replacement-only rollback pair are retained. There is no in-place downgrade: never delete
+schema-15 rows, drop the binding-code/ingress tables or the `recipient_chat_id` column, or
+decrement `schema_migrations` to roll back.
+
 ## Accepted R5.2.1 release: PostgreSQL schema 14
 
 R5.2.1 was accepted and deployed on 2026-07-17 from commit
 `20be5b1d2fb87df38cc298953dfe7a2f414dd831` after GitHub Actions run `29584556266` completed all
-6 required jobs successfully. Production now runs PostgreSQL schema 14 and unchanged trading
+6 required jobs successfully. Production moved to PostgreSQL schema 14 and unchanged trading
 SQLite schema 9 from protected slot `r5b-schema14-20be5b1`
 ([R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md)). An earlier candidate revision
 `d422100` failed exact-SHA CI run `29583889332` on migration-chain assertions and was fixed

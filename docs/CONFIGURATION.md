@@ -85,7 +85,7 @@ Variables outside that first slice are still owned by their feature modules and 
 | `RESEARCH_WORKER_HEARTBEAT_STALE_MS` | `90000` | API readiness fails when the required worker heartbeat is older than this; accepted range 10 seconds–15 minutes. |
 | `RESEARCH_JOB_RETENTION_INTERVAL_MS` | `60000` | Bounded terminal-artifact retention interval; accepted range 1–60 minutes. |
 | `RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS` | `20000` | Maximum graceful worker shutdown; keep below the supervisor stop grace period. |
-| `TELEGRAM_BOT_TOKEN_FILE` | *(unset)* | Absolute path to the owner-only regular file holding the Telegram bot token, read only by the optional R5.3b-1 notification worker (in progress, not accepted). Symlinks, foreign owners, group/other access, oversized content and a missing file are rejected without crashing: the worker idles with a live heartbeat and rechecks. The token is never logged; elsewhere the bot appears only as the SHA-256 fingerprint of its token. |
+| `TELEGRAM_BOT_TOKEN_FILE` | *(unset)* | Absolute path to the owner-only regular file holding the Telegram bot token, read only by the optional accepted/deployed R5.3b-1 notification worker. Symlinks, foreign owners, group/other access, oversized content and a missing file are rejected without crashing: the worker idles with a live heartbeat and rechecks. The token is never logged; elsewhere the bot appears only as the SHA-256 fingerprint of its token. |
 | `OPERATIONS_REQUIRE_NOTIFICATION_WORKER` | *(off)* | Set `1` to make API readiness require a fresh ready `notification-worker` heartbeat (same staleness budget as the research worker). Leave unset on hosts without the optional worker so they remain `ready`. |
 | `NOTIFICATION_WORKER_HEARTBEAT_INTERVAL_MS` | `15000` | Component-heartbeat interval written by the optional notification worker; accepted range 5–60 seconds. |
 | `NOTIFICATION_WORKER_IDLE_RECHECK_MS` | `60000` | How often the idling notification worker rechecks its token file and schema version; accepted range 5–300 seconds. |
@@ -421,7 +421,7 @@ endpoint is only a tenant-scoped boolean compatibility view; no current endpoint
 ## Configuring Telegram / VK notifications
 
 This section describes the legacy per-user trading-notification channels stored in SQLite. It is
-separate from the in-progress R5.3b-1 **alert** Telegram delivery, which uses one operator-owned
+separate from the accepted R5.3b-1 **alert** Telegram delivery, which uses one operator-owned
 bot token file (`TELEGRAM_BOT_TOKEN_FILE`), owner-bound chat bindings and the optional
 notification worker; see [Owner-scoped server alerts](./ALERTS.md) and
 [Self-hosting](./SELF_HOSTING.md).

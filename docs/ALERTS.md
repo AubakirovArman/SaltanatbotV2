@@ -84,11 +84,11 @@ block. Completion writes the immutable receipt (producer
 `screener-alert-worker`), the event, the outbox row and the pre-delivered
 in-app row in one transaction; the transition key deduplicates replays.
 
-In the accepted R5.3a release delivery is `in-app` only, and a screener rule
-that requests `telegram` is rejected with a clear `400` exactly like any other
-unsupported delivery channel. The in-progress R5.3b-1 increment below widens
-that gate: `telegram` becomes an accepted delivery channel for both
-price-threshold and screener rules.
+In the R5.3a release delivery was `in-app` only, and a screener rule that
+requested `telegram` was rejected with a clear `400` exactly like any other
+unsupported delivery channel. The accepted R5.3b-1 release below widens that
+gate: `telegram` is now an accepted delivery channel for both price-threshold
+and screener rules.
 
 ### Screener-alert quotas
 
@@ -101,12 +101,15 @@ Screener rules also count toward the shared R5.1 caps (100/200/480); both
 limits apply. Exceeding them maps to `429 screener_alert_quota_exceeded` and
 `429 screener_alert_capacity_exhausted`.
 
-## Telegram delivery and chat binding (R5.3b-1, in progress)
+## Telegram delivery and chat binding (R5.3b-1)
 
 R5.3b-1 adds a separate notification worker that delivers alert notifications
 to Telegram and binds one private chat to one owner through one-consume codes.
-This increment is **in progress and not an accepted release**: production
-still runs the accepted R5.3a slot, where `telegram` delivery answers `400`.
+The increment is **accepted and deployed**: production runs PostgreSQL
+schema 15 from protected slot `r5d-schema15-cd34ec8`, and a notification is
+delivered to `telegram` whenever the owner holds an active binding; the
+acceptance and cutover record is
+[R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md).
 Like every alert feature it is notification-only research: the worker opens no
 HTTP listener, never opens the trading SQLite, and cannot place an order.
 Inbound bot commands beyond `/start`, `/bind` and the static fallback reply
@@ -466,6 +469,6 @@ The release gate includes:
 R5.2.1 adds the separate [on-demand technical screener](./SCREENER.md); it
 runs screens on demand, and R5.3a promotes a screen into the `screener` rule
 kind described above. The separate notification worker and Telegram
-binding/revoke/delivery flow are the in-progress R5.3b-1 increment described
-in [Telegram delivery and chat binding](#telegram-delivery-and-chat-binding-r53b-1-in-progress);
+binding/revoke/delivery flow are the accepted R5.3b-1 release described
+in [Telegram delivery and chat binding](#telegram-delivery-and-chat-binding-r53b-1);
 richer inbound bot commands remain R5.3b-2.

@@ -264,8 +264,8 @@ The production application has exactly two mandatory independently supervised No
    accepted R5.1 release, evaluates owner alerts from credential-free public REST candles. It
    opens no HTTP port and receives no exchange secrets.
 
-The in-progress R5.3b-1 increment adds a third, **optional** unit — the Telegram notification
-worker described [below](#optional-third-unit-telegram-notification-worker-r53b-1-in-progress).
+The accepted R5.3b-1 release adds a third, **optional** unit — the Telegram notification
+worker described [below](#optional-third-unit-telegram-notification-worker-r53b-1).
 Hosts that do not run it stay fully supported and fully `ready`.
 
 Do not also run `npm start`, `npm run dev`, PM2, another container or a second API unit against the
@@ -295,15 +295,18 @@ Both run as the unprivileged service user, drop Linux capabilities, make the che
 limit resources and hard-pin `RUNTIME_PROFILE=public-http-paper`. Only the API receives write access
 to `backend/data`; the worker receives PostgreSQL configuration only.
 
-### Optional third unit: Telegram notification worker (R5.3b-1, in progress)
+### Optional third unit: Telegram notification worker (R5.3b-1)
 
-The in-progress R5.3b-1 increment ships a third unit example,
+The accepted R5.3b-1 release ships a third unit example,
 [`deploy/systemd/saltanatbotv2-notification-worker.service.example`](../deploy/systemd/saltanatbotv2-notification-worker.service.example),
 for the separate Telegram delivery/ingress worker documented in
 [Owner-scoped server alerts](./ALERTS.md). It follows the research-worker hardening exactly
 (unprivileged user, read-only checkout, no capabilities, PostgreSQL configuration only), opens no
-HTTP port and never touches `backend/data`. This increment is not yet an accepted release; the
-production unit on an accepted host is created only during release cutover.
+HTTP port and never touches `backend/data`. The release is accepted and deployed: the production
+host runs `saltanatbotv2-notification-worker.service` beside the API and research worker. That host
+provisions no bot token, so the worker idles by design with a live heartbeat; provisioning the
+token file later activates delivery without a new release. See the recorded
+[R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md).
 
 Provision the bot token with the same ritual as the PostgreSQL password — an owner-only regular
 file whose content is exactly the BotFather token plus at most one trailing newline:

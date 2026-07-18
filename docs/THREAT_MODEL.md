@@ -52,8 +52,8 @@ execution, real borrowing or real margin/account telemetry.
 | Market/backtest data | Determines signals and performance claims | Provider/provenance labels; fallback and gaps explicit |
 | Arbitrage quotes/history | Can create misleading urgency or expected-profit claims | Public-only adapters, source health, bounded stale state, depth checks and explicit research labels |
 | R5.1 alert state/receipts/events | A forged crossing, stale lease or cross-owner cursor could create or hide a notification | Composite owner keys, authorization/lease/state-revision fences, immutable receipts/events and per-owner transactional sequence |
-| Telegram bot token file (R5.3b-1, in progress) | Whoever holds the token can send as the bot and read its update stream | Owner-only `0600`/`0400` regular file, `O_NOFOLLOW`/uid/size checks, never logged; SHA-256 fingerprint used everywhere else |
-| Telegram binding codes and chat ids (R5.3b-1, in progress) | A guessed/replayed code or leaked chat id could bind or expose another person's chat | 128-bit one-consume codes stored as SHA-256 with 10-minute TTL; chat ids hashed in every projection/log and kept server-side only |
+| Telegram bot token file (R5.3b-1) | Whoever holds the token can send as the bot and read its update stream | Owner-only `0600`/`0400` regular file, `O_NOFOLLOW`/uid/size checks, never logged; SHA-256 fingerprint used everywhere else |
+| Telegram binding codes and chat ids (R5.3b-1) | A guessed/replayed code or leaked chat id could bind or expose another person's chat | 128-bit one-consume codes stored as SHA-256 with 10-minute TTL; chat ids hashed in every projection/log and kept server-side only |
 
 ## Trust boundaries
 
@@ -70,7 +70,7 @@ R5.1 deployed notification path:
 Research worker | credential-free public REST closed candles | Binance or Bybit
 Research worker | owner/auth/lease/state fences | PostgreSQL schema 13
 
-R5.3b-1 in-progress Telegram path (not yet accepted/deployed):
+R5.3b-1 deployed Telegram path:
 Notification worker | egress-only HTTPS sendMessage/getUpdates long poll | api.telegram.org
 Notification worker | binding/lease/cursor fences, hashed identifiers | PostgreSQL schema 15
 
@@ -214,16 +214,17 @@ persists its cursor can repeat a toast. Public venue data can be wrong or unavai
 limits are not R11 capacity evidence for 100 simultaneous users. R5.1 provides notification
 evidence, not financial advice, guaranteed observation or execution.
 
-### Telegram notification delivery and chat binding (R5.3b-1, in progress)
+### Telegram notification delivery and chat binding (R5.3b-1)
 
-This boundary is implemented in the working tree but **not accepted or deployed**; the controls
-below describe the candidate, not production. Threats include disclosure of the operator's bot
-token (full impersonation of the bot plus reading its update stream), guessing or replaying a
-binding code to attach a stranger's chat to an owner, disclosure of member chat ids, a second
+This boundary is **accepted and deployed** with the R5.3b-1 release; the production host runs the
+notification worker in its designed idle mode until a bot token is provisioned. Threats include
+disclosure of the operator's bot token (full impersonation of the bot plus reading its update
+stream), guessing or replaying a binding code to attach a stranger's chat to an owner, disclosure
+of member chat ids, a second
 poller stealing or double-processing updates, inbound command floods, message floods toward
 Telegram, and a notification silently outliving a revoked binding.
 
-Candidate mitigations:
+Current mitigations:
 
 - the bot token lives only in an operator-provisioned owner-only file
   (`TELEGRAM_BOT_TOKEN_FILE`); the reader enforces `O_NOFOLLOW`, regular-file type, uid match,

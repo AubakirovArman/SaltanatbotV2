@@ -252,11 +252,14 @@ Screen-to-alert promotion is now delivered by R5.3a: the "Create alert from
 this screen" action turns the current valid definition into a durable server
 rule of kind `screener` that re-runs the screen at the timeframe cadence and
 raises an on-change alert event when the matched symbol set changes, with
-in-app delivery only until R5.3b. Semantics, unknown carry-over, the
-availability floor, cooldown and the 5-per-owner/40-global quotas are
-documented in [Screener alerts (R5.3a)](./ALERTS.md). R5.3a is accepted and
-deployed with no migration: production runs unchanged PostgreSQL schema 14
-from protected slot `r5c-schema14-86712ba` (commit
+in-app delivery plus, since the accepted R5.3b-1 release, Telegram delivery
+to a bound chat. Semantics, unknown carry-over, the availability floor,
+cooldown and the 5-per-owner/40-global quotas are documented in
+[Screener alerts (R5.3a)](./ALERTS.md). R5.3a was accepted and deployed with
+no migration from protected slot `r5c-schema14-86712ba` (commit
 `86712bac3293ac8d746b638218eb66995d8e5edb`, exact-SHA CI run `29590401183`,
 6/6 jobs); see [R5.3a evidence](./evidence/R5_3A_SCREENER_ALERTS.md).
+Production now runs PostgreSQL schema 15 from the accepted R5.3b-1 slot
+`r5d-schema15-cd34ec8`; see
+[R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md).
 Scheduled screens and a Bybit-primary universe remain future work.

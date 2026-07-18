@@ -17,12 +17,16 @@ screener MVP is accepted and deployed: SHA
 `20be5b1d2fb87df38cc298953dfe7a2f414dd831` passed CI run `29584556266` (`6/6`)
 and was deployed in slot `r5b-schema14-20be5b1` (see
 [R5.2.1 evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md)); its beta limits
-are not R11 capacity evidence. The R5.3a screener alert promotion is now
+are not R11 capacity evidence. The R5.3a screener alert promotion is
 accepted and deployed with no migration: SHA
 `86712bac3293ac8d746b638218eb66995d8e5edb` passed CI run `29590401183`
-(`6/6`) and production runs unchanged PostgreSQL schema 14 from slot
-`r5c-schema14-86712ba` (see
-[R5.3a evidence](./evidence/R5_3A_SCREENER_ALERTS.md)). The quantified
+(`6/6`) and was deployed in slot `r5c-schema14-86712ba` (see
+[R5.3a evidence](./evidence/R5_3A_SCREENER_ALERTS.md)). The R5.3b-1
+Telegram delivery worker is now accepted and deployed: SHA
+`cd34ec8d11810a652bf087718f498dcece3b75fa` passed CI run `29622330910`
+(`6/6`) and production runs PostgreSQL schema 15 from slot
+`r5d-schema15-cd34ec8` (see
+[R5.3b-1 evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md)). The quantified
 100-user proof, global executor cap and remaining cross-workload caps are
 still planned for R11.
 
@@ -35,9 +39,11 @@ The practical target is a bounded modular monolith, not a ChatGPT-scale
 microservice fleet. One API process serves the SPA, authenticated REST and
 shared public market WebSockets. PostgreSQL owns identity, workspaces, durable
 authorization and research jobs. The accepted/deployed R5.1 release adds
-multi-user alert/outbox records through PostgreSQL schema 13, and the
+multi-user alert/outbox records through PostgreSQL schema 13, the
 accepted/deployed R5.2.1 release adds owner-scoped screener presets through
-PostgreSQL schema 14, which is now the production state. One
+PostgreSQL schema 14, and the accepted/deployed R5.3b-1 release adds
+Telegram binding/delivery/ingress records through PostgreSQL schema 15,
+which is now the production state. One
 singleton trading executor owns the protected SQLite trading/paper state under
 [ADR 0001](adr/0001-execution-authority-and-system-of-record.md). CPU-heavy
 research executes in a separate bounded worker.
@@ -60,7 +66,7 @@ research worker supervisor (implemented)
 bounded backtest worker threads
 
 PostgreSQL schema-13 alert/outbox -> existing research worker evaluator (R5.1 accepted)
-                              \-> dedicated notification worker (R5.3 pending)
+                              \-> dedicated notification worker (R5.3b-1 accepted; idle without a bot token)
 ```
 
 The diagram intentionally has no active TLS reverse-proxy layer. A later HTTPS
@@ -175,10 +181,10 @@ that limitation.
   at-least-once publish-before-checkpoint semantics, same-owner multi-tab
   convergence and mobile/desktop release gates. It is distinct from the older
   account-aware arbitrage research-alert policy/outbox, whose engine-owned
-  candidate/economics producers remain disconnected. The R5.2.1 screener MVP
-  and the R5.3a saved-screen alert promotion are now accepted and deployed;
-  R5.3b notification delivery and the integrated R11 workload remain pending
-  and unproven.
+  candidate/economics producers remain disconnected. The R5.2.1 screener MVP,
+  the R5.3a saved-screen alert promotion and the R5.3b-1 Telegram delivery
+  worker are now accepted and deployed; the R5.3b-2 Telegram commands and the
+  integrated R11 workload remain pending and unproven.
 
 ## Global admission caps and remaining work
 
@@ -195,7 +201,7 @@ measured evidence.
 | API wait queue | 256 ordinary requests | included above | reject overflow with `global_admission_exhausted`; only cheap health bypasses, readiness is bounded | implemented |
 | Readiness dependency scan | 1 in flight; completed result retained 1 second; 1 PG query at a time | 2 requests/second/IP, burst 10 | excess source receives `429 readiness_rate_limited`; a full 4,096-key store returns the remaining prune horizon; all admitted callers share one scan | implemented |
 | Browser market WebSockets | 300 connections | 4 | close/reject with retryable `1013/429`; never grow buffers | global admission planned; slow-client bound exists |
-| PostgreSQL application connections | 20 total: API 12 + research 4 + notification 4 | n/a | fail readiness before exhausting operator reserve | API/research 16 exist; R5.1 reuses research, notification 4 remains R5.3-planned |
+| PostgreSQL application connections | 20 total: API 12 + research 4 + notification 4 | n/a | fail readiness before exhausting operator reserve | API/research 16 exist; R5.1 reuses research; the accepted/deployed R5.3b-1 notification worker adds its bounded 4 |
 | PostgreSQL `max_connections` deployment floor | 40 | n/a | retain at least 20 connections for migration, backup and operator recovery | deployment validation planned |
 | Active paper executor commands | global cap/load proof pending | 256 | reject new owner command before unbounded queue growth; terminal rows are bounded separately | accepted/deployed per-owner schema-12 bound implemented; global R11 evidence pending |
 | Running paper robots | 100 | 4 | reject new start; existing robots remain controllable | per-owner cap exists; global cap planned |
@@ -204,7 +210,7 @@ measured evidence.
 | Technical screener runs | 4 active; 250 symbols per preset | 1 active | queue fairly or reject; minimum scheduled interval 60 seconds | R5.2.1 accepted/deployed on schema 14 as on-demand compute jobs (5-active-per-owner job quota, 40 presets/owner, 400 global, universe ≤200); scheduled screens and R11 load proof pending |
 | Active generic price-alert rules | 480 | 100 active; 200 non-archived and 400 total history rows | reject activation/create before exceeding the cap; archive always remains available | R5.1 accepted/deployed on production schema 13; R11 load proof pending |
 | Alert evaluation sweep | 500 claims; 16 unique public reads, eight/provider, four concurrent | owner-fair claims | coalesce equal scope/cursor reads; capacity-defer saturated-provider work without starving the other provider | R5.1 accepted/deployed; R11 load proof pending |
-| Telegram deliveries | lower of provider budget or 20 sends/second | 2 sends/second | token-bucket delay, retry/backoff and dead-letter state | R5.3 pending; unavailable in R5.1 |
+| Telegram deliveries | lower of provider budget or 20 sends/second | 2 sends/second | token-bucket delay, retry/backoff and dead-letter state | R5.3b-1 accepted/deployed on schema 15; R11 load proof pending |
 | Workspaces | 75 total, 25 active and 64 MiB retained payload per owner | same | reject create/import; preserve existing revisions | per-owner quotas plus 4 MiB metadata-first keyset responses implemented; global admission/load proof remains R11 |
 | L2 capture scopes | 24 selected scopes | operator-governed owner access | stop new capture when disk free space falls below 30% | R10A planned |
 
@@ -230,7 +236,7 @@ arrival schedule must be reusable across releases.
 | 5 admin/onboarding users | user list/filter, pending activation, role change, workspace creation/import and password/login flows |
 | Paper execution background | 60 running paper robots across 30 owners, with the test allowed to rise to but never exceed the 100-robot global cap |
 | Alerts | Begin within the R5.1 beta ceiling of 480 globally active rules and at most 100 active/200 non-archived/400 total rows per owner; any higher R11 mix requires measured retuning before, not during, acceptance |
-| Notifications | Exercise R5.1 owner-forward in-app pages and duplicate-safe replay; add the proposed 10 deliveries/second plus Telegram timeout/429 injection only after R5.3 exists |
+| Notifications | Exercise R5.1 owner-forward in-app pages and duplicate-safe replay; add the proposed 10 deliveries/second plus Telegram timeout/429 injection against the accepted R5.3b-1 delivery lane |
 | Public L2/ML scope | up to 24 capture scopes plus bounded inference replay after R10A/R10B; no unbounded venue-wide subscriptions |
 | Login churn | 20 normal login attempts/minute plus a separately labelled failed-login burst that must trigger rate limits |
 
@@ -283,9 +289,9 @@ not claims about the current manual backup schedule.
 The accepted R5.1 release publishes owner-bound forward event pages before
 persisting the browser cursor checkpoint. Restore or browser-storage failure
 may therefore repeat an in-app toast, but cannot acknowledge an unseen event;
-this is intentional at-least-once behavior. A future R5.3 provider outbox may
-also redeliver a provider-accepted message whose acknowledgement was not
-retained. Stable event/delivery deduplication identity must survive
+this is intentional at-least-once behavior. The accepted R5.3b-1 Telegram
+outbox may also redeliver a provider-accepted message whose acknowledgement
+was not retained. Stable event/delivery deduplication identity must survive
 backup/restore; the documentation must describe possible duplicates rather than
 promise exactly-once delivery.
 
@@ -306,7 +312,7 @@ machine-readable result. Passing unit tests alone is insufficient.
 | Fill the data filesystem through the soft watermark | L2 capture and new heavy artifacts stop first; login/chart/journal writes retain reserved space |
 | Break or gap an upstream market WebSocket | evidence becomes stale/unavailable; screener, alert and ML paths do not treat the gap as normal data |
 | R5.1 event-page publish before cursor persistence, local-storage failure and restored cursor ahead of the database | forward cursor remains owner-bound; an unseen event is never acknowledged; duplicate in-app presentation is bounded and identifiable |
-| Telegram timeout, `429`, and accepted-before-ack crash | R5.3-only pending drill: bounded retry/backoff; stable dedupe ID; at-least-once duplicate is visible and no event is silently lost |
+| Telegram timeout, `429`, and accepted-before-ack crash | pending R11 drill against the accepted R5.3b-1 delivery lane: bounded retry/backoff; stable dedupe ID; at-least-once duplicate is visible and no event is silently lost |
 | Exceed API/WS/job/robot/alert global caps | fair `429/503/1013` backpressure; memory and queue length remain bounded |
 | Restore paired PostgreSQL/SQLite generation | owner counts, workspaces, jobs, paper totals and command reconciliation match the retained manifest |
 

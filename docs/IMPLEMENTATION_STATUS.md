@@ -1,6 +1,6 @@
 # Improvement implementation status
 
-Updated: 2026-07-17
+Updated: 2026-07-18
 
 Active branch: `main`
 
@@ -139,23 +139,19 @@ cutover evidence is recorded in
 
 The chart research tools (text notes and the parallel channel) remain open
 in R5. The R5.3b-1 notification worker with owner-bound Telegram
-binding/delivery is **in progress** in the working tree (section below) and
-is not accepted; the deployed production slot still returns `400` for
-`telegram` delivery. Canonical behavior is documented in
+binding/delivery is now accepted and deployed (section below). Canonical
+behavior is documented in
 [Screener alerts (R5.3a)](./ALERTS.md) and the promotion paragraph in
 [SCREENER.md](./SCREENER.md).
 
-## R5.3b-1 Telegram delivery and binding — in progress, NOT accepted
+## R5.3b-1 Telegram delivery and binding accepted and deployed — 2026-07-18
 
 R5.3b-1 adds the separate notification worker, Telegram delivery of alert
-notifications and the owner-bound chat binding lifecycle. The slice is
-implemented and tested in the working tree but is **not an accepted
-release**: nothing here is production evidence. Production still runs the
-accepted R5.3a slot `r5c-schema14-86712ba` on PostgreSQL schema 14, where
-`telegram` delivery answers `400`. Acceptance requires the full
-[RELEASING.md](./RELEASING.md) gate — exact-commit CI, the additive
-schema-15 migration with its paired backup/isolated-restore rehearsal, a
-protected slot and the production unit created at cutover.
+notifications and the owner-bound chat binding lifecycle. The slice passed
+the full [RELEASING.md](./RELEASING.md) gate — exact-commit CI, the
+additive schema-15 migration with its paired backup/isolated-restore
+rehearsal, a protected slot and the production unit created at cutover —
+and was accepted and deployed on 2026-07-18.
 
 - [x] Additive PostgreSQL migration 15 `telegram_notification_ingress`:
   `notification_bindings.recipient_chat_id`, hashed one-consume
@@ -183,9 +179,29 @@ protected slot and the production unit created at cutover.
   hashed handles, confirm-revoke) and channel-picker gating with EN/RU/KK
   strings; deployment examples (third systemd unit, Compose `telegram`
   profile) and documentation.
-- [ ] Exact-commit GitHub CI, protected release slot, schema-15
+- [x] Exact-commit GitHub CI, protected release slot, schema-15
   backup/restore rehearsal, production cutover and recorded acceptance
-  evidence.
+  evidence per [RELEASING.md](./RELEASING.md).
+
+Production now runs PostgreSQL schema 15 (additive migration 15
+`telegram_notification_ingress`) and the unchanged trading SQLite schema 9
+from protected slot `r5d-schema15-cd34ec8` at commit
+`cd34ec8d11810a652bf087718f498dcece3b75fa`, still on port 4180 in the
+`public-http-paper` runtime. Exact-SHA GitHub Actions run `29622330910`
+passed all 6/6 jobs. Production now runs three project-owned units — the
+API, the research worker and the new
+`saltanatbotv2-notification-worker.service`. No bot token is provisioned on
+this host, so the worker idles by design (`notification_worker_idle`,
+reason `token_absent`) with a healthy heartbeat; readiness keeps the worker
+optional unless `OPERATIONS_REQUIRE_NOTIFICATION_WORKER` is set, and
+provisioning the token file later activates delivery without a new release.
+Gate, rehearsal and cutover evidence is recorded in
+[R5.3b-1 Telegram delivery evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md).
+
+R5.3b-2 — the Telegram read commands (`/balance`, `/daily`, `/profit`,
+`/performance`, `/trades`, `/alerts`) and paper `/pause`/`/resume`/`/stop`
+with one-time confirmations through the fenced executor — and the chart
+research tools (text notes and the parallel channel) remain open in R5.
 
 ## Delivered slices (not full roadmap completion)
 

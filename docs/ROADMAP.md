@@ -67,10 +67,10 @@ accessibility/visual evidence; see the recorded
 [R5.1 acceptance evidence](./evidence/R5_1_OWNER_ALERTS.md). This generic
 price-alert control plane is not the older account-aware arbitrage
 research-alert policy/outbox: its engine-owned candidate/economics producers
-remain disconnected. The R5.2.1 technical screener MVP and the R5.3a
-screener alert promotion are now accepted and deployed (see below); the
-R5.3b notification worker/Telegram delivery and R11 integrated 100-user
-capacity proof remain pending and unproven.
+remain disconnected. The R5.2.1 technical screener MVP, the R5.3a screener
+alert promotion and the R5.3b-1 Telegram delivery worker are now accepted
+and deployed (see below); the R5.3b-2 Telegram commands and R11 integrated
+100-user capacity proof remain pending and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md),
 [Russian](./ru/ALERTS.md), [Kazakh](./kk/ALERTS.md) and the detailed
@@ -100,9 +100,10 @@ evaluated, 30 matched, 0 unavailable against live Binance closed candles; see
 the recorded
 [R5.2.1 acceptance evidence](./evidence/R5_2_1_TECHNICAL_SCREENER.md).
 Saved-screen promotion into a server alert is now delivered by the accepted
-R5.3a release (see below); the R5.3b notification worker with owner-bound
-Telegram delivery, chart research tools and the R11 integrated 100-user
-capacity proof remain pending and unproven.
+R5.3a release, and owner-bound Telegram delivery by the accepted R5.3b-1
+release (see below); the R5.3b-2 Telegram read commands, chart research
+tools and the R11 integrated 100-user capacity proof remain pending and
+unproven.
 
 See [On-demand technical screener](./SCREENER.md),
 [Russian](./ru/SCREENER.md), [Kazakh](./kk/SCREENER.md) and the detailed
@@ -110,32 +111,65 @@ See [On-demand technical screener](./SCREENER.md),
 
 ## Accepted R5.3a release
 
-Production now runs the accepted R5.3a screener alert promotion from
+The accepted R5.3a screener alert promotion was deployed from
 protected slot `r5c-schema14-86712ba` (commit
 `86712bac3293ac8d746b638218eb66995d8e5edb`, exact-SHA CI run `29590401183`,
-`6/6`). The release adds no migration: PostgreSQL schema 14 and trading
-SQLite schema 9 are unchanged, and the runtime remains `public-http-paper`.
+`6/6`). The release added no migration: PostgreSQL schema 14 and trading
+SQLite schema 9 were unchanged, and the runtime remains `public-http-paper`.
 
 The release promotes a saved screen into the server alert rule kind
 `screener`: the embedded screen re-runs at the timeframe-derived cadence on
 closed candles and raises an on-change alert event when the matched symbol
 set changes, with unknown carry-over, the 30% availability floor, cooldown
-fencing and the 5-per-owner/40-global quotas. Delivery stays in-app only;
-`telegram` on a screener rule still answers a clear `400` until R5.3b. It
-cannot trade, borrow, change margin, read exchange credentials or grant
-trading authority.
+fencing and the 5-per-owner/40-global quotas. In this release delivery
+stayed in-app only; `telegram` on a screener rule answered a clear `400`
+until the accepted R5.3b-1 release below. It cannot trade, borrow, change
+margin, read exchange credentials or grant trading authority.
 
 Acceptance passed the exact-SHA CI gate and the paired no-migration
 backup/recovery drill, and the production journal shows the dedicated
 screener-alert worker lane running; see the recorded
-[R5.3a acceptance evidence](./evidence/R5_3A_SCREENER_ALERTS.md). The R5.3b
-notification worker with owner-bound Telegram binding/commands, chart
+[R5.3a acceptance evidence](./evidence/R5_3A_SCREENER_ALERTS.md). The
+owner-bound Telegram binding/delivery worker is now delivered by the
+accepted R5.3b-1 release (see below); the R5.3b-2 Telegram commands, chart
 research tools and the R11 integrated 100-user capacity proof remain
 pending and unproven.
 
 See [Owner-scoped server alerts](./ALERTS.md), [Russian](./ru/ALERTS.md),
 [Kazakh](./kk/ALERTS.md) and the detailed
 [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
+## Accepted R5.3b-1 release
+
+Production now runs the accepted R5.3b-1 Telegram delivery worker and chat
+binding from protected slot `r5d-schema15-cd34ec8` (commit
+`cd34ec8d11810a652bf087718f498dcece3b75fa`, exact-SHA CI run `29622330910`,
+`6/6`). The release migrates PostgreSQL to schema 15
+(`telegram_notification_ingress`); trading SQLite schema 9 is unchanged, the
+runtime remains `public-http-paper` and the API still serves port 4180.
+
+The release adds a third, optional supervised unit — the notification
+worker — that delivers price-threshold and screener alert notifications to
+a Telegram chat bound through one-consume codes, with hashed-only chat/code
+storage, egress-only `getUpdates` long polling and explicit at-least-once
+delivery. `telegram` is now an accepted delivery channel whenever the owner
+holds an active binding. The production host provisions no bot token, so
+the worker idles by design with a healthy heartbeat; provisioning the token
+file later activates delivery without a new release. It cannot trade,
+borrow, change margin, read exchange credentials or grant trading
+authority.
+
+Acceptance passed the exact-SHA CI gate, the checksum-locked 14→15
+upgrade/recovery rehearsal — including the notification-worker idle boot
+and the one-consume binding-code smoke — and the paired backup/recovery
+drills; see the recorded
+[R5.3b-1 acceptance evidence](./evidence/R5_3B1_TELEGRAM_DELIVERY.md). The
+R5.3b-2 Telegram read commands, chart research tools and the R11 integrated
+100-user capacity proof remain pending and unproven.
+
+See [Owner-scoped server alerts](./ALERTS.md), [Russian](./ru/ALERTS.md),
+[Kazakh](./kk/ALERTS.md), [Self-hosting](./SELF_HOSTING.md) and the
+detailed [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
 
 ## Explicitly deferred external validation
 
