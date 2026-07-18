@@ -32,7 +32,9 @@ describePostgres("compute jobs against isolated PostgreSQL", () => {
   });
 
   beforeEach(async () => {
-    await pool.query("TRUNCATE compute_jobs, compute_job_retention_usage");
+    // ga_runs.job_id references compute_jobs since schema 17, so the queue
+    // truncation must cascade through the lineage tables.
+    await pool.query("TRUNCATE compute_jobs, compute_job_retention_usage CASCADE");
   });
 
   afterAll(async () => {
