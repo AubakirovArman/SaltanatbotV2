@@ -2,6 +2,7 @@ import { AlertTriangle, Bot } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Locale } from "../../i18n";
 import { dcaText } from "../../i18n/dca";
+import { gridText } from "../../i18n/grid";
 import { paperPortfolioText } from "../../i18n/paperPortfolio";
 import { tradingText } from "../../i18n/trading";
 import { compileXmlToIr } from "../../strategy/compileArtifact";
@@ -10,11 +11,13 @@ import type { StrategyArtifact } from "../../strategy/library";
 import type { CatalogResponse } from "../../types";
 import { listTradingAccounts, type TradingAccountView } from "../accountClient";
 import { DEFAULT_DCA_DRAFT, dcaWorstCaseExceeds, evaluateDcaDraft, type DcaDraft } from "../dcaDraft";
+import { DEFAULT_GRID_DRAFT, evaluateGridDraft, gridWorstCaseExceeds, type GridDraft } from "../gridDraft";
 import { createPaperIdempotencyKey, getPaperPortfolio, listPaperPortfolios } from "../paperPortfolioClient";
 import { comparePaperMoney, toCanonicalPositivePaperMoney } from "../paperPortfolioMoney";
 import { saveBot, type ExchangeId, type SaveBotInput, type SaveBotOptions, type TradingBot } from "../tradeClient";
 import { DEFAULT_LIVE_RISK_LIMITS, validLiveRiskLimits } from "../liveRisk";
 import { DcaParamsFieldset } from "./DcaParamsFieldset";
+import { GridParamsFieldset } from "./GridParamsFieldset";
 import { usePaperBotBinding } from "../usePaperBotBinding";
 
 interface CreateBotFormProps {
@@ -54,8 +57,9 @@ export function CreateBotForm({
   saveTradingBot = saveBot
 }: CreateBotFormProps) {
   const runnable = useMemo(() => strategies.filter((item) => item.kind === "strategy"), [strategies]);
-  const [robotType, setRobotType] = useState<"strategy" | "dca">("strategy");
+  const [robotType, setRobotType] = useState<"strategy" | "dca" | "grid">("strategy");
   const [dcaDraft, setDcaDraft] = useState<DcaDraft>(DEFAULT_DCA_DRAFT);
+  const [gridDraft, setGridDraft] = useState<GridDraft>(DEFAULT_GRID_DRAFT);
   const [strategyId, setStrategyId] = useState(runnable[0]?.id ?? "");
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("BTCUSDT");
@@ -80,8 +84,10 @@ export function CreateBotForm({
   const [busy, setBusy] = useState(false);
   const strategy = runnable.find((item) => item.id === strategyId);
   const dcaMode = robotType === "dca";
+  const gridMode = robotType === "grid";
   const dcaEvaluation = useMemo(() => evaluateDcaDraft(dcaDraft), [dcaDraft]);
-  const selectedExchange: ExchangeId = paperOnly || dcaMode ? "paper" : exchange;
+  const gridEvaluation = useMemo(() => evaluateGridDraft(gridDraft), [gridDraft]);
+  const selectedExchange: ExchangeId = paperOnly || dcaMode || gridMode ? "paper" : exchange;
   const databasePaperBinding = (paperPortfolioBindingRequired ?? !!ownerUserId) && selectedExchange === "paper";
   const liveAccountsAvailable = canReadAccounts && !paperOnly;
   const exchangeAccounts = useMemo(
@@ -113,6 +119,11 @@ export function CreateBotForm({
     && !!canonicalPaperAllocation
     && dcaWorstCaseExceeds(dcaEvaluation.worstCaseQuote, canonicalPaperAllocation);
   const dcaReady = !dcaMode || Boolean(dcaEvaluation.params && !dcaAllocationExceeded);
+  const gridAllocationExceeded = gridMode
+    && gridEvaluation.worstCaseQuote !== undefined
+    && !!canonicalPaperAllocation
+    && gridWorstCaseExceeds(gridEvaluation.worstCaseQuote, canonicalPaperAllocation);
+  const gridReady = !gridMode || Boolean(gridEvaluation.params && !gridAllocationExceeded);
 
   useEffect(() => {
     if (!liveAccountsAvailable) return;
@@ -147,6 +158,15 @@ export function CreateBotForm({
       }
       if (dcaAllocationExceeded) {
         setError(dcaText(locale, "worstCaseExceedsAllocation"));
+        return;
+      }
+    } else if (gridMode) {
+      if (!gridEvaluation.params) {
+        setError(gridText(locale, "fixParams"));
+        return;
+      }
+      if (gridAllocationExceeded) {
+        setError(gridText(locale, "worstCaseExceedsAllocation"));
         return;
       }
     } else {
@@ -202,6 +222,7 @@ export function CreateBotForm({
     setError(undefined);
     try {
       const dcaParams = dcaMode ? dcaEvaluation.params : undefined;
+      const gridParams = gridMode ? gridEvaluation.params : undefined;
       const input: SaveBotInput = dcaParams ? {
         name: name.trim() || `DCA ${symbol}`,
         strategyName: `DCA ${symbol}`,
@@ -213,6 +234,21 @@ export function CreateBotForm({
         market,
         sizeMode: "quote",
         sizeValue: dcaParams.baseOrderQuote,
+        leverage: 1,
+        bybitCrossCollateral: false,
+        notifyMarkers,
+        ...durablePaperInput
+      } : gridParams ? {
+        name: name.trim() || `Grid ${symbol}`,
+        strategyName: `Grid ${symbol}`,
+        kind: "grid",
+        grid: gridParams,
+        symbol,
+        timeframe,
+        exchange: selectedExchange,
+        market,
+        sizeMode: "quote",
+        sizeValue: gridParams.orderQuote,
         leverage: 1,
         bybitCrossCollateral: false,
         notifyMarkers,
@@ -256,13 +292,14 @@ export function CreateBotForm({
       <fieldset className="form-section">
         <legend>{dcaText(locale, "robotType")}</legend>
         <div className="segmented dca-type-toggle" role="group" aria-label={dcaText(locale, "robotType")}>
-          <button type="button" className={dcaMode ? "" : "active"} aria-pressed={!dcaMode} onClick={() => setRobotType("strategy")}>{dcaText(locale, "typeStrategy")}</button>
+          <button type="button" className={robotType === "strategy" ? "active" : ""} aria-pressed={robotType === "strategy"} onClick={() => setRobotType("strategy")}>{dcaText(locale, "typeStrategy")}</button>
           <button type="button" className={dcaMode ? "active" : ""} aria-pressed={dcaMode} onClick={() => setRobotType("dca")}>{dcaText(locale, "typeDca")}</button>
+          <button type="button" className={gridMode ? "active" : ""} aria-pressed={gridMode} onClick={() => setRobotType("grid")}>{gridText(locale, "typeGrid")}</button>
         </div>
-        <p className="field-help">{dcaText(locale, dcaMode ? "typeDcaHint" : "typeStrategyHint")}</p>
+        <p className="field-help">{dcaMode ? dcaText(locale, "typeDcaHint") : gridMode ? gridText(locale, "typeGridHint") : dcaText(locale, "typeStrategyHint")}</p>
       </fieldset>
 
-      {!dcaMode && (
+      {robotType === "strategy" && (
         <fieldset className="form-section">
           <legend>{tradingText(locale, "strategy")}</legend>
           <label>{tradingText(locale, "fromStrategy")}
@@ -294,6 +331,23 @@ export function CreateBotForm({
         />
       )}
 
+      {gridMode && (
+        <GridParamsFieldset
+          locale={locale}
+          draft={gridDraft}
+          evaluation={gridEvaluation}
+          name={name}
+          namePlaceholder={`Grid ${symbol}`}
+          allocation={databasePaperBinding ? canonicalPaperAllocation : undefined}
+          availableCapital={databasePaperBinding ? availablePaperCapital : undefined}
+          onNameChange={setName}
+          onChange={(patch) => {
+            setGridDraft((current) => ({ ...current, ...patch }));
+            if (patch.mode === "short" && market === "spot") setMarket("futures");
+          }}
+        />
+      )}
+
       <fieldset className="form-section">
         <legend>{tradingText(locale, "market")}</legend>
         <div className="form-grid">
@@ -310,14 +364,16 @@ export function CreateBotForm({
         </div>
         {dcaMode
           ? <p className="field-help">{dcaText(locale, "candleHelp", { timeframe })}</p>
-          : <p className="field-help">The bot evaluates the strategy on every closed {timeframe} candle — same signals as the backtest.</p>}
+          : gridMode
+            ? <p className="field-help">{gridText(locale, "candleHelp", { timeframe })}</p>
+            : <p className="field-help">The bot evaluates the strategy on every closed {timeframe} candle — same signals as the backtest.</p>}
       </fieldset>
 
       <fieldset className="form-section">
         <legend>{tradingText(locale, "execution")}</legend>
         <div className="form-grid">
           <label>{tradingText(locale, "exchange")}
-            <select name="exchange" value={selectedExchange} disabled={dcaMode} aria-describedby={dcaMode ? "dca-paper-only" : undefined} onChange={(event) => {
+            <select name="exchange" value={selectedExchange} disabled={dcaMode || gridMode} aria-describedby={dcaMode ? "dca-paper-only" : gridMode ? "grid-paper-only" : undefined} onChange={(event) => {
               const next = event.target.value as ExchangeId;
               setExchange(next);
               setAccountId("");
@@ -330,11 +386,12 @@ export function CreateBotForm({
           </label>
           <label>{tradingText(locale, "marketType")}
             <select name="market" value={market} onChange={(event) => setMarket(event.target.value as "spot" | "futures")}>
-              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot" disabled={selectedExchange === "binance" || (dcaMode && dcaDraft.direction === "short")}>{tradingText(locale, "spot")}</option>
+              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot" disabled={selectedExchange === "binance" || (dcaMode && dcaDraft.direction === "short") || (gridMode && gridDraft.mode === "short")}>{tradingText(locale, "spot")}</option>
             </select>
           </label>
         </div>
         {dcaMode && <p id="dca-paper-only" className="field-help" role="note">{dcaText(locale, "paperOnlyExchange")}</p>}
+        {gridMode && <p id="grid-paper-only" className="field-help" role="note">{gridText(locale, "paperOnlyExchange")}</p>}
         {selectedExchange === "binance" && <p className="field-help">{tradingText(locale, "binanceSpotDisabled")}</p>}
         {selectedExchange === "paper" && databasePaperBinding ? (
           <section className="paper-bot-binding" aria-labelledby="paper-bot-binding-title">
@@ -436,7 +493,7 @@ export function CreateBotForm({
         ) : (
           <p className="field-help" role="note">{tradingText(locale, "liveAccountAdminFallback")}</p>
         )}
-        {!dcaMode && (
+        {robotType === "strategy" && (
           <div className="form-grid">
             <label>{tradingText(locale, "sizing")}
               <select name="size-mode" value={sizeMode} onChange={(event) => setSizeMode(event.target.value as TradingBot["sizeMode"])}>
@@ -489,7 +546,7 @@ export function CreateBotForm({
 
       {selectedExchange !== "paper" && <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> {tradingText(locale, "realTradingWarning")}</div>}
       {error && <div className="strategy-warnings" role="alert"><span><AlertTriangle size={12} aria-hidden="true" /> {error}</span></div>}
-      <button type="submit" className="run-button form-submit" disabled={busy || !paperBindingReady || !dcaReady}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
+      <button type="submit" className="run-button form-submit" disabled={busy || !paperBindingReady || !dcaReady || !gridReady}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
     </form>
   );
 }

@@ -29,7 +29,13 @@ export interface R6DcaRobotFixture {
   createRequests(): R6DcaBotRequest[];
 }
 
-export async function installR6DcaRobotFixture(page: Page): Promise<R6DcaRobotFixture> {
+export interface R6DcaRobotFixtureOptions {
+  /** Created bot id prefix; the R7 grid journey reuses the fixture verbatim. */
+  botIdPrefix?: string;
+}
+
+export async function installR6DcaRobotFixture(page: Page, options: R6DcaRobotFixtureOptions = {}): Promise<R6DcaRobotFixture> {
+  const botIdPrefix = options.botIdPrefix ?? "paper-r6-dca-";
   const base = await installR4PaperPortfolioFixture(page);
   const bots: Array<Record<string, unknown>> = [];
   const botRequests: R6DcaBotRequest[] = [];
@@ -81,7 +87,7 @@ export async function installR6DcaRobotFixture(page: Page): Promise<R6DcaRobotFi
       )));
       const bot: Record<string, unknown> = {
         ...publicInput,
-        id: `paper-r6-dca-${bots.length + 1}`,
+        id: `${botIdPrefix}${bots.length + 1}`,
         paperLedgerEpoch: 1,
         status: "stopped",
         createdAt,

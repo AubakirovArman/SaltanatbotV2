@@ -94,6 +94,26 @@ simulation like every other robot here. Exact parameters, formulas, the cycle st
 averaging fill model, determinism and restart semantics:
 [Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
 
+### Grid robot type (R7, in progress)
+
+R7 — **in progress, not accepted**: the release gate has not run for it and production still
+serves the accepted R6 release. The create form's robot-type toggle gains a third option
+(**Strategy | DCA | Grid**). The grid panel replaces the strategy picker with the
+`grid-params-v1` inputs — mode (neutral/long/short), spacing (arithmetic/geometric), lower/upper
+bound, level count, per-level quote size, outside-range action, optional stop-loss price and
+cycle cap, and cooldown — each validated inline. The form shows a live worst-case capital preview
+computed by the exact shared contract math against the portfolio's available capital and blocks
+submission when the reserved allocation cannot cover it; the server enforces the same limit with
+the same error code. Before start the form also renders a level preview: a vertical price-scale
+list of the exact computed level prices (highest first) with an indicative side badge per level;
+an on-chart overlay follows in a later release. The robot detail drawer adds a grid section with
+the phase, mode, spacing, bounds, level counts (resting/filled/cooldown), inventory quantity and
+average cost, realized grid PnL strictly separated from the evidence-aware inventory PnL,
+completed cycles, stop reason and the parameters disclosure with the worst case. Grid robots are
+research-only paper simulation like every other robot here. Exact parameters, level math, the
+worst case, gap/restart semantics and the PnL separation:
+[Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
+
 ## 1. The command language
 
 Manual commands are entered on the Trade tab and executed against a running bot via `TradingEngine.manualCommand()`, which calls `parseMessageSet()` and runs the resulting steps in order.

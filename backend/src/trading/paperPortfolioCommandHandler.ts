@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import { parseDcaParamsV1, worstCaseDcaCapitalQuote, type DcaParamsV1 } from "@saltanatbotv2/contracts";
+import {
+  parseDcaParamsV1,
+  parseGridParamsV1,
+  worstCaseDcaCapitalQuote,
+  worstCaseGridCapitalQuote,
+  type DcaParamsV1,
+  type GridParamsV1
+} from "@saltanatbotv2/contracts";
 import { PAPER_FILL_MODEL_V1 } from "@saltanatbotv2/execution-core";
 import { replayPaperLedger } from "./paperLedger.js";
 import { listPaperLedgerEventsFrom } from "./paperLedgerStore.js";
@@ -194,7 +201,7 @@ export class PaperPortfolioCommandHandler {
     }
     const strategy = this.robotStrategy(payload);
     return withDatabaseTransaction(this.database, () => {
-      const { ir: _ir, dca: _dca, ...base } = payload.bot;
+      const { ir: _ir, dca: _dca, grid: _grid, ...base } = payload.bot;
       const bot: BotConfig = {
         ...base,
         ...strategy,
@@ -231,10 +238,10 @@ export class PaperPortfolioCommandHandler {
     });
   }
 
-  /** DCA robots validate shared dca-params-v1 + the worst-case reservation instead of strategy IR. */
+  /** DCA/grid robots validate shared versioned params + the worst-case reservation instead of strategy IR. */
   private robotStrategy(
     payload: Extract<PaperPortfolioExecutorPayload, { kind: "paper-robot.create" }>
-  ): { kind: "dca"; dca: DcaParamsV1 } | { ir: StrategyIR } {
+  ): { kind: "dca"; dca: DcaParamsV1 } | { kind: "grid"; grid: GridParamsV1 } | { ir: StrategyIR } {
     if (payload.bot.kind === "dca") {
       let dca: DcaParamsV1;
       try {
@@ -242,18 +249,31 @@ export class PaperPortfolioCommandHandler {
       } catch (error) {
         fail("BOT_CONFIG_INVALID", `Paper robot DCA parameters are invalid: ${error instanceof Error ? error.message : error}`);
       }
-      const worstCase = worstCaseDcaCapitalQuote(dca, PAPER_FILL_MODEL_V1.feePct);
-      if (Math.round(worstCase * 1_000_000) > payload.allocationMicros) {
-        fail(
-          "WORST_CASE_EXCEEDS_ALLOCATION",
-          `Worst-case DCA capital ${worstCase} USDT exceeds the reserved allocation of ${payload.allocationMicros / 1_000_000} USDT`
-        );
-      }
+      this.assertWorstCaseWithinAllocation("DCA", worstCaseDcaCapitalQuote(dca, PAPER_FILL_MODEL_V1.feePct), payload.allocationMicros);
       return { kind: "dca", dca };
+    }
+    if (payload.bot.kind === "grid") {
+      let grid: GridParamsV1;
+      try {
+        grid = parseGridParamsV1(payload.bot.grid);
+      } catch (error) {
+        fail("BOT_CONFIG_INVALID", `Paper robot grid parameters are invalid: ${error instanceof Error ? error.message : error}`);
+      }
+      this.assertWorstCaseWithinAllocation("grid", worstCaseGridCapitalQuote(grid, PAPER_FILL_MODEL_V1.feePct), payload.allocationMicros);
+      return { kind: "grid", grid };
     }
     const ir = parseStrategyIR(payload.bot.ir);
     if (!ir.ok) fail("BOT_CONFIG_INVALID", `Paper robot strategy IR is invalid: ${ir.error}`);
     return { ir: ir.ir };
+  }
+
+  private assertWorstCaseWithinAllocation(kindLabel: string, worstCase: number, allocationMicros: number): void {
+    if (Math.round(worstCase * 1_000_000) > allocationMicros) {
+      fail(
+        "WORST_CASE_EXCEEDS_ALLOCATION",
+        `Worst-case ${kindLabel} capital ${worstCase} USDT exceeds the reserved allocation of ${allocationMicros / 1_000_000} USDT`
+      );
+    }
   }
 
   private archive(

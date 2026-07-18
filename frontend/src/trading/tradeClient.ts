@@ -1,4 +1,4 @@
-import type { DcaParamsV1 } from "@saltanatbotv2/contracts";
+import type { DcaParamsV1, GridParamsV1 } from "@saltanatbotv2/contracts";
 import type { StrategyIR } from "../strategy/ir";
 import type { Timeframe } from "../types";
 import { getCsrfToken as getAccountCsrfToken } from "../auth/client";
@@ -23,9 +23,11 @@ export interface TradingBot {
   name: string;
   strategyName: string;
   /** Robot behavior discriminator; absent means "strategy" (full back-compat). */
-  kind?: "strategy" | "dca";
+  kind?: "strategy" | "dca" | "grid";
   /** Versioned DCA parameters; present exactly when kind === "dca". */
   dca?: DcaParamsV1;
+  /** Versioned grid parameters; present exactly when kind === "grid". */
+  grid?: GridParamsV1;
   /** Strategy IR; required for strategy robots, absent for DCA robots. */
   ir?: StrategyIR;
   symbol: string;

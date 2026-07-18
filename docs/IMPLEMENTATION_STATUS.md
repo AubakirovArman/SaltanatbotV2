@@ -386,8 +386,61 @@ schema 9 are unchanged. Paired recovery generations `440523a6`
 verified. Gate, rehearsal and cutover evidence is recorded in
 [R6 DCA paper robot evidence](./evidence/R6_DCA_PAPER_ROBOT.md).
 
-The next pending increment is R7 (the Grid paper robot on the same ledger
-and cycle state machine, reusing the golden-replay harness).
+R7 (the Grid paper robot on the same ledger and golden-replay harness) is
+now in progress; see the next section.
+
+## R7 grid paper robot — in progress, not accepted
+
+This slice (roadmap R7) puts a Grid robot on the shared paper execution
+contract delivered by R6, reusing that foundation verbatim: the robot-kind
+discriminator, the `averaging-v1` fill behavior, settings-table machine
+snapshots, per-transition idempotency keys, the golden-replay harness, the
+worst-case preview pattern, engine kind dispatch and additive read-model
+runtime metadata. It changes no PostgreSQL or SQLite schema. This section
+is a work ledger, **not** an acceptance record: the
+[RELEASING.md](./RELEASING.md) gate has not run for R7, and production
+still serves the accepted R6 slot `r6a-schema16-e2411ab`.
+
+- [x] Shared `grid-params-v1` contract (`packages/contracts/grid.ts`):
+  exact fail-closed parser with the research-only safety envelope, the
+  deterministic six-decimal `gridLevelPrices` ladder shared by the browser
+  preview and the machine, and the conservative ceil-to-six-decimals
+  `worstCaseGridCapitalQuote` behind the same
+  `WORST_CASE_EXCEEDS_ALLOCATION` create gate as DCA.
+- [x] Pure `grid-state-v1` ladder machine
+  (`backend/src/trading/grid/machine.ts`): anchor placement rule (strictly
+  below the anchor close arms buys, strictly above arms sells, exact-at
+  never arms; long/short arm one ladder), paired close limits at adjacent
+  level prices, realized round-trip accounting net of the fee model,
+  cooldown re-arm, one consolidated placement round per gap batch,
+  outside-range pause/stop, stop-loss flatten, `maxCycles`, and
+  deterministic `grid:<botId>:<epochCycle>:<ordinal>` transition keys
+  doubling as durable order client ids.
+- [x] Runtime and engine dispatch
+  (`backend/src/trading/grid/{runtime,engineBridge}.ts`): bounded step
+  loop, per-transition `gridState:<botId>` snapshots, order-journal
+  reconciliation so a restart never duplicates level orders or reserves,
+  ledger-epoch guard and fail-closed pause on execution errors.
+- [x] Additive read-model `grid` runtime metadata with browser-shaped
+  field names, plus the browser slice: **Strategy | DCA | Grid** create
+  toggle, grid fieldset with inline validation, live worst-case preview
+  and the pre-start level-price preview list, detail-drawer grid section
+  separating realized grid PnL from evidence-aware inventory PnL, and
+  EN/RU/KK catalogs.
+- [x] EN/RU/KK user documentation: grid sections in
+  [PAPER_PORTFOLIOS.md](./PAPER_PORTFOLIOS.md),
+  [ru/PAPER_PORTFOLIOS.md](./ru/PAPER_PORTFOLIOS.md) and the
+  [TRADING.md](./TRADING.md) / [ru](./ru/TRADING.md) /
+  [kk](./kk/TRADING.md) guides.
+- [ ] Full R7 verification matrix consolidated green in exact-commit CI:
+  contract goldens, machine suite (gap batches, pause/resume/stop
+  variants, stop-loss, `maxCycles`, long/short, snapshot round-trip),
+  golden replay driven twice byte-identically with a duplicate-free
+  mid-cycle restart, command-handler round trip, frontend and e2e
+  journeys.
+- [ ] Release gate: exact-commit CI evidence, protected slot, paired
+  backup/isolated-restore rehearsal, production cutover and acceptance
+  record.
 
 ## Delivered slices (not full roadmap completion)
 

@@ -1,4 +1,4 @@
-import { parseDcaParamsV1, type DcaParamsV1 } from "@saltanatbotv2/contracts";
+import { parseDcaParamsV1, parseGridParamsV1, type DcaParamsV1, type GridParamsV1 } from "@saltanatbotv2/contracts";
 import {
   PAPER_METRICS_FORMULA_VERSION,
   PAPER_PORTFOLIO_LIST_SCHEMA_VERSION,
@@ -15,6 +15,7 @@ import {
   type PaperPortfolioProjection,
   type PaperPositionProjection,
   type PaperRobotDcaRuntime,
+  type PaperRobotGridRuntime,
   type PaperRobotMetrics,
   type PaperRobotProjection,
   type PaperRobotRuntimeMetadata,
@@ -285,6 +286,7 @@ function parseRuntimeMetadata(value: unknown, path: string): PaperRobotRuntimeMe
     status: item.status === undefined ? undefined : oneOf(item.status, ["idle", "stopped", "running", "paused", "error"] as const, `${path}.status`),
     lastError: optionalText(item.lastError, `${path}.lastError`),
     dca: lenientDcaRuntime(item.dca),
+    grid: lenientGridRuntime(item.grid),
     journal: parsePaperRobotJournal(item.journal, `${path}.journal`)
   };
 }
@@ -316,6 +318,45 @@ function lenientDcaRuntime(value: unknown): PaperRobotDcaRuntime | undefined {
   return result;
 }
 
+/**
+ * Additive grid state metadata is rendered leniently: any malformed field is
+ * dropped instead of failing the whole snapshot, so older and newer server
+ * payload shapes both stay renderable. This parser is the canonical definition
+ * of the browser-shaped grid runtime field names the server mirrors.
+ */
+function lenientGridRuntime(value: unknown): PaperRobotGridRuntime | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const item = value as JsonRecord;
+  const result: PaperRobotGridRuntime = {};
+  if (typeof item.phase === "string" && item.phase.trim()) result.phase = item.phase;
+  if (typeof item.mode === "string" && item.mode.trim()) result.mode = item.mode;
+  if (typeof item.spacing === "string" && item.spacing.trim()) result.spacing = item.spacing;
+  const lowerBound = lenientPrice(item.lowerBound);
+  if (lowerBound !== undefined) result.lowerBound = lowerBound;
+  const upperBound = lenientPrice(item.upperBound);
+  if (upperBound !== undefined) result.upperBound = upperBound;
+  const levelsTotal = lenientCount(item.levelsTotal);
+  if (levelsTotal !== undefined) result.levelsTotal = levelsTotal;
+  const levelsResting = lenientCount(item.levelsResting);
+  if (levelsResting !== undefined) result.levelsResting = levelsResting;
+  const levelsFilled = lenientCount(item.levelsFilled);
+  if (levelsFilled !== undefined) result.levelsFilled = levelsFilled;
+  const levelsCooldown = lenientCount(item.levelsCooldown);
+  if (levelsCooldown !== undefined) result.levelsCooldown = levelsCooldown;
+  const inventoryBaseQty = lenientSignedQuantity(item.inventoryBaseQty);
+  if (inventoryBaseQty !== undefined) result.inventoryBaseQty = inventoryBaseQty;
+  const inventoryAvgCost = lenientPrice(item.inventoryAvgCost);
+  if (inventoryAvgCost !== undefined) result.inventoryAvgCost = inventoryAvgCost;
+  const realizedGridPnl = lenientSignedAmount(item.realizedGridPnl);
+  if (realizedGridPnl !== undefined) result.realizedGridPnl = realizedGridPnl;
+  const cyclesCompleted = lenientCount(item.cyclesCompleted);
+  if (cyclesCompleted !== undefined) result.cyclesCompleted = cyclesCompleted;
+  if (typeof item.stopReason === "string" && item.stopReason.trim()) result.stopReason = item.stopReason;
+  const params = lenientGridParams(item.params);
+  if (params) result.params = params;
+  return result;
+}
+
 function lenientCount(value: unknown): number | undefined {
   return Number.isSafeInteger(value) && (value as number) >= 0 ? (value as number) : undefined;
 }
@@ -329,6 +370,25 @@ function lenientPrice(value: unknown): number | undefined {
 function lenientDcaParams(value: unknown): DcaParamsV1 | undefined {
   try {
     return parseDcaParamsV1(value);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Grid inventory is signed: negative values mirror a held short leg. */
+function lenientSignedQuantity(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function lenientSignedAmount(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && /^-?(?:0|[1-9]\d*)\.\d{6}$/.test(value)) return Number(value);
+  return undefined;
+}
+
+function lenientGridParams(value: unknown): GridParamsV1 | undefined {
+  try {
+    return parseGridParamsV1(value);
   } catch {
     return undefined;
   }

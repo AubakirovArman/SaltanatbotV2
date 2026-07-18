@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthRoot";
 import type { Locale } from "../i18n";
 import { automationText } from "../i18n/automation";
 import { dcaText } from "../i18n/dca";
+import { gridText } from "../i18n/grid";
 import { tradingTerm, tradingText } from "../i18n/trading";
 import type { StrategyArtifact } from "../strategy/library";
 import type { CatalogResponse } from "../types";
@@ -26,6 +27,7 @@ import "../styles/trading.css";
 import "../styles/paper-portfolio.css";
 import "../styles/paper-portfolio-journal.css";
 import "../styles/dca.css";
+import "../styles/grid-robot.css";
 
 const PaperMultiLegPanel = lazy(loadPaperMultiLegPanel);
 
@@ -387,7 +389,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0,
                     <span className="trade-bot-id">
                       <strong>{bot.name}</strong>
                       <small>
-                        <span className={`ex-badge ${bot.exchange}`}>{bot.exchange}</span>{bot.kind === "dca" && <span className="ex-badge dca">{dcaText(locale, "typeBadge")}</span>} {bot.symbol} · {bot.timeframe}
+                        <span className={`ex-badge ${bot.exchange}`}>{bot.exchange}</span>{bot.kind === "dca" && <span className="ex-badge dca">{dcaText(locale, "typeBadge")}</span>}{bot.kind === "grid" && <span className="ex-badge grid">{gridText(locale, "typeBadge")}</span>} {bot.symbol} · {bot.timeframe}
                       </small>
                     </span>
                     <span className="trade-bot-meta">

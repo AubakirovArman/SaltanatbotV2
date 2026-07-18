@@ -1,4 +1,4 @@
-import type { DcaParamsV1 } from "@saltanatbotv2/contracts";
+import type { DcaParamsV1, GridParamsV1 } from "@saltanatbotv2/contracts";
 
 export const PAPER_PORTFOLIO_SCHEMA_VERSION = "paper-portfolio-v1" as const;
 export const PAPER_PORTFOLIO_LIST_SCHEMA_VERSION = "paper-portfolio-list-v1" as const;
@@ -264,6 +264,30 @@ export interface PaperRobotDcaRuntime {
   params?: DcaParamsV1;
 }
 
+/**
+ * Additive grid state info for kind === "grid" robots. Every field is optional
+ * and parsed leniently: malformed values are dropped, never fatal, so older and
+ * newer server payloads both render. These field names are the canonical
+ * browser shape the server read-model mirrors exactly.
+ */
+export interface PaperRobotGridRuntime {
+  phase?: string;
+  mode?: string;
+  spacing?: string;
+  lowerBound?: number;
+  upperBound?: number;
+  levelsTotal?: number;
+  levelsResting?: number;
+  levelsFilled?: number;
+  levelsCooldown?: number;
+  inventoryBaseQty?: number;
+  inventoryAvgCost?: number;
+  realizedGridPnl?: number;
+  cyclesCompleted?: number;
+  stopReason?: string;
+  params?: GridParamsV1;
+}
+
 export interface PaperRobotRuntimeMetadata {
   botId: string;
   botRevision?: number;
@@ -273,6 +297,7 @@ export interface PaperRobotRuntimeMetadata {
   status?: PaperRobotControlStatus;
   lastError?: string;
   dca?: PaperRobotDcaRuntime;
+  grid?: PaperRobotGridRuntime;
   journal: PaperRobotJournal;
 }
 

@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { DcaParamsV1 } from "@saltanatbotv2/contracts";
+import type { DcaParamsV1, GridModeV1, GridParamsV1, GridSpacingV1 } from "@saltanatbotv2/contracts";
 import { DCA_STATE_SCHEMA_V1, dcaStateSettingsKey, parseDcaStateSnapshotV1, type DcaPhaseV1 } from "./dca/types.js";
+import { GRID_STATE_SCHEMA_V1, gridStateSettingsKey, parseGridStateSnapshotV1, type GridPhaseV1 } from "./grid/types.js";
 import { buildPaperPortfolioSnapshotFrom } from "./paperPortfolioProjectionStore.js";
 import { buildPaperRobotJournalFrom } from "./paperRobotJournal.js";
 import { listPaperPortfoliosFrom } from "./paperPortfolioStore.js";
@@ -34,6 +35,32 @@ export interface PaperRobotDcaRuntimeMetadata {
   params: DcaParamsV1;
 }
 
+/**
+ * Additive grid ladder info derived from the durable gridState settings
+ * snapshot. Field names match the browser's lenient grid runtime parser
+ * exactly, and the versioned params travel along so the detail drawer can
+ * disclose the worst case with the shared contracts math.
+ */
+export interface PaperRobotGridRuntimeMetadata {
+  schemaVersion: typeof GRID_STATE_SCHEMA_V1;
+  phase: GridPhaseV1;
+  mode: GridModeV1;
+  spacing: GridSpacingV1;
+  lowerBound: number;
+  upperBound: number;
+  levelsTotal: number;
+  levelsResting: number;
+  levelsFilled: number;
+  levelsCooldown: number;
+  inventoryBaseQty: number;
+  inventoryAvgCost: number;
+  realizedGridPnl: number;
+  cyclesCompleted: number;
+  stopReason?: string;
+  updatedAt?: number;
+  params: GridParamsV1;
+}
+
 export interface PaperRobotRuntimeMetadata {
   botId: string;
   botRevision?: number;
@@ -44,6 +71,8 @@ export interface PaperRobotRuntimeMetadata {
   lastError?: string;
   /** Present only for DCA robots; old clients ignore the additive field. */
   dca?: PaperRobotDcaRuntimeMetadata;
+  /** Present only for grid robots; old clients ignore the additive field. */
+  grid?: PaperRobotGridRuntimeMetadata;
   journal: PaperRobotJournal;
 }
 
@@ -138,6 +167,7 @@ function runtimeMetadata(
           ? "stopped"
           : "idle";
   const dca = dcaRuntimeMetadata(database, config);
+  const grid = gridRuntimeMetadata(database, config);
   return {
     botId,
     botRevision,
@@ -146,6 +176,7 @@ function runtimeMetadata(
     ...(config?.symbol ? { symbol: config.symbol } : {}),
     status,
     ...(dca ? { dca } : {}),
+    ...(grid ? { grid } : {}),
     journal,
     ...(lastError ? { lastError } : {})
   };
@@ -184,6 +215,58 @@ function dcaRuntimeMetadata(database: DatabaseSync, config: BotConfig | undefine
       ...(state.pendingSafety ? { nextSafetyOrderPrice: state.pendingSafety.price } : {}),
       ...(state.pendingTakeProfit ? { takeProfitPrice: state.pendingTakeProfit.price } : {}),
       ...(state.cooldownUntil !== undefined ? { cooldownUntil: state.cooldownUntil } : {}),
+      ...(state.stopReason !== undefined ? { stopReason: state.stopReason } : {}),
+      updatedAt: snapshot.savedAt
+    };
+  } catch {
+    return metadata;
+  }
+}
+
+/**
+ * Grid ladder metadata for the detail drawer, read from the same durable
+ * settings snapshot the engine persists per machine transition. The read model
+ * degrades to the pre-anchor defaults instead of failing the whole detail view
+ * when the snapshot is missing or unreadable.
+ */
+function gridRuntimeMetadata(database: DatabaseSync, config: BotConfig | undefined): PaperRobotGridRuntimeMetadata | undefined {
+  if (config?.kind !== "grid" || !config.grid) return undefined;
+  const params = config.grid;
+  const metadata: PaperRobotGridRuntimeMetadata = {
+    schemaVersion: GRID_STATE_SCHEMA_V1,
+    phase: "idle",
+    mode: params.mode,
+    spacing: params.spacing,
+    lowerBound: params.lowerBound,
+    upperBound: params.upperBound,
+    levelsTotal: params.gridLevels,
+    levelsResting: 0,
+    levelsFilled: 0,
+    levelsCooldown: 0,
+    inventoryBaseQty: 0,
+    inventoryAvgCost: 0,
+    realizedGridPnl: 0,
+    cyclesCompleted: 0,
+    params
+  };
+  try {
+    const row = database
+      .prepare("SELECT value FROM settings WHERE key = ? AND encrypted = 0")
+      .get(gridStateSettingsKey(config.id)) as { value: string } | undefined;
+    if (!row) return metadata;
+    const snapshot = parseGridStateSnapshotV1(JSON.parse(row.value));
+    if (snapshot.botId !== config.id || snapshot.ledgerEpoch !== (config.paperLedgerEpoch ?? 1)) return metadata;
+    const state = snapshot.state;
+    return {
+      ...metadata,
+      phase: state.phase,
+      levelsResting: state.levels.filter((level) => level.status === "resting").length,
+      levelsFilled: state.levels.filter((level) => level.status === "filled").length,
+      levelsCooldown: state.levels.filter((level) => level.status === "cooldown").length,
+      inventoryBaseQty: state.inventoryBaseQty,
+      inventoryAvgCost: state.inventoryAvgCost,
+      realizedGridPnl: state.realizedGridPnl,
+      cyclesCompleted: state.cyclesCompleted,
       ...(state.stopReason !== undefined ? { stopReason: state.stopReason } : {}),
       updatedAt: snapshot.savedAt
     };

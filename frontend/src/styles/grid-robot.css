@@ -1,0 +1,153 @@
+/* Grid robot creation panel, level preview and detail-drawer grid section. */
+
+.trade-form .grid-params input,
+.trade-form .grid-params select {
+  min-block-size: 44px;
+}
+
+.grid-params-grid label {
+  align-content: start;
+}
+
+.grid-field-error {
+  color: var(--down);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.grid-worst-case {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel-soft));
+}
+
+.grid-worst-case-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.grid-worst-case-row strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.grid-worst-case .field-help {
+  margin: 0;
+}
+
+.grid-level-preview {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.grid-level-preview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.grid-level-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-block-size: 264px;
+  overflow-y: auto;
+}
+
+.grid-level-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-block-size: 44px;
+  border-block-end: 1px solid var(--line-soft);
+}
+
+.grid-level-row:last-child {
+  border-block-end: none;
+}
+
+.grid-level-side {
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.grid-level-side.buy {
+  color: var(--up);
+  background: color-mix(in srgb, var(--up) 12%, transparent);
+}
+
+.grid-level-side.sell {
+  color: var(--down);
+  background: color-mix(in srgb, var(--down) 12%, transparent);
+}
+
+.grid-level-price {
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.ex-badge.grid {
+  margin-inline-start: 5px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.paper-robot-open strong .ex-badge.grid,
+.paper-robot-card-open strong .ex-badge.grid {
+  margin-inline-start: 6px;
+}
+
+.paper-grid-params {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.paper-grid-params summary {
+  display: flex;
+  align-items: center;
+  min-block-size: 44px;
+  padding-inline: 10px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.paper-grid-params > dl {
+  padding: 0 10px 8px;
+}
+
+.paper-grid-params .paper-grid-note {
+  padding: 0 10px 10px;
+}
+
+.paper-grid-note {
+  margin: 0;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}

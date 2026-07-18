@@ -123,6 +123,40 @@ describe("paper portfolio executor command contract", () => {
       .toThrow(/dca-params-v1/);
     expect(() => parsePaperPortfolioExecutorPayload(create({ ...dcaBotBase, kind: "dca", dca: { ...dca, executionPermission: true } })))
       .toThrow(/dca-params-v1/);
+
+    const grid = {
+      schemaVersion: "grid-params-v1",
+      mode: "neutral",
+      spacing: "arithmetic",
+      lowerBound: 100,
+      upperBound: 200,
+      gridLevels: 4,
+      orderQuote: 50,
+      outsideRangeAction: "pause",
+      cooldownSeconds: 60,
+      researchOnly: true,
+      executionPermission: false
+    };
+
+    // Legacy strategy shape stays hash-stable after the additive R7 grid extension.
+    expect("grid" in legacy.bot).toBe(false);
+    expect(paperPortfolioRequestHash("owner-a", legacy))
+      .toBe(paperPortfolioRequestHash("owner-a", create(strategyBot) as unknown as PaperPortfolioExecutorPayload));
+
+    const gridParsed = parsePaperPortfolioExecutorPayload(create({ ...dcaBotBase, kind: "grid", grid }));
+    if (gridParsed.kind !== "paper-robot.create") throw new Error("Unexpected payload kind");
+    expect(gridParsed.bot).toMatchObject({ kind: "grid", grid });
+    expect(paperPortfolioRequestHash("owner-a", gridParsed))
+      .toBe(paperPortfolioRequestHash("owner-a", structuredClone(gridParsed)));
+
+    expect(() => parsePaperPortfolioExecutorPayload(create({ ...dcaBotBase, kind: "grid" }))).toThrow(/exactly when/);
+    expect(() => parsePaperPortfolioExecutorPayload(create({ ...strategyBot, grid }))).toThrow(/exactly when/);
+    expect(() => parsePaperPortfolioExecutorPayload(create({ ...strategyBot, kind: "grid", grid }))).toThrow(/must be absent/);
+    expect(() => parsePaperPortfolioExecutorPayload(create({ ...dcaBotBase, kind: "grid", grid, dca }))).toThrow(/exactly when/);
+    expect(() => parsePaperPortfolioExecutorPayload(create({ ...dcaBotBase, kind: "grid", grid: { ...grid, gridLevels: 51 } })))
+      .toThrow(/grid-params-v1/);
+    expect(() => parsePaperPortfolioExecutorPayload(create({ ...dcaBotBase, kind: "grid", grid: { ...grid, executionPermission: true } })))
+      .toThrow(/grid-params-v1/);
   });
 
   it("parses the read kinds with an optional telegram origin and stable queue targets", () => {

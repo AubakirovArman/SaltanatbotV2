@@ -14,10 +14,14 @@ interface PriceFillCallbacks {
 
 export function applyPriceTriggeredFills(bot: RunningBot, price: number, callbacks: PriceFillCallbacks): void {
   const fills = bot.adapter.onPrice?.(bot.config.symbol, price) ?? [];
-  // DCA robots consume trigger fills on the next closed-bar machine step.
+  // DCA and grid robots consume trigger fills on the next closed-bar machine step.
   if (bot.config.kind === "dca" && fills.length) {
     bot.dcaPendingFills ??= [];
     bot.dcaPendingFills.push(...structuredClone(fills));
+  }
+  if (bot.config.kind === "grid" && fills.length) {
+    bot.gridPendingFills ??= [];
+    bot.gridPendingFills.push(...structuredClone(fills));
   }
   for (const fill of fills) {
     const record = fill.orderId || fill.clientId ? listOrderJournal(bot.config.id, 500).find((candidate) => (fill.orderId !== undefined && candidate.exchangeOrderId === fill.orderId) || (fill.clientId !== undefined && candidate.clientId === fill.clientId)) : undefined;

@@ -100,6 +100,22 @@ function dcaParams() {
   } as const;
 }
 
+function gridParams() {
+  return {
+    schemaVersion: "grid-params-v1",
+    mode: "neutral",
+    spacing: "arithmetic",
+    lowerBound: 100,
+    upperBound: 200,
+    gridLevels: 4,
+    orderQuote: 50,
+    outsideRangeAction: "pause",
+    cooldownSeconds: 60,
+    researchOnly: true,
+    executionPermission: false
+  } as const;
+}
+
 function context(ownerUserId: string, commandId: string, key: string, payload: PaperPortfolioExecutorPayload) {
   return {
     commandId,
@@ -361,6 +377,76 @@ describe("paper portfolio executor command handler", () => {
     await expect(handler.apply(context(OWNER, "command-dca-over", "command-dca-over-key", payload)))
       .rejects.toMatchObject({ code: "WORST_CASE_EXCEEDS_ALLOCATION" });
     expect(value.prepare("SELECT COUNT(*) AS value FROM bots WHERE id = ?").get("dca-over")).toEqual({ value: 0 });
+  });
+
+  it("creates a grid robot without strategy IR, starts it through the shared action path and rejects one exceeding its worst-case reservation", async () => {
+    const value = database();
+    const portfolio = createPaperPortfolioIn(value, OWNER, {
+      mutationId: "grid-portfolio-create",
+      idempotencyKey: "grid-portfolio-create-key",
+      requestHash: "f".repeat(64),
+      now: NOW,
+      portfolioId: "grid-portfolio",
+      name: "Grid portfolio",
+      initialCapitalMicros: 100_000_000_000,
+      makeDefault: true
+    });
+    const runtime = new Runtime();
+    const handler = new PaperPortfolioCommandHandler(value, runtime, () => NOW + 10);
+    const {
+      ownerUserId: _owner,
+      status: _status,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ir: _ir,
+      ...bot
+    } = paperBot("grid-bot");
+    const create = (botId: string, allocationMicros: number) => ({
+      version: 1,
+      kind: "paper-robot.create",
+      portfolioId: portfolio.id,
+      expectedPortfolioRevision: portfolio.revision,
+      expectedLedgerEpoch: portfolio.currentEpoch,
+      botId,
+      expectedBotRevision: 1,
+      allocationMicros,
+      maxBots: 10,
+      bot: { ...bot, id: botId, accountId: `paper:${botId}`, bybitCrossCollateral: false, kind: "grid", grid: gridParams() }
+    } as const satisfies PaperPortfolioExecutorPayload);
+
+    // Worst case = 4 levels x 50 USDT x 1.0005 = 200.1 USDT < the reserved 250 USDT.
+    const created = await handler.apply(context(OWNER, "command-grid-create", "command-grid-create-key", create("grid-bot", 250_000_000)));
+    expect(created.replayed).toBe(false);
+    const stored = JSON.parse((value.prepare("SELECT config FROM bots WHERE id = ?").get("grid-bot") as { config: string }).config);
+    expect(stored).toMatchObject({
+      id: "grid-bot",
+      kind: "grid",
+      grid: { ...gridParams(), recenter: "off" },
+      paperAllocationMicros: 250_000_000
+    });
+    expect("ir" in stored).toBe(false);
+    expect("dca" in stored).toBe(false);
+
+    // The action round trip drives the grid robot through the shared runtime.
+    const receipt = created.result as { portfolio: { revision: number; currentEpoch: number }; botRevision: number };
+    const action = {
+      version: 1,
+      kind: "paper-robot.action",
+      portfolioId: portfolio.id,
+      expectedPortfolioRevision: receipt.portfolio.revision,
+      expectedLedgerEpoch: receipt.portfolio.currentEpoch,
+      botId: "grid-bot",
+      expectedBotRevision: receipt.botRevision,
+      action: "start",
+      confirm: true
+    } as const satisfies PaperPortfolioExecutorPayload;
+    expect((await handler.apply(context(OWNER, "command-grid-start", "command-grid-start-key", action))).replayed).toBe(false);
+    expect(runtime.calls).toEqual(["start:grid-bot"]);
+
+    // Worst case 200.1 USDT > the reserved 200 USDT.
+    await expect(handler.apply(context(OWNER, "command-grid-over", "command-grid-over-key", create("grid-over", 200_000_000))))
+      .rejects.toMatchObject({ code: "WORST_CASE_EXCEEDS_ALLOCATION" });
+    expect(value.prepare("SELECT COUNT(*) AS value FROM bots WHERE id = ?").get("grid-over")).toEqual({ value: 0 });
   });
 
   it("stops flat robots, closes the old epoch and retains its immutable ledger on reset", async () => {

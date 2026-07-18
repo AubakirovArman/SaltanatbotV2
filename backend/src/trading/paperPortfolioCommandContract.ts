@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { parseDcaParamsV1, type DcaParamsV1 } from "@saltanatbotv2/contracts";
+import { parseDcaParamsV1, parseGridParamsV1, type DcaParamsV1, type GridParamsV1 } from "@saltanatbotv2/contracts";
 import { z } from "zod";
 import { timeframes } from "../market/timeframes.js";
 import type { Timeframe } from "../types.js";
@@ -44,6 +44,15 @@ const dcaParamsV1 = z.custom<DcaParamsV1>((value) => {
     return false;
   }
 }, "bot.dca must be a valid dca-params-v1 object");
+/** Strict grid-params-v1 envelope; the canonical parser is the shared contracts implementation. */
+const gridParamsV1 = z.custom<GridParamsV1>((value) => {
+  try {
+    parseGridParamsV1(value);
+    return true;
+  } catch {
+    return false;
+  }
+}, "bot.grid must be a valid grid-params-v1 object");
 const paperBotConfigSchema = z.object({
   id,
   accountId: id,
@@ -63,16 +72,20 @@ const paperBotConfigSchema = z.object({
   maxOrderQuote: z.number().nonnegative().finite().max(1_000_000_000).optional(),
   maxDailyLossQuote: z.number().nonnegative().finite().max(1_000_000_000).optional(),
   maxOpenOrders: z.number().int().nonnegative().max(10_000).optional(),
-  // Additive R6 extension: absent kind/dca keeps the historical strategy shape
-  // (and its request hashes) byte-identical — no defaults are injected.
-  kind: z.enum(["strategy", "dca"]).optional(),
-  dca: dcaParamsV1.optional()
+  // Additive R6/R7 extension: absent kind/dca/grid keeps the historical strategy
+  // shape (and its request hashes) byte-identical — no defaults are injected.
+  kind: z.enum(["strategy", "dca", "grid"]).optional(),
+  dca: dcaParamsV1.optional(),
+  grid: gridParamsV1.optional()
 }).strict().superRefine((bot, ctx) => {
   if ((bot.kind === "dca") !== (bot.dca !== undefined)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'bot.dca is required exactly when bot.kind is "dca"' });
   }
-  if (bot.kind === "dca" && bot.ir !== undefined) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "bot.ir must be absent for DCA robots" });
+  if ((bot.kind === "grid") !== (bot.grid !== undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'bot.grid is required exactly when bot.kind is "grid"' });
+  }
+  if ((bot.kind === "dca" || bot.kind === "grid") && bot.ir !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "bot.ir must be absent for DCA and grid robots" });
   }
 });
 

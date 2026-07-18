@@ -4,6 +4,7 @@ export * from "./alerts.js";
 export * from "./alertRecords.js";
 export * from "./chartGeometry.js";
 export * from "./dca.js";
+export * from "./grid.js";
 export * from "./screener.js";
 
 export type AssetClass = "crypto" | "forex" | "stock" | "index";

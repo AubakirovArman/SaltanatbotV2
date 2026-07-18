@@ -37,9 +37,10 @@ export function buildEngineAdapter(config: BotConfig, getPrice: () => number, po
   });
 }
 
-/** Same-side fill semantics stamped per bot: only DCA robots average adds. */
+/** Same-side fill semantics stamped per bot: DCA safety orders and grid buy
+ * levels both accumulate inventory, so both kinds average adds. */
 export function paperFillBehavior(config: BotConfig): PaperFillBehavior {
-  return config.kind === "dca" ? "averaging-v1" : "single-position-v1";
+  return config.kind === "dca" || config.kind === "grid" ? "averaging-v1" : "single-position-v1";
 }
 
 function paperLedgerEpoch(config: BotConfig): number {

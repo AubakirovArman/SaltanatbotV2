@@ -240,6 +240,124 @@ optional `dca` runtime-metadata section (cycle phase, safety orders filled/total
 next safety price, take-profit target, cooldown) derived from the same durable snapshot; old
 clients ignore the extra field.
 
+## Grid paper robots (R7, in progress)
+
+R7 status: **in progress — not accepted**. This section documents the grid robot slice as
+implemented on `main`; the [RELEASING.md](./RELEASING.md) gate — exact-commit CI, a protected
+release slot, the paired recovery rehearsal, cutover and acceptance record — has not run for R7,
+and production still serves the accepted R6 release. Like R6, R7 changes no PostgreSQL or SQLite
+schema: grid robots ride the existing paper event types and settings snapshots, and every pre-R7
+ledger replays unchanged.
+
+The paper robot config discriminator gains a third value, `kind: "strategy" | "dca" | "grid"`. An
+absent `kind` still means "strategy", so historical robots and old create payloads are unchanged.
+A grid robot embeds versioned `grid-params-v1` parameters instead of strategy IR and executes with
+the `averaging-v1` fill behavior, so filled levels accumulate into one signed inventory. Like
+every robot in `public-http-paper`, it is research-only paper simulation: no exchange credentials,
+no private requests, no live orders.
+
+### Parameters (`grid-params-v1`)
+
+| Field | Bounds | Meaning |
+| --- | --- | --- |
+| `mode` | `neutral` \| `long` \| `short` | which ladders arm at the anchor: both, buys only or sells only |
+| `spacing` | `arithmetic` \| `geometric` | level spacing law inside the range |
+| `lowerBound` | > 0, ≤ 1e9 | range floor; must be strictly below `upperBound` |
+| `upperBound` | > 0, ≤ 1e9 | range ceiling; geometric spacing also caps `upper/lower` at 1e6 |
+| `gridLevels` | integer 2..50 | level lines placed strictly inside `(lowerBound, upperBound)` |
+| `orderQuote` | > 0, ≤ 1e9 | order size per level, quote currency |
+| `recenter` | optional, only `off` | no auto-recenter in v1; `manual` is reserved and rejected |
+| `outsideRangeAction` | `pause` \| `stop` | what a bar close outside the range does |
+| `stopLossPrice` | optional, > 0 | neutral/long: strictly below `lowerBound`; short: strictly above `upperBound` |
+| `maxCycles` | optional, integer 1..10000 | cap of completed round trips; reaching it stops the grid |
+| `cooldownSeconds` | integer 0..86400 | delay before a level re-arms after its pair closes |
+
+The shared parser (`packages/contracts/grid.ts`) follows the DCA house style: exact and
+fail-closed, unknown or missing fields rejected, and the literal `researchOnly: true` /
+`executionPermission: false` safety envelope mandatory.
+
+### Level prices
+
+The deterministic ladder shared by the browser preview and the state machine places `gridLevels`
+prices strictly inside the range, for `i = 1..gridLevels` with denominator `gridLevels + 1`:
+
+```text
+arithmetic: lower + i · (upper − lower) / (levels + 1)
+geometric:  lower · (upper / lower) ^ (i / (levels + 1))
+```
+
+Every price is canonically rounded to six decimals so replays are byte-stable.
+
+### Worst-case capital
+
+```text
+worstCase = gridLevels · orderQuote · (1 + feePct/100)
+```
+
+rounded **up** to six decimals so the reservation is always conservative. The bound models every
+level simultaneously holding a filled order with no paired close; short grids reserve the
+identical quote-denominated amount, and resting-order margin is 0 under paper spot semantics, so
+the bound is the same for every mode. The fee comes from the shared `paper-fill-model-v1`. The
+browser create form previews the value live and the server rejects `paper-robot.create` with the
+same `WORST_CASE_EXCEEDS_ALLOCATION` code as DCA when the worst case exceeds the requested
+six-decimal allocation.
+
+### Ladder state machine (`grid-state-v1`)
+
+The grid robot is a pure versioned transition function driven only by closed bars and observed
+fills of its own orders, with phases `idle → active → paused → stopped`. Rules:
+
+- **Anchor**: the first closed bar whose close sits inside `[lowerBound, upperBound]` arms the
+  ladder. The exact placement rule: levels strictly below the anchor close arm BUY limits and
+  levels strictly above arm SELL limits (neutral); `long` arms only the buy ladder, `short` only
+  the sell ladder; a level exactly at the anchor close never arms. A close outside the range
+  keeps the grid idle and waiting.
+- **Pairing**: a filled ladder order places one paired close limit at the adjacent level price —
+  the upper neighbour for buys, the lower neighbour for sells, and the range bound itself for the
+  outermost level — so every order stays inside the range.
+- **Round trip**: a paired close fill realizes `(sell − buy) · qty` minus the fee model applied
+  to both legs, counts one completed cycle and puts the level into cooldown; after
+  `cooldownSeconds` the level re-arms its original ladder order on a later closed bar.
+- **Outside range**: a close that escapes the range triggers `outsideRangeAction` exactly once —
+  `pause` cancels nothing, stops placing new orders and resumes when the price re-enters; `stop`
+  cancels all resting orders and stops terminally with inventory kept and an explicit reason.
+- **Stop-loss**: a bar crossing `stopLossPrice` cancels all orders, flattens the whole inventory
+  at market and stops terminally.
+- **Max cycles**: reaching `maxCycles` completed round trips cancels all orders and stops
+  terminally with inventory kept.
+- An `orderQuote` too small to produce a six-decimal quantity at a level price disables that
+  level honestly instead of resting an unfillable zero order.
+
+### Gap handling and restart
+
+A bar that jumps across several levels fills their resting orders as recorded fills; the machine
+consumes the whole batch in one step, deterministically ordered by `(price, side, key)`, and
+places consolidated replacement orders exactly once per step — a gap never cascades intermediate
+re-places. A gap beyond the bounds triggers `outsideRangeAction` exactly once.
+
+Every transition consumes one deterministic idempotency key `grid:<botId>:<epochCycle>:<ordinal>`,
+which is also the durable order `clientId`. The machine snapshot is persisted through the existing
+settings path under `gridState:<botId>`. On restart, ledger replay restores the paper account, the
+fail-closed snapshot parser restores the machine, journaled fills are reconciled back into the
+machine, and only transitions with no durable journal outcome are re-executed — the adapter
+deduplicates by `clientId`, so a restart never duplicates level orders or reserves. A snapshot
+belonging to another robot fails recovery closed, and a snapshot from an older ledger epoch
+(portfolio reset) is not resumed: the machine starts clean. Any execution failure pauses the
+robot fail-closed instead of guessing at adapter state. The same golden-replay harness as DCA
+drives the grid path deterministically.
+
+### Realized vs inventory PnL
+
+The two result figures are never conflated: `realizedGridPnl` accumulates only completed
+buy→sell (or sell→buy) pairs net of fees, while inventory PnL is the evidence-aware unrealized
+mark on the signed held inventory (`inventoryBaseQty` at the volume-weighted `inventoryAvgCost`)
+derived from durable valuation marks. A missing or expired mark leaves inventory PnL
+`unavailable` or `stale`, never a false zero. The robot list labels grid robots, and the detail
+drawer adds an additive optional `grid` runtime-metadata section (phase, mode, spacing, bounds,
+level counts resting/filled/cooldown, inventory quantity and average cost, realized grid PnL,
+completed cycles, stop reason and the parameters disclosure with the worst case); old clients
+ignore the extra field.
+
 ## HTTP contract for first-party clients
 
 The canonical routes are below. Reads require the normal authenticated trading boundary; mutations

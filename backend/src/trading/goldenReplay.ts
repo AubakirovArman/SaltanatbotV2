@@ -7,6 +7,13 @@ import {
   type DcaFillObservationV1,
   type DcaStateSnapshotV1
 } from "./dca/types.js";
+import { recoverGridObservations, runGridClosedBar, toGridObservations, type GridRuntimeDeps } from "./grid/runtime.js";
+import {
+  initialGridState,
+  parseGridStateSnapshotV1,
+  type GridFillObservationV1,
+  type GridStateSnapshotV1
+} from "./grid/types.js";
 import { paperFillBehavior, paperStartBalance } from "./engineAdapters.js";
 import { PaperAdapter, type PaperState } from "./exchange/paper.js";
 import { OrderLifecycle, type OrderLifecycleWriter } from "./orderLifecycle.js";
@@ -19,8 +26,9 @@ import type { BotConfig, FillRecord, OrderEventRecord, OrderJournalRecord } from
  * (PaperAdapter + OrderLifecycle + PaperLedgerController) bar by bar over
  * in-memory stores. The injected clock advances with bar time and every id is
  * derived from (botId, bar, ordinal), so the same candle path always produces
- * a byte-identical ledger event stream. R6 drives DCA robots; the strategy
- * evaluator joins in R7. Shipped in src for reuse by tests and later releases.
+ * a byte-identical ledger event stream. R6 drives DCA robots and R7 adds grid
+ * robots via the same kind dispatch. Shipped in src for reuse by tests and
+ * later releases.
  */
 export interface GoldenReplayJournal {
   orders: OrderJournalRecord[];
@@ -31,6 +39,7 @@ export interface GoldenReplayJournal {
 export interface GoldenReplayResume {
   ledgerEvents: readonly PaperLedgerEvent[];
   dcaSnapshot?: DcaStateSnapshotV1;
+  gridSnapshot?: GridStateSnapshotV1;
   journal?: GoldenReplayJournal;
 }
 
@@ -48,7 +57,14 @@ export interface GoldenReplayResult {
   /** Independent fail-closed replay of the recorded events. */
   projection: PaperLedgerState;
   dcaSnapshot?: DcaStateSnapshotV1;
+  gridSnapshot?: GridStateSnapshotV1;
   journal: GoldenReplayJournal;
+}
+
+/** One machine kind wired into the shared replay loop. */
+interface ReplayRunner {
+  step(candle: Candle, triggered: readonly FillRecord[]): Promise<void>;
+  result(): Pick<GoldenReplayResult, "dcaSnapshot" | "gridSnapshot">;
 }
 
 export async function drive(
@@ -57,8 +73,9 @@ export async function drive(
   options: GoldenReplayOptions = {}
 ): Promise<GoldenReplayResult> {
   const config = structuredClone(botConfig);
-  const params = config.dca;
-  if (config.kind !== "dca" || !params) throw new Error("Golden replay drives DCA robots in R6; strategy robots arrive with R7");
+  if ((config.kind !== "dca" || !config.dca) && (config.kind !== "grid" || !config.grid)) {
+    throw new Error("Golden replay drives DCA (R6) and grid (R7) robots; strategy robots arrive later");
+  }
   if (config.exchange !== "paper") throw new Error("Golden replay only drives the paper exchange");
   assertCandlePath(candles);
 
@@ -88,42 +105,22 @@ export async function drive(
     initialEvents: options.resume ? structuredClone([...options.resume.ledgerEvents]) : undefined
   });
 
-  let state = initialDcaState();
-  let lastKey: string | undefined;
-  let lastSnapshot: DcaStateSnapshotV1 | undefined;
-  if (options.resume?.dcaSnapshot) {
-    const snapshot = parseDcaStateSnapshotV1(options.resume.dcaSnapshot);
-    if (snapshot.botId !== botId || snapshot.ledgerEpoch !== ledgerEpoch) {
-      throw new Error("Golden replay resume snapshot belongs to another robot or ledger epoch");
-    }
-    state = snapshot.state;
-    lastKey = snapshot.idempotencyKey;
-    lastSnapshot = snapshot;
-  }
-  const deps: DcaRuntimeDeps = {
-    botId,
-    symbol: config.symbol,
-    market: config.market,
-    ledgerEpoch,
-    params,
-    fillModel: PAPER_FILL_MODEL_V1,
-    execute: (order) => lifecycle.execute({ botId, accountId, exchange: "paper", market: config.market, barTime }, order, () => adapter.execute(order)),
-    getOrder: (id) => journal.get(botId, id),
-    saveSnapshot: (snapshot) => { lastSnapshot = snapshot; }
+  const shared = {
+    execute: (order: Parameters<PaperAdapter["execute"]>[0]) =>
+      lifecycle.execute({ botId, accountId, exchange: "paper" as const, market: config.market, barTime }, order, () => adapter.execute(order)),
+    getOrder: (id: string) => journal.get(botId, id)
   };
+  const runner = config.kind === "grid"
+    ? await createGridRunner(config, options, shared)
+    : await createDcaRunner(config, options, shared);
 
-  let observations: DcaFillObservationV1[] = options.resume ? await recoverDcaObservations(state, deps) : [];
   for (const candle of candles) {
     barTime = candle.time;
     idOrdinal = 0;
     price = candle.close;
     const triggered = adapter.onPrice(config.symbol, candle.close);
     for (const fill of triggered) recordTriggerFill(journal, lifecycle, botId, fill);
-    observations.push(...toDcaObservations(triggered));
-    const result = await runDcaClosedBar(state, candle, observations, deps, lastKey);
-    state = result.state;
-    lastKey = result.lastTransitionKey;
-    observations = [];
+    await runner.step(candle, triggered);
   }
 
   const events = adapter.getLedgerEvents();
@@ -131,8 +128,93 @@ export async function drive(
     events,
     finalState: adapter.getState(),
     projection: replayPaperLedger(events, botId, ledgerEpoch),
-    dcaSnapshot: lastSnapshot ? structuredClone(lastSnapshot) : undefined,
+    ...runner.result(),
     journal: journal.export()
+  };
+}
+
+interface RunnerShared {
+  execute: DcaRuntimeDeps["execute"];
+  getOrder: NonNullable<DcaRuntimeDeps["getOrder"]>;
+}
+
+async function createDcaRunner(config: BotConfig, options: GoldenReplayOptions, shared: RunnerShared): Promise<ReplayRunner> {
+  const params = config.dca;
+  if (!params) throw new Error("Golden replay DCA runner requires dca-params-v1");
+  const ledgerEpoch = config.paperLedgerEpoch ?? 1;
+  let state = initialDcaState();
+  let lastKey: string | undefined;
+  let lastSnapshot: DcaStateSnapshotV1 | undefined;
+  if (options.resume?.dcaSnapshot) {
+    const snapshot = parseDcaStateSnapshotV1(options.resume.dcaSnapshot);
+    if (snapshot.botId !== config.id || snapshot.ledgerEpoch !== ledgerEpoch) {
+      throw new Error("Golden replay resume snapshot belongs to another robot or ledger epoch");
+    }
+    state = snapshot.state;
+    lastKey = snapshot.idempotencyKey;
+    lastSnapshot = snapshot;
+  }
+  const deps: DcaRuntimeDeps = {
+    botId: config.id,
+    symbol: config.symbol,
+    market: config.market,
+    ledgerEpoch,
+    params,
+    fillModel: PAPER_FILL_MODEL_V1,
+    execute: shared.execute,
+    getOrder: shared.getOrder,
+    saveSnapshot: (snapshot) => { lastSnapshot = snapshot; }
+  };
+  let observations: DcaFillObservationV1[] = options.resume ? await recoverDcaObservations(state, deps) : [];
+  return {
+    step: async (candle, triggered) => {
+      observations.push(...toDcaObservations(triggered));
+      const result = await runDcaClosedBar(state, candle, observations, deps, lastKey);
+      state = result.state;
+      lastKey = result.lastTransitionKey;
+      observations = [];
+    },
+    result: () => (lastSnapshot ? { dcaSnapshot: structuredClone(lastSnapshot) } : {})
+  };
+}
+
+async function createGridRunner(config: BotConfig, options: GoldenReplayOptions, shared: RunnerShared): Promise<ReplayRunner> {
+  const params = config.grid;
+  if (!params) throw new Error("Golden replay grid runner requires grid-params-v1");
+  const ledgerEpoch = config.paperLedgerEpoch ?? 1;
+  let state = initialGridState();
+  let lastKey: string | undefined;
+  let lastSnapshot: GridStateSnapshotV1 | undefined;
+  if (options.resume?.gridSnapshot) {
+    const snapshot = parseGridStateSnapshotV1(options.resume.gridSnapshot);
+    if (snapshot.botId !== config.id || snapshot.ledgerEpoch !== ledgerEpoch) {
+      throw new Error("Golden replay resume snapshot belongs to another robot or ledger epoch");
+    }
+    state = snapshot.state;
+    lastKey = snapshot.idempotencyKey;
+    lastSnapshot = snapshot;
+  }
+  const deps: GridRuntimeDeps = {
+    botId: config.id,
+    symbol: config.symbol,
+    market: config.market,
+    ledgerEpoch,
+    params,
+    fillModel: PAPER_FILL_MODEL_V1,
+    execute: shared.execute,
+    getOrder: shared.getOrder,
+    saveSnapshot: (snapshot) => { lastSnapshot = snapshot; }
+  };
+  let observations: GridFillObservationV1[] = options.resume ? await recoverGridObservations(state, deps) : [];
+  return {
+    step: async (candle, triggered) => {
+      observations.push(...toGridObservations(triggered));
+      const result = await runGridClosedBar(state, candle, observations, deps, lastKey);
+      state = result.state;
+      lastKey = result.lastTransitionKey;
+      observations = [];
+    },
+    result: () => (lastSnapshot ? { gridSnapshot: structuredClone(lastSnapshot) } : {})
   };
 }
 

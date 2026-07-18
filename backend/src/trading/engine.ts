@@ -16,6 +16,7 @@ import type { EmergencyStopOptions } from "./emergencyStop.js";
 import { buildPortfolioSummary } from "./enginePortfolio.js";
 import { buildEmergencyAdapters, buildEngineAdapter, engineMarketRoute } from "./engineAdapters.js";
 import { runEngineDcaBar } from "./dca/engineBridge.js";
+import { runEngineGridBar } from "./grid/engineBridge.js";
 import { clearPausedRuntime, equityOf, liveRuntimeState, pauseRunningBot, persistRuntimeState, positionContext, realizedToday, roundTradingValue as round } from "./engineState.js";
 import { pauseBotRuntime } from "./enginePause.js";
 import { persistBotRuntimeStatus } from "./botRuntimePersistence.js";
@@ -354,10 +355,11 @@ export class TradingEngine {
     }
   }
 
-  /** Intrabar: trailing stop ratchet + stop / target hit checks. The DCA machine
-   * owns its own exits, so the managed-snapshot paths never touch dca robots. */
+  /** Intrabar: trailing stop ratchet + stop / target hit checks. The DCA and
+   * grid machines own their own exits, so the managed-snapshot paths never
+   * touch dca or grid robots. */
   private async onTick(bot: RunningBot, candle: Candle) {
-    if (bot.paused || this.stopCoordinator.isStopping(bot.config.id) || bot.config.kind === "dca" || !bot.managed) return;
+    if (bot.paused || this.stopCoordinator.isStopping(bot.config.id) || bot.config.kind === "dca" || bot.config.kind === "grid" || !bot.managed) return;
     const m = bot.managed;
     ratchetTrailingStop(m, candle, () => atrValue(bot.buffer, 14, bot.buffer.length - 1) || 0);
     const stopHit = m.stop !== undefined && (m.side === "long" ? candle.low <= m.stop : candle.high >= m.stop);
@@ -373,8 +375,9 @@ export class TradingEngine {
     if (bot.paper && closed && !persistClosedPaperMark(bot, closed, (message) => this.log(bot.config.id, "error", message))) return;
     if (bot.paused || this.stopCoordinator.isStopping(bot.config.id)) return;
     if (barTime !== undefined) bot.lastEvaluatedBarTime = barTime;
-    if (bot.config.kind === "dca") {
-      if (closed) await runEngineDcaBar(bot, closed, { execute: (order) => this.executeOrder(bot, order, closed.time), applyResult: (result, order) => void this.applyResult(bot, result, order.reason, order), log: (level, message) => this.log(bot.config.id, level, message), stop: () => this.stop(bot.config.id) });
+    if (bot.config.kind === "dca" || bot.config.kind === "grid") {
+      const runMachineBar = bot.config.kind === "dca" ? runEngineDcaBar : runEngineGridBar;
+      if (closed) await runMachineBar(bot, closed, { execute: (order) => this.executeOrder(bot, order, closed.time), applyResult: (result, order) => void this.applyResult(bot, result, order.reason, order), log: (level, message) => this.log(bot.config.id, level, message), stop: () => this.stop(bot.config.id) });
       return persistRuntimeState(bot);
     }
     const ir = bot.config.ir;

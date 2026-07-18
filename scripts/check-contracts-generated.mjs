@@ -23,6 +23,8 @@ try {
     "chartGeometry.d.ts",
     "dca.js",
     "dca.d.ts",
+    "grid.js",
+    "grid.d.ts",
     "screener.js",
     "screener.d.ts"
   ].filter(
