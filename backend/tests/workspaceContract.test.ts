@@ -83,7 +83,7 @@ describe("workspace v8 document contract", () => {
       workspaceInputSchema.safeParse({
         clientId: "future",
         name: "Future",
-        schemaVersion: 9,
+        schemaVersion: 10,
         payload: {}
       }).success
     ).toBe(false);
@@ -320,6 +320,160 @@ describe("workspace v8 document contract", () => {
   });
 });
 
+describe("workspace v9 document contract", () => {
+  it("accepts both research tools with note metadata and advances v9 lineage", () => {
+    const payload = workspaceV9Payload(4);
+    const parsed = workspaceInputSchema.safeParse({
+      clientId: payload.id,
+      name: payload.name,
+      schemaVersion: 9,
+      payload
+    });
+    expect(parsed.success).toBe(true);
+
+    expect(
+      advanceWorkspaceV8Content(payload, workspaceV9Payload(11), 1_800_000_000_000)
+    ).toMatchObject({
+      schemaVersion: 9,
+      revision: 12,
+      savedAt: 1_800_000_000_000,
+      updatedAt: 1_800_000_000_000
+    });
+  });
+
+  it("keeps the unchanged v8 payload valid while rejecting v8 documents carrying v9 tools", () => {
+    const v8Payload = workspacePayload(1);
+    expect(
+      workspaceInputSchema.safeParse({
+        clientId: v8Payload.id,
+        name: v8Payload.name,
+        schemaVersion: 8,
+        payload: v8Payload
+      }).success
+    ).toBe(true);
+
+    const v8WithNote = workspacePayload(1);
+    v8WithNote.drawings = [
+      {
+        chartId: "chart-1",
+        symbol: "BTCUSDT",
+        drawings: [textNoteDrawing()]
+      }
+    ];
+    expect(
+      workspaceInputSchema.safeParse({
+        clientId: v8WithNote.id,
+        name: v8WithNote.name,
+        schemaVersion: 8,
+        payload: v8WithNote
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects note metadata on non-note tools and malformed note fields", () => {
+    const trendWithText = {
+      id: "trend-1",
+      tool: "trendline",
+      points: [
+        { time: 1_752_640_000_000, price: 60_000 },
+        { time: 1_752_650_000_000, price: 61_000 }
+      ],
+      style: { color: "#4db6ff", width: 1.5 },
+      text: "not allowed here"
+    };
+    expect(v9WithDrawings([trendWithText]).success).toBe(false);
+    expect(
+      v9WithDrawings([{ ...channelDrawing(), text: "not allowed here" }]).success
+    ).toBe(false);
+    expect(
+      v9WithDrawings([{ ...textNoteDrawing(), text: "tab\tcharacter" }]).success
+    ).toBe(false);
+    expect(v9WithDrawings([{ ...textNoteDrawing(), text: "" }]).success).toBe(false);
+    expect(
+      v9WithDrawings([{ ...textNoteDrawing(), text: "x".repeat(501) }]).success
+    ).toBe(false);
+    expect(
+      v9WithDrawings([{ ...textNoteDrawing(), author: "two\nlines" }]).success
+    ).toBe(false);
+    expect(
+      v9WithDrawings([{ ...textNoteDrawing(), createdAt: 0.5 }]).success
+    ).toBe(false);
+    expect(
+      v9WithDrawings([{ ...textNoteDrawing(), points: [
+        { time: 1_752_640_000_000, price: 60_000 },
+        { time: 1_752_650_000_000, price: 61_000 }
+      ] }]).success
+    ).toBe(false);
+    expect(
+      v9WithDrawings([{ ...textNoteDrawing(), text: "Multi\nline note" }]).success
+    ).toBe(true);
+  });
+
+  it("enforces the canonical channel geometry contract on parallel channels", () => {
+    const zeroWidth = channelDrawing();
+    zeroWidth.points = [
+      { time: 1_752_640_000_000, price: 60_000 },
+      { time: 1_752_650_000_000, price: 61_000 },
+      { time: 1_752_645_000_000, price: 60_500 }
+    ];
+    expect(v9WithDrawings([zeroWidth]).success).toBe(false);
+
+    const sharedTime = channelDrawing();
+    sharedTime.points = [
+      { time: 1_752_640_000_000, price: 60_000 },
+      { time: 1_752_640_000_000, price: 61_000 },
+      { time: 1_752_645_000_000, price: 59_500 }
+    ];
+    expect(v9WithDrawings([sharedTime]).success).toBe(false);
+
+    const preEpoch = channelDrawing();
+    preEpoch.points = [
+      { time: -1_000, price: 60_000 },
+      { time: 1_752_650_000_000, price: 61_000 },
+      { time: 1_752_645_000_000, price: 59_500 }
+    ];
+    expect(v9WithDrawings([preEpoch]).success).toBe(false);
+
+    expect(v9WithDrawings([channelDrawing()]).success).toBe(true);
+  });
+
+  it("imports its own v9 export envelope while the gate still rejects future schemas", () => {
+    const payload = workspaceV9Payload(3);
+    const document = createWorkspaceExport({
+      clientId: payload.id,
+      name: payload.name,
+      schemaVersion: 9,
+      payload
+    });
+
+    expect(
+      parseWorkspaceImport(
+        { document, clientId: "imported-v9", name: "Imported v9" },
+        DEFAULT_WORKSPACE_QUOTA_LIMITS
+      )
+    ).toMatchObject({
+      clientId: "imported-v9",
+      name: "Imported v9",
+      schemaVersion: 9,
+      payload: { id: "imported-v9", name: "Imported v9", revision: 3 }
+    });
+
+    const future = workspaceV9Payload(3);
+    future.schemaVersion = 10;
+    expect(() =>
+      parseWorkspaceImport(
+        createWorkspaceExport({
+          clientId: future.id,
+          name: future.name,
+          schemaVersion: 9,
+          payload: future
+        }),
+        DEFAULT_WORKSPACE_QUOTA_LIMITS
+      )
+    ).toThrow(/import document is invalid/);
+  });
+});
+
 describe("workspace quota configuration", () => {
   it("proves a conservative jsonb::text bound for spacing and exponent expansion", () => {
     const compact = '{"a":1,"b":2}';
@@ -503,6 +657,61 @@ function workspacePayload(revision: number): Record<string, unknown> & {
     activeChartId: "chart-1",
     drawings: [{ chartId: "chart-1", symbol: "BTCUSDT", drawings: [] }]
   };
+}
+
+function workspaceV9Payload(revision: number): Record<string, unknown> & {
+  id: string;
+  name: string;
+} {
+  return {
+    ...workspacePayload(revision),
+    schemaVersion: 9,
+    id: "workspace-v9",
+    name: "Workspace v9",
+    drawings: [
+      {
+        chartId: "chart-1",
+        symbol: "BTCUSDT",
+        drawings: [textNoteDrawing(), channelDrawing()]
+      }
+    ]
+  };
+}
+
+function textNoteDrawing(): Record<string, unknown> {
+  return {
+    id: "note-1",
+    tool: "text-note",
+    points: [{ time: 1_752_640_000_000, price: 60_000 }],
+    style: { color: "#f7c948", width: 1.5 },
+    text: "Support retest\nwatch the volume",
+    author: "owner-login",
+    createdAt: 1_752_640_000_000
+  };
+}
+
+function channelDrawing(): Record<string, unknown> & { points: unknown } {
+  return {
+    id: "channel-1",
+    tool: "parallel-channel",
+    points: [
+      { time: 1_752_640_000_000, price: 60_000 },
+      { time: 1_752_650_000_000, price: 61_000 },
+      { time: 1_752_645_000_000, price: 59_500 }
+    ],
+    style: { color: "#4db6ff", width: 1.5 }
+  };
+}
+
+function v9WithDrawings(drawings: Array<Record<string, unknown>>) {
+  const payload = workspaceV9Payload(1);
+  payload.drawings = [{ chartId: "chart-1", symbol: "BTCUSDT", drawings }];
+  return workspaceInputSchema.safeParse({
+    clientId: payload.id,
+    name: payload.name,
+    schemaVersion: 9,
+    payload
+  });
 }
 
 function workspaceV7Payload(): Record<string, unknown> & {

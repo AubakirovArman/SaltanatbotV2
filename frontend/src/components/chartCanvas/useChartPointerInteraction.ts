@@ -3,7 +3,7 @@ import { createDrawing, TOOL_POINT_COUNT, type Anchor, type DrawingObject, type 
 import { hitTest } from "../../chart/objects/hitTest";
 import type { DraftDrawing, Viewport } from "../../chart/types";
 import type { Candle } from "../../types";
-import { clampIndex, moveDrawing, pointerPoint, snapAnchor, snapDrawingAnchor } from "./drawingInteraction";
+import { canCommitDrawingAnchor, clampIndex, moveDrawing, pointerPoint, snapAnchor, snapDrawingAnchor } from "./drawingInteraction";
 import type { ChartCanvasProps } from "./types";
 import { CHART_LONG_PRESS_DELAY_MS, chartTouchMovementExceeded, useChartTouchNavigation, type ChartNavigationView, type ChartTouchMode } from "./useChartNavigation";
 
@@ -28,6 +28,8 @@ interface UseChartPointerInteractionInput {
   drawingsRef: RefObject<DrawingObject[]>;
   interactionCanvasRef: RefObject<HTMLCanvasElement | null>;
   magnet: boolean;
+  /** Decorate a completed drawing before insertion (e.g. text-note metadata + editor opening). */
+  onDrawingComplete?: (object: DrawingObject) => DrawingObject;
   onLinkedCrosshairChange?: ChartCanvasProps["onLinkedCrosshairChange"];
   operational?: boolean;
   resetKey: string;
@@ -55,6 +57,7 @@ export function useChartPointerInteraction({
   drawingsRef,
   interactionCanvasRef,
   magnet,
+  onDrawingComplete,
   onLinkedCrosshairChange,
   operational = true,
   resetKey,
@@ -172,9 +175,12 @@ export function useChartPointerInteraction({
     const drawingTool = session.drawingTool;
     if (!viewport || !drawingTool) return;
     const anchor = snapDrawingAnchor(drawingTool, viewport, displayCandles, x, y, magnet);
-    const committed = draft && draft.tool === drawingTool ? [...draft.points, anchor] : [anchor];
+    const prior = draft && draft.tool === drawingTool ? draft.points : [];
+    if (!canCommitDrawingAnchor(drawingTool, prior, anchor)) return;
+    const committed = [...prior, anchor];
     if (committed.length >= TOOL_POINT_COUNT[drawingTool]) {
-      const object = createDrawing(drawingTool, committed);
+      const created = createDrawing(drawingTool, committed);
+      const object = onDrawingComplete?.(created) ?? created;
       setDrawings((current) => [...current, object]);
       setDraft(undefined);
       setHoverAnchor(undefined);
@@ -264,9 +270,12 @@ export function useChartPointerInteraction({
 
     if (tool !== "cursor") {
       const anchor = snapDrawingAnchor(tool, viewport, displayCandles, x, y, magnet);
-      const committed = draft && draft.tool === tool ? [...draft.points, anchor] : [anchor];
+      const prior = draft && draft.tool === tool ? draft.points : [];
+      if (!canCommitDrawingAnchor(tool, prior, anchor)) return;
+      const committed = [...prior, anchor];
       if (committed.length >= TOOL_POINT_COUNT[tool]) {
-        const object = createDrawing(tool, committed);
+        const created = createDrawing(tool, committed);
+        const object = onDrawingComplete?.(created) ?? created;
         setDrawings((current) => [...current, object]);
         setDraft(undefined);
         setHoverAnchor(undefined);

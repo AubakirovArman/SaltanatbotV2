@@ -126,6 +126,7 @@ export function DrawingMenu({
   onClose,
   onDelete,
   onDuplicate,
+  onEditNote,
   onToggleLock,
   onToggleHide,
   onResetView,
@@ -141,6 +142,7 @@ export function DrawingMenu({
   onClose: () => void;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
+  onEditNote?: (id: string) => void;
   onToggleLock: (id: string) => void;
   onToggleHide: (id: string) => void;
   onResetView: () => void;
@@ -199,6 +201,15 @@ export function DrawingMenu({
                 label={t("alertAtLine")}
                 onClick={() => {
                   onAddAlert(drawing.points[0].price);
+                  onClose();
+                }}
+              />
+            )}
+            {onEditNote && drawing.tool === "text-note" && (
+              <MenuItem
+                label={t("editTextNote")}
+                onClick={() => {
+                  onEditNote(drawing.id);
                   onClose();
                 }}
               />

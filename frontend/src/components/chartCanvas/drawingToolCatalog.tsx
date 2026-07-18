@@ -1,4 +1,4 @@
-import { Activity, Anchor as AnchorIcon, BookOpen, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, Trash2, TrendingDown, TrendingUp, type LucideIcon } from "lucide-react";
+import { Activity, Anchor as AnchorIcon, BookOpen, Equal, Layers3, Magnet, MousePointer2, Move, MoveDiagonal, MoveHorizontal, MoveVertical, Ratio, RectangleHorizontal, Ruler, Scaling, StickyNote, Trash2, TrendingDown, TrendingUp, type LucideIcon } from "lucide-react";
 import type { DrawingTool } from "../../chart/drawings";
 import type { ShellMessageKey } from "../../i18n/shell";
 
@@ -20,6 +20,7 @@ export const DRAWING_TOOL_CATALOG: readonly DrawingToolbarItem[] = [
   { id: "trendline", kind: "tool", group: "lines", labelKey: "trendLine", Icon: TrendingUp },
   { id: "ray", kind: "tool", group: "lines", labelKey: "ray", Icon: Move },
   { id: "extended", kind: "tool", group: "lines", labelKey: "extendedLine", Icon: MoveDiagonal },
+  { id: "parallel-channel", kind: "tool", group: "lines", labelKey: "parallelChannel", Icon: Equal },
   { id: "hline", kind: "tool", group: "lines", labelKey: "horizontalLine", Icon: MoveHorizontal },
   { id: "hray", kind: "tool", group: "lines", labelKey: "horizontalRay", Icon: MoveHorizontal, iconClassName: "ic-ray" },
   { id: "vline", kind: "tool", group: "lines", labelKey: "verticalLine", Icon: MoveVertical },
@@ -29,6 +30,7 @@ export const DRAWING_TOOL_CATALOG: readonly DrawingToolbarItem[] = [
   { id: "long", kind: "tool", group: "positions", labelKey: "longPosition", Icon: TrendingUp, iconClassName: "ic-up" },
   { id: "short", kind: "tool", group: "positions", labelKey: "shortPosition", Icon: TrendingDown, iconClassName: "ic-down" },
   { id: "measure", kind: "tool", group: "measure", labelKey: "measure", Icon: Ruler },
+  { id: "text-note", kind: "tool", group: "measure", labelKey: "textNote", Icon: StickyNote },
   { id: "magnet", kind: "action", group: "view", labelKey: "magnet", Icon: Magnet },
   { id: "volume", kind: "action", group: "view", labelKey: "toggleVolume", Icon: Scaling },
   { id: "order-book", kind: "action", group: "view", labelKey: "toggleOrderBookHeatmap", Icon: BookOpen },
@@ -37,9 +39,10 @@ export const DRAWING_TOOL_CATALOG: readonly DrawingToolbarItem[] = [
   { id: "delete-all", kind: "action", group: "manage", labelKey: "deleteDrawings", Icon: Trash2 }
 ] as const;
 
-export const DRAWING_TOOL_ITEMS = DRAWING_TOOL_CATALOG.slice(0, 13);
-export const DRAWING_VIEW_ITEMS = DRAWING_TOOL_CATALOG.slice(13, 17);
-export const DRAWING_MANAGE_ITEMS = DRAWING_TOOL_CATALOG.slice(17);
+// Derived by kind/group rather than positional slices so catalog growth cannot skew the rail.
+export const DRAWING_TOOL_ITEMS = DRAWING_TOOL_CATALOG.filter((item) => item.kind === "tool");
+export const DRAWING_VIEW_ITEMS = DRAWING_TOOL_CATALOG.filter((item) => item.kind === "action" && item.group === "view");
+export const DRAWING_MANAGE_ITEMS = DRAWING_TOOL_CATALOG.filter((item) => item.kind === "action" && item.group === "manage");
 
 export const DRAWING_GROUP_ORDER: readonly DrawingToolbarGroup[] = ["navigation", "lines", "shapes", "positions", "measure", "view", "manage"];
 

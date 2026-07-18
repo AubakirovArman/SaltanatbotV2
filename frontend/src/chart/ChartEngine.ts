@@ -284,7 +284,8 @@ export function drawChartOverlays(ctx: CanvasRenderingContext2D, plan: ChartRend
     draft: draftDrawing,
     selectedId: selectedDrawingId,
     hoveredId: hoveredDrawingId,
-    decimals
+    decimals,
+    notePalette: { panel: theme.panel, text: theme.text }
   });
   if (plan.pricePlots.length > 0) drawStrategyPlots(ctx, plan.viewport, plan.pricePlots);
   if (alerts && alerts.length > 0) drawAlertLines(ctx, plan.viewport, alerts, decimals);

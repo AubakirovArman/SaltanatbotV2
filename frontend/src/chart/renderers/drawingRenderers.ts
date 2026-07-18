@@ -7,13 +7,17 @@ import {
 import type { DraftDrawing, PlotArea, Viewport } from "../types";
 import type { AnchoredVwapSeries } from "../anchoredVwap";
 import { drawAnchoredVwap } from "./anchoredVwap";
+import { drawTextNote, type NotePalette } from "./drawingNotes";
 import { drawMeasurement } from "./measurement";
+import { drawParallelChannel } from "./parallelChannel";
 
 interface DrawOptions {
   draft?: DraftDrawing;
   selectedId?: string;
   hoveredId?: string;
   decimals: number;
+  /** Theme-aware label surface colors (dark defaults when omitted). */
+  notePalette?: NotePalette;
 }
 
 export function drawDrawings(
@@ -28,7 +32,7 @@ export function drawDrawings(
     if (drawing.hidden) return;
     const selected = drawing.id === options.selectedId;
     const hovered = drawing.id === options.hoveredId;
-    drawShape(ctx, viewport, drawing, anchoredVwaps, options.decimals, selected, hovered);
+    drawShape(ctx, viewport, drawing, anchoredVwaps, options.decimals, selected, hovered, options.notePalette);
   });
 
   if (options.draft) {
@@ -46,7 +50,8 @@ export function drawDrawings(
         anchoredVwaps,
         options.decimals,
         false,
-        false
+        false,
+        options.notePalette
       );
     }
   }
@@ -60,7 +65,8 @@ function drawShape(
   anchoredVwaps: AnchoredVwapSeries,
   decimals: number,
   selected: boolean,
-  hovered: boolean
+  hovered: boolean,
+  notePalette?: DrawOptions["notePalette"]
 ) {
   const { plot } = viewport;
   const pts = projectAnchors(viewport, drawing.points);
@@ -103,8 +109,14 @@ function drawShape(
     case "short":
       position(ctx, plot, viewport, drawing, decimals);
       break;
+    case "parallel-channel":
+      drawParallelChannel(ctx, viewport, drawing, decimals);
+      break;
     case "measure":
       if (pts.length >= 2) drawMeasurement(ctx, viewport, pts, drawing, decimals);
+      break;
+    case "text-note":
+      drawTextNote(ctx, pts[0], drawing, selected || hovered, notePalette);
       break;
     case "anchored-vwap":
       drawAnchoredVwap(ctx, viewport, drawing, anchoredVwaps[drawing.id] ?? [], decimals, selected || hovered);

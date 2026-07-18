@@ -185,7 +185,7 @@ export function ChartDrawingToolbar({
         >
           <ActiveToolIcon size={18} className={activeTool.iconClassName} aria-hidden="true" />
           <span className="mobile-drawing-trigger-copy" style={{ minWidth: 0, display: "grid", flex: 1, lineHeight: 1.05 }}>
-            <small style={{ overflow: "hidden", color: "var(--dim)", fontSize: 9, textOverflow: "ellipsis", textTransform: "uppercase", whiteSpace: "nowrap" }}>{t("drawingTools")}</small>
+            <small style={{ overflow: "hidden", color: "var(--muted)", fontSize: 9, textOverflow: "ellipsis", textTransform: "uppercase", whiteSpace: "nowrap" }}>{t("drawingTools")}</small>
             <strong style={{ overflow: "hidden", fontSize: "var(--fs-xs)", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t(drawingToolLabelKey(tool))}</strong>
           </span>
           <ChevronUp size={15} aria-hidden="true" />

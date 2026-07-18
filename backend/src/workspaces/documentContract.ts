@@ -7,6 +7,7 @@ import {
   type WorkspaceQuotaLimits
 } from "./quotas.js";
 import { workspaceV7Schema, workspaceV8Schema } from "./workspaceV8Schema.js";
+import { workspaceV9Schema } from "./workspaceV9Schema.js";
 import { inspectWorkspaceJson } from "./workspaceLimits.js";
 
 export {
@@ -164,7 +165,11 @@ export function parseWorkspaceImport(
     payload: applyImportOverrides(document.workspace, wrapper?.clientId, wrapper?.name)
   });
   if (!input.success) throw new WorkspaceImportError("invalid_workspace_import");
-  if (input.data.schemaVersion !== 7 && input.data.schemaVersion !== 8) {
+  if (
+    input.data.schemaVersion !== 7 &&
+    input.data.schemaVersion !== 8 &&
+    input.data.schemaVersion !== 9
+  ) {
     throw new WorkspaceImportError("invalid_workspace_import");
   }
   assertWorkspaceInputSize(input.data, limits);
@@ -201,7 +206,7 @@ export function advanceWorkspaceV8Content(
   current: Record<string, unknown>,
   now = Date.now()
 ): Record<string, unknown> {
-  if (target.schemaVersion !== 8) return target;
+  if (target.schemaVersion !== 8 && target.schemaVersion !== 9) return target;
   const currentRevision = current.revision;
   if (
     !Number.isSafeInteger(currentRevision) ||
@@ -240,7 +245,7 @@ export function validateWorkspaceInputConsistency(
     "schemaVersion",
     input.schemaVersion
   );
-  if (input.schemaVersion > 8) {
+  if (input.schemaVersion > 9) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["schemaVersion"],
@@ -248,11 +253,13 @@ export function validateWorkspaceInputConsistency(
     });
     return;
   }
-  if (input.schemaVersion === 7 || input.schemaVersion === 8) {
+  if (input.schemaVersion >= 7 && input.schemaVersion <= 9) {
     const parsed =
-      input.schemaVersion === 8
-        ? workspaceV8Schema.safeParse(input.payload)
-        : workspaceV7Schema.safeParse(input.payload);
+      input.schemaVersion === 9
+        ? workspaceV9Schema.safeParse(input.payload)
+        : input.schemaVersion === 8
+          ? workspaceV8Schema.safeParse(input.payload)
+          : workspaceV7Schema.safeParse(input.payload);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         context.addIssue({
@@ -262,7 +269,7 @@ export function validateWorkspaceInputConsistency(
         });
       }
     }
-    if (input.schemaVersion === 8 && input.payload.archivedAt !== undefined) {
+    if (input.schemaVersion >= 8 && input.payload.archivedAt !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["payload", "archivedAt"],

@@ -1,5 +1,6 @@
-import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
-import { createDrawing, TOOL_POINT_COUNT, type Anchor, type DrawingObject, type DrawingTool, type ShapeTool } from "../chart/drawings";
+import { memo, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createDrawing, MAX_NOTE_AUTHOR_LENGTH, TOOL_POINT_COUNT, type Anchor, type DrawingObject, type DrawingTool, type ShapeTool } from "../chart/drawings";
+import { AuthContext } from "../auth/AuthRoot";
 import { useChartRenderer } from "../chart/useChartRenderer";
 import { hitTest } from "../chart/objects/hitTest";
 import { preparePriceCandles } from "../chart/priceRepresentation";
@@ -19,6 +20,7 @@ import { SessionLiquidityBadge, useSessionLiquidity } from "./chartCanvas/Sessio
 import { TradeFootprintLayer } from "./chartCanvas/TradeFootprintLayer";
 import { ArtifactInputPanel, ChartTablesOverlay } from "./chartCanvas/ChartOverlays";
 import { DrawingMenu, DrawingStyleBar } from "./chartCanvas/DrawingMenus";
+import { NoteEditor, sanitizeNoteText } from "./chartCanvas/NoteEditor";
 import { ChartPriceHud, VolumeProfileBadge } from "./chartCanvas/ChartPriceHud";
 import { nextPriceMode, sameLegend, sameVolumeProfile } from "./chartCanvas/drawingInteraction";
 import type { ChartCanvasProps } from "./chartCanvas/types";
@@ -110,6 +112,9 @@ export const ChartCanvas = memo(function ChartCanvas({
   const [showTradeFootprint, setShowTradeFootprint] = useState(false);
   const [showArtifactSettings, setShowArtifactSettings] = useState(false);
   const [showDrawingObjects, setShowDrawingObjects] = useState(false);
+  const [noteEditor, setNoteEditor] = useState<{ id: string; isNew: boolean }>();
+  // Author is an informational owner-login snapshot; local-only sessions omit it entirely.
+  const sessionLogin = useContext(AuthContext)?.user?.login;
   const [, setHistoryVersion] = useState(0);
   const [drawings, setDrawings, drawingScopeKey] = usePersistentDrawings(instrument.symbol, chartId, storageOwnerId);
   const [draft, setDraft] = useState<{ tool: ShapeTool; points: Anchor[] }>();
@@ -170,6 +175,7 @@ export const ChartCanvas = memo(function ChartCanvas({
     redoRef.current = [];
     setSelectedId(undefined);
     setDraft(undefined);
+    setNoteEditor(undefined);
     setTool("cursor");
   }, [drawingScopeKey]);
 
@@ -279,6 +285,20 @@ export const ChartCanvas = memo(function ChartCanvas({
     onVisibleTimeRange: setVisibleProfileRange
   });
   useChartWheelNavigation(interactionCanvasRef, viewportRef, displayCandles, setView, operational);
+
+  const openNoteEditor = (id: string) => {
+    setSelectedId(id);
+    setNoteEditor({ id, isNew: false });
+  };
+
+  // Completed text notes take their author/createdAt snapshot once and open the inline editor.
+  const decorateCompletedDrawing = (object: DrawingObject): DrawingObject => {
+    if (object.tool !== "text-note") return object;
+    setNoteEditor({ id: object.id, isNew: true });
+    const author = sessionLogin && sessionLogin.length <= MAX_NOTE_AUTHOR_LENGTH ? sessionLogin : undefined;
+    return author ? { ...object, author, createdAt: Date.now() } : { ...object, createdAt: Date.now() };
+  };
+
   const pointerInteraction = useChartPointerInteraction({
     chartId,
     displayCandles,
@@ -286,6 +306,7 @@ export const ChartCanvas = memo(function ChartCanvas({
     drawingsRef,
     interactionCanvasRef,
     magnet,
+    onDrawingComplete: decorateCompletedDrawing,
     onLinkedCrosshairChange,
     operational,
     resetKey: drawingScopeKey,
@@ -342,6 +363,7 @@ export const ChartCanvas = memo(function ChartCanvas({
   const cyclePriceMode = () => setView((current) => ({ ...current, priceMode: nextPriceMode(current.priceMode) }));
 
   const legendCandle = (hoverIndex !== undefined ? displayCandles[hoverIndex] : undefined) ?? displayCandles.at(-1) ?? latest;
+  const editingNote = noteEditor ? drawings.find((drawing) => drawing.id === noteEditor.id && drawing.tool === "text-note") : undefined;
 
   return (
     <div className={`chart-surface ${compactChrome ? "compact-chart" : ""} ${showIndicatorControls ? "with-indicator-controls" : ""}`} lang={locale}>
@@ -452,7 +474,17 @@ export const ChartCanvas = memo(function ChartCanvas({
           onPointerUp={pointerInteraction.onPointerUp}
           onPointerCancel={pointerInteraction.onPointerCancel}
           onLostPointerCapture={pointerInteraction.onLostPointerCapture}
-          onDoubleClick={() => setView((current) => ({ ...current, zoom: 1, offset: 0 }))}
+          onDoubleClick={(event) => {
+            const viewport = viewportRef.current;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const hit = viewport ? hitTest(viewport, drawingsRef.current, event.clientX - rect.left, event.clientY - rect.top, selectedId) : null;
+            const note = hit ? drawingsRef.current.find((drawing) => drawing.id === hit.id) : undefined;
+            if (note?.tool === "text-note") {
+              openNoteEditor(note.id);
+              return;
+            }
+            setView((current) => ({ ...current, zoom: 1, offset: 0 }));
+          }}
           onContextMenu={(event) => {
             event.preventDefault();
             const viewport = viewportRef.current;
@@ -477,6 +509,7 @@ export const ChartCanvas = memo(function ChartCanvas({
             canUndo={historyRef.current.length >= 2}
             canRedo={redoRef.current.length > 0}
             onSelect={setSelectedId}
+            onEditNote={openNoteEditor}
             onToggleHidden={(id) => setDrawings((current) => current.map((drawing) => (drawing.id === id ? { ...drawing, hidden: !drawing.hidden } : drawing)))}
             onToggleLocked={(id) => setDrawings((current) => current.map((drawing) => (drawing.id === id ? { ...drawing, locked: !drawing.locked } : drawing)))}
             onDelete={(id) => {
@@ -490,6 +523,27 @@ export const ChartCanvas = memo(function ChartCanvas({
           />
         )}
         {selectedId && drawings.some((d) => d.id === selectedId) && <DrawingStyleBar locale={locale} drawing={drawings.find((d) => d.id === selectedId) as DrawingObject} onChange={(patch) => setDrawings((current) => current.map((d) => (d.id === selectedId ? { ...d, style: { ...d.style, ...patch } } : d)))} />}
+        {editingNote && noteEditor && (
+          <NoteEditor
+            key={noteEditor.id}
+            locale={locale}
+            initialText={editingNote.text}
+            author={editingNote.author}
+            createdAt={editingNote.createdAt}
+            onSave={(text) => {
+              const sanitized = sanitizeNoteText(text);
+              setDrawings((current) => current.map((d) => (d.id === noteEditor.id ? { ...d, text: sanitized.length > 0 ? sanitized : undefined } : d)));
+              setNoteEditor(undefined);
+            }}
+            onCancel={() => {
+              if (noteEditor.isNew) {
+                setDrawings((current) => current.filter((d) => d.id !== noteEditor.id));
+                setSelectedId(undefined);
+              }
+              setNoteEditor(undefined);
+            }}
+          />
+        )}
         {menu && (
           <DrawingMenu
             locale={locale}
@@ -499,6 +553,7 @@ export const ChartCanvas = memo(function ChartCanvas({
             hasLocked={drawings.some((d) => d.locked)}
             alertPrice={onAddAlert && menu.price !== undefined ? menu.price : undefined}
             onAddAlert={onAddAlert}
+            onEditNote={openNoteEditor}
             onUnlockAll={() => setDrawings((current) => current.map((d) => ({ ...d, locked: false })))}
             onClose={() => setMenu(undefined)}
             onDelete={(id) => {

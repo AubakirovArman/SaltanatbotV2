@@ -1397,7 +1397,7 @@ test("offers the complete mobile drawing catalog with 44px history controls and 
   const search = toolsDialog.getByPlaceholder("Search drawing tools");
   await expect(toolsDialog).toBeVisible();
   await expect(search).toBeFocused();
-  await expect(toolsDialog.locator(".mobile-drawing-groups button")).toHaveCount(19);
+  await expect(toolsDialog.locator(".mobile-drawing-groups button")).toHaveCount(21);
   await expect(toolsDialog.locator(".menu-group-title")).toHaveCount(7);
   await search.fill("horizontal line");
   await expect(toolsDialog.getByRole("button", { name: "Horizontal line", exact: true })).toBeVisible();
@@ -1457,6 +1457,107 @@ test("offers the complete mobile drawing catalog with 44px history controls and 
   await expect(toolsDialog).toBeVisible();
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect(toolsDialog).toBeHidden();
+});
+
+test("places research notes and parallel channels that survive reload", async ({ page }) => {
+  test.setTimeout(90_000);
+  const candles = mockChartCandles();
+  await mockCandleHistory(page, candles);
+  await installMarketSocketMock(page, "stable", candles);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.includes("drawings:v2")) localStorage.removeItem(key);
+    }
+  });
+  await page.reload();
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+
+  // Mobile: the text note enters through the shared bottom-sheet catalog (no reduced set).
+  const trigger = page.locator(".mobile-drawing-toolbar .mobile-drawing-tools-trigger");
+  await trigger.click();
+  const toolsDialog = page.getByRole("dialog", { name: "Drawing tools" });
+  await toolsDialog.getByPlaceholder("Search drawing tools").fill("text note");
+  await toolsDialog.getByRole("button", { name: "Text note", exact: true }).click();
+  await expect(toolsDialog).toBeHidden();
+
+  const canvas = page.locator(".chart-canvas-interaction");
+  let canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  await canvas.click({ position: { x: canvasBox!.width * 0.45, y: canvasBox!.height * 0.55 } });
+
+  const editor = page.getByRole("dialog", { name: "Edit text note" });
+  const noteText = editor.getByRole("textbox", { name: "Note text" });
+  await expect(editor).toBeVisible();
+  await expect(noteText).toBeFocused();
+  await noteText.fill("Support retest watch volume");
+  for (const name of ["Save note", "Cancel"]) {
+    const box = await editor.getByRole("button", { name, exact: true }).boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+  await expectNoAxeViolations(page);
+  await editor.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect(editor).toBeHidden();
+
+  const storedNotes = () =>
+    page.evaluate(() =>
+      Object.entries(localStorage)
+        .filter(([key]) => key.includes("drawings:v2"))
+        .flatMap(([, value]) => JSON.parse(value) as Array<{ tool: string; text?: string; createdAt?: number }>)
+        .filter((drawing) => drawing.tool === "text-note")
+        .map((drawing) => drawing.text)
+    );
+  await expect.poll(storedNotes).toEqual(["Support retest watch volume"]);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+
+  await page.reload();
+  await expect(page.locator(".chart-legend .vol")).toBeVisible({ timeout: 20_000 });
+  await expect.poll(storedNotes).toEqual(["Support retest watch volume"]);
+
+  // The object list labels the note by the first 24 characters of its text.
+  await page.locator(".mobile-drawing-toolbar").getByRole("button", { name: "Drawing object tree" }).click();
+  const objectsDialog = page.getByRole("dialog", { name: "Drawing object tree" });
+  await expect(objectsDialog.getByRole("button", { name: "Support retest watch vol #1", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // Desktop: three anchors place the channel; the third click sets the measurable width.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.getByRole("button", { name: "Parallel channel", exact: true }).click();
+  canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  await canvas.click({ position: { x: canvasBox!.width * 0.3, y: canvasBox!.height * 0.55 } });
+  await canvas.click({ position: { x: canvasBox!.width * 0.7, y: canvasBox!.height * 0.4 } });
+  await canvas.click({ position: { x: canvasBox!.width * 0.5, y: canvasBox!.height * 0.7 } });
+
+  const storedChannel = () =>
+    page.evaluate(() =>
+      Object.entries(localStorage)
+        .filter(([key]) => key.includes("drawings:v2"))
+        .flatMap(([, value]) => JSON.parse(value) as Array<{ tool: string; points: Array<{ time: number; price: number }> }>)
+        .find((drawing) => drawing.tool === "parallel-channel")?.points
+    );
+  await expect.poll(async () => (await storedChannel())?.length).toBe(3);
+  const placed = (await storedChannel())!;
+
+  // Body drag moves both lines and the width anchor as one object.
+  await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.5, canvasBox!.y + canvasBox!.height * 0.475);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.55, canvasBox!.y + canvasBox!.height * 0.55, { steps: 5 });
+  await page.mouse.up();
+  await expect
+    .poll(async () => {
+      const moved = await storedChannel();
+      if (!moved || moved.length !== 3) return "missing";
+      const timeShifts = moved.map((point, index) => point.time - placed[index].time);
+      const priceShifts = moved.map((point, index) => point.price - placed[index].price);
+      const unifiedTime = timeShifts.every((shift) => Math.abs(shift - timeShifts[0]) < 1);
+      const unifiedPrice = priceShifts.every((shift) => Math.abs(shift - priceShifts[0]) < 1e-6);
+      return unifiedTime && unifiedPrice && timeShifts[0] > 0 && priceShifts[0] < 0 ? "unified" : `skewed:${timeShifts.join(",")}`;
+    })
+    .toBe("unified");
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  await expectNoAxeViolations(page);
 });
 
 test("keeps the chart context menu keyboard-operable", async ({ page }) => {

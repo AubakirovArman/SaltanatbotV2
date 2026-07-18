@@ -2,6 +2,7 @@
 
 export * from "./alerts.js";
 export * from "./alertRecords.js";
+export * from "./chartGeometry.js";
 export * from "./screener.js";
 
 export type AssetClass = "crypto" | "forex" | "stock" | "index";

@@ -29,7 +29,9 @@ import {
 const WORKSPACES_CACHE_KEY = "sbv2:workspace-cache:v1";
 const WORKSPACES_REMOTE_IDS_KEY = "sbv2:workspace-remote-ids:v1";
 const LAST_ACTIVE_WORKSPACE_KEY = "sbv2:last-active-workspace:v1";
-export const WORKSPACE_SCHEMA_VERSION = 8;
+export const WORKSPACE_SCHEMA_VERSION = 9;
+/** Schema generations sharing the strict v8+ document shape (modern time-zone defaults). */
+const MIN_MODERN_WORKSPACE_SCHEMA_VERSION = 8;
 export const WORKSPACE_FILE_FORMAT = "saltanatbotv2.workspace";
 export const WORKSPACE_FILE_VERSION = 1;
 export const MAX_WORKSPACE_REVISIONS = 20;
@@ -326,8 +328,8 @@ export async function parseWorkspaceFileDetailed(raw: string): Promise<Workspace
   if ((await browserSha256(canonicalStringify(file.workspace))) !== file.checksum) return { ok: false, reason: "invalid_checksum" };
   const importedSchema = file.workspace && typeof file.workspace === "object" ? Number((file.workspace as { schemaVersion?: unknown }).schemaVersion) : Number.NaN;
   if (importedSchema > WORKSPACE_SCHEMA_VERSION) return { ok: false, reason: "unsupported_version" };
-  const validShape = importedSchema === WORKSPACE_SCHEMA_VERSION
-    ? strictWorkspaceShape(file.workspace, WORKSPACE_SCHEMA_VERSION, MAX_WORKSPACE_REVISIONS, MAX_WORKSPACE_INDICATORS)
+  const validShape = importedSchema >= MIN_MODERN_WORKSPACE_SCHEMA_VERSION
+    ? strictWorkspaceShape(file.workspace, importedSchema, MAX_WORKSPACE_REVISIONS, MAX_WORKSPACE_INDICATORS)
     : strictLegacyWorkspaceShape(file.workspace, MAX_WORKSPACE_REVISIONS);
   if (!validShape) return { ok: false, reason: "invalid_workspace" };
   const workspace = normalizeWorkspace(file.workspace);
@@ -381,7 +383,7 @@ export function normalizeWorkspace(value: unknown): Workspace | undefined {
   const savedAt = finiteNumber(item.savedAt, createdAt);
   const layout = normalizeLayout(item.layout);
   const charts = Array.isArray(item.charts)
-    ? item.charts.map((chart, index) => normalizeChart(chart, item.schemaVersion === WORKSPACE_SCHEMA_VERSION, index === 0, item.schemaVersion === WORKSPACE_SCHEMA_VERSION ? DEFAULT_CHART_TIME_ZONE : LEGACY_CHART_TIME_ZONE)).filter((chart): chart is WorkspaceChart => chart !== undefined)
+    ? item.charts.map((chart, index) => normalizeChart(chart, isModernWorkspaceSchema(item.schemaVersion), index === 0, isModernWorkspaceSchema(item.schemaVersion) ? DEFAULT_CHART_TIME_ZONE : LEGACY_CHART_TIME_ZONE)).filter((chart): chart is WorkspaceChart => chart !== undefined)
     : [];
   const base: Workspace = {
     schemaVersion: WORKSPACE_SCHEMA_VERSION,
@@ -402,7 +404,7 @@ export function normalizeWorkspace(value: unknown): Workspace | undefined {
     updatedAt: finiteNumber(item.updatedAt, savedAt),
     archivedAt: typeof item.archivedAt === "number" && Number.isFinite(item.archivedAt) ? item.archivedAt : undefined,
     layout,
-    charts: charts.length ? charts : [defaultChart(item.symbol, item.timeframe, item.chartType, item.schemaVersion === WORKSPACE_SCHEMA_VERSION ? DEFAULT_CHART_TIME_ZONE : LEGACY_CHART_TIME_ZONE)],
+    charts: charts.length ? charts : [defaultChart(item.symbol, item.timeframe, item.chartType, isModernWorkspaceSchema(item.schemaVersion) ? DEFAULT_CHART_TIME_ZONE : LEGACY_CHART_TIME_ZONE)],
     activeChartId: undefined,
     drawings: [],
     selectedStrategy: normalizeWorkspaceStrategySelection(item.selectedStrategy),
@@ -553,6 +555,10 @@ function canonicalStringify(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function isModernWorkspaceSchema(value: unknown): boolean {
+  return typeof value === "number" && value >= MIN_MODERN_WORKSPACE_SCHEMA_VERSION && value <= WORKSPACE_SCHEMA_VERSION;
 }
 
 function finiteNumber(value: unknown, fallback: number): number {

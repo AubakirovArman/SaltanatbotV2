@@ -311,7 +311,9 @@
 
 .drawing-object-list li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   border-radius: var(--radius-sm);
 }
@@ -335,6 +337,85 @@
 .drawing-objects-empty {
   padding: 10px;
   color: var(--dim);
+}
+
+.note-editor {
+  position: absolute;
+  z-index: 42;
+  inset-block-start: 88px;
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  display: grid;
+  gap: 8px;
+  inline-size: min(21rem, calc(100% - 24px));
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+}
+
+.note-editor header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.note-editor header small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-editor textarea {
+  min-block-size: 96px;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.note-editor footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.note-editor footer small {
+  color: var(--muted);
+}
+
+.note-editor footer div {
+  display: flex;
+  gap: 6px;
+}
+
+.note-editor footer button {
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding-inline: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.note-editor footer button:is(:hover, :focus-visible) {
+  background: var(--hover);
+}
+
+.note-editor footer button.primary {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .drawing-template-list {

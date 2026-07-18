@@ -5,6 +5,7 @@ export type DrawingTool =
   | "trendline"
   | "ray"
   | "extended"
+  | "parallel-channel"
   | "hline"
   | "hray"
   | "vline"
@@ -13,9 +14,15 @@ export type DrawingTool =
   | "long"
   | "short"
   | "measure"
+  | "text-note"
   | "anchored-vwap";
 
 export type ShapeTool = Exclude<DrawingTool, "cursor">;
+
+/** Note text may span lines (newline is its only allowed control character). */
+export const MAX_NOTE_TEXT_LENGTH = 500;
+/** Author is an informational owner-login snapshot taken once at note creation. */
+export const MAX_NOTE_AUTHOR_LENGTH = 64;
 
 /** A drawing anchor lives in data space so it stays put under zoom/pan. */
 export interface Anchor {
@@ -40,6 +47,12 @@ export interface DrawingObject {
   style: DrawingStyle;
   locked?: boolean;
   hidden?: boolean;
+  /** Note body, 1..500 characters; only tool "text-note" carries it. */
+  text?: string;
+  /** Owner login snapshot at creation (informational metadata); "text-note" only. */
+  author?: string;
+  /** Epoch-millisecond creation stamp, set once and never changed on edit; "text-note" only. */
+  createdAt?: number;
 }
 
 /** How many clicks/anchors each tool needs to be complete. */
@@ -47,6 +60,7 @@ export const TOOL_POINT_COUNT: Record<ShapeTool, number> = {
   trendline: 2,
   ray: 2,
   extended: 2,
+  "parallel-channel": 3,
   hline: 1,
   hray: 1,
   vline: 1,
@@ -55,6 +69,7 @@ export const TOOL_POINT_COUNT: Record<ShapeTool, number> = {
   long: 3,
   short: 3,
   measure: 2,
+  "text-note": 1,
   "anchored-vwap": 1
 };
 
@@ -64,6 +79,7 @@ const TOOL_COLORS: Record<ShapeTool, string> = {
   trendline: "#4db6ff",
   ray: "#4db6ff",
   extended: "#4db6ff",
+  "parallel-channel": "#4db6ff",
   hline: "#f7c948",
   hray: "#f7c948",
   vline: "#8f9bb3",
@@ -72,6 +88,7 @@ const TOOL_COLORS: Record<ShapeTool, string> = {
   long: "#23c97a",
   short: "#ef5350",
   measure: "#8f9bb3",
+  "text-note": "#f7c948",
   "anchored-vwap": "#53b7e8"
 };
 
@@ -83,7 +100,7 @@ export function defaultStyle(tool: ShapeTool): DrawingStyle {
     style.extendLeft = true;
     style.extendRight = true;
   }
-  if (tool === "rectangle") style.fill = "rgba(77, 182, 255, 0.10)";
+  if (tool === "rectangle" || tool === "parallel-channel") style.fill = "rgba(77, 182, 255, 0.10)";
   if (tool === "measure") style.dashed = true;
   if (tool === "anchored-vwap") style.levels = [1, 2];
   return style;

@@ -118,7 +118,90 @@ describe("versioned chart workspaces", () => {
     await expect(parseWorkspaceFile(encoded)).resolves.toMatchObject({ name: "HTTP fallback" });
   });
 
-  it("rejects signed v8 documents that drift from the exact backend contract", async () => {
+  it("still imports signed v8 documents unchanged after the v9 schema bump", async () => {
+    const workspace = captureWorkspace("Compat v8", context, 100);
+    expect(WORKSPACE_SCHEMA_VERSION).toBe(9);
+    const v8Document = { ...structuredClone(workspace), schemaVersion: 8 };
+    const parsed = await parseWorkspaceFile(await signedWorkspaceFile(v8Document));
+    expect(parsed).toMatchObject({
+      schemaVersion: WORKSPACE_SCHEMA_VERSION,
+      name: "Compat v8",
+      charts: [{ timeZone: "exchange" }]
+    });
+  });
+
+  it("round-trips v9 research drawings with their note metadata", async () => {
+    const drawings = [
+      {
+        chartId: "chart-1",
+        symbol: "BTCUSDT",
+        drawings: [
+          {
+            id: "note-1",
+            tool: "text-note" as const,
+            points: [{ time: 1_752_640_000_000, price: 60_000 }],
+            style: { color: "#f7c948", width: 1.5 },
+            text: "Support retest\nwatch the volume",
+            author: "owner-login",
+            createdAt: 1_752_640_000_000
+          },
+          {
+            id: "channel-1",
+            tool: "parallel-channel" as const,
+            points: [
+              { time: 1_752_640_000_000, price: 60_000 },
+              { time: 1_752_650_000_000, price: 61_000 },
+              { time: 1_752_645_000_000, price: 59_500 }
+            ],
+            style: { color: "#4db6ff", width: 1.5, fill: "rgba(77, 182, 255, 0.10)" }
+          }
+        ]
+      }
+    ];
+    const workspace = captureWorkspace("Research tools", { ...context, drawings }, 100);
+    expect(workspace.schemaVersion).toBe(9);
+    const parsed = await parseWorkspaceFile(await encodeWorkspaceFile(workspace, 200));
+    expect(parsed?.drawings[0]?.drawings).toEqual(drawings[0].drawings);
+  });
+
+  it("rejects v9 documents whose research drawings break the shared contract", async () => {
+    const base = captureWorkspace("Strict research", context, 100);
+    const withDrawings = (items: Array<Record<string, unknown>>) => ({
+      ...structuredClone(base),
+      drawings: [{ chartId: "chart-1", symbol: "BTCUSDT", drawings: items }]
+    });
+    const note = {
+      id: "note-1",
+      tool: "text-note",
+      points: [{ time: 1_752_640_000_000, price: 60_000 }],
+      style: { color: "#f7c948", width: 1.5 },
+      text: "ok"
+    };
+
+    // Note metadata is exclusive to text-note drawings.
+    await expect(parseWorkspaceFileDetailed(await signedWorkspaceFile(withDrawings([
+      { ...note, id: "trend-1", tool: "trendline", points: [{ time: 1, price: 1 }, { time: 2, price: 2 }] }
+    ])))).resolves.toEqual({ ok: false, reason: "invalid_workspace" });
+    await expect(parseWorkspaceFileDetailed(await signedWorkspaceFile(withDrawings([
+      { ...note, text: "tab\tcharacter" }
+    ])))).resolves.toEqual({ ok: false, reason: "invalid_workspace" });
+    // Channels must satisfy the canonical geometry contract (zero width here).
+    await expect(parseWorkspaceFileDetailed(await signedWorkspaceFile(withDrawings([
+      {
+        id: "channel-1",
+        tool: "parallel-channel",
+        points: [
+          { time: 1_752_640_000_000, price: 60_000 },
+          { time: 1_752_650_000_000, price: 61_000 },
+          { time: 1_752_645_000_000, price: 60_500 }
+        ],
+        style: { color: "#4db6ff", width: 1.5 }
+      }
+    ])))).resolves.toEqual({ ok: false, reason: "invalid_workspace" });
+    await expect(parseWorkspaceFileDetailed(await signedWorkspaceFile(withDrawings([note])))).resolves.toMatchObject({ ok: true });
+  });
+
+  it("rejects signed current-version documents that drift from the exact backend contract", async () => {
     const workspace = captureWorkspace("Strict", context, 100);
     const invalidOverride = structuredClone(workspace) as unknown as Record<string, unknown>;
     const chart = ((invalidOverride.charts as Record<string, unknown>[])[0]);
@@ -152,7 +235,7 @@ describe("versioned chart workspaces", () => {
     const current = captureWorkspace("Legacy v7", context, 100);
     const legacy = legacyV7Workspace(current);
     const parsed = await parseWorkspaceFile(await signedWorkspaceFile(legacy));
-    expect(parsed).toMatchObject({ schemaVersion: 8, enabledIndicators: ["ema", "missing"], indicators: [] });
+    expect(parsed).toMatchObject({ schemaVersion: WORKSPACE_SCHEMA_VERSION, enabledIndicators: ["ema", "missing"], indicators: [] });
     expect(missingLegacyWorkspaceIndicatorIds([parsed!], context.indicators)).toEqual(["missing"]);
     expect(hydrateLegacyWorkspaceIndicators([parsed!], context.indicators)[0]).toMatchObject({
       enabledIndicators: ["ema"],

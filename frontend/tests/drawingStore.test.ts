@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { TENANT_LOCAL_LEGACY_OWNER_KEY } from "../src/app/tenantLocalStorage";
-import { drawingStorageKey, loadDrawings, MAX_DRAWINGS_PER_PANE, normalizeDrawings, saveDrawings } from "../src/chart/drawingStore";
+import { drawingStorageKey, loadDrawings, MAX_DRAWINGS_PER_PANE, normalizeDrawings, saveDrawings, validMultilineDrawingText } from "../src/chart/drawingStore";
 import type { DrawingObject } from "../src/chart/drawings";
 
 const line = (id: string, price = 100): DrawingObject => ({
@@ -9,6 +9,24 @@ const line = (id: string, price = 100): DrawingObject => ({
   tool: "hline",
   points: [{ time: 1_700_000_000_000, price }],
   style: { color: "#4db6ff", width: 1.5 }
+});
+
+const note = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: "note-1",
+  tool: "text-note",
+  points: [{ time: 1_700_000_000_000, price: 100 }],
+  style: { color: "#f7c948", width: 1.5 },
+  text: "Support retest\nwatch the volume",
+  author: "owner-login",
+  createdAt: 1_700_000_000_000,
+  ...overrides
+});
+
+const channel = (points: Array<{ time: number; price: number }>): Record<string, unknown> => ({
+  id: "channel-1",
+  tool: "parallel-channel",
+  points,
+  style: { color: "#4db6ff", width: 1.5, fill: "rgba(77, 182, 255, 0.10)" }
 });
 
 describe("pane drawing storage", () => {
@@ -57,6 +75,56 @@ describe("pane drawing storage", () => {
     expect(loadDrawings("BTCUSDT", "chart-1", "user-b").map(({ id }) => id)).toEqual(["owner-b"]);
     expect(loadDrawings("BTCUSDT", "chart-1", "")).toEqual([]);
     expect(localStorage.getItem(drawingStorageKey("BTCUSDT", "chart-1"))).toBeNull();
+  });
+
+  it("keeps note metadata within the shared contract and strips unknown or invalid fields", () => {
+    const [normalized] = normalizeDrawings([note({ unknownField: "future" })]);
+    expect(normalized).toEqual({
+      id: "note-1",
+      tool: "text-note",
+      points: [{ time: 1_700_000_000_000, price: 100 }],
+      style: { color: "#f7c948", width: 1.5 },
+      text: "Support retest\nwatch the volume",
+      author: "owner-login",
+      createdAt: 1_700_000_000_000
+    });
+    expect("unknownField" in normalized).toBe(false);
+
+    const [degraded] = normalizeDrawings([
+      note({ id: "n2", text: "tab\tinside", author: "a".repeat(65), createdAt: 0.5 })
+    ]);
+    expect(degraded.text).toBeUndefined();
+    expect(degraded.author).toBeUndefined();
+    expect(degraded.createdAt).toBeUndefined();
+
+    expect(normalizeDrawings([note({ id: "n3", text: "" })])[0].text).toBeUndefined();
+    expect(normalizeDrawings([note({ id: "n4", text: "x".repeat(501) })])[0].text).toBeUndefined();
+    expect(normalizeDrawings([note({ id: "n5", text: "x".repeat(500) })])[0].text).toHaveLength(500);
+    // Note metadata never leaks onto other tools.
+    expect(normalizeDrawings([{ ...line("plain"), text: "nope", author: "nope" }])[0]).not.toHaveProperty("text");
+
+    expect(validMultilineDrawingText("multi\nline")).toBe(true);
+    expect(validMultilineDrawingText("bell\u0007")).toBe(false);
+    expect(validMultilineDrawingText("")).toBe(false);
+  });
+
+  it("accepts only parallel channels whose anchors satisfy the canonical geometry contract", () => {
+    const a = { time: 1_700_000_000_000, price: 100 };
+    const b = { time: 1_700_000_600_000, price: 110 };
+    const valid = channel([a, b, { time: 1_700_000_300_000, price: 102 }]);
+    expect(normalizeDrawings([valid])).toHaveLength(1);
+    expect(normalizeDrawings([channel([a, b, { time: 1_700_000_300_000, price: 105 }])])).toEqual([]);
+    expect(normalizeDrawings([channel([a, { ...b, time: a.time }, { time: a.time, price: 90 }])])).toEqual([]);
+    expect(normalizeDrawings([channel([a, b])])).toEqual([]);
+  });
+
+  it("loads pre-R5 stores without the research-tool fields unchanged", () => {
+    const key = drawingStorageKey("BTCUSDT", "chart-1");
+    localStorage.setItem(key, JSON.stringify([
+      line("old-hline"),
+      { id: "old-trend", tool: "trendline", points: [{ time: 1, price: 1 }, { time: 2, price: 2 }], style: { color: "#4db6ff", width: 1.5 } }
+    ]));
+    expect(loadDrawings("BTCUSDT", "chart-1").map(({ id }) => id)).toEqual(["old-hline", "old-trend"]);
   });
 
   it("allows only one authenticated owner to claim legacy pane drawings", () => {

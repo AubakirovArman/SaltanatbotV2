@@ -1,6 +1,7 @@
 import type { BaseIndicatorConfig, IndicatorConfig } from "../chart/indicatorTypes";
-import { normalizeDrawings } from "../chart/drawingStore";
-import { TOOL_POINT_COUNT } from "../chart/drawings";
+import { normalizeDrawings, validMultilineDrawingText } from "../chart/drawingStore";
+import { MAX_NOTE_AUTHOR_LENGTH, TOOL_POINT_COUNT } from "../chart/drawings";
+import { channelGeometryOf } from "../chart/geometry";
 import { CHART_TIME_ZONES } from "../chart/timeAxis";
 import type { ChartType, Timeframe } from "../types";
 import type {
@@ -301,17 +302,27 @@ function strictDrawing(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const item = value as Record<string, unknown>;
   const tool = typeof item.tool === "string" && item.tool in TOOL_POINT_COUNT ? item.tool as keyof typeof TOOL_POINT_COUNT : undefined;
-  return hasOnlyKeys(item, ["id", "tool", "points", "style", "locked", "hidden"])
+  const baseKeys = ["id", "tool", "points", "style", "locked", "hidden"];
+  return hasOnlyKeys(item, tool === "text-note" ? [...baseKeys, "text", "author", "createdAt"] : baseKeys)
     && validText(item.id, 128)
     && tool !== undefined
     && Array.isArray(item.points)
     && item.points.length === TOOL_POINT_COUNT[tool]
     && item.points.every((point) => Boolean(point) && typeof point === "object" && hasOnlyKeys(point as object, ["time", "price"]) && finiteNumber((point as Record<string, unknown>).time) && finiteNumber((point as Record<string, unknown>).price))
+    && (tool !== "parallel-channel" || channelGeometryOf(item.points as { time: number; price: number }[]) !== undefined)
+    && (tool !== "text-note" || strictNoteMetadata(item))
     && Boolean(item.style)
     && typeof item.style === "object"
     && strictDrawingStyle(item.style as object)
     && (item.locked === undefined || typeof item.locked === "boolean")
     && (item.hidden === undefined || typeof item.hidden === "boolean");
+}
+
+/** Optional note fields mirror the server-side v9 workspace contract exactly. */
+function strictNoteMetadata(item: Record<string, unknown>): boolean {
+  return (item.text === undefined || validMultilineDrawingText(item.text))
+    && (item.author === undefined || validText(item.author, MAX_NOTE_AUTHOR_LENGTH))
+    && (item.createdAt === undefined || (Number.isSafeInteger(item.createdAt) && Number(item.createdAt) > 0));
 }
 
 function strictStrategySelection(value: unknown): boolean {

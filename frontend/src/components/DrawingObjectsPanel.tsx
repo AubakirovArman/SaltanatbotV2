@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Lock, Redo2, Save, Trash2, Undo2, Unlock, X } from "lucide-react";
+import { Eye, EyeOff, Lock, Pencil, Redo2, Save, Trash2, Undo2, Unlock, X } from "lucide-react";
 import { useId, useState } from "react";
 import type { DrawingObject } from "../chart/drawings";
 import { loadDrawingTemplates, removeDrawingTemplate, saveDrawingTemplate, type DrawingTemplate } from "../chart/drawingTemplates";
@@ -15,6 +15,7 @@ interface DrawingObjectsPanelProps {
   canUndo: boolean;
   canRedo: boolean;
   onSelect: (id: string) => void;
+  onEditNote?: (id: string) => void;
   onToggleHidden: (id: string) => void;
   onToggleLocked: (id: string) => void;
   onDelete: (id: string) => void;
@@ -25,7 +26,7 @@ interface DrawingObjectsPanelProps {
   storageOwnerId?: string;
 }
 
-export function DrawingObjectsPanel({ locale, drawings, selectedId, canUndo, canRedo, onSelect, onToggleHidden, onToggleLocked, onDelete, onApplyTemplate, onUndo, onRedo, onClose, storageOwnerId }: DrawingObjectsPanelProps) {
+export function DrawingObjectsPanel({ locale, drawings, selectedId, canUndo, canRedo, onSelect, onEditNote, onToggleHidden, onToggleLocked, onDelete, onApplyTemplate, onUndo, onRedo, onClose, storageOwnerId }: DrawingObjectsPanelProps) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
   const [templates, setTemplates] = useState(() => loadDrawingTemplates(storageOwnerId));
   const selected = drawings.find((drawing) => drawing.id === selectedId);
@@ -62,7 +63,7 @@ export function DrawingObjectsPanel({ locale, drawings, selectedId, canUndo, can
       </header>
       <ul className="drawing-object-list">
         {drawings.map((drawing, index) => {
-          const name = t(drawingToolLabelKey(drawing.tool));
+          const name = drawing.tool === "text-note" && drawing.text ? noteListLabel(drawing.text) : t(drawingToolLabelKey(drawing.tool));
           const number = index + 1;
           return (
             <li key={drawing.id} className={drawing.id === selectedId ? "active" : ""}>
@@ -70,6 +71,11 @@ export function DrawingObjectsPanel({ locale, drawings, selectedId, canUndo, can
                 <span>{name}</span>
                 <small>#{number}</small>
               </button>
+              {onEditNote && drawing.tool === "text-note" && (
+                <button type="button" onClick={() => onEditNote(drawing.id)} aria-label={`${t("editTextNote")} · ${name} #${number}`}>
+                  <Pencil size={16} aria-hidden="true" />
+                </button>
+              )}
               <button type="button" onClick={() => onToggleHidden(drawing.id)} aria-label={`${drawing.hidden ? t("showDrawing") : t("hideDrawing")} · ${name} #${number}`}>
                 {drawing.hidden ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
               </button>
@@ -115,4 +121,9 @@ export function DrawingObjectsPanel({ locale, drawings, selectedId, canUndo, can
       {content(false)}
     </aside>
   );
+}
+
+/** Text notes list under the first 24 characters of their text. */
+function noteListLabel(text: string): string {
+  return Array.from(text.replace(/\n/g, " ")).slice(0, 24).join("");
 }

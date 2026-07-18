@@ -200,7 +200,8 @@ Gate, rehearsal and cutover evidence is recorded in
 
 R5.3b-2 — the Telegram paper commands — is now accepted and deployed
 (section below), completing R5.3. The chart research tools (text notes and
-the parallel channel) remain the only open R5 item.
+the parallel channel) remain the only open R5 item and are in progress
+(section below), not accepted.
 
 ## R5.3b-2 Telegram paper commands accepted and deployed — 2026-07-18
 
@@ -268,6 +269,38 @@ recorded in
 Canonical behavior is documented in
 [Telegram paper commands (R5.3b-2)](./ALERTS.md) (EN/RU/KK) and the threat
 analysis in [THREAT_MODEL.md](./THREAT_MODEL.md).
+
+## R5 chart research tools — in progress, NOT accepted
+
+This slice — the last open R5 item (roadmap section 9, research chart
+tools) — adds the **text note** and **parallel channel** drawing tools. It
+is active work on `main`: no release gate from [RELEASING.md](./RELEASING.md)
+has been run for it, nothing below is deployed, and this section must not be
+read as an acceptance record. The slice is browser/workspace-only and
+requires **no PostgreSQL migration**; existing v7/v8 workspace documents
+stay valid unchanged.
+
+- [ ] Canonical chart geometry contract (`packages/contracts`):
+  horizontal/trend/channel shapes with exact-key parsers shared by the
+  canvas, workspace export/import and the future server alert evaluator.
+- [ ] Text note tool: one data-space anchor, up to 500 characters of
+  multiline text, inline editor (save/cancel, keyboard accessible),
+  informational author-login and creation-time metadata stored in the
+  owner-scoped client workspace document (not a server-verified signature).
+- [ ] Parallel channel tool: three anchors (base line plus signed width
+  offset), unified body movement, endpoint reshape preserving width, a
+  width-only anchor, translucent fill and a Δ width label in price units.
+- [ ] Additive workspace schema v9 (frontend and backend document
+  contract): both tools plus their optional fields validated on both
+  sides; v7/v8 documents load unchanged; versions above 9 stay rejected.
+- [ ] Shared drawing tool catalog entries (desktop rail and the mobile
+  bottom sheet, no reduced set) with EN/RU/KK labels and editor strings.
+- [ ] Frontend, backend, contracts and e2e coverage for the new tools,
+  and user documentation in the RU/KK chart guides plus the EN/RU/KK site
+  feature cards.
+
+Acceptance, slot/cutover and evidence will be recorded here only after the
+full release gate passes.
 
 ## Delivered slices (not full roadmap completion)
 

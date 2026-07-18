@@ -1,4 +1,5 @@
-import { TOOL_POINT_COUNT, type DrawingObject, type DrawingStyle, type ShapeTool } from "./drawings";
+import { MAX_NOTE_AUTHOR_LENGTH, MAX_NOTE_TEXT_LENGTH, TOOL_POINT_COUNT, type DrawingObject, type DrawingStyle, type ShapeTool } from "./drawings";
+import { channelGeometryOf } from "./geometry";
 import { readTenantLocalItem, removeTenantLocalItem, writeTenantLocalItem } from "../app/tenantLocalStorage";
 
 const LEGACY_PREFIX = "mf:drawings:";
@@ -111,7 +112,26 @@ function normalizeDrawing(value: unknown): DrawingObject | undefined {
   if (points.some((point) => point === undefined)) return undefined;
   const style = normalizeStyle(item.style, item.tool);
   if (!style) return undefined;
-  return { id: item.id, tool: item.tool, points: points as DrawingObject["points"], style, locked: item.locked === true || undefined, hidden: item.hidden === true || undefined };
+  const drawing: DrawingObject = { id: item.id, tool: item.tool, points: points as DrawingObject["points"], style, locked: item.locked === true || undefined, hidden: item.hidden === true || undefined };
+  // Channel anchors must satisfy the canonical geometry contract the server enforces too.
+  if (drawing.tool === "parallel-channel" && !channelGeometryOf(drawing.points)) return undefined;
+  if (drawing.tool === "text-note") {
+    if (validMultilineDrawingText(item.text)) drawing.text = item.text;
+    if (validText(item.author, MAX_NOTE_AUTHOR_LENGTH)) drawing.author = item.author;
+    if (Number.isSafeInteger(item.createdAt) && (item.createdAt as number) > 0) drawing.createdAt = item.createdAt;
+  }
+  return drawing;
+}
+
+/** Note text is the only drawing field that may span lines; \n is its sole allowed control character. */
+export function validMultilineDrawingText(value: unknown): value is string {
+  return typeof value === "string"
+    && value.length > 0
+    && value.length <= MAX_NOTE_TEXT_LENGTH
+    && !Array.from(value).some((character) => {
+      const code = character.charCodeAt(0);
+      return (code < 32 && code !== 10) || code === 127;
+    });
 }
 
 function normalizeStyle(value: unknown, tool: ShapeTool): DrawingStyle | undefined {

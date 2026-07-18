@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DrawingObject } from "../src/chart/drawings";
-import { formatVolume, moveDrawing, sameLegend, sameVolumeProfile } from "../src/components/chartCanvas/drawingInteraction";
+import { canCommitDrawingAnchor, formatVolume, moveDrawing, sameLegend, sameVolumeProfile } from "../src/components/chartCanvas/drawingInteraction";
 import { formatBarCountdown, nextBarTime } from "../src/components/chartCanvas/ChartPriceHud";
 
 const drawing: DrawingObject = {
@@ -10,11 +10,58 @@ const drawing: DrawingObject = {
   style: { color: "#fff", width: 1, dashed: false }
 };
 
+const channel: DrawingObject = {
+  id: "channel",
+  tool: "parallel-channel",
+  // Base line 100→110 over t 10→20; width anchor sits 2 price units below the line.
+  points: [{ time: 10, price: 100 }, { time: 20, price: 110 }, { time: 15, price: 103 }],
+  style: { color: "#4db6ff", width: 1 }
+};
+
 describe("ChartCanvas interaction helpers", () => {
   it("moves a whole drawing or one handle immutably", () => {
     expect(moveDrawing(drawing, "body", { time: 0, price: 0 }, 5, -2).points).toEqual([{ time: 15, price: 98 }, { time: 25, price: 108 }]);
     expect(moveDrawing(drawing, 1, { time: 30, price: 120 }, 0, 0).points).toEqual([{ time: 10, price: 100 }, { time: 30, price: 120 }]);
     expect(drawing.points[1]).toEqual({ time: 20, price: 110 });
+  });
+
+  it("moves a parallel channel as one body and preserves the width offset on endpoint drags", () => {
+    expect(moveDrawing(channel, "body", { time: 0, price: 0 }, 5, -1).points).toEqual([
+      { time: 15, price: 99 },
+      { time: 25, price: 109 },
+      { time: 20, price: 102 }
+    ]);
+
+    // Reshaping an endpoint keeps the -2 offset as a price delta at the width anchor's time.
+    const reshaped = moveDrawing(channel, 1, { time: 30, price: 140 }, 0, 0);
+    expect(reshaped.points).toEqual([
+      { time: 10, price: 100 },
+      { time: 30, price: 140 },
+      { time: 15, price: 108 }
+    ]);
+    expect(channel.points[2]).toEqual({ time: 15, price: 103 });
+  });
+
+  it("refuses channel drags that would break the canonical geometry contract", () => {
+    // An endpoint may not collapse the base line onto one time.
+    expect(moveDrawing(channel, 0, { time: 20, price: 90 }, 0, 0)).toBe(channel);
+    // The width anchor may not zero the width, but any other move changes only the width.
+    expect(moveDrawing(channel, 2, { time: 15, price: 105 }, 0, 0)).toBe(channel);
+    expect(moveDrawing(channel, 2, { time: 12, price: 110 }, 0, 0).points).toEqual([
+      { time: 10, price: 100 },
+      { time: 20, price: 110 },
+      { time: 12, price: 110 }
+    ]);
+  });
+
+  it("gates draft anchors so parallel channels stay contract-valid while placing", () => {
+    const a = { time: 10, price: 100 };
+    const b = { time: 20, price: 110 };
+    expect(canCommitDrawingAnchor("parallel-channel", [a], { time: 10, price: 120 })).toBe(false);
+    expect(canCommitDrawingAnchor("parallel-channel", [a], b)).toBe(true);
+    expect(canCommitDrawingAnchor("parallel-channel", [a, b], { time: 15, price: 105 })).toBe(false);
+    expect(canCommitDrawingAnchor("parallel-channel", [a, b], { time: 15, price: 103 })).toBe(true);
+    expect(canCommitDrawingAnchor("trendline", [a], { time: 10, price: 100 })).toBe(true);
   });
 
   it("suppresses imperceptible legend churn but detects semantic changes", () => {

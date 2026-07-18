@@ -178,6 +178,20 @@ describe("shell localization", () => {
     expect(stats).toContain("Momentum screen · Алерт сработал");
   });
 
+  it("labels the chart research tools and note editor in every shipped locale", () => {
+    expect(shellText("en", "textNote")).toBe("Text note");
+    expect(shellText("ru", "textNote")).toBe("Текстовая заметка");
+    expect(shellText("kk", "textNote")).toBe("Мәтіндік жазба");
+    expect(shellText("ru", "parallelChannel")).toBe("Параллельный канал");
+    expect(shellText("kk", "parallelChannel")).toBe("Параллель канал");
+    for (const locale of ["en", "ru", "kk"] as const) {
+      for (const key of ["parallelChannel", "textNote", "editTextNote", "textNoteContent", "textNotePlaceholder", "noteEditorHint", "saveNote", "cancelNote"] as const) {
+        expect(shellText(locale, key).trim(), `shell.${key} (${locale})`).not.toBe("");
+      }
+      expect(shellText(locale, "noteEditorHint")).toContain("Ctrl+Enter");
+    }
+  });
+
   it("labels a disabled server projection honestly", () => {
     const stats = renderToStaticMarkup(
       <StatsPanel

@@ -1,4 +1,6 @@
 import { distanceToSegment, projectAnchors, type DrawingObject, type PixelPoint } from "../drawings";
+import { channelWidth } from "../geometry";
+import { layoutNoteLabel } from "../renderers/drawingNotes";
 import type { PlotArea, Viewport } from "../types";
 
 export interface HitResult {
@@ -76,9 +78,40 @@ function bodyHit(viewport: Viewport, drawing: DrawingObject, x: number, y: numbe
     case "long":
     case "short":
       return positionHit(x, y, viewport, drawing);
+    case "parallel-channel":
+      return channelHit(x, y, viewport, drawing);
+    case "text-note":
+      return noteHit(x, y, pts[0], drawing);
     default:
       return false;
   }
+}
+
+/** The note's whole label box (from the shared pure layout) and its anchor dot are grabbable. */
+function noteHit(x: number, y: number, anchor: PixelPoint, drawing: DrawingObject): boolean {
+  if (Math.hypot(anchor.x - x, anchor.y - y) <= HANDLE_RADIUS) return true;
+  const layout = layoutNoteLabel(drawing.text, anchor);
+  return x >= layout.x - 2 && x <= layout.x + layout.width + 2 && y >= layout.y - 2 && y <= layout.y + layout.height + 2;
+}
+
+/** Base line, parallel line, or anywhere inside the translucent fill between them. */
+function channelHit(x: number, y: number, viewport: Viewport, drawing: DrawingObject): boolean {
+  const [a, b, w] = drawing.points;
+  if (!a || !b) return false;
+  const pa = { x: viewport.timeToX(a.time), y: viewport.priceToY(a.price) };
+  const pb = { x: viewport.timeToX(b.time), y: viewport.priceToY(b.price) };
+  if (distanceToSegment(x, y, pa, pb) <= LINE_TOLERANCE) return true;
+  if (!w) return false;
+  const width = channelWidth(a, b, w);
+  if (!Number.isFinite(width)) return false;
+  const pa2 = { x: pa.x, y: viewport.priceToY(a.price + width) };
+  const pb2 = { x: pb.x, y: viewport.priceToY(b.price + width) };
+  if (distanceToSegment(x, y, pa2, pb2) <= LINE_TOLERANCE) return true;
+  if (pa.x === pb.x || x < Math.min(pa.x, pb.x) || x > Math.max(pa.x, pb.x)) return false;
+  const t = (x - pa.x) / (pb.x - pa.x);
+  const yBase = pa.y + (pb.y - pa.y) * t;
+  const yParallel = pa2.y + (pb2.y - pa2.y) * t;
+  return y >= Math.min(yBase, yParallel) && y <= Math.max(yBase, yParallel);
 }
 
 function fibHit(x: number, y: number, a: PixelPoint, b: PixelPoint, levels: number[], plot: PlotArea): boolean {
