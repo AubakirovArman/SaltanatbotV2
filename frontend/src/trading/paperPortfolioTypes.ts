@@ -1,3 +1,5 @@
+import type { DcaParamsV1 } from "@saltanatbotv2/contracts";
+
 export const PAPER_PORTFOLIO_SCHEMA_VERSION = "paper-portfolio-v1" as const;
 export const PAPER_PORTFOLIO_LIST_SCHEMA_VERSION = "paper-portfolio-list-v1" as const;
 export const PAPER_METRICS_FORMULA_VERSION = "paper-metrics-v1" as const;
@@ -246,6 +248,22 @@ export interface PaperRobotJournal {
   recentEvents: PaperRecentLedgerEventWindow;
 }
 
+/**
+ * Additive DCA cycle info for kind === "dca" robots. Every field is optional and
+ * parsed leniently: malformed values are dropped, never fatal, so older and newer
+ * server payloads both render.
+ */
+export interface PaperRobotDcaRuntime {
+  cycleState?: string;
+  safetyOrdersFilled?: number;
+  safetyOrdersTotal?: number;
+  averageEntryPrice?: number;
+  nextSafetyOrderPrice?: number;
+  takeProfitPrice?: number;
+  cooldownUntil?: number;
+  params?: DcaParamsV1;
+}
+
 export interface PaperRobotRuntimeMetadata {
   botId: string;
   botRevision?: number;
@@ -254,6 +272,7 @@ export interface PaperRobotRuntimeMetadata {
   symbol?: string;
   status?: PaperRobotControlStatus;
   lastError?: string;
+  dca?: PaperRobotDcaRuntime;
   journal: PaperRobotJournal;
 }
 

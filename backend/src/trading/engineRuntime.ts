@@ -1,7 +1,8 @@
 import type { Candle, Instrument } from "../types.js";
 import type { MarketSubscription } from "../providers/provider.js";
+import type { EngineDcaRuntime } from "./dca/engineBridge.js";
 import type { PaperAdapter } from "./exchange/paper.js";
-import type { BotConfig, ExchangeAdapter, PrivateOrderSubscription } from "./types.js";
+import type { BotConfig, ExchangeAdapter, FillRecord, PrivateOrderSubscription } from "./types.js";
 
 export interface Managed {
   side: "long" | "short";
@@ -45,6 +46,10 @@ export interface RunningBot {
    */
   paused?: boolean;
   pauseReason?: string;
+  /** DCA machine state; attached lazily on the first closed bar (kind === "dca"). */
+  dca?: EngineDcaRuntime;
+  /** Intrabar trigger fills queued for the next DCA machine step. */
+  dcaPendingFills?: FillRecord[];
   /** Serializes market-event handling so one candle cannot race another. */
   eventQueue: Promise<void>;
   /** Last closed bar already evaluated by this runtime. */

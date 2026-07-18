@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { parseDcaParamsV1, type DcaParamsV1 } from "@saltanatbotv2/contracts";
 import { z } from "zod";
 import { timeframes } from "../market/timeframes.js";
 import type { Timeframe } from "../types.js";
@@ -34,6 +35,15 @@ const id = z.string().trim().min(1).max(200);
 const name = z.string().trim().min(1).max(120);
 const positiveRevision = z.number().int().positive().safe();
 const positiveMoneyMicros = z.number().int().positive().max(PAPER_MONEY_MICROS_MAX);
+/** Strict dca-params-v1 envelope; the canonical parser is the shared contracts implementation. */
+const dcaParamsV1 = z.custom<DcaParamsV1>((value) => {
+  try {
+    parseDcaParamsV1(value);
+    return true;
+  } catch {
+    return false;
+  }
+}, "bot.dca must be a valid dca-params-v1 object");
 const paperBotConfigSchema = z.object({
   id,
   accountId: id,
@@ -52,8 +62,19 @@ const paperBotConfigSchema = z.object({
   maxPositionQuote: z.number().nonnegative().finite().max(1_000_000_000).optional(),
   maxOrderQuote: z.number().nonnegative().finite().max(1_000_000_000).optional(),
   maxDailyLossQuote: z.number().nonnegative().finite().max(1_000_000_000).optional(),
-  maxOpenOrders: z.number().int().nonnegative().max(10_000).optional()
-}).strict();
+  maxOpenOrders: z.number().int().nonnegative().max(10_000).optional(),
+  // Additive R6 extension: absent kind/dca keeps the historical strategy shape
+  // (and its request hashes) byte-identical — no defaults are injected.
+  kind: z.enum(["strategy", "dca"]).optional(),
+  dca: dcaParamsV1.optional()
+}).strict().superRefine((bot, ctx) => {
+  if ((bot.kind === "dca") !== (bot.dca !== undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'bot.dca is required exactly when bot.kind is "dca"' });
+  }
+  if (bot.kind === "dca" && bot.ir !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "bot.ir must be absent for DCA robots" });
+  }
+});
 
 const base = {
   version: z.literal(PAPER_PORTFOLIO_COMMAND_VERSION),

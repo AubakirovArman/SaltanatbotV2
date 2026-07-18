@@ -5,6 +5,7 @@ import { MARKET_OPPORTUNITY_HANDOFF_EVENT, consumeMarketOpportunityHandoff, type
 import { useAuth } from "../auth/AuthRoot";
 import type { Locale } from "../i18n";
 import { automationText } from "../i18n/automation";
+import { dcaText } from "../i18n/dca";
 import { tradingTerm, tradingText } from "../i18n/trading";
 import type { StrategyArtifact } from "../strategy/library";
 import type { CatalogResponse } from "../types";
@@ -24,6 +25,7 @@ import { resolveTradingRuntime } from "../trading/runtimeProfile";
 import "../styles/trading.css";
 import "../styles/paper-portfolio.css";
 import "../styles/paper-portfolio-journal.css";
+import "../styles/dca.css";
 
 const PaperMultiLegPanel = lazy(loadPaperMultiLegPanel);
 
@@ -385,7 +387,7 @@ export function TradingView({ strategies, catalog, locale, portfolioRequest = 0,
                     <span className="trade-bot-id">
                       <strong>{bot.name}</strong>
                       <small>
-                        <span className={`ex-badge ${bot.exchange}`}>{bot.exchange}</span> {bot.symbol} · {bot.timeframe}
+                        <span className={`ex-badge ${bot.exchange}`}>{bot.exchange}</span>{bot.kind === "dca" && <span className="ex-badge dca">{dcaText(locale, "typeBadge")}</span>} {bot.symbol} · {bot.timeframe}
                       </small>
                     </span>
                     <span className="trade-bot-meta">

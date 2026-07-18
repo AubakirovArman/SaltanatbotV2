@@ -9,7 +9,7 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const packageDir = join(root, "packages", "execution-core");
 const outputDir = mkdtempSync(join(tmpdir(), "saltanat-execution-core-"));
 const tsc = join(root, "node_modules", ".bin", "tsc");
-const sources = ["index", "price", "sizing", "orderState"];
+const sources = ["index", "fillModel", "price", "sizing", "orderState"];
 
 try {
   execFileSync(tsc, [

@@ -77,6 +77,22 @@ See [Canonical paper portfolios](./PAPER_PORTFOLIOS.md) for storage authority, A
 migration, backup and rollback. HTTPS, exchange credentials and live/private execution remain out
 of scope.
 
+### DCA robot type (R6, in progress)
+
+R6 — implemented on `main`, **not accepted or deployed yet** — adds a second paper robot type
+next to strategy robots. The create form gains a robot-type toggle (**Strategy | DCA**); the DCA
+panel replaces the strategy picker with direction and the `dca-params-v1` inputs (base and safety
+order sizes, safety-order count, price deviation, step/volume scales, take-profit, optional
+stop-loss/trailing/cycle-duration limits and cooldown), each validated inline. The form shows a
+live worst-case capital preview computed by the exact shared contract math against the
+portfolio's available capital and blocks submission when the reserved allocation cannot cover it;
+the server enforces the same limit. The robot detail drawer adds a DCA section with the cycle
+phase, safety orders filled/total, average entry, next safety price, take-profit target and
+cooldown, plus the parameters and worst case in a disclosure. DCA robots are research-only paper
+simulation like every other robot here. Exact parameters, formulas, the cycle state machine,
+averaging fill model, determinism and restart semantics:
+[Canonical paper portfolios](./PAPER_PORTFOLIOS.md).
+
 ## 1. The command language
 
 Manual commands are entered on the Trade tab and executed against a running bot via `TradingEngine.manualCommand()`, which calls `parseMessageSet()` and runs the resulting steps in order.

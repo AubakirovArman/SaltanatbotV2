@@ -125,6 +125,119 @@ valuation evidence is available, one final current-equity point. The journal als
 50 newest fills and 100 newest event metadata rows with `truncated` flags. Event payloads,
 idempotency keys and command fields are not exposed by this read model.
 
+## DCA paper robots (R6, in progress)
+
+R6 status: implemented on `main`, **not accepted and not deployed**. The accepted production
+evidence above still describes R4; the R6 release gate in [RELEASING.md](./RELEASING.md) —
+exact-commit CI, protected slot, paired recovery rehearsal and cutover — has not run yet. R6
+changes no PostgreSQL or SQLite schema: DCA robots ride the existing paper event types and
+settings snapshots, and every pre-R6 ledger replays byte-identically.
+
+A paper robot config gains an optional behavior discriminator `kind: "strategy" | "dca"`. An
+absent `kind` still means "strategy", so historical robots and old create payloads are unchanged.
+A DCA robot carries no strategy IR; instead it embeds versioned `dca-params-v1` parameters. Like
+every robot in `public-http-paper`, it is research-only simulation: no exchange credentials, no
+private requests, no live orders.
+
+### Parameters (`dca-params-v1`)
+
+| Field | Bounds | Meaning |
+| --- | --- | --- |
+| `direction` | `long` \| `short` | cycle side; shorts are fully mirrored |
+| `baseOrderQuote` | > 0 | first (base) market order size, quote currency |
+| `safetyOrderQuote` | > 0 | first safety order size, quote currency |
+| `maxSafetyOrders` | integer 0..25 | safety orders per cycle; 0 disables averaging adds |
+| `priceDeviationPct` | > 0, ≤ 50 | distance of safety order 1 from the cycle entry, percent |
+| `stepScale` | 0.1..5 | deviation multiplier for each subsequent safety order |
+| `volumeScale` | 0.1..5 | size multiplier for each subsequent safety order |
+| `takeProfitPct` | > 0, ≤ 100 | take-profit distance from the average entry, percent |
+| `stopLossPct` | optional, > 0, ≤ 100 | stop-loss distance from the average entry, percent |
+| `trailingTakeProfitPct` | optional, > 0, ≤ `takeProfitPct` | trailing distance once TP threshold prints |
+| `cooldownSeconds` | integer 0..86400 | pause after a completed cycle before re-entry |
+| `maxCycleDurationHours` | optional, integer 1..720 | cycle age limit; exceeding it closes at market and stops |
+
+The shared parser (`packages/contracts/dca.ts`) is exact and fail-closed: unknown or missing
+fields are rejected, and the payload must carry the literal `researchOnly: true` and
+`executionPermission: false` safety envelope. Quote sizes are additionally capped at the fixed
+paper-money range.
+
+### Worst-case capital
+
+```text
+worstCase = (base + Σ_{i=1..maxSafetyOrders} safety · volumeScale^(i-1)) · (1 + feePct/100)
+```
+
+rounded **up** to six decimals so the reservation is always conservative. The browser create form
+and the server run the same shared function. `paper-robot.create` fails with
+`WORST_CASE_EXCEEDS_ALLOCATION` when the worst case exceeds the requested six-decimal allocation;
+the form shows the same value live against available capital and blocks submission, and the robot
+detail repeats it inside the parameters disclosure.
+
+### Shared paper fill model (`paper-fill-model-v1`)
+
+The versioned constant `PAPER_FILL_MODEL_V1 = { feePct: 0.05, slipPct: 0.02 }`
+(`packages/execution-core/fillModel.ts`) is the single fee/slippage parity source consumed by the
+paper engine adapter, the backtest defaults and the DCA worst-case math. Changing the numbers is a
+new version, never an in-place edit.
+
+### Averaging fill behavior (`averaging-v1`)
+
+The paper adapter's position transition is versioned per robot:
+
+- `single-position-v1` (default): the historical behavior, byte-compatible with every existing
+  ledger. A triggered same-side resting order now produces an explicit `order_cancelled` event
+  with a reason instead of silently vanishing.
+- `averaging-v1` (DCA robots only): a same-side add merges into one position with
+  `qty = q1 + q2` and a volume-weighted average entry; fees are charged exactly as today and the
+  recorded position event reflects the merged state.
+
+Ledger replay stays fail-closed: recorded fills are data, and the reducer validates that every
+recorded position/cash/fee event is internally consistent. Single-position ledgers never contain
+same-side add fills, so the extension is additive and old ledgers validate unchanged.
+
+### Cycle state machine (`dca-state-v1`)
+
+The DCA robot is a pure versioned transition function driven only by closed bars and observed
+fills of its own orders. Phases: `idle → entering → position(soFilled=k) → exiting(reason) →
+cooldown(until) → idle`; a `duration` exit terminates in `stopped` instead of cooldown. Rules:
+
+- when idle and past cooldown, a closed bar starts a cycle with the base market order;
+- after the base fill: a take-profit limit from the average entry plus safety order 1 at
+  `entry · (1 ∓ deviation)`;
+- after safety order `k` fills: cancel and re-place the take-profit from the new volume-weighted
+  average entry, and place safety order `k+1` at the last safety price ∓ `deviation · stepScale^k`
+  while `k < maxSafetyOrders`;
+- take-profit fill completes the cycle: remaining orders are cancelled and cooldown starts;
+- stop-loss (if set, from the average entry) closes on a bar cross; trailing take-profit arms at
+  the take-profit threshold and only ever tightens;
+- exceeding `maxCycleDurationHours` closes at market and stops the robot terminally.
+
+Order quantities and limit prices are exact six-decimal values, so the machine's arithmetic
+mirrors the recorded paper fills bit-for-bit and a take-profit closes the full position without
+dust. A same-bar race where a safety order and the stale take-profit both fill leaves a remainder
+that is flattened by an explicit `tp-remainder` market close — never dropped.
+
+### Determinism, golden replay and restart
+
+The golden-replay harness (`backend/src/trading/goldenReplay.ts`) drives the real engine order
+path — paper adapter, order lifecycle and ledger controller — bar by bar over in-memory stores
+with an injected clock and identities derived from `(botId, bar, ordinal)`. The determinism
+criterion: the same candle path always produces a byte-identical ledger event stream, and
+replaying that stream reproduces the final state.
+
+Every machine transition consumes one deterministic idempotency key
+`dca:<botId>:<cycle>:<ordinal>`, which is also the durable order `clientId`. The machine snapshot
+is persisted through the existing settings event path under `dcaState:<botId>` with that same
+key. On restart, ledger replay restores the paper account, the fail-closed snapshot parser
+restores the machine state, journaled fills are reconciled back into the machine, and a missing
+or ambiguous transition is re-executed safely because the adapter deduplicates commands by
+`clientId`. A mangled snapshot fails recovery closed instead of resuming from guessed state.
+
+The robot list labels DCA robots with a DCA strategy type, and the detail drawer adds an additive
+optional `dca` runtime-metadata section (cycle phase, safety orders filled/total, average entry,
+next safety price, take-profit target, cooldown) derived from the same durable snapshot; old
+clients ignore the extra field.
+
 ## HTTP contract for first-party clients
 
 The canonical routes are below. Reads require the normal authenticated trading boundary; mutations

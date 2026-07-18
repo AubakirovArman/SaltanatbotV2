@@ -1,5 +1,6 @@
 import { AlertTriangle, Pause, Play, Square, X } from "lucide-react";
 import { useEffect, useId, useRef, type ReactNode } from "react";
+import { dcaText } from "../../../i18n/dca";
 import { paperPortfolioText, paperRobotActionText, paperRobotStatusText } from "../../../i18n/paperPortfolio";
 import { localeTag, type Locale } from "../../../i18n";
 import { formatPaperMoney as formatMoney } from "../../paperPortfolioFormat";
@@ -11,6 +12,7 @@ import type {
   PaperRobotProjection,
   PaperRobotRuntimeMetadata
 } from "../../paperPortfolioTypes";
+import { PaperRobotDcaSection } from "./PaperRobotDcaSection";
 import { PaperRobotJournalView } from "./PaperRobotJournalView";
 
 export interface PaperRobotRow {
@@ -71,7 +73,7 @@ export function PaperRobotViews({
             <tr key={row.robot.botId}>
               <th scope="row">
                 <button type="button" className="paper-robot-open" onClick={(event) => onOpen(row, event.currentTarget)}>
-                  <strong>{row.name}</strong><small>{row.symbol ?? paperPortfolioText(locale, "unavailable")}</small>
+                  <strong>{row.name}{row.metadata?.dca && <span className="ex-badge dca">{dcaText(locale, "typeBadge")}</span>}</strong><small>{row.symbol ?? paperPortfolioText(locale, "unavailable")}</small>
                 </button>
               </th>
               <td><RobotStatus status={row.status} locale={locale} /></td>
@@ -92,7 +94,7 @@ export function PaperRobotViews({
           <li key={row.robot.botId}>
             <article className="paper-robot-card">
               <button type="button" className="paper-robot-card-open" onClick={(event) => onOpen(row, event.currentTarget)}>
-                <span><strong>{row.name}</strong><small>{row.strategy ?? row.symbol ?? paperPortfolioText(locale, "unavailable")}</small></span>
+                <span><strong>{row.name}{row.metadata?.dca && <span className="ex-badge dca">{dcaText(locale, "typeBadge")}</span>}</strong><small>{row.strategy ?? row.symbol ?? paperPortfolioText(locale, "unavailable")}</small></span>
                 <RobotStatus status={row.status} locale={locale} />
               </button>
               <dl>
@@ -177,6 +179,7 @@ export function PaperRobotDetailDrawer({
           </dl>
           <EvidenceNotice label={paperPortfolioText(locale, "margin")} value={row.robot.metrics.margin} locale={locale} />
           <EvidenceNotice label={paperPortfolioText(locale, "borrowing")} value={row.robot.metrics.borrowing} locale={locale} />
+          {row.metadata?.dca && <PaperRobotDcaSection dca={row.metadata.dca} locale={locale} />}
           {row.metadata?.journal && <PaperRobotJournalView robot={row.robot} journal={row.metadata.journal} locale={locale} />}
           <section className="paper-detail-section">
             <h4>{paperPortfolioText(locale, "positions")} · {row.robot.positions.length}</h4>

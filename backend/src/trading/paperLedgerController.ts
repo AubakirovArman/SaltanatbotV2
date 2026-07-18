@@ -112,7 +112,8 @@ export class PaperLedgerController {
     after: PaperState,
     fills: FillRecord[],
     reason: string,
-    command?: PaperCommandResult
+    command?: PaperCommandResult,
+    cancellationReasons?: ReadonlyMap<string, string>
   ): PaperLedgerState {
     const drafts: PaperLedgerEventDraft[] = [];
     for (const fill of fills) {
@@ -124,7 +125,9 @@ export class PaperLedgerController {
     }
     const afterOrders = new Map(after.orders.map((order) => [order.id, order]));
     for (const order of before.orders) {
-      if (!afterOrders.has(order.id)) drafts.push({ type: "order_cancelled", data: { orderId: order.id, reason } });
+      if (!afterOrders.has(order.id)) {
+        drafts.push({ type: "order_cancelled", data: { orderId: order.id, reason: cancellationReasons?.get(order.id) ?? reason } });
+      }
     }
     const beforeOrders = new Map(before.orders.map((order) => [order.id, order]));
     for (const order of after.orders) {

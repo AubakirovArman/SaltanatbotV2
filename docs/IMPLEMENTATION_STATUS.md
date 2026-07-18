@@ -318,7 +318,57 @@ verified. Gate, rehearsal and cutover evidence is recorded in
 With this acceptance every R5 deliverable — R5.1, R5.2.1, R5.3a, R5.3b-1,
 R5.3b-2 and the chart research tools — is accepted and deployed: **R5 is
 complete**. The next pending increment is R6 (the shared paper execution
-contract and the DCA robot).
+contract and the DCA robot); its in-progress state is tracked in the next
+section.
+
+## R6 shared paper execution contract and DCA robot — in progress, NOT accepted
+
+This slice (roadmap R6) is being implemented on `main`. It has **not**
+passed the [RELEASING.md](./RELEASING.md) gate: there is no exact-commit CI
+evidence, no protected release slot, no paired recovery rehearsal and no
+production cutover for R6. Production still runs the accepted R5 slot
+`r5f-schema16-2ff6101`. The increment changes no PostgreSQL or SQLite
+schema — DCA robots ride the existing paper event types and settings
+snapshots, and every pre-R6 ledger must replay byte-identically.
+
+- [x] Shared versioned paper fill model `paper-fill-model-v1`
+  (`packages/execution-core/fillModel.ts`, feePct 0.05 / slipPct 0.02) as
+  the single fee/slippage parity source for the paper engine adapter, the
+  backtest defaults and the DCA worst-case math.
+- [x] Shared `dca-params-v1` contract (`packages/contracts/dca.ts`):
+  exact fail-closed parser with the research-only safety envelope and the
+  conservative ceil-to-six-decimals `worstCaseDcaCapitalQuote` used by both
+  the server (`WORST_CASE_EXCEEDS_ALLOCATION` on create) and the browser
+  preview.
+- [x] Versioned adapter fill behavior: `single-position-v1` (default,
+  byte-compatible with every historical ledger; a triggered same-side
+  resting order now cancels explicitly instead of vanishing) and
+  `averaging-v1` (DCA-only volume-weighted same-side merges) with the
+  fail-closed ledger reducer extended additively.
+- [x] Pure versioned `dca-state-v1` cycle machine plus engine dispatch:
+  base/safety/take-profit ladder, optional stop-loss, trailing and
+  cycle-duration exits, cooldown, mirrored shorts, deterministic
+  `dca:<botId>:<cycle>:<ordinal>` transition keys doubling as durable order
+  client ids, and settings-path snapshots for fail-closed restart recovery.
+- [x] Golden-replay harness (`backend/src/trading/goldenReplay.ts`)
+  driving the real adapter/lifecycle/ledger path deterministically over
+  in-memory stores.
+- [x] HTTP + browser slice: `kind: "strategy" | "dca"` config
+  discriminator (absent = strategy, full back-compat), robot-type toggle
+  and DCA create panel with live worst-case preview and inline validation,
+  detail-drawer DCA cycle section from additive runtime metadata, EN/RU/KK
+  catalogs.
+- [x] EN/RU/KK user documentation: DCA sections in
+  [PAPER_PORTFOLIOS.md](./PAPER_PORTFOLIOS.md),
+  [ru/PAPER_PORTFOLIOS.md](./ru/PAPER_PORTFOLIOS.md) and the
+  [TRADING.md](./TRADING.md) / [ru](./ru/TRADING.md) / [kk](./kk/TRADING.md)
+  guides.
+- [ ] Full R6 verification matrix (machine/golden-replay/restart suites,
+  command-handler and e2e journeys) consolidated and green in exact-commit
+  CI.
+- [ ] Release gate: exact-commit CI evidence, protected slot, paired
+  backup/isolated-restore rehearsal, production cutover and acceptance
+  record.
 
 ## Delivered slices (not full roadmap completion)
 

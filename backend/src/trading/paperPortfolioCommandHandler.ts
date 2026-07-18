@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { parseDcaParamsV1, worstCaseDcaCapitalQuote, type DcaParamsV1 } from "@saltanatbotv2/contracts";
+import { PAPER_FILL_MODEL_V1 } from "@saltanatbotv2/execution-core";
 import { replayPaperLedger } from "./paperLedger.js";
 import { listPaperLedgerEventsFrom } from "./paperLedgerStore.js";
 import {
@@ -31,6 +33,7 @@ import {
 } from "./paperPortfolioStoreSupport.js";
 import type { BotConfig } from "./types.js";
 import { upsertBotIntoForOwner, withDatabaseTransaction } from "./store.js";
+import type { StrategyIR } from "./strategy/ir.js";
 import { parseStrategyIR } from "./strategy/irSchema.js";
 
 export interface PaperPortfolioApplicationContext {
@@ -186,15 +189,15 @@ export class PaperPortfolioCommandHandler {
     if (payload.bot.id !== payload.botId || payload.bot.accountId !== `paper:${payload.botId}`) {
       fail("BOT_BINDING_INVALID", "Paper robot identity does not match its account binding");
     }
-    const ir = parseStrategyIR(payload.bot.ir);
-    if (!ir.ok) fail("BOT_CONFIG_INVALID", `Paper robot strategy IR is invalid: ${ir.error}`);
     if (payload.bot.symbol !== payload.bot.symbol.toUpperCase()) {
       fail("BOT_CONFIG_INVALID", "Paper robot symbol must be canonical uppercase");
     }
+    const strategy = this.robotStrategy(payload);
     return withDatabaseTransaction(this.database, () => {
+      const { ir: _ir, dca: _dca, ...base } = payload.bot;
       const bot: BotConfig = {
-        ...payload.bot,
-        ir: ir.ir,
+        ...base,
+        ...strategy,
         ownerUserId,
         status: "stopped",
         createdAt: mutation.now,
@@ -226,6 +229,31 @@ export class PaperPortfolioCommandHandler {
         botRevision: bound.botRevision
       };
     });
+  }
+
+  /** DCA robots validate shared dca-params-v1 + the worst-case reservation instead of strategy IR. */
+  private robotStrategy(
+    payload: Extract<PaperPortfolioExecutorPayload, { kind: "paper-robot.create" }>
+  ): { kind: "dca"; dca: DcaParamsV1 } | { ir: StrategyIR } {
+    if (payload.bot.kind === "dca") {
+      let dca: DcaParamsV1;
+      try {
+        dca = parseDcaParamsV1(payload.bot.dca);
+      } catch (error) {
+        fail("BOT_CONFIG_INVALID", `Paper robot DCA parameters are invalid: ${error instanceof Error ? error.message : error}`);
+      }
+      const worstCase = worstCaseDcaCapitalQuote(dca, PAPER_FILL_MODEL_V1.feePct);
+      if (Math.round(worstCase * 1_000_000) > payload.allocationMicros) {
+        fail(
+          "WORST_CASE_EXCEEDS_ALLOCATION",
+          `Worst-case DCA capital ${worstCase} USDT exceeds the reserved allocation of ${payload.allocationMicros / 1_000_000} USDT`
+        );
+      }
+      return { kind: "dca", dca };
+    }
+    const ir = parseStrategyIR(payload.bot.ir);
+    if (!ir.ok) fail("BOT_CONFIG_INVALID", `Paper robot strategy IR is invalid: ${ir.error}`);
+    return { ir: ir.ir };
   }
 
   private archive(

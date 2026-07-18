@@ -310,7 +310,7 @@ function deleteLiveBot(database: DatabaseSync, botId: string): void {
 }
 
 function deleteBotSettings(database: DatabaseSync, botId: string): void {
-  database.prepare("DELETE FROM settings WHERE key = ? OR key = ?").run(`paper:${botId}`, `state:${botId}`);
+  database.prepare("DELETE FROM settings WHERE key = ? OR key = ? OR key = ?").run(`paper:${botId}`, `state:${botId}`, `dcaState:${botId}`);
   database.prepare("DELETE FROM settings WHERE key LIKE ?").run(`inventory:${botId}:%`);
   database.prepare("DELETE FROM settings WHERE key LIKE ?").run(`futures-exposure:${botId}:%`);
 }

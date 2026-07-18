@@ -1,16 +1,20 @@
 import { AlertTriangle, Bot } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Locale } from "../../i18n";
+import { dcaText } from "../../i18n/dca";
 import { paperPortfolioText } from "../../i18n/paperPortfolio";
 import { tradingText } from "../../i18n/trading";
 import { compileXmlToIr } from "../../strategy/compileArtifact";
+import type { StrategyIR } from "../../strategy/ir";
 import type { StrategyArtifact } from "../../strategy/library";
 import type { CatalogResponse } from "../../types";
 import { listTradingAccounts, type TradingAccountView } from "../accountClient";
+import { DEFAULT_DCA_DRAFT, dcaWorstCaseExceeds, evaluateDcaDraft, type DcaDraft } from "../dcaDraft";
 import { createPaperIdempotencyKey, getPaperPortfolio, listPaperPortfolios } from "../paperPortfolioClient";
 import { comparePaperMoney, toCanonicalPositivePaperMoney } from "../paperPortfolioMoney";
 import { saveBot, type ExchangeId, type SaveBotInput, type SaveBotOptions, type TradingBot } from "../tradeClient";
 import { DEFAULT_LIVE_RISK_LIMITS, validLiveRiskLimits } from "../liveRisk";
+import { DcaParamsFieldset } from "./DcaParamsFieldset";
 import { usePaperBotBinding } from "../usePaperBotBinding";
 
 interface CreateBotFormProps {
@@ -50,6 +54,8 @@ export function CreateBotForm({
   saveTradingBot = saveBot
 }: CreateBotFormProps) {
   const runnable = useMemo(() => strategies.filter((item) => item.kind === "strategy"), [strategies]);
+  const [robotType, setRobotType] = useState<"strategy" | "dca">("strategy");
+  const [dcaDraft, setDcaDraft] = useState<DcaDraft>(DEFAULT_DCA_DRAFT);
   const [strategyId, setStrategyId] = useState(runnable[0]?.id ?? "");
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("BTCUSDT");
@@ -73,7 +79,9 @@ export function CreateBotForm({
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const strategy = runnable.find((item) => item.id === strategyId);
-  const selectedExchange: ExchangeId = paperOnly ? "paper" : exchange;
+  const dcaMode = robotType === "dca";
+  const dcaEvaluation = useMemo(() => evaluateDcaDraft(dcaDraft), [dcaDraft]);
+  const selectedExchange: ExchangeId = paperOnly || dcaMode ? "paper" : exchange;
   const databasePaperBinding = (paperPortfolioBindingRequired ?? !!ownerUserId) && selectedExchange === "paper";
   const liveAccountsAvailable = canReadAccounts && !paperOnly;
   const exchangeAccounts = useMemo(
@@ -100,6 +108,11 @@ export function CreateBotForm({
     && canonicalPaperAllocation
     && !paperAllocationInsufficient
   );
+  const dcaAllocationExceeded = dcaMode
+    && dcaEvaluation.worstCaseQuote !== undefined
+    && !!canonicalPaperAllocation
+    && dcaWorstCaseExceeds(dcaEvaluation.worstCaseQuote, canonicalPaperAllocation);
+  const dcaReady = !dcaMode || Boolean(dcaEvaluation.params && !dcaAllocationExceeded);
 
   useEffect(() => {
     if (!liveAccountsAvailable) return;
@@ -126,14 +139,27 @@ export function CreateBotForm({
 
   const create = async () => {
     let durablePaperInput: DurablePaperBotInput | undefined;
-    if (!strategy) {
-      setError(tradingText(locale, "pickStrategy"));
-      return;
-    }
-    const compiled = compileXmlToIr(strategy.xml);
-    if (!compiled.ir || compiled.errors.length) {
-      setError(compiled.errors[0] ?? tradingText(locale, "strategyErrors"));
-      return;
+    let compiledIr: StrategyIR | undefined;
+    if (dcaMode) {
+      if (!dcaEvaluation.params) {
+        setError(dcaText(locale, "fixParams"));
+        return;
+      }
+      if (dcaAllocationExceeded) {
+        setError(dcaText(locale, "worstCaseExceedsAllocation"));
+        return;
+      }
+    } else {
+      if (!strategy) {
+        setError(tradingText(locale, "pickStrategy"));
+        return;
+      }
+      const compiled = compileXmlToIr(strategy.xml);
+      if (!compiled.ir || compiled.errors.length) {
+        setError(compiled.errors[0] ?? tradingText(locale, "strategyErrors"));
+        return;
+      }
+      compiledIr = compiled.ir;
     }
     const riskLimits = { maxPositionQuote, maxOrderQuote, maxDailyLossQuote, maxOpenOrders };
     if (selectedExchange === "binance" && market === "spot") {
@@ -175,10 +201,26 @@ export function CreateBotForm({
     setBusy(true);
     setError(undefined);
     try {
-      const input: SaveBotInput = {
-        name: name.trim() || strategy.name,
-        strategyName: strategy.name,
-        ir: compiled.ir,
+      const dcaParams = dcaMode ? dcaEvaluation.params : undefined;
+      const input: SaveBotInput = dcaParams ? {
+        name: name.trim() || `DCA ${symbol}`,
+        strategyName: `DCA ${symbol}`,
+        kind: "dca",
+        dca: dcaParams,
+        symbol,
+        timeframe,
+        exchange: selectedExchange,
+        market,
+        sizeMode: "quote",
+        sizeValue: dcaParams.baseOrderQuote,
+        leverage: 1,
+        bybitCrossCollateral: false,
+        notifyMarkers,
+        ...durablePaperInput
+      } : {
+        name: name.trim() || strategy!.name,
+        strategyName: strategy!.name,
+        ir: compiledIr,
         symbol,
         timeframe,
         exchange: selectedExchange,
@@ -212,17 +254,45 @@ export function CreateBotForm({
       </div>
 
       <fieldset className="form-section">
-        <legend>{tradingText(locale, "strategy")}</legend>
-        <label>{tradingText(locale, "fromStrategy")}
-          <select name="strategy" value={strategyId} required onChange={(event) => setStrategyId(event.target.value)}>
-            {runnable.length === 0 && <option value="">{tradingText(locale, "noStrategies")}</option>}
-            {runnable.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-        </label>
-        <label>{tradingText(locale, "botName")}
-          <input name="bot-name" value={name} placeholder={strategy?.name ?? tradingText(locale, "botFallbackName")} onChange={(event) => setName(event.target.value)} />
-        </label>
+        <legend>{dcaText(locale, "robotType")}</legend>
+        <div className="segmented dca-type-toggle" role="group" aria-label={dcaText(locale, "robotType")}>
+          <button type="button" className={dcaMode ? "" : "active"} aria-pressed={!dcaMode} onClick={() => setRobotType("strategy")}>{dcaText(locale, "typeStrategy")}</button>
+          <button type="button" className={dcaMode ? "active" : ""} aria-pressed={dcaMode} onClick={() => setRobotType("dca")}>{dcaText(locale, "typeDca")}</button>
+        </div>
+        <p className="field-help">{dcaText(locale, dcaMode ? "typeDcaHint" : "typeStrategyHint")}</p>
       </fieldset>
+
+      {!dcaMode && (
+        <fieldset className="form-section">
+          <legend>{tradingText(locale, "strategy")}</legend>
+          <label>{tradingText(locale, "fromStrategy")}
+            <select name="strategy" value={strategyId} required onChange={(event) => setStrategyId(event.target.value)}>
+              {runnable.length === 0 && <option value="">{tradingText(locale, "noStrategies")}</option>}
+              {runnable.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <label>{tradingText(locale, "botName")}
+            <input name="bot-name" value={name} placeholder={strategy?.name ?? tradingText(locale, "botFallbackName")} onChange={(event) => setName(event.target.value)} />
+          </label>
+        </fieldset>
+      )}
+
+      {dcaMode && (
+        <DcaParamsFieldset
+          locale={locale}
+          draft={dcaDraft}
+          evaluation={dcaEvaluation}
+          name={name}
+          namePlaceholder={`DCA ${symbol}`}
+          allocation={databasePaperBinding ? canonicalPaperAllocation : undefined}
+          availableCapital={databasePaperBinding ? availablePaperCapital : undefined}
+          onNameChange={setName}
+          onChange={(patch) => {
+            setDcaDraft((current) => ({ ...current, ...patch }));
+            if (patch.direction === "short" && market === "spot") setMarket("futures");
+          }}
+        />
+      )}
 
       <fieldset className="form-section">
         <legend>{tradingText(locale, "market")}</legend>
@@ -238,14 +308,16 @@ export function CreateBotForm({
             </select>
           </label>
         </div>
-        <p className="field-help">The bot evaluates the strategy on every closed {timeframe} candle — same signals as the backtest.</p>
+        {dcaMode
+          ? <p className="field-help">{dcaText(locale, "candleHelp", { timeframe })}</p>
+          : <p className="field-help">The bot evaluates the strategy on every closed {timeframe} candle — same signals as the backtest.</p>}
       </fieldset>
 
       <fieldset className="form-section">
         <legend>{tradingText(locale, "execution")}</legend>
         <div className="form-grid">
           <label>{tradingText(locale, "exchange")}
-            <select name="exchange" value={selectedExchange} onChange={(event) => {
+            <select name="exchange" value={selectedExchange} disabled={dcaMode} aria-describedby={dcaMode ? "dca-paper-only" : undefined} onChange={(event) => {
               const next = event.target.value as ExchangeId;
               setExchange(next);
               setAccountId("");
@@ -258,10 +330,11 @@ export function CreateBotForm({
           </label>
           <label>{tradingText(locale, "marketType")}
             <select name="market" value={market} onChange={(event) => setMarket(event.target.value as "spot" | "futures")}>
-              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot" disabled={selectedExchange === "binance"}>{tradingText(locale, "spot")}</option>
+              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot" disabled={selectedExchange === "binance" || (dcaMode && dcaDraft.direction === "short")}>{tradingText(locale, "spot")}</option>
             </select>
           </label>
         </div>
+        {dcaMode && <p id="dca-paper-only" className="field-help" role="note">{dcaText(locale, "paperOnlyExchange")}</p>}
         {selectedExchange === "binance" && <p className="field-help">{tradingText(locale, "binanceSpotDisabled")}</p>}
         {selectedExchange === "paper" && databasePaperBinding ? (
           <section className="paper-bot-binding" aria-labelledby="paper-bot-binding-title">
@@ -363,19 +436,21 @@ export function CreateBotForm({
         ) : (
           <p className="field-help" role="note">{tradingText(locale, "liveAccountAdminFallback")}</p>
         )}
-        <div className="form-grid">
-          <label>{tradingText(locale, "sizing")}
-            <select name="size-mode" value={sizeMode} onChange={(event) => setSizeMode(event.target.value as TradingBot["sizeMode"])}>
-              <option value="quote">{tradingText(locale, "quoteUsdt")}</option><option value="base">{tradingText(locale, "baseUnits")}</option><option value="equity_pct">{tradingText(locale, "equityPercent")}</option><option value="risk_pct">{tradingText(locale, "riskPercent")}</option>
-            </select>
-          </label>
-          <label>{tradingText(locale, "amount")}
-            <input name="amount" type="number" value={sizeValue} min={0.00000001} step="any" required onChange={(event) => setSizeValue(event.target.valueAsNumber || 0)} />
-          </label>
-          <label>{tradingText(locale, "leverage")}
-            <input name="leverage" type="number" value={market === "spot" ? 1 : leverage} min={1} max={125} step={1} required disabled={market === "spot"} onChange={(event) => setLeverage(event.target.valueAsNumber || 1)} />
-          </label>
-        </div>
+        {!dcaMode && (
+          <div className="form-grid">
+            <label>{tradingText(locale, "sizing")}
+              <select name="size-mode" value={sizeMode} onChange={(event) => setSizeMode(event.target.value as TradingBot["sizeMode"])}>
+                <option value="quote">{tradingText(locale, "quoteUsdt")}</option><option value="base">{tradingText(locale, "baseUnits")}</option><option value="equity_pct">{tradingText(locale, "equityPercent")}</option><option value="risk_pct">{tradingText(locale, "riskPercent")}</option>
+              </select>
+            </label>
+            <label>{tradingText(locale, "amount")}
+              <input name="amount" type="number" value={sizeValue} min={0.00000001} step="any" required onChange={(event) => setSizeValue(event.target.valueAsNumber || 0)} />
+            </label>
+            <label>{tradingText(locale, "leverage")}
+              <input name="leverage" type="number" value={market === "spot" ? 1 : leverage} min={1} max={125} step={1} required disabled={market === "spot"} onChange={(event) => setLeverage(event.target.valueAsNumber || 1)} />
+            </label>
+          </div>
+        )}
         <label className="check-row">
           <input name="notify-markers" type="checkbox" checked={notifyMarkers} onChange={(event) => setNotifyMarkers(event.target.checked)} />
           {tradingText(locale, "notifyMarkers")}
@@ -414,7 +489,7 @@ export function CreateBotForm({
 
       {selectedExchange !== "paper" && <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> {tradingText(locale, "realTradingWarning")}</div>}
       {error && <div className="strategy-warnings" role="alert"><span><AlertTriangle size={12} aria-hidden="true" /> {error}</span></div>}
-      <button type="submit" className="run-button form-submit" disabled={busy || !paperBindingReady}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
+      <button type="submit" className="run-button form-submit" disabled={busy || !paperBindingReady || !dcaReady}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
     </form>
   );
 }

@@ -1,0 +1,96 @@
+/* DCA robot creation panel and detail-drawer cycle section. */
+
+.dca-type-toggle {
+  inline-size: 100%;
+}
+
+.dca-type-toggle button {
+  flex: 1 1 0;
+  min-block-size: 44px;
+  font-weight: 600;
+}
+
+.trade-form .dca-params input,
+.trade-form .dca-params select {
+  min-block-size: 44px;
+}
+
+.dca-params-grid label {
+  align-content: start;
+}
+
+.dca-field-error {
+  color: var(--down);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.dca-worst-case {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel-soft));
+}
+
+.dca-worst-case-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.dca-worst-case-row strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.dca-worst-case .field-help {
+  margin: 0;
+}
+
+.ex-badge.dca {
+  margin-inline-start: 5px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.paper-robot-open strong .ex-badge.dca,
+.paper-robot-card-open strong .ex-badge.dca {
+  margin-inline-start: 6px;
+}
+
+.paper-dca-params {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.paper-dca-params summary {
+  display: flex;
+  align-items: center;
+  min-block-size: 44px;
+  padding-inline: 10px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.paper-dca-params > dl {
+  padding: 0 10px 8px;
+}
+
+.paper-dca-note {
+  margin: 0;
+  padding: 0 10px 10px;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}

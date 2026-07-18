@@ -1,7 +1,8 @@
+import { PAPER_FILL_MODEL_V1 } from "@saltanatbotv2/execution-core";
 import type { DataMarketType } from "../providers/provider.js";
 import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
 import { BybitAdapter } from "./exchange/bybit.js";
-import { PaperAdapter } from "./exchange/paper.js";
+import { PaperAdapter, type PaperFillBehavior } from "./exchange/paper.js";
 import { DENY_SIGNED_REQUEST_AUTHORIZER } from "./exchange/signedRequestGate.js";
 import { getTradingAccountCredentialsForOwner, getTradingAccountForOwner, listTradingAccountsForOwner } from "./store.js";
 import type { BotConfig, ExchangeAdapter } from "./types.js";
@@ -29,10 +30,16 @@ export function buildEngineAdapter(config: BotConfig, getPrice: () => number, po
     accountId: botTradingAccountId(config),
     market: config.market,
     startBalance: paperStartBalance(config),
-    feePct: 0.05,
-    slipPct: 0.02,
+    feePct: PAPER_FILL_MODEL_V1.feePct,
+    slipPct: PAPER_FILL_MODEL_V1.slipPct,
+    fillBehavior: paperFillBehavior(config),
     getPrice
   });
+}
+
+/** Same-side fill semantics stamped per bot: only DCA robots average adds. */
+export function paperFillBehavior(config: BotConfig): PaperFillBehavior {
+  return config.kind === "dca" ? "averaging-v1" : "single-position-v1";
 }
 
 function paperLedgerEpoch(config: BotConfig): number {
@@ -43,7 +50,8 @@ function paperLedgerEpoch(config: BotConfig): number {
   return value;
 }
 
-function paperStartBalance(config: BotConfig): number {
+/** Start balance backing a paper robot: its reserved allocation when bound. */
+export function paperStartBalance(config: BotConfig): number {
   if (config.paperAllocationMicros !== undefined) {
     if (
       !Number.isSafeInteger(config.paperAllocationMicros)

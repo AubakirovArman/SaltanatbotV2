@@ -214,6 +214,106 @@ describe("paper portfolio fenced runtime authorization", () => {
     `).get(OTHER_OWNER)).toEqual({ status: "rejected", targetId: portfolio.id });
   });
 
+  it("applies a DCA robot create and start round trip with the worst-case fence intact", async () => {
+    const fixture = createFixture();
+    // The runtime handler stamps ledger events with the wall clock, so this
+    // portfolio's epoch must start in the past (unlike the fenced-future NOW).
+    const epochStart = Date.now() - 60_000;
+    const portfolio = createPaperPortfolioIn(fixture.database, OWNER, {
+      mutationId: "dca-runtime-create",
+      idempotencyKey: "dca-runtime-create-key",
+      requestHash: "f".repeat(64),
+      now: epochStart,
+      portfolioId: "dca-runtime-portfolio",
+      name: "DCA runtime",
+      initialCapitalMicros: 1_000_000_000,
+      makeDefault: true
+    });
+    const dca = {
+      schemaVersion: "dca-params-v1",
+      direction: "long",
+      baseOrderQuote: 100,
+      safetyOrderQuote: 50,
+      maxSafetyOrders: 3,
+      priceDeviationPct: 1.5,
+      stepScale: 1.2,
+      volumeScale: 2,
+      takeProfitPct: 2,
+      cooldownSeconds: 300,
+      researchOnly: true,
+      executionPermission: false
+    } as const;
+    const create = (botId: string, allocationMicros: number): PaperPortfolioExecutorPayload => ({
+      version: 1,
+      kind: "paper-robot.create",
+      portfolioId: portfolio.id,
+      expectedPortfolioRevision: portfolio.revision,
+      expectedLedgerEpoch: portfolio.currentEpoch,
+      botId,
+      expectedBotRevision: 1,
+      allocationMicros,
+      maxBots: 10,
+      bot: {
+        id: botId,
+        accountId: `paper:${botId}`,
+        name: "DCA runtime robot",
+        strategyName: "DCA BTCUSDT",
+        kind: "dca",
+        dca,
+        symbol: "BTCUSDT",
+        timeframe: "1m",
+        exchange: "paper",
+        market: "futures",
+        sizeMode: "quote",
+        sizeValue: 100,
+        leverage: 1,
+        bybitCrossCollateral: false,
+        notifyMarkers: false
+      }
+    });
+
+    // Worst case (100 + 50 + 100 + 200) * 1.0005 = 450.225 USDT > 450 reserved.
+    await expect(fixture.runtime.commands.execute(input(principal(), "dca-runtime-over-key", create("dca-runtime-over", 450_000_000))))
+      .rejects.toMatchObject({ code: "worst_case_exceeds_allocation" });
+    expect(fixture.database.prepare("SELECT COUNT(*) AS value FROM bots").get()).toEqual({ value: 0 });
+
+    await expect(fixture.runtime.commands.execute(input(principal(), "dca-runtime-bot-key", create("dca-runtime-bot", 500_000_000))))
+      .resolves.toEqual({ replayed: false });
+    const stored = JSON.parse((fixture.database.prepare("SELECT config FROM bots WHERE id = ?").get("dca-runtime-bot") as { config: string }).config);
+    expect(stored).toMatchObject({ kind: "dca", dca, paperAllocationMicros: 500_000_000 });
+    expect("ir" in stored).toBe(false);
+
+    // The read model exposes browser-shaped additive dca metadata with params.
+    const detail = fixture.runtime.reads.detail(OWNER, portfolio.id, Date.now() + 60_000);
+    expect(detail.robots.find((robot) => robot.botId === "dca-runtime-bot")?.dca).toMatchObject({
+      schemaVersion: "dca-state-v1",
+      cycleState: "idle",
+      safetyOrdersFilled: 0,
+      safetyOrdersTotal: 3,
+      params: dca
+    });
+
+    const revisions = fixture.database
+      .prepare("SELECT revision, currentEpoch FROM paper_portfolios WHERE id = ?")
+      .get(portfolio.id) as { revision: number; currentEpoch: number };
+    const allocation = fixture.database
+      .prepare("SELECT botRevision FROM paper_bot_allocations WHERE botId = ?")
+      .get("dca-runtime-bot") as { botRevision: number };
+    await expect(fixture.runtime.commands.execute(input(principal(), "dca-runtime-start-key", {
+      version: 1,
+      kind: "paper-robot.action",
+      portfolioId: portfolio.id,
+      expectedPortfolioRevision: revisions.revision,
+      expectedLedgerEpoch: revisions.currentEpoch,
+      botId: "dca-runtime-bot",
+      expectedBotRevision: allocation.botRevision,
+      action: "start",
+      confirm: true
+    }))).resolves.toEqual({ replayed: false });
+    expect(fixture.engine.startForOwner).toHaveBeenCalledTimes(1);
+    expect(fixture.engine.startForOwner).toHaveBeenCalledWith(OWNER, expect.objectContaining({ id: "dca-runtime-bot", kind: "dca" }));
+  });
+
   it("atomically rolls back a cross-owner robot bind", async () => {
     const fixture = createFixture({ acceptedOwner: OTHER_OWNER, sessionUserId: OTHER_OWNER });
     const portfolio = createPaperPortfolioIn(fixture.database, OWNER, {
@@ -330,7 +430,7 @@ function createFixture(overrides: SecurityOverrides = {}) {
     workerId: `runtime-security-${sequence}`
   });
   runtimes.push(runtime);
-  return { database, repository, identity, runtime, sequence };
+  return { database, repository, identity, engine, runtime, sequence };
 }
 
 function identityDouble(overrides: SecurityOverrides): IdentityService {
@@ -380,15 +480,17 @@ function identityUser(id: string, overrides: SecurityOverrides): IdentityUser {
   };
 }
 
-function engineDouble(): TradingEngine {
+type EngineDouble = TradingEngine & { startForOwner: ReturnType<typeof vi.fn> };
+
+function engineDouble(): EngineDouble {
   return {
     isRunningForOwner: () => false,
     isPausedForOwner: () => false,
-    async startForOwner() {},
+    startForOwner: vi.fn(async () => {}),
     async pauseForOwner() { return false; },
     async confirmResumeForOwner() { return false; },
     async stopSafelyForOwner() {}
-  } as unknown as TradingEngine;
+  } as unknown as EngineDouble;
 }
 
 function principal(overrides: Partial<PaperPortfolioCommandPrincipal> = {}): PaperPortfolioCommandPrincipal {

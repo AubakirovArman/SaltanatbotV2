@@ -12,8 +12,8 @@
     }
   },
   "scripts": {
-    "build": "tsc index.ts price.ts sizing.ts orderState.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --declaration --outDir .",
-    "check": "tsc index.ts price.ts sizing.ts orderState.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --noEmit && node ../../scripts/check-execution-core-generated.mjs"
+    "build": "tsc index.ts fillModel.ts price.ts sizing.ts orderState.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --declaration --outDir .",
+    "check": "tsc index.ts fillModel.ts price.ts sizing.ts orderState.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --noEmit && node ../../scripts/check-execution-core-generated.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

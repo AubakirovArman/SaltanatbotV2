@@ -1,3 +1,4 @@
+import type { DcaParamsV1 } from "@saltanatbotv2/contracts";
 import type { Timeframe } from "../types.js";
 import type { StrategyIR } from "./strategy/ir.js";
 
@@ -75,9 +76,14 @@ export interface BotConfig {
   paperAllocationMicros?: number;
   /** Versioned append-only paper ledger epoch. */
   paperLedgerEpoch?: number;
+  /** Robot behavior discriminator; absent means "strategy" (full back-compat). */
+  kind?: "strategy" | "dca";
+  /** Versioned DCA parameters; present exactly when kind === "dca". */
+  dca?: DcaParamsV1;
   name: string;
   strategyName: string;
-  ir: StrategyIR;
+  /** Strategy IR; required for strategy robots, absent for DCA robots. */
+  ir?: StrategyIR;
   symbol: string;
   timeframe: Timeframe;
   exchange: ExchangeId;

@@ -3,7 +3,7 @@ import { findInstrument } from "../market/catalog.js";
 import { timeframeMs } from "../market/timeframes.js";
 import { ProviderRouter } from "../providers/router.js";
 import { findLiveCollision } from "./collision.js";
-import { resolvePositionQty, resolveStopPrice, resolveTargetPrice } from "./engineRisk.js";
+import { ratchetTrailingStop, resolvePositionQty, resolveStopPrice, resolveTargetPrice } from "./engineRisk.js";
 import { atrValue, evaluateBar, runInit, type BarIntents } from "./strategy/evaluator.js";
 import { PaperAdapter } from "./exchange/paper.js";
 import { notify } from "./notifications.js";
@@ -15,6 +15,7 @@ import { EngineOrderCoordinator } from "./engineOrderCoordinator.js";
 import type { EmergencyStopOptions } from "./emergencyStop.js";
 import { buildPortfolioSummary } from "./enginePortfolio.js";
 import { buildEmergencyAdapters, buildEngineAdapter, engineMarketRoute } from "./engineAdapters.js";
+import { runEngineDcaBar } from "./dca/engineBridge.js";
 import { clearPausedRuntime, equityOf, liveRuntimeState, pauseRunningBot, persistRuntimeState, positionContext, realizedToday, roundTradingValue as round } from "./engineState.js";
 import { pauseBotRuntime } from "./enginePause.js";
 import { persistBotRuntimeStatus } from "./botRuntimePersistence.js";
@@ -197,7 +198,7 @@ export class TradingEngine {
     bot.price = bot.buffer.at(-1)?.close ?? 0;
     if (persistAfterSeed || bot.paused) persistRuntimeState(bot);
 
-    if (!savedState) runInit(config.ir, bot.buffer, bot.vars);
+    if (!savedState && config.ir) runInit(config.ir, bot.buffer, bot.vars);
 
     const subscription = await this.provider.subscribeMarket(
       instrument,
@@ -353,20 +354,12 @@ export class TradingEngine {
     }
   }
 
-  /** Intrabar: trailing stop ratchet + stop / target hit checks. */
+  /** Intrabar: trailing stop ratchet + stop / target hit checks. The DCA machine
+   * owns its own exits, so the managed-snapshot paths never touch dca robots. */
   private async onTick(bot: RunningBot, candle: Candle) {
-    if (bot.paused || this.stopCoordinator.isStopping(bot.config.id) || !bot.managed) return;
+    if (bot.paused || this.stopCoordinator.isStopping(bot.config.id) || bot.config.kind === "dca" || !bot.managed) return;
     const m = bot.managed;
-    if (m.trail) {
-      const atr = m.trail.mode === "atr" ? atrValue(bot.buffer, 14, bot.buffer.length - 1) || 0 : 0;
-      if (m.side === "long") {
-        const candidate = m.trail.mode === "percent" ? candle.high * (1 - m.trail.value / 100) : candle.high - atr * m.trail.value;
-        m.stop = Math.max(m.stop ?? -Infinity, candidate);
-      } else {
-        const candidate = m.trail.mode === "percent" ? candle.low * (1 + m.trail.value / 100) : candle.low + atr * m.trail.value;
-        m.stop = Math.min(m.stop ?? Infinity, candidate);
-      }
-    }
+    ratchetTrailingStop(m, candle, () => atrValue(bot.buffer, 14, bot.buffer.length - 1) || 0);
     const stopHit = m.stop !== undefined && (m.side === "long" ? candle.low <= m.stop : candle.high >= m.stop);
     const targetHit = m.target !== undefined && (m.side === "long" ? candle.high >= m.target : candle.low <= m.target);
     if (stopHit) await this.closePosition(bot, "stop");
@@ -380,10 +373,16 @@ export class TradingEngine {
     if (bot.paper && closed && !persistClosedPaperMark(bot, closed, (message) => this.log(bot.config.id, "error", message))) return;
     if (bot.paused || this.stopCoordinator.isStopping(bot.config.id)) return;
     if (barTime !== undefined) bot.lastEvaluatedBarTime = barTime;
+    if (bot.config.kind === "dca") {
+      if (closed) await runEngineDcaBar(bot, closed, { execute: (order) => this.executeOrder(bot, order, closed.time), applyResult: (result, order) => void this.applyResult(bot, result, order.reason, order), log: (level, message) => this.log(bot.config.id, level, message), stop: () => this.stop(bot.config.id) });
+      return persistRuntimeState(bot);
+    }
+    const ir = bot.config.ir;
+    if (!ir) return persistRuntimeState(bot);
     let intents: BarIntents;
     const equity = await equityOf(bot);
     try {
-      intents = evaluateBar(bot.config.ir, bot.buffer, index, bot.vars, positionContext(bot, equity));
+      intents = evaluateBar(ir, bot.buffer, index, bot.vars, positionContext(bot, equity));
     } catch (error) {
       this.log(bot.config.id, "error", `Strategy error: ${error instanceof Error ? error.message : error}`);
       return;

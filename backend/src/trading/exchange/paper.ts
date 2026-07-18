@@ -7,6 +7,7 @@ import {
   type VerifiedPaperFundingSettlement
 } from "../paperLedgerController.js";
 import { PaperExecutionModel, type PaperExecutionQuote } from "./paperExecution.js";
+import { applyPaperPositionFill, type PaperFillBehavior } from "./paperPositionFill.js";
 import { paperCommandIdentity, paperFillMessage as fillMsg, roundPaperValue as round } from "./paperCommandSupport.js";
 import type {
   AccountState,
@@ -25,6 +26,7 @@ import type {
 
 export type { PaperState, VerifiedPaperFundingSettlement } from "../paperLedgerController.js";
 export type { PaperExecutionQuote } from "./paperExecution.js";
+export type { PaperFillBehavior } from "./paperPositionFill.js";
 
 interface PaperOptions {
   botId: string;
@@ -34,6 +36,8 @@ interface PaperOptions {
   startBalance: number;
   feePct: number;
   slipPct: number;
+  /** Versioned same-side fill semantics; absent means historical single-position-v1. */
+  fillBehavior?: PaperFillBehavior;
   getPrice: (symbol: string) => number;
   getExecutionQuote?: (symbol: string, side: Side, qty: number) => PaperExecutionQuote | undefined;
   now?: () => number;
@@ -61,6 +65,7 @@ export class PaperAdapter implements ExchangeAdapter {
   private dualSide = false;
   private readonly ledger: PaperLedgerController;
   private readonly execution: PaperExecutionModel;
+  private readonly fillBehavior: PaperFillBehavior;
   private readonly now: () => number;
   private readonly createId: () => string;
 
@@ -69,6 +74,7 @@ export class PaperAdapter implements ExchangeAdapter {
     this.accountId = opts.accountId ?? `paper:${opts.botId}`;
     this.now = opts.now ?? Date.now;
     this.createId = opts.createId ?? randomUUID;
+    this.fillBehavior = opts.fillBehavior ?? "single-position-v1";
     this.execution = new PaperExecutionModel(opts.slipPct, opts.getExecutionQuote);
     this.ledger = new PaperLedgerController({
       botId: opts.botId,
@@ -139,6 +145,7 @@ export class PaperAdapter implements ExchangeAdapter {
     const before = this.snapshot();
     const fills: FillRecord[] = [];
     const remaining: PendingOrder[] = [];
+    const cancellations = new Map<string, string>();
     try {
       for (const order of this.book) {
         if (order.symbol !== symbol || !this.triggered(order, price)) {
@@ -155,9 +162,11 @@ export class PaperAdapter implements ExchangeAdapter {
         }
         const fill = this.applyFill(order.symbol, order.side, order.qty, fillPrice, order.reduceOnly, `trigger:${order.type}`);
         if (fill) fills.push({ ...fill, orderId: order.id, clientId: order.clientId });
+        // A triggered entry that cannot fill must cancel explicitly, never vanish.
+        else if (!order.reduceOnly) cancellations.set(order.id, `position-conflict:${this.fillBehavior}`);
       }
       this.book = this.pos ? remaining : remaining.filter((order) => !order.reduceOnly);
-      this.commitTransition(before, this.snapshot(), fills, `price:${symbol}:${price}`);
+      this.commitTransition(before, this.snapshot(), fills, `price:${symbol}:${price}`, undefined, cancellations);
       return fills;
     } catch (error) {
       this.restoreSnapshot(before);
@@ -507,26 +516,11 @@ export class PaperAdapter implements ExchangeAdapter {
 
   /** Apply a fill to the position, returning the fill record (or null if no-op). */
   private applyFill(symbol: string, side: Side, qty: number, price: number, reduceOnly: boolean, reason: string): FillRecord | null {
-    if (!qty || qty <= 0) return null;
-    // Reduce / close.
-    if (this.pos && ((side === "sell" && this.pos.side === "long") || (side === "buy" && this.pos.side === "short"))) {
-      const closeQty = Math.min(this.pos.qty, qty);
-      const gross = round(this.pos.side === "long" ? closeQty * (price - this.pos.entryPrice) : closeQty * (this.pos.entryPrice - price));
-      const fee = round(closeQty * price * (this.opts.feePct / 100));
-      const pnl = round(gross - fee);
-      this.balance += pnl;
-      this.pos.qty -= closeQty;
-      const sym = this.pos.symbol;
-      if (this.pos.qty <= 1e-9) this.pos = null;
-      return this.record(sym, side, closeQty, price, fee, pnl, "close", reason);
-    }
-    if (reduceOnly) return null;
-    // Open (single one-way position per symbol).
-    if (this.pos) return null;
-    const fee = round(qty * price * (this.opts.feePct / 100));
-    this.balance -= fee;
-    this.pos = { symbol, side: side === "buy" ? "long" : "short", qty, entryPrice: price, leverage: this.leverage, openedAt: this.now() };
-    return this.record(symbol, side, qty, price, fee, 0, "open", reason);
+    const effect = applyPaperPositionFill(this.pos, { symbol, side, qty, price, reduceOnly, feePct: this.opts.feePct, leverage: this.leverage, behavior: this.fillBehavior, now: this.now });
+    if (!effect) return null;
+    this.balance += effect.balanceDelta;
+    this.pos = effect.position;
+    return this.record(effect.fill.symbol, effect.fill.side, effect.fill.qty, price, effect.fill.fee, effect.fill.pnl, effect.fill.kind, reason);
   }
 
   private resolveQty(order: ExecOrder, price: number): number {
@@ -587,9 +581,10 @@ export class PaperAdapter implements ExchangeAdapter {
     after: PaperState,
     fills: FillRecord[],
     reason: string,
-    command?: PaperCommandResult
+    command?: PaperCommandResult,
+    cancellationReasons?: ReadonlyMap<string, string>
   ): void {
-    this.applyLedgerState(this.ledger.commitTransition(before, after, fills, reason, command));
+    this.applyLedgerState(this.ledger.commitTransition(before, after, fills, reason, command, cancellationReasons));
   }
 
   private applyLedgerState(state: PaperLedgerState): void {

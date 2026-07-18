@@ -1,3 +1,4 @@
+import { parseDcaParamsV1, type DcaParamsV1 } from "@saltanatbotv2/contracts";
 import {
   PAPER_METRICS_FORMULA_VERSION,
   PAPER_PORTFOLIO_LIST_SCHEMA_VERSION,
@@ -13,6 +14,7 @@ import {
   type PaperPortfolioMutationResult,
   type PaperPortfolioProjection,
   type PaperPositionProjection,
+  type PaperRobotDcaRuntime,
   type PaperRobotMetrics,
   type PaperRobotProjection,
   type PaperRobotRuntimeMetadata,
@@ -282,8 +284,54 @@ function parseRuntimeMetadata(value: unknown, path: string): PaperRobotRuntimeMe
     symbol: optionalText(item.symbol, `${path}.symbol`),
     status: item.status === undefined ? undefined : oneOf(item.status, ["idle", "stopped", "running", "paused", "error"] as const, `${path}.status`),
     lastError: optionalText(item.lastError, `${path}.lastError`),
+    dca: lenientDcaRuntime(item.dca),
     journal: parsePaperRobotJournal(item.journal, `${path}.journal`)
   };
+}
+
+/**
+ * Additive DCA cycle metadata is rendered leniently: any malformed field is
+ * dropped instead of failing the whole snapshot, so older and newer server
+ * payload shapes both stay renderable.
+ */
+function lenientDcaRuntime(value: unknown): PaperRobotDcaRuntime | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const item = value as JsonRecord;
+  const result: PaperRobotDcaRuntime = {};
+  if (typeof item.cycleState === "string" && item.cycleState.trim()) result.cycleState = item.cycleState;
+  const safetyOrdersFilled = lenientCount(item.safetyOrdersFilled);
+  if (safetyOrdersFilled !== undefined) result.safetyOrdersFilled = safetyOrdersFilled;
+  const safetyOrdersTotal = lenientCount(item.safetyOrdersTotal);
+  if (safetyOrdersTotal !== undefined) result.safetyOrdersTotal = safetyOrdersTotal;
+  const averageEntryPrice = lenientPrice(item.averageEntryPrice);
+  if (averageEntryPrice !== undefined) result.averageEntryPrice = averageEntryPrice;
+  const nextSafetyOrderPrice = lenientPrice(item.nextSafetyOrderPrice);
+  if (nextSafetyOrderPrice !== undefined) result.nextSafetyOrderPrice = nextSafetyOrderPrice;
+  const takeProfitPrice = lenientPrice(item.takeProfitPrice);
+  if (takeProfitPrice !== undefined) result.takeProfitPrice = takeProfitPrice;
+  const cooldownUntil = lenientCount(item.cooldownUntil);
+  if (cooldownUntil !== undefined) result.cooldownUntil = cooldownUntil;
+  const params = lenientDcaParams(item.params);
+  if (params) result.params = params;
+  return result;
+}
+
+function lenientCount(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) && (value as number) >= 0 ? (value as number) : undefined;
+}
+
+function lenientPrice(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "string" && /^(?:0|[1-9]\d*)\.\d{6}$/.test(value)) return Number(value);
+  return undefined;
+}
+
+function lenientDcaParams(value: unknown): DcaParamsV1 | undefined {
+  try {
+    return parseDcaParamsV1(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function evidence<T>(value: unknown, path: string, parseValue: (value: unknown, path: string) => T): EvidenceValue<T> {

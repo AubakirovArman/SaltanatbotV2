@@ -210,6 +210,9 @@ function applyPaperEvent(state: PaperLedgerState, event: PaperLedgerEvent, accou
       return;
     }
     case "position":
+      // Position events carry the full recorded snapshot, so same-side averaging
+      // fills (averaging-v1 adapters) replay through the same fail-closed fee and
+      // cash checks as historical single-position ledgers — no schema change.
       if (event.data.position) validatePosition(event.data.position);
       state.position = event.data.position ? structuredClone(event.data.position) : null;
       return;

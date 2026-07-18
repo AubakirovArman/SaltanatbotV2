@@ -21,6 +21,8 @@ try {
     "alertRecords.d.ts",
     "chartGeometry.js",
     "chartGeometry.d.ts",
+    "dca.js",
+    "dca.d.ts",
     "screener.js",
     "screener.d.ts"
   ].filter(

@@ -24,6 +24,8 @@ export const R4_ARCHIVE_PORTFOLIO_ID = "20000000-0000-4000-8000-000000000042";
 export const R4_PRIMARY_BOT_ID = "30000000-0000-4000-8000-000000000041";
 
 const CSRF = "csrf-r4-paper";
+/** CSRF token the fixture's auth surface hands to the browser (shared by the R6 DCA fixture). */
+export const R4_CSRF = CSRF;
 const BASE_TIME = Date.parse("2026-07-16T20:00:00.000Z");
 
 type PaperAction = "start" | "pause" | "resume" | "stop";

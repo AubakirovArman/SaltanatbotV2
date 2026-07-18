@@ -1,4 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import type { DcaParamsV1 } from "@saltanatbotv2/contracts";
+import { DCA_STATE_SCHEMA_V1, dcaStateSettingsKey, parseDcaStateSnapshotV1, type DcaPhaseV1 } from "./dca/types.js";
 import { buildPaperPortfolioSnapshotFrom } from "./paperPortfolioProjectionStore.js";
 import { buildPaperRobotJournalFrom } from "./paperRobotJournal.js";
 import { listPaperPortfoliosFrom } from "./paperPortfolioStore.js";
@@ -10,6 +12,28 @@ export const PAPER_PORTFOLIO_LIST_SCHEMA_VERSION = "paper-portfolio-list-v1" as 
 
 export type PaperRobotControlStatus = "idle" | "stopped" | "running" | "paused" | "error";
 
+/**
+ * Additive DCA cycle info derived from the durable dcaState settings snapshot.
+ * Field names match the browser's lenient dca runtime parser exactly, and the
+ * versioned params travel along so the detail drawer can disclose the worst
+ * case with the shared contracts math.
+ */
+export interface PaperRobotDcaRuntimeMetadata {
+  schemaVersion: typeof DCA_STATE_SCHEMA_V1;
+  cycleState: DcaPhaseV1;
+  cycle: number;
+  safetyOrdersFilled: number;
+  safetyOrdersTotal: number;
+  averageEntryPrice?: number;
+  positionQty?: number;
+  nextSafetyOrderPrice?: number;
+  takeProfitPrice?: number;
+  cooldownUntil?: number;
+  stopReason?: string;
+  updatedAt?: number;
+  params: DcaParamsV1;
+}
+
 export interface PaperRobotRuntimeMetadata {
   botId: string;
   botRevision?: number;
@@ -18,6 +42,8 @@ export interface PaperRobotRuntimeMetadata {
   symbol?: string;
   status?: PaperRobotControlStatus;
   lastError?: string;
+  /** Present only for DCA robots; old clients ignore the additive field. */
+  dca?: PaperRobotDcaRuntimeMetadata;
   journal: PaperRobotJournal;
 }
 
@@ -66,6 +92,7 @@ export class PaperPortfolioReadService {
         asOf: record.snapshot.asOf
       }, robot);
       return runtimeMetadata(
+        this.database,
         config,
         robot.botId,
         robot.botRevision,
@@ -88,6 +115,7 @@ export class PaperPortfolioReadService {
 }
 
 function runtimeMetadata(
+  database: DatabaseSync,
   config: BotConfig | undefined,
   botId: string,
   botRevision: number,
@@ -109,6 +137,7 @@ function runtimeMetadata(
         : allocationStatus === "active"
           ? "stopped"
           : "idle";
+  const dca = dcaRuntimeMetadata(database, config);
   return {
     botId,
     botRevision,
@@ -116,9 +145,51 @@ function runtimeMetadata(
     ...(config?.strategyName ? { strategyName: config.strategyName } : {}),
     ...(config?.symbol ? { symbol: config.symbol } : {}),
     status,
+    ...(dca ? { dca } : {}),
     journal,
     ...(lastError ? { lastError } : {})
   };
+}
+
+/**
+ * DCA cycle metadata for the detail drawer, read from the same durable
+ * settings snapshot the engine persists per machine transition. The read model
+ * degrades to the pre-cycle defaults instead of failing the whole detail view
+ * when the snapshot is missing or unreadable.
+ */
+function dcaRuntimeMetadata(database: DatabaseSync, config: BotConfig | undefined): PaperRobotDcaRuntimeMetadata | undefined {
+  if (config?.kind !== "dca" || !config.dca) return undefined;
+  const metadata: PaperRobotDcaRuntimeMetadata = {
+    schemaVersion: DCA_STATE_SCHEMA_V1,
+    cycleState: "idle",
+    cycle: 0,
+    safetyOrdersFilled: 0,
+    safetyOrdersTotal: config.dca.maxSafetyOrders,
+    params: config.dca
+  };
+  try {
+    const row = database
+      .prepare("SELECT value FROM settings WHERE key = ? AND encrypted = 0")
+      .get(dcaStateSettingsKey(config.id)) as { value: string } | undefined;
+    if (!row) return metadata;
+    const snapshot = parseDcaStateSnapshotV1(JSON.parse(row.value));
+    if (snapshot.botId !== config.id || snapshot.ledgerEpoch !== (config.paperLedgerEpoch ?? 1)) return metadata;
+    const state = snapshot.state;
+    return {
+      ...metadata,
+      cycleState: state.phase,
+      cycle: state.cycle,
+      safetyOrdersFilled: state.soFilled,
+      ...(state.qty > 0 ? { averageEntryPrice: state.avgEntry, positionQty: state.qty } : {}),
+      ...(state.pendingSafety ? { nextSafetyOrderPrice: state.pendingSafety.price } : {}),
+      ...(state.pendingTakeProfit ? { takeProfitPrice: state.pendingTakeProfit.price } : {}),
+      ...(state.cooldownUntil !== undefined ? { cooldownUntil: state.cooldownUntil } : {}),
+      ...(state.stopReason !== undefined ? { stopReason: state.stopReason } : {}),
+      updatedAt: snapshot.savedAt
+    };
+  } catch {
+    return metadata;
+  }
 }
 
 function lastErrors(database: DatabaseSync, ownerUserId: string, botIds: string[]): Map<string, string> {

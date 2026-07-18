@@ -83,6 +83,23 @@ function paperBot(id: string): BotConfig {
   };
 }
 
+function dcaParams() {
+  return {
+    schemaVersion: "dca-params-v1",
+    direction: "long",
+    baseOrderQuote: 100,
+    safetyOrderQuote: 50,
+    maxSafetyOrders: 3,
+    priceDeviationPct: 1.5,
+    stepScale: 1.2,
+    volumeScale: 2,
+    takeProfitPct: 2,
+    cooldownSeconds: 300,
+    researchOnly: true,
+    executionPermission: false
+  } as const;
+}
+
 function context(ownerUserId: string, commandId: string, key: string, payload: PaperPortfolioExecutorPayload) {
   return {
     commandId,
@@ -245,6 +262,105 @@ describe("paper portfolio executor command handler", () => {
       .toEqual({ value: 1 });
     expect(value.prepare("SELECT COUNT(*) AS value FROM paper_events WHERE botId = ?").get("created-bot"))
       .toEqual({ value: 1 });
+  });
+
+  it("creates a DCA robot without strategy IR and starts it through the shared action path", async () => {
+    const value = database();
+    const portfolio = createPaperPortfolioIn(value, OWNER, {
+      mutationId: "dca-portfolio-create",
+      idempotencyKey: "dca-portfolio-create-key",
+      requestHash: "d".repeat(64),
+      now: NOW,
+      portfolioId: "dca-portfolio",
+      name: "DCA portfolio",
+      initialCapitalMicros: 100_000_000_000,
+      makeDefault: true
+    });
+    const runtime = new Runtime();
+    const handler = new PaperPortfolioCommandHandler(value, runtime, () => NOW + 10);
+    const {
+      ownerUserId: _owner,
+      status: _status,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ir: _ir,
+      ...bot
+    } = paperBot("dca-bot");
+    const payload = {
+      version: 1,
+      kind: "paper-robot.create",
+      portfolioId: portfolio.id,
+      expectedPortfolioRevision: portfolio.revision,
+      expectedLedgerEpoch: portfolio.currentEpoch,
+      botId: "dca-bot",
+      expectedBotRevision: 1,
+      // Worst case = (100 + 50 + 100 + 200) * 1.0005 = 450.225 USDT < 500 USDT.
+      allocationMicros: 500_000_000,
+      maxBots: 10,
+      bot: { ...bot, id: "dca-bot", accountId: "paper:dca-bot", bybitCrossCollateral: false, kind: "dca", dca: dcaParams() }
+    } as const satisfies PaperPortfolioExecutorPayload;
+
+    const created = await handler.apply(context(OWNER, "command-dca-create", "command-dca-create-key", payload));
+    expect(created.replayed).toBe(false);
+    const stored = JSON.parse((value.prepare("SELECT config FROM bots WHERE id = ?").get("dca-bot") as { config: string }).config);
+    expect(stored).toMatchObject({ id: "dca-bot", kind: "dca", dca: dcaParams(), paperAllocationMicros: 500_000_000 });
+    expect("ir" in stored).toBe(false);
+
+    // The durable receipt stores the bind mutation result: { portfolio, allocation, botRevision }.
+    const receipt = created.result as { portfolio: { revision: number; currentEpoch: number }; botRevision: number };
+    const action = {
+      version: 1,
+      kind: "paper-robot.action",
+      portfolioId: portfolio.id,
+      expectedPortfolioRevision: receipt.portfolio.revision,
+      expectedLedgerEpoch: receipt.portfolio.currentEpoch,
+      botId: "dca-bot",
+      expectedBotRevision: receipt.botRevision,
+      action: "start",
+      confirm: true
+    } as const satisfies PaperPortfolioExecutorPayload;
+    expect((await handler.apply(context(OWNER, "command-dca-start", "command-dca-start-key", action))).replayed).toBe(false);
+    expect(runtime.calls).toEqual(["start:dca-bot"]);
+  });
+
+  it("rejects a DCA robot whose worst-case capital exceeds its reserved allocation", async () => {
+    const value = database();
+    const portfolio = createPaperPortfolioIn(value, OWNER, {
+      mutationId: "dca-reject-create",
+      idempotencyKey: "dca-reject-create-key",
+      requestHash: "e".repeat(64),
+      now: NOW,
+      portfolioId: "dca-reject",
+      name: "DCA reject",
+      initialCapitalMicros: 100_000_000_000,
+      makeDefault: true
+    });
+    const handler = new PaperPortfolioCommandHandler(value, new Runtime(), () => NOW + 10);
+    const {
+      ownerUserId: _owner,
+      status: _status,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ir: _ir,
+      ...bot
+    } = paperBot("dca-over");
+    const payload = {
+      version: 1,
+      kind: "paper-robot.create",
+      portfolioId: portfolio.id,
+      expectedPortfolioRevision: portfolio.revision,
+      expectedLedgerEpoch: portfolio.currentEpoch,
+      botId: "dca-over",
+      expectedBotRevision: 1,
+      // Worst case 450.225 USDT > the reserved 450 USDT.
+      allocationMicros: 450_000_000,
+      maxBots: 10,
+      bot: { ...bot, id: "dca-over", accountId: "paper:dca-over", bybitCrossCollateral: false, kind: "dca", dca: dcaParams() }
+    } as const satisfies PaperPortfolioExecutorPayload;
+
+    await expect(handler.apply(context(OWNER, "command-dca-over", "command-dca-over-key", payload)))
+      .rejects.toMatchObject({ code: "WORST_CASE_EXCEEDS_ALLOCATION" });
+    expect(value.prepare("SELECT COUNT(*) AS value FROM bots WHERE id = ?").get("dca-over")).toEqual({ value: 0 });
   });
 
   it("stops flat robots, closes the old epoch and retains its immutable ledger on reset", async () => {
