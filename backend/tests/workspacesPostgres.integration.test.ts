@@ -222,7 +222,7 @@ describePostgres("workspaces against isolated PostgreSQL", () => {
 
       await expect(migrateDatabase(legacyPool)).resolves.toMatchObject({
         fromVersion: 9,
-        toVersion: 17,
+        toVersion: 18,
         applied: [
           { version: 10, name: "versioned_workspace_workflow" },
           {
@@ -252,6 +252,10 @@ describePostgres("workspaces against isolated PostgreSQL", () => {
           {
             version: 17,
             name: "ga_evolution_lineage"
+          },
+          {
+            version: 18,
+            name: "versioned_strategy_gallery"
           }
         ]
       });

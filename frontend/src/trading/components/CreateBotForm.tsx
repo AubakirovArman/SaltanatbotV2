@@ -6,6 +6,8 @@ import { gridText } from "../../i18n/grid";
 import { paperPortfolioText } from "../../i18n/paperPortfolio";
 import { tradingText } from "../../i18n/trading";
 import { compileXmlToIr } from "../../strategy/compileArtifact";
+import { galleryRevalidationPending } from "../../strategy/galleryImport";
+import { galleryText } from "../../strategy/galleryText";
 import type { StrategyIR } from "../../strategy/ir";
 import type { StrategyArtifact } from "../../strategy/library";
 import type { CatalogResponse } from "../../types";
@@ -85,6 +87,10 @@ export function CreateBotForm({
   const strategy = runnable.find((item) => item.id === strategyId);
   const dcaMode = robotType === "dca";
   const gridMode = robotType === "grid";
+  // R9.3 gate: a gallery import copy cannot start ANY robot until a local
+  // validation + backtest completed on that copy (the Strategy Studio seam
+  // clears the flag). Import/publication alone never unlocks trading.
+  const galleryGateLocked = robotType === "strategy" && galleryRevalidationPending(strategy);
   const dcaEvaluation = useMemo(() => evaluateDcaDraft(dcaDraft), [dcaDraft]);
   const gridEvaluation = useMemo(() => evaluateGridDraft(gridDraft), [gridDraft]);
   const selectedExchange: ExchangeId = paperOnly || dcaMode || gridMode ? "paper" : exchange;
@@ -172,6 +178,10 @@ export function CreateBotForm({
     } else {
       if (!strategy) {
         setError(tradingText(locale, "pickStrategy"));
+        return;
+      }
+      if (galleryGateLocked) {
+        setError(galleryText(locale, "paperStartLocked"));
         return;
       }
       const compiled = compileXmlToIr(strategy.xml);
@@ -311,6 +321,9 @@ export function CreateBotForm({
           <label>{tradingText(locale, "botName")}
             <input name="bot-name" value={name} placeholder={strategy?.name ?? tradingText(locale, "botFallbackName")} onChange={(event) => setName(event.target.value)} />
           </label>
+          {galleryGateLocked && (
+            <p className="field-help gallery-revalidation-lock" role="alert">{galleryText(locale, "paperStartLocked")}</p>
+          )}
         </fieldset>
       )}
 
@@ -546,7 +559,7 @@ export function CreateBotForm({
 
       {selectedExchange !== "paper" && <div className="trade-warn"><AlertTriangle size={13} aria-hidden="true" /> {tradingText(locale, "realTradingWarning")}</div>}
       {error && <div className="strategy-warnings" role="alert"><span><AlertTriangle size={12} aria-hidden="true" /> {error}</span></div>}
-      <button type="submit" className="run-button form-submit" disabled={busy || !paperBindingReady || !dcaReady || !gridReady}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
+      <button type="submit" className="run-button form-submit" disabled={busy || galleryGateLocked || !paperBindingReady || !dcaReady || !gridReady}>{tradingText(locale, busy ? "creating" : "createBot")}</button>
     </form>
   );
 }

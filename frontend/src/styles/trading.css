@@ -2243,3 +2243,6 @@
 .status-dot.error span {
   background: var(--down);
 }
+
+/* R9.3 gallery revalidation gate: the paper-start lock note inside the bot creation form. */
+.trade-form .gallery-revalidation-lock { color: var(--warn); font-weight: 650; }

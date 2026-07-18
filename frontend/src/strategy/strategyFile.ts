@@ -161,7 +161,13 @@ function parseProvenance(value: unknown): PortableStrategyArtifact["provenance"]
   };
 }
 
-function canonicalStringify(value: unknown): string {
+/**
+ * Canonical JSON: object keys sorted, undefined members dropped, arrays kept
+ * in order. Byte-for-byte the same algorithm as the backend gallery
+ * sanitizer's canonicalJsonStringify — both the strategy-file checksum and the
+ * gallery hash re-verification depend on this staying identical.
+ */
+export function canonicalStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalStringify).join(",")}]`;
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;

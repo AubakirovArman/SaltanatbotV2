@@ -13,6 +13,7 @@ import { BacktestReport } from "../../components/BacktestReport";
 import { PortfolioBacktestReport } from "../../components/PortfolioBacktestReport";
 import { localeTag, type Locale } from "../../i18n";
 import { strategyText } from "../../i18n/strategy";
+import { galleryText } from "../galleryText";
 import { OptimizePanel } from "./OptimizePanel";
 import { ArtifactVersionPanel } from "./ArtifactVersionPanel";
 import type { CompileDiagnostic } from "../compile";
@@ -82,6 +83,8 @@ interface StrategyExecutionPanelProps {
   onDiagnosticSelect: (blockId?: string) => void;
   result?: BacktestResult;
   portfolioResult?: PortfolioBacktestResult;
+  /** Gallery import copy whose local validation + backtest has not completed yet: paper start stays locked. */
+  galleryRevalidationPending?: boolean;
   decimals: number;
   onShowOnChart?: () => void;
   onOpenTrading?: () => void;
@@ -293,13 +296,16 @@ export function StrategyExecutionPanel(props: StrategyExecutionPanelProps) {
         <section className="studio-stage-panel studio-run-stage">
           <strong>{t("runReadiness")}</strong>
           <p>{props.diagnostics.length ? t("fixValidationBeforeRun") : t("runReadinessHint")}</p>
+          {props.galleryRevalidationPending && (
+            <p className="gallery-revalidation-lock" role="status">{galleryText(props.locale, "paperStartLocked")}</p>
+          )}
           {props.onShowOnChart && (
             <button type="button" onClick={props.onShowOnChart}>
               {t("showOnChart")}
             </button>
           )}
           {props.onOpenTrading && (
-            <button type="button" disabled={props.diagnostics.length > 0} onClick={props.onOpenTrading}>
+            <button type="button" disabled={props.diagnostics.length > 0 || props.galleryRevalidationPending} onClick={props.onOpenTrading}>
               {t("openExperimentalTrading")}
             </button>
           )}

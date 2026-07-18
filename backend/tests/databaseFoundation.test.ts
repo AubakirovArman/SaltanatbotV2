@@ -98,11 +98,11 @@ function createPoolDouble(
 
 describe("PostgreSQL schema migrations", () => {
   it("uses contiguous checksummed versions and no extensions", () => {
-    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(17);
+    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(18);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18
     ]);
-    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(17);
+    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(18);
     expect(DATABASE_MIGRATIONS.every((migration) => /^[0-9a-f]{64}$/.test(migration.checksum))).toBe(true);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.sql).join("\n")).not.toMatch(/CREATE\s+EXTENSION/i);
   });
@@ -265,6 +265,40 @@ describe("PostgreSQL schema migrations", () => {
     );
   });
 
+  it("adds only the content-frozen strategy gallery in v18", () => {
+    expect(DATABASE_MIGRATIONS[17].name).toBe("versioned_strategy_gallery");
+    expect(DATABASE_MIGRATIONS[17].sql).toContain("CREATE TABLE gallery_artifacts");
+    expect(DATABASE_MIGRATIONS[17].sql).toContain("PRIMARY KEY (id, version)");
+    expect(DATABASE_MIGRATIONS[17].sql).toContain(
+      "CHECK (visibility IN ('private', 'unlisted', 'public'))"
+    );
+    expect(DATABASE_MIGRATIONS[17].sql).toContain("CHECK (status IN ('active', 'revoked'))");
+    expect(DATABASE_MIGRATIONS[17].sql).toContain(
+      "CHECK (artifact_hash ~ '^[0-9a-f]{64}$')"
+    );
+    expect(DATABASE_MIGRATIONS[17].sql).toContain(
+      "octet_length(convert_to(artifact::text, 'UTF8')) <= 262144"
+    );
+    expect(DATABASE_MIGRATIONS[17].sql).toContain(
+      "CHECK ((status = 'revoked') = (revoked_at IS NOT NULL))"
+    );
+    expect(DATABASE_MIGRATIONS[17].sql).toContain("gallery_artifacts_public_feed_index");
+    expect(DATABASE_MIGRATIONS[17].sql).toContain("gallery_artifacts_owner_recent_index");
+    expect(DATABASE_MIGRATIONS[17].sql).toContain("CREATE FUNCTION reject_gallery_content_update()");
+    expect(DATABASE_MIGRATIONS[17].sql).toContain(
+      "CREATE TRIGGER gallery_artifacts_content_frozen"
+    );
+    // The frozen column list covers every content column; only moderation
+    // columns (visibility/status/revoked_at/revoke_reason/updated_at) stay out.
+    for (const column of ["artifact", "artifact_hash", "title", "summary", "version", "published_at", "owner_user_id", "rating"]) {
+      expect(DATABASE_MIGRATIONS[17].sql).toContain(`NEW.${column} IS DISTINCT FROM OLD.${column}`);
+    }
+    expect(DATABASE_MIGRATIONS[17].sql).not.toMatch(/NEW\.(visibility|status|revoked_at|revoke_reason|updated_at) IS DISTINCT FROM/);
+    expect(DATABASE_MIGRATIONS[17].sql).not.toMatch(
+      /\b(api_key|bot_token|password_hash|private_key|exchange_secret|signed_request|workspace_id|run_id|lineage)\b/i
+    );
+  });
+
   it("derives legacy public session IDs opaquely from the full secret hash", () => {
     const idHash = "0123456789abcdef".repeat(4);
     const digest = createHash("md5")
@@ -282,8 +316,8 @@ describe("PostgreSQL schema migrations", () => {
     const database = createPoolDouble();
     const result = await migrateDatabase(database.pool);
 
-    expect(result).toMatchObject({ fromVersion: 0, toVersion: 17 });
-    expect(result.applied).toHaveLength(17);
+    expect(result).toMatchObject({ fromVersion: 0, toVersion: 18 });
+    expect(result.applied).toHaveLength(18);
     expect(database.queries.some((query) => query.text.includes("pg_advisory_xact_lock"))).toBe(true);
     expect(database.queries.at(0)?.text).toBe("BEGIN");
     expect(database.queries.at(-1)?.text).toBe("COMMIT");

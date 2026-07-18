@@ -86,6 +86,8 @@ export interface GaCandidateDetail extends GaCandidateSummary {
   lineage: string[];
   mutationLog: GaMutationEntry[];
   markets: GaCandidateMarketMetrics[];
+  /** Aggregate cross-market OOS metrics; the gallery publish preview mirrors the server sanitizer with these. */
+  portfolioOutOfSample?: Record<string, number>;
   ir?: Record<string, unknown>;
 }
 
@@ -267,12 +269,14 @@ function parseCandidateDetail(value: unknown): GaCandidateDetail | undefined {
   const summary = parseCandidateSummary(value);
   const input = objectValue(value);
   if (!summary || !input) return undefined;
+  const portfolioMetrics = objectValue(objectValue(objectValue(input.metrics)?.portfolio)?.metrics);
   return {
     ...summary,
     parentFingerprints: fingerprintList(input.parentFingerprints),
     lineage: fingerprintList(input.lineage),
     mutationLog: mutationLog(input.mutationLog),
     markets: candidateMarkets(objectValue(input.metrics)?.markets),
+    portfolioOutOfSample: portfolioMetrics ? numberRecord(portfolioMetrics) : undefined,
     ir: objectValue(input.ir)
   };
 }

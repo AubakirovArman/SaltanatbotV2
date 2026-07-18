@@ -299,8 +299,9 @@ review remain the only way forward.
 
 R9.2 is **accepted and deployed** with the additive PostgreSQL 16→17 migration
 `ga_evolution_lineage`; see the recorded
-[R9.2 acceptance evidence](evidence/R9_2_GA_EVOLUTION.md). Everything here is research-only, and
-the public strategy gallery stays out of scope until R9.3.
+[R9.2 acceptance evidence](evidence/R9_2_GA_EVOLUTION.md). Everything here is research-only; the
+versioned strategy gallery is the separate R9.3 increment described in the next section,
+currently in progress and not accepted.
 
 The pure generator primitives now live in the workspace package
 `@saltanatbotv2/strategy-generator` (`frontend/src/strategy/generator` re-exports it unchanged,
@@ -335,6 +336,56 @@ promotion when a candidate has no out-of-sample report or is flagged overfit
 same reason. A promoted artifact is an ordinary editable strategy: it starts nothing, and
 backtest, walk-forward and paper review remain the only way forward. The evaluation universe is
 still the currently listed public catalog, so results carry survivorship bias.
+
+### Versioned strategy gallery (R9.3, in progress — NOT accepted)
+
+R9.3 is **in progress in this checkout**: it has not passed the release gate and production still
+runs the R9.2 slot on PostgreSQL schema 17. The gallery lets an account publish a strategy for
+other accounts of the same self-hosted instance to review and import, with three hard guarantees:
+a published artifact reproduces from pinned versions, it never discloses tenant-owned data, and it
+cannot change silently after import. The exact HTTP contract is documented in the
+[API reference](API.md).
+
+**Publishing.** The **Gallery** section of the artifact library publishes either a library
+artifact (its compiled IR plus optional self-declared markets and metrics) or a **promoted** GA
+candidate (which carries server-evaluated train/OOS evidence, the dataset fingerprint, seed and
+engine/generator versions). Before anything is sent, the publish dialog renders a **sanitization
+preview** — the exact canonical JSON that will be hashed and stored, byte for byte — and requires
+an explicit consent checkbox; changing the previewed content withdraws consent. The server-side
+sanitizer whitelists every field it copies and refuses publication if any owner ID, run ID or job
+ID appears anywhere in the serialized bundle, so tenant identifiers, workspace references and
+lineage user data never reach a stored artifact. Library-sourced metrics are stored labeled
+**self-reported** — unverified publisher claims — while GA-sourced metrics are labeled as
+server-evaluated out-of-sample evidence; both bundles carry a mandatory limitations note stating
+that backtest evidence is historical.
+
+**Immutability and hashing.** A publication is an immutable `(id, version)` row; publishing again
+under the same ID creates the next version and leaves every prior version intact. The published
+content is frozen by a database trigger — only visibility and revocation state can ever change —
+and the bundle's SHA-256 over its canonical JSON is stored beside it. The same canonical
+serialization runs in the browser, so the hash is re-verified on **both** sides at import: the
+server refuses to serve a bundle whose stored hash no longer matches, and the client independently
+recomputes the hash and refuses a mismatched bundle with an explicit error.
+
+**Rating.** Every feed card shows the publication's rating **with its breakdown — never a bare
+score, and never raw return**: raw profit is intentionally not a rating component. The composite
+0–100 score weighs out-of-sample stability (0.35; zeroed for overfit-flagged candidates, halved
+for unstable ones, zero for self-reported metrics without an OOS section), drawdown (0.25),
+reproducibility (0.2 — dataset fingerprint, seed, engine and generator versions present),
+structural complexity (0.1) and evidence freshness (0.1, decaying over 365 days). Cards also show
+in-sample versus out-of-sample metrics, the OOS gap with explicit overfit/unstable flags, the
+limitations note and an explicit revoked state.
+
+**Importing.** Import opens a review dialog (the `.strategy`-file review precedent) showing the
+verified hash, provenance, the self-reported warning where applicable and the limitations note.
+Confirming creates a **separate, independent library copy** with `gallery` provenance — the local
+library is never linked to the server row — and stamps it **revalidation required**: the paper
+start action stays locked until a local validation and backtest complete on this exact copy.
+Publication and import never start a robot. Revoking an owned publication requires an explicit
+reason, marks every version revoked (import is refused with an explicit error) and never rewrites
+the published content; the owner keeps read access to their revoked history. Visibility
+(`private`/`unlisted`/`public`) can be changed at any time, and the whole gallery — public feed
+included — remains session-gated in the pre-HTTPS deployment.
 
 ## Metrics produced
 

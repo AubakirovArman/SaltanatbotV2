@@ -674,8 +674,8 @@ recorded in
 
 R9 overall is not finished: R9.2 (server GA evolution with lineage,
 Pareto/OOS promotion and checkpoint/resume) is now also accepted and
-deployed — see the next section — and R9.3 (the strategy gallery) has
-not started.
+deployed — see the next section — and R9.3 (the strategy gallery) is
+in progress in this checkout and not accepted.
 
 ## R9.2 server GA evolution with lineage and promotion accepted and deployed — 2026-07-18
 
@@ -795,8 +795,68 @@ evidence is recorded in
 
 R9 overall is still not finished: R9.1 and R9.2 are accepted and
 deployed, but R9.3 (the versioned strategy gallery with provenance,
-safe import and revoke) has not started and is the next pending
-increment inside R9.
+safe import and revoke) is **in progress in this checkout and NOT
+accepted** — see the next section.
+
+## R9.3 versioned strategy gallery — in progress (NOT accepted, NOT deployed)
+
+This slice (roadmap R9.3) is **in progress in this checkout**. It has
+not passed the [RELEASING.md](./RELEASING.md) gate, has no
+CI/slot/cutover evidence, and **production still runs protected slot
+`r9b-schema17-3ed6af1` on PostgreSQL schema 17 and trading SQLite
+schema 10**. The roadmap §13 / §18.1 R9.3 release criterion (a
+published artifact reproduces from pinned versions, discloses no
+tenant-owned data and cannot change silently after import — privacy +
+reproducible artifact) has not been demonstrated through the release
+gate yet. Landed so far in this checkout:
+
+- [x] Additive PostgreSQL migration 18 `versioned_strategy_gallery`
+  (see the in-progress [migration note](./MIGRATIONS.md)): immutable
+  `(id, version)` publications with a sanitized ≤256 KiB bundle, the
+  canonical-JSON SHA-256 `artifact_hash`, visibility/status state,
+  display-only rating, feed/own indexes and the
+  `gallery_artifacts_content_frozen` BEFORE UPDATE trigger freezing
+  the published content at the SQL level; migrations v1–v17 stay
+  byte-identical and the migration-chain suites received the
+  established version bumps.
+- [x] Backend gallery module (`backend/src/gallery/`): the
+  whitelisting sanitizer (`gallery-artifact-v1`, parseStrategyIR
+  re-validation, self-reported labeling for library metrics, the
+  belt-and-braces forbidden-identifier assertion on the serialized
+  output), the pure never-return-only rating with documented weights,
+  the repository (publish/versioning, visibility matrix, revoke,
+  server-side hash re-verification on import) and the session-gated
+  `/api/gallery` router mounted through the identity server routes;
+  reference docs regenerated (176 HTTP endpoints).
+- [x] Browser slice: `galleryClient.ts` with **client-side** canonical
+  hash re-verification on import, the Gallery panel in the artifact
+  library (feed cards with in-sample/OOS metrics, OOS gap and
+  overfit/unstable flags, limitations and the rating breakdown — never
+  a bare score; own-artifact visibility/revoke management with
+  explicit revoked states), the publish dialog with the exact
+  canonical-JSON sanitization preview and explicit consent, the
+  import review dialog, and the import-copy model: an independent
+  library copy with `gallery` provenance whose paper start stays
+  locked until a local validation + backtest completes
+  (`galleryImport` revalidation gate); EN/RU/KK catalogs.
+- [x] Sanitizer/frontend suites landed so far: adversarial
+  leak-refusal and whitelist goldens (`gallerySanitizer.test.ts`),
+  gallery panel and import-gate suites
+  (`galleryPanel.test.tsx`, `galleryImport.test.tsx`).
+- [ ] The remaining R9.3 verification program: the PG-gated gallery
+  integration suite wired into CI, the `r9c-gallery` E2E journey, the
+  criterion tests (hash-stability golden and tamper-simulation
+  refusal) recorded green at the release SHA, and the full
+  [RELEASING.md](./RELEASING.md) gate — exact-commit CI, a protected
+  slot, the paired backup/isolated-restore rehearsal of the 17-to-18
+  migration, the production cutover and recorded evidence.
+
+Candidate behavior for the in-progress contracts is documented in the
+[API reference](./API.md) gallery section, the
+[strategy reference](./STRATEGIES.md) R9.3 section, the
+[migration notes](./MIGRATIONS.md) in-progress schema-18 note and the
+[threat model](./THREAT_MODEL.md) gallery sharing boundary — all
+clearly marked NOT accepted until the gate passes.
 
 ## Delivered slices (not full roadmap completion)
 

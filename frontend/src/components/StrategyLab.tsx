@@ -15,6 +15,7 @@ import { PineSourceComparison } from "../strategy/components/PineSourceCompariso
 import { useStrategyResearch } from "../strategy/useStrategyResearch";
 import { useStrategyWorkspace } from "../strategy/useStrategyWorkspace";
 import type { PortableStrategyArtifact } from "../strategy/strategyFile";
+import { galleryRevalidationPending, type GalleryImportDraft } from "../strategy/galleryImport";
 import type { VerifiedPlugin } from "@saltanatbotv2/plugin-core";
 import type { PwaFileLaunchBatch } from "../pwa/fileLaunch";
 import "../styles/strategy.css";
@@ -27,12 +28,15 @@ interface StrategyLabProps {
   onSaveArtifact: (artifact: StrategyArtifact) => void;
   onUseTemplate: (template: StrategyTemplate) => void;
   onImportStrategy: (input: PortableStrategyArtifact) => void;
+  onImportGalleryStrategy: (draft: GalleryImportDraft) => void;
   onImportPlugin: (input: VerifiedPlugin) => void;
   onUninstallPlugin: (key: string) => boolean;
   onImportPineMany: (inputs: PineImport[]) => void;
   launchedBatch?: PwaFileLaunchBatch;
   onLaunchedBatchConsumed?: () => void;
   onRollbackArtifact: (id: string, version: number) => void;
+  /** A successful local validation + backtest of a gallery copy opens its paper-start gate. */
+  onArtifactRevalidated?: (id: string) => void;
   onUpdateArtifactDependencies: (id: string, dependencies: string[]) => void;
   catalog?: CatalogResponse;
   initialSymbol: string;
@@ -57,12 +61,14 @@ export function StrategyLab({
   onSaveArtifact,
   onUseTemplate,
   onImportStrategy,
+  onImportGalleryStrategy,
   onImportPlugin,
   onUninstallPlugin,
   onImportPineMany,
   launchedBatch,
   onLaunchedBatchConsumed,
   onRollbackArtifact,
+  onArtifactRevalidated,
   onUpdateArtifactDependencies,
   catalog,
   initialSymbol,
@@ -87,7 +93,13 @@ export function StrategyLab({
     initialTimeframe,
     exchange,
     onApplyResult,
-    onBacktestCompleted
+    // A completed backtest implies the compile validation passed, so a pending
+    // gallery revalidation gate on the active copy opens here — the only seam
+    // that unlocks paper start for imported gallery artifacts.
+    onBacktestCompleted: () => {
+      onBacktestCompleted?.();
+      if (activeArtifact && galleryRevalidationPending(activeArtifact)) onArtifactRevalidated?.(activeArtifact.id);
+    }
   });
   const [shareState, setShareState] = useState<"idle" | "copied">("idle");
   const [mobilePane, setMobilePane] = useState<MobileStrategyPane>("editor");
@@ -150,6 +162,10 @@ export function StrategyLab({
           }}
           onImportStrategy={(input) => {
             onImportStrategy(input);
+            setMobilePane("editor");
+          }}
+          onImportGalleryStrategy={(draft) => {
+            onImportGalleryStrategy(draft);
             setMobilePane("editor");
           }}
           onImportPlugin={(input) => {
@@ -237,6 +253,7 @@ export function StrategyLab({
           onDiagnosticSelect={workspace.focusDiagnostic}
           result={research.result}
           portfolioResult={research.portfolioResult}
+          galleryRevalidationPending={galleryRevalidationPending(activeArtifact)}
           decimals={instrument?.decimals ?? 2}
           onShowOnChart={onShowOnChart ? () => onShowOnChart(research.symbol, research.timeframe) : undefined}
           onOpenTrading={onOpenTrading}

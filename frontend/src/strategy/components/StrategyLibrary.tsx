@@ -1,4 +1,4 @@
-import { Boxes, Dna, Download, FileCode2, LayoutGrid, PackageOpen, PackagePlus, Plus, ShieldAlert, Upload, WandSparkles, X } from "lucide-react";
+import { Boxes, Dna, Download, FileCode2, Globe2, LayoutGrid, PackageOpen, PackagePlus, Plus, ShieldAlert, Upload, WandSparkles, X } from "lucide-react";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { PineImportDialog } from "../../components/PineImportDialog";
 import type { PineImport } from "../pine";
@@ -18,6 +18,9 @@ import { trustPluginKey } from "../pluginTrust";
 import type { PwaFileLaunchBatch } from "../../pwa/fileLaunch";
 import { useImportReviewQueue } from "../useImportReviewQueue";
 import { StrategyFileReviewDialog } from "./StrategyFileReviewDialog";
+import { galleryRevalidationPending, type GalleryImportDraft } from "../galleryImport";
+import { galleryText } from "../galleryText";
+import { GalleryPanel } from "./GalleryPanel";
 
 const GeneratorPanel = lazy(() => import("./GeneratorPanel").then((module) => ({ default: module.GeneratorPanel })));
 const generatorEntryMessages = {
@@ -35,6 +38,7 @@ export function StrategyLibrary({
   onCreate,
   onUseTemplate,
   onImportStrategy,
+  onImportGalleryStrategy,
   onImportPlugin,
   onUninstallPlugin,
   onImportPineMany,
@@ -49,6 +53,7 @@ export function StrategyLibrary({
   onCreate: (kind: StrategyArtifactKind) => void;
   onUseTemplate: (template: StrategyTemplate) => void;
   onImportStrategy: (input: PortableStrategyArtifact) => void;
+  onImportGalleryStrategy: (draft: GalleryImportDraft) => void;
   onImportPlugin: (input: VerifiedPlugin) => void;
   onUninstallPlugin: (key: string) => boolean;
   onImportPineMany: (inputs: PineImport[]) => void;
@@ -58,6 +63,7 @@ export function StrategyLibrary({
   const indicators = artifacts.filter((artifact) => artifact.kind === "indicator");
   const strategies = artifacts.filter((artifact) => artifact.kind === "strategy");
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [serverGalleryOpen, setServerGalleryOpen] = useState(false);
   const [pineOpen, setPineOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [generatorOpen, setGeneratorOpen] = useState(false);
@@ -89,6 +95,9 @@ export function StrategyLibrary({
         </button>
         <button type="button" onClick={() => setGalleryOpen(true)} title={strategyText(locale, "browseTemplates")}>
           <LayoutGrid size={14} aria-hidden="true" /> {strategyText(locale, "gallery")}
+        </button>
+        <button type="button" onClick={() => setServerGalleryOpen(true)} title={galleryText(locale, "openHelp")}>
+          <Globe2 size={14} aria-hidden="true" /> {galleryText(locale, "open")}
         </button>
         <button type="button" onClick={() => setWizardOpen(true)} title={strategyText(locale, "strategyWizard")}>
           <WandSparkles size={14} aria-hidden="true" /> {strategyText(locale, "wizard")}
@@ -199,6 +208,16 @@ export function StrategyLibrary({
           />
         </Suspense>
       )}
+      {!importReviewActive && serverGalleryOpen && (
+        <GalleryPanel
+          locale={locale}
+          ownerUserId={storageOwnerId || undefined}
+          artifacts={artifacts}
+          activeId={activeId}
+          onClose={() => setServerGalleryOpen(false)}
+          onImportGalleryStrategy={onImportGalleryStrategy}
+        />
+      )}
       {!importReviewActive && galleryOpen && (
         <TemplateGallery
           locale={locale}
@@ -289,6 +308,7 @@ function LibraryGroup({
           <div key={item.id} className={`library-item ${item.id === activeId ? "active" : ""}`}>
             <button type="button" className="library-item-main" onClick={() => onSelect(item.id)}>
               <strong>{item.name}</strong>
+              {galleryRevalidationPending(item) && <em className="library-item-revalidation">{galleryText(locale, "revalidationBadge")}</em>}
               <span>{item.description}</span>
             </button>
             <button

@@ -4,6 +4,37 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## In progress — R9.3 PostgreSQL schema 18 (NOT accepted, NOT deployed)
+
+The R9.3 versioned strategy gallery increment is **in progress in this checkout**. It has not
+passed the release gate, has no CI/slot/cutover evidence, and **production still runs PostgreSQL
+schema 17 and trading SQLite schema 10 from protected slot `r9b-schema17-3ed6af1`**. Nothing in
+this note claims acceptance; it exists so the pending schema change is visible before release.
+
+The candidate change is one additive PostgreSQL migration, version 18
+`versioned_strategy_gallery`. It creates only new objects: the `gallery_artifacts` table — one
+immutable publication per `(id, version)` primary-key row with an owner foreign key that is never
+serialized outward, bounded title/summary, a size-checked **sanitized** artifact JSONB of at most
+256 KiB (the sanitizer whitelist guarantees no owner IDs, workspace references, run IDs or
+lineage user data are ever stored), the SHA-256 `artifact_hash` over the bundle's canonical JSON,
+`private`/`unlisted`/`public` visibility, `active`/`revoked` status, a bounded display-only
+rating JSONB and publish/revoke timestamps with cross-field CHECK constraints — plus the
+`(visibility, status, published_at DESC)` public-feed index, the `(owner_user_id,
+published_at DESC)` own-list index and the `gallery_artifacts_content_frozen` BEFORE UPDATE
+trigger, which rejects any change to the published content (identity, owner, title, summary,
+artifact, hash, rating, publish/create timestamps) so that after publish only visibility, status,
+`revoked_at`, `revoke_reason` and `updated_at` may change. Revocation therefore never rewrites
+history and an imported bundle can never change silently underneath its hash. Migrations v1–v17
+stay byte-identical, no existing table is rewritten and the trading SQLite is untouched at
+schema 10. The chain remains forward-only: after a database reaches version 18, never run an
+older binary against it and never remove migration rows to roll back — rollback is restoring a
+verified pre-upgrade paired generation into replacement resources.
+
+The R9.3 acceptance will require the standard paired backup/verify/isolated-restore discipline
+plus the restore-based PostgreSQL migration rehearsal (17 → 18 on an isolated restored copy, then
+a rerun proving a no-op) before any production cutover; the accepted sections below remain the
+only production migration record until then.
+
 ## Accepted R9.2 PostgreSQL schema 17 migration
 
 The R9.2 server GA evolution release (lineage, Pareto/OOS promotion and checkpoint/resume) was

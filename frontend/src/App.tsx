@@ -437,12 +437,14 @@ export default function App() {
                   onSaveArtifact={artifactLibrary.saveArtifact}
                   onUseTemplate={artifactLibrary.useTemplate}
                   onImportStrategy={artifactLibrary.importStrategy}
+                  onImportGalleryStrategy={artifactLibrary.importGalleryStrategy}
                   onImportPlugin={artifactLibrary.importPlugin}
                   onUninstallPlugin={artifactLibrary.uninstallPlugin}
                   onImportPineMany={artifactLibrary.importPineMany}
                   launchedBatch={launchedFiles[0]?.approved ? launchedFiles[0].batch : undefined}
                   onLaunchedBatchConsumed={consumeLaunchedFiles}
                   onRollbackArtifact={artifactLibrary.rollbackArtifactVersion}
+                  onArtifactRevalidated={artifactLibrary.markArtifactRevalidated}
                   onUpdateArtifactDependencies={artifactLibrary.updateArtifactDependencies}
                   catalog={catalog}
                   initialSymbol={symbol}

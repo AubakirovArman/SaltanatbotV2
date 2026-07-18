@@ -339,6 +339,54 @@ Persistent notification delivery uses a durable at-least-once outbox with bounde
 after a remote channel accepts a message but before acknowledgement persistence can still duplicate
 delivery.
 
+### Cross-tenant strategy sharing through the gallery (R9.3, in progress)
+
+This boundary is **in progress and NOT accepted or deployed**: the versioned strategy gallery is
+being built in this checkout behind the pending PostgreSQL schema-18 migration, and production
+still runs the accepted R9.2 slot. It is the first surface that deliberately moves user-authored
+content across tenant lines, so its controls are recorded here before release. Threats include a
+published bundle leaking tenant-owned data (owner IDs, run IDs, workspace references, lineage
+user data) to other accounts; a published artifact being modified after users imported it, so a
+reviewed strategy silently diverges from the running copy; an import of a revoked or tampered
+bundle; a fabricated rating or self-reported metrics presented as verified performance; and a
+gallery import or publication starting a robot without the owner's explicit staged review.
+
+Planned/implemented mitigations in this checkout:
+
+- publication runs through a whitelisting sanitizer that copies only known fields (the
+  `parseStrategyIR`-revalidated IR, market/metric summaries, engine/generator versions, dataset
+  fingerprint, seed, complexity, limitations) and then asserts on the serialized output that no
+  owner, run or job identifier survived — publication is refused, never partially cleaned, and
+  the assertion is exercised with adversarial fixtures; owner identifiers are never serialized
+  outward from any gallery projection;
+- published content is immutable at the SQL level: a BEFORE UPDATE trigger on the `(id, version)`
+  row rejects any change to artifact, hash, title, summary, rating, identity or timestamps —
+  only visibility, status and revocation fields may change — and each publication stores the
+  SHA-256 of the bundle's canonical JSON;
+- the hash is verified on **both** sides at import: the server re-verifies the stored hash before
+  serving the bundle (500 on mismatch) and the browser recomputes the same canonical hash and
+  refuses a mismatched bundle with an explicit error, so a bundle cannot change silently after
+  review;
+- revocation marks every version revoked with a mandatory reason, refuses further imports with an
+  explicit error and never rewrites history; the owner retains read access to their own revoked
+  rows;
+- the rating is computed at publish time, is display-only and is never a function of raw return
+  alone; library-sourced metrics are stored and displayed as self-reported, unverified claims
+  with a mandatory limitations note;
+- the publish dialog shows the exact canonical JSON that will be stored and requires explicit
+  consent; import creates an independent local library copy behind a review dialog and a
+  revalidation gate — paper start stays locked until a local validation and backtest complete on
+  that exact copy — and neither publication nor import ever starts a robot;
+- the entire router, public feed included, stays session-gated under the pre-HTTPS discipline
+  with bounded no-store responses and bounded request bodies.
+
+Residual risks: the sanitizer cannot prove a strategy is safe or profitable — a published IR is
+still arbitrary user logic that must pass the ordinary backtest/walk-forward/paper review after
+import; free-text titles, summaries and IR names can carry anything the publisher chooses to
+write short of the asserted identifiers; and visibility is an access control within one
+self-hosted instance, not encryption — an instance administrator with database access can read
+stored bundles. These boundaries become deployed claims only when R9.3 passes the release gate.
+
 ### Malicious or pathological strategies
 
 Threats include arbitrary code execution, parser resource exhaustion, unsupported Pine semantics and

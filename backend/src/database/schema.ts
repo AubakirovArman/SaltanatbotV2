@@ -8,6 +8,7 @@ import { ONBOARDING_AND_RUNTIME_HEARTBEATS_MIGRATION_SQL } from "./onboardingMig
 import { SCREENER_PRESETS_MIGRATION_SQL } from "./screenerPresetsMigration.js";
 import { TELEGRAM_COMMAND_BRIDGE_MIGRATION_SQL } from "./telegramCommandBridgeMigration.js";
 import { TELEGRAM_NOTIFICATION_INGRESS_MIGRATION_SQL } from "./telegramIngressMigration.js";
+import { VERSIONED_STRATEGY_GALLERY_MIGRATION_SQL } from "./versionedStrategyGalleryMigration.js";
 import { WORKSPACE_WORKFLOW_MIGRATION_SQL } from "./workspaceWorkflowMigration.js";
 
 export interface DatabaseMigration {
@@ -420,6 +421,11 @@ const migrationDefinitions = [
     version: 17,
     name: "ga_evolution_lineage",
     sql: GA_EVOLUTION_LINEAGE_MIGRATION_SQL
+  },
+  {
+    version: 18,
+    name: "versioned_strategy_gallery",
+    sql: VERSIONED_STRATEGY_GALLERY_MIGRATION_SQL
   }
 ] as const;
 

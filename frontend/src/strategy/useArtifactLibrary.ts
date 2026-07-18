@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import type { IndicatorConfig } from "../chart/indicatorTypes";
 import { createArtifactCopy, createPineArtifacts, createPluginArtifacts, createTemplateCopy, dedupeArtifactName, stampArtifact, rollbackArtifact, type PineArtifactInput, upsertArtifact } from "./artifactLibraryModel";
+import { completeGalleryRevalidation, type GalleryImportDraft } from "./galleryImport";
 import type { StrategyArtifact, StrategyArtifactKind } from "./library";
 import { indicatorToArtifact, normalizeArtifact, portableArtifactProvenanceSource } from "./library";
 import { warmStrategyLab } from "./loadStrategyLab";
@@ -129,6 +130,47 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
     warmStrategyLab();
   };
 
+  /**
+   * Gallery import copy (R9.3): an INDEPENDENT library artifact whose
+   * revalidation gate starts closed — paper start stays locked until a local
+   * validation + backtest completes on this copy (markArtifactRevalidated).
+   */
+  const importGalleryStrategy = (draft: GalleryImportDraft) => {
+    const now = Date.now();
+    const input = draft.artifact;
+    const artifact: StrategyArtifact = {
+      id: `strategy:gallery-${now}`,
+      kind: "strategy",
+      name: dedupeArtifactName(input.name, artifacts),
+      description: input.description || "Imported from the strategy gallery.",
+      provenance: { source: "gallery", importedAt: now, parentId: draft.gallery.id, parentHash: draft.gallery.artifactHash },
+      galleryImport: {
+        galleryId: draft.gallery.id,
+        galleryVersion: draft.gallery.version,
+        artifactHash: draft.gallery.artifactHash,
+        importedAt: now,
+        revalidationRequired: true
+      },
+      xml: input.xml,
+      code: input.code ?? "",
+      schemaVersion: input.schemaVersion,
+      semanticVersion: input.semanticVersion,
+      parameters: input.parameters,
+      dependencies: input.dependencies,
+      createdAt: now,
+      updatedAt: now
+    };
+    setArtifacts((current) => [normalizeArtifact(artifact, now), ...current]);
+    setActiveArtifactId(artifact.id);
+    warmStrategyLab();
+  };
+
+  /** Opens a pending gallery revalidation gate after a successful local validation + backtest. */
+  const markArtifactRevalidated = (id: string) => {
+    const now = Date.now();
+    setArtifacts((current) => current.map((item) => (item.id === id ? completeGalleryRevalidation(item, now) : item)));
+  };
+
   const importPlugin = (input: VerifiedPlugin) => {
     const now = Date.now();
     const created = createPluginArtifacts(input.manifest, input.checksum, artifacts, now, input.signature, input.signature ? isPluginKeyTrusted(input.signature.keyFingerprint, localStorage, storageOwnerId) : false);
@@ -173,6 +215,8 @@ export function useArtifactLibrary({ initialArtifacts, setIndicators, openStrate
     useTemplate,
     importPineMany,
     importStrategy,
+    importGalleryStrategy,
+    markArtifactRevalidated,
     importPlugin,
     uninstallPlugin,
     rollbackArtifactVersion,

@@ -32,6 +32,21 @@ export interface ArtifactRevision {
   savedAt: number;
 }
 
+/**
+ * Revalidation gate on a gallery import copy: created closed and opened only
+ * by a successful local validation + backtest of this exact copy. While the
+ * gate is closed every paper/robot start for the artifact stays locked.
+ */
+export interface GalleryImportGate {
+  galleryId?: string;
+  galleryVersion?: number;
+  /** Published sha256, verified server-side and client-side at import time. */
+  artifactHash: string;
+  importedAt: number;
+  revalidationRequired: boolean;
+  revalidatedAt?: number;
+}
+
 export interface StrategyArtifact {
   id: string;
   kind: StrategyArtifactKind;
@@ -51,8 +66,10 @@ export interface StrategyArtifact {
   dependencies?: string[];
   history?: ArtifactRevision[];
   migration?: { fromSchema: number; toSchema: number; migratedAt: number };
+  /** Present only on copies imported from the server gallery (R9.3). */
+  galleryImport?: GalleryImportGate;
   provenance?: {
-    source: "local" | "pine" | "file" | "share" | "wizard" | "generator" | "plugin";
+    source: "local" | "pine" | "file" | "share" | "wizard" | "generator" | "plugin" | "gallery";
     importedAt?: number;
     parentId?: string;
     parentHash?: string;

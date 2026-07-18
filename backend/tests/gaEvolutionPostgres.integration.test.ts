@@ -54,7 +54,7 @@ describePostgres("GA evolution lineage against isolated PostgreSQL (schema v17)"
   it("migrates to schema v17 with the GA tables and indexes installed", async () => {
     const applied = await pool.query<{ version: number }>("SELECT max(version)::integer AS version FROM schema_migrations");
     expect(applied.rows[0]?.version).toBe(LATEST_DATABASE_SCHEMA_VERSION);
-    expect(applied.rows[0]?.version).toBe(17);
+    expect(applied.rows[0]?.version).toBe(18);
     const objects = await pool.query<Record<string, string | null>>(
       `SELECT to_regclass('public.ga_runs')::text AS runs_table,
          to_regclass('public.ga_candidates')::text AS candidates_table,

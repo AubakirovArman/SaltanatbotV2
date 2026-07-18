@@ -164,7 +164,8 @@ research evidence, not performance claims.
 R9.2 is **accepted and deployed**: production runs protected slot `r9b-schema17-3ed6af1` on
 PostgreSQL schema 17 (additive migration `ga_evolution_lineage`); see the recorded
 [R9.2 acceptance evidence](evidence/R9_2_GA_EVOLUTION.md). The surface is authenticated,
-owner-scoped and research-only; the public strategy gallery stays out of scope until R9.3.
+owner-scoped and research-only; the versioned strategy gallery is the separate R9.3 surface
+described in the next subsection, currently in progress and not accepted.
 
 `kind: "ga-evolution"` enqueues a durable, checkpointed genetic-algorithm run over the pure
 generator primitives (the workspace package `@saltanatbotv2/strategy-generator`). The strict start
@@ -213,6 +214,76 @@ fingerprint, generation, seed, dataset fingerprint, engine and generator version
 Pareto rank, the OOS report and the lineage chain. Foreign or unknown candidates return
 `404 ga_candidate_not_found`; the checkpoint (population genomes and RNG state) never leaves the
 server.
+
+### Versioned strategy gallery (R9.3, in progress — NOT accepted)
+
+R9.3 is **in progress in this checkout**: it has not passed the release gate and production still
+runs slot `r9b-schema17-3ed6af1` on PostgreSQL schema 17. The `/api/gallery` router below is the
+candidate contract, backed by the pending additive schema-18 migration `versioned_strategy_gallery`
+(see [migration notes](MIGRATIONS.md)).
+
+Every publication is one immutable `(id, version)` row holding a **sanitized**
+`gallery-artifact-v1` bundle: the whitelisting sanitizer copies only known fields — the
+`parseStrategyIR`-revalidated IR, symbol/timeframe market summaries, bounded in-sample and
+out-of-sample metric summaries, the OOS report, engine/generator versions, dataset fingerprint,
+seed, structural complexity and a mandatory limitations note — and then asserts on the serialized
+output that no owner ID, run ID or job ID survived (`400 gallery_publish_invalid` otherwise).
+Owner identifiers are never serialized outward. The stored `artifactHash` is the SHA-256 of the
+bundle's canonical JSON (sorted keys, `undefined` dropped) and the same algorithm runs in the
+browser, so client and server derive the same hash for the same bundle. A schema-level
+`BEFORE UPDATE` trigger freezes the published content: after publish only visibility, status,
+`revokedAt`, `revokeReason` and `updatedAt` may change, so a published artifact cannot change
+silently after import and revocation never rewrites history.
+
+The whole router — public feed included — stays session-gated per the pre-HTTPS discipline.
+Responses use `Cache-Control: private, no-store, max-age=0` with `Vary: Cookie`; request bodies
+are capped at 320 KiB (`413 gallery_envelope_too_large`) and the sanitized bundle itself at
+256 KiB.
+
+| Method/path | Input | Result |
+| --- | --- | --- |
+| `GET /api/gallery?limit=1..50&before=…` | optional bounded page | Public feed (`public` + `active` rows only): `{entries: [card]}` |
+| `GET /api/gallery?scope=own&limit=1..100` | optional bounded limit | Caller's own artifacts across all visibilities and statuses: `{entries: [card]}` |
+| `GET /api/gallery/:id?version=N` | optional version (default: latest active) | `{artifact: record}` with the full sanitized bundle, `visibility`, `status` and `owned` |
+| `POST /api/gallery/publish` | `{source, title, summary, visibility, artifactId?}` | `201 {artifact: ownerRecord}` |
+| `GET /api/gallery/:id/import` | optional `?version` | Top-level `{id, version, title, summary, publishedAt, rating, artifact, artifactHash}` |
+| `POST /api/gallery/:id/revoke` | `{reason}` (1..400 chars) | Revokes every version of the owner's artifact; `{versions: [ownCard]}` |
+| `POST /api/gallery/:id/visibility` | `{visibility}` | Sets `private`/`unlisted`/`public` on every version; `{versions: [ownCard]}` |
+
+Every card carries `id`, `version`, `title`, `summary`, `artifactHash`, `rating`, `publishedAt`,
+`visibility` and `status`. Feed cards add `artifactSummary` — the sanitized bundle without its
+IR; own cards additionally carry `revokedAt`, `revokeReason`, `createdAt` and `updatedAt`.
+Visibility rules: `public` + `active` rows are listed in the feed; `unlisted` + `active` rows are
+reachable only by direct ID; `private` and revoked rows are visible only to their owner.
+
+`POST /publish` accepts two sources. `{type: "ga-promotion", runId, fingerprint}` loads the
+caller's **own** GA run and candidate and requires the candidate to be promoted; its metrics are
+labeled `source: "ga-oos"` (server-evaluated out-of-sample evidence). `{type: "library",
+artifact: {ir, markets?, metrics?}}` re-validates the IR through `parseStrategyIR` and labels any
+supplied metrics `source: "self-reported"` — unverified publisher claims, stated in the bundle's
+limitations note. `title` is bounded at 120 characters (no control characters) and `summary` at
+2000. Passing `artifactId` publishes the next version (`max + 1`) of an existing own artifact;
+otherwise a new ID starts at version 1. Malformed envelopes, invalid IR, oversized bundles and
+unpromoted candidates return `400 gallery_publish_invalid`.
+
+`GET /:id/import` is a pure read: the repository re-verifies the stored SHA-256 against the
+canonical bundle before responding (`500 gallery_hash_mismatch` on divergence — belt and braces on
+top of the immutability trigger) and the client re-verifies the same hash again after transport.
+Importing a revoked artifact is refused with `410 gallery_revoked` (the owner can still read their
+own revoked rows via `GET /:id`). Import mutates nothing server-side and never starts a robot: the
+browser creates an independent library copy gated behind local revalidation.
+
+The stored `rating` is computed once at publish time and is display-only, **never return-only**:
+raw return is intentionally not a component. Documented weights (sum = 1): out-of-sample
+stability 0.35 (worst adverse OOS gap and cross-market dispersion; zeroed when flagged overfit,
+halved when flagged unstable, zero for self-reported metrics without an OOS section), drawdown
+0.25, reproducibility 0.2 (share of dataset fingerprint, seed, engine version and generator
+version present), complexity 0.1 and evidence freshness 0.1 (linear decay over 365 days from
+`publishedAt`). The record carries the composite 0–100 score, each normalized component,
+`evidenceAgeDays` and the reproducibility flags.
+
+Stable errors: `404 gallery_not_found`, `410 gallery_revoked`, `403 gallery_forbidden`,
+`400 gallery_publish_invalid`, `500 gallery_hash_mismatch` and `413 gallery_envelope_too_large`.
 
 ### Onboarding
 
