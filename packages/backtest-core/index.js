@@ -1,4 +1,5 @@
 export * from "./types.js";
+export * from "./dataset.js";
 export * from "./broker.js";
 export * from "./portfolio.js";
 export * from "./portfolioBacktest.js";

@@ -1,11 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
-import { SCREENER_UNIVERSE_LIMIT_MAXIMUM_V1 } from "@saltanatbotv2/contracts";
 import type { IdentityPrincipal } from "../identity/types.js";
-import { parseScreenerRunJobRequest, type ScreenerRunJobRequest } from "../screener/apiSchema.js";
-import { parseStrategyIR } from "../trading/strategy/irSchema.js";
+import { registerBuiltinResearchJobKinds, resolveResearchJobEnqueueDefinition, ScreenerJobRequestError } from "./registry.js";
 import {
   ComputeJobRepository,
   type ComputeJob,
@@ -13,56 +11,10 @@ import {
   JobQuotaError
 } from "./repository.js";
 
-const candleSchema = z.object({
-  time: z.number().int().safe().nonnegative(),
-  open: z.number().finite(),
-  high: z.number().finite(),
-  low: z.number().finite(),
-  close: z.number().finite(),
-  volume: z.number().finite().nonnegative(),
-  source: z.string().max(120).optional()
-}).strict().refine((candle) => candle.high >= Math.max(candle.open, candle.close) && candle.low <= Math.min(candle.open, candle.close));
-
-const backtestSchema = z.object({
-  kind: z.literal("backtest"),
-  strategy: z.unknown(),
-  candles: z.array(candleSchema).min(10).max(20_000).superRefine((candles, context) => {
-    for (let index = 1; index < candles.length; index += 1) {
-      if (candles[index]!.time <= candles[index - 1]!.time) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Candle timestamps must be strictly increasing.",
-          path: [index, "time"]
-        });
-        return;
-      }
-    }
-  }),
-  config: z.object({
-    initialCapital: z.number().finite().min(100).max(1_000_000_000),
-    commissionPct: z.number().finite().min(0).max(10),
-    slippagePct: z.number().finite().min(0).max(10),
-    allowShort: z.boolean(),
-    fillTiming: z.enum(["next_open", "same_close"]).optional(),
-    maxLeverage: z.number().finite().min(1).max(125).optional(),
-    qtyStep: z.number().finite().min(0).optional(),
-    fundingRatePctPer8h: z.number().finite().min(-100).max(100).optional()
-  }).strict(),
-  context: z.object({
-    symbol: z.string().min(1).max(40).optional(),
-    timeframe: z.string().min(1).max(16).optional(),
-    exchange: z.string().min(1).max(40).optional(),
-    marketType: z.enum(["spot", "linear", "inverse", "unknown"]).optional(),
-    priceType: z.enum(["trade", "mark", "index", "unknown"]).optional()
-  }).strict().optional(),
-  clientRequestId: z.string().min(8).max(128).optional()
-}).strict();
-
 const idSchema = z.string().uuid();
-const BACKTEST_JOB_DEDUPE_VERSION = "backtest-job:v1\0";
-const SCREENER_JOB_DEDUPE_VERSION = "screener-job:v1\0";
 
 export function createComputeJobsRouter(pool: Pool): Router {
+  registerBuiltinResearchJobKinds();
   const repository = new ComputeJobRepository(pool);
   const router = Router();
 
@@ -78,47 +30,16 @@ export function createComputeJobsRouter(pool: Pool): Router {
     next();
   });
 
-  // The POST body is a discriminated union on `kind`: "screener" runs enqueue a
-  // bounded research job here, every other shape stays on the backtest schema.
+  // The POST body is a discriminated union on `kind`: each registered research
+  // job definition validates its own body; unknown kinds keep rejecting through
+  // the backtest schema exactly as before the registry existed.
   router.post("/", asyncRoute(async (request, response) => {
-    if (isScreenerJobBody(request.body)) {
-      const input = parseScreenerJobBody(request.body);
-      const payload = { kind: "screener", request: input.request } as Record<string, unknown>;
-      const dedupeKey = createHash("sha256")
-        .update(SCREENER_JOB_DEDUPE_VERSION, "utf8")
-        .update(JSON.stringify(payload), "utf8")
-        .digest("hex");
-      const job = await repository.enqueue({
-        ownerUserId: owner(response),
-        jobType: "screener",
-        payload,
-        estimatedCost: input.request.definition?.universeLimit ?? SCREENER_UNIVERSE_LIMIT_MAXIMUM_V1,
-        clientRequestId: input.clientRequestId,
-        dedupeKey
-      });
-      respondToEnqueue(response, job);
+    const outcome = resolveResearchJobEnqueueDefinition(request.body).parseEnqueueRequest(request.body);
+    if (!outcome.ok) {
+      response.status(outcome.rejection.status).json(outcome.rejection.body);
       return;
     }
-    const input = backtestSchema.parse(request.body);
-    const parsedIr = parseStrategyIR(input.strategy);
-    if (!parsedIr.ok) {
-      response.status(400).json({ error: `Invalid strategy: ${parsedIr.error}`, code: "invalid_strategy" });
-      return;
-    }
-    const { clientRequestId, ...jobInput } = input;
-    const payload = { ...jobInput, strategy: parsedIr.ir } as Record<string, unknown>;
-    const dedupeKey = createHash("sha256")
-      .update(BACKTEST_JOB_DEDUPE_VERSION, "utf8")
-      .update(JSON.stringify(payload), "utf8")
-      .digest("hex");
-    const job = await repository.enqueue({
-      ownerUserId: owner(response),
-      jobType: "backtest",
-      payload,
-      estimatedCost: input.candles.length,
-      clientRequestId,
-      dedupeKey
-    });
+    const job = await repository.enqueue({ ownerUserId: owner(response), ...outcome.plan });
     respondToEnqueue(response, job);
   }));
 
@@ -166,18 +87,6 @@ export function createComputeJobsRouter(pool: Pool): Router {
   return router;
 }
 
-function isScreenerJobBody(body: unknown): boolean {
-  return typeof body === "object" && body !== null && !Array.isArray(body) && (body as { kind?: unknown }).kind === "screener";
-}
-
-function parseScreenerJobBody(body: unknown): ScreenerRunJobRequest {
-  try {
-    return parseScreenerRunJobRequest(body);
-  } catch (error) {
-    throw new ScreenerJobRequestError("Invalid screener job.", { cause: error });
-  }
-}
-
 function respondToEnqueue(response: Response, job: ComputeJob): void {
   response.setHeader("X-Job-ID", job.id);
   if (job.artifactsPrunedAt) {
@@ -198,8 +107,6 @@ function respondToEnqueue(response: Response, job: ComputeJob): void {
   }));
   response.status(job.status === "queued" || job.status === "running" ? 202 : 200).json({ job });
 }
-
-class ScreenerJobRequestError extends Error {}
 
 function asyncRoute(handler: (request: Request, response: Response) => Promise<unknown>) {
   return (request: Request, response: Response, next: NextFunction) => void handler(request, response).catch(next);

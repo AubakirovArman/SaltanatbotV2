@@ -16,6 +16,7 @@ import {
 import { generatedCandidateToPortableArtifact } from "../generatedArtifact";
 import { generatorText } from "../generatorText";
 import type { PortableStrategyArtifact } from "../strategyFile";
+import { GeneratorServerEvaluation } from "./GeneratorServerEvaluation";
 
 const FAMILY_CHOICES: readonly StrategyFamily[] = ["trend", "mean-reversion", "breakout", "momentum"];
 const DIRECTION_CHOICES: readonly TradeDirection[] = ["long", "short"];
@@ -29,6 +30,8 @@ interface GeneratorPanelProps {
   onClose: () => void;
   onImport: (artifact: PortableStrategyArtifact) => void;
   generateCandidates?: GenerateCandidates;
+  /** Authenticated owner id; enables server multi-market evaluation jobs. */
+  ownerUserId?: string;
 }
 
 interface GeneratorFormState {
@@ -47,7 +50,7 @@ const DEFAULT_FORM: GeneratorFormState = {
   generations: 3
 };
 
-export function GeneratorPanel({ locale, onClose, onImport, generateCandidates = generateStrategyCandidates }: GeneratorPanelProps) {
+export function GeneratorPanel({ locale, onClose, onImport, generateCandidates = generateStrategyCandidates, ownerUserId }: GeneratorPanelProps) {
   const t = (key: Parameters<typeof generatorText>[1]) => generatorText(locale, key);
   const [form, setForm] = useState<GeneratorFormState>(DEFAULT_FORM);
   const [running, setRunning] = useState(false);
@@ -287,11 +290,22 @@ export function GeneratorPanel({ locale, onClose, onImport, generateCandidates =
 
           {selected && <CandidateEvidence candidate={selected} t={t} />}
 
-          <section className="strategy-generator-ranking" data-ranking-state="unavailable">
-            <strong>{t("ranking")}</strong>
-            <p>{t("rankingUnavailable")}</p>
-            <p>{t("rankingNext")}</p>
-          </section>
+          {candidates.length > 0 ? (
+            <GeneratorServerEvaluation
+              locale={locale}
+              ownerUserId={ownerUserId}
+              candidates={candidates}
+              selected={selected}
+              seed={form.seed}
+              t={t}
+            />
+          ) : (
+            <section className="strategy-generator-ranking" data-ranking-state="unavailable">
+              <strong>{t("ranking")}</strong>
+              <p>{t("rankingUnavailable")}</p>
+              <p>{t("rankingNext")}</p>
+            </section>
+          )}
         </div>
 
         <footer className="strategy-generator-footer">

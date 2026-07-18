@@ -258,13 +258,40 @@ fingerprint, parent/mutation provenance and validation evidence. Import converts
 valid candidate into a normal, editable portable strategy artifact; generation never starts a
 backtest or bot.
 
-Do not confuse generator evolution with optimized fitness. The current browser generator creates
-structural diversity but does not fetch candles, run backtests or score the candidates. Its core has
-a pure multi-market ranker for caller-supplied, disjoint train/OOS metrics, including median/worst
-market, drawdown, trade-count, liquidation, generalization and dispersion penalties, but that ranker
-is not connected to a browser multi-market evaluation pipeline. Consequently the UI intentionally
-shows ranking as unavailable; imported candidates still require ordinary backtest, walk-forward and
-paper review.
+Do not confuse generator evolution with optimized fitness. The browser generator itself creates
+structural diversity but never fetches candles, runs backtests or scores candidates — that purity
+is deliberate and preserved. Its core keeps a pure multi-market ranker for caller-supplied,
+disjoint train/OOS metrics, including median/worst market, drawdown, trade-count, liquidation,
+generalization and dispersion penalties. The ranker's inputs come from the server evaluation
+described below; until at least one server evaluation completes, the ranking section honestly
+reports itself as unavailable, and imported candidates always still require ordinary backtest,
+walk-forward and paper review.
+
+### Server multi-market evaluation
+
+Once the generator holds valid candidates, its **Server evaluation (multi-market)** section
+submits one `kind: "multi-market-eval"` research job per candidate to `POST /api/jobs`. The
+contract is governed by [ADR 0003](adr/0003-canonical-ir-dataset-backtest-contract.md) and
+documented in the [API reference](API.md): one to six unique catalog markets sharing a single
+timeframe, a lookback of 500–20000 bars (default 3000) and a leakage-safe split (`trainFraction`
+0.5–0.9, default 0.7; `embargoBars` 0–500, default 8); the generator seed is recorded into the
+result for provenance. The server re-validates the IR through its `parseStrategyIR` trust
+boundary, fetches only real closed exchange bars in-process (synthetic fills are forbidden — a
+market without enough real history fails the job with an explicit reason), pins the data identity
+as a `dataset-v1` SHA-256 fingerprint, splits each market so the out-of-sample window starts
+strictly after training plus the embargo gap, runs train and out-of-sample backtests per market in
+the backtest worker thread and finishes with one shared capital-pool portfolio run over the
+out-of-sample windows. The bounded result is deterministic and stamped with the backtest engine
+version: identical (IR, dataset fingerprint, config, engine version) inputs reproduce it exactly.
+
+Completed evaluations feed the pure ranker, and the ranking section flips from unavailable to a
+ranked list with its per-policy penalty breakdown; the provenance line shows the dataset
+fingerprint and engine version, and results are cached per candidate + dataset fingerprint. Job
+states are explicit (queued, running, failed with the server reason, cancelled) and the per-owner
+quota of five active research jobs applies. The evaluation universe is the currently listed public
+catalog only, so results carry survivorship bias. This is research evidence, not a performance
+claim or a promotion path: a high rank starts nothing — import, backtest, walk-forward and paper
+review remain the only way forward.
 
 ## Metrics produced
 

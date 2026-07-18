@@ -572,7 +572,77 @@ verified. Gate, rehearsal and cutover evidence is recorded in
 
 The next pending increment is R9 (the server multi-market GA pipeline
 plus the D2 ADR for the canonical Strategy IR/dataset/backtest
-contract).
+contract); its first slice R9.1 is in progress below.
+
+## R9.1 server multi-market evaluation — in progress (NOT accepted)
+
+This slice (roadmap R9.1 plus decision D2) exists in the worktree but has
+NOT passed the [RELEASING.md](./RELEASING.md) gate: there is no release
+commit, no exact-SHA CI evidence, no protected slot and no production
+cutover, and production stays on `r8a-schema16-69621f8`. It carries no
+PostgreSQL or trading-SQLite schema change (the compute-job queue already
+accepts arbitrary kinds), keeps the existing `backtest`/`screener` job
+APIs byte-identical and stays research-only: no promotion or gallery
+surface ships in this increment.
+
+- [x] [ADR 0003 canonical IR, dataset and backtest contract](./adr/0003-canonical-ir-dataset-backtest-contract.md)
+  recorded with Status: Accepted, closing decision D2 before the job API:
+  canonical Strategy IR = `IR_VERSION 4` in `packages/strategy-core` with
+  `parseStrategyIR` as the only inbound trust boundary, the versioned
+  `dataset-v1` contract with embargo split and survivorship policy, and
+  the deterministic engine identity `BACKTEST_ENGINE_VERSION`. The
+  roadmap decision-table flip for D2 happens in the acceptance workflow,
+  not in this in-progress record.
+- [x] IR drift guard `scripts/check-strategy-core-ir.mjs`: pinned SHA-256
+  digests of the hand-maintained `packages/strategy-core`
+  `index.js`/`index.d.ts` pair plus an `IR_VERSION 4` assertion, wired
+  into the strategy-core `check` chain so silent IR edits fail
+  `npm run check`.
+- [x] Pure `packages/backtest-core/dataset.ts`: `DatasetDescriptorV1`,
+  the canonical fingerprint serialization with `String(Number)` bar
+  formatting, `splitDatasetBars` with time-ordered train/test windows and
+  embargo gap (fails closed on empty windows or unordered bars), bounds
+  constants and the exported `BACKTEST_ENGINE_VERSION`.
+- [x] Generic research-job registry (`backend/src/jobs/registry.ts`):
+  strict per-kind payload schemas and dispatch for the existing
+  `backtest` (worker-thread) and `screener` (in-process) kinds moved
+  behind definitions with byte-identical behavior; unknown kinds keep the
+  hard-fail error.
+- [x] Job kind `multi-market-eval`
+  (`backend/src/workers/multiMarketEvalTask.ts` plus the bounded
+  `backtestThreadRunner.ts` adapter): 1..6 unique catalog markets on one
+  timeframe, real closed provider bars only under a shared 90-second
+  budget (explicit `multi_market_eval_*` failure codes, never synthetic
+  fills), `dataset-v1` fingerprint, embargo split, per-market train and
+  out-of-sample backtests through the existing backtest worker thread,
+  a shared capital-pool out-of-sample portfolio run and a deterministic
+  `multi-market-eval-v1` result bounded at 256 KiB with cancellation and
+  phase-scaled heartbeats.
+- [x] Browser slice: `frontend/src/strategy/evaluationClient.ts`
+  (submit/poll/cancel with client-side bounds and fail-closed result
+  parsing) and the generator panel **Server evaluation (multi-market)**
+  section — market/timeframe/lookback/split controls with spec defaults,
+  per-owner quota surfacing, explicit queued/running/failed/cancelled
+  states, results cached per candidate + dataset fingerprint and fed to
+  the pure `rankMultiMarketEvaluations` ranker, which flips the ranking
+  section from unavailable to a ranked list with the dataset fingerprint
+  and engine version provenance line; EN/RU/KK catalogs.
+- [x] Dataset contract suite
+  (`backend/tests/backtestDatasetContract.test.ts`) covering fingerprint
+  goldens, canonical formatting, split determinism, the embargo gap and
+  no-lookahead ordering.
+- [ ] Remaining before acceptance: the registry/multi-market-eval/route
+  parity suites, frontend client and generator-flow suites, the
+  `r9-generator-eval` E2E journey, and the full
+  [RELEASING.md](./RELEASING.md) gate (exact-commit CI, protected slot,
+  paired backup/isolated-restore rehearsal, production cutover and
+  recorded evidence). Only that acceptance workflow may flip this section
+  to accepted and the roadmap D2 row to closed.
+
+Canonical behavior for the delivered contracts is documented in the
+[API reference](./API.md) research-jobs section and the
+[strategy reference](./STRATEGIES.md) server multi-market evaluation
+section.
 
 ## Delivered slices (not full roadmap completion)
 

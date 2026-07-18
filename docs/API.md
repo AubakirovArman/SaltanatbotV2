@@ -118,17 +118,44 @@ returns `409 workspace_owner_mismatch` before any workspace is read or written; 
 and restart synchronization. Every mutation also fences the exact durable authorization revision.
 Legacy-auth compatibility mode does not require the expected-owner header.
 
-`POST /api/jobs` accepts a bounded `kind: "backtest"` strategy/candle/config payload and returns
-`202` with a durable job. `GET /api/jobs`, `GET /api/jobs/metrics`, `GET /api/jobs/:id` and
-`POST /api/jobs/:id/cancel` are owner-scoped and always return
+`POST /api/jobs` accepts a bounded, kind-discriminated research-job payload and returns `202` with
+a durable job. Every request is validated through the central research-job registry
+(`backend/src/jobs/registry.ts`), which registers three strict kinds: `kind: "backtest"` runs a
+strategy over client-uploaded candles in the backtest worker thread, `kind: "screener"` runs an
+on-demand technical scan in-process ([screener guide](SCREENER.md)) and `kind: "multi-market-eval"`
+runs the server multi-market strategy evaluation described below. Unknown kinds keep the same
+hard-fail validation error as before the registry existed, and the two pre-existing kinds keep
+byte-identical request and response shapes. `GET /api/jobs`, `GET /api/jobs/metrics`,
+`GET /api/jobs/:id` and `POST /api/jobs/:id/cancel` are owner-scoped and always return
 `Cache-Control: private, no-store, max-age=0` with `Vary: Cookie`. States are
 `queued/running/completed/failed/cancelled`. One user may have five active jobs and one running job;
 identical payloads are deduplicated. A separate research worker claims jobs by lease and stores a
-bounded result with metrics, trades and a downsampled equity curve. After artifact compaction,
-list responses expose `artifactsExpired: true`; `GET /api/jobs/:id` and an exact
+bounded result (for `backtest`: metrics, trades and a downsampled equity curve). After artifact
+compaction, list responses expose `artifactsExpired: true`; `GET /api/jobs/:id` and an exact
 `clientRequestId` retry return `410 job_artifacts_expired`. Reusing the same request ID with
 different content remains `409 job_idempotency_conflict`, while a new request ID may rerun the same
 content.
+
+`kind: "multi-market-eval"` (R9.1, governed by
+[ADR 0003](adr/0003-canonical-ir-dataset-backtest-contract.md)) evaluates one generated strategy
+across one to six unique catalog markets that share a single timeframe. The strict body is
+`{kind, ir, markets: [{symbol, timeframe}], lookbackBars (500..20000), split: {trainFraction
+(0.5..0.9, default 0.7), embargoBars (0..500, default 8)}, seed, clientRequestId?}`. The IR must
+pass the server `parseStrategyIR` trust boundary and every symbol must resolve to a real
+exchange-routed catalog instrument. The research worker fetches real closed provider bars
+in-process under a shared 90-second budget with bounded concurrency — synthetic fills are
+forbidden, so a market that cannot supply enough real closed bars fails the job with an explicit
+`multi_market_eval_*` error code instead of degrading. It then pins the data identity as a
+`dataset-v1` descriptor with a canonical SHA-256 fingerprint, splits each market into train and
+out-of-sample windows separated by the embargo gap (the test window starts strictly after
+training), runs train and out-of-sample backtests per market through the existing backtest worker
+thread and finishes with one shared capital-pool portfolio run over the out-of-sample windows. The
+stored result (`schemaVersion: "multi-market-eval-v1"`, bounded at 256 KiB) records the engine
+version, the dataset descriptor with its fingerprint, the seed and per-market
+train/out-of-sample metric sections plus the portfolio section; identical (IR, dataset
+fingerprint, config, engine version) inputs produce byte-identical results. The evaluation
+universe is the currently listed public catalog only, so results carry survivorship bias and are
+research evidence, not performance claims.
 
 ### Onboarding
 

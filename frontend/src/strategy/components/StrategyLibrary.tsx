@@ -190,6 +190,7 @@ export function StrategyLibrary({
         >
           <GeneratorPanel
             locale={locale}
+            ownerUserId={storageOwnerId || undefined}
             onClose={() => setGeneratorOpen(false)}
             onImport={(artifact) => {
               onImportStrategy(artifact);
