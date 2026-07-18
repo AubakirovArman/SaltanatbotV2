@@ -672,9 +672,84 @@ isolated drill passed) were verified. Gate and cutover evidence is
 recorded in
 [R9.1 server evaluation evidence](./evidence/R9_1_SERVER_EVALUATION.md).
 
-R9 overall is not finished: the next pending work inside R9 is R9.2
-(GA lineage, Pareto/OOS promotion and checkpoint/resume), followed by
-R9.3 (the strategy gallery).
+R9 overall is not finished: R9.2 (GA lineage, Pareto/OOS promotion and
+checkpoint/resume) is implemented on `main` but **not accepted** — see
+the next section — and R9.3 (the strategy gallery) has not started.
+
+## R9.2 server GA evolution with lineage and promotion — in progress, NOT accepted
+
+This slice is **implemented but not accepted or deployed**. Production
+still runs the accepted R9.1 slot `r9a-schema16-4f5bc64` on PostgreSQL
+schema 16 and trading SQLite schema 10; the new schema-17 migration has
+not been applied to any production database, and no protected release
+slot, exact-SHA CI acceptance run, paired backup/rehearsal or cutover
+evidence exists yet. Everything below is code-and-test evidence only.
+The slice stays research-only: promotion targets the owner's own
+strategy library, and the public gallery remains out of scope until
+R9.3.
+
+- [x] Pure package extraction: the browser generator primitives moved
+  byte-identically into the workspace package
+  `packages/strategy-generator` (zero IO preserved, checked-in
+  generated artifacts with the
+  `scripts/check-strategy-generator-generated.mjs` staleness guard,
+  `frontend/src/strategy/generator` reduced to a re-export shim; the
+  existing generator suites run unchanged from the new location).
+- [x] Additive PostgreSQL migration 17 `ga_evolution_lineage`
+  (checksum
+  `4169ec0148c63415abe913195d34b03fa603039d0fe7defabfe76a89f7a61a73`):
+  bounded `ga_runs` (size-checked config/checkpoint/pareto JSONB and
+  at most one running row per owner) plus `ga_candidates` lineage rows
+  keyed `(run_id, fingerprint)`; migrations v1–v16 stay byte-identical
+  and the migration-chain suites received the established v15/v16
+  bump treatment.
+- [x] Job kind `ga-evolution` in the research-job registry
+  (in-process lane, `backend/src/workers/gaEvolutionTask.ts` +
+  `backend/src/ga/`): strict start/resume payloads (1..4 markets on
+  one timeframe, lookback 500..20000, `dataset-v1` split, seed,
+  population 8..64, generations 1..16, canonical objective vector),
+  the dataset fetched once through the reused R9.1 fetch/evaluate
+  discipline and pinned by fingerprint, fingerprint dedup (no
+  candidate is ever re-evaluated), per-generation atomic lineage +
+  cumulative Pareto ranks + resume checkpoint, cancel → resumable
+  `checkpointed` result, resume that refetches and verifies the
+  fingerprint (`ga_dataset_drift` on divergence) and a bounded
+  `ga-evolution-v1` result ≤ 256 KiB. Existing job kinds stay
+  byte-identical; at most one active GA run per owner.
+- [x] Owner-scoped `/api/ga` read surface (runs, run detail with the
+  frontier and a bounded candidate page, candidate detail with the
+  lineage chain) plus `POST /api/ga/promote`, which stamps
+  `promoted_at` idempotently and returns the full IR + provenance
+  bundle; the server refuses promotion without a clean out-of-sample
+  report (`ga_promotion_requires_oos` / `ga_promotion_overfit`).
+- [x] Browser slice: the generator panel **Server evolution (GA)**
+  section (bounded config with an explicit seed field, run list with
+  explicit running/checkpointed/completed/failed/cancelled states and
+  generation progress, cancel-to-checkpoint and resume, the Pareto
+  frontier table with OOS-gap badges and explicit overfit flags, the
+  candidate drawer with lineage chain, mutation log and per-market
+  train/OOS metrics, and promotion disabled with its reason when the
+  OOS report is missing or flags overfit), saving promoted candidates
+  into the existing portable-artifact library flow with provenance;
+  EN/RU/KK catalogs.
+- [ ] The dedicated R9.2 verification program from the increment spec:
+  the seeded-reproducibility suite (same seed + dataset ⇒ identical
+  results and lineage, checkpoint/resume equal to an uninterrupted
+  run, dataset drift, dedup evaluation counts, Pareto golden sets,
+  promotion refusals, single-active-run limit, result bounds), the
+  GA route suites, the frontend server-evolution suites, the
+  PG-gated migration-17 integration coverage and the
+  `r9b-ga-evolution` E2E journey.
+- [ ] The [RELEASING.md](./RELEASING.md) acceptance gate: exact-commit
+  CI, a protected slot, the schema-16→17 paired
+  backup/isolated-restore rehearsal, the production cutover and
+  recorded evidence. Until this box is checked, R9.2 is not accepted
+  and this section must not be read as a release record.
+
+Contract documentation for the in-progress surfaces lives in the
+[API reference](./API.md) server-GA-evolution section, the
+[strategy reference](./STRATEGIES.md) R9.2 section and the
+[migration notes](./MIGRATIONS.md) in-progress schema-17 note.
 
 ## Delivered slices (not full roadmap completion)
 

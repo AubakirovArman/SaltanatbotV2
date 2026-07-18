@@ -3,6 +3,7 @@ import { createAlertBindingRouter } from "../alerts/bindingRoutes.js";
 import { createAlertRouter } from "../alerts/routes.js";
 import { requireAppAuth } from "../auth.js";
 import { createWorkspaceRouter } from "../workspaces/routes.js";
+import { createGaEvolutionRouter } from "../ga/routes.js";
 import { createComputeJobsRouter } from "../jobs/routes.js";
 import { createOnboardingRouter } from "../onboarding/routes.js";
 import { createScreenerRouter } from "../screener/routes.js";
@@ -86,6 +87,7 @@ export function registerIdentityServerRoutes(app: Express, runtime: IdentityRunt
     app.use("/api/screener", createScreenerRouter(runtime.pool));
     app.use("/api/onboarding", createOnboardingRouter(runtime.pool));
     app.use("/api/workspaces", createWorkspaceRouter(runtime.pool));
+    app.use("/api/ga", createGaEvolutionRouter(runtime.pool));
     app.use("/api/jobs", express.json({ limit: "3mb" }), createComputeJobsRouter(runtime.pool));
   }
 }

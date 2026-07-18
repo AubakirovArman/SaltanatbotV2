@@ -123,6 +123,12 @@ export interface MultiMarketEvalMarket {
   timeframe: string;
 }
 
+/** Train/test split settings shared by every dataset-v1 consumer of these helpers. */
+export interface MultiMarketEvalSplit {
+  trainFraction: number;
+  embargoBars: number;
+}
+
 /**
  * Catalog gate for the enqueue boundary: every requested market must be in the
  * current public instrument catalog AND routed to a real exchange feed —
@@ -280,9 +286,11 @@ export function createCatalogCandleSource(router: Pick<ProviderRouter, "getCandl
  * budget and a small worker pool over the markets, but any market that cannot
  * deliver its full real closed window fails the whole evaluation (the
  * screener degrades per symbol; dataset-v1 forbids partial or synthetic data).
+ * Exported for reuse by the ga-evolution executor (R9.2), which fetches its
+ * dataset once per run through exactly this discipline.
  */
-async function fetchAllMarketBars(
-  request: MultiMarketEvalRequest,
+export async function fetchAllMarketBars(
+  request: { markets: readonly MultiMarketEvalMarket[]; lookbackBars: number },
   source: MultiMarketEvalCandleSource,
   dependencies: MultiMarketEvalTaskDependencies,
   signal: AbortSignal | undefined,
@@ -387,7 +395,7 @@ function assertRealClosedWindow(symbol: string, bars: readonly Candle[]): void {
   }
 }
 
-function buildEvalDataset(request: MultiMarketEvalRequest, timeframe: string, barsBySymbol: Map<string, Candle[]>): DatasetDescriptorV1 {
+export function buildEvalDataset(request: { split: MultiMarketEvalSplit }, timeframe: string, barsBySymbol: Map<string, Candle[]>): DatasetDescriptorV1 {
   try {
     return buildDatasetDescriptor({
       source: MULTI_MARKET_EVAL_DATASET_SOURCE,
@@ -403,7 +411,7 @@ function buildEvalDataset(request: MultiMarketEvalRequest, timeframe: string, ba
   }
 }
 
-function splitAllMarkets(request: MultiMarketEvalRequest, barsBySymbol: Map<string, Candle[]>): Map<string, { train: Candle[]; test: Candle[] }> {
+export function splitAllMarkets(request: { markets: readonly MultiMarketEvalMarket[]; split: MultiMarketEvalSplit }, barsBySymbol: Map<string, Candle[]>): Map<string, { train: Candle[]; test: Candle[] }> {
   const windows = new Map<string, { train: Candle[]; test: Candle[] }>();
   for (const market of request.markets) {
     let split: { train: Candle[]; test: Candle[] };
@@ -429,12 +437,12 @@ function splitAllMarkets(request: MultiMarketEvalRequest, barsBySymbol: Map<stri
   return windows;
 }
 
-async function runWindowBacktest(
+export async function runWindowBacktest(
   runner: MultiMarketEvalBacktestRunner,
   strategy: StrategyIR,
   market: MultiMarketEvalMarket,
   candles: Candle[],
-  dependencies: MultiMarketEvalTaskDependencies,
+  dependencies: Pick<MultiMarketEvalTaskDependencies, "backtestTimeoutMs">,
   signal: AbortSignal | undefined
 ): Promise<Record<string, unknown>> {
   const task: Record<string, unknown> = {
@@ -457,7 +465,7 @@ async function runWindowBacktest(
 }
 
 /** Per-window section: computeBacktestMetrics output (spread) + barCount + tradeCount. */
-function evaluationSection(symbol: string, report: Record<string, unknown>, barCount: number): Record<string, unknown> {
+export function evaluationSection(symbol: string, report: Record<string, unknown>, barCount: number): Record<string, unknown> {
   const metrics = report.metrics;
   if (!isRecord(metrics)) {
     throw new MultiMarketEvalTaskError("multi_market_eval_backtest_invalid_response", `Backtest for ${symbol} returned a report without metrics.`);
@@ -473,7 +481,7 @@ function evaluationSection(symbol: string, report: Record<string, unknown>, barC
  * events are empty by construction: the evaluation config pins
  * fundingRatePctPer8h to 0, so no funding is ever charged.
  */
-function portfolioLegReport(symbol: string, report: Record<string, unknown>): BacktestResult {
+export function portfolioLegReport(symbol: string, report: Record<string, unknown>): BacktestResult {
   const trades = report.trades;
   const metadata = report.metadata;
   if (!Array.isArray(trades) || !isRecord(metadata) || !isRecord(metadata.config)) {
@@ -492,7 +500,7 @@ function portfolioLegReport(symbol: string, report: Record<string, unknown>): Ba
  * maxDrawdownPct and sharpe), correlation matrix, per-symbol contributions and
  * rejection counts — never the full equity curve or trade list.
  */
-function compactPortfolioSection(result: PortfolioBacktestResult): Record<string, unknown> {
+export function compactPortfolioSection(result: PortfolioBacktestResult): Record<string, unknown> {
   const rejectionCounts: Record<PortfolioRejectionReason, number> = {
     max_concurrent: 0,
     gross_exposure: 0,

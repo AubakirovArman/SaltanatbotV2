@@ -59,6 +59,10 @@ This index is a route-presence and access-classification contract. A change to a
 | `POST` | `/api/auth/sessions/revoke-others` | Authenticated account | `backend/src/identity/routes.ts` |
 | `GET` | `/api/candles` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/catalog` | Authenticated account | `backend/src/server.ts` |
+| `POST` | `/api/ga/promote` | Authenticated · owner-scoped · research-only | `backend/src/ga/routes.ts` |
+| `GET` | `/api/ga/runs` | Authenticated · owner-scoped · research-only | `backend/src/ga/routes.ts` |
+| `GET` | `/api/ga/runs/:id` | Authenticated · owner-scoped · research-only | `backend/src/ga/routes.ts` |
+| `GET` | `/api/ga/runs/:id/candidates/:fingerprint` | Authenticated · owner-scoped · research-only | `backend/src/ga/routes.ts` |
 | `GET` | `/api/health` | Public | `backend/src/identity/serverRoutes.ts` |
 | `GET` | `/api/instruments` | Authenticated account | `backend/src/server.ts` |
 | `GET` | `/api/jobs` | Authenticated · owner-scoped | `backend/src/jobs/routes.ts` |
@@ -186,4 +190,4 @@ This index is a route-presence and access-classification contract. A change to a
 | `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 
-Generated totals: **166 HTTP endpoints** and **6 WebSocket endpoints**.
+Generated totals: **170 HTTP endpoints** and **6 WebSocket endpoints**.

@@ -101,7 +101,7 @@ describePostgres("telegram ingress and delivery against isolated PostgreSQL", ()
     );
     expect(chatColumn.rowCount).toBe(1);
     const version = await pool.query<{ version: number }>("SELECT max(version)::integer AS version FROM schema_migrations");
-    expect(version.rows[0]?.version).toBe(16);
+    expect(version.rows[0]?.version).toBe(17);
   });
 
   it("stores only hashed one-consume codes and enforces the outstanding quota", async () => {

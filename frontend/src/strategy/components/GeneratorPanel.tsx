@@ -17,6 +17,7 @@ import { generatedCandidateToPortableArtifact } from "../generatedArtifact";
 import { generatorText } from "../generatorText";
 import type { PortableStrategyArtifact } from "../strategyFile";
 import { GeneratorServerEvaluation } from "./GeneratorServerEvaluation";
+import { GeneratorServerEvolution } from "./GeneratorServerEvolution";
 
 const FAMILY_CHOICES: readonly StrategyFamily[] = ["trend", "mean-reversion", "breakout", "momentum"];
 const DIRECTION_CHOICES: readonly TradeDirection[] = ["long", "short"];
@@ -306,6 +307,8 @@ export function GeneratorPanel({ locale, onClose, onImport, generateCandidates =
               <p>{t("rankingNext")}</p>
             </section>
           )}
+
+          <GeneratorServerEvolution locale={locale} ownerUserId={ownerUserId} onImport={onImport} t={t} />
         </div>
 
         <footer className="strategy-generator-footer">

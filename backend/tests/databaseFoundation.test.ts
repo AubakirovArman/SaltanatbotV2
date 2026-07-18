@@ -98,11 +98,11 @@ function createPoolDouble(
 
 describe("PostgreSQL schema migrations", () => {
   it("uses contiguous checksummed versions and no extensions", () => {
-    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(16);
+    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(17);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
     ]);
-    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(16);
+    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(17);
     expect(DATABASE_MIGRATIONS.every((migration) => /^[0-9a-f]{64}$/.test(migration.checksum))).toBe(true);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.sql).join("\n")).not.toMatch(/CREATE\s+EXTENSION/i);
   });
@@ -237,6 +237,34 @@ describe("PostgreSQL schema migrations", () => {
     );
   });
 
+  it("adds only the bounded GA evolution lineage tables in v17", () => {
+    expect(DATABASE_MIGRATIONS[16].name).toBe("ga_evolution_lineage");
+    expect(DATABASE_MIGRATIONS[16].sql).toContain("CREATE TABLE ga_runs");
+    expect(DATABASE_MIGRATIONS[16].sql).toContain("CREATE TABLE ga_candidates");
+    expect(DATABASE_MIGRATIONS[16].sql).toContain(
+      "CHECK (status IN ('running', 'checkpointed', 'completed', 'failed', 'cancelled'))"
+    );
+    expect(DATABASE_MIGRATIONS[16].sql).toContain("CHECK (seed BETWEEN 0 AND 4294967295)");
+    expect(DATABASE_MIGRATIONS[16].sql).toContain(
+      "CHECK (dataset_fingerprint IS NULL OR dataset_fingerprint ~ '^[0-9a-f]{64}$')"
+    );
+    expect(DATABASE_MIGRATIONS[16].sql).toContain(
+      "octet_length(convert_to(checkpoint::text, 'UTF8')) <= 524288"
+    );
+    expect(DATABASE_MIGRATIONS[16].sql).toContain("PRIMARY KEY (run_id, fingerprint)");
+    expect(DATABASE_MIGRATIONS[16].sql).toContain(
+      "CHECK (promoted_at IS NULL OR oos_report IS NOT NULL)"
+    );
+    expect(DATABASE_MIGRATIONS[16].sql).toContain("ga_runs_owner_recent_index");
+    expect(DATABASE_MIGRATIONS[16].sql).toContain(
+      "CREATE UNIQUE INDEX ga_runs_one_active_per_owner"
+    );
+    expect(DATABASE_MIGRATIONS[16].sql).toContain("ga_candidates_run_generation_index");
+    expect(DATABASE_MIGRATIONS[16].sql).not.toMatch(
+      /\b(api_key|bot_token|password_hash|private_key|exchange_secret|signed_request)\b/i
+    );
+  });
+
   it("derives legacy public session IDs opaquely from the full secret hash", () => {
     const idHash = "0123456789abcdef".repeat(4);
     const digest = createHash("md5")
@@ -254,8 +282,8 @@ describe("PostgreSQL schema migrations", () => {
     const database = createPoolDouble();
     const result = await migrateDatabase(database.pool);
 
-    expect(result).toMatchObject({ fromVersion: 0, toVersion: 16 });
-    expect(result.applied).toHaveLength(16);
+    expect(result).toMatchObject({ fromVersion: 0, toVersion: 17 });
+    expect(result.applied).toHaveLength(17);
     expect(database.queries.some((query) => query.text.includes("pg_advisory_xact_lock"))).toBe(true);
     expect(database.queries.at(0)?.text).toBe("BEGIN");
     expect(database.queries.at(-1)?.text).toBe("COMMIT");

@@ -1,8 +1,11 @@
 # Bounded strategy generator core
 
-This folder contains a deterministic **algorithmic** strategy generator. It is a
-closed grammar and genetic search primitive; it is not AI or ML and must not be
-described as either in product copy.
+This package contains a deterministic **algorithmic** strategy generator. It is
+a closed grammar and genetic search primitive; it is not AI or ML and must not
+be described as either in product copy. It is pure TypeScript with zero I/O:
+browser and Node hosts (frontend workbench, backend research workers) share the
+exact same seeded search. The frontend re-exports it unchanged from
+`frontend/src/strategy/generator/index.ts`.
 
 ## What the core owns
 

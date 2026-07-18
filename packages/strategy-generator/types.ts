@@ -1,4 +1,4 @@
-import type { StrategyIR } from "../ir";
+import type { StrategyIR } from "@saltanatbotv2/strategy-core";
 
 export const GENERATOR_LIMITS = {
   minPopulation: 2,

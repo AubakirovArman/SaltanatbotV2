@@ -84,7 +84,7 @@ describe("research job registry", () => {
   it("registers the built-in kinds once and keeps registration idempotent", () => {
     registerBuiltinResearchJobKinds();
     registerBuiltinResearchJobKinds();
-    expect(listResearchJobKinds().sort()).toEqual(["backtest", "multi-market-eval", "screener"]);
+    expect(listResearchJobKinds().sort()).toEqual(["backtest", "ga-evolution", "multi-market-eval", "screener"]);
   });
 
   it("hard-fails duplicate registration of an existing kind", () => {

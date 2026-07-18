@@ -1,5 +1,5 @@
-import { IR_VERSION, type StrategyIR } from "../ir";
-import { GENERATOR_LIMITS, type CandidateValidation, type CandidateValidationFlags } from "./types";
+import { IR_VERSION, type StrategyIR } from "@saltanatbotv2/strategy-core";
+import { GENERATOR_LIMITS, type CandidateValidation, type CandidateValidationFlags } from "./types.js";
 
 const ALLOWED_NODE_KINDS = new Set(["num", "input", "price", "ma", "rsi", "bollinger", "macd", "extreme", "roc", "cross", "size", "stop", "target", "entry", "exit"]);
 

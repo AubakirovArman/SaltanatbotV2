@@ -1,5 +1,5 @@
-import { boundedInt, clamp, finiteOr } from "./random";
-import type { CandidateEvaluationSet, EvaluationMetrics, MarketEvaluation, MarketScore, MultiMarketRankingPolicy, RankedCandidateEvaluation, RankingValidation, RankingValidationFlags } from "./types";
+import { boundedInt, clamp, finiteOr } from "./random.js";
+import type { CandidateEvaluationSet, EvaluationMetrics, MarketEvaluation, MarketScore, MultiMarketRankingPolicy, RankedCandidateEvaluation, RankingValidation, RankingValidationFlags } from "./types.js";
 
 const FAIL_SCORE = -1e12;
 

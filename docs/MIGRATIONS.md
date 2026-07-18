@@ -4,6 +4,28 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
+## In progress: R9.2 PostgreSQL schema 17 (NOT accepted)
+
+R9.2 (server GA evolution with lineage, Pareto/OOS promotion and checkpoint/resume) adds one
+additive PostgreSQL migration, version 17, named `ga_evolution_lineage`. Its exact checksum is
+`4169ec0148c63415abe913195d34b03fa603039d0fe7defabfe76a89f7a61a73`. It creates only new objects:
+`ga_runs` (owner-scoped GA runs with a bounded JSONB config, seed, dataset fingerprint,
+engine/generator versions, a size-checked resume checkpoint of at most 512 KiB, a bounded Pareto
+frontier summary and a partial unique index permitting at most one `running` row per owner) and
+`ga_candidates` (per-run lineage rows keyed `(run_id, fingerprint)` carrying parents, mutation
+log, IR, metrics, the objective vector, Pareto rank, out-of-sample report and promotion
+timestamp). Migrations v1–v16 stay byte-identical, no existing table is rewritten and the trading
+SQLite is untouched at schema 10.
+
+**This migration is not accepted.** Production still runs the accepted R9.1 slot
+`r9a-schema16-4f5bc64` on PostgreSQL schema 16 and trading SQLite schema 10; no production
+database has applied version 17. Applying it to durable data must wait for the full
+[RELEASING.md](RELEASING.md) gate — exact-commit CI, a protected release slot, the paired
+backup/isolated-restore rehearsal of the 16-to-17 upgrade and the recorded cutover — after which
+a dated accepted section will replace this note. The chain stays forward-only: once any database
+reaches version 17, never run an older binary against it and never remove migration rows to roll
+back. Nothing in this note replaces, edits or extends the accepted records below.
+
 ## Accepted R9.1 server evaluation release: no migration
 
 The R9.1 server multi-market evaluation release was accepted and deployed on 2026-07-18 from

@@ -120,11 +120,12 @@ Legacy-auth compatibility mode does not require the expected-owner header.
 
 `POST /api/jobs` accepts a bounded, kind-discriminated research-job payload and returns `202` with
 a durable job. Every request is validated through the central research-job registry
-(`backend/src/jobs/registry.ts`), which registers three strict kinds: `kind: "backtest"` runs a
+(`backend/src/jobs/registry.ts`), which registers four strict kinds: `kind: "backtest"` runs a
 strategy over client-uploaded candles in the backtest worker thread, `kind: "screener"` runs an
-on-demand technical scan in-process ([screener guide](SCREENER.md)) and `kind: "multi-market-eval"`
-runs the server multi-market strategy evaluation described below. Unknown kinds keep the same
-hard-fail validation error as before the registry existed, and the two pre-existing kinds keep
+on-demand technical scan in-process ([screener guide](SCREENER.md)), `kind: "multi-market-eval"`
+runs the server multi-market strategy evaluation described below and `kind: "ga-evolution"` drives
+the checkpointed server GA evolution described in the next subsection. Unknown kinds keep the same
+hard-fail validation error as before the registry existed, and the pre-existing kinds keep
 byte-identical request and response shapes. `GET /api/jobs`, `GET /api/jobs/metrics`,
 `GET /api/jobs/:id` and `POST /api/jobs/:id/cancel` are owner-scoped and always return
 `Cache-Control: private, no-store, max-age=0` with `Vary: Cookie`. States are
@@ -157,6 +158,61 @@ train/out-of-sample metric sections plus the portfolio section; identical (IR, d
 fingerprint, config, engine version) inputs produce byte-identical results. The evaluation
 universe is the currently listed public catalog only, so results carry survivorship bias and are
 research evidence, not performance claims.
+
+### Server GA evolution and promotion (R9.2, in progress — not accepted)
+
+R9.2 is implemented on `main` but **not yet accepted or deployed**: production still runs the
+accepted R9.1 slot `r9a-schema16-4f5bc64` on PostgreSQL schema 16, and this contract may change
+until an acceptance record exists. The surface is authenticated, owner-scoped and research-only;
+the public strategy gallery stays out of scope until R9.3.
+
+`kind: "ga-evolution"` enqueues a durable, checkpointed genetic-algorithm run over the pure
+generator primitives (the workspace package `@saltanatbotv2/strategy-generator`). The strict start
+body is `{kind, mode: "start", config: {markets (1..4 unique catalog symbols), timeframe (shared
+by every market), lookbackBars (500..20000), split: {trainFraction (0.5..0.9, default 0.7),
+embargoBars (0..500, default 8)}, seed (0..4294967295), population (8..64), generations (1..16),
+objectives?}, clientRequestId?}`; `{kind, mode: "resume", runId, clientRequestId?}` continues a
+checkpointed run. `objectives` defaults to the canonical vector
+`netProfitPct` (maximized), `maxDrawdownPct` (minimized), `sharpe` (maximized) and `complexity`
+(minimized); at least two unique keys are required. On top of the ordinary research-job quota, at
+most **one active GA run per owner** is admitted (`429 ga_run_active`); resuming a run that is not
+checkpointed returns `409 ga_run_not_resumable` and an unknown or foreign run returns
+`404 ga_run_not_found`.
+
+The run fetches its dataset once through the same real-closed-bars discipline as
+`multi-market-eval` and pins it with a `dataset-v1` fingerprint, then breeds one generation at a
+time from the seeded package PRNG. Candidates are deduplicated by fingerprint and never
+re-evaluated. Each new candidate receives per-market train and out-of-sample backtests in the
+backtest worker thread plus one shared-capital out-of-sample portfolio run, an objective vector,
+an `oos_report` (direction-adjusted train-vs-OOS gap per objective, OOS loss share, cross-market
+dispersion and explicit `overfit`/`unstable` flags) and a cumulative Pareto rank (rank 0 = the
+non-dominated frontier). Lineage rows (parents, mutation log, IR, metrics) and the resume
+checkpoint commit atomically per generation, so cancellation between candidates completes the job
+with a resumable `status: "checkpointed"` result instead of a failure. Resume refetches the market
+data and verifies the pinned fingerprint; drifted history fails the run with `ga_dataset_drift` —
+determinism is never silently violated. The stored result (`schemaVersion: "ga-evolution-v1"`,
+bounded at 256 KiB) records the run ID, status, generations completed, dataset fingerprint,
+engine and generator versions, seed, the top frontier entries and candidate counts. The same seed
+and dataset produce identical results, including across checkpoint/resume.
+
+The `/api/ga` router only reads and promotes — it never executes anything. Responses use
+`Cache-Control: private, no-store` with `Vary: Cookie`, and request bodies are capped at 4 KiB
+(`413 ga_envelope_too_large`).
+
+| Method/path | Input | Result |
+| --- | --- | --- |
+| `GET /api/ga/runs?limit=1..50` | optional bounded limit | Recent runs: status (`running/checkpointed/completed/failed/cancelled`), config, seed, dataset fingerprint, generation progress |
+| `GET /api/ga/runs/:id?generation=N&limit=1..100` | optional generation filter and page limit | Run detail with the Pareto frontier summary and one bounded candidate page |
+| `GET /api/ga/runs/:id/candidates/:fingerprint` | none | Candidate IR, per-market train/OOS metrics, mutation log and the bounded ancestor lineage chain |
+| `POST /api/ga/promote` | `{runId, fingerprint}` | Stamps `promoted_at` (idempotent) and returns the full `ga-artifact-v1` bundle |
+
+Promotion targets the owner's **own** strategy library only. The server refuses a candidate
+without an out-of-sample report (`409 ga_promotion_requires_oos`) or flagged overfit
+(`409 ga_promotion_overfit`). The returned bundle carries the IR plus provenance: run ID,
+fingerprint, generation, seed, dataset fingerprint, engine and generator versions, objectives,
+Pareto rank, the OOS report and the lineage chain. Foreign or unknown candidates return
+`404 ga_candidate_not_found`; the checkpoint (population genomes and RNG state) never leaves the
+server.
 
 ### Onboarding
 

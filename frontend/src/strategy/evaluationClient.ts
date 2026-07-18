@@ -258,6 +258,19 @@ function abortReason(signal?: AbortSignal): unknown {
 }
 
 async function jobRequest(path: string, ownerUserId: string, init: RequestInit, mutation: boolean): Promise<EvaluationJobSnapshot> {
+  const { status, value } = await researchApiRequest(path, ownerUserId, init, mutation);
+  const snapshot = parseResearchJobEnvelope(value);
+  if (!snapshot) throw new EvaluationApiError(status, "invalid_response", "Research job service returned an invalid response.");
+  return snapshot;
+}
+
+/**
+ * Shared owner-scoped research API transport: bounded JSON responses, CSRF on
+ * mutations, per-request timeout, abort relay and explicit error codes. Also
+ * reused by the GA evolution client (R9.2) so both research features keep one
+ * transport honesty gate.
+ */
+export async function researchApiRequest(path: string, ownerUserId: string, init: RequestInit, mutation: boolean): Promise<{ status: number; value: unknown }> {
   const owner = validUuid(ownerUserId, "owner identifier");
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
@@ -283,9 +296,7 @@ async function jobRequest(path: string, ownerUserId: string, init: RequestInit, 
     });
     const value = await readBoundedJson(response);
     if (!response.ok) throw errorFromResponse(response.status, value);
-    const snapshot = parseJobEnvelope(value);
-    if (!snapshot) throw new EvaluationApiError(response.status, "invalid_response", "Research job service returned an invalid response.");
-    return snapshot;
+    return { status: response.status, value };
   } catch (error) {
     if (timeout.signal.reason instanceof DOMException && timeout.signal.reason.name === "TimeoutError" && !init.signal?.aborted) {
       throw new EvaluationApiError(0, "request_timeout", "Research job service request timed out.");
@@ -353,7 +364,7 @@ async function readBoundedText(response: Response): Promise<string> {
   }
 }
 
-function parseJobEnvelope(value: unknown): EvaluationJobSnapshot | undefined {
+export function parseResearchJobEnvelope(value: unknown): EvaluationJobSnapshot | undefined {
   const input = objectValue(objectValue(value)?.job);
   if (!input || typeof input.id !== "string" || !UUID.test(input.id) || typeof input.status !== "string" || !JOB_STATUSES.has(input.status)) {
     return undefined;

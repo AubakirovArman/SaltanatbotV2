@@ -1,4 +1,4 @@
-import type { GeneratorMaKind, StrategyFamily, TradeDirection } from "./types";
+import type { GeneratorMaKind, StrategyFamily, TradeDirection } from "./types.js";
 
 export type GeneratorRandom = () => number;
 

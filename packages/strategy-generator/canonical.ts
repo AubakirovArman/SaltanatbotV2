@@ -1,4 +1,4 @@
-import type { StrategyIR } from "../ir";
+import type { StrategyIR } from "@saltanatbotv2/strategy-core";
 
 /** Canonical JSON retains statement order but normalizes object keys and input order. */
 export function canonicalStrategyJson(ir: StrategyIR): string {

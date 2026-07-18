@@ -1,5 +1,5 @@
-import { IR_VERSION, type BoolExpr, type NumExpr, type Stmt, type StrategyIR, type StrategyInput } from "../ir";
-import type { RiskGenome, SignalGenome, StrategyGenome, TradeDirection } from "./types";
+import { IR_VERSION, type BoolExpr, type NumExpr, type Stmt, type StrategyIR, type StrategyInput } from "@saltanatbotv2/strategy-core";
+import type { RiskGenome, SignalGenome, StrategyGenome, TradeDirection } from "./types.js";
 
 interface SignalProgram {
   label: string;

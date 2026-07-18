@@ -295,6 +295,47 @@ catalog only, so results carry survivorship bias. This is research evidence, not
 claim or a promotion path: a high rank starts nothing — import, backtest, walk-forward and paper
 review remain the only way forward.
 
+### Server GA evolution with lineage and promotion (R9.2, in progress — not accepted)
+
+R9.2 is implemented but **not yet accepted or deployed**: production still runs the accepted R9.1
+slot on PostgreSQL schema 16, so treat this section as the contract under acceptance, not a
+release record. Everything here is research-only, and the public strategy gallery stays out of
+scope until R9.3.
+
+The pure generator primitives now live in the workspace package
+`@saltanatbotv2/strategy-generator` (`frontend/src/strategy/generator` re-exports it unchanged,
+so existing imports and suites are untouched). The package keeps zero IO — it never fetches
+candles, runs backtests or scores candidates. The generator panel's **Server evolution (GA)**
+section drives the server half: configure one to four catalog markets on a shared timeframe, the
+lookback and embargo split, a seed, a population of 8–64 and 1–16 generations, then start a
+`kind: "ga-evolution"` research job (documented in the [API reference](API.md)). The server
+fetches real closed bars once under the R9.1 discipline, pins them with a `dataset-v1`
+fingerprint and breeds each generation with the seeded package PRNG. Candidates are
+fingerprint-deduplicated and never re-evaluated; every new candidate gets per-market
+train/out-of-sample backtests plus a shared-capital OOS portfolio run, an objective vector (by
+default net profit maximized, max drawdown minimized, Sharpe maximized, structural complexity
+minimized), its lineage (parents and mutation log) and an out-of-sample report with the
+direction-adjusted train-vs-OOS gap per objective, OOS loss share, cross-market dispersion and
+explicit overfit/unstable flags. Pareto ranks are recomputed cumulatively; rank 0 is the
+non-dominated frontier shown in the run's frontier table.
+
+Each generation commits atomically together with a resume checkpoint (population genomes plus RNG
+state), so **Cancel** ends the run as `checkpointed` rather than failed, and **Resume** continues
+it exactly: the same seed and dataset produce identical candidates, objectives and lineage whether
+or not the run was interrupted — the R9.2 release criterion. Resume refetches and re-fingerprints
+the market data and fails explicitly with `ga_dataset_drift` when history no longer reproduces the
+pinned fingerprint; determinism is never silently violated. At most one GA run per owner may be
+active at a time.
+
+**Promote** copies a frontier candidate into your **own** strategy library through the normal
+portable-artifact flow, with provenance recorded: run, fingerprint, generation, seed, dataset
+fingerprint, engine and generator versions, lineage chain and the OOS report. The server refuses
+promotion when a candidate has no out-of-sample report or is flagged overfit
+(`ga_promotion_requires_oos` / `ga_promotion_overfit`), and the UI disables the action with the
+same reason. A promoted artifact is an ordinary editable strategy: it starts nothing, and
+backtest, walk-forward and paper review remain the only way forward. The evaluation universe is
+still the currently listed public catalog, so results carry survivorship bias.
+
 ## Metrics produced
 
 `computeMetrics()` derives `BacktestMetrics` from the trades and equity curve:

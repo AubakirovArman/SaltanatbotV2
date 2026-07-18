@@ -1,10 +1,10 @@
-import { canonicalStrategyFingerprint, canonicalStrategyJson } from "./canonical";
-import { compileStrategyGenome } from "./grammar";
-import { crossoverStrategyGenomes, mutateStrategyGenome, randomStrategyGenome } from "./genome";
-import { ALL_DIRECTIONS, ALL_FAMILIES, boundedInt, clamp, createGeneratorRandom, finiteOr, pick } from "./random";
-import type { GeneratorRandom } from "./random";
-import { GENERATOR_LIMITS, type GeneratedStrategyCandidate, type GenerationProvenance, type GeneratorProgress, type GeneratorRuntimeOptions, type ResolvedGeneratorConfig, type StrategyFamily, type StrategyGenerationResult, type StrategyGeneratorSpec, type StrategyGenome, type TradeDirection } from "./types";
-import { validateGeneratedStrategy } from "./validation";
+import { canonicalStrategyFingerprint, canonicalStrategyJson } from "./canonical.js";
+import { compileStrategyGenome } from "./grammar.js";
+import { crossoverStrategyGenomes, mutateStrategyGenome, randomStrategyGenome } from "./genome.js";
+import { ALL_DIRECTIONS, ALL_FAMILIES, boundedInt, clamp, createGeneratorRandom, finiteOr, pick } from "./random.js";
+import type { GeneratorRandom } from "./random.js";
+import { GENERATOR_LIMITS, type GeneratedStrategyCandidate, type GenerationProvenance, type GeneratorProgress, type GeneratorRuntimeOptions, type ResolvedGeneratorConfig, type StrategyFamily, type StrategyGenerationResult, type StrategyGeneratorSpec, type StrategyGenome, type TradeDirection } from "./types.js";
+import { validateGeneratedStrategy } from "./validation.js";
 
 const DEFAULT_SEED = 0x51a7e9d3;
 const DEFAULT_POPULATION = 24;

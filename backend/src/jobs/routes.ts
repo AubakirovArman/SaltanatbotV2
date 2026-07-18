@@ -34,10 +34,20 @@ export function createComputeJobsRouter(pool: Pool): Router {
   // job definition validates its own body; unknown kinds keep rejecting through
   // the backtest schema exactly as before the registry existed.
   router.post("/", asyncRoute(async (request, response) => {
-    const outcome = resolveResearchJobEnqueueDefinition(request.body).parseEnqueueRequest(request.body);
+    const definition = resolveResearchJobEnqueueDefinition(request.body);
+    const outcome = definition.parseEnqueueRequest(request.body);
     if (!outcome.ok) {
       response.status(outcome.rejection.status).json(outcome.rejection.body);
       return;
+    }
+    // Kind-specific DB-backed quotas (e.g. one active GA run per owner) gate
+    // between parse and the durable enqueue; kinds without one are unchanged.
+    if (definition.authorizeEnqueue) {
+      const authorization = await definition.authorizeEnqueue({ ownerUserId: owner(response), pool, payload: outcome.plan.payload });
+      if (!authorization.ok) {
+        response.status(authorization.rejection.status).json(authorization.rejection.body);
+        return;
+      }
     }
     const job = await repository.enqueue({ ownerUserId: owner(response), ...outcome.plan });
     respondToEnqueue(response, job);

@@ -1,0 +1,24 @@
+{
+  "name": "@saltanatbotv2/strategy-generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc index.ts types.ts random.ts canonical.ts grammar.ts genome.ts validation.ts ranking.ts evolution.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --declaration --outDir .",
+    "check": "tsc index.ts types.ts random.ts canonical.ts grammar.ts genome.ts validation.ts ranking.ts evolution.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --noEmit && node ../../scripts/check-strategy-generator-generated.mjs"
+  },
+  "dependencies": {
+    "@saltanatbotv2/strategy-core": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

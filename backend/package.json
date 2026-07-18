@@ -17,6 +17,7 @@
     "@saltanatbotv2/contracts": "0.1.0",
     "@saltanatbotv2/execution-core": "0.1.0",
     "@saltanatbotv2/strategy-core": "0.1.0",
+    "@saltanatbotv2/strategy-generator": "0.1.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "pg": "^8.22.0",

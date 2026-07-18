@@ -1,9 +1,19 @@
 import { createHash } from "node:crypto";
+import type { Pool } from "pg";
 import { z } from "zod";
 import { SCREENER_UNIVERSE_LIMIT_MAXIMUM_V1, type Candle } from "@saltanatbotv2/contracts";
+import { GaEvolutionRepository, type GaEvolutionLineageStore } from "../ga/repository.js";
 import { parseScreenerRunJobRequest, type ScreenerRunJobRequest } from "../screener/apiSchema.js";
 import type { ScreenerRepositoryContract } from "../screener/repositoryTypes.js";
 import { parseStrategyIR } from "../trading/strategy/irSchema.js";
+import {
+  GA_EVOLUTION_JOB_TIMEOUT_MS,
+  GA_EVOLUTION_RESUME_ESTIMATED_COST,
+  gaEvaluationMarkets,
+  gaEvolutionRequestSchema,
+  GaEvolutionTaskError,
+  runGaEvolutionTask
+} from "../workers/gaEvolutionTask.js";
 import {
   findUnknownEvaluationMarket,
   MULTI_MARKET_EVAL_JOB_TIMEOUT_MS,
@@ -34,6 +44,11 @@ export type ResearchJobEnqueueOutcome =
   | { ok: true; plan: ResearchJobEnqueuePlan }
   | { ok: false; rejection: { status: number; body: Record<string, unknown> } };
 
+/** Outcome of an optional DB-backed enqueue gate (kind-specific quotas). */
+export type ResearchJobEnqueueAuthorization =
+  | { ok: true }
+  | { ok: false; rejection: { status: number; body: Record<string, unknown> } };
+
 /** Bounded, provider-routed candle access for in-process kinds (wired by the worker). */
 export interface ResearchJobCandleSource {
   getCandles(request: { symbol: string; timeframe: string; limit: number; endTime?: number }, signal?: AbortSignal): Promise<Candle[]>;
@@ -56,6 +71,7 @@ export interface ResearchJobExecutionContext {
   screenerPresets?: Pick<ScreenerRepositoryContract, "get">;
   candleSource?: ResearchJobCandleSource;
   backtestRunner?: ResearchJobBacktestRunner;
+  gaLineage?: GaEvolutionLineageStore;
 }
 
 /** run() failures carrying a stable job error code for the owner-facing record. */
@@ -82,6 +98,13 @@ interface ResearchJobDefinitionBase {
    * the same responses in the jobs routes error middleware as before.
    */
   parseEnqueueRequest(body: unknown): ResearchJobEnqueueOutcome;
+  /**
+   * Optional async gate the jobs routes apply between a successful parse and
+   * the durable enqueue — for kind-specific, database-backed quotas (e.g. the
+   * single active GA run per owner). Kinds without one enqueue exactly as
+   * before the seam existed.
+   */
+  authorizeEnqueue?(input: { ownerUserId: string; pool: Pool; payload: Record<string, unknown> }): Promise<ResearchJobEnqueueAuthorization>;
 }
 
 /** Network-dependent kinds run on the research worker's main thread. */
@@ -148,6 +171,7 @@ export function registerBuiltinResearchJobKinds(): void {
   registerResearchJobDefinition(createScreenerJobDefinition());
   registerResearchJobDefinition(createBacktestJobDefinition());
   registerResearchJobDefinition(createMultiMarketEvalJobDefinition());
+  registerResearchJobDefinition(createGaEvolutionJobDefinition());
 }
 
 function requireDefinition(kind: string): ResearchJobDefinition {
@@ -351,6 +375,103 @@ function createMultiMarketEvalJobDefinition(): ResearchJobInProcessDefinition {
         );
       } catch (error) {
         if (error instanceof MultiMarketEvalTaskError) {
+          throw new ResearchJobExecutionError(error.code, error.message, { cause: error });
+        }
+        throw error;
+      }
+    }
+  };
+}
+
+// --- ga-evolution: in-process seeded evolution with checkpointed lineage (R9.2) ---
+
+const GA_EVOLUTION_JOB_DEDUPE_VERSION = "ga-evolution-job:v1\0";
+
+function createGaEvolutionJobDefinition(): ResearchJobInProcessDefinition {
+  return {
+    kind: "ga-evolution",
+    execution: "in-process",
+    timeoutMs: GA_EVOLUTION_JOB_TIMEOUT_MS,
+    failureCode: "ga_evolution_failed",
+    failureMessage: "GA evolution run failed.",
+    parseEnqueueRequest(body) {
+      const input = gaEvolutionRequestSchema.parse(body);
+      let payload: Record<string, unknown>;
+      let estimatedCost: number;
+      if (input.mode === "start") {
+        const unknownMarket = findUnknownEvaluationMarket(gaEvaluationMarkets(input.config));
+        if (unknownMarket) {
+          return {
+            ok: false,
+            rejection: {
+              status: 400,
+              body: { error: `Market ${unknownMarket} is not available for server evolution.`, code: "unknown_market" }
+            }
+          };
+        }
+        payload = { kind: "ga-evolution", mode: "start", config: input.config };
+        estimatedCost = input.config.lookbackBars * input.config.markets.length * input.config.generations;
+      } else {
+        payload = { kind: "ga-evolution", mode: "resume", runId: input.runId };
+        estimatedCost = GA_EVOLUTION_RESUME_ESTIMATED_COST;
+      }
+      return {
+        ok: true,
+        plan: {
+          jobType: "ga-evolution",
+          payload,
+          estimatedCost,
+          ...(input.clientRequestId !== undefined ? { clientRequestId: input.clientRequestId } : {}),
+          dedupeKey: dedupeKeyFor(GA_EVOLUTION_JOB_DEDUPE_VERSION, payload)
+        }
+      };
+    },
+    /** Spec §3 quota: at most one active GA run per owner, checked against ga_runs. */
+    async authorizeEnqueue({ ownerUserId, pool, payload }) {
+      const lineage = new GaEvolutionRepository(pool);
+      await lineage.failOrphanedRuns(ownerUserId);
+      if (await lineage.hasActiveRun(ownerUserId)) {
+        return {
+          ok: false,
+          rejection: { status: 429, body: { error: "Another GA evolution run is already active for this owner.", code: "ga_run_active" } }
+        };
+      }
+      if (payload.mode === "resume" && typeof payload.runId === "string") {
+        const run = await lineage.getRun(ownerUserId, payload.runId);
+        if (!run) {
+          return { ok: false, rejection: { status: 404, body: { error: "GA run not found.", code: "ga_run_not_found" } } };
+        }
+        if (run.status !== "checkpointed") {
+          return {
+            ok: false,
+            rejection: { status: 409, body: { error: `GA run is ${run.status} and cannot be resumed.`, code: "ga_run_not_resumable" } }
+          };
+        }
+      }
+      return { ok: true };
+    },
+    async run(context) {
+      const lineage = context.gaLineage;
+      if (!lineage) {
+        throw new ResearchJobExecutionError("ga_dependencies_missing", "GA lineage repository is not wired into this worker.");
+      }
+      try {
+        return await runGaEvolutionTask(
+          {
+            ownerUserId: context.ownerUserId,
+            jobId: context.jobId,
+            payload: context.payload,
+            signal: context.signal,
+            heartbeat: context.heartbeat
+          },
+          {
+            lineage,
+            ...(context.candleSource ? { candleSource: context.candleSource } : {}),
+            ...(context.backtestRunner ? { backtestRunner: context.backtestRunner } : {})
+          }
+        );
+      } catch (error) {
+        if (error instanceof GaEvolutionTaskError) {
           throw new ResearchJobExecutionError(error.code, error.message, { cause: error });
         }
         throw error;

@@ -8,5 +8,5 @@
   "maxSingleJsGzipBytes": 230400,
   "maxInitialJsGzipBytes": 174080,
   "maxLazyRouteJsGzipBytes": 344064,
-  "maxTotalJsGzipBytes": 1032192
+  "maxTotalJsGzipBytes": 1056768
 }

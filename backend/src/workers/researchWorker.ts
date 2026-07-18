@@ -6,6 +6,7 @@ import { AlertOperabilityRepository } from "../alerts/operability.js";
 import { AlertControlPlaneRetention } from "../alerts/retention.js";
 import { loadRuntimeConfig } from "../config/runtimeConfig.js";
 import { createDatabasePool, loadDatabaseConfig, migrateDatabase, verifyDatabaseConnection } from "../database/index.js";
+import { GaEvolutionRepository } from "../ga/repository.js";
 import { ComputeJobArtifactRetention } from "../jobs/artifactRetention.js";
 import { getResearchJobDefinition, registerBuiltinResearchJobKinds, ResearchJobExecutionError, type ResearchJobExecutionContext, type ResearchJobInProcessDefinition, type ResearchJobWorkerThreadDefinition } from "../jobs/registry.js";
 import { claimJobForExecution, ComputeJobRepository, type ClaimedJob } from "../jobs/repository.js";
@@ -32,6 +33,7 @@ await verifyDatabaseConnection(pool);
 const migration = await migrateDatabase(pool);
 const repository = new ComputeJobRepository(pool);
 const screenerPresets = new ScreenerRepository(pool);
+const gaLineage = new GaEvolutionRepository(pool);
 const artifactRetention = new ComputeJobArtifactRetention(pool);
 const alertOperability = new AlertOperabilityRepository(pool);
 const alertRetention = new AlertControlPlaneRetention(pool);
@@ -419,7 +421,8 @@ function executeInProcess(job: ClaimedJob, definition: ResearchJobInProcessDefin
     signal: abort.signal,
     heartbeat: (value) => { if (Number.isFinite(value)) progress = Math.min(1, Math.max(0, value)); },
     logger: (event) => console.info(JSON.stringify({ ...event, jobId: job.id, workerId })),
-    screenerPresets
+    screenerPresets,
+    gaLineage
   };
   void definition
     .run(context)

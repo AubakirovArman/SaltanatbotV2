@@ -26,9 +26,11 @@ test.describe("R9.1 generator server evaluation", () => {
     const dialog = page.getByRole("dialog", { name: "Algorithmic strategy generator" });
     await expect(dialog).toBeVisible({ timeout: 20_000 });
 
-    // A small deterministic run keeps the journey fast; seed stays at 42.
-    await dialog.getByLabel("Population").fill("4");
-    await dialog.getByLabel("Generations").fill("0");
+    // A small deterministic run keeps the journey fast; seed stays at 42. The
+    // limits group disambiguates from the server evolution section's controls.
+    const limits = dialog.getByRole("group", { name: "Generation limits" });
+    await limits.getByLabel("Population").fill("4");
+    await limits.getByLabel("Generations").fill("0");
     await dialog.getByRole("button", { name: "Generate candidates", exact: true }).click();
     await expect(dialog.locator("tbody tr").first()).toBeVisible({ timeout: 30_000 });
 

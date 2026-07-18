@@ -17,6 +17,7 @@
     "@saltanatbotv2/pine-compiler": "0.1.0",
     "@saltanatbotv2/plugin-core": "0.1.0",
     "@saltanatbotv2/strategy-core": "0.1.0",
+    "@saltanatbotv2/strategy-generator": "0.1.0",
     "blockly": "^13.1.1",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",

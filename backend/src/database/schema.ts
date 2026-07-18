@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { ALERT_CONTROL_PLANE_MIGRATION_SQL } from "./alertControlPlaneMigration.js";
 import { COMPUTE_JOB_ARTIFACT_RETENTION_MIGRATION_SQL } from "./computeJobArtifactRetentionMigration.js";
 import { EXECUTOR_COMMANDS_MIGRATION_SQL } from "./executorCommandsMigration.js";
+import { GA_EVOLUTION_LINEAGE_MIGRATION_SQL } from "./gaEvolutionLineageMigration.js";
 import { IDENTITY_CONTROL_PLANE_MIGRATION_SQL } from "./identityControlPlaneMigration.js";
 import { ONBOARDING_AND_RUNTIME_HEARTBEATS_MIGRATION_SQL } from "./onboardingMigration.js";
 import { SCREENER_PRESETS_MIGRATION_SQL } from "./screenerPresetsMigration.js";
@@ -414,6 +415,11 @@ const migrationDefinitions = [
     version: 16,
     name: "telegram_command_bridge",
     sql: TELEGRAM_COMMAND_BRIDGE_MIGRATION_SQL
+  },
+  {
+    version: 17,
+    name: "ga_evolution_lineage",
+    sql: GA_EVOLUTION_LINEAGE_MIGRATION_SQL
   }
 ] as const;
 

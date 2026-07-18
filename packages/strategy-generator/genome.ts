@@ -1,6 +1,6 @@
-import { ALL_DIRECTIONS, ALL_FAMILIES, ALL_MA_KINDS, canonicalNumber, clamp, pick, randomDecimal, randomInt } from "./random";
-import type { GeneratorRandom } from "./random";
-import { GENERATOR_LIMITS, type MutationRecord, type RiskGenome, type SignalGenome, type StrategyFamily, type StrategyGenome, type TradeDirection } from "./types";
+import { ALL_DIRECTIONS, ALL_FAMILIES, ALL_MA_KINDS, canonicalNumber, clamp, pick, randomDecimal, randomInt } from "./random.js";
+import type { GeneratorRandom } from "./random.js";
+import { GENERATOR_LIMITS, type MutationRecord, type RiskGenome, type SignalGenome, type StrategyFamily, type StrategyGenome, type TradeDirection } from "./types.js";
 
 export interface MutationOptions {
   rate: number;
