@@ -373,28 +373,41 @@ describe("owner-scoped alert HTTP API", () => {
   it.each([
     ["telegram-only", ["telegram"]],
     ["mixed", ["in-app", "telegram"]]
-  ] as const)("fails closed on %s delivery until the R5.3 delivery lane exists", async (_label, deliveryChannels) => {
-    const unsupported = { ...definition, deliveryChannels: [...deliveryChannels] };
+  ] as const)("accepts %s delivery now that the R5.3b telegram lane exists", async (_label, deliveryChannels) => {
+    const telegramDefinition = { ...definition, deliveryChannels: [...deliveryChannels] };
     const createResponse = await jsonRequest("", "POST", {
       clientId: "browser.delivery-01",
-      definition: unsupported
+      definition: telegramDefinition
     });
-    expect(createResponse.status).toBe(400);
-    expect(await createResponse.json()).toEqual({
-      error: "Only in-app alert delivery is available in R5.1.",
-      code: "unsupported_alert_delivery_channel"
-    });
+    expect(createResponse.status).toBe(201);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: OWNER_A,
+        definition: expect.objectContaining({ deliveryChannels: [...deliveryChannels] })
+      })
+    );
 
     const updateResponse = await jsonRequest(`/${RULE_ID}`, "PUT", {
       expectedRevision: 1,
+      definition: telegramDefinition
+    });
+    expect(updateResponse.status).toBe(200);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ruleId: RULE_ID,
+        definition: expect.objectContaining({ deliveryChannels: [...deliveryChannels] })
+      })
+    );
+  });
+
+  it("keeps rejecting unknown delivery channels", async () => {
+    const unsupported = { ...definition, deliveryChannels: ["in-app", "email"] };
+    const createResponse = await jsonRequest("", "POST", {
+      clientId: "browser.delivery-02",
       definition: unsupported
     });
-    expect(updateResponse.status).toBe(400);
-    expect(await updateResponse.json()).toMatchObject({
-      code: "unsupported_alert_delivery_channel"
-    });
+    expect(createResponse.status).toBe(400);
     expect(create).not.toHaveBeenCalled();
-    expect(update).not.toHaveBeenCalled();
   });
 
   it.each([

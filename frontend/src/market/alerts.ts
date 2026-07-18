@@ -32,6 +32,8 @@ export interface PriceAlert extends ChartDataRoute {
   deletionPending?: boolean;
   /** A durable local definition is waiting for its linked server revision. */
   pendingDefinitionUpdate?: boolean;
+  /** Server rule also delivers to the owner's active Telegram binding. */
+  telegramDelivery?: boolean;
 }
 
 const KEY = "sbv2:alerts";
@@ -128,7 +130,8 @@ export function parseStoredPriceAlert(value: unknown, legacyRoute: ChartDataRout
     ...(typeof alert.localRevision === "number" && Number.isSafeInteger(alert.localRevision) && alert.localRevision > 0 ? { localRevision: alert.localRevision } : {}),
     ...(alert.deleted === true ? { deleted: true } : {}),
     ...(alert.deletionPending === true ? { deletionPending: true } : {}),
-    ...(alert.pendingDefinitionUpdate === true ? { pendingDefinitionUpdate: true } : {})
+    ...(alert.pendingDefinitionUpdate === true ? { pendingDefinitionUpdate: true } : {}),
+    ...(alert.telegramDelivery === true ? { telegramDelivery: true } : {})
   };
 }
 

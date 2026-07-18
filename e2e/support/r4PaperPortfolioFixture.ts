@@ -334,7 +334,8 @@ async function installAlertReadFixture(
     const owner = request.headers()["x-sbv2-expected-user"] ?? null;
     const supportedPath = url.pathname === "/api/alerts"
       || url.pathname === "/api/alerts/events"
-      || url.pathname === "/api/alerts/outbox";
+      || url.pathname === "/api/alerts/outbox"
+      || url.pathname === "/api/alerts/bindings";
 
     if (request.method() !== "GET" || !supportedPath || !validAlertReadQuery(url)) {
       unexpectedApiRequests.push(`${request.method()} ${url.pathname}`);
@@ -370,6 +371,9 @@ async function installAlertReadFixture(
         researchOnly: true,
         executionPermission: false
       }));
+    }
+    if (url.pathname === "/api/alerts/bindings") {
+      return json(route, { bindings: [], researchOnly: true, executionPermission: false });
     }
     return json(route, {
       items: [],

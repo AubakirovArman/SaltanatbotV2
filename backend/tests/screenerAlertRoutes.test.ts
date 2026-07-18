@@ -155,14 +155,20 @@ describe("screener-kind alert HTTP API", () => {
   it.each([
     ["telegram-only", ["telegram"]],
     ["mixed", ["in-app", "telegram"]]
-  ] as const)("rejects %s delivery on screener rules until R5.3b", async (_label, deliveryChannels) => {
+  ] as const)("accepts %s delivery on screener rules with the R5.3b lane", async (_label, deliveryChannels) => {
     const response = await jsonRequest("", "POST", {
       clientId: "browser.screen-02",
       definition: definition({ deliveryChannels: [...deliveryChannels] })
     });
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ code: "unsupported_alert_delivery_channel" });
-    expect(create).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        definition: expect.objectContaining({
+          kind: "screener",
+          deliveryChannels: [...deliveryChannels]
+        })
+      })
+    );
   });
 
   it("maps a screener rearm attempt to 409 alert_rearm_unsupported", async () => {

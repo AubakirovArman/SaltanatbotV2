@@ -5,7 +5,7 @@ import { DATABASE_MIGRATIONS, LATEST_DATABASE_SCHEMA_VERSION } from "../database
 import type { GlobalAdmissionController, GlobalAdmissionSnapshot } from "../http/globalAdmission.js";
 import type { ReadinessRateLimitSnapshot } from "../http/readinessRateLimit.js";
 import type { ApiMetrics, ApiMetricsSnapshot } from "./apiMetrics.js";
-import { RuntimeComponentHeartbeatRepository } from "./componentHeartbeat.js";
+import { RuntimeComponentHeartbeatRepository, type RuntimeComponent } from "./componentHeartbeat.js";
 import { readRecoveryStatusReceipt, type RecoveryStatusReceipt } from "./recoveryStatus.js";
 
 export type OperationalReadinessState = "ready" | "degraded" | "unready";
@@ -31,6 +31,11 @@ export interface OperationalReadiness {
       readonly mode: "paper-only";
     };
     readonly researchWorker: {
+      readonly status: "ready" | "unready" | "legacy";
+      readonly heartbeatAgeMs?: number;
+      readonly componentState?: string;
+    };
+    readonly notificationWorker?: {
       readonly status: "ready" | "unready" | "legacy";
       readonly heartbeatAgeMs?: number;
       readonly componentState?: string;
@@ -66,6 +71,9 @@ export interface PublicOperationalReadiness {
     };
     readonly researchWorker: {
       readonly status: OperationalReadiness["components"]["researchWorker"]["status"];
+    };
+    readonly notificationWorker?: {
+      readonly status: NonNullable<OperationalReadiness["components"]["notificationWorker"]>["status"];
     };
     readonly filesystem: {
       readonly status: OperationalReadiness["components"]["filesystem"]["status"];
@@ -140,6 +148,9 @@ export function toPublicOperationalReadiness(
       postgres: { status: readiness.components.postgres.status },
       executor: { status: readiness.components.executor.status },
       researchWorker: { status: readiness.components.researchWorker.status },
+      ...(readiness.components.notificationWorker
+        ? { notificationWorker: { status: readiness.components.notificationWorker.status } }
+        : {}),
       filesystem: { status: readiness.components.filesystem.status },
       admission: { status: readiness.components.admission.status }
     }
@@ -191,12 +202,16 @@ export class OperationalStatusService {
     // supported pool minimum this leaves a connection available for
     // authentication/control traffic during a readiness scan.
     const database = await this.databaseState();
-    const heartbeat = await this.heartbeatState();
+    const heartbeat = await this.heartbeatState("research-worker");
+    // The notification worker is an optional deployment: hosts without the
+    // systemd unit stay fully ready unless the operator opts into
+    // OPERATIONS_REQUIRE_NOTIFICATION_WORKER=1.
+    const notificationWorker = this.dependencies.runtimeConfig.operations.readiness.requireNotificationWorker ? await this.heartbeatState("notification-worker") : undefined;
     const disk = await diskPromise;
     const admission = this.dependencies.admission.snapshot();
     const admissionStatus = admission.active >= admission.maxActive && admission.queued >= admission.maxQueued ? "unready" : admission.queued > 0 || admission.saturation >= 0.85 ? "degraded" : "ready";
     const executorReady = this.dependencies.executorReady();
-    const hardFailure = database.postgres.status === "unready" || database.migrations.status === "unready" || !executorReady || heartbeat.status === "unready" || disk.status === "unready" || admissionStatus === "unready";
+    const hardFailure = database.postgres.status === "unready" || database.migrations.status === "unready" || !executorReady || heartbeat.status === "unready" || notificationWorker?.status === "unready" || disk.status === "unready" || admissionStatus === "unready";
     const degraded = !hardFailure && (disk.status === "degraded" || admissionStatus === "degraded");
     const status: OperationalReadinessState = hardFailure ? "unready" : degraded ? "degraded" : "ready";
 
@@ -212,6 +227,7 @@ export class OperationalStatusService {
           mode: "paper-only"
         },
         researchWorker: heartbeat,
+        ...(notificationWorker ? { notificationWorker } : {}),
         filesystem: disk,
         admission: {
           status: admissionStatus,
@@ -320,12 +336,13 @@ export class OperationalStatusService {
     }
   }
 
-  private async heartbeatState(): Promise<OperationalReadiness["components"]["researchWorker"]> {
+  private async heartbeatState(component: RuntimeComponent): Promise<OperationalReadiness["components"]["researchWorker"]> {
     if (!this.heartbeatRepository) return { status: "legacy" };
     try {
-      const heartbeat = await this.heartbeatRepository.get("research-worker");
+      const heartbeat = await this.heartbeatRepository.get(component);
       if (!heartbeat) return { status: "unready" };
       const heartbeatAgeMs = Math.max(0, this.now() - heartbeat.heartbeatAt.getTime());
+      // Both worker components share the research-worker staleness budget.
       const ready = heartbeat.status === "ready" && heartbeatAgeMs <= this.dependencies.runtimeConfig.operations.readiness.researchWorkerHeartbeatStaleMs && heartbeat.databaseSchemaVersion === LATEST_DATABASE_SCHEMA_VERSION;
       return {
         status: ready ? "ready" : "unready",

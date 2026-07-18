@@ -46,6 +46,7 @@ describe("typed runtime configuration", () => {
         },
         readiness: {
           researchWorkerHeartbeatStaleMs: 90_000,
+          requireNotificationWorker: false,
           resultTtlMs: 1_000,
           rateLimit: {
             refillPerSecond: 2,

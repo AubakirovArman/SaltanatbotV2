@@ -11,6 +11,7 @@ import {
   type PriceThresholdAlertDefinitionV1,
 } from "@saltanatbotv2/contracts";
 import { timeframeMs } from "../market/timeframes.js";
+import { queueTelegramDeliveryForActiveBinding } from "../notifications/bindingService.js";
 import { PRICE_THRESHOLD_OBSERVATION_SCHEMA_V1, priceThresholdAlertScopeKey, type PriceThresholdAlertRuntimeStateV1 } from "./priceEvaluator.js";
 import { priceMatchesThreshold } from "./priceDecimal.js";
 import {
@@ -340,6 +341,12 @@ async function writeTriggeredNotification(client: PoolClient, definition: PriceT
      RETURNING channel, status, attempt, max_attempts, run_after, delivered_at`,
     [randomUUID(), input.ownerUserId, outboxId, transition.transitionKey],
   );
+  // R5.3b-1: when the rule also wants telegram and the owner holds an active
+  // binding, queue a durable telegram delivery for the notification worker.
+  // Without a binding the in-app row above stands alone (counted skip).
+  if (definition.deliveryChannels.includes("telegram")) {
+    await queueTelegramDeliveryForActiveBinding(client, { ownerUserId: input.ownerUserId, outboxId, deduplicationKey: transition.transitionKey });
+  }
   const row = delivery.rows[0]!;
   return { event, outbox: mapNotificationOutbox({ id: outboxId, payload: envelope, created_at: outboxInsert.rows[0]!.created_at, channel: row.channel, delivery_status: row.status, attempt: row.attempt, max_attempts: row.max_attempts, run_after: row.run_after, delivered_at: row.delivered_at, error_message: null }) };
 }

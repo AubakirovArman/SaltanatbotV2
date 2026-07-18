@@ -113,6 +113,8 @@ export const ruScreener: Record<ScreenerMessageKey, string> = {
   alertCapacityExhausted: "Сервер сейчас не принимает новые алерты скринера.",
   alertCreateFailed: "Не удалось создать алерт скринера.",
   alertServiceUnavailable: "Сервис алертов временно недоступен.",
+  telegramChannel: "Также доставлять в Telegram",
+  telegramChannelHint: "Привяжите чат Telegram на панели алертов графика, чтобы включить доставку в Telegram.",
   riskTitle: "Исследовательский скрин",
   risk: "Метрики рассчитываются по закрытым свечам публичных рыночных данных Binance. Отсутствующие, устаревшие или прогревающиеся данные помечают символ недоступным, а не нулём. Здесь ничего не размещает ордера и не обещает прибыль."
 };

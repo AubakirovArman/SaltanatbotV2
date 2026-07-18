@@ -52,6 +52,8 @@ execution, real borrowing or real margin/account telemetry.
 | Market/backtest data | Determines signals and performance claims | Provider/provenance labels; fallback and gaps explicit |
 | Arbitrage quotes/history | Can create misleading urgency or expected-profit claims | Public-only adapters, source health, bounded stale state, depth checks and explicit research labels |
 | R5.1 alert state/receipts/events | A forged crossing, stale lease or cross-owner cursor could create or hide a notification | Composite owner keys, authorization/lease/state-revision fences, immutable receipts/events and per-owner transactional sequence |
+| Telegram bot token file (R5.3b-1, in progress) | Whoever holds the token can send as the bot and read its update stream | Owner-only `0600`/`0400` regular file, `O_NOFOLLOW`/uid/size checks, never logged; SHA-256 fingerprint used everywhere else |
+| Telegram binding codes and chat ids (R5.3b-1, in progress) | A guessed/replayed code or leaked chat id could bind or expose another person's chat | 128-bit one-consume codes stored as SHA-256 with 10-minute TTL; chat ids hashed in every projection/log and kept server-side only |
 
 ## Trust boundaries
 
@@ -67,6 +69,10 @@ Binance or Bybit public APIs
 R5.1 deployed notification path:
 Research worker | credential-free public REST closed candles | Binance or Bybit
 Research worker | owner/auth/lease/state fences | PostgreSQL schema 13
+
+R5.3b-1 in-progress Telegram path (not yet accepted/deployed):
+Notification worker | egress-only HTTPS sendMessage/getUpdates long poll | api.telegram.org
+Notification worker | binding/lease/cursor fences, hashed identifiers | PostgreSQL schema 15
 
 Dormant future boundary (not connected in `public-http-paper`):
 Backend | signed HTTPS / authenticated private WebSocket | private exchange APIs
@@ -207,6 +213,50 @@ Residual risks: in-app publication is intentionally at-least-once, so a crash be
 persists its cursor can repeat a toast. Public venue data can be wrong or unavailable, and the beta
 limits are not R11 capacity evidence for 100 simultaneous users. R5.1 provides notification
 evidence, not financial advice, guaranteed observation or execution.
+
+### Telegram notification delivery and chat binding (R5.3b-1, in progress)
+
+This boundary is implemented in the working tree but **not accepted or deployed**; the controls
+below describe the candidate, not production. Threats include disclosure of the operator's bot
+token (full impersonation of the bot plus reading its update stream), guessing or replaying a
+binding code to attach a stranger's chat to an owner, disclosure of member chat ids, a second
+poller stealing or double-processing updates, inbound command floods, message floods toward
+Telegram, and a notification silently outliving a revoked binding.
+
+Candidate mitigations:
+
+- the bot token lives only in an operator-provisioned owner-only file
+  (`TELEGRAM_BOT_TOKEN_FILE`); the reader enforces `O_NOFOLLOW`, regular-file type, uid match,
+  mode `0600`/`0400` and a size bound, never throws the raw content into an error and never logs
+  it. Every durable row, metric and log line identifies the bot by the SHA-256 fingerprint of the
+  token. A missing/invalid file idles the worker instead of crash-looping, and readiness on hosts
+  without the worker is unaffected unless `OPERATIONS_REQUIRE_NOTIFICATION_WORKER=1`;
+- binding codes are 128-bit one-consume secrets returned to the authenticated owner exactly once;
+  only the SHA-256 hash is stored, TTL is 10 minutes, at most 3 codes are outstanding per owner,
+  creation is rate limited per owner, and consumption is serialized under a row lock so a race
+  cannot consume one code twice. Chat-side consumption attempts are limited to 5 per 10 minutes
+  per chat and commands to 6 per minute per chat; administrators bypass none of these limits;
+- chat ids are stored only inside the binding row that needs them for sending; every projection,
+  list response, ingress journal row and log uses the SHA-256 chat fingerprint (8-character
+  handle in the UI). The `telegram_updates` journal stores normalized kind/outcome rows only —
+  never message text;
+- ingress is egress-only `getUpdates` long polling: the worker adds **no public listener and no
+  webhook**, so the Telegram surface adds no inbound network attack surface beyond the existing
+  API. A fenced consumer lease (60-second expiry, monotonic generation on takeover, token-checked
+  updates) keeps one poller per bot, and the `(bot, update_id)` primary key plus the
+  transactional cursor advance make replays no-ops;
+- deliveries re-prove the exact binding tuple (owner, id, revision, active, chat present)
+  immediately before each external send; revoke cancels queued/retrying deliveries in the same
+  transaction; sends are bounded by global/per-chat/per-owner token buckets and Telegram
+  `retry_after` is honored with a capped backoff. Message text is sent with no parse mode, so
+  alert content cannot inject Telegram markup.
+
+Residual risks: external delivery is **at-least-once** — a crash between the Telegram send and
+the durable acknowledgement can deliver the same notification twice (retries reuse one
+deduplication key, but Telegram itself does not deduplicate). Notification title/body plaintext
+necessarily leaves the host for the Telegram Bot API and the recipient's chat history; do not
+route alerts whose names encode secrets. Telegram the platform, its availability and the secrecy
+of the operator's BotFather account are outside this project's control.
 
 ### Misleading or stale arbitrage opportunities
 

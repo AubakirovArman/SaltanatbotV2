@@ -1,0 +1,60 @@
+[Unit]
+Description=SaltanatbotV2 Telegram notification worker
+Wants=network-online.target
+After=network-online.target saltanatbotv2.service
+
+[Service]
+Type=simple
+User=saltanatbotv2
+Group=saltanatbotv2
+WorkingDirectory=/opt/saltanatbotv2
+Environment=NODE_ENV=production
+Environment=RUNTIME_PROFILE=public-http-paper
+Environment=PGHOST=127.0.0.1
+Environment=PGPORT=55434
+Environment=PGDATABASE=saltanatbotv2
+Environment=PGUSER=saltanatbotv2
+Environment=PGPASSWORD_FILE=/etc/saltanatbotv2/postgres_password
+Environment=PGAPPNAME=saltanatbotv2-notification-worker
+Environment=PGPOOL_MAX=4
+Environment=TELEGRAM_BOT_TOKEN_FILE=/etc/saltanatbotv2/telegram_bot_token
+Environment=NOTIFICATION_WORKER_HEARTBEAT_INTERVAL_MS=15000
+Environment=NOTIFICATION_WORKER_IDLE_RECHECK_MS=60000
+Environment=NOTIFICATION_DELIVERY_POLL_INTERVAL_MS=1000
+Environment=NOTIFICATION_WORKER_SHUTDOWN_TIMEOUT_MS=20000
+# Only the PostgreSQL password is a start precondition. The Telegram token
+# file is deliberately NOT tested here: without it the worker idles (and keeps
+# heartbeating) instead of blocking the unit.
+ExecStartPre=/usr/bin/test -r /etc/saltanatbotv2/postgres_password
+ExecStart=/usr/bin/node /opt/saltanatbotv2/backend/dist/workers/notificationWorker.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+LimitNOFILE=16384
+MemoryHigh=768M
+MemoryMax=1G
+CPUQuota=100%
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

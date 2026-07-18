@@ -1,13 +1,15 @@
-import { Archive, Bell, Power, RefreshCw, RotateCcw, X } from "lucide-react";
+import { Archive, Bell, Power, RefreshCw, RotateCcw, Send, X } from "lucide-react";
 import { useState } from "react";
 import type { AlertRuleRecordV1 } from "@saltanatbotv2/contracts";
 import { samePriceAlertRoute, type PriceAlert } from "../market/alerts";
 import type { NewAlertInput, PriceAlertSyncState } from "../hooks/usePriceAlerts";
+import { useTelegramBindings, type TelegramBindingsState } from "../hooks/useTelegramBindings";
 import type { Candle, DataExchange, DataMarketType, Instrument, PriceType, Timeframe } from "../types";
 import type { ConnectionState } from "../hooks/useMarketStream";
 import { localeTag, type Locale } from "../i18n";
 import { shellText } from "../i18n/shell";
 import { parseAlertThresholdInput } from "../alerts/localSnapshot";
+import { TelegramBindings } from "./TelegramBindings";
 
 interface StatsPanelProps {
   locale: Locale;
@@ -28,6 +30,8 @@ interface StatsPanelProps {
   alertSync: PriceAlertSyncState;
   /** Server screener-kind rules; rendered as records, never as price rows. */
   screenerAlerts?: AlertRuleRecordV1[];
+  /** Database owner for Telegram bindings; absent keeps the section hidden. */
+  telegramOwnerId?: string;
   onAddAlert: (input: NewAlertInput) => void | Promise<void>;
   onRemoveAlert: (id: string) => void | Promise<void>;
   onResetAlert: (id: string) => void | Promise<void>;
@@ -53,6 +57,7 @@ export function StatsPanel({
   alerts,
   alertSync,
   screenerAlerts = [],
+  telegramOwnerId,
   onAddAlert,
   onRemoveAlert,
   onResetAlert,
@@ -60,6 +65,7 @@ export function StatsPanel({
   onArchiveScreenerAlert
 }: StatsPanelProps) {
   const t = (key: Parameters<typeof shellText>[1]) => shellText(locale, key);
+  const telegram = useTelegramBindings(alertSync.status === "legacy" ? undefined : telegramOwnerId || undefined);
   const latest = candles.at(-1);
   const previous = candles.at(-2);
   const change = latest && previous ? latest.close - previous.close : 0;
@@ -111,6 +117,7 @@ export function StatsPanel({
         timeframe={timeframe}
         alerts={alerts.filter((alert) => alert.symbol === instrument.symbol && (alert.timeframe === timeframe || alert.timeframe === undefined) && samePriceAlertRoute(alert, { exchange, marketType, priceType }))}
         screenerAlerts={screenerAlerts}
+        telegram={telegram}
         sync={alertSync}
         onAddAlert={onAddAlert}
         onRemoveAlert={onRemoveAlert}
@@ -148,6 +155,7 @@ function AlertsSection({
   timeframe,
   alerts,
   screenerAlerts,
+  telegram,
   sync,
   onAddAlert,
   onRemoveAlert,
@@ -164,6 +172,7 @@ function AlertsSection({
   timeframe: Timeframe;
   alerts: PriceAlert[];
   screenerAlerts: AlertRuleRecordV1[];
+  telegram: TelegramBindingsState;
   sync: PriceAlertSyncState;
   onAddAlert: (input: NewAlertInput) => void | Promise<void>;
   onRemoveAlert: (id: string) => void | Promise<void>;
@@ -175,6 +184,8 @@ function AlertsSection({
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<string>();
   const [operationError, setOperationError] = useState<string>();
+  const [telegramDelivery, setTelegramDelivery] = useState(false);
+  const telegramArmed = telegramDelivery && Boolean(telegram.activeBinding);
 
   const submit = async () => {
     setPending("create");
@@ -183,7 +194,7 @@ function AlertsSection({
       const value = parseAlertThresholdInput(draft, instrument.decimals);
       // Direction is inferred from where the target sits relative to the last price.
       const direction = price !== undefined && value < price ? "below" : "above";
-      await onAddAlert({ symbol: instrument.symbol, price: value, direction, exchange, marketType, priceType, timeframe });
+      await onAddAlert({ symbol: instrument.symbol, price: value, direction, exchange, marketType, priceType, timeframe, ...(telegramArmed ? { telegramDelivery: true } : {}) });
       setDraft("");
     } catch (error) {
       setOperationError(error instanceof Error ? error.message.slice(0, 256) : t("alertOperationFailed"));
@@ -248,10 +259,25 @@ function AlertsSection({
           aria-label={`${t("alertPrice")} ${instrument.symbol}`}
           onChange={(event) => setDraft(event.target.value)}
         />
+        {sync.status === "synced" && telegram.status !== "unavailable" && (
+          <label className="alert-telegram-toggle" title={t("telegramChannelLabel")}>
+            <input
+              type="checkbox"
+              checked={telegramArmed}
+              disabled={!telegram.activeBinding || pending !== undefined}
+              aria-label={t("telegramChannelLabel")}
+              onChange={(event) => setTelegramDelivery(event.target.checked)}
+            />
+            <Send size={12} aria-hidden="true" />
+          </label>
+        )}
         <button type="submit" disabled={!draft.trim() || !creationReady || pending !== undefined}>
           {pending === "create" ? t("alertSaving") : t("add")}
         </button>
       </form>
+      {sync.status === "synced" && serverRouteSupported && telegram.status === "ready" && !telegram.activeBinding && (
+        <p className="alert-review-note">{t("telegramChannelHint")}</p>
+      )}
       {(operationError || sync.error) && <p className="alert-operation-error" role="alert">{operationError ?? sync.error}</p>}
       {sync.status !== "legacy" && (
         <details className="alert-activity">
@@ -345,6 +371,7 @@ function AlertsSection({
           </ul>
         </div>
       )}
+      {sync.status !== "legacy" && <TelegramBindings locale={locale} telegram={telegram} />}
     </section>
   );
 }

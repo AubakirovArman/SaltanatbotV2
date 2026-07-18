@@ -1,6 +1,9 @@
 import type { Pool, PoolClient } from "pg";
 
-export const RUNTIME_COMPONENTS = ["research-worker"] as const;
+export const RUNTIME_COMPONENTS = [
+  "research-worker",
+  "notification-worker"
+] as const;
 export const RUNTIME_COMPONENT_STATUSES = [
   "starting",
   "ready",

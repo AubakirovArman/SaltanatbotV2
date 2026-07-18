@@ -85,6 +85,12 @@ Variables outside that first slice are still owned by their feature modules and 
 | `RESEARCH_WORKER_HEARTBEAT_STALE_MS` | `90000` | API readiness fails when the required worker heartbeat is older than this; accepted range 10 seconds–15 minutes. |
 | `RESEARCH_JOB_RETENTION_INTERVAL_MS` | `60000` | Bounded terminal-artifact retention interval; accepted range 1–60 minutes. |
 | `RESEARCH_WORKER_SHUTDOWN_TIMEOUT_MS` | `20000` | Maximum graceful worker shutdown; keep below the supervisor stop grace period. |
+| `TELEGRAM_BOT_TOKEN_FILE` | *(unset)* | Absolute path to the owner-only regular file holding the Telegram bot token, read only by the optional R5.3b-1 notification worker (in progress, not accepted). Symlinks, foreign owners, group/other access, oversized content and a missing file are rejected without crashing: the worker idles with a live heartbeat and rechecks. The token is never logged; elsewhere the bot appears only as the SHA-256 fingerprint of its token. |
+| `OPERATIONS_REQUIRE_NOTIFICATION_WORKER` | *(off)* | Set `1` to make API readiness require a fresh ready `notification-worker` heartbeat (same staleness budget as the research worker). Leave unset on hosts without the optional worker so they remain `ready`. |
+| `NOTIFICATION_WORKER_HEARTBEAT_INTERVAL_MS` | `15000` | Component-heartbeat interval written by the optional notification worker; accepted range 5–60 seconds. |
+| `NOTIFICATION_WORKER_IDLE_RECHECK_MS` | `60000` | How often the idling notification worker rechecks its token file and schema version; accepted range 5–300 seconds. |
+| `NOTIFICATION_DELIVERY_POLL_INTERVAL_MS` | `1000` | Telegram delivery-lane sweep interval; accepted range 250 ms–60 seconds. |
+| `NOTIFICATION_WORKER_SHUTDOWN_TIMEOUT_MS` | `20000` | Maximum graceful notification-worker shutdown; accepted range 5–25 seconds, below the supervisor stop timeout. |
 | `OPERATIONS_DISK_PATH` | `backend/data` | Normalized absolute path checked by readiness for project runtime storage. Direct-host and container supervisors should set the actual persistent data path explicitly. |
 | `OPERATIONS_RECOVERY_STATUS_FILE` | *(unset)* | Optional normalized absolute path to the owner-only receipt journal written by a successful `recovery:verify -- --status-file`. Keep it in separate persistent operations storage, never `backend/data`. Missing, malformed, oversized, unexpectedly linked or permission-unsafe files produce `lastVerifiedGeneration: null` and never affect readiness. |
 | `OPERATIONS_DISK_SOFT_FREE_BYTES` / `OPERATIONS_DISK_HARD_FREE_BYTES` | `5368709120` / `2147483648` | Degraded and unready free-byte watermarks. The hard value must be lower than the soft value. |
@@ -413,6 +419,12 @@ unbound/deleted. It remains unreachable in the current profile. The old `GET /ap
 endpoint is only a tenant-scoped boolean compatibility view; no current endpoint can write a key.
 
 ## Configuring Telegram / VK notifications
+
+This section describes the legacy per-user trading-notification channels stored in SQLite. It is
+separate from the in-progress R5.3b-1 **alert** Telegram delivery, which uses one operator-owned
+bot token file (`TELEGRAM_BOT_TOKEN_FILE`), owner-bound chat bindings and the optional
+notification worker; see [Owner-scoped server alerts](./ALERTS.md) and
+[Self-hosting](./SELF_HOSTING.md).
 
 Telegram notifications can be configured in the web application. VK notification configuration is
 currently API-only. Each configuration is stored encrypted under its owner's namespaced setting and

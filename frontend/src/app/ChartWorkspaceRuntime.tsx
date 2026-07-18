@@ -200,6 +200,7 @@ export function ChartWorkspaceRuntime({
       alerts={priceAlerts.alerts}
       alertSync={priceAlerts.sync}
       screenerAlerts={priceAlerts.screenerRules}
+      telegramOwnerId={storageOwnerId}
       onAddAlert={priceAlerts.addAlert}
       onRemoveAlert={priceAlerts.removeAlert}
       onResetAlert={priceAlerts.resetAlert}

@@ -137,11 +137,55 @@ paired recovery generations `dd5c0827` (pre-cutover) and `3632bd9f`
 cutover evidence is recorded in
 [R5.3a screener alerts evidence](./evidence/R5_3A_SCREENER_ALERTS.md).
 
-The R5.3b notification worker with owner-bound Telegram binding/commands and
-the chart research tools (text notes and the parallel channel) remain open
-in R5; Telegram delivery on screener rules still returns `400` until R5.3b.
-Canonical behavior is documented in [Screener alerts (R5.3a)](./ALERTS.md)
-and the promotion paragraph in [SCREENER.md](./SCREENER.md).
+The chart research tools (text notes and the parallel channel) remain open
+in R5. The R5.3b-1 notification worker with owner-bound Telegram
+binding/delivery is **in progress** in the working tree (section below) and
+is not accepted; the deployed production slot still returns `400` for
+`telegram` delivery. Canonical behavior is documented in
+[Screener alerts (R5.3a)](./ALERTS.md) and the promotion paragraph in
+[SCREENER.md](./SCREENER.md).
+
+## R5.3b-1 Telegram delivery and binding — in progress, NOT accepted
+
+R5.3b-1 adds the separate notification worker, Telegram delivery of alert
+notifications and the owner-bound chat binding lifecycle. The slice is
+implemented and tested in the working tree but is **not an accepted
+release**: nothing here is production evidence. Production still runs the
+accepted R5.3a slot `r5c-schema14-86712ba` on PostgreSQL schema 14, where
+`telegram` delivery answers `400`. Acceptance requires the full
+[RELEASING.md](./RELEASING.md) gate — exact-commit CI, the additive
+schema-15 migration with its paired backup/isolated-restore rehearsal, a
+protected slot and the production unit created at cutover.
+
+- [x] Additive PostgreSQL migration 15 `telegram_notification_ingress`:
+  `notification_bindings.recipient_chat_id`, hashed one-consume
+  `notification_binding_codes`, fenced `telegram_ingress_consumers`
+  lease/cursor and the normalized `telegram_updates` dedup journal.
+- [x] Separate `notification-worker` process: no HTTP listener, no trading
+  SQLite, never runs migrations (idles on schema mismatch), owner-only
+  token-file validation, idle-with-heartbeat when the token is absent, and
+  optional readiness coupling via `OPERATIONS_REQUIRE_NOTIFICATION_WORKER`.
+- [x] Telegram delivery lane over the existing `notification_deliveries`
+  lease fence: binding re-proof before each send, plain-text sendMessage
+  with footer, delivered/retrying/dead-letter/cancelled outcomes, bounded
+  backoff, global/per-chat/per-owner send buckets and documented
+  at-least-once external delivery.
+- [x] Binding lifecycle: one-consume hashed codes (10-minute TTL, 3
+  outstanding, per-owner rate limit) via `/api/alerts/bindings` routes;
+  worker-side `/start`/`/bind` consumption with per-chat limits,
+  single-active-binding replacement and revoke that cancels pending
+  deliveries; `telegram` accepted as a delivery channel for price-threshold
+  and screener kinds when a binding is active.
+- [x] Egress-only `getUpdates` ingress with a fenced single-consumer lease,
+  transactional `(bot, update_id)` dedup + cursor advance, and normalized
+  hashed-only journal rows.
+- [x] Browser Telegram bindings panel (create code shown once, list with
+  hashed handles, confirm-revoke) and channel-picker gating with EN/RU/KK
+  strings; deployment examples (third systemd unit, Compose `telegram`
+  profile) and documentation.
+- [ ] Exact-commit GitHub CI, protected release slot, schema-15
+  backup/restore rehearsal, production cutover and recorded acceptance
+  evidence.
 
 ## Delivered slices (not full roadmap completion)
 

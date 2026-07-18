@@ -113,6 +113,8 @@ export const kkScreener: Record<ScreenerMessageKey, string> = {
   alertCapacityExhausted: "Сервер қазір жаңа скринер ескертулерін қабылдамайды.",
   alertCreateFailed: "Скринер ескертуін жасау мүмкін болмады.",
   alertServiceUnavailable: "Ескертулер сервисі уақытша қолжетімсіз.",
+  telegramChannel: "Telegram-ға да жеткізу",
+  telegramChannelHint: "Telegram жеткізуін қосу үшін график ескертулер панелінде Telegram чатын байланыстырыңыз.",
   riskTitle: "Зерттеуге арналған скрин",
   risk: "Метрикалар Binance ашық нарық дерегінің жабылған шамдары бойынша есептеледі. Жоқ, ескірген немесе жиналып үлгермеген дерек символды нөл емес, қолжетімсіз деп белгілейді. Мұнда ештеңе order қоймайды және пайда уәде етпейді."
 };

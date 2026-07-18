@@ -61,10 +61,10 @@ describePostgres("ScreenerRepository against isolated PostgreSQL", () => {
     await pool.end();
   });
 
-  it("migrates to schema v14 with the screener preset table and indexes installed", async () => {
+  it("migrates to schema v15 with the screener preset table and indexes installed", async () => {
     const applied = await pool.query<{ version: number }>("SELECT max(version)::integer AS version FROM schema_migrations");
     expect(applied.rows[0]?.version).toBe(LATEST_DATABASE_SCHEMA_VERSION);
-    expect(applied.rows[0]?.version).toBe(14);
+    expect(applied.rows[0]?.version).toBe(15);
     const objects = await pool.query<{ table_name: string | null; owner_index: string | null; retention_index: string | null }>(
       `SELECT to_regclass('public.screener_presets')::text AS table_name,
          to_regclass('public.screener_presets_owner_recent_index')::text AS owner_index,

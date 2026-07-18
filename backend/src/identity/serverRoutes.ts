@@ -1,4 +1,5 @@
 import express, { type Express, type RequestHandler } from "express";
+import { createAlertBindingRouter } from "../alerts/bindingRoutes.js";
 import { createAlertRouter } from "../alerts/routes.js";
 import { requireAppAuth } from "../auth.js";
 import { createWorkspaceRouter } from "../workspaces/routes.js";
@@ -78,6 +79,9 @@ export function registerIdentityServerRoutes(app: Express, runtime: IdentityRunt
   app.use("/api", requireAppAuth);
   app.use("/api", apiRateLimit);
   if (runtime.pool) {
+    // The bindings router mounts first: /api/alerts/bindings must never fall
+    // through to the alert router's /:id parameter route.
+    app.use("/api/alerts/bindings", createAlertBindingRouter(runtime.pool));
     app.use("/api/alerts", createAlertRouter(runtime.pool));
     app.use("/api/screener", createScreenerRouter(runtime.pool));
     app.use("/api/onboarding", createOnboardingRouter(runtime.pool));

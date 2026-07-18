@@ -202,6 +202,11 @@ export async function installR33RouteFixture(page: Page): Promise<R33RouteFixtur
       return json(route, { items: [], researchOnly: true, executionPermission: false });
     }
 
+    if (request.method() === "GET" && pathname === "/api/alerts/bindings") {
+      if (url.searchParams.size !== 0) return unexpectedAlertRequest(route, request.method(), `${pathname}${search}`);
+      return json(route, { bindings: [], researchOnly: true, executionPermission: false });
+    }
+
     if (csrfHeader !== "csrf-r33") {
       ownerViolations.push(`${request.method()} ${pathname}: missing or invalid alert CSRF token`);
       return json(route, { code: "csrf_invalid", error: "CSRF token is invalid." }, 403);

@@ -25,6 +25,29 @@
   color: var(--up);
 }
 
+.tech-screener-telegram {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: .78rem;
+  cursor: pointer;
+}
+
+.tech-screener-telegram input {
+  accent-color: var(--accent);
+}
+
+.tech-screener-telegram input:disabled {
+  cursor: default;
+}
+
+.tech-screener-telegram-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: .78rem;
+}
+
 .tech-screener-filters {
   display: grid;
   grid-template-columns: 1fr;

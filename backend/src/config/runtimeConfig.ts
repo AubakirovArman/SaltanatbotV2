@@ -42,6 +42,7 @@ export interface RuntimeConfig {
     }>;
     readiness: Readonly<{
       researchWorkerHeartbeatStaleMs: number;
+      requireNotificationWorker: boolean;
       resultTtlMs: number;
       rateLimit: Readonly<{
         refillPerSecond: number;
@@ -111,6 +112,7 @@ function parseRuntimeConfig(env: NodeJS.ProcessEnv, runtimeProfile: RuntimeProfi
   const admissionMaxQueued = parseBoundedInteger("GLOBAL_ADMISSION_MAX_QUEUED", env.GLOBAL_ADMISSION_MAX_QUEUED, 256, 1, 16_384);
   const admissionQueueTimeoutMs = parseBoundedInteger("GLOBAL_ADMISSION_QUEUE_TIMEOUT_MS", env.GLOBAL_ADMISSION_QUEUE_TIMEOUT_MS, 2_000, 100, 30_000);
   const researchWorkerHeartbeatStaleMs = parseBoundedInteger("RESEARCH_WORKER_HEARTBEAT_STALE_MS", env.RESEARCH_WORKER_HEARTBEAT_STALE_MS, 90_000, 10_000, 15 * 60_000);
+  const requireNotificationWorker = parseOptionalBoolean("OPERATIONS_REQUIRE_NOTIFICATION_WORKER", env.OPERATIONS_REQUIRE_NOTIFICATION_WORKER) ?? false;
   const readinessResultTtlMs = parseBoundedInteger("READINESS_RESULT_TTL_MS", env.READINESS_RESULT_TTL_MS, 1_000, 100, 10_000);
   const readinessRateRefillPerSecond = parseBoundedInteger("READINESS_RATE_REFILL_PER_SECOND", env.READINESS_RATE_REFILL_PER_SECOND, 2, 1, 1_000);
   const readinessRateBurst = parseBoundedInteger("READINESS_RATE_BURST", env.READINESS_RATE_BURST, 10, 1, 10_000);
@@ -162,6 +164,7 @@ function parseRuntimeConfig(env: NodeJS.ProcessEnv, runtimeProfile: RuntimeProfi
       },
       readiness: {
         researchWorkerHeartbeatStaleMs,
+        requireNotificationWorker,
         resultTtlMs: readinessResultTtlMs,
         rateLimit: {
           refillPerSecond: readinessRateRefillPerSecond,

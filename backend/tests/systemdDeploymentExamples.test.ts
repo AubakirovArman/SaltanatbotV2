@@ -3,13 +3,15 @@ import { describe, expect, it } from "vitest";
 
 const apiUnit = readFileSync(new URL("../../deploy/systemd/saltanatbotv2.service.example", import.meta.url), "utf8");
 const workerUnit = readFileSync(new URL("../../deploy/systemd/saltanatbotv2-research-worker.service.example", import.meta.url), "utf8");
+const notificationUnit = readFileSync(new URL("../../deploy/systemd/saltanatbotv2-notification-worker.service.example", import.meta.url), "utf8");
 const backupGuide = readFileSync(new URL("../../docs/BACKUP_RESTORE.md", import.meta.url), "utf8");
 const russianBackupGuide = readFileSync(new URL("../../docs/ru/BACKUP_RESTORE.md", import.meta.url), "utf8");
 
 describe("direct-host systemd examples", () => {
   it.each([
     ["API", apiUnit],
-    ["research worker", workerUnit]
+    ["research worker", workerUnit],
+    ["notification worker", notificationUnit]
   ])("keeps the %s unprivileged, bounded and paper-only", (_name, unit) => {
     expect(unit).toContain("User=saltanatbotv2");
     expect(unit).toContain("Group=saltanatbotv2");
@@ -35,6 +37,18 @@ describe("direct-host systemd examples", () => {
     expect(workerUnit).not.toContain("ReadWritePaths=");
     expect(workerUnit).not.toContain("backend/data");
     expect(workerUnit).toContain("ExecStart=/usr/bin/node /opt/saltanatbotv2/backend/dist/workers/researchWorker.js");
+    expect(notificationUnit).not.toContain("ReadWritePaths=");
+    expect(notificationUnit).not.toContain("backend/data");
+    expect(notificationUnit).toContain("ExecStart=/usr/bin/node /opt/saltanatbotv2/backend/dist/workers/notificationWorker.js");
+  });
+
+  it("lets the notification worker idle without its Telegram token", () => {
+    expect(notificationUnit).toContain("Environment=TELEGRAM_BOT_TOKEN_FILE=/etc/saltanatbotv2/telegram_bot_token");
+    expect(notificationUnit).toContain("Environment=PGAPPNAME=saltanatbotv2-notification-worker");
+    // The PG password is the only start precondition; a missing token file
+    // must idle the worker, never block or crash-loop the unit.
+    expect(notificationUnit).toContain("ExecStartPre=/usr/bin/test -r /etc/saltanatbotv2/postgres_password");
+    expect(notificationUnit).not.toContain("test -r /etc/saltanatbotv2/telegram_bot_token");
   });
 
   it.each([

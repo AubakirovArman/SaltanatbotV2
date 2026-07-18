@@ -121,7 +121,12 @@ describePostgres("owner alert control plane against isolated PostgreSQL", () => 
         "notification_deliveries",
       ]],
     );
-    expect(columns.rows.map(({ column_name }) => column_name).join(" ")).not.toMatch(
+    const columnNames = columns.rows.map(({ column_name }) => column_name);
+    // Schema v15 sanctions exactly one Telegram delivery target column on
+    // notification_bindings; every other column stays free of credential and
+    // recipient identifiers.
+    expect(columnNames).toContain("recipient_chat_id");
+    expect(columnNames.filter((name) => name !== "recipient_chat_id").join(" ")).not.toMatch(
       /api_key|bot_token|telegram_token|chat_id|password_hash|private_key|exchange_secret|signed_request/i,
     );
   });

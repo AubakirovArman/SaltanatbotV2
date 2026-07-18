@@ -6,7 +6,7 @@ import { GlobalAdmissionController } from "../src/http/globalAdmission.js";
 import type { ReadinessRateLimitSnapshot } from "../src/http/readinessRateLimit.js";
 import { ApiMetrics } from "../src/operations/apiMetrics.js";
 import type { RecoveryStatusReceipt } from "../src/operations/recoveryStatus.js";
-import { OperationalStatusService } from "../src/operations/statusService.js";
+import { OperationalStatusService, toPublicOperationalReadiness } from "../src/operations/statusService.js";
 
 const RECOVERY_RECEIPT = {
   version: 1,
@@ -104,6 +104,76 @@ describe("operational readiness", () => {
     const readiness = await service.readiness();
     expect(readiness.ok).toBe(false);
     expect(readiness.status).toBe("unready");
+  });
+
+  it("keeps hosts without the notification worker fully ready by default", async () => {
+    const now = Date.parse("2026-07-16T20:00:00.000Z");
+    const latestMigration = DATABASE_MIGRATIONS.at(-1)!;
+    const query = vi.fn(async (sql: string) =>
+      sql.includes("schema_migrations")
+        ? {
+            rows: [
+              {
+                version: latestMigration.version,
+                checksum: latestMigration.checksum
+              }
+            ]
+          }
+        : { rows: [readyHeartbeat(now)] }
+    );
+    const service = createService({ now, query });
+
+    const readiness = await service.readiness();
+    expect(readiness).toMatchObject({ ok: true, status: "ready" });
+    expect(readiness.components.notificationWorker).toBeUndefined();
+    expect(toPublicOperationalReadiness(readiness).components).not.toHaveProperty("notificationWorker");
+    expect(
+      query.mock.calls.filter(([, values]) => Array.isArray(values) && values.includes("notification-worker"))
+    ).toHaveLength(0);
+  });
+
+  it("requires a fresh notification worker heartbeat only in required mode", async () => {
+    const now = Date.parse("2026-07-16T20:00:00.000Z");
+    const latestMigration = DATABASE_MIGRATIONS.at(-1)!;
+    const heartbeatRows = new Map<string, unknown[]>([
+      ["research-worker", [readyHeartbeat(now)]],
+      ["notification-worker", []]
+    ]);
+    const query = async (sql: string, values?: readonly unknown[]) =>
+      sql.includes("schema_migrations")
+        ? {
+            rows: [
+              {
+                version: latestMigration.version,
+                checksum: latestMigration.checksum
+              }
+            ]
+          }
+        : { rows: heartbeatRows.get(String(values?.[0])) ?? [] };
+    const runtimeEnv = { OPERATIONS_REQUIRE_NOTIFICATION_WORKER: "1" } as NodeJS.ProcessEnv;
+
+    const missing = await createService({ now, runtimeEnv, query }).readiness();
+    expect(missing.ok).toBe(false);
+    expect(missing.status).toBe("unready");
+    expect(missing.components.notificationWorker).toMatchObject({ status: "unready" });
+
+    heartbeatRows.set("notification-worker", [
+      {
+        ...readyHeartbeat(now),
+        component: "notification-worker",
+        generation_id: "22222222-2222-4222-8222-222222222222"
+      }
+    ]);
+    const present = await createService({ now, runtimeEnv, query }).readiness();
+    expect(present).toMatchObject({
+      ok: true,
+      status: "ready",
+      components: {
+        researchWorker: { status: "ready" },
+        notificationWorker: { status: "ready", componentState: "ready" }
+      }
+    });
+    expect(toPublicOperationalReadiness(present).components.notificationWorker).toEqual({ status: "ready" });
   });
 
   it("reports soft disk pressure as degraded without failing liveness", async () => {
@@ -411,13 +481,13 @@ function createService(options: {
   readinessRateLimit?: {
     snapshot(): ReadinessRateLimitSnapshot;
   };
-  query: (sql: string) => Promise<{ rows: unknown[] }>;
+  query: (sql: string, values?: readonly unknown[]) => Promise<{ rows: unknown[] }>;
 }) {
   const pool = {
     totalCount: 2,
     idleCount: 1,
     waitingCount: 0,
-    query: (sql: string) => options.query(sql)
+    query: (sql: string, values?: readonly unknown[]) => options.query(sql, values)
   } as unknown as Pool;
   return new OperationalStatusService({
     runtimeConfig: loadRuntimeConfig({

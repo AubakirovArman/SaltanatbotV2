@@ -40,6 +40,8 @@ export interface NewAlertInput extends ChartDataRoute {
   price: number;
   direction: AlertDirection;
   timeframe: Timeframe;
+  /** Also deliver via the owner's active Telegram binding (server rules only). */
+  telegramDelivery?: boolean;
 }
 
 export type PriceAlertSyncStatus = "legacy" | "loading" | "synced" | "error";
@@ -357,7 +359,8 @@ export function usePriceAlerts(decimalsFor: (symbol: string) => number, legacyRo
           exchange: input.exchange,
           marketType: input.marketType,
           priceType: input.priceType,
-          source: "browser"
+          source: "browser",
+          ...(input.telegramDelivery === true ? { telegramDelivery: true as const } : {})
         };
         if (!isServerPriceAlertCandidate(draft)) throw new Error("This alert route requires browser-only review and cannot be created as a server alert.");
         validateAlertThresholdPrecision(draft.price, decimalsRef.current(draft.symbol));

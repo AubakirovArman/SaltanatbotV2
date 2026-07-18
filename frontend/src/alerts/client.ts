@@ -50,6 +50,32 @@ export interface AlertOutboxList {
   executionPermission: false;
 }
 
+export type AlertBindingStatus = "pending" | "active" | "revoked";
+
+/** Owner-scoped public projection of a Telegram notification binding. */
+export interface AlertBindingRecord {
+  id: string;
+  status: AlertBindingStatus;
+  revision: number;
+  /** Hashed recipient display handle (fingerprint prefix); never a chat id. */
+  recipientHandle: string;
+  createdAt: string;
+  activatedAt?: string;
+  revokedAt?: string;
+}
+
+export interface AlertBindingList {
+  bindings: AlertBindingRecord[];
+  researchOnly: true;
+  executionPermission: false;
+}
+
+/** One-consume binding code. The raw code is returned exactly once. */
+export interface AlertBindingCodeGrant {
+  code: string;
+  expiresAt: string;
+}
+
 export function listAlertRules(ownerUserId: string, signal?: AbortSignal): Promise<AlertRuleListV1> {
   return request(ALERT_API_BASE, ownerUserId, { method: "GET", signal }, false, parseAlertRuleListV1);
 }
@@ -86,6 +112,20 @@ export function archiveAlertRule(ownerUserId: string, ruleId: string, expectedRe
 
 export function rearmAlertRule(ownerUserId: string, ruleId: string, expectedRevision: number, signal?: AbortSignal): Promise<AlertRuleRecordV1> {
   return revisionMutation(ownerUserId, ruleId, "rearm", expectedRevision, signal);
+}
+
+export function listAlertBindings(ownerUserId: string, signal?: AbortSignal): Promise<AlertBindingList> {
+  return request(`${ALERT_API_BASE}/bindings`, ownerUserId, { method: "GET", signal }, false, parseBindingList);
+}
+
+export function createAlertBindingCode(ownerUserId: string, signal?: AbortSignal): Promise<AlertBindingCodeGrant> {
+  return request(`${ALERT_API_BASE}/bindings/codes`, ownerUserId, { method: "POST", body: JSON.stringify({}), signal }, true, parseBindingCodeGrant);
+}
+
+export function revokeAlertBinding(ownerUserId: string, bindingId: string, expectedRevision: number, signal?: AbortSignal): Promise<AlertBindingRecord> {
+  const id = validUuid(bindingId, "binding identifier");
+  const body = JSON.stringify({ expectedRevision: validRevision(expectedRevision) });
+  return request(`${ALERT_API_BASE}/bindings/${encodeURIComponent(id)}/revoke`, ownerUserId, { method: "POST", body, signal }, true, parseBindingEnvelope);
 }
 
 function revisionMutation(ownerUserId: string, ruleId: string, action: "archive" | "rearm", expectedRevision: number, signal?: AbortSignal): Promise<AlertRuleRecordV1> {
@@ -232,6 +272,62 @@ function parseOutboxList(value: unknown): AlertOutboxList {
   const items = input.items.map(parseNotificationOutboxItemV1);
   if (new Set(items.map(({ id }) => id)).size !== items.length) throw new Error("alert outbox list contains duplicates");
   return { items, researchOnly: true, executionPermission: false };
+}
+
+const BINDING_HANDLE = /^[0-9a-f]{8,64}$/;
+const BINDING_CODE = /^[A-Za-z0-9._-]{8,128}$/;
+
+/**
+ * Binding parsers validate every consumed field strictly but tolerate unknown
+ * envelope keys: the projection is additive server-side and the UI must fail
+ * closed on bad data without breaking on forward-compatible fields.
+ */
+function parseBindingList(value: unknown): AlertBindingList {
+  const input = objectValue(value);
+  if (!input || !Array.isArray(input.bindings) || input.bindings.length > 100) throw new Error("alert binding list is invalid");
+  if ("researchOnly" in input && input.researchOnly !== true) throw new Error("alert binding list is not research-only");
+  if ("executionPermission" in input && input.executionPermission !== false) throw new Error("alert binding list claims execution permission");
+  const bindings = input.bindings.map(parseBinding);
+  if (new Set(bindings.map(({ id }) => id)).size !== bindings.length) throw new Error("alert binding list contains duplicates");
+  return { bindings, researchOnly: true, executionPermission: false };
+}
+
+function parseBindingEnvelope(value: unknown): AlertBindingRecord {
+  const input = objectValue(value);
+  return parseBinding(input && "binding" in input ? input.binding : value);
+}
+
+function parseBinding(value: unknown): AlertBindingRecord {
+  const input = objectValue(value);
+  if (!input || typeof input.id !== "string" || !UUID.test(input.id)) throw new Error("alert binding is invalid");
+  if (input.status !== "pending" && input.status !== "active" && input.status !== "revoked") throw new Error("alert binding status is invalid");
+  if (typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1) throw new Error("alert binding revision is invalid");
+  if (typeof input.recipientHandle !== "string" || !BINDING_HANDLE.test(input.recipientHandle)) throw new Error("alert binding recipient handle is invalid");
+  const createdAt = bindingTimestamp(input.createdAt, "createdAt");
+  const activatedAt = input.activatedAt === undefined || input.activatedAt === null ? undefined : bindingTimestamp(input.activatedAt, "activatedAt");
+  const revokedAt = input.revokedAt === undefined || input.revokedAt === null ? undefined : bindingTimestamp(input.revokedAt, "revokedAt");
+  return {
+    id: input.id,
+    status: input.status,
+    revision: input.revision,
+    recipientHandle: input.recipientHandle,
+    createdAt,
+    ...(activatedAt ? { activatedAt } : {}),
+    ...(revokedAt ? { revokedAt } : {})
+  };
+}
+
+function parseBindingCodeGrant(value: unknown): AlertBindingCodeGrant {
+  const input = objectValue(value);
+  if (!input || typeof input.code !== "string" || !BINDING_CODE.test(input.code)) throw new Error("alert binding code grant is invalid");
+  return { code: input.code, expiresAt: bindingTimestamp(input.expiresAt, "expiresAt") };
+}
+
+function bindingTimestamp(value: unknown, label: string): string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value) || !Number.isFinite(Date.parse(value))) {
+    throw new Error(`alert binding ${label} is invalid`);
+  }
+  return value;
 }
 
 function collectionEnvelope(value: unknown, collection: "events" | "items", optional: readonly string[] = []): Record<string, unknown> {

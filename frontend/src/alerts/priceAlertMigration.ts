@@ -282,7 +282,7 @@ export function priceAlertDefinition(alert: PriceAlert, enabled: boolean): Price
     name: `${alert.symbol} ${alert.direction} ${canonicalAlertDecimal(alert.price)}`.slice(0, 120),
     enabled,
     cooldownSeconds: 0,
-    deliveryChannels: ["in-app"],
+    deliveryChannels: alert.telegramDelivery ? ["in-app", "telegram"] : ["in-app"],
     exchange: alert.exchange,
     marketType: alert.marketType,
     priceType: "last",
@@ -339,7 +339,9 @@ export function projectServerPriceAlert(rule: AlertRuleRecordV1): PriceAlert | u
     syncState: definition.enabled ? "synced" : "syncing",
     serverRuleId: rule.id,
     serverRevision: rule.revision,
-    serverLifecycle: rule.lifecycleState
+    serverLifecycle: rule.lifecycleState,
+    // Carried so a price edit rebuilds the definition with the same channels.
+    ...(definition.deliveryChannels.includes("telegram") ? { telegramDelivery: true as const } : {})
   };
 }
 

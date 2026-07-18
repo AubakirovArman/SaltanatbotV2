@@ -157,6 +157,43 @@ services:
     cpus: 2.0
     pids_limit: 128
 
+  # Optional Telegram delivery/ingress worker. Start it with
+  # `docker compose --profile telegram up -d` after provisioning the bot token
+  # secret file (0400, owned by the container user). Without the token the
+  # worker idles harmlessly; without this service the stack stays fully ready.
+  notification-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: saltanatbotv2:latest
+    command: ["node", "backend/dist/workers/notificationWorker.js"]
+    profiles: ["telegram"]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      RUNTIME_PROFILE: public-http-paper
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${PGDATABASE:-saltanatbotv2}
+      PGUSER: ${PGUSER:-saltanatbotv2}
+      PGPASSWORD_FILE: /run/secrets/postgres_password
+      PGAPPNAME: saltanatbotv2-notification-worker
+      PGPOOL_MAX: 4
+      TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
+      NOTIFICATION_WORKER_HEARTBEAT_INTERVAL_MS: ${NOTIFICATION_WORKER_HEARTBEAT_INTERVAL_MS:-15000}
+      NOTIFICATION_WORKER_IDLE_RECHECK_MS: ${NOTIFICATION_WORKER_IDLE_RECHECK_MS:-60000}
+      NOTIFICATION_DELIVERY_POLL_INTERVAL_MS: ${NOTIFICATION_DELIVERY_POLL_INTERVAL_MS:-1000}
+      NOTIFICATION_WORKER_SHUTDOWN_TIMEOUT_MS: ${NOTIFICATION_WORKER_SHUTDOWN_TIMEOUT_MS:-20000}
+    secrets:
+      - postgres_password
+      - telegram_bot_token
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 128
+
 volumes:
   saltanat-data:
     driver: local
@@ -166,3 +203,6 @@ volumes:
 secrets:
   postgres_password:
     file: ${POSTGRES_PASSWORD_FILE:-.secrets/postgres_password}
+  # Only read by the optional `telegram` profile above.
+  telegram_bot_token:
+    file: ${TELEGRAM_BOT_TOKEN_SECRET_FILE:-.secrets/telegram_bot_token}

@@ -21,6 +21,7 @@ import { screenerText, type ScreenerMessageKey } from "../i18n/screener";
 import { useAuth } from "../auth/AuthRoot";
 import type { ArbitrageChartTarget } from "../arbitrage/chartTarget";
 import { AlertApiError, createAlertRule } from "../alerts/client";
+import { useTelegramBindings } from "../hooks/useTelegramBindings";
 import { runScreener, ScreenerApiError } from "./client";
 import { buildScreenerDefinition, defaultScreenerFormState, formStateFromDefinition, type ScreenerFormState } from "./definitionForm";
 import { screenerChartIndicators } from "./chartContext";
@@ -56,6 +57,9 @@ export function TechnicalScreener({ locale, onOpenChart }: Props) {
   const [name, setName] = useState("Momentum screen");
   const [run, setRun] = useState<RunState>({ phase: "idle" });
   const [alertCreate, setAlertCreate] = useState<AlertCreateState>({ phase: "idle" });
+  const [telegramChannel, setTelegramChannel] = useState(false);
+  const telegram = useTelegramBindings(ownerId);
+  const telegramArmed = telegramChannel && Boolean(telegram.activeBinding);
   const runControllerRef = useRef<AbortController>();
   const alertControllerRef = useRef<AbortController>();
   const running = run.phase === "running";
@@ -113,7 +117,7 @@ export function TechnicalScreener({ locale, onOpenChart }: Props) {
       name: built.definition.name,
       enabled: true,
       cooldownSeconds: SCREEN_ALERT_DEFAULT_COOLDOWN_SECONDS,
-      deliveryChannels: ["in-app"],
+      deliveryChannels: telegramArmed ? ["in-app", "telegram"] : ["in-app"],
       screen: built.definition,
       repeat: "on-change",
       researchOnly: true,
@@ -125,7 +129,7 @@ export function TechnicalScreener({ locale, onOpenChart }: Props) {
     } catch (error) {
       if (!controller.signal.aborted) setAlertCreate({ phase: "error", messageKey: alertErrorKey(error) });
     }
-  }, [form, name, ownerId]);
+  }, [form, name, ownerId, telegramArmed]);
 
   const openRow = useCallback(
     (row: ScreenerRowV1, definition: ScreenerDefinitionV1) => {
@@ -239,8 +243,22 @@ export function TechnicalScreener({ locale, onOpenChart }: Props) {
                 <BellRing size={15} aria-hidden="true" />
                 {screenerText(locale, creatingAlert ? "creatingAlert" : "createAlert")}
               </button>
+              {telegram.status !== "unavailable" && (
+                <label className="tech-screener-telegram">
+                  <input
+                    type="checkbox"
+                    checked={telegramArmed}
+                    disabled={!telegram.activeBinding || running || creatingAlert}
+                    onChange={(event) => setTelegramChannel(event.target.checked)}
+                  />
+                  {screenerText(locale, "telegramChannel")}
+                </label>
+              )}
             </span>
           </form>
+          {telegram.status === "ready" && !telegram.activeBinding && (
+            <p className="tech-screener-telegram-hint">{screenerText(locale, "telegramChannelHint")}</p>
+          )}
 
           {alertCreate.phase === "created" && (
             <div className="arb-notice tech-screener-alert-created" role="status">

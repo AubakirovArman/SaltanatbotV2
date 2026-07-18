@@ -76,6 +76,7 @@ jobs:
       ALERTS_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
       SCREENER_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
       WORKSPACES_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
+      TELEGRAM_TEST_DATABASE_URL: postgresql://saltanatbotv2_test:ci-test-password@127.0.0.1:5432/saltanatbotv2_ci_test
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -127,6 +128,8 @@ jobs:
           npx --no-install vitest run backend/tests/workspacesPostgres.integration.test.ts
           npx --no-install vitest run backend/tests/screenerRepositoryPostgres.integration.test.ts
           npx --no-install vitest run backend/tests/screenerAlertPostgres.integration.test.ts
+          npx --no-install vitest run backend/tests/telegramIngressPostgres.integration.test.ts
+          npx --no-install vitest run backend/tests/notificationWorkerBoot.integration.test.ts
 
   browser-e2e:
     name: end-to-end (Chromium)

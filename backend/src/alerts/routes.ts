@@ -440,7 +440,7 @@ function alertErrorHandler(error: unknown, _request: Request, response: Response
   }
   if (error instanceof UnsupportedAlertDeliveryChannelError) {
     response.status(400).json({
-      error: "Only in-app alert delivery is available in R5.1.",
+      error: "Only in-app and telegram alert delivery are available in R5.3b.",
       code: "unsupported_alert_delivery_channel"
     });
     return;
@@ -467,10 +467,12 @@ function assertSupportedDefinition(input: {
   deliveryChannels?: readonly string[];
 }): void {
   // R5.3a serves price-threshold and screener kinds; other reserved kinds stay
-  // rejected until their evaluator lanes exist. Delivery remains in-app only
-  // for every kind (screener telegram delivery arrives with R5.3b).
+  // rejected until their evaluator lanes exist. R5.3b-1 adds the telegram
+  // delivery channel for both kinds; completion paths queue a telegram
+  // delivery only when the owner holds an active binding.
   if (input.kind !== "price-threshold" && input.kind !== "screener") throw new UnsupportedAlertKindError();
-  if (input.deliveryChannels?.length !== 1 || input.deliveryChannels[0] !== "in-app") {
+  const channels = input.deliveryChannels ?? [];
+  if (channels.length === 0 || !channels.every((channel) => channel === "in-app" || channel === "telegram")) {
     throw new UnsupportedAlertDeliveryChannelError();
   }
 }

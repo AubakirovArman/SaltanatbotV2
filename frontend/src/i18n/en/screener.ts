@@ -68,6 +68,8 @@ export const enScreener = {
   alertCapacityExhausted: "The server cannot accept more screen alerts right now.",
   alertCreateFailed: "The screen alert could not be created.",
   alertServiceUnavailable: "The alert service is temporarily unavailable.",
+  telegramChannel: "Also deliver to Telegram",
+  telegramChannelHint: "Link a Telegram chat in the chart alerts panel to enable Telegram delivery.",
   results: "Screen results",
   generatedAt: "Generated",
   universeRequested: "Universe",

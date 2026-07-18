@@ -98,11 +98,11 @@ function createPoolDouble(
 
 describe("PostgreSQL schema migrations", () => {
   it("uses contiguous checksummed versions and no extensions", () => {
-    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(14);
+    expect(LATEST_DATABASE_SCHEMA_VERSION).toBe(15);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
     ]);
-    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(14);
+    expect(new Set(DATABASE_MIGRATIONS.map((migration) => migration.checksum)).size).toBe(15);
     expect(DATABASE_MIGRATIONS.every((migration) => /^[0-9a-f]{64}$/.test(migration.checksum))).toBe(true);
     expect(DATABASE_MIGRATIONS.map((migration) => migration.sql).join("\n")).not.toMatch(/CREATE\s+EXTENSION/i);
   });
@@ -254,8 +254,8 @@ describe("PostgreSQL schema migrations", () => {
     const database = createPoolDouble();
     const result = await migrateDatabase(database.pool);
 
-    expect(result).toMatchObject({ fromVersion: 0, toVersion: 14 });
-    expect(result.applied).toHaveLength(14);
+    expect(result).toMatchObject({ fromVersion: 0, toVersion: 15 });
+    expect(result.applied).toHaveLength(15);
     expect(database.queries.some((query) => query.text.includes("pg_advisory_xact_lock"))).toBe(true);
     expect(database.queries.at(0)?.text).toBe("BEGIN");
     expect(database.queries.at(-1)?.text).toBe("COMMIT");

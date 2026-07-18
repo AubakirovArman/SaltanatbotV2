@@ -5,6 +5,7 @@ import { EXECUTOR_COMMANDS_MIGRATION_SQL } from "./executorCommandsMigration.js"
 import { IDENTITY_CONTROL_PLANE_MIGRATION_SQL } from "./identityControlPlaneMigration.js";
 import { ONBOARDING_AND_RUNTIME_HEARTBEATS_MIGRATION_SQL } from "./onboardingMigration.js";
 import { SCREENER_PRESETS_MIGRATION_SQL } from "./screenerPresetsMigration.js";
+import { TELEGRAM_NOTIFICATION_INGRESS_MIGRATION_SQL } from "./telegramIngressMigration.js";
 import { WORKSPACE_WORKFLOW_MIGRATION_SQL } from "./workspaceWorkflowMigration.js";
 
 export interface DatabaseMigration {
@@ -402,6 +403,11 @@ const migrationDefinitions = [
     version: 14,
     name: "owner_screener_presets",
     sql: SCREENER_PRESETS_MIGRATION_SQL
+  },
+  {
+    version: 15,
+    name: "telegram_notification_ingress",
+    sql: TELEGRAM_NOTIFICATION_INGRESS_MIGRATION_SQL
   }
 ] as const;
 

@@ -256,13 +256,17 @@ listener; a missing, symlinked, empty or oversized generation stops startup. The
 an API pinned to the separate protected slot. The Compose image already contains one
 self-consistent immutable generation and normally leaves this variable unset.
 
-The production application has exactly two independently supervised Node processes:
+The production application has exactly two mandatory independently supervised Node processes:
 
 1. `saltanatbotv2.service` serves the built frontend, API, public WebSockets and the single
    owner-partitioned paper runtime on port `4180`;
 2. `saltanatbotv2-research-worker.service` claims bounded PostgreSQL research jobs and, since the
    accepted R5.1 release, evaluates owner alerts from credential-free public REST candles. It
    opens no HTTP port and receives no exchange secrets.
+
+The in-progress R5.3b-1 increment adds a third, **optional** unit — the Telegram notification
+worker described [below](#optional-third-unit-telegram-notification-worker-r53b-1-in-progress).
+Hosts that do not run it stay fully supported and fully `ready`.
 
 Do not also run `npm start`, `npm run dev`, PM2, another container or a second API unit against the
 same `backend/data/trading.db`. PostgreSQL is supervised separately by the operating system and is
@@ -290,6 +294,54 @@ the worker example is at
 Both run as the unprivileged service user, drop Linux capabilities, make the checkout read-only,
 limit resources and hard-pin `RUNTIME_PROFILE=public-http-paper`. Only the API receives write access
 to `backend/data`; the worker receives PostgreSQL configuration only.
+
+### Optional third unit: Telegram notification worker (R5.3b-1, in progress)
+
+The in-progress R5.3b-1 increment ships a third unit example,
+[`deploy/systemd/saltanatbotv2-notification-worker.service.example`](../deploy/systemd/saltanatbotv2-notification-worker.service.example),
+for the separate Telegram delivery/ingress worker documented in
+[Owner-scoped server alerts](./ALERTS.md). It follows the research-worker hardening exactly
+(unprivileged user, read-only checkout, no capabilities, PostgreSQL configuration only), opens no
+HTTP port and never touches `backend/data`. This increment is not yet an accepted release; the
+production unit on an accepted host is created only during release cutover.
+
+Provision the bot token with the same ritual as the PostgreSQL password — an owner-only regular
+file whose content is exactly the BotFather token plus at most one trailing newline:
+
+```bash
+sudo -u saltanatbotv2 bash -c \
+  'umask 077; read -rsp "Telegram bot token: " token; echo; printf "%s\n" "$token" > /etc/saltanatbotv2/telegram_bot_token; unset token'
+sudo stat -c '%U:%G %a %n' /etc/saltanatbotv2/telegram_bot_token
+```
+
+The final line must show `saltanatbotv2:saltanatbotv2 600` (mode `400` is also accepted). The
+worker refuses symlinks, foreign owners, group/other access and oversized files, and it never
+prints the token; a missing or invalid file simply leaves the worker in idle mode with a live
+heartbeat, rechecking every minute. The unit's `ExecStartPre` therefore tests only the PostgreSQL
+password file — token absence must not block start.
+
+```bash
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/saltanatbotv2-notification-worker.service.example \
+  /etc/systemd/system/saltanatbotv2-notification-worker.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now saltanatbotv2-notification-worker.service
+```
+
+Readiness treats the notification-worker heartbeat as optional: hosts without the unit stay
+`ready`. After you deploy and verify the unit, opt into strict coupling by setting
+`OPERATIONS_REQUIRE_NOTIFICATION_WORKER=1` in the **API** environment. Compose operators use the
+optional `telegram` profile instead of a systemd unit:
+
+```bash
+umask 077
+printf '%s\n' '<bot-token>' > .secrets/telegram_bot_token
+docker compose --profile telegram up -d
+```
+
+The Compose service shares the application image, runs
+`node backend/dist/workers/notificationWorker.js`, and reads the token from the
+`telegram_bot_token` secret. Without the profile, the stack keeps its accepted two-service shape.
 
 Check both units and database readiness:
 

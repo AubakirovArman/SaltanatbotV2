@@ -84,9 +84,11 @@ block. Completion writes the immutable receipt (producer
 `screener-alert-worker`), the event, the outbox row and the pre-delivered
 in-app row in one transaction; the transition key deduplicates replays.
 
-Delivery is `in-app` only until R5.3b. A screener rule that requests
-`telegram` is rejected with a clear `400`, exactly like any other unsupported
-delivery channel.
+In the accepted R5.3a release delivery is `in-app` only, and a screener rule
+that requests `telegram` is rejected with a clear `400` exactly like any other
+unsupported delivery channel. The in-progress R5.3b-1 increment below widens
+that gate: `telegram` becomes an accepted delivery channel for both
+price-threshold and screener rules.
 
 ### Screener-alert quotas
 
@@ -98,6 +100,124 @@ delivery channel.
 Screener rules also count toward the shared R5.1 caps (100/200/480); both
 limits apply. Exceeding them maps to `429 screener_alert_quota_exceeded` and
 `429 screener_alert_capacity_exhausted`.
+
+## Telegram delivery and chat binding (R5.3b-1, in progress)
+
+R5.3b-1 adds a separate notification worker that delivers alert notifications
+to Telegram and binds one private chat to one owner through one-consume codes.
+This increment is **in progress and not an accepted release**: production
+still runs the accepted R5.3a slot, where `telegram` delivery answers `400`.
+Like every alert feature it is notification-only research: the worker opens no
+HTTP listener, never opens the trading SQLite, and cannot place an order.
+Inbound bot commands beyond `/start`, `/bind` and the static fallback reply
+belong to R5.3b-2.
+
+### Binding lifecycle
+
+1. The owner requests a one-consume code
+   (`POST /api/alerts/bindings/codes`). The raw 26-character base32 code is
+   returned exactly once with its expiry; only its SHA-256 hash is stored and
+   the code is never logged. Codes expire after 10 minutes; at most 3
+   unconsumed codes may be outstanding per owner
+   (`429 binding_code_quota_exceeded`) and at most 10 codes may be created per
+   owner per 10 minutes (`429 binding_code_rate_limited`).
+2. The owner sends `/start <code>` or `/bind <code>` to the operator's bot in
+   a **private** chat. The worker consumes the code under a row lock and
+   activates the binding in the same transaction. Consumption is one-shot: an
+   unknown, expired or already consumed code receives a static failure reply
+   and counts against the per-chat attempt limit.
+3. An owner holds at most one active binding. Consuming a new code while one
+   is active revokes the old binding and activates the new one in one
+   transaction.
+4. `POST /api/alerts/bindings/:id/revoke` with `{"expectedRevision": n}`
+   revokes the binding and cancels its queued/retrying Telegram deliveries in
+   the same transaction. A stale revision answers
+   `409 binding_revision_conflict`.
+
+`GET /api/alerts/bindings` lists the owner's bindings with an 8-character
+hashed recipient handle, status, revision and timestamps. Responses,
+projections and logs never contain a raw chat id, a raw code or the bot
+token. The binding row itself stores the chat id (required to send) and its
+SHA-256 fingerprint; neither leaves the server. Binding routes run under the
+same session/CSRF/`X-SBV2-Expected-User` stack as `/api/alerts`, return
+`Cache-Control: no-store` and bound request bodies at 4,096 bytes.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/alerts/bindings` | List the owner's bindings (hashed handles only) |
+| `POST` | `/api/alerts/bindings/codes` | Create a one-consume code; the raw code is returned once |
+| `POST` | `/api/alerts/bindings/:id/revoke` | Revoke with `expectedRevision`; cancels pending deliveries |
+
+### Delivery semantics
+
+When a rule's delivery channels include `telegram` and the owner holds an
+active binding at completion time, the completion transaction inserts a
+queued Telegram delivery beside the pre-delivered in-app row. Without an
+active binding the Telegram delivery is skipped silently (a counter only) and
+the in-app row still delivers. The worker claims due rows through the
+existing lease fence (`FOR UPDATE SKIP LOCKED`, one sending row per owner),
+re-proves the exact binding revision immediately before each send, and sends
+plain text with **no parse mode**: the envelope title and body plus a
+"SaltanatbotV2 research/paper notification" footer. Outcomes are `delivered`
+(provider message id receipt), `retrying` (backoff 30 s × 2^attempt capped at
+15 minutes) or `dead_letter`; a revoked binding cancels the row as
+`binding_revoked`.
+
+External delivery is **at-least-once**: a crash between the Telegram send and
+the durable acknowledgement can repeat a message after the lease expires.
+Retries reuse the same deduplication key, and deliveries remain unique per
+(owner, channel, deduplication key).
+
+### Worker, ingress and privacy
+
+The worker is a third, optional supervised process (see
+[Self-hosting](./SELF_HOSTING.md)). It reads the bot token only from the
+owner-only file named by `TELEGRAM_BOT_TOKEN_FILE`, validated like the
+trading master key (regular non-symlinked file, service-uid owner, mode
+`0600`/`0400`). A missing or invalid token file leaves the worker idling with
+a live heartbeat — it rechecks every minute and never crash-loops — and API
+readiness on hosts without the worker is unaffected unless
+`OPERATIONS_REQUIRE_NOTIFICATION_WORKER=1`. The token never appears in logs,
+metrics or errors; everywhere else the bot is identified by the SHA-256
+fingerprint of its token. The worker never runs migrations: on a schema
+version mismatch it idles and reports instead of writing.
+
+Inbound updates use egress-only `getUpdates` long polling — no webhook and no
+new listener. A fenced single-consumer lease (60 s, monotonic generation on
+takeover) keeps exactly one poller per bot, and the durable
+`(bot, update_id)` cursor advances in the same transaction as the batch
+outcomes, so a replayed batch is a no-op. Only private-chat text messages are
+parsed; group chats and non-message updates are recorded as ignored, and any
+other private message receives the static "commands arrive in R5.3b-2"
+reply. Stored ingress rows are normalized only — hashed chat fingerprint,
+kind and outcome — never message text or raw chat ids.
+
+### Telegram limits
+
+| Boundary | Limit |
+| --- | ---: |
+| Outstanding unconsumed codes per owner | 3 |
+| Code creation per owner | 10 / 10 min |
+| Code TTL | 10 min |
+| Active bindings per owner | 1 |
+| Sends, whole bot | 25 / s |
+| Sends per chat | 1 / s |
+| Sends per owner | 10 / min |
+| Handled commands per chat | 6 / min |
+| Binding-code attempts per chat | 5 / 10 min |
+
+Administrators do not bypass these limits. Telegram `429 retry_after` answers
+defer the send with a capped backoff.
+
+### PostgreSQL schema 15 (candidate)
+
+Migration 15 `telegram_notification_ingress` is additive: it adds
+`notification_bindings.recipient_chat_id`, the hashed one-consume
+`notification_binding_codes` table, the fenced `telegram_ingress_consumers`
+lease/cursor row and the normalized `telegram_updates` dedup journal. The
+migration runs only in the API process under the existing checksum-locked
+advisory-locked chain; acceptance follows the same backup/isolated-restore/
+cutover procedure as schema 13 and 14.
 
 ## HTTP-only deployment boundary
 
@@ -345,5 +465,7 @@ The release gate includes:
 
 R5.2.1 adds the separate [on-demand technical screener](./SCREENER.md); it
 runs screens on demand, and R5.3a promotes a screen into the `screener` rule
-kind described above. R5.3 will add the separate notification worker and
-Telegram binding/revoke/delivery flow.
+kind described above. The separate notification worker and Telegram
+binding/revoke/delivery flow are the in-progress R5.3b-1 increment described
+in [Telegram delivery and chat binding](#telegram-delivery-and-chat-binding-r53b-1-in-progress);
+richer inbound bot commands remain R5.3b-2.

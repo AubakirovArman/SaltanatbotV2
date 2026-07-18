@@ -708,6 +708,99 @@ small {
   white-space: nowrap;
 }
 
+/* Telegram delivery bindings (create code, list, revoke). */
+.alert-telegram-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.alert-telegram-toggle input {
+  accent-color: var(--accent);
+}
+
+.alert-telegram-toggle input:disabled {
+  cursor: default;
+}
+
+.telegram-bindings .telegram-code-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-block-start: 3px;
+}
+
+.telegram-bindings .telegram-code-controls button,
+.telegram-code-value button,
+.telegram-revoke-confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-block-size: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.telegram-bindings .telegram-create-code,
+.telegram-code-value button,
+.alert-item .telegram-revoke-confirm {
+  padding: 3px 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  inline-size: auto;
+}
+
+.alert-item .telegram-revoke-confirm {
+  background: color-mix(in srgb, var(--down) 16%, transparent);
+  color: var(--down);
+}
+
+.telegram-bindings button:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.telegram-code {
+  display: grid;
+  gap: 4px;
+  margin-block-start: 4px;
+  padding: 6px;
+  border: 1px dashed var(--line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.telegram-code-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.telegram-code-value code {
+  min-inline-size: 0;
+  color: var(--text);
+  font-size: var(--fs-md);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.telegram-binding-list .alert-item {
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+}
+
+.telegram-binding-list time {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
 /* Toast stack (fixed to the viewport, above all panels). */
 .alert-toasts {
   position: fixed;
