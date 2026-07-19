@@ -421,11 +421,7 @@ export function CreateBotForm({
           </label>
         )}
         {selectedExchange === "paper" && dataExchange === "hyperliquid" && (
-          <p className="field-help">{localized(locale, {
-            en: "Hyperliquid uses public first-DEX perpetual candles. Execution remains simulated; no wallet or API key is used.",
-            ru: "Используются публичные perpetual-свечи первого DEX Hyperliquid. Исполнение остаётся симуляцией — кошелёк и API-ключ не используются.",
-            kk: "Hyperliquid бірінші DEX ашық perpetual шамдары қолданылады. Орындау симуляция болып қалады — әмиян және API кілті қолданылмайды."
-          })}</p>
+          <p className="field-help">{localized(locale, { en: "Hyperliquid uses public first-DEX perpetual candles. Execution remains simulated; no wallet or API key is used.", ru: "Используются публичные perpetual-свечи первого DEX Hyperliquid. Исполнение остаётся симуляцией — кошелёк и API-ключ не используются.", kk: "Hyperliquid бірінші DEX ашық perpetual шамдары қолданылады. Орындау симуляция болып қалады — әмиян және API кілті қолданылмайды." })}</p>
         )}
         {dcaMode && <p id="dca-paper-only" className="field-help" role="note">{dcaText(locale, "paperOnlyExchange")}</p>}
         {gridMode && <p id="grid-paper-only" className="field-help" role="note">{gridText(locale, "paperOnlyExchange")}</p>}
