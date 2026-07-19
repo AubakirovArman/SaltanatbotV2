@@ -11,25 +11,24 @@ SaltanatbotV2 publishes the same built application shape through four maturity c
 
 Only a pushed, supported Git tag creates a GitHub Release. Manual runs build attestable artifacts without inventing or moving a Git tag.
 
-Accepted production is now the R9.2 server GA evolution baseline: protected release slot
-r9b-schema17-3ed6af1 built from commit 3ed6af138f197ee985bd8ac998ab58cc8769b83c (the feature
-landed in 2b45f9ff57b7f4b31952193a2f216ac47a512390, followed by two test-only forward fixes for
-the shared CI database's new foreign keys), with exact-SHA Actions run 29647276230 green on 6/6
-jobs; the acceptance record is [R9.2 GA evolution evidence](./evidence/R9_2_GA_EVOLUTION.md).
-The release migrated PostgreSQL from schema 16 to 17 — one additive migration
-`ga_evolution_lineage` whose SQL SHA-256 checksum must be exactly
-`4169ec0148c63415abe913195d34b03fa603039d0fe7defabfe76a89f7a61a73` — while the trading SQLite
+Accepted production is now the R9.3 versioned strategy gallery baseline: protected release slot
+r9c-schema18-7afde0d built from commit 7afde0d12b350babb01e166a1888d54c225d41ec, with exact-SHA
+Actions run 29652078335 green on 6/6 jobs; the acceptance record is
+[R9.3 strategy gallery evidence](./evidence/R9_3_STRATEGY_GALLERY.md). The release completes R9
+(R9.1, R9.2 and R9.3 are all accepted) and migrated PostgreSQL from schema 17 to 18 — one
+additive migration `versioned_strategy_gallery` whose SQL SHA-256 checksum must be exactly
+`421a9b93d41c7618c8f30736fae0a45cfe37a14a3e418afc6aa6492696322512` — while the trading SQLite
 schema 10 is unchanged, and shipped under the same owner-only direct-main release gate template:
-exact-commit CI, the paired backup/isolated-restore rehearsal of the 16-to-17 upgrade, a
-protected slot and the cutover. The next pending increment is R9.3, still inside R9. It
-supersedes the R9.1 server multi-market evaluation baseline: protected release slot
-r9a-schema16-4f5bc64 built from commit 4f5bc64e9dfb35d379a55690755a76f7594b226d, with exact-SHA
-Actions run 29643197555 green on 6/6 jobs and its acceptance record in
-[R9.1 server evaluation evidence](./evidence/R9_1_SERVER_EVALUATION.md), which itself superseded
-the R8 owner-scoped multi-leg paper intents baseline: protected release slot r8a-schema16-69621f8
-built from commit 69621f8107a713031f768320e9dc496010234100, with exact-SHA Actions run
-29639908389 green on 6/6 jobs and its acceptance record in
-[R8 multi-leg paper intents evidence](./evidence/R8_MULTI_LEG_PAPER_INTENTS.md). See
+exact-commit CI, the paired backup/isolated-restore rehearsal of the 17-to-18 upgrade, a
+protected slot and the cutover. The next pending increment is R10A, which has not started. It
+supersedes the R9.2 server GA evolution baseline: protected release slot r9b-schema17-3ed6af1
+built from commit 3ed6af138f197ee985bd8ac998ab58cc8769b83c, with exact-SHA Actions run
+29647276230 green on 6/6 jobs and its acceptance record in
+[R9.2 GA evolution evidence](./evidence/R9_2_GA_EVOLUTION.md), which itself superseded the R9.1
+server multi-market evaluation baseline: protected release slot r9a-schema16-4f5bc64 built from
+commit 4f5bc64e9dfb35d379a55690755a76f7594b226d, with exact-SHA Actions run 29643197555 green on
+6/6 jobs and its acceptance record in
+[R9.1 server evaluation evidence](./evidence/R9_1_SERVER_EVALUATION.md). See
 [Owner-scoped server alerts](./ALERTS.md).
 
 ## Produced assets

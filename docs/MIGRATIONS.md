@@ -4,15 +4,21 @@ SaltanatbotV2 uses forward-only runtime migrations and versioned portable browse
 runtime data before upgrading and never open a database with an older application after a forward
 migration.
 
-## In progress — R9.3 PostgreSQL schema 18 (NOT accepted, NOT deployed)
+## Accepted R9.3 PostgreSQL schema 18 migration
 
-The R9.3 versioned strategy gallery increment is **in progress in this checkout**. It has not
-passed the release gate, has no CI/slot/cutover evidence, and **production still runs PostgreSQL
-schema 17 and trading SQLite schema 10 from protected slot `r9b-schema17-3ed6af1`**. Nothing in
-this note claims acceptance; it exists so the pending schema change is visible before release.
+The R9.3 versioned strategy gallery release (explicit-owner publication with provenance, safe
+hash-verified import and revoke — the release that completes R9) was accepted and deployed on
+2026-07-18 from commit `7afde0d12b350babb01e166a1888d54c225d41ec` after GitHub Actions run
+`29652078335` completed all 6 required jobs successfully. Production now runs PostgreSQL schema
+18 and unchanged trading SQLite schema 10 from protected slot `r9c-schema18-7afde0d`, superseding
+`r9b-schema17-3ed6af1` below
+([R9.3 strategy gallery evidence](./evidence/R9_3_STRATEGY_GALLERY.md)). This is the first
+PostgreSQL migration since the accepted R9.2 schema 17. Nothing in this section replaces, edits
+or extends the accepted R9.2 and earlier records below.
 
-The candidate change is one additive PostgreSQL migration, version 18
-`versioned_strategy_gallery`. It creates only new objects: the `gallery_artifacts` table — one
+Schema 18 is one additive PostgreSQL migration, version 18, named `versioned_strategy_gallery`.
+Its exact checksum is `421a9b93d41c7618c8f30736fae0a45cfe37a14a3e418afc6aa6492696322512`. It
+creates only new objects: the `gallery_artifacts` table — one
 immutable publication per `(id, version)` primary-key row with an owner foreign key that is never
 serialized outward, bounded title/summary, a size-checked **sanitized** artifact JSONB of at most
 256 KiB (the sanitizer whitelist guarantees no owner IDs, workspace references, run IDs or
@@ -26,14 +32,24 @@ artifact, hash, rating, publish/create timestamps) so that after publish only vi
 `revoked_at`, `revoke_reason` and `updated_at` may change. Revocation therefore never rewrites
 history and an imported bundle can never change silently underneath its hash. Migrations v1–v17
 stay byte-identical, no existing table is rewritten and the trading SQLite is untouched at
-schema 10. The chain remains forward-only: after a database reaches version 18, never run an
-older binary against it and never remove migration rows to roll back — rollback is restoring a
-verified pre-upgrade paired generation into replacement resources.
+schema 10.
 
-The R9.3 acceptance will require the standard paired backup/verify/isolated-restore discipline
-plus the restore-based PostgreSQL migration rehearsal (17 → 18 on an isolated restored copy, then
-a rerun proving a no-op) before any production cutover; the accepted sections below remain the
-only production migration record until then.
+The accepted cutover extended the paired-generation discipline with the restore-based PostgreSQL
+rehearsal: pre-cutover paired generation `38c116d0-2cbc-43f6-920c-3ad9842f0ad1`
+(`pre-r9c-schema17-v10-20260718T171500Z`, backup and verify passed at PostgreSQL schema 17 /
+SQLite 10, retained as the replacement-only rollback source); then the paired migration
+rehearsal, which restored the production-data copy into the isolated database
+`saltanatbotv2_restore_r9c_rehearsal` and migrated it `fromVersion 17 → toVersion 18`, applying
+exactly `versioned_strategy_gallery` with `gallery_artifacts` present, after which the rehearsal
+database was dropped and the replacement directory removed; then the cutover to slot
+`r9c-schema18-7afde0d`, whose three restarted units applied migration 18 on startup (schema 18
+in the identity log, `NRestarts=0`, `/api/ready` ready, served asset SHA-256 identical to the
+slot frontend dist); then post-cutover paired generation
+`63c4b01f-3018-42a2-b271-3bc2037433ed` (`post-r9c-schema18-v10-20260718T164500Z`, backup, verify
+and isolated drill passed at schema 18). Rollback remains replacement-only — the superseded slot
+`r9b-schema17-3ed6af1` and the verified schema-17 pre-cutover generation are retained. The chain
+stays forward-only: once a database reaches version 18, never run an older binary against it and
+never remove migration rows to roll back.
 
 ## Accepted R9.2 PostgreSQL schema 17 migration
 

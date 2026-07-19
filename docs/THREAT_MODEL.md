@@ -339,19 +339,21 @@ Persistent notification delivery uses a durable at-least-once outbox with bounde
 after a remote channel accepts a message but before acknowledgement persistence can still duplicate
 delivery.
 
-### Cross-tenant strategy sharing through the gallery (R9.3, in progress)
+### Cross-tenant strategy sharing through the gallery (R9.3, accepted)
 
-This boundary is **in progress and NOT accepted or deployed**: the versioned strategy gallery is
-being built in this checkout behind the pending PostgreSQL schema-18 migration, and production
-still runs the accepted R9.2 slot. It is the first surface that deliberately moves user-authored
-content across tenant lines, so its controls are recorded here before release. Threats include a
-published bundle leaking tenant-owned data (owner IDs, run IDs, workspace references, lineage
-user data) to other accounts; a published artifact being modified after users imported it, so a
+This boundary is **accepted and deployed**: the versioned strategy gallery shipped with the
+additive PostgreSQL schema-18 migration `versioned_strategy_gallery`, and production runs the
+accepted R9.3 slot (see the recorded
+[R9.3 acceptance evidence](evidence/R9_3_STRATEGY_GALLERY.md)). It is the first surface that
+deliberately moves user-authored content across tenant lines, so its controls are recorded here.
+Threats include a published bundle leaking tenant-owned data (owner IDs, run IDs, workspace
+references, lineage user data) to other accounts; a published artifact being modified after users
+imported it, so a
 reviewed strategy silently diverges from the running copy; an import of a revoked or tampered
 bundle; a fabricated rating or self-reported metrics presented as verified performance; and a
 gallery import or publication starting a robot without the owner's explicit staged review.
 
-Planned/implemented mitigations in this checkout:
+Deployed mitigations:
 
 - publication runs through a whitelisting sanitizer that copies only known fields (the
   `parseStrategyIR`-revalidated IR, market/metric summaries, engine/generator versions, dataset
@@ -385,7 +387,8 @@ still arbitrary user logic that must pass the ordinary backtest/walk-forward/pap
 import; free-text titles, summaries and IR names can carry anything the publisher chooses to
 write short of the asserted identifiers; and visibility is an access control within one
 self-hosted instance, not encryption — an instance administrator with database access can read
-stored bundles. These boundaries become deployed claims only when R9.3 passes the release gate.
+stored bundles. These boundaries are deployed claims backed by the recorded R9.3 acceptance
+evidence.
 
 ### Malicious or pathological strategies
 

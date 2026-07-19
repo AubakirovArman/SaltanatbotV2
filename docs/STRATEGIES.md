@@ -300,8 +300,8 @@ review remain the only way forward.
 R9.2 is **accepted and deployed** with the additive PostgreSQL 16→17 migration
 `ga_evolution_lineage`; see the recorded
 [R9.2 acceptance evidence](evidence/R9_2_GA_EVOLUTION.md). Everything here is research-only; the
-versioned strategy gallery is the separate R9.3 increment described in the next section,
-currently in progress and not accepted.
+versioned strategy gallery is the separate accepted R9.3 increment described in the next
+section.
 
 The pure generator primitives now live in the workspace package
 `@saltanatbotv2/strategy-generator` (`frontend/src/strategy/generator` re-exports it unchanged,
@@ -337,13 +337,15 @@ same reason. A promoted artifact is an ordinary editable strategy: it starts not
 backtest, walk-forward and paper review remain the only way forward. The evaluation universe is
 still the currently listed public catalog, so results carry survivorship bias.
 
-### Versioned strategy gallery (R9.3, in progress — NOT accepted)
+### Versioned strategy gallery (R9.3, accepted)
 
-R9.3 is **in progress in this checkout**: it has not passed the release gate and production still
-runs the R9.2 slot on PostgreSQL schema 17. The gallery lets an account publish a strategy for
-other accounts of the same self-hosted instance to review and import, with three hard guarantees:
-a published artifact reproduces from pinned versions, it never discloses tenant-owned data, and it
-cannot change silently after import. The exact HTTP contract is documented in the
+R9.3 is **accepted and deployed** with the additive PostgreSQL 17→18 migration
+`versioned_strategy_gallery`, completing R9; see the recorded
+[R9.3 acceptance evidence](evidence/R9_3_STRATEGY_GALLERY.md). The gallery lets an account
+publish a strategy for other accounts of the same self-hosted instance to review and import, with
+three hard guarantees: a published artifact reproduces from pinned versions, it never discloses
+tenant-owned data, and it cannot change silently after import. The exact HTTP contract is
+documented in the
 [API reference](API.md).
 
 **Publishing.** The **Gallery** section of the artifact library publishes either a library

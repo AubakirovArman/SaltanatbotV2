@@ -535,6 +535,65 @@ See the [strategy and backtest guide](./STRATEGIES.md), the
 [API reference](./API.md) and the detailed
 [pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
 
+## Accepted R9.3 release — versioned strategy gallery
+
+Production now runs the accepted R9.3 versioned strategy gallery with
+provenance and safe import from protected slot `r9c-schema18-7afde0d`
+(release commit `7afde0d12b350babb01e166a1888d54c225d41ec`, exact-SHA CI
+run `29652078335`, `6/6`). **This release completes R9**: R9.1 (server
+evaluation + ADR 0003), R9.2 (GA evolution) and R9.3 are all accepted.
+Like R9.2 this is a migration release: migration 18
+`versioned_strategy_gallery` (SQL SHA-256
+`421a9b93d41c7618c8f30736fae0a45cfe37a14a3e418afc6aa6492696322512`) is
+additive only, adding the content-frozen `gallery_artifacts` table whose
+BEFORE UPDATE trigger rejects every content change — revocation and
+visibility are the only mutations — while every earlier object stays
+untouched. Trading SQLite schema 10 is unchanged, the runtime remains
+`public-http-paper` with the same three project-owned units and the API
+still serves port 4180.
+
+Publication is an explicit owner action producing an immutable versioned
+`gallery-artifact-v1`, from a library artifact or an OOS-gated promoted
+GA candidate; a new publication of the same id appends version N+1 and
+never rewrites earlier versions. The whitelisting sanitizer guarantees
+that owner, run and workspace identifiers can never reach a stored
+artifact (adversarially tested; a leak aborts publication), and the
+bundle's canonical-JSON SHA-256 is verified server-side **and**
+client-side on import — a tampered bundle is refused and no copy is
+created. Cards carry full provenance (markets/timeframes, engine and
+dataset fingerprints, seed, in-sample vs out-of-sample with the gap and
+overfit/unstable flags, complexity, limitations) and a documented
+composite rating (OOS stability 0.35, drawdown 0.25, reproducibility
+0.20, complexity 0.10, evidence age 0.10 — never net profit alone).
+Import creates an independent revalidation-gated library copy — paper
+start stays locked until a local validation backtest completes — and
+moderation is private/unlisted/public visibility plus owner
+revoke-with-reason: revoke never rewrites history and import of a
+revoked artifact is refused (410). Publication never starts a robot. The
+six `/api/gallery` routes bring the API to 176 HTTP endpoints, and the
+Community gallery UI ships in en/ru/kk.
+
+Acceptance passed the exact-SHA CI gate, the paired 17→18 migration
+rehearsal on a copy of the production PostgreSQL data and the roadmap
+§13 / §18.1 R9.3 **privacy + reproducible artifact** criterion:
+adversarial privacy fixtures were never serialized; the canonical hash
+has a parity golden against `node:crypto`; the end-to-end tamper
+simulation was refused inside the browser journey; the SQL trigger
+rejected all nine immutable-column UPDATEs; and the `galleryPostgres`
+integration suite was executed against an isolated PostgreSQL 16 (31/31
+together with the compute-jobs and GA suites) and wired into CI. The
+paired pre/post recovery generations and the isolated drill passed; see
+the recorded
+[R9.3 acceptance evidence](./evidence/R9_3_STRATEGY_GALLERY.md). With R9
+complete, the next pending increment is R10A (public derivatives/MTF
+data, the L2 corpus and storage/quality gates), which remains not
+started; the R11 integrated 100-user capacity proof remains pending and
+unproven.
+
+See the [strategy and backtest guide](./STRATEGIES.md), the
+[API reference](./API.md) and the detailed
+[pre-HTTPS release order](./PRE_HTTPS_ROADMAP.md).
+
 ## Explicitly deferred external validation
 
 | Item | Why deferred | Required before claim |

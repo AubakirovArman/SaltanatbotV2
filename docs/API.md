@@ -164,8 +164,8 @@ research evidence, not performance claims.
 R9.2 is **accepted and deployed**: production runs protected slot `r9b-schema17-3ed6af1` on
 PostgreSQL schema 17 (additive migration `ga_evolution_lineage`); see the recorded
 [R9.2 acceptance evidence](evidence/R9_2_GA_EVOLUTION.md). The surface is authenticated,
-owner-scoped and research-only; the versioned strategy gallery is the separate R9.3 surface
-described in the next subsection, currently in progress and not accepted.
+owner-scoped and research-only; the versioned strategy gallery is the separate accepted R9.3
+surface described in the next subsection.
 
 `kind: "ga-evolution"` enqueues a durable, checkpointed genetic-algorithm run over the pure
 generator primitives (the workspace package `@saltanatbotv2/strategy-generator`). The strict start
@@ -215,12 +215,12 @@ Pareto rank, the OOS report and the lineage chain. Foreign or unknown candidates
 `404 ga_candidate_not_found`; the checkpoint (population genomes and RNG state) never leaves the
 server.
 
-### Versioned strategy gallery (R9.3, in progress — NOT accepted)
+### Versioned strategy gallery (R9.3, accepted)
 
-R9.3 is **in progress in this checkout**: it has not passed the release gate and production still
-runs slot `r9b-schema17-3ed6af1` on PostgreSQL schema 17. The `/api/gallery` router below is the
-candidate contract, backed by the pending additive schema-18 migration `versioned_strategy_gallery`
-(see [migration notes](MIGRATIONS.md)).
+R9.3 is **accepted and deployed**, completing R9: production runs protected slot
+`r9c-schema18-7afde0d` on PostgreSQL schema 18 (additive migration `versioned_strategy_gallery`,
+see [migration notes](MIGRATIONS.md)); see the recorded
+[R9.3 acceptance evidence](evidence/R9_3_STRATEGY_GALLERY.md).
 
 Every publication is one immutable `(id, version)` row holding a **sanitized**
 `gallery-artifact-v1` bundle: the whitelisting sanitizer copies only known fields — the

@@ -14,6 +14,7 @@ Last focused R7 release/cutover reconciliation: **2026-07-18** (`baf4217`, CI `2
 Last focused R8 release/cutover reconciliation: **2026-07-18** (`69621f8`, CI `29639908389` 6/6, trading SQLite 9→10 migration)
 Last focused R9.1 release/cutover reconciliation: **2026-07-18** (`4f5bc64`, CI `29643197555` 6/6, no migration; closes D2 via ADR 0003)
 Last focused R9.2 release/cutover reconciliation: **2026-07-18** (`3ed6af1`, CI `29647276230` 6/6, PostgreSQL 16→17 migration)
+Last focused R9.3 release/cutover reconciliation: **2026-07-18** (`7afde0d`, CI `29652078335` 6/6, PostgreSQL 17→18 migration; completes R9)
 Application version reviewed: `0.1.0` in the current `main` worktree
 
 This register prevents documentation from silently drifting away from the application. “Verified”
@@ -27,11 +28,11 @@ their source contracts, and user-facing claims were compared with the current im
 | [README](../README.md) | users/contributors | current | 2026-07-14 |
 | [Architecture](ARCHITECTURE.md) | contributors | accepted deployment through PostgreSQL schema 14 / trading SQLite schema 9 | 2026-07-17 |
 | [Modular architecture](MODULAR_ARCHITECTURE.md) | contributors | current | 2026-07-11 |
-| [API reference](API.md) | integrators | current accepted API including the canonical R4 paper-portfolio contract, the accepted R9.1 `multi-market-eval` job kind and the accepted R9.2 `ga-evolution` job kind with the owner-scoped `/api/ga` routes | 2026-07-18 |
+| [API reference](API.md) | integrators | current accepted API including the canonical R4 paper-portfolio contract, the accepted R9.1 `multi-market-eval` job kind, the accepted R9.2 `ga-evolution` job kind with the owner-scoped `/api/ga` routes and the accepted R9.3 `/api/gallery` versioned strategy gallery routes | 2026-07-18 |
 | [Generated endpoint index](API_ENDPOINTS.generated.md) | integrators | generated/current; 159 HTTP routes including nine owner-scoped research-only alert routes | 2026-07-16 |
 | [Machine-readable capability truths](CAPABILITY_TRUTHS.json) | maintainers/release reviewers | source-backed semantic guard for scanner modes, public/continuous venues and generated endpoint totals | 2026-07-17 |
 | [Public arbitrage SDK](../packages/arbitrage-sdk/README.md) | integrators/SDK users | current; public/read-only | 2026-07-14 |
-| [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current including the accepted R9.1 server multi-market evaluation and the accepted R9.2 server GA evolution | 2026-07-18 |
+| [Strategy and backtest guide](STRATEGIES.md) | users/contributors | current including the accepted R9.1 server multi-market evaluation, the accepted R9.2 server GA evolution and the accepted R9.3 versioned strategy gallery | 2026-07-18 |
 | [Declarative plugin contract](PLUGINS.md) | users/plugin authors | current foundation | 2026-07-12 |
 | [Trading guide](TRADING.md) | users/operators | current accepted paper boundary including the accepted R6 DCA and R7 grid robot types and the accepted R8 multi-leg paper intents; live remains outside pre-HTTPS | 2026-07-18 |
 | [Canonical paper portfolios](PAPER_PORTFOLIOS.md) | users/operators/integrators | accepted R4 lifecycle, authority, API and schema-12/schema-9 recovery runbook plus the accepted R6 DCA, R7 grid and R8 multi-leg intent contracts | 2026-07-18 |
@@ -46,7 +47,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [Event traces](EVENT_TRACES.md) | contributors/auditors | current | 2026-07-11 |
 | [Testing strategy](TESTING_STRATEGY.md) | contributors | current, including R4 cross-store/browser/recovery matrix | 2026-07-17 |
 | [Release verification](RELEASING.md) | maintainers/users | current | 2026-07-11 |
-| [Threat model](THREAT_MODEL.md) | operators/contributors | current accepted R4 cross-store command boundary; one-API and no-live limits remain explicit | 2026-07-17 |
+| [Threat model](THREAT_MODEL.md) | operators/contributors | current accepted R4 cross-store command boundary plus the accepted/deployed R9.3 cross-tenant gallery sharing boundary; one-API and no-live limits remain explicit | 2026-07-18 |
 | [Roadmap](ROADMAP.md) | community | current | 2026-07-12 |
 | [Pre-HTTPS implementation roadmap](PRE_HTTPS_ROADMAP.md) | maintainers/community | current; R4 accepted/deployed on schema 12/schema 9 and R5 is next/pending | 2026-07-17 |
 | [R3.3 onboarding and operations evidence](evidence/R3_3_ONBOARDING_OPERATIONS.md) | operators/release reviewers | accepted exact-commit CI, recovery and production cutover record | 2026-07-17 |
@@ -62,7 +63,8 @@ their source contracts, and user-facing claims were compared with the current im
 | [R8 multi-leg paper intents evidence](evidence/R8_MULTI_LEG_PAPER_INTENTS.md) | operators/release reviewers | accepted exact-commit CI, SQLite-10 paired migration rehearsal and recovery, protected slot and production cutover record | 2026-07-18 |
 | [R9.1 server multi-market evaluation evidence](evidence/R9_1_SERVER_EVALUATION.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record; closes D2 via ADR 0003 | 2026-07-18 |
 | [R9.2 server GA evolution evidence](evidence/R9_2_GA_EVOLUTION.md) | operators/release reviewers | accepted exact-commit CI, PostgreSQL 16→17 paired migration rehearsal and recovery, protected slot and production cutover record | 2026-07-18 |
-| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R5 complete, R6, R7, R8, R9.1 and R9.2 accepted/deployed | 2026-07-18 |
+| [R9.3 versioned strategy gallery evidence](evidence/R9_3_STRATEGY_GALLERY.md) | operators/release reviewers | accepted exact-commit CI, PostgreSQL 17→18 paired migration rehearsal and recovery, protected slot and production cutover record; completes R9 | 2026-07-18 |
+| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R5 and R9 complete, R6, R7 and R8 accepted/deployed | 2026-07-18 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |
 | [Accessibility baseline](ACCESSIBILITY.md) | users/contributors | current automated baseline including R4 center/drawer/mobile evidence; manual AT/Opera still pending | 2026-07-17 |

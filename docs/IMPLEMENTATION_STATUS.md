@@ -672,10 +672,10 @@ isolated drill passed) were verified. Gate and cutover evidence is
 recorded in
 [R9.1 server evaluation evidence](./evidence/R9_1_SERVER_EVALUATION.md).
 
-R9 overall is not finished: R9.2 (server GA evolution with lineage,
-Pareto/OOS promotion and checkpoint/resume) is now also accepted and
-deployed — see the next section — and R9.3 (the strategy gallery) is
-in progress in this checkout and not accepted.
+R9 is now complete: R9.2 (server GA evolution with lineage,
+Pareto/OOS promotion and checkpoint/resume) and R9.3 (the versioned
+strategy gallery) are also accepted and deployed — see the next
+sections.
 
 ## R9.2 server GA evolution with lineage and promotion accepted and deployed — 2026-07-18
 
@@ -793,25 +793,29 @@ Rollback remains replacement-only; the superseded slot
 evidence is recorded in
 [R9.2 GA evolution evidence](./evidence/R9_2_GA_EVOLUTION.md).
 
-R9 overall is still not finished: R9.1 and R9.2 are accepted and
-deployed, but R9.3 (the versioned strategy gallery with provenance,
-safe import and revoke) is **in progress in this checkout and NOT
-accepted** — see the next section.
+R9.3 (the versioned strategy gallery with provenance, safe import and
+revoke) is now also accepted and deployed — see the next section —
+which completes R9.
 
-## R9.3 versioned strategy gallery — in progress (NOT accepted, NOT deployed)
+## R9.3 versioned strategy gallery with provenance and safe import accepted and deployed — 2026-07-18
 
-This slice (roadmap R9.3) is **in progress in this checkout**. It has
-not passed the [RELEASING.md](./RELEASING.md) gate, has no
-CI/slot/cutover evidence, and **production still runs protected slot
-`r9b-schema17-3ed6af1` on PostgreSQL schema 17 and trading SQLite
-schema 10**. The roadmap §13 / §18.1 R9.3 release criterion (a
-published artifact reproduces from pinned versions, discloses no
-tenant-owned data and cannot change silently after import — privacy +
-reproducible artifact) has not been demonstrated through the release
-gate yet. Landed so far in this checkout:
+This slice (roadmap R9.3) delivered the versioned strategy gallery —
+explicit-owner publication of immutable versioned artifacts with full
+provenance, safe hash-verified import and revoke. It passed the full
+[RELEASING.md](./RELEASING.md) gate — exact-commit CI, a protected
+release slot, the paired backup/isolated-restore rehearsal of the
+17-to-18 PostgreSQL upgrade and the production cutover — and was
+accepted and deployed on 2026-07-18. Like R9.2 — and unlike R9.1 — it
+is a migration release: the additive PostgreSQL migration 18
+`versioned_strategy_gallery` moved production from schema 17 to
+schema 18, while the trading SQLite stays unchanged at schema 10.
+Publication is an explicit owner action, import creates an
+independent revalidation-gated library copy, and publication never
+starts a robot. **This release completes R9**: R9.1, R9.2 and R9.3
+are all accepted and deployed.
 
 - [x] Additive PostgreSQL migration 18 `versioned_strategy_gallery`
-  (see the in-progress [migration note](./MIGRATIONS.md)): immutable
+  (see the accepted [migration record](./MIGRATIONS.md)): immutable
   `(id, version)` publications with a sanitized ≤256 KiB bundle, the
   canonical-JSON SHA-256 `artifact_hash`, visibility/status state,
   display-only rating, feed/own indexes and the
@@ -839,24 +843,75 @@ gate yet. Landed so far in this checkout:
   library copy with `gallery` provenance whose paper start stays
   locked until a local validation + backtest completes
   (`galleryImport` revalidation gate); EN/RU/KK catalogs.
-- [x] Sanitizer/frontend suites landed so far: adversarial
-  leak-refusal and whitelist goldens (`gallerySanitizer.test.ts`),
-  gallery panel and import-gate suites
+- [x] Sanitizer/frontend suites: adversarial leak-refusal and
+  whitelist goldens (`gallerySanitizer.test.ts`), gallery panel and
+  import-gate suites
   (`galleryPanel.test.tsx`, `galleryImport.test.tsx`).
-- [ ] The remaining R9.3 verification program: the PG-gated gallery
-  integration suite wired into CI, the `r9c-gallery` E2E journey, the
-  criterion tests (hash-stability golden and tamper-simulation
-  refusal) recorded green at the release SHA, and the full
-  [RELEASING.md](./RELEASING.md) gate — exact-commit CI, a protected
-  slot, the paired backup/isolated-restore rehearsal of the 17-to-18
-  migration, the production cutover and recorded evidence.
+- [x] The dedicated R9.3 verification program from the increment
+  spec, all green. The roadmap §13 / §18.1 R9.3 release criterion
+  (**privacy + reproducible artifact**) passed on both halves.
+  Privacy: publication runs every bundle through the whitelisting
+  sanitizer, and adversarial fixtures with owner ids, run ids and
+  workspace references embedded in nested metric keys, values and
+  even the IR name never reach a stored artifact — a detected leak
+  aborts publication, and no API projection ever serializes the
+  owner id. Reproducible artifact: the canonical-JSON SHA-256 is
+  computed identically on server and client (parity golden against
+  `node:crypto`), the stored hash is re-verified server-side before
+  serving an import and again client-side, an end-to-end tamper
+  simulation is refused with `gallery_hash_mismatch` in the browser
+  journey with no copy created, and the SQL
+  `gallery_artifacts_content_frozen` trigger rejects all nine
+  immutable-column UPDATEs at the database level. Vitest passed 3354
+  with 142 skipped; the PG-gated `galleryPostgres` integration suite
+  was **executed** against the isolated PostgreSQL (31/31 together
+  with the compute-jobs and GA suites) and wired into CI; Chromium
+  e2e passed 98/98 including the new R9.3 gallery journey (publish a
+  library artifact behind the sanitization preview and explicit
+  consent — no owner UUID in the POST body — then import a feed card
+  through the review dialog into a revalidation-gated library copy),
+  Firefox smoke 19/19 and visual regression 6/6 (the strategy-studio
+  snapshot advanced for the new Community button).
+- [x] The [RELEASING.md](./RELEASING.md) acceptance gate: exact-commit
+  CI on release commit `7afde0d12b350babb01e166a1888d54c225d41ec`
+  with GitHub Actions run `29652078335` green on 6/6 jobs, a
+  protected slot, the schema-17→18 paired backup/isolated-restore
+  rehearsal, the production cutover and recorded evidence.
 
-Candidate behavior for the in-progress contracts is documented in the
+Canonical behavior for the delivered contracts is documented in the
 [API reference](./API.md) gallery section, the
 [strategy reference](./STRATEGIES.md) R9.3 section, the
-[migration notes](./MIGRATIONS.md) in-progress schema-18 note and the
-[threat model](./THREAT_MODEL.md) gallery sharing boundary — all
-clearly marked NOT accepted until the gate passes.
+[migration notes](./MIGRATIONS.md) accepted schema-18 record and the
+[threat model](./THREAT_MODEL.md) gallery sharing boundary.
+
+Production now runs protected slot `r9c-schema18-7afde0d` at commit
+`7afde0d12b350babb01e166a1888d54c225d41ec`, still on port 4180 in the
+`public-http-paper` runtime with the same three project-owned units.
+Exact-SHA GitHub Actions run `29652078335` passed all 6/6 jobs. The
+release migrated PostgreSQL from schema 17 to 18 — the additive
+migration `versioned_strategy_gallery`, SQL SHA-256
+`421a9b93d41c7618c8f30736fae0a45cfe37a14a3e418afc6aa6492696322512` —
+while the trading SQLite stays at schema 10. Before the cutover, the
+paired migration rehearsal restored the pre-cutover generation's
+production-data copy into the isolated database
+`saltanatbotv2_restore_r9c_rehearsal` and migrated it from version 17
+to 18, applying exactly `versioned_strategy_gallery`
+(`gallery_artifacts` present); the rehearsal database was dropped and
+the replacement directory removed afterwards. Paired recovery
+generations `38c116d0-2cbc-43f6-920c-3ad9842f0ad1`
+(`pre-r9c-schema17-v10-20260718T171500Z`, pre-cutover at schema 17,
+retained as the replacement-only rollback source) and
+`63c4b01f-3018-42a2-b271-3bc2037433ed`
+(`post-r9c-schema18-v10-20260718T164500Z`, post-cutover at schema 18,
+isolated drill passed) were verified. Rollback remains
+replacement-only; the superseded slot `r9b-schema17-3ed6af1` is
+retained. Gate, rehearsal and cutover evidence is recorded in
+[R9.3 strategy gallery evidence](./evidence/R9_3_STRATEGY_GALLERY.md).
+
+R9 is now complete: R9.1, R9.2 and R9.3 are all accepted and
+deployed. The next pending increment is R10A (public
+derivatives/MTF, the L2 corpus and its storage and quality gates),
+which has **not started** — production carries no R10 functionality.
 
 ## Delivered slices (not full roadmap completion)
 
