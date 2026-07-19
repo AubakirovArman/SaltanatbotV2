@@ -87,7 +87,7 @@ function infoEndpoint(value: string) {
 
 function assertAllowedRequest(request: HyperliquidInfoRequest) {
   if (!request || typeof request !== "object") throw validation("info request must be an object");
-  const allowed = new Set(["spotMetaAndAssetCtxs", "metaAndAssetCtxs", "l2Book", "predictedFundings", "fundingHistory"]);
+  const allowed = new Set(["spotMetaAndAssetCtxs", "metaAndAssetCtxs", "l2Book", "candleSnapshot", "predictedFundings", "fundingHistory"]);
   if (!allowed.has(request.type)) throw validation(`unsupported public info request ${String(request.type)}`);
 }
 

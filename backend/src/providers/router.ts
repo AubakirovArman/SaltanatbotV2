@@ -4,6 +4,7 @@ import { BinanceProvider } from "./binance.js";
 import { BybitProvider } from "./bybit.js";
 import { CandleCache } from "./cache.js";
 import { readCandles, saveCandles, storedRange } from "./candleStore.js";
+import { HyperliquidProvider } from "./hyperliquid.js";
 import type { CandleRange, DataExchange, DataMarketType, MarketCandleEvent, MarketKey, MarketProvider, MarketSubscription, PriceType } from "./provider.js";
 import { SyntheticProvider } from "./synthetic.js";
 
@@ -22,6 +23,8 @@ export class ProviderRouter implements MarketProvider {
 
   private bybit = new BybitProvider();
 
+  private hyperliquid = new HyperliquidProvider();
+
   private synthetic = new SyntheticProvider();
 
   private cache = new CandleCache();
@@ -30,11 +33,12 @@ export class ProviderRouter implements MarketProvider {
 
   async getCandles(instrument: Instrument, timeframe: Timeframe, range: CandleRange, options?: DataExchange | RouteOptions) {
     const { exchange, marketType, priceType, strict } = normalizeOptions(options);
+    const failClosed = strict || exchange === "hyperliquid";
     const now = Date.now();
     const isHistory = range.endTime !== undefined && range.endTime < now - 60_000;
     const marketKey = this.marketKey(instrument, timeframe, exchange, marketType, priceType);
     const source = this.sourceKey(instrument, marketKey);
-    const cacheKey = `${source}:${instrument.symbol}:${timeframe}:${range.limit}:${range.endTime ?? "live"}:${range.startTime ?? ""}:${strict ? "strict" : "fallback"}`;
+    const cacheKey = `${source}:${instrument.symbol}:${timeframe}:${range.limit}:${range.endTime ?? "live"}:${range.startTime ?? ""}:${failClosed ? "strict" : "fallback"}`;
     const cached = this.cache.get(cacheKey, now);
     if (cached) return cached;
 
@@ -63,7 +67,7 @@ export class ProviderRouter implements MarketProvider {
       // fallback data — guard on the provider and on each candle's source.
       if (persistable) this.persist(source, instrument, timeframe, candles);
     } catch (error) {
-      if (strict) throw error;
+      if (failClosed) throw error;
       let fallback: Candle[];
       try {
         fallback = await this.synthetic.getCandles(instrument, timeframe, range);
@@ -129,14 +133,15 @@ export class ProviderRouter implements MarketProvider {
     options?: DataExchange | RouteOptions
   ): Promise<MarketSubscription> {
     const { exchange, marketType, priceType, strict } = normalizeOptions(options);
+    const failClosed = strict || exchange === "hyperliquid";
     const marketKey = this.marketKey(instrument, timeframe, exchange, marketType, priceType);
     const provider = this.primary(instrument, marketKey?.venue);
     if (provider === this.synthetic) {
-      if (strict) throw new Error(`No live feed for ${instrument.symbol} (synthetic disabled for trading)`);
+      if (failClosed) throw new Error(`No live feed for ${instrument.symbol} (synthetic disabled for this route)`);
       return this.synthetic.subscribe(instrument, timeframe, onCandle, onStatus);
     }
 
-    const streamKey = `${this.sourceKey(instrument, marketKey)}:${instrument.symbol}:${timeframe}:${strict ? "strict" : "fallback"}`;
+    const streamKey = `${this.sourceKey(instrument, marketKey)}:${instrument.symbol}:${timeframe}:${failClosed ? "strict" : "fallback"}`;
     const existing = this.streams.get(streamKey);
     if (existing) return this.addStreamListener(streamKey, existing, onCandle, onStatus);
 
@@ -163,7 +168,7 @@ export class ProviderRouter implements MarketProvider {
       return local;
     } catch (error) {
       this.streams.delete(streamKey);
-      if (strict) throw error;
+      if (failClosed) throw error;
       onStatus?.(`Fallback stream: ${this.message(error)}`);
       try {
         return await this.synthetic.subscribe(instrument, timeframe, onCandle, onStatus);
@@ -211,6 +216,7 @@ export class ProviderRouter implements MarketProvider {
 
   private primary(instrument: Instrument, exchange?: DataExchange) {
     if (instrument.provider !== "binance") return this.synthetic;
+    if (exchange === "hyperliquid") return this.hyperliquid;
     return exchange === "bybit" ? this.bybit : this.binance;
   }
 

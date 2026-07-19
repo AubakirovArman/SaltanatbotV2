@@ -597,6 +597,18 @@ describe("trading API E2E (real router, in-memory store)", () => {
     expect(list.bots.some((b: { id: string }) => b.id === bot.id)).toBe(true);
   });
 
+  it("accepts Hyperliquid as paper perpetual data and rejects a spot mismatch", async () => {
+    const accepted = await post("/bots", validBody({ dataExchange: "hyperliquid", market: "futures" }));
+    expect(accepted.status).toBe(200);
+    const { bot } = await accepted.json() as { bot: { id: string; exchange: string; dataExchange: string; market: string } };
+    expect(bot).toMatchObject({ exchange: "paper", dataExchange: "hyperliquid", market: "futures" });
+
+    const rejected = await post("/bots", validBody({ dataExchange: "hyperliquid", market: "spot" }));
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toMatchObject({ code: "HYPERLIQUID_PERPETUAL_REQUIRED" });
+    expect((await del(`/bots/${bot.id}`)).status).toBe(200);
+  });
+
   it("never exposes internal paper allocation micros through the public bot view", async () => {
     const id = `private-paper-fields-${Date.now()}`;
     const now = Date.now();

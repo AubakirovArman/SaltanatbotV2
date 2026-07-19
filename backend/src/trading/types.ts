@@ -1,4 +1,4 @@
-import type { DcaParamsV1, GridParamsV1 } from "@saltanatbotv2/contracts";
+import type { DataExchange, DcaParamsV1, GridParamsV1 } from "@saltanatbotv2/contracts";
 import type { Timeframe } from "../types.js";
 import type { StrategyIR } from "./strategy/ir.js";
 
@@ -89,6 +89,8 @@ export interface BotConfig {
   symbol: string;
   timeframe: Timeframe;
   exchange: ExchangeId;
+  /** Public candle source for paper execution. Legacy rows default to Binance. */
+  dataExchange?: DataExchange;
   market: MarketType;
   /** Position sizing when the strategy itself doesn't set a size. */
   sizeMode: "quote" | "base" | "equity_pct" | "risk_pct";

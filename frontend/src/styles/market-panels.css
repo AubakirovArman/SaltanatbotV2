@@ -130,6 +130,7 @@ small {
 
 .exchange-select-options button {
   flex: 1;
+  min-inline-size: 0;
   min-block-size: 22px;
   border: none;
   border-radius: var(--radius-sm);
@@ -139,6 +140,15 @@ small {
   font-size: var(--fs-sm);
   font-weight: 500;
   line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .exchange-select-options button {
+    font-size: 10px;
+  }
 }
 
 .exchange-select-options button:hover {

@@ -206,11 +206,16 @@ export function parsePriceThresholdAlertDefinitionV1(value: unknown): PriceThres
     "price threshold alert",
   );
   const common = parseRuleCommon(input, "price-threshold", "price threshold alert");
+  const parsedExchange = priceAlertExchange(input.exchange, "price threshold alert.exchange");
+  const parsedMarketType = marketType(input.marketType, "price threshold alert.marketType");
+  if (parsedExchange === "hyperliquid" && parsedMarketType !== "linear") {
+    throw new Error("price threshold alert.marketType must be linear for Hyperliquid");
+  }
   return {
     ...common,
     kind: "price-threshold",
-    exchange: exchange(input.exchange, "price threshold alert.exchange"),
-    marketType: marketType(input.marketType, "price threshold alert.marketType"),
+    exchange: parsedExchange,
+    marketType: parsedMarketType,
     priceType: priceType(input.priceType, "price threshold alert.priceType"),
     symbol: symbol(input.symbol, "price threshold alert.symbol"),
     timeframe: timeframe(input.timeframe, "price threshold alert.timeframe"),
@@ -503,6 +508,10 @@ function uniqueArray<T>(value: unknown, label: string, maximum: number, parse: (
 
 function exchange(value: unknown, label: string): DataExchange {
   return oneOf(value, ["binance", "bybit"] as const, label);
+}
+
+function priceAlertExchange(value: unknown, label: string): DataExchange {
+  return oneOf(value, ["binance", "bybit", "hyperliquid"] as const, label);
 }
 
 function marketType(value: unknown, label: string): DataMarketType {

@@ -14,7 +14,7 @@
 R5.1 серверде бағаланатын бір ереже түрін қолдайды:
 
 - `price-threshold`;
-- Binance немесе Bybit биржаларының ашық нарық деректері;
+- Binance, Bybit немесе Hyperliquid first-DEX perpetual ашық нарық деректері;
 - нарық сәйкестігі: `spot`, `linear` немесе `inverse`;
 - тек last price;
 - `1m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `1d` және `1w`;

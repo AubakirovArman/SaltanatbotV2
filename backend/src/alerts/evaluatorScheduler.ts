@@ -211,7 +211,7 @@ interface SweepReadAdmission {
 
 function createReadAdmission(reader: PriceAlertPublicReader, initialCandleLimit: number, publicReadLimit: number, publicProviderReadLimit: number, sweep: PriceAlertSweepResult): SweepReadAdmission {
   const cache = new Map<string, Promise<PublicClosedCandleReadResult>>();
-  const providerReads: Record<"binance" | "bybit", number> = { binance: 0, bybit: 0 };
+  const providerReads: Record<"binance" | "bybit" | "hyperliquid", number> = { binance: 0, bybit: 0, hyperliquid: 0 };
   const admission: SweepReadAdmission = {
     exhausted: false,
     read(claim) {

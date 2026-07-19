@@ -44,11 +44,15 @@ must not add keys or treat those rows as executable accounts before the separate
 3. Create or select an active paper portfolio.
 4. Create a bot, explicitly select **Paper (simulation)**, and reserve a positive allocation from
    that portfolio.
-5. Choose the symbol, timeframe, virtual position size and simulated leverage.
+5. Choose the public market-data source, symbol, timeframe, virtual position size and simulated
+   leverage. Hyperliquid is first-DEX perpetual data only and therefore fixes the paper market to
+   futures; it does not connect a wallet.
 6. Start the bot, then monitor its isolated virtual balance, positions, open orders, fills and logs.
 7. Stop the bot or use the paper-only controls when the experiment is complete.
 
 Paper bots require no exchange credentials and cannot withdraw funds or submit exchange requests.
+Their optional `dataExchange` is only a public candle source (`binance`, `bybit` or `hyperliquid`);
+orders, balances and PnL always remain inside the local paper engine.
 If a screen or imported legacy configuration names Binance, Bybit, API keys, borrowing or live
 execution, leave it unused in the current release.
 

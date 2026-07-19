@@ -19,7 +19,7 @@ export const HYPERLIQUID_PUBLIC_CAPABILITIES: VenueCapabilityManifest = Object.f
   nativeSpread: false,
   topBook: true,
   depth: true,
-  publicTrades: false,
+  publicTrades: true,
   funding: true,
   borrow: false,
   depositWithdrawal: false,

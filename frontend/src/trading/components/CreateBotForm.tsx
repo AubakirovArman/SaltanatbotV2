@@ -1,6 +1,6 @@
 import { AlertTriangle, Bot } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { Locale } from "../../i18n";
+import { localized, type Locale } from "../../i18n";
 import { dcaText } from "../../i18n/dca";
 import { gridText } from "../../i18n/grid";
 import { paperPortfolioText } from "../../i18n/paperPortfolio";
@@ -10,7 +10,7 @@ import { galleryRevalidationPending } from "../../strategy/galleryImport";
 import { galleryText } from "../../strategy/galleryText";
 import type { StrategyIR } from "../../strategy/ir";
 import type { StrategyArtifact } from "../../strategy/library";
-import type { CatalogResponse } from "../../types";
+import type { CatalogResponse, DataExchange } from "../../types";
 import { listTradingAccounts, type TradingAccountView } from "../accountClient";
 import { DEFAULT_DCA_DRAFT, dcaWorstCaseExceeds, evaluateDcaDraft, type DcaDraft } from "../dcaDraft";
 import { DEFAULT_GRID_DRAFT, evaluateGridDraft, gridWorstCaseExceeds, type GridDraft } from "../gridDraft";
@@ -67,6 +67,7 @@ export function CreateBotForm({
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [timeframe, setTimeframe] = useState<TradingBot["timeframe"]>("1m");
   const [exchange, setExchange] = useState<ExchangeId>("paper");
+  const [dataExchange, setDataExchange] = useState<DataExchange>("binance");
   const [market, setMarket] = useState<"spot" | "futures">("futures");
   const [sizeMode, setSizeMode] = useState<TradingBot["sizeMode"]>("quote");
   const [sizeValue, setSizeValue] = useState(100);
@@ -241,6 +242,7 @@ export function CreateBotForm({
         symbol,
         timeframe,
         exchange: selectedExchange,
+        dataExchange,
         market,
         sizeMode: "quote",
         sizeValue: dcaParams.baseOrderQuote,
@@ -256,6 +258,7 @@ export function CreateBotForm({
         symbol,
         timeframe,
         exchange: selectedExchange,
+        dataExchange,
         market,
         sizeMode: "quote",
         sizeValue: gridParams.orderQuote,
@@ -270,6 +273,7 @@ export function CreateBotForm({
         symbol,
         timeframe,
         exchange: selectedExchange,
+        dataExchange: selectedExchange === "paper" ? dataExchange : selectedExchange,
         market,
         sizeMode,
         sizeValue,
@@ -398,11 +402,31 @@ export function CreateBotForm({
             </select>
           </label>
           <label>{tradingText(locale, "marketType")}
-            <select name="market" value={market} onChange={(event) => setMarket(event.target.value as "spot" | "futures")}>
-              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot" disabled={selectedExchange === "binance" || (dcaMode && dcaDraft.direction === "short") || (gridMode && gridDraft.mode === "short")}>{tradingText(locale, "spot")}</option>
+            <select name="market" value={market} disabled={selectedExchange === "paper" && dataExchange === "hyperliquid"} onChange={(event) => setMarket(event.target.value as "spot" | "futures")}>
+              <option value="futures">{tradingText(locale, "futures")}</option><option value="spot" disabled={selectedExchange === "binance" || (selectedExchange === "paper" && dataExchange === "hyperliquid") || (dcaMode && dcaDraft.direction === "short") || (gridMode && gridDraft.mode === "short")}>{tradingText(locale, "spot")}</option>
             </select>
           </label>
         </div>
+        {selectedExchange === "paper" && (
+          <label>{localized(locale, { en: "Market data source", ru: "Источник рыночных данных", kk: "Нарық деректерінің көзі" })}
+            <select name="data-exchange" value={dataExchange} onChange={(event) => {
+              const next = event.target.value as DataExchange;
+              setDataExchange(next);
+              if (next === "hyperliquid") setMarket("futures");
+            }}>
+              <option value="binance">Binance</option>
+              <option value="bybit">Bybit</option>
+              <option value="hyperliquid">Hyperliquid</option>
+            </select>
+          </label>
+        )}
+        {selectedExchange === "paper" && dataExchange === "hyperliquid" && (
+          <p className="field-help">{localized(locale, {
+            en: "Hyperliquid uses public first-DEX perpetual candles. Execution remains simulated; no wallet or API key is used.",
+            ru: "Используются публичные perpetual-свечи первого DEX Hyperliquid. Исполнение остаётся симуляцией — кошелёк и API-ключ не используются.",
+            kk: "Hyperliquid бірінші DEX ашық perpetual шамдары қолданылады. Орындау симуляция болып қалады — әмиян және API кілті қолданылмайды."
+          })}</p>
+        )}
         {dcaMode && <p id="dca-paper-only" className="field-help" role="note">{dcaText(locale, "paperOnlyExchange")}</p>}
         {gridMode && <p id="grid-paper-only" className="field-help" role="note">{gridText(locale, "paperOnlyExchange")}</p>}
         {selectedExchange === "binance" && <p className="field-help">{tradingText(locale, "binanceSpotDisabled")}</p>}

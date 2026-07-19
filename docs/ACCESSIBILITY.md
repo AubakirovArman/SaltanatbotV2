@@ -52,8 +52,8 @@ restoration plus robot-drawer scrolling.
 
 ## R5.1 candidate boundary
 
-The R5.1 candidate covers only generic owner-scoped `price-threshold` alerts
-over public Binance/Bybit last-price closed candles with in-app delivery. Its
+The current surface covers only generic owner-scoped `price-threshold` alerts over public
+Binance/Bybit or first-DEX perpetual Hyperliquid last-price closed candles with in-app delivery. Its
 accessibility gate includes the mobile, multi-tab and forward-cursor states
 listed above. It does not validate the separate account-aware arbitrage
 research-alert workflow, R5.2 technical screener, R5.3 notification

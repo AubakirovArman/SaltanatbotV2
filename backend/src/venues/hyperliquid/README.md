@@ -1,8 +1,8 @@
 # Hyperliquid public adapter
 
-This folder is a credential-free HyperCore market-data boundary. The transport can call only five
+This folder is a credential-free HyperCore market-data boundary. The transport can call only six
 public `POST /info` request types: `metaAndAssetCtxs`, `spotMetaAndAssetCtxs`, `l2Book`,
-`predictedFundings` and `fundingHistory`. There is no `/exchange` route, wallet, agent key, chain
+`predictedFundings`, `fundingHistory` and `candleSnapshot`. There is no `/exchange` route, wallet, agent key, chain
 signature, account address or HyperEVM/indexer client.
 
 ## Files
@@ -12,8 +12,13 @@ signature, account address or HyperEVM/indexer client.
 - `normalize.ts` — strict native identity, metadata, L2 book and funding normalization.
 - `types.ts` — Hyperliquid-specific semantics layered over the shared public snapshot interfaces.
 - `adapter.ts` — capability manifest and bounded public operations.
-- `index.ts` — stable exports consumed by the bounded public market-data facade; scanner, chart and
-  private-execution wiring remain absent.
+- `index.ts` — stable exports consumed by the bounded public market-data facade. The ordinary chart
+  path reuses the transport for REST candle backfill and has separate public WebSocket connectors;
+  private-execution wiring remains absent.
+
+The chart source covers first/default-DEX perpetual last-trade candles, L2 and aggressor-side
+trades. Paper robots can use those candles as simulated market input. This does not create a wallet
+or turn on `/exchange` execution.
 
 Spot identity uses the token ID plus network, not a UI-remapped ticker. The API `coin` is
 `PURR/USDC` for PURR and `@{pairIndex}` for other spot pairs; the execution asset index is

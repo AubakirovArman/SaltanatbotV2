@@ -1,7 +1,7 @@
 # Venue capability, eligibility and expansion matrix
 
 Status: canonical implementation register, truth-audited against the repository and official venue
-documentation on 2026-07-15.
+documentation on 2026-07-19.
 
 This document separates five things that are easy to confuse: public market-data code, continuous
 loss-detecting books, scanner participation, private account/execution code and operator/legal
@@ -41,7 +41,7 @@ borrow inventory, margin, fees, transfer networks, simultaneous fills or jurisdi
 
 | Surface | Current truth |
 | --- | --- |
-| Charts | Binance and Bybit public candle routes only; market type and price-source limitations remain explicit |
+| Charts | Binance and Bybit public candle routes plus Hyperliquid first-DEX perpetual last-trade candles; market type and price-source limitations remain explicit |
 | Native Binance/Bybit scanner | Cross-venue and same-venue spot/perpetual basis, selected triangular research and Bybit native spreads |
 | Shared public REST facade | OKX, Gate.io, Hyperliquid, Deribit, Kraken, Coinbase, dYdX, KuCoin and MEXC through `/api/market-data/:venue/*` |
 | Instrument registry | Binance/Bybit/OKX native sources plus all registered public adapters; fresh rows are returned by default and stale cache is opt-in |
@@ -67,7 +67,7 @@ of evidence and do not establish that this deployment currently has active feeds
 | Bybit | Native registry, chart candles, spot/linear/inverse public data and native spread metadata/book | Scanner-specific Bybit snapshot/delta books exist, but Bybit is not part of the generic continuous-public-feed module | Current basis, triangular and venue-native spread research | Spot and USDT-linear execution are experimental. UTA collateral/borrow controls are explicit opt-in. No mainnet-readiness claim |
 | OKX | Registered REST metadata, BBO, bounded depth and variable funding for spot, swaps and dated futures | Selected `books` stream reconstructs `prevSeqId/seqId`; a valid fresh generation may become route-ready. Deprecated fixed checksum `0` is not integrity proof | Operator-allowlisted generic continuous research; no chart selector | No private/account/order surface |
 | Gate.io | Registered REST metadata, BBO, bounded depth and funding for spot and USDT perpetuals | Spot/perpetual OBU uses full plus `U/u`; optional legacy incremental mode requires the governed REST-ID bridge. Valid fresh books may become route-ready | Operator-allowlisted generic continuous research; no chart selector | No private/account/order surface |
-| Hyperliquid | Registered public HyperCore `/info` metadata, selected L2 and funding for first-DEX spot/perpetuals | Each `l2Book` is an atomic block snapshot with no protocol sequence/checksum. It stays continuous research-only and is excluded from route-ready books | Generic continuous research signal only | No wallet, address, signing, `/exchange`, HyperEVM or order code |
+| Hyperliquid | Registered public HyperCore `/info` metadata, selected L2/funding, first-DEX perpetual candle history and public candle/L2/trade streams | Each `l2Book` is an atomic block snapshot with no protocol sequence/checksum. It stays continuous research-only and is excluded from route-ready books | Generic continuous research plus an ordinary first-DEX perpetual chart selector and optional paper-robot market-data source | No wallet, address, signing, `/exchange`, HyperEVM or order code |
 | Deribit | Registered public JSON-RPC metadata/BBO/depth/funding for perpetuals, dated futures and options | Selected `book` streams use exact `prev_change_id/change_id`; valid fresh books may become route-ready | Generic continuous research plus the separate, read-only options-parity evaluator/workbench | Public-method allowlist only; no credentials or private methods |
 | Kraken | Registered Spot plus inverse/linear futures metadata, BBO/depth; inverse perpetual funding | Spot v2 uses lossless decimals and CRC32 after every update and may become route-ready. Futures v1 `seq` is observed but not documented as contiguous per product, so Futures stays research-only | Operator-allowlisted generic continuous research; no chart selector | No private/account/order surface |
 | Coinbase | Registered Coinbase Exchange Spot metadata and selected L1/L2 | Advanced Trade public `level2` plus `heartbeats` enforces connection-global sequence across every non-error envelope and independent heartbeat-counter continuity. Sequence zero stays outside route-ready. `market_trades` is never treated as a book. Most `*-USDC` aliases fail closed | Operator-allowlisted generic continuous research; selected Spot canary passed 2026-07-14, no chart selector | No JWT, account or order surface |
@@ -79,8 +79,9 @@ The dYdX, KuCoin and MEXC rows correct an older status: they are no longer merel
 folders or future candidates. All three now have bounded generic continuous paths, bringing that
 module to nine venues. The browser derives venue/source filters from the live response, so all nine
 can be inspected without hard-coded buttons. Generic EN/RU/KK reconnect/receive/continuity
-diagnostics are delivered; dedicated venue-specific workflows and chart selectors remain separate
-UX work. dYdX keeps its explicitly non-canonical, non-route-ready boundary.
+diagnostics are delivered. Hyperliquid now also has a bounded first-DEX perpetual chart/paper-data
+path; other dedicated venue workflows and chart selectors remain separate UX work. dYdX keeps its
+explicitly non-canonical, non-route-ready boundary.
 
 The schema-v3 canary now has one reviewed target for every generic continuous venue. The
 2026-07-14 local run passed OKX, Gate, Hyperliquid, Deribit public testnet, Coinbase, dYdX, KuCoin

@@ -205,7 +205,7 @@ export function isWorkspaceChartType(value: unknown): value is ChartType {
 function strictRevision(item: Record<string, unknown>, maximumIndicators: number, current: boolean): boolean {
   if (!Number.isSafeInteger(item.revision) || Number(item.revision) < 1 || !nonnegativeNumber(item.savedAt)) return false;
   if (current && item.mode !== "chart" && item.mode !== "strategy" && item.mode !== "trade" && item.mode !== "screener") return false;
-  if (item.cryptoExchange !== "binance" && item.cryptoExchange !== "bybit") return false;
+  if (item.cryptoExchange !== "binance" && item.cryptoExchange !== "bybit" && item.cryptoExchange !== "hyperliquid") return false;
   if (item.theme !== "dark" && item.theme !== "light") return false;
   if (!validWorkspaceSymbol(item.symbol) || !isWorkspaceTimeframe(item.timeframe) || !isWorkspaceChartType(item.chartType)) return false;
   if (!strictLayout(item.layout)) return false;
@@ -239,9 +239,10 @@ function strictChart(value: unknown): boolean {
     && validWorkspaceSymbol(item.symbol)
     && isWorkspaceTimeframe(item.timeframe)
     && isWorkspaceChartType(item.chartType)
-    && (item.exchange === undefined || item.exchange === "binance" || item.exchange === "bybit")
+    && (item.exchange === undefined || item.exchange === "binance" || item.exchange === "bybit" || item.exchange === "hyperliquid")
     && (item.marketType === undefined || item.marketType === "spot" || item.marketType === "linear" || item.marketType === "inverse")
     && (item.priceType === undefined || item.priceType === "last" || item.priceType === "mark" || item.priceType === "index")
+    && (item.exchange !== "hyperliquid" || (item.marketType === "linear" && (item.priceType === undefined || item.priceType === "last")))
     && (item.timeZone === undefined || CHART_TIME_ZONES.includes(item.timeZone as typeof CHART_TIME_ZONES[number]))
     && booleans.every((key) => typeof item[key] === "boolean")
     && (item.linkGroup === undefined || validWorkspaceIdentifier(item.linkGroup, 64))
@@ -422,7 +423,7 @@ function strictLegacyRevision(item: Record<string, unknown>): boolean {
     && validWorkspaceSymbol(item.symbol)
     && isWorkspaceTimeframe(item.timeframe)
     && isWorkspaceChartType(item.chartType)
-    && (item.cryptoExchange === "binance" || item.cryptoExchange === "bybit")
+    && (item.cryptoExchange === "binance" || item.cryptoExchange === "bybit" || item.cryptoExchange === "hyperliquid")
     && item.theme !== undefined
     && (item.theme === "dark" || item.theme === "light")
     && Array.isArray(item.enabledIndicators)

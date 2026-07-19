@@ -42,6 +42,7 @@ const botBodySchema = z.object({
   symbol: z.string().min(1).max(30),
   timeframe: z.enum(timeframes as [Timeframe, ...Timeframe[]]),
   exchange: z.enum(["paper", "binance", "bybit"]).default("paper"),
+  dataExchange: z.enum(["binance", "bybit", "hyperliquid"]).optional(),
   market: z.enum(["spot", "futures"]).default("spot"),
   sizeMode: z.enum(["quote", "base", "equity_pct", "risk_pct"]).default("quote"),
   sizeValue: z.coerce.number().positive().finite().max(1_000_000_000),
@@ -99,6 +100,9 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
       if (body.exchange !== "paper" && isPaperOnlyRuntime(runtimePolicy)) {
         return void res.status(403).json(paperOnlyErrorBody("live bot configuration"));
       }
+      if (body.exchange === "paper" && body.dataExchange === "hyperliquid" && body.market !== "futures") {
+        return void res.status(400).json({ error: "Hyperliquid paper robots currently require the futures market.", code: "HYPERLIQUID_PERPETUAL_REQUIRED" });
+      }
       const { runtime, role, secureOrigin } = mutationAuthority(engine, ownerUserId, existing, body.id, body.exchange);
       if (!ensureRole(res, role) || (secureOrigin && !ensureSecureTradingOrigin(req, res))) return;
       if (runtime) return void res.status(409).json({ error: "Stop the running bot before changing its configuration." });
@@ -122,6 +126,7 @@ export function registerBotLifecycleMutationRoutes(router: Router, engine: Tradi
           symbol: body.symbol.toUpperCase(),
           timeframe: body.timeframe,
           exchange: body.exchange as ExchangeId,
+          dataExchange: body.exchange === "paper" ? (body.dataExchange ?? "binance") : body.exchange,
           market: body.market,
           sizeMode: body.sizeMode,
           sizeValue: body.sizeValue,

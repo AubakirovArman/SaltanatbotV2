@@ -4,7 +4,13 @@ import type { PublicDepthSnapshot, PublicFundingPoint, PublicFundingSchedule, Pu
 export type HyperliquidNetwork = "mainnet" | "testnet";
 export type HyperliquidMarketType = Extract<VenueMarketType, "spot" | "perpetual">;
 
-export type HyperliquidInfoRequest = { type: "spotMetaAndAssetCtxs" } | { type: "metaAndAssetCtxs" } | { type: "l2Book"; coin: string } | { type: "predictedFundings" } | { type: "fundingHistory"; coin: string; startTime: number; endTime: number };
+export type HyperliquidInfoRequest =
+  | { type: "spotMetaAndAssetCtxs" }
+  | { type: "metaAndAssetCtxs" }
+  | { type: "l2Book"; coin: string }
+  | { type: "candleSnapshot"; req: { coin: string; interval: string; startTime: number; endTime: number } }
+  | { type: "predictedFundings" }
+  | { type: "fundingHistory"; coin: string; startTime: number; endTime: number };
 
 export interface HyperliquidPriceRules {
   /** Hyperliquid does not publish one static tick valid at every price magnitude. */

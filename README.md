@@ -23,7 +23,7 @@ Live charts · a no-code visual strategy builder · one-click backtests · paper
 
 ## What is this?
 
-**SaltanatbotV2** is a trading terminal you run yourself. It streams live crypto candles from **Binance or Bybit** (switchable at runtime), renders them on a fast custom canvas chart with indicators and drawing tools, lets you **assemble trading strategies from visual blocks** (no code), **backtest them on historical data in seconds**, and run them as isolated **paper bots**. The current release is deliberately Research / Paper only: dormant experimental live-adapter code cannot be activated until a separate HTTPS and security release.
+**SaltanatbotV2** is a trading terminal you run yourself. It streams live crypto candles from **Binance, Bybit or first-DEX perpetual Hyperliquid** (switchable at runtime), renders them on a fast custom canvas chart with indicators and drawing tools, lets you **assemble trading strategies from visual blocks** (no code), **backtest them on historical data in seconds**, and run them as isolated **paper bots**. The current release is deliberately Research / Paper only: dormant experimental live-adapter code cannot be activated until a separate HTTPS and security release.
 
 Application state and credentials stay on your self-hosted SaltanatbotV2 instance: there is no
 Saltanatbot cloud account or built-in telemetry. Live public market data and optional Telegram/VK
@@ -32,8 +32,8 @@ delivery still require outbound network requests to the services you enable.
 > 🐘 *Why the elephant with a raised trunk?* A raised trunk is the classic symbol of good fortune — and the candlesticks rising over its back point the way we all hope the market goes.
 
 <div align="center">
-<img src="docs/screenshots/01-chart.png" alt="Chart view with the Binance/Bybit market source selector, indicators and live feed" width="900" />
-<br/><em>Chart workspace — 50+ crypto pairs, a Binance/Bybit source selector, indicators, volume, RSI sub-panel and a live websocket feed.</em>
+<img src="docs/screenshots/01-chart.png" alt="Chart view with the market source selector, indicators and live feed" width="900" />
+<br/><em>Chart workspace — 50+ crypto pairs, Binance/Bybit/Hyperliquid sources, indicators, volume, RSI sub-panel and a live websocket feed.</em>
 </div>
 
 ---
@@ -53,8 +53,8 @@ delivery still require outbound network requests to the services you enable.
 - Renko brick percentage, Kagi reversal percentage, Line Break depth and Point & Figure construction are adjustable from each chart, validated to safe ranges and persisted by pane + symbol; changing one rebuilds only that displayed series without changing sibling panes or backtest execution candles.
 - Point & Figure uses alternating confirmed X/O columns with a fixed seeded percentage box and configurable reversal-box count; its synthetic columns are display analysis, not executable prices.
 - OHLCV-estimated visible-range Volume Profile (VPVR) with directional volume, Point of Control and a contiguous 70% value area. Its source can follow the chart or use an independent **1m/5m/15m/1h/4h/1d timeframe**; incomplete, synthetic or oversized source ranges fail closed.
-- Real Binance/Bybit public top-20 order-book heatmap with a shared backend upstream, 60-second liquidity history and explicit reconnect/stale states.
-- Real-time Binance/Bybit trade footprint with aggressor cells, delta/CVD, diagonal and stacked imbalance highlighting, and explicitly provisional absorption heuristics; no synthetic prints or reconstructed history.
+- Real Binance/Bybit/Hyperliquid public top-20 order-book heatmap with a shared backend upstream, 60-second liquidity history and explicit reconnect/stale states.
+- Real-time Binance/Bybit/Hyperliquid trade footprint with aggressor cells, delta/CVD, diagonal and stacked imbalance highlighting, and explicitly provisional absorption heuristics; no synthetic prints or reconstructed history.
 - Configurable in-chart microstructure alerts for stacked imbalance, potential absorption, CVD spikes and large prints, with local persistence, bounded history and optional sound/desktop delivery.
 - UTC session-liquidity map with OHLCV bar-based VWAP ±1σ, session O/H/L, exchange daily PDH/PDL and confirmed wick-and-reclaim sweep markers.
 - Confirmed HH/LH/HL/LL market structure with close-based BOS/CHOCH, adjustable swing strength and optional fully mitigated three-candle FVG zones on every timeframe.
@@ -78,14 +78,14 @@ delivery still require outbound network requests to the services you enable.
 - Metrics + trade markers on the chart; share a strategy as a **URL** or a **`.strategy` file** (import as a remixable copy).
 
 ### 🤖 Paper trading and automation
-- Run saved strategies as isolated **paper** bots. Binance/Bybit live execution is disabled by the immutable `public-http-paper` runtime profile.
+- Run saved strategies as isolated **paper** bots, optionally using Hyperliquid first-DEX perpetual market data. Binance/Bybit live execution and Hyperliquid wallet execution are disabled by the immutable `public-http-paper` runtime profile.
 - Strategy signals are translated into an **Antares-style command language**: `param=value;` params, `::` command chaining, `pause` / `randpause`, `!`/`^` flags and **14 order actions** (market/limit/stop/take-profit, partial closes, reverses, and more).
 - Built-in **paper order engine** with pending limit/stop/TP orders and tick-based fills at public market prices. Dormant live formatting code remains unavailable to the deployed runtime.
 - A cross-bot portfolio API and dedicated browser robots/portfolio center, Telegram summary, per-bot risk caps + a **kill switch**, and **two-way Telegram control** (`/status` `/stop` `/start` `/kill`).
 - UI-configurable **Telegram** notifications and an authenticated backend configuration path for **VK**, covering start/stop/open/close/error/signal events.
 
 ### 🔀 Multi-exchange market data
-- **Binance** and **Bybit** public providers (REST klines + live WebSocket) with **auto-reconnect + gap backfill**, plus a deterministic **synthetic** feed for FX/stocks/indices.
+- **Binance**, **Bybit** and first-DEX perpetual **Hyperliquid** public providers (REST candles + live WebSocket) with **auto-reconnect + gap backfill**, plus a deterministic **synthetic** feed for FX/stocks/indices.
 - A read-only **arbitrage research workspace** covers strict venue-native basis plus reviewed BTC/ETH cross-venue Binance/Bybit basis, directional top-book triangular simulations and Bybit native spreads. Operator-allowlisted continuous public feeds for OKX/Gate/Hyperliquid/Deribit/Kraken/Coinbase/dYdX/KuCoin/MEXC can show only fail-closed top-book entry quote-value/basis evidence with public taker quote-equivalent fee estimates—not a trading return. Identity provenance, refresh coverage and arithmetic are validated, and every route stays strategy-blocked and non-actionable. The public SDK and bounded adapters for all nine generic venues plus a strict options-parity HTTP/SDK evaluator expose no credential or order methods.
 - Basis, triangular, native-spread and compatible continuous results can be handed to **Automation** as a validated `market-opportunity-v1` research card with legs, economics, evidence and blockers. The handoff is not an order plan: live execution is always blocked and the exact paper multi-leg plan remains a separate short-lived artifact.
 - An admin-only **Order-book ML research** workflow accepts uploaded, reconstructed and sequence-verified aggregate L2 snapshots, builds leakage-controlled datasets and trains an inspectable ridge baseline. Sessions are temporary and in-memory; the system identifies no participant, emits no calibrated probability and cannot place paper or live orders.
@@ -260,7 +260,7 @@ SaltanatbotV2/
 
 - The block builder is powered by [**Blockly**](https://developers.google.com/blockly).
 - The trading command syntax is inspired by the [**Antares**](https://antares-ts.gitbook.io/doc) command language.
-- Market data comes from the public [Binance](https://developers.binance.com/en/docs/products/spot/rest-api) and [Bybit](https://bybit-exchange.github.io/docs/) APIs.
+- Market data comes from the public [Binance](https://developers.binance.com/en/docs/products/spot/rest-api), [Bybit](https://bybit-exchange.github.io/docs/) and [Hyperliquid](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api) APIs.
 
 ## License
 

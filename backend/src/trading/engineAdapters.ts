@@ -1,5 +1,5 @@
 import { PAPER_FILL_MODEL_V1 } from "@saltanatbotv2/execution-core";
-import type { DataMarketType } from "../providers/provider.js";
+import type { DataExchange, DataMarketType } from "../providers/provider.js";
 import { BinanceAdapter, type ExchangeKeys } from "./exchange/binance.js";
 import { BybitAdapter } from "./exchange/bybit.js";
 import { PaperAdapter, type PaperFillBehavior } from "./exchange/paper.js";
@@ -85,9 +85,9 @@ export function buildEmergencyAdapters(ownerUserId: string, policy: RuntimePolic
   return adapters;
 }
 
-export function engineMarketRoute(config: BotConfig): { exchange: "binance" | "bybit"; marketType: DataMarketType; priceType: "last" } {
+export function engineMarketRoute(config: BotConfig): { exchange: DataExchange; marketType: DataMarketType; priceType: "last" } {
   return {
-    exchange: config.exchange === "bybit" ? "bybit" : "binance",
+    exchange: config.exchange === "paper" ? (config.dataExchange ?? "binance") : config.exchange,
     marketType: config.market === "futures" ? "linear" : "spot",
     priceType: "last"
   };

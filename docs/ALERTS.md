@@ -13,7 +13,7 @@ role.
 R5.1 supports one server-evaluated rule:
 
 - `price-threshold`;
-- Binance or Bybit public market data;
+- Binance, Bybit or first-DEX perpetual Hyperliquid public market data;
 - `spot`, `linear` or `inverse` market identity;
 - last price only;
 - `1m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `1d` and `1w`;

@@ -124,6 +124,12 @@ describe("paper portfolio executor command contract", () => {
     expect(() => parsePaperPortfolioExecutorPayload(create({ ...dcaBotBase, kind: "dca", dca: { ...dca, executionPermission: true } })))
       .toThrow(/dca-params-v1/);
 
+    const hyperliquid = parsePaperPortfolioExecutorPayload(create({ ...strategyBot, dataExchange: "hyperliquid" }));
+    if (hyperliquid.kind !== "paper-robot.create") throw new Error("Unexpected payload kind");
+    expect(hyperliquid.bot.dataExchange).toBe("hyperliquid");
+    expect(() => parsePaperPortfolioExecutorPayload(create({ ...strategyBot, dataExchange: "hyperliquid", market: "spot" }))).toThrow(/must be futures/);
+    expect(() => parsePaperPortfolioExecutorPayload(create({ ...strategyBot, dataExchange: "unknown" }))).toThrow();
+
     const grid = {
       schemaVersion: "grid-params-v1",
       mode: "neutral",

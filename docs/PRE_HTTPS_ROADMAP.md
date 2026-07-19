@@ -617,7 +617,7 @@ strategy expansion so it can feed later alerts.
 - PostgreSQL schema 13 owns owner-scoped rules, immutable revisions, state,
   evaluation receipts, forward-sequenced events, in-app outbox evidence and
   bounded retention; production completed the verified 12→13 migration;
-- the only server-evaluated kind is `price-threshold` over public Binance/Bybit
+- the only server-evaluated kind is `price-threshold` over public Binance/Bybit or first-DEX perpetual Hyperliquid
   last-price closed candles. It is notification-only, reads no credential and
   cannot place an order, borrow, change margin or grant a trading role;
 - beta limits are 100 active and 200 non-archived rules per owner, 400 total

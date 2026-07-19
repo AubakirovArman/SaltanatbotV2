@@ -13,7 +13,7 @@ English reference: [ALERTS.md](../ALERTS.md).
 Сервер умеет оценивать один тип правила:
 
 - `price-threshold`;
-- публичные данные Binance или Bybit;
+- публичные данные Binance, Bybit или first-DEX perpetual Hyperliquid;
 - идентичность рынка `spot`, `linear` или `inverse`;
 - только last price;
 - таймфреймы `1m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `1d`, `1w`;

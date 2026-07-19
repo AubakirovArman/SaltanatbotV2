@@ -20,13 +20,17 @@ token-мен, ал trading WebSocket қысқа мерзімді бір ретт
 ## Paper бот
 
 1. Strategy Studio-да стратегияны сақтап, тексеріңіз.
-2. **Жаңа бот** ішінен стратегия, symbol және timeframe таңдаңыз.
+2. **Жаңа бот** ішінен стратегия, market-data source, symbol және timeframe таңдаңыз.
 3. **Paper (simulation)** режимін, position size және leverage орнатыңыз.
 4. Ботты жасап, іске қосыңыз; orders, fills және logs журналдарын бақылаңыз.
 5. Эксперимент аяқталған соң ботты тоқтатыңыз.
 
 Бұл workflow үшін API кілттері керек емес. Paper bot private request жібермейді және нақты қаражатты
 пайдалана да, шығара да алмайды.
+
+`Binance`, `Bybit` немесе `Hyperliquid` таңдауы тек paper engine public candle source-ын өзгертеді.
+Hyperliquid әзірге first-DEX perpetual болғандықтан futures мәжбүрлі; wallet қосылмайды, order,
+balance және PnL local simulation ішінде қалады.
 
 Paper аккаунт күйі append-only оқиғалар журналынан қалпына келеді: initialization, orders, fills,
 fees, P&L cash қозғалысы, position, settings және funding. Бір оқиғаның дәл қайталануы еленбейді,

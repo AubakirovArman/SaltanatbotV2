@@ -191,8 +191,8 @@ This index is a route-presence and access-classification contract. A change to a
 | --- | --- | --- |
 | `/stream` | Authenticated account | Market candle snapshot and updates |
 | `/quotes` | Authenticated account | Multiplexed watchlist quote snapshots and updates |
-| `/orderbook` | Authenticated account | Shared Binance/Bybit order-book snapshots and status |
-| `/trade-flow` | Authenticated account | Shared Binance/Bybit aggressor-trade batches and status |
+| `/orderbook` | Authenticated account | Shared Binance/Bybit/Hyperliquid order-book snapshots and status |
+| `/trade-flow` | Authenticated account | Shared Binance/Bybit/Hyperliquid aggressor-trade batches and status |
 | `/arbitrage-stream` | Authenticated account | Shared read-only cross-exchange arbitrage snapshots |
 | `/trade-stream` | One-time authenticated WebSocket ticket | Bot, order, fill and runtime updates |
 

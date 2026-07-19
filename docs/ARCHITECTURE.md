@@ -213,16 +213,17 @@ backend/src/
 │   ├── catalog.ts            # Instrument catalog + findInstrument/getCatalog
 │   ├── instrumentRegistry.ts # Normalized identities, filters, contracts and capabilities
 │   ├── instrumentRoutes.ts   # Bounded registry/capability HTTP handlers
-│   └── timeframes.ts         # Timeframe tables + Binance/Bybit interval maps, alignTime
+│   └── timeframes.ts         # Timeframe tables + centralized interval alignment
 ├── providers/
 │   ├── provider.ts           # MarketProvider / MarketSubscription / CandleRange interfaces
 │   ├── router.ts             # ProviderRouter — routing, fallback, caching
 │   ├── binance.ts            # Binance public REST klines + WS kline stream
 │   ├── bybit.ts              # Bybit v5 public spot REST + WS kline stream
+│   ├── hyperliquid.ts         # Hyperliquid first-DEX perp REST/WS candles
 │   ├── synthetic.ts          # Deterministic synthetic OHLCV feed
 │   └── cache.ts              # CandleCache — TTL/LRU window cache
-├── orderbook/                # Shared public Binance/Bybit depth streams
-├── tradeflow/                # Shared public trades, footprint/CVD inputs
+├── orderbook/                # Shared public Binance/Bybit/Hyperliquid depth streams
+├── tradeflow/                # Shared public aggressor trades, footprint/CVD inputs
 ├── arbitrage/
 │   ├── service.ts            # Bounded REST discovery and route normalization
 │   ├── upstream/             # Shared direct public ticker sockets + health watchdog
@@ -336,9 +337,13 @@ The routing decision lives in `ProviderRouter.primary`:
 | --- | --- | --- |
 | `provider === "binance"` (crypto) | `binance` (default) | `BinanceProvider` |
 | `provider === "binance"` (crypto) | `bybit` | `BybitProvider` |
+| `provider === "binance"` (crypto) | `hyperliquid` | `HyperliquidProvider` (first-DEX perpetual only) |
 | `provider === "synthetic"` (forex/stock/index) | *(ignored)* | `SyntheticProvider` |
 
-The `exchange` value is the **runtime exchange selector**: it only takes effect for crypto instruments (all catalog crypto pairs carry `provider: "binance"` and `exchange: "Binance / Bybit"`), letting the user flip the same `BTCUSDT` chart between Binance and Bybit live data. Non-crypto instruments in the catalog are marked `provider: "synthetic"` and always resolve to the synthetic feed regardless of the `exchange` parameter.
+The `exchange` value is the **runtime exchange selector**: it only takes effect for crypto
+instruments. It lets a user switch the same app symbol between Binance, Bybit and first-DEX
+perpetual Hyperliquid public data. Hyperliquid maps `BTCUSDT` to native coin `BTC` at the boundary
+and requires `linear` plus `last`; non-crypto instruments stay on the synthetic feed.
 
 ### Providers
 
@@ -346,14 +351,17 @@ The `exchange` value is the **runtime exchange selector**: it only takes effect 
 | --- | --- | --- | --- |
 | `BinanceProvider` | Binance public | `GET api.binance.com/api/v3/klines` | `stream.binance.com:9443/ws/<symbol>@kline_<interval>` |
 | `BybitProvider` | Bybit v5 public spot | `GET api.bybit.com/v5/market/kline?category=spot` | `stream.bybit.com/v5/public/spot`, topic `kline.<interval>.<symbol>` |
+| `HyperliquidProvider` | Hyperliquid public first DEX | `POST api.hyperliquid.xyz/info` with `candleSnapshot` | `api.hyperliquid.xyz/ws`, `candle` subscription |
 | `SyntheticProvider` | In-process generator | *(none)* | 1 Hz `setInterval` forming-bar ticks |
 
 Notes grounded in the code:
 
-- **No API keys** for market data — both Binance and Bybit use public REST + public WebSocket. Timeframes are mapped per exchange in `market/timeframes.ts` (`binanceIntervals`, `bybitIntervals`; e.g. Bybit uses `"60"` for `1h` and `"D"` for `1d`).
+- **No API keys** for market data — Binance, Bybit and Hyperliquid use public REST + public WebSocket. Hyperliquid chart/order-book/trade subscriptions include heartbeat and reconnect handling.
 - **Bybit normalization** — Bybit returns klines newest-first, so `BybitProvider` reverses them to ascending time; it also sends periodic `{ op: "ping" }` heartbeats every 20 s over its WebSocket.
 - **Synthetic feed is deterministic** — closed bars are a pure function of the bar index (fractal value-noise random walk anchored on `instrument.basePrice`), so paginating into history always returns identical bars. Only the currently forming bar wiggles live around its deterministic anchor.
-- **Fallback** — if the primary provider throws in `getCandles`, the router silently falls back to synthetic candles tagged with a `source` of `Fallback after <error>`. On `subscribe` failure it reports a status message containing `Fallback stream: …` and streams synthetic ticks. The server maps a message containing `"Fallback"` to a `status: "fallback"` stream event.
+- **Fallback** — legacy automatic-source failures may fall back to tagged synthetic data. An
+  explicitly selected Hyperliquid route fails closed for REST and WebSocket errors, so a public DEX
+  outage cannot be mistaken for real Hyperliquid candles.
 
 ### Candle cache
 

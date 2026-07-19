@@ -128,8 +128,8 @@ The mandatory R5.1 matrix covers:
   old-state/old-revision/archive retention with bounded batches, time budget,
   lock contention and dependency-order tests.
 
-This matrix concerns generic owner price alerts (`price-threshold`, public
-Binance/Bybit last-price candles and in-app delivery). It is not acceptance of
+This matrix concerns generic owner price alerts (`price-threshold`, public Binance/Bybit or
+first-DEX perpetual Hyperliquid last-price candles and in-app delivery). It is not acceptance of
 the older account-aware arbitrage research-alert policy/outbox, whose
 engine-owned candidate/economics producers remain disconnected. R5.2 technical
 screener production, R5.3 notification worker/Telegram delivery and the R11

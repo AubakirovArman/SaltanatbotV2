@@ -123,7 +123,7 @@ const corsOptions: cors.CorsOptions = {
   }
 };
 
-const exchangeParam = z.enum(["binance", "bybit"]).default("binance");
+const exchangeParam = z.enum(["binance", "bybit", "hyperliquid"]).default("binance");
 const marketTypeParam = z.enum(["spot", "linear", "inverse"]).default("spot");
 const priceTypeParam = z.enum(["last", "mark", "index"]).default("last");
 

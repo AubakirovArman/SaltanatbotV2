@@ -2,8 +2,9 @@
 
 ## Нарық пен интервалды таңдау
 
-Жоғарғы панельден құралды, timeframe-ді және график түрін таңдаңыз. Криптовалюта үшін Binance
-немесе Bybit дереккөзін бөлек таңдауға болады. Индикаторлар, салыстырылатын құралдар, сызбалар және
+Жоғарғы панельден құралды, timeframe-ді және график түрін таңдаңыз. Криптовалюта үшін Binance,
+Bybit немесе Hyperliquid дереккөзін бөлек таңдауға болады. Hyperliquid first-DEX perpetual үшін
+`linear` және last-trade candle ғана береді. Индикаторлар, салыстырылатын құралдар, сызбалар және
 белсенді стратегия бір уақыт диапазонында көрсетіледі.
 
 Қарапайым және іші бос candle, Heikin Ashi, bar, line, step line, area, baseline, Renko, **Three Line Break** және **Kagi** түрлері бар. Іші бос candle өскен денені боямайды, ал step line келесі өзгеріске дейін алдыңғы бағаны ұстайды.
@@ -66,15 +67,15 @@ VPVR `EST` деп белгіленеді: OHLCV candle тек жалпы volume 
 
 Frontend тек same-origin `/orderbook` арнасына қосылады. Backend бір market үшін бір upstream-ды барлық клиентке ортақ пайдаланады, browser snapshot жиілігін секундына төртпен және әртүрлі белсенді кітаптарды 32-мен шектейді; баяу client send buffer шексіз өспей тұрып ажыратылады. Соңғы клиент кеткенде upstream жабылады. Жасырылған tab-та stream pause болады; reconnect, stale және error күйлері ашық көрсетіледі. Synthetic стакан жасалмайды.
 
-Дереккөздер: [Binance WebSocket Streams](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams), [Bybit Orderbook](https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook).
+Дереккөздер: [Binance WebSocket Streams](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams), [Bybit Orderbook](https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook), [Hyperliquid WebSocket subscriptions](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions).
 
 ## Footprint және мәміле дельтасы
 
-**Live trade footprint** батырмасы Binance немесе Bybit-тің нақты public print-терін қосады. Әр candle көрінетін price row-ларға бөлінеді: қызыл жартысы aggressive sell номиналын, жасыл жартысы aggressive buy номиналын көрсетеді. Zoom жеткілікті болса, жолдың ішінде `sell × buy` мәндері жазылады. Төменгі жолақта candle delta бағандары мен көк cumulative-delta сызығы бар. Badge-тегі `Δ %` формуласы: `(buy − sell) / (buy + sell)`.
+**Live trade footprint** батырмасы Binance, Bybit немесе Hyperliquid нақты public print-терін қосады. Әр candle көрінетін price row-ларға бөлінеді: қызыл жартысы aggressive sell номиналын, жасыл жартысы aggressive buy номиналын көрсетеді. Zoom жеткілікті болса, жолдың ішінде `sell × buy` мәндері жазылады. Төменгі жолақта candle delta бағандары мен көк cumulative-delta сызығы бар. Badge-тегі `Δ %` формуласы: `(buy − sell) / (buy + sell)`.
 
 Frontend тек батырма қосылғаннан кейінгі жаңа мәмілелерді same-origin `/trade-flow` арқылы алады. Backend бір market үшін бір upstream пайдаланады, print-терді 100 мс batch-ке біріктіреді, бір хабарды 500 trade-пен және жалпы stream санын 32-мен шектейді. Reconnect жаңа observation window бастайды: жоқ history ойдан жасалмайды және OHLCV estimate-пен алмастырылмайды. Tab жасырылса немесе browser component render-ін өткізіп жіберсе, WebSocket пен Canvas pause болады.
 
-Side баға қозғалысынан болжанбайды: Binance-та `m=true` aggressive sell дегенді білдіреді, Bybit-та `S` taker side-ты тікелей береді. Дереккөздер: [Binance Aggregate Trade Streams](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#aggregate-trade-streams), [Bybit Public Trade](https://bybit-exchange.github.io/docs/v5/websocket/public/trade).
+Side баға қозғалысынан болжанбайды: Binance-та `m=true` aggressive sell, Bybit-та `S` taker side, Hyperliquid-та `B/A` aggressor side мәнін береді. Дереккөздер: [Binance Aggregate Trade Streams](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#aggregate-trade-streams), [Bybit Public Trade](https://bybit-exchange.github.io/docs/v5/websocket/public/trade), [Hyperliquid WebSocket subscriptions](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions).
 
 ### Imbalance, stacked imbalance және ықтимал absorption
 
@@ -94,7 +95,7 @@ Flow alert trading journal-ға жазылмайды, Telegram-ға жібері
 
 ## Session liquidity map
 
-`1m`–`4h` intraday interval-дарында **SESSION MAP · UTC** әдепкіде қосулы. Ол ағымдағы UTC күнінің open/high/low мәндерін, VWAP және ±1σ жолақтарын, сондай-ақ PDH/PDL деңгейлерін көрсетеді. Алдыңғы күн деңгейлері таңдалған Binance/Bybit-тің бөлек daily candle-дарынан алынады, сондықтан толық емес көрінетін intraday history толық күн деп есептелмейді.
+`1m`–`4h` intraday interval-дарында **SESSION MAP · UTC** әдепкіде қосулы. Ол ағымдағы UTC күнінің open/high/low мәндерін, VWAP және ±1σ жолақтарын, сондай-ақ PDH/PDL деңгейлерін көрсетеді. Алдыңғы күн деңгейлері таңдалған source-тың бөлек daily candle-дарынан алынады, сондықтан толық емес көрінетін intraday history толық күн деп есептелмейді.
 
 VWAP әр OHLCV candle-дың жалпы volume-ымен өлшенген `(high + low + close) / 3` typical price арқылы есептеледі. Бұл deterministic **bar-based estimate**, tick-VWAP емес: candle ішіндегі volume таралуы ойдан жасалмайды. Volume нөл болса, VWAP және band көрсетілмейді.
 
@@ -138,7 +139,7 @@ Chart үстіндегі карточкадағы `STRUCT` батырмасы р
 
 IANA time zone London/New York DST ауысуын автоматты есептейді; candle session-ға open time бойынша кіреді. `2h` және одан үлкен timeframe-де `09:30` шекарасы дәл болмайтындықтан батырмалар disabled.
 
-Бұл official exchange holiday calendar емес: мереке және shortened trading day есептелмейді. 24/7 crypto үшін box Binance/Bybit open/close-ын емес, regional activity window-ды көрсетеді және жеке trading signal болып саналмайды.
+Бұл official exchange holiday calendar емес: мереке және shortened trading day есептелмейді. 24/7 crypto үшін box таңдалған venue open/close-ын емес, regional activity window-ды көрсетеді және жеке trading signal болып саналмайды.
 - **Қосу** мәзірі кірістірілген және пайдаланушы индикаторларын басқарады.
 - **Салыстыру** үш символға дейін қосады.
 - `Ctrl+K` (`⌘K`) command palette ашады; `Enter` орындайды, `Esc` жабады.

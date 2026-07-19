@@ -1,13 +1,22 @@
 # Публичный адаптер Hyperliquid
 
-Статус: публичный backend-адаптер сверён с официальным API 14 июля 2026 года и доступен через
-`/api/market-data/hyperliquid/*`. Он не входит в `/api/instruments`, live-сканер/chart UI или
-private execution.
+Статус: публичный backend-адаптер сверён с официальным API 19 июля 2026 года и доступен через
+`/api/market-data/hyperliquid/*` и обычный выбор источника графика. Подключены свечи perpetual
+первого DEX, стакан/сделки на графике и источник данных paper-роботов; private execution не входит.
 
 Адаптер без ключей вызывает только публичный `POST /info`: метаданные spot/default-perp DEX,
-`l2Book`, `predictedFundings` и `fundingHistory`. В нём нет `/exchange`, кошелька, agent key,
+`l2Book`, `predictedFundings`, `fundingHistory` и `candleSnapshot`. В нём нет `/exchange`, кошелька, agent key,
 подписи, пользовательского адреса, исполнения, займа или перевода. HyperEVM, indexer, HIP-3 DEX и
 outcome-активы `#...` не входят в текущий scope.
+
+В интерфейсе `Hyperliquid` выбирается как источник first-DEX perpetual. Например, `BTCUSDT`
+нормализуется в нативный coin `BTC` только на границе провайдера. Для него принудительно выбраны
+`linear` и свечи последней сделки; spot, inverse, mark и index не подменяются другим источником.
+Публичный WebSocket поставляет candle, L2 и сделки с heartbeat/reconnect и REST-backfill.
+
+Paper-робот может брать рыночные данные Hyperliquid, но все заявки, баланс и PnL остаются локальной
+симуляцией. Кошелёк/ключ не создаётся и биржевой ордер не отправляется. Live-подключение кошелька
+останется выключенным до HTTPS и отдельной проверки хранения ключей и подписи.
 
 Для spot отдельно сохраняются token ID, token index и pair index; execution asset ID равен
 `10000 + pairIndex`. PURR использует `PURR/USDC`, остальные пары — нативный `@{pairIndex}`.

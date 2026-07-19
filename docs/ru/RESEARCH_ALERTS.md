@@ -18,8 +18,8 @@ PostgreSQL schema 13, защищённый слот r5a-schema13-66394fd
 объединять с обычным price rule только потому, что оба контура используют
 notification/outbox.
 
-Принятый релиз R5.1 поддерживает только `price-threshold` по публичным
-закрытым last-price свечам Binance/Bybit и in-app delivery. Он не читает account
+Текущий generic-контур поддерживает только `price-threshold` по публичным закрытым last-price
+свечам Binance/Bybit или first-DEX perpetual Hyperliquid и in-app delivery. Он не читает account
 evidence или exchange credentials и не может торговать. Beta limits: 100 active
 и 200 non-archived rules на owner, 400 total rule/history rows на owner и 480
 globally active rules. Scheduler допускает четыре concurrent public reads, 16

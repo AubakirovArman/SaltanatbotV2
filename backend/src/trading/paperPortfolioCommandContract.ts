@@ -70,6 +70,7 @@ const paperBotConfigSchema = z.object({
   symbol: z.string().trim().min(1).max(30),
   timeframe: z.enum(timeframes as [Timeframe, ...Timeframe[]]),
   exchange: z.literal("paper"),
+  dataExchange: z.enum(["binance", "bybit", "hyperliquid"]).optional(),
   market: z.enum(["spot", "futures"]),
   sizeMode: z.enum(["quote", "base", "equity_pct", "risk_pct"]),
   sizeValue: z.number().positive().finite().max(1_000_000_000),
@@ -86,6 +87,9 @@ const paperBotConfigSchema = z.object({
   dca: dcaParamsV1.optional(),
   grid: gridParamsV1.optional()
 }).strict().superRefine((bot, ctx) => {
+  if (bot.dataExchange === "hyperliquid" && bot.market !== "futures") {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["market"], message: "bot.market must be futures for Hyperliquid paper data" });
+  }
   if ((bot.kind === "dca") !== (bot.dca !== undefined)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'bot.dca is required exactly when bot.kind is "dca"' });
   }

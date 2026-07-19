@@ -1,7 +1,8 @@
-import { parsePriceThresholdAlertDefinitionV1, type Candle, type Instrument, type PriceThresholdAlertDefinitionV1 } from "@saltanatbotv2/contracts";
+import { parsePriceThresholdAlertDefinitionV1, type Candle, type DataExchange, type Instrument, type PriceThresholdAlertDefinitionV1 } from "@saltanatbotv2/contracts";
 import { timeframeMs } from "../market/timeframes.js";
 import { BinanceProvider } from "../providers/binance.js";
 import { BybitProvider } from "../providers/bybit.js";
+import { HyperliquidProvider } from "../providers/hyperliquid.js";
 import type { CandleRange, MarketProvider } from "../providers/provider.js";
 import { candleHasFiniteMarketShape, priceThresholdAlertScopeKey, validateClosedCandleWindow, type ClosedCandleWindowUnavailableReason } from "./priceEvaluator.js";
 
@@ -10,6 +11,7 @@ export type PublicClosedCandleProvider = Pick<MarketProvider, "getCandles">;
 export interface PublicClosedCandleReaderDependencies {
   binance?: PublicClosedCandleProvider;
   bybit?: PublicClosedCandleProvider;
+  hyperliquid?: PublicClosedCandleProvider;
   now?: () => number;
   requestTimeoutMs?: number;
 }
@@ -28,7 +30,7 @@ export type PublicClosedCandleReadResult =
       status: "ready";
       scopeKey: string;
       observedAt: number;
-      exchange: "binance" | "bybit";
+      exchange: DataExchange;
       candles: readonly Candle[];
     }
   | {
@@ -62,12 +64,14 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 export class PublicClosedCandleReader {
   private readonly binance: PublicClosedCandleProvider;
   private readonly bybit: PublicClosedCandleProvider;
+  private readonly hyperliquid: PublicClosedCandleProvider;
   private readonly now: () => number;
   private readonly requestTimeoutMs: number;
 
   constructor(dependencies: PublicClosedCandleReaderDependencies = {}) {
     this.binance = dependencies.binance ?? new BinanceProvider();
     this.bybit = dependencies.bybit ?? new BybitProvider();
+    this.hyperliquid = dependencies.hyperliquid ?? new HyperliquidProvider();
     this.now = dependencies.now ?? Date.now;
     this.requestTimeoutMs = boundedRequestTimeout(dependencies.requestTimeoutMs);
   }
@@ -111,7 +115,7 @@ export class PublicClosedCandleReader {
       };
     }
 
-    const provider = definition.exchange === "binance" ? this.binance : this.bybit;
+    const provider = definition.exchange === "binance" ? this.binance : definition.exchange === "bybit" ? this.bybit : this.hyperliquid;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     timeout.unref?.();
@@ -302,7 +306,7 @@ function publicInstrument(definition: PriceThresholdAlertDefinitionV1): Instrume
     symbol: definition.symbol,
     displayName: definition.symbol,
     assetClass: "crypto",
-    exchange: definition.exchange === "binance" ? "Binance" : "Bybit",
+    exchange: definition.exchange === "binance" ? "Binance" : definition.exchange === "bybit" ? "Bybit" : "Hyperliquid",
     currency: "USDT",
     provider: "binance",
     basePrice: 1,

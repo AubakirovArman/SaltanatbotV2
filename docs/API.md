@@ -315,8 +315,9 @@ research-only. Every request must send `X-SBV2-Expected-User` with the current
 session user ID. `POST`, `PUT`, `DELETE` and action endpoints also require the
 normal CSRF header. Responses use `Cache-Control: no-store`.
 
-R5.1 accepts only `price-threshold` definitions with Binance/Bybit public last
-price, a non-calendar timeframe from `1m` through `1w`, inclusive crossing and
+Price rules accept only `price-threshold` definitions with Binance/Bybit public last-price candles
+or Hyperliquid first-DEX perpetual public last-price candles, a non-calendar timeframe from `1m`
+through `1w`, inclusive crossing and
 `once-until-rearmed`. It accepts only `deliveryChannels: ["in-app"]`. Telegram,
 order placement, borrowing, margin mutation, private streams and signed exchange
 requests are unavailable.
@@ -956,11 +957,13 @@ Fetches OHLCV candles for a single instrument.
 | `limit` | integer | no | `320` | min `10`, max `1000` |
 | `endTime` | integer | no | — | positive; ms epoch upper bound |
 | `startTime` | integer | no | — | positive; ms epoch lower bound |
-| `exchange` | enum | no | `binance` | `binance` or `bybit` |
+| `exchange` | enum | no | `binance` | `binance`, `bybit` or `hyperliquid` |
 | `marketType` | enum | no | `spot` | `spot`, `linear` or `inverse` |
 | `priceType` | enum | no | `last` | `last`, `mark` or `index`; mark/index require a compatible derivatives market |
 
-The `exchange` parameter selects which crypto exchange (Binance or Bybit) supplies the candles for crypto symbols.
+The `exchange` parameter selects which crypto venue supplies candles. Hyperliquid accepts only
+`marketType=linear` and `priceType=last`, maps an app symbol such as `BTCUSDT` to the native
+first-DEX perpetual coin, and fails closed for unsupported products.
 
 **Response `200`**
 
@@ -1364,6 +1367,7 @@ The core object accepted and returned by the bot endpoints.
 | `symbol` | `string` | Upper-cased on save (required) |
 | `timeframe` | `Timeframe` | Required |
 | `exchange` | `"paper" \| "binance" \| "bybit"` | Defaults to `paper` |
+| `dataExchange` | `"binance" \| "bybit" \| "hyperliquid"` | Optional paper market-data source; Hyperliquid requires `market="futures"`. Live bots derive it from `exchange` |
 | `market` | `"spot" \| "futures"` | Paper market type only in the current runtime; every Binance/Bybit bot is rejected by the Research/Paper boundary |
 | `sizeMode` | `"quote" \| "base" \| "equity_pct" \| "risk_pct"` | Defaults to `quote` |
 | `sizeValue` | `number` | Defaults to `100` |

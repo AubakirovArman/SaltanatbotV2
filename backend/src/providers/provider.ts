@@ -1,6 +1,6 @@
 import type { Candle, Instrument, Timeframe } from "../types.js";
 
-export type DataExchange = "binance" | "bybit";
+export type DataExchange = "binance" | "bybit" | "hyperliquid";
 export type DataMarketType = "spot" | "linear" | "inverse";
 export type PriceType = "last" | "mark" | "index";
 

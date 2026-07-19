@@ -25,7 +25,8 @@ interface WatchlistProps {
 const assets: Array<AssetClass | "all"> = ["all", "crypto", "forex", "stock", "index"];
 const exchanges: Array<{ id: DataExchange; label: string }> = [
   { id: "binance", label: "Binance" },
-  { id: "bybit", label: "Bybit" }
+  { id: "bybit", label: "Bybit" },
+  { id: "hyperliquid", label: "Hyperliquid" }
 ];
 
 // Sort cycles: A→Z, then % desc (top gainers), then % asc (top losers).

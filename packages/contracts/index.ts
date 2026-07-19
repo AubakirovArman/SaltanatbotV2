@@ -10,7 +10,7 @@ export * from "./screener.js";
 export type AssetClass = "crypto" | "forex" | "stock" | "index";
 export type Timeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "1d" | "1w" | "1M";
 export type ChartType = "candles" | "hollow" | "heikin" | "bars" | "line" | "step" | "area" | "baseline" | "renko" | "linebreak" | "kagi" | "pnf";
-export type DataExchange = "binance" | "bybit";
+export type DataExchange = "binance" | "bybit" | "hyperliquid";
 export type DataMarketType = "spot" | "linear" | "inverse";
 export type PriceType = "last" | "mark" | "index";
 
@@ -351,7 +351,7 @@ function parseTimeframe(value: unknown, label: string): Timeframe {
 }
 
 function parseExchange(value: unknown, label: string): DataExchange {
-  if (value !== "binance" && value !== "bybit") throw new Error(`${label} is unsupported`);
+  if (value !== "binance" && value !== "bybit" && value !== "hyperliquid") throw new Error(`${label} is unsupported`);
   return value;
 }
 

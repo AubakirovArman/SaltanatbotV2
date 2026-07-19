@@ -176,7 +176,7 @@ export function ChartWorkspaceRuntime({
       onSelectAsset={setAsset}
       onSelectExchange={(nextExchange) => {
         shell.setCryptoExchange(nextExchange);
-        shell.updateActiveChart({ exchange: nextExchange, priceType: "last" });
+        shell.updateActiveChart({ exchange: nextExchange, priceType: "last", ...(nextExchange === "hyperliquid" ? { marketType: "linear" } : {}) });
       }}
       storageOwnerId={storageOwnerId}
     />

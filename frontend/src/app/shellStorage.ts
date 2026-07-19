@@ -31,7 +31,8 @@ export function loadTheme(): "dark" | "light" {
 
 export function loadCryptoExchange(ownerId?: string): DataExchange {
   try {
-    return readTenantLocalItem(localStorage, "mf:cryptoExchange", ownerId) === "bybit" ? "bybit" : "binance";
+    const stored = readTenantLocalItem(localStorage, "mf:cryptoExchange", ownerId);
+    return stored === "bybit" || stored === "hyperliquid" ? stored : "binance";
   } catch {
     return "binance";
   }

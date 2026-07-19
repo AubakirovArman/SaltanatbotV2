@@ -1,8 +1,8 @@
 # Hyperliquid public adapter
 
-Status: current credential-free adapter exposed through `/api/market-data/hyperliquid/*`, reviewed
-against the official API on 2026-07-14. It is not part of `/api/instruments`, the live scanner/chart
-UI or private execution.
+Status: current credential-free adapter exposed through `/api/market-data/hyperliquid/*` and the
+ordinary chart market-data path, reviewed against the official API on 2026-07-19. First-DEX
+perpetual candles, chart L2/trades and paper-robot input are connected; private execution is not.
 
 ## Authority boundary
 
@@ -11,12 +11,30 @@ testnet origin). Its transport allowlists only:
 
 - `metaAndAssetCtxs` and `spotMetaAndAssetCtxs`;
 - `l2Book`;
-- `predictedFundings` and `fundingHistory`.
+- `predictedFundings` and `fundingHistory`;
+- `candleSnapshot` for bounded chart history.
 
 It cannot call `/exchange`, accept a wallet/agent key, sign a chain action, query a user account or
 touch HyperEVM/indexer/S3 data. The manifest sets private execution, borrow, transfers and account
 authority to `false`. Wallet custody, chain signing and execution require a completely separate
 security review.
+
+The browser chart uses the official public WebSocket for `candle`, `l2Book` and `trades`
+subscriptions. It sends protocol heartbeats, reconnects with REST candle backfill and never sends a
+wallet address, API key or signature.
+
+## Chart and paper-trading scope
+
+`Hyperliquid` is available as a normal chart source for first/default-DEX perpetuals. Existing app
+symbols such as `BTCUSDT` are mapped to the native perp coin (`BTC`) only at the provider boundary.
+The UI forces `linear` plus last-trade candles; spot, inverse, mark and index candles fail closed
+instead of silently switching source. The chart can also show the public L2 book and aggressor-side
+trade flow.
+
+Paper robots may select Hyperliquid as their market-data source. Orders, balances and PnL remain in
+the local simulation engine: selecting this source does not create or connect a wallet and cannot
+submit an order to Hyperliquid. Live Hyperliquid execution remains unavailable until the HTTPS and
+private-key custody boundary is designed, implemented and reviewed.
 
 ## Identity and products
 
@@ -58,7 +76,8 @@ mid prices are exposed only under `referenceContext` with `executable: false`:
 - mid is a reference context field, not proof of two executable sides.
 
 REST `l2Book` returns at most 20 levels per side and an exchange timestamp, but no sequence/checksum.
-The normalized snapshot says `sequenceVerified: false`; it cannot be used as a gap-checked stream.
+The normalized snapshot says `sequenceVerified: false`; the chart stream atomically replaces the
+book but does not claim sequence-gap proof.
 Crossed, locked, empty-sided, unsorted, oversized or mismatched books fail closed. All-book loading
 uses bounded concurrency, a configurable maximum instrument count (350 by default), and explicit
 per-instrument rejection records for partial failures.
@@ -94,6 +113,8 @@ Official references:
 
 - [API and mainnet/testnet origins](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api)
 - [Info endpoint and L2 book](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint)
+- [WebSocket subscriptions](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions)
+- [WebSocket timeouts and heartbeats](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/timeouts-and-heartbeats)
 - [Spot metadata](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/spot)
 - [Perpetual metadata and funding history](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals)
 - [Asset IDs](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/asset-ids)

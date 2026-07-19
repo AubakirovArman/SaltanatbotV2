@@ -17,7 +17,7 @@ accepted немесе deployed деп саналмайды.
 owner-scoped R5.1 alert control plane емес; екі контурда да notification/outbox терминдері
 қолданылғаны үшін олардың policy state-ін кәдімгі price rule-мен біріктіруге болмайды.
 
-Қабылданған R5.1 релизі тек Binance/Bybit ашық жабылған last-price candle-дары бойынша
+Қазіргі generic контур Binance/Bybit немесе first-DEX perpetual Hyperliquid ашық жабылған last-price candle-дары бойынша
 `price-threshold` және in-app delivery қолдайды. Ол account evidence немесе exchange credential
 оқымайды және trade жасай алмайды. Beta limit-тері: бір owner үшін 100 active және 200
 non-archived rule, бір owner үшін 400 total rule/history row және 480 globally active rule.

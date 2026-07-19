@@ -76,7 +76,7 @@ export function BotDetail({ bot, live, orders, orderJournal, fills, logs, onChan
       <header className="trade-detail-head">
         <div>
           <strong>{bot.name}</strong>
-          <span>{bot.exchange} · {bot.market} · {bot.symbol} · {bot.timeframe} · {bot.strategyName}{bot.kind === "dca" && <span className="ex-badge dca">{dcaText(locale, "typeBadge")}</span>}{bot.kind === "grid" && <span className="ex-badge grid">{gridText(locale, "typeBadge")}</span>}</span>
+          <span>{bot.exchange}{bot.exchange === "paper" && bot.dataExchange ? ` · ${bot.dataExchange} data` : ""} · {bot.market} · {bot.symbol} · {bot.timeframe} · {bot.strategyName}{bot.kind === "dca" && <span className="ex-badge dca">{dcaText(locale, "typeBadge")}</span>}{bot.kind === "grid" && <span className="ex-badge grid">{gridText(locale, "typeBadge")}</span>}</span>
           {executionDisabled && bot.exchange !== "paper" && <span className="trade-runtime-badge">{tradingText(locale, "liveExecutionDisabled")}</span>}
           {live?.runtimeStatus === "requires_manual_action" && <span className="trade-runtime-badge" title={live.pauseReason ?? tradingText(locale, "operatorConfirmation")}>{tradingText(locale, "requiresAction")}</span>}
         </div>

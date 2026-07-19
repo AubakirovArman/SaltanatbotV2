@@ -18,8 +18,8 @@ workflow. It is not the generic owner-scoped R5.1 alert control plane and its
 policy state must not be merged into a generic price rule merely because both
 systems use notification/outbox terminology.
 
-The accepted R5.1 release supports only `price-threshold` over public
-Binance/Bybit last-price closed candles with in-app delivery. It never reads
+The current generic control plane supports only `price-threshold` over public Binance/Bybit or
+first-DEX perpetual Hyperliquid last-price closed candles with in-app delivery. It never reads
 account evidence or exchange credentials and cannot trade. Its beta bounds are
 100 active and 200 non-archived rules per owner, 400 total retained
 rule/history rows per owner and 480 globally active rules. Scheduler admission

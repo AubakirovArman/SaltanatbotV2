@@ -129,6 +129,26 @@ describe("live account selection when creating a bot", () => {
     expect(saveTradingBot).not.toHaveBeenCalledWith(expect.objectContaining({ accountId: expect.any(String) }));
     await act(async () => root.unmount());
   });
+
+  it("submits Hyperliquid as a futures-only public source without a live account", async () => {
+    const saveTradingBot = vi.fn(async (input: Partial<TradingBot>) => savedBot(input));
+    const { container, root } = await render({ locale: "ru", paperOnly: true, saveTradingBot });
+    const market = container.querySelector<HTMLSelectElement>('select[name="market"]')!;
+
+    await changeSelect(container.querySelector<HTMLSelectElement>('select[name="data-exchange"]')!, "hyperliquid");
+    expect(market.value).toBe("futures");
+    expect(market.disabled).toBe(true);
+    expect(container.textContent).toContain("кошелёк и API-ключ не используются");
+
+    await submit(container.querySelector<HTMLFormElement>("form")!);
+    expect(saveTradingBot).toHaveBeenCalledWith(expect.objectContaining({
+      exchange: "paper",
+      dataExchange: "hyperliquid",
+      market: "futures"
+    }));
+    expect(saveTradingBot).not.toHaveBeenCalledWith(expect.objectContaining({ accountId: expect.any(String) }));
+    await act(async () => root.unmount());
+  });
 });
 
 async function render(props: Partial<ComponentProps<typeof CreateBotForm>> = {}) {

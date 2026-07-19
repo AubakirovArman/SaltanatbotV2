@@ -86,7 +86,7 @@ function parseTimeframe(value, label) {
     return value;
 }
 function parseExchange(value, label) {
-    if (value !== "binance" && value !== "bybit")
+    if (value !== "binance" && value !== "bybit" && value !== "hyperliquid")
         throw new Error(`${label} is unsupported`);
     return value;
 }

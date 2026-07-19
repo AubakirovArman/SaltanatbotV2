@@ -166,7 +166,7 @@ const chart = z
     symbol,
     timeframe,
     chartType,
-    exchange: z.enum(["binance", "bybit"]).optional(),
+    exchange: z.enum(["binance", "bybit", "hyperliquid"]).optional(),
     marketType: z.enum(["spot", "linear", "inverse"]).optional(),
     priceType: z.enum(["last", "mark", "index"]).optional(),
     timeZone: z
@@ -193,7 +193,16 @@ const chart = z
     linkCompare: z.boolean(),
     compareOverlays: z.array(compareOverlay).max(3).optional()
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.exchange !== "hyperliquid") return;
+    if (value.marketType !== "linear") {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["marketType"], message: "Hyperliquid charts require linear perpetual market data" });
+    }
+    if (value.priceType !== undefined && value.priceType !== "last") {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["priceType"], message: "Hyperliquid charts support last price candles only" });
+    }
+  });
 
 const layout = z
   .object({
@@ -317,7 +326,7 @@ const revisionFields = {
   symbol,
   timeframe,
   chartType,
-  cryptoExchange: z.enum(["binance", "bybit"]),
+  cryptoExchange: z.enum(["binance", "bybit", "hyperliquid"]),
   enabledIndicators: z.array(identifier(128)).max(128),
   indicators: z.array(indicator).max(128),
   compareOverlays: z.array(compareOverlay).max(3),
@@ -340,7 +349,7 @@ const legacyRevisionFields = {
   symbol,
   timeframe,
   chartType,
-  cryptoExchange: z.enum(["binance", "bybit"]),
+  cryptoExchange: z.enum(["binance", "bybit", "hyperliquid"]),
   enabledIndicators: z.array(identifier(128)).max(128),
   compareOverlays: z.array(compareOverlay).max(3),
   theme: z.enum(["dark", "light"]),

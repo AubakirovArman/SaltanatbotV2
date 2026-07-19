@@ -1,6 +1,6 @@
 import type { DcaParamsV1, GridParamsV1 } from "@saltanatbotv2/contracts";
 import type { StrategyIR } from "../strategy/ir";
-import type { Timeframe } from "../types";
+import type { DataExchange, Timeframe } from "../types";
 import { getCsrfToken as getAccountCsrfToken } from "../auth/client";
 import { accountTelemetrySearch, parseAccountTelemetrySnapshot, type AccountTelemetryQuery, type AccountTelemetrySnapshot } from "./accountTelemetry";
 import type { TradingRuntimeDescriptor } from "./runtimeProfile";
@@ -33,6 +33,7 @@ export interface TradingBot {
   symbol: string;
   timeframe: Timeframe;
   exchange: ExchangeId;
+  dataExchange?: DataExchange;
   market: MarketType;
   sizeMode: "quote" | "base" | "equity_pct" | "risk_pct";
   sizeValue: number;

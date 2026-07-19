@@ -1,6 +1,6 @@
 # Improvement implementation status
 
-Updated: 2026-07-18
+Updated: 2026-07-19
 
 Active branch: `main`
 
@@ -17,6 +17,25 @@ server can mount it when configured; **browser-delivered** means an EN/RU/KK wor
 observation; **private evidence** requires authenticated account/order/fill observations; and
 **production-ready** additionally requires sustained runtime, operational, legal and applicable
 private gates. No earlier level implies a later one.
+
+## Hyperliquid public chart and paper-data connection — 2026-07-19
+
+- [x] Add a credential-free first/default-DEX perpetual candle provider using bounded public
+  `candleSnapshot` history plus public WebSocket candle subscriptions, heartbeat, reconnect and
+  REST backfill.
+- [x] Add Hyperliquid to the ordinary chart/watchlist source selectors and persisted chart/workspace
+  schemas; force `linear` plus last-price and fail closed instead of using synthetic fallback.
+- [x] Connect atomic public `l2Book` snapshots and aggressor-side public trades to the existing
+  chart heatmap/footprint hubs without claiming sequence/checksum proof.
+- [x] Allow owner price alerts and paper strategy/DCA/grid robots to consume Hyperliquid public
+  perpetual candles. Paper orders, balances and PnL remain local simulation.
+- [x] Validate contracts, provider normalization, strict paper configuration, UI selection,
+  documentation, full unit suite, Chromium E2E, production build and canonical container visual
+  regression. A live public canary returned BTC candles and all three `candle`/`l2Book`/`trades`
+  WebSocket channels.
+
+This slice adds no wallet, API key, user address, agent approval, signing or `/exchange` request.
+Private Hyperliquid execution remains outside the pre-HTTPS release boundary.
 
 ## R4 accepted and deployed — 2026-07-17
 

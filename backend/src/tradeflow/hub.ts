@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { DataExchange, TradeFlowBatchMessage, TradeFlowStatusMessage, TradeFlowStreamMessage, TradeFlowTrade } from "../types.js";
 import { subscribeBinanceTradeFlow } from "./binance.js";
 import { subscribeBybitTradeFlow } from "./bybit.js";
+import { subscribeHyperliquidTradeFlow } from "./hyperliquid.js";
 import type { TradeFlowConnector, TradeFlowSubscription } from "./types.js";
 
 interface SharedFlow {
@@ -86,6 +87,7 @@ export class TradeFlowHub {
   }
 }
 
-const defaultConnector: TradeFlowConnector = (exchange, symbol, callbacks) => exchange === "bybit"
-  ? subscribeBybitTradeFlow(symbol, callbacks)
-  : subscribeBinanceTradeFlow(symbol, callbacks);
+const defaultConnector: TradeFlowConnector = (exchange, symbol, callbacks) => {
+  if (exchange === "hyperliquid") return subscribeHyperliquidTradeFlow(symbol, callbacks);
+  return exchange === "bybit" ? subscribeBybitTradeFlow(symbol, callbacks) : subscribeBinanceTradeFlow(symbol, callbacks);
+};

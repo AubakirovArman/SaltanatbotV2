@@ -285,17 +285,21 @@ function SecondaryChartPane({
         </span>
         <label>
           <span className="sr-only">{shellText(locale, "source")}</span>
-          <select aria-label={`${shellText(locale, "source")} · ${paneNumber}`} value={paneExchange} onChange={(event) => onUpdate(chart.id, { exchange: event.target.value as DataExchange, priceType: "last" })}>
+          <select aria-label={`${shellText(locale, "source")} · ${paneNumber}`} value={paneExchange} onChange={(event) => {
+            const exchange = event.target.value as DataExchange;
+            onUpdate(chart.id, { exchange, priceType: "last", ...(exchange === "hyperliquid" ? { marketType: "linear" } : {}) });
+          }}>
             <option value="binance">Binance</option>
             <option value="bybit">Bybit</option>
+            <option value="hyperliquid">Hyperliquid</option>
           </select>
         </label>
         <label>
           <span className="sr-only">{shellText(locale, "marketType")}</span>
-          <select aria-label={`${shellText(locale, "marketType")} · ${paneNumber}`} value={marketType} onChange={(event) => onUpdate(chart.id, { marketType: event.target.value as DataMarketType, priceType: "last" })}>
-            <option value="spot">{shellText(locale, "spotMarket")}</option>
+          <select aria-label={`${shellText(locale, "marketType")} · ${paneNumber}`} value={marketType} disabled={paneExchange === "hyperliquid"} onChange={(event) => onUpdate(chart.id, { marketType: event.target.value as DataMarketType, priceType: "last" })}>
+            {paneExchange !== "hyperliquid" && <option value="spot">{shellText(locale, "spotMarket")}</option>}
             <option value="linear">{localized(locale, { en: "Linear perpetual", ru: "Линейный perpetual", kk: "Сызықтық perpetual" })}</option>
-            <option value="inverse">{localized(locale, { en: "Inverse perpetual", ru: "Обратный perpetual", kk: "Кері perpetual" })}</option>
+            {paneExchange !== "hyperliquid" && <option value="inverse">{localized(locale, { en: "Inverse perpetual", ru: "Обратный perpetual", kk: "Кері perpetual" })}</option>}
           </select>
         </label>
         {marketType !== "spot" && paneExchange === "binance" && (

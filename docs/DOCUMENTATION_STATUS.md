@@ -1,6 +1,7 @@
 # Documentation status
 
 Last full repository documentation audit: **2026-07-15**
+Last focused Hyperliquid public chart/paper-data integration reconciliation: **2026-07-19**
 Last focused R3.3 release/cutover reconciliation: **2026-07-17**
 Last focused R4 release/cutover reconciliation: **2026-07-17** (`bb455fa`, CI `29560112312` 6/6)
 Last focused R5.1 release/cutover reconciliation: **2026-07-17** (`66394fd`, CI `29574600648` 6/6)
@@ -25,7 +26,7 @@ their source contracts, and user-facing claims were compared with the current im
 
 | Document | Audience | Status | Last verified |
 | --- | --- | --- | --- |
-| [README](../README.md) | users/contributors | current | 2026-07-14 |
+| [README](../README.md) | users/contributors | current, including public Hyperliquid chart and paper-data scope | 2026-07-19 |
 | [Architecture](ARCHITECTURE.md) | contributors | accepted deployment through PostgreSQL schema 14 / trading SQLite schema 9 | 2026-07-17 |
 | [Modular architecture](MODULAR_ARCHITECTURE.md) | contributors | current | 2026-07-11 |
 | [API reference](API.md) | integrators | current accepted API including the canonical R4 paper-portfolio contract, the accepted R9.1 `multi-market-eval` job kind, the accepted R9.2 `ga-evolution` job kind with the owner-scoped `/api/ga` routes and the accepted R9.3 `/api/gallery` versioned strategy gallery routes | 2026-07-18 |
@@ -64,7 +65,7 @@ their source contracts, and user-facing claims were compared with the current im
 | [R9.1 server multi-market evaluation evidence](evidence/R9_1_SERVER_EVALUATION.md) | operators/release reviewers | accepted exact-commit CI, no-migration paired recovery, protected slot and production cutover record; closes D2 via ADR 0003 | 2026-07-18 |
 | [R9.2 server GA evolution evidence](evidence/R9_2_GA_EVOLUTION.md) | operators/release reviewers | accepted exact-commit CI, PostgreSQL 16→17 paired migration rehearsal and recovery, protected slot and production cutover record | 2026-07-18 |
 | [R9.3 versioned strategy gallery evidence](evidence/R9_3_STRATEGY_GALLERY.md) | operators/release reviewers | accepted exact-commit CI, PostgreSQL 17→18 paired migration rehearsal and recovery, protected slot and production cutover record; completes R9 | 2026-07-18 |
-| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R5 and R9 complete, R6, R7 and R8 accepted/deployed | 2026-07-18 |
+| [Implementation status](IMPLEMENTATION_STATUS.md) | maintainers | current ledger; R5/R9 complete, R6/R7/R8 accepted, and public Hyperliquid chart/paper data verified | 2026-07-19 |
 | [Master improvement plan](MASTER_IMPROVEMENT_PLAN.md) | maintainers/community | current backlog | 2026-07-11 |
 | [I18n and documentation](I18N_AND_DOCUMENTATION.md) | contributors | updated for EN/RU/KK | 2026-07-11 |
 | [Accessibility baseline](ACCESSIBILITY.md) | users/contributors | current automated baseline including R4 center/drawer/mobile evidence; manual AT/Opera still pending | 2026-07-17 |
@@ -82,13 +83,13 @@ their source contracts, and user-facing claims were compared with the current im
 | [Owner-scoped server alerts](ALERTS.md) | users/operators/integrators | accepted R5.1 deployment on PostgreSQL schema 13; notification-only in-app scope | 2026-07-17 |
 | [Arbitrage math and assumptions](ARBITRAGE_MATH_AND_ASSUMPTIONS.md) | users/quant contributors | canonical calculation boundary | 2026-07-14 |
 | [Arbitrage market-data quality](MARKET_DATA_QUALITY.md) | adapter authors/operators | canonical current/target quality policy | 2026-07-14 |
-| [Venue capability matrix](VENUE_CAPABILITIES.md) | users/operators/contributors | current; nine generic continuous venues separated from private/regional eligibility | 2026-07-14 |
+| [Venue capability matrix](VENUE_CAPABILITIES.md) | users/operators/contributors | current; nine generic continuous venues separated from private/regional eligibility, plus bounded Hyperliquid first-DEX chart/paper-data scope | 2026-07-19 |
 | [Network identity](NETWORK_IDENTITY.md) | adapter authors/operators | current pure fail-closed registry/proof boundary; synthetic only and not runtime-wired | 2026-07-14 |
 | [Exchange adapter contract](EXCHANGE_ADAPTER_CONTRACT.md) | adapter authors | target contract; not a support claim | 2026-07-14 |
 | [Arbitrage verification matrix](ARBITRAGE_TEST_MATRIX.md) | contributors/release reviewers | current evidence + P0–P2 gates | 2026-07-14 |
 | [OKX public adapter](OKX_PUBLIC_ADAPTER.md) | adapter authors/users | current read-only scope | 2026-07-14 |
 | [Gate public adapter](GATE_PUBLIC_ADAPTER.md) | adapter authors/users | current read-only scope | 2026-07-14 |
-| [Hyperliquid public adapter](HYPERLIQUID_PUBLIC_ADAPTER.md) | adapter authors/users | current read-only scope | 2026-07-14 |
+| [Hyperliquid public adapter](HYPERLIQUID_PUBLIC_ADAPTER.md) | adapter authors/users | current read-only metadata/L2/funding plus first-DEX chart and paper-data scope | 2026-07-19 |
 | [Deribit/options research](DERIBIT_OPTIONS_RESEARCH.md) | quant/adapter contributors | current non-executable research scope | 2026-07-14 |
 | [dYdX public and chain-aware data](DYDX_PUBLIC_ADAPTER.md) | adapter authors/users | current shared-facade plus generic continuous Indexer WS; non-canonical research-only | 2026-07-14 |
 | [Kraken/Coinbase public adapters](KRAKEN_COINBASE_PUBLIC_ADAPTERS.md) | adapter authors/users | current public + selected continuous scope | 2026-07-14 |

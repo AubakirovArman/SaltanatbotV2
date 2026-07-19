@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { DataExchange, OrderBookSnapshotMessage, OrderBookStatusMessage, OrderBookStreamMessage } from "../types.js";
 import { subscribeBinanceOrderBook } from "./binance.js";
 import { subscribeBybitOrderBook } from "./bybit.js";
+import { subscribeHyperliquidOrderBook } from "./hyperliquid.js";
 import type { OrderBookConnector, OrderBookSubscription } from "./types.js";
 
 interface SharedBook {
@@ -97,6 +98,7 @@ export class OrderBookHub {
   }
 }
 
-const defaultConnector: OrderBookConnector = (exchange, symbol, callbacks) => exchange === "bybit"
-  ? subscribeBybitOrderBook(symbol, callbacks)
-  : subscribeBinanceOrderBook(symbol, callbacks);
+const defaultConnector: OrderBookConnector = (exchange, symbol, callbacks) => {
+  if (exchange === "hyperliquid") return subscribeHyperliquidOrderBook(symbol, callbacks);
+  return exchange === "bybit" ? subscribeBybitOrderBook(symbol, callbacks) : subscribeBinanceOrderBook(symbol, callbacks);
+};
